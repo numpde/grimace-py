@@ -1,10 +1,27 @@
 dist/
 build/
 target/
+pip-wheel-metadata/
 *.egg-info/
+
 __pycache__/
+*.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
 .venv/
+.python-version
 
+python/smiles_next_token/_core*.so
+python/smiles_next_token/_core*.dylib
+python/smiles_next_token/_core*.dll
+python/smiles_next_token/_core*.pyd
+
+Cargo.lock
+
+.DS_Store
+.idea/
+.vscode/

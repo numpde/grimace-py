@@ -1,0 +1,17 @@
+[package]
+name = "smiles-next-token-kernel"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.83"
+
+[features]
+default = []
+python-extension = ["pyo3/extension-module"]
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+path = "rust/src/lib.rs"
+
+[dependencies]
+pyo3 = { version = "0.28.2" }

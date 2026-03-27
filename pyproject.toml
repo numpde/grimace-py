@@ -1,0 +1,19 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "smiles-next-token"
+version = "0.0.0"
+description = "SMILES and next-token tooling with a private Rust kernel."
+readme = "README.md"
+requires-python = ">=3.11"
+
+[tool.maturin]
+python-source = "python"
+module-name = "smiles_next_token._core"
+features = ["python-extension"]
+
+[dependency-groups]
+test = []
+dev = []

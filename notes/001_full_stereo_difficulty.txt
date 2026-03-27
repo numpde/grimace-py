@@ -1,0 +1,154 @@
+Full-stereo rooted enumeration: what was difficult
+
+Context
+
+The reference enumerator in
+`python/smiles_next_token/reference/rooted/connected_stereo.py`
+has three constraints that make stereo harder than in an ordinary batch SMILES
+writer:
+
+- it must enumerate exact rooted support
+- it must emit the final stereo markers online
+- it must later support next-token semantics from the same writer state
+
+This intentionally rejects RDKit's two-phase design. RDKit can do a full
+traversal first and fix stereo later. We cannot, because the reference engine
+must expose the real writer state as tokens are emitted.
+
+What was easy enough
+
+Atom tetrahedral stereo was not the main difficulty.
+
+- `@` / `@@` is local enough to emit at the atom token
+- the needed input is the actual emitted neighbor order
+- once the rooted traversal commits parent / ring / child order, parity against
+  the stored reference order is enough
+
+That part was comparatively straightforward and stable early.
+
+What was actually hard
+
+Bond stereo was hard because the visible `/` or `\` is not just a property of
+the double bond.
+
+The exact rooted string depends on writer-local details:
+
+- which adjacent single bond becomes the visible carrier at each endpoint
+- whether that carrier is encountered before or after the endpoint atom token
+- whether the chosen carrier is the first or second eligible substituent at an
+  endpoint
+- whether the rooted traversal begins from the stored begin side or the stored
+  end side of the stereo bond
+- whether the bond is isolated or part of a coupled/conjugated component
+
+So the real problem was not "recover E/Z". The real problem was "emit the exact
+rooted string language online".
+
+What went wrong on the way
+
+1. Global component phase alone was not enough.
+
+   A component-level phase model was useful, especially for conjugated systems,
+   but it did not decide exact sign placement for isolated stereo bonds with
+   branches or heterogeneous substituents.
+
+2. Carrier selection and carrier sign were different problems.
+
+   First we had to model endpoint-local carrier candidates and select the first
+   emitted eligible carrier online. That fixed some drift, but not the
+   remaining exact-string mismatches.
+
+3. Broad rewrites were a mistake.
+
+   A more aggressive event-canonicalizer-style rewrite regressed cases that were
+   already correct and had to be reverted. The safer path was incremental,
+   state-based changes on top of the stable rooted writer.
+
+4. Several plausible local rules were wrong.
+
+   We tried rules based only on:
+
+   - component begin side
+   - whether the chosen carrier was emitted before or after the endpoint atom
+   - simple absolute sign anchoring on the begin side
+
+   Those rules fixed one family of failures while breaking already-correct
+   roots elsewhere.
+
+What finally narrowed the problem correctly
+
+The useful breakthrough was to record more writer-state metadata during search:
+
+- `stereo_selected_neighbors`
+- `stereo_selected_orientations`
+- `stereo_component_begin_atoms`
+
+That let us inspect failing outputs in terms of the actual rooted traversal
+state instead of only comparing finished strings.
+
+From that data, the remaining isolated-bond failures turned out to be about:
+
+- the selected-carrier rank on the component-begin side
+- interpreted relative to whether that begin side is the stored begin or stored
+  end of the stereo bond
+
+In other words: the missing bit was not another chemistry-level invariant. It
+was one more piece of rooted writer bookkeeping.
+
+What changed in the implementation
+
+The final fix had two parts.
+
+1. Isolated stereo-carrier tokens are now kept deferred.
+
+   For isolated stereo components, the carrier edge no longer resolves its `/`
+   or `\` immediately. Instead it emits a deferred directional token so the
+   whole isolated component can still flip coherently at final resolution time.
+
+2. The final isolated-component flip is computed from rooted local state.
+
+   At final resolution, the code inspects:
+
+   - the component-begin atom
+   - the selected carrier on that side
+   - the selected-carrier rank within that side's candidate list
+   - whether the begin side matches the stored begin side of the stereo bond
+
+   That supplies the missing flip bit for isolated components without disturbing
+   the already-working coupled/conjugated component path.
+
+Current status
+
+The previously failing isolated bond-stereo cases now pass:
+
+- branched isolated alkene case:
+  `C/C=C(\\C)/C(=O)O`
+- branched hetero isolated bond-stereo case:
+  `C/C(=N\\OC(=O)NC)/SC`
+- degree-3 alkene carrier-selection case:
+  `F/C(Cl)=C/F`
+
+The regression coverage is in:
+
+- `tests/reference/test_rooted_connected_stereo.py`
+
+and the full current reference status is:
+
+- `tests/contracts`: passing
+- `tests/reference`: passing
+
+Practical lesson
+
+The difficulty in online full-stereo enumeration was not that stereo is
+mysterious. It was that exact rooted parity depends on writer-local commitments
+that batch writers are free to repair later.
+
+For this repo, the reliable pattern is:
+
+- keep the rooted traversal simple and explicit
+- carry enough writer-state metadata to explain exact sign placement
+- avoid broad rewrites
+- fix narrow parity gaps with state that corresponds to actual emitted choices
+
+That same lesson should guide the Rust stereo port and the later stereo
+next-token path.

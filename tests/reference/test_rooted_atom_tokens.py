@@ -1,0 +1,184 @@
+from __future__ import annotations
+
+from copy import deepcopy
+import unittest
+
+from rdkit import Chem
+
+from smiles_next_token.reference import (
+    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
+    PreparedSmilesGraph,
+    ReferencePolicy,
+    load_default_connected_nonstereo_molecule_cases,
+    prepare_smiles_graph,
+)
+from smiles_next_token.reference.rooted.connected_nonstereo import (
+    build_atom_tokens,
+    enumerate_rooted_connected_nonstereo_smiles_support,
+)
+
+
+def rdkit_fragment_tokens(mol: Chem.Mol, policy: ReferencePolicy) -> tuple[str, ...]:
+    sampling = policy.data["sampling"]
+    return tuple(
+        Chem.MolFragmentToSmiles(
+            mol,
+            atomsToUse=[atom_idx],
+            bondsToUse=[],
+            canonical=False,
+            isomericSmiles=bool(sampling["isomericSmiles"]),
+            kekuleSmiles=bool(sampling["kekuleSmiles"]),
+            allHsExplicit=bool(sampling["allHsExplicit"]),
+            allBondsExplicit=bool(sampling["allBondsExplicit"]),
+        )
+        for atom_idx in range(mol.GetNumAtoms())
+    )
+
+
+def with_sampling_override(
+    policy: ReferencePolicy,
+    **sampling_overrides: object,
+) -> ReferencePolicy:
+    data = deepcopy(policy.data)
+    sampling = dict(data["sampling"])
+    sampling.update(sampling_overrides)
+    data["sampling"] = sampling
+    return ReferencePolicy(data=data)
+
+
+class RootedAtomTokenTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH)
+
+    def test_local_atom_tokens_match_rdkit_on_curated_cases(self) -> None:
+        for smiles in [
+            "C",
+            "[CH3]",
+            "[NH3+]",
+            "c1ccncc1",
+            "[13CH3]C",
+            "[CH3:7]C",
+            "[O-]",
+            "[nH]1cccc1",
+            "CC#N",
+            "[CH2]C",
+            "[Cu+2]",
+            "[O]",
+            "[Na+]",
+            "O=[Ti]=O",
+            "O=[Cr](=O)=O",
+            "Cl[Fe]Cl",
+            "F[Mg]",
+            "C[Ge]",
+            "C[Al]",
+            "O=[Se]=O",
+            "C[Si]",
+            "O=[P]=O",
+        ]:
+            with self.subTest(smiles=smiles):
+                mol = Chem.MolFromSmiles(smiles)
+                self.assertIsNotNone(mol)
+                assert mol is not None
+                prepared = prepare_smiles_graph(mol, self.policy)
+                self.assertEqual(rdkit_fragment_tokens(mol, self.policy), prepared.atom_tokens)
+                self.assertEqual(prepared.atom_tokens, build_atom_tokens(prepared))
+
+    def test_prepared_graph_rejects_unsupported_bond_types(self) -> None:
+        mol = Chem.MolFromSmiles("[NH3][Cu]")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        with self.assertRaisesRegex(ValueError, "Unsupported bond type"):
+            prepare_smiles_graph(mol, self.policy)
+
+    def test_local_atom_tokens_match_rdkit_on_dataset_slice(self) -> None:
+        cases = load_default_connected_nonstereo_molecule_cases(limit=120, max_smiles_length=20)
+        self.assertEqual(120, len(cases))
+
+        for case in cases:
+            mol = Chem.MolFromSmiles(case.smiles)
+            self.assertIsNotNone(mol)
+            assert mol is not None
+            with self.subTest(cid=case.cid, smiles=case.smiles):
+                prepared = prepare_smiles_graph(mol, self.policy)
+                self.assertEqual(rdkit_fragment_tokens(mol, self.policy), prepared.atom_tokens)
+                self.assertEqual(prepared.atom_tokens, build_atom_tokens(prepared))
+
+    def test_forced_brackets_include_implicit_hydrogens(self) -> None:
+        methane = Chem.MolFromSmiles("C")
+        self.assertIsNotNone(methane)
+        assert methane is not None
+        methane.GetAtomWithIdx(0).SetIsotope(13)
+        prepared = prepare_smiles_graph(methane, self.policy)
+        self.assertEqual(("[13CH4]",), prepared.atom_tokens)
+
+        mapped_methane = Chem.MolFromSmiles("C")
+        self.assertIsNotNone(mapped_methane)
+        assert mapped_methane is not None
+        mapped_methane.GetAtomWithIdx(0).SetAtomMapNum(7)
+        prepared = prepare_smiles_graph(mapped_methane, self.policy)
+        self.assertEqual(("[CH4:7]",), prepared.atom_tokens)
+
+        benzene = Chem.MolFromSmiles("c1ccccc1")
+        self.assertIsNotNone(benzene)
+        assert benzene is not None
+        benzene.GetAtomWithIdx(0).SetAtomMapNum(7)
+        prepared = prepare_smiles_graph(benzene, self.policy)
+        self.assertEqual("[cH:7]", prepared.atom_tokens[0])
+
+    def test_ignore_atom_map_numbers_removes_map_driven_brackets(self) -> None:
+        ignore_maps_policy = with_sampling_override(self.policy, ignoreAtomMapNumbers=True)
+        mol = Chem.MolFromSmiles("[CH3:7]C")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+        prepared = prepare_smiles_graph(mol, ignore_maps_policy)
+        self.assertEqual(("C", "C"), prepared.atom_tokens)
+
+    def test_all_hs_explicit_is_emitted_locally(self) -> None:
+        explicit_h_policy = with_sampling_override(self.policy, allHsExplicit=True)
+
+        methane = Chem.MolFromSmiles("C")
+        self.assertIsNotNone(methane)
+        assert methane is not None
+        prepared = prepare_smiles_graph(methane, explicit_h_policy)
+        self.assertEqual(("[CH4]",), prepared.atom_tokens)
+
+        pyridine = Chem.MolFromSmiles("c1ccncc1")
+        self.assertIsNotNone(pyridine)
+        assert pyridine is not None
+        prepared = prepare_smiles_graph(pyridine, explicit_h_policy)
+        self.assertEqual(
+            ("[cH]", "[cH]", "[cH]", "[n]", "[cH]", "[cH]"),
+            prepared.atom_tokens,
+        )
+
+    def test_all_bonds_explicit_is_emitted_locally(self) -> None:
+        explicit_bonds_policy = with_sampling_override(self.policy, allBondsExplicit=True)
+        mol = Chem.MolFromSmiles("CC#N")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+        prepared = prepare_smiles_graph(mol, explicit_bonds_policy)
+        self.assertEqual(
+            {"C-C#N"},
+            enumerate_rooted_connected_nonstereo_smiles_support(prepared, 0),
+        )
+
+    def test_prepared_graph_dict_roundtrip_preserves_atom_tokens_on_dataset_slice(self) -> None:
+        cases = load_default_connected_nonstereo_molecule_cases(limit=40, max_smiles_length=20)
+        self.assertEqual(40, len(cases))
+
+        for case in cases:
+            mol = Chem.MolFromSmiles(case.smiles)
+            self.assertIsNotNone(mol)
+            assert mol is not None
+            with self.subTest(cid=case.cid, smiles=case.smiles):
+                prepared = prepare_smiles_graph(mol, self.policy)
+                rebuilt = PreparedSmilesGraph.from_dict(prepared.to_dict())
+                self.assertEqual(prepared.atom_tokens, rebuilt.atom_tokens)
+                self.assertEqual(prepared.neighbors, rebuilt.neighbors)
+                self.assertEqual(prepared.neighbor_bond_tokens, rebuilt.neighbor_bond_tokens)
+
+
+if __name__ == "__main__":
+    unittest.main()

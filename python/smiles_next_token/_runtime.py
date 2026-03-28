@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import importlib
+from functools import lru_cache
 
 _core = importlib.import_module("smiles_next_token._core")
-from smiles_next_token._reference.policy import ReferencePolicy
+from smiles_next_token._reference.policy import (
+    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
+    DEFAULT_RDKIT_RANDOM_POLICY_PATH,
+    ReferencePolicy,
+)
 from smiles_next_token._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
@@ -42,6 +47,15 @@ def _validate_policy(
     raise TypeError(f"Unsupported prepared graph type: {type(prepared)!r}")
 
 
+@lru_cache(maxsize=2)
+def _default_policy(surface_kind: str) -> ReferencePolicy:
+    if surface_kind == CONNECTED_NONSTEREO_SURFACE:
+        return ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH)
+    if surface_kind == CONNECTED_STEREO_SURFACE:
+        return ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
+    raise ValueError(f"Unsupported surface kind: {surface_kind!r}")
+
+
 def _coerce_reference_prepared_graph(
     mol_or_prepared: object,
     policy: ReferencePolicy | None,
@@ -71,6 +85,7 @@ def prepare_smiles_graph(
     *,
     surface_kind: str = CONNECTED_NONSTEREO_SURFACE,
 ) -> _core.PreparedSmilesGraph:
+    policy = _default_policy(surface_kind) if policy is None else policy
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
         _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_policy(mol_or_prepared, policy)
@@ -153,7 +168,6 @@ __all__ = [
     "CONNECTED_NONSTEREO_SURFACE",
     "CONNECTED_STEREO_SURFACE",
     "PREPARED_SMILES_GRAPH_SCHEMA_VERSION",
-    "ReferencePolicy",
     "enumerate_rooted_connected_nonstereo_smiles_support",
     "enumerate_rooted_connected_stereo_smiles_support",
     "make_nonstereo_walker",

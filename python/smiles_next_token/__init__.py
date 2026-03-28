@@ -5,8 +5,6 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from smiles_next_token._reference.policy import ReferencePolicy
-
 try:
     _RUNTIME = importlib.import_module("smiles_next_token._runtime")
 except ImportError as exc:  # pragma: no cover - exercised only in broken installs
@@ -32,7 +30,6 @@ def MolToSmilesSupport(
     rootedAtAtom: int,
     isomericSmiles: bool = True,
     connectedOnly: bool = True,
-    policy: ReferencePolicy | None = None,
 ) -> set[str]:
     """Return the exact rooted SMILES support for a molecule.
 
@@ -49,13 +46,11 @@ def MolToSmilesSupport(
         return runtime.enumerate_rooted_connected_stereo_smiles_support(
             mol,
             rootedAtAtom,
-            policy,
         )
     return runtime.enumerate_rooted_connected_nonstereo_smiles_support(
         mol,
         rootedAtAtom,
-        policy,
     )
 
 
-__all__ = ["MolToSmilesSupport", "ReferencePolicy"]
+__all__ = ["MolToSmilesSupport"]

@@ -6,7 +6,6 @@ The only supported public Python API is `smiles_next_token`.
 
 Current top-level exports:
 
-- `ReferencePolicy`
 - `MolToSmilesSupport`
 
 The compiled extension `smiles_next_token._core` is required. There is no
@@ -14,7 +13,7 @@ public runtime fallback.
 
 ## MolToSmilesSupport
 
-`MolToSmilesSupport(mol, *, rootedAtAtom, isomericSmiles=True, connectedOnly=True, policy=None)`
+`MolToSmilesSupport(mol, *, rootedAtAtom, isomericSmiles=True, connectedOnly=True)`
 
 This is the supported exact-support runtime entrypoint.
 
@@ -22,7 +21,7 @@ This is the supported exact-support runtime entrypoint.
 - `isomericSmiles=True` dispatches to the stereochemical surface.
 - `isomericSmiles=False` dispatches to the nonstereo surface.
 - `connectedOnly` is currently required to stay `True`; `False` raises `NotImplementedError`.
-- `policy` accepts a `ReferencePolicy` and controls the RDKit bridge/oracle settings used to prepare the transport graph.
+- Internal bridge policy selection happens behind the public API.
 
 ## Internal Modules
 

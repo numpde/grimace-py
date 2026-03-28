@@ -17,8 +17,8 @@ class PythonApiSmokeTests(unittest.TestCase):
         cls.policy = load_connected_nonstereo_policy()
 
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
-        self.assertTrue(hasattr(smiles_next_token, "ReferencePolicy"))
         self.assertTrue(callable(smiles_next_token.MolToSmilesSupport))
+        self.assertFalse(hasattr(smiles_next_token, "ReferencePolicy"))
         self.assertFalse(hasattr(smiles_next_token, "enumerate_rooted_connected_nonstereo_smiles_support"))
         self.assertFalse(hasattr(smiles_next_token, "enumerate_rooted_connected_stereo_smiles_support"))
         if CORE_MODULE is None:
@@ -27,7 +27,6 @@ class PythonApiSmokeTests(unittest.TestCase):
                     parse_smiles("CCO"),
                     rootedAtAtom=0,
                     isomericSmiles=False,
-                    policy=self.policy,
                 )
             return
 
@@ -37,13 +36,11 @@ class PythonApiSmokeTests(unittest.TestCase):
             _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
                 parse_smiles("CCO"),
                 0,
-                self.policy,
             ),
             smiles_next_token.MolToSmilesSupport(
                 parse_smiles("CCO"),
                 rootedAtAtom=0,
                 isomericSmiles=False,
-                policy=self.policy,
             ),
         )
 
@@ -53,7 +50,6 @@ class PythonApiSmokeTests(unittest.TestCase):
                 parse_smiles("CCO"),
                 rootedAtAtom=0,
                 connectedOnly=False,
-                policy=self.policy,
             )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
@@ -75,14 +71,12 @@ class PythonApiSmokeTests(unittest.TestCase):
         expected = _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
             mol,
             0,
-            self.policy,
         )
 
         support = smiles_next_token.MolToSmilesSupport(
             mol,
             rootedAtAtom=0,
             isomericSmiles=False,
-            policy=self.policy,
         )
 
         self.assertEqual(expected, support)
@@ -96,13 +90,11 @@ class PythonApiSmokeTests(unittest.TestCase):
         expected = _runtime.enumerate_rooted_connected_stereo_smiles_support(
             mol,
             0,
-            self.policy,
         )
         support = smiles_next_token.MolToSmilesSupport(
             mol,
             rootedAtAtom=0,
             isomericSmiles=True,
-            policy=self.policy,
         )
 
         self.assertEqual(expected, support)

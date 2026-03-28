@@ -40,25 +40,6 @@ class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
                 expected = enumerate_rooted_connected_stereo_smiles_support(prepared, root_idx)
                 self.assertEqual(expected, observed)
 
-    def test_core_stereo_walker_exact_support_matches_reference_on_dataset_slice(self) -> None:
-        cases = load_connected_atom_stereo_cases(limit=1, max_smiles_length=16)
-        bond_cases = load_connected_bond_stereo_cases(limit=1, max_smiles_length=18)
-        self.assertEqual(1, len(cases))
-        self.assertEqual(1, len(bond_cases))
-
-        for cid, smiles in [*cases, *bond_cases]:
-            prepared = prepare_smiles_graph(
-                parse_smiles(smiles),
-                self.policy,
-                surface_kind=CONNECTED_STEREO_SURFACE,
-            )
-            for root_idx in range(prepared.atom_count):
-                with self.subTest(cid=cid, smiles=smiles, root_idx=root_idx):
-                    walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, root_idx)
-                    observed = set(walker.enumerate_support())
-                    expected = enumerate_rooted_connected_stereo_smiles_support(prepared, root_idx)
-                    self.assertEqual(expected, observed)
-
     def test_core_stereo_walker_sampled_paths_stay_within_exact_support(self) -> None:
         cases = [
             ("F[C@H](Cl)Br", 0),

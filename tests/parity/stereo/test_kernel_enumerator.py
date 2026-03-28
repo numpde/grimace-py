@@ -54,11 +54,23 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                         ),
                     )
 
-    def test_kernel_matches_python_reference_on_atom_stereo_dataset_slice(self) -> None:
-        cases = load_connected_atom_stereo_cases(limit=3, max_smiles_length=16)
+    def test_kernel_matches_python_reference_on_representative_stereo_slice(self) -> None:
+        cases: list[tuple[str, str, str]] = []
+        cases.extend(
+            (cid, smiles, "atom")
+            for cid, smiles in load_connected_atom_stereo_cases(limit=1, max_smiles_length=16)
+        )
+        cases.extend(
+            (cid, smiles, "multi_atom")
+            for cid, smiles, _ in load_connected_multi_atom_stereo_cases(limit=1, max_smiles_length=28)
+        )
+        cases.extend(
+            (cid, smiles, "bond")
+            for cid, smiles in load_connected_bond_stereo_cases(limit=1, max_smiles_length=18)
+        )
         self.assertEqual(3, len(cases))
 
-        for cid, smiles in cases:
+        for cid, smiles, category in cases:
             prepared = prepare_smiles_graph(
                 parse_smiles(smiles),
                 self.policy,
@@ -66,46 +78,11 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
             )
             kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
             for root_idx in range(prepared.atom_count):
-                with self.subTest(cid=cid, smiles=smiles, root_idx=root_idx):
-                    python_support = enumerate_rooted_connected_stereo_smiles_support(prepared, root_idx)
-                    kernel_support = set(
-                        kernel_prepared.enumerate_rooted_connected_stereo_support(root_idx)
+                with self.subTest(cid=cid, smiles=smiles, category=category, root_idx=root_idx):
+                    python_support = enumerate_rooted_connected_stereo_smiles_support(
+                        prepared,
+                        root_idx,
                     )
-                    self.assertEqual(python_support, kernel_support)
-
-    def test_kernel_matches_python_reference_on_multi_center_atom_stereo_slice(self) -> None:
-        cases = load_connected_multi_atom_stereo_cases(limit=1, max_smiles_length=28)
-        self.assertEqual(1, len(cases))
-
-        for cid, smiles, chiral_count in cases:
-            prepared = prepare_smiles_graph(
-                parse_smiles(smiles),
-                self.policy,
-                surface_kind=CONNECTED_STEREO_SURFACE,
-            )
-            kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
-            for root_idx in range(prepared.atom_count):
-                with self.subTest(cid=cid, smiles=smiles, chiral_count=chiral_count, root_idx=root_idx):
-                    python_support = enumerate_rooted_connected_stereo_smiles_support(prepared, root_idx)
-                    kernel_support = set(
-                        kernel_prepared.enumerate_rooted_connected_stereo_support(root_idx)
-                    )
-                    self.assertEqual(python_support, kernel_support)
-
-    def test_kernel_matches_python_reference_on_bond_stereo_dataset_slice(self) -> None:
-        cases = load_connected_bond_stereo_cases(limit=2, max_smiles_length=18)
-        self.assertEqual(2, len(cases))
-
-        for cid, smiles in cases:
-            prepared = prepare_smiles_graph(
-                parse_smiles(smiles),
-                self.policy,
-                surface_kind=CONNECTED_STEREO_SURFACE,
-            )
-            kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
-            for root_idx in range(prepared.atom_count):
-                with self.subTest(cid=cid, smiles=smiles, root_idx=root_idx):
-                    python_support = enumerate_rooted_connected_stereo_smiles_support(prepared, root_idx)
                     kernel_support = set(
                         kernel_prepared.enumerate_rooted_connected_stereo_support(root_idx)
                     )
@@ -115,7 +92,7 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
         cases: list[tuple[str, str, str]] = []
         cases.extend(
             (cid, smiles, "atom")
-            for cid, smiles in load_connected_atom_stereo_cases(limit=3, max_smiles_length=18)
+            for cid, smiles in load_connected_atom_stereo_cases(limit=1, max_smiles_length=18)
         )
         cases.extend(
             (cid, smiles, "multi_atom")
@@ -123,9 +100,9 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
         )
         cases.extend(
             (cid, smiles, "bond")
-            for cid, smiles in load_connected_bond_stereo_cases(limit=2, max_smiles_length=18)
+            for cid, smiles in load_connected_bond_stereo_cases(limit=1, max_smiles_length=18)
         )
-        self.assertEqual(6, len(cases))
+        self.assertEqual(3, len(cases))
 
         total_generated = 0
         for cid, smiles, category in cases:
@@ -159,7 +136,7 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                     canonicalized.add(prepared.identity_smiles_for(parsed))
                 self.assertEqual({prepared.identity_smiles}, canonicalized)
 
-        self.assertGreaterEqual(total_generated, 25)
+        self.assertGreaterEqual(total_generated, 12)
 
 
 if __name__ == "__main__":

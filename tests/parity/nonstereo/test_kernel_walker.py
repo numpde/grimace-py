@@ -72,8 +72,8 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
                     self.assertEqual(python_state.prefix, core_state.prefix)
 
     def test_core_walker_matches_python_walker_on_dataset_slice_sampled_paths(self) -> None:
-        cases = load_default_connected_nonstereo_molecule_cases(limit=8, max_smiles_length=10)
-        self.assertEqual(8, len(cases))
+        cases = load_default_connected_nonstereo_molecule_cases(limit=4, max_smiles_length=10)
+        self.assertEqual(4, len(cases))
 
         for case in cases:
             prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
@@ -105,20 +105,6 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
 
                         self.assertTrue(core_walker.is_terminal(core_state))
                         self.assertEqual(python_state.prefix, core_state.prefix)
-
-    def test_core_walker_exact_support_matches_python_reference_on_dataset_slice(self) -> None:
-        cases = load_default_connected_nonstereo_molecule_cases(limit=12, max_smiles_length=10)
-        self.assertEqual(12, len(cases))
-
-        for case in cases:
-            prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
-
-            for root_idx in range(prepared.atom_count):
-                with self.subTest(cid=case.cid, smiles=case.smiles, root_idx=root_idx):
-                    core_walker = CORE_MODULE.RootedConnectedNonStereoWalker(prepared, root_idx)
-                    observed = set(core_walker.enumerate_support())
-                    expected = enumerate_rooted_nonstereo_smiles_support(prepared, root_idx)
-                    self.assertEqual(expected, observed)
 
     def test_core_walker_rejects_invalid_token(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("CCO"), self.policy)

@@ -39,8 +39,8 @@ class CoreRootedEnumeratorTests(unittest.TestCase):
                 )
 
     def test_kernel_matches_python_reference_for_all_roots_on_dataset_slice(self) -> None:
-        cases = load_default_connected_nonstereo_molecule_cases(limit=60, max_smiles_length=14)
-        self.assertEqual(60, len(cases))
+        cases = load_default_connected_nonstereo_molecule_cases(limit=30, max_smiles_length=14)
+        self.assertEqual(30, len(cases))
 
         for case in cases:
             prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)

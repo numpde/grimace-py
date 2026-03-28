@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import unittest
 
 from smiles_next_token.reference import (
@@ -85,6 +86,47 @@ class CorePreparedSmilesGraphContractTests(unittest.TestCase):
                 prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
                 kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
                 self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
+
+    def test_kernel_prepared_graph_rejects_malformed_transport_dicts(self) -> None:
+        prepared = prepare_smiles_graph(parse_smiles("CCO"), self.policy)
+        stereo_prepared = prepare_smiles_graph(
+            parse_smiles("F/C=C\\Cl"),
+            self.policy,
+            surface_kind=CONNECTED_STEREO_SURFACE,
+        )
+        cases = [
+            (
+                "schema_version",
+                prepared.to_dict(),
+                lambda data: data.__setitem__("schema_version", 0),
+                "schema version",
+            ),
+            (
+                "unsorted_neighbors",
+                prepared.to_dict(),
+                lambda data: data["neighbors"].__setitem__(1, [2, 0]),
+                "neighbor rows must be sorted",
+            ),
+            (
+                "asymmetric_bond_tokens",
+                prepared.to_dict(),
+                lambda data: data["neighbor_bond_tokens"].__setitem__(1, ["", "="]),
+                "bond tokens must be symmetric",
+            ),
+            (
+                "stereo_missing_metadata",
+                stereo_prepared.to_dict(),
+                lambda data: data.__setitem__("atom_chiral_tags", []),
+                "requires stereo atom metadata",
+            ),
+        ]
+
+        for label, source, mutate, expected in cases:
+            with self.subTest(case=label):
+                broken = deepcopy(source)
+                mutate(broken)
+                with self.assertRaisesRegex(ValueError, expected):
+                    CORE_MODULE.PreparedSmilesGraph(broken)
 
 
 if __name__ == "__main__":

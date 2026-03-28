@@ -738,9 +738,20 @@ pub fn prepared_smiles_graph_schema_version() -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE,
+        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, CONNECTED_STEREO_SURFACE,
         PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
+    use pyo3::Python;
+
+    fn assert_validation_error(graph: PreparedSmilesGraphData, expected: &str) {
+        Python::initialize();
+        let err = graph.validate().expect_err("graph should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains(expected),
+            "expected error containing {expected:?}, got {message:?}",
+        );
+    }
 
     fn sample_graph() -> PreparedSmilesGraphData {
         PreparedSmilesGraphData {
@@ -790,6 +801,81 @@ mod tests {
         }
     }
 
+    fn sample_stereo_graph() -> PreparedSmilesGraphData {
+        PreparedSmilesGraphData {
+            schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+            surface_kind: CONNECTED_STEREO_SURFACE.to_owned(),
+            policy_name: "test_policy".to_owned(),
+            policy_digest: "deadbeef".to_owned(),
+            rdkit_version: "2025.09.6".to_owned(),
+            identity_smiles: "F/C=C\\Cl".to_owned(),
+            atom_count: 4,
+            bond_count: 3,
+            atom_atomic_numbers: vec![9, 6, 6, 17],
+            atom_is_aromatic: vec![false, false, false, false],
+            atom_isotopes: vec![0, 0, 0, 0],
+            atom_formal_charges: vec![0, 0, 0, 0],
+            atom_total_hs: vec![0, 1, 1, 0],
+            atom_radical_electrons: vec![0, 0, 0, 0],
+            atom_map_numbers: vec![0, 0, 0, 0],
+            atom_tokens: vec![
+                "F".to_owned(),
+                "[CH]".to_owned(),
+                "[CH]".to_owned(),
+                "Cl".to_owned(),
+            ],
+            neighbors: vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
+            neighbor_bond_tokens: vec![
+                vec!["".to_owned()],
+                vec!["".to_owned(), "=".to_owned()],
+                vec!["=".to_owned(), "".to_owned()],
+                vec!["".to_owned()],
+            ],
+            bond_pairs: vec![(0, 1), (1, 2), (2, 3)],
+            bond_kinds: vec![
+                "SINGLE".to_owned(),
+                "DOUBLE".to_owned(),
+                "SINGLE".to_owned(),
+            ],
+            writer_do_isomeric_smiles: true,
+            writer_kekule_smiles: false,
+            writer_all_bonds_explicit: false,
+            writer_all_hs_explicit: false,
+            writer_ignore_atom_map_numbers: false,
+            identity_parse_with_rdkit: true,
+            identity_canonical: true,
+            identity_do_isomeric_smiles: true,
+            identity_kekule_smiles: false,
+            identity_rooted_at_atom: -1,
+            identity_all_bonds_explicit: false,
+            identity_all_hs_explicit: false,
+            identity_do_random: false,
+            identity_ignore_atom_map_numbers: false,
+            atom_chiral_tags: vec![
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+            ],
+            atom_stereo_neighbor_orders: vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
+            atom_explicit_h_counts: vec![0, 1, 1, 0],
+            atom_implicit_h_counts: vec![0, 0, 0, 0],
+            bond_stereo_kinds: vec![
+                "STEREONONE".to_owned(),
+                "STEREOZ".to_owned(),
+                "STEREONONE".to_owned(),
+            ],
+            bond_stereo_atoms: vec![(-1, -1), (0, 3), (-1, -1)],
+            bond_dirs: vec![
+                "ENDUPRIGHT".to_owned(),
+                "NONE".to_owned(),
+                "ENDDOWNRIGHT".to_owned(),
+            ],
+            bond_begin_atom_indices: vec![0, 1, 2],
+            bond_end_atom_indices: vec![1, 2, 3],
+        }
+    }
+
     #[test]
     fn validate_accepts_consistent_graph() {
         sample_graph().validate().expect("sample graph should validate");
@@ -800,7 +886,85 @@ mod tests {
         let mut broken = sample_graph();
         broken.neighbor_bond_tokens[0].clear();
 
-        assert!(broken.validate().is_err(), "graph should be rejected");
+        assert_validation_error(broken, "neighbor token row length mismatch");
+    }
+
+    #[test]
+    fn validate_rejects_schema_version_mismatch() {
+        let mut broken = sample_graph();
+        broken.schema_version = 999;
+
+        assert_validation_error(broken, "Unexpected PreparedSmilesGraph schema version");
+    }
+
+    #[test]
+    fn validate_rejects_unsorted_neighbors() {
+        let mut broken = sample_graph();
+        broken.atom_count = 3;
+        broken.bond_count = 2;
+        broken.identity_smiles = "CCO".to_owned();
+        broken.atom_atomic_numbers = vec![6, 6, 8];
+        broken.atom_is_aromatic = vec![false, false, false];
+        broken.atom_isotopes = vec![0, 0, 0];
+        broken.atom_formal_charges = vec![0, 0, 0];
+        broken.atom_total_hs = vec![3, 2, 1];
+        broken.atom_radical_electrons = vec![0, 0, 0];
+        broken.atom_map_numbers = vec![0, 0, 0];
+        broken.atom_tokens = vec!["C".to_owned(), "C".to_owned(), "O".to_owned()];
+        broken.neighbors = vec![vec![1], vec![2, 0], vec![1]];
+        broken.neighbor_bond_tokens = vec![
+            vec!["".to_owned()],
+            vec!["".to_owned(), "".to_owned()],
+            vec!["".to_owned()],
+        ];
+        broken.bond_pairs = vec![(0, 1), (1, 2)];
+        broken.bond_kinds = vec!["SINGLE".to_owned(), "SINGLE".to_owned()];
+
+        assert_validation_error(broken, "neighbor rows must be sorted");
+    }
+
+    #[test]
+    fn validate_rejects_neighbor_graph_bond_pair_disagreement() {
+        let mut broken = sample_graph();
+        broken.bond_pairs.clear();
+        broken.bond_count = 0;
+        broken.bond_kinds.clear();
+
+        assert_validation_error(broken, "neighbor graph and bond_pairs disagree");
+    }
+
+    #[test]
+    fn validate_rejects_asymmetric_bond_tokens() {
+        let mut broken = sample_graph();
+        broken.neighbor_bond_tokens[1][0] = "=".to_owned();
+
+        assert_validation_error(broken, "bond tokens must be symmetric");
+    }
+
+    #[test]
+    fn validate_accepts_consistent_stereo_graph() {
+        sample_stereo_graph()
+            .validate()
+            .expect("sample stereo graph should validate");
+    }
+
+    #[test]
+    fn validate_rejects_connected_stereo_without_stereo_atom_metadata() {
+        let mut broken = sample_stereo_graph();
+        broken.atom_chiral_tags.clear();
+
+        assert_validation_error(
+            broken,
+            "connected_stereo surface requires stereo atom metadata",
+        );
+    }
+
+    #[test]
+    fn validate_rejects_connected_stereo_with_inconsistent_neighbor_order() {
+        let mut broken = sample_stereo_graph();
+        broken.atom_stereo_neighbor_orders[1] = vec![0, 3];
+
+        assert_validation_error(broken, "stereo neighbor order must match neighbors");
     }
 
     #[test]

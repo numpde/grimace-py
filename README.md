@@ -17,6 +17,8 @@ The legacy pure-Python implementation remains under [`python/smiles_next_token/r
 ## Package Surface
 
 - `smiles_next_token`: top-level Python API, preferring `_core` bindings when present.
+  Runtime entrypoints include `prepare_smiles_graph`, `make_nonstereo_walker`,
+  `make_stereo_walker`, and the `enumerate_rooted_connected_*` helpers.
 - `smiles_next_token.rdkit_reference`: RDKit-backed oracle, dataset, and artifact helpers.
 - `smiles_next_token.reference`: compatibility surface for the existing pure-Python reference implementation.
 

@@ -766,8 +766,11 @@ impl PyRootedConnectedNonStereoWalker {
 mod tests {
     use std::collections::BTreeSet;
 
+    use pyo3::Python;
+
     use super::{
-        enumerate_rooted_connected_nonstereo_smiles_support, next_token_support_for_state,
+        advance_token_state, enumerate_rooted_connected_nonstereo_smiles_support,
+        initial_state_for_root, is_terminal_state, next_token_support_for_state,
         permutations_py_order, validate_root_idx,
     };
     use crate::prepared_graph::{
@@ -929,7 +932,39 @@ mod tests {
     #[test]
     fn initial_state_support_is_root_atom_token() {
         let graph = linear_ccc_graph();
-        let state = super::initial_state_for_root(&graph, 1);
+        let state = initial_state_for_root(&graph, 1);
         assert_eq!(vec!["C".to_owned()], next_token_support_for_state(&graph, &state));
+    }
+
+    #[test]
+    fn walker_can_reach_expected_linear_chain_terminal_state() {
+        let graph = linear_ccc_graph();
+        let mut state = initial_state_for_root(&graph, 0);
+        let mut prefix = String::new();
+
+        while !is_terminal_state(&state) {
+            let options = next_token_support_for_state(&graph, &state);
+            assert_eq!(1, options.len(), "linear chain should have a single next token");
+            let chosen = options[0].clone();
+            prefix.push_str(&chosen);
+            state = advance_token_state(&graph, &state, &chosen)
+                .expect("advancing along the only path should succeed");
+        }
+
+        assert_eq!("CCC", prefix);
+    }
+
+    #[test]
+    fn walker_rejects_invalid_token_with_choices() {
+        let graph = linear_ccc_graph();
+        let state = initial_state_for_root(&graph, 0);
+        Python::initialize();
+        let err = advance_token_state(&graph, &state, "(")
+            .expect_err("invalid token should be rejected");
+        assert!(
+            err.to_string().contains("choices=[\"C\"]"),
+            "unexpected error: {:?}",
+            err
+        );
     }
 }

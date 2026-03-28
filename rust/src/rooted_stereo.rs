@@ -2457,3 +2457,178 @@ impl PyRootedConnectedStereoWalker {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use pyo3::Python;
+
+    use super::{
+        advance_stereo_token_state, build_walker_runtime, check_supported_stereo_writer_surface,
+        enumerate_rooted_connected_stereo_smiles_support, initial_stereo_state_for_root,
+        is_terminal_stereo_state, next_token_support_for_stereo_state, validate_root_idx,
+    };
+    use crate::prepared_graph::{
+        PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE,
+        PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+    };
+
+    fn sample_stereo_graph() -> PreparedSmilesGraphData {
+        PreparedSmilesGraphData {
+            schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+            surface_kind: CONNECTED_STEREO_SURFACE.to_owned(),
+            policy_name: "test_policy".to_owned(),
+            policy_digest: "deadbeef".to_owned(),
+            rdkit_version: "2025.09.6".to_owned(),
+            identity_smiles: "F/C=C\\Cl".to_owned(),
+            atom_count: 4,
+            bond_count: 3,
+            atom_atomic_numbers: vec![9, 6, 6, 17],
+            atom_is_aromatic: vec![false, false, false, false],
+            atom_isotopes: vec![0, 0, 0, 0],
+            atom_formal_charges: vec![0, 0, 0, 0],
+            atom_total_hs: vec![0, 1, 1, 0],
+            atom_radical_electrons: vec![0, 0, 0, 0],
+            atom_map_numbers: vec![0, 0, 0, 0],
+            atom_tokens: vec![
+                "F".to_owned(),
+                "[CH]".to_owned(),
+                "[CH]".to_owned(),
+                "Cl".to_owned(),
+            ],
+            neighbors: vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
+            neighbor_bond_tokens: vec![
+                vec!["".to_owned()],
+                vec!["".to_owned(), "=".to_owned()],
+                vec!["=".to_owned(), "".to_owned()],
+                vec!["".to_owned()],
+            ],
+            bond_pairs: vec![(0, 1), (1, 2), (2, 3)],
+            bond_kinds: vec![
+                "SINGLE".to_owned(),
+                "DOUBLE".to_owned(),
+                "SINGLE".to_owned(),
+            ],
+            writer_do_isomeric_smiles: true,
+            writer_kekule_smiles: false,
+            writer_all_bonds_explicit: false,
+            writer_all_hs_explicit: false,
+            writer_ignore_atom_map_numbers: false,
+            identity_parse_with_rdkit: true,
+            identity_canonical: true,
+            identity_do_isomeric_smiles: true,
+            identity_kekule_smiles: false,
+            identity_rooted_at_atom: -1,
+            identity_all_bonds_explicit: false,
+            identity_all_hs_explicit: false,
+            identity_do_random: false,
+            identity_ignore_atom_map_numbers: false,
+            atom_chiral_tags: vec![
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+            ],
+            atom_stereo_neighbor_orders: vec![vec![1], vec![0, 2], vec![1, 3], vec![2]],
+            atom_explicit_h_counts: vec![0, 1, 1, 0],
+            atom_implicit_h_counts: vec![0, 0, 0, 0],
+            bond_stereo_kinds: vec![
+                "STEREONONE".to_owned(),
+                "STEREOZ".to_owned(),
+                "STEREONONE".to_owned(),
+            ],
+            bond_stereo_atoms: vec![(-1, -1), (0, 3), (-1, -1)],
+            bond_dirs: vec![
+                "ENDUPRIGHT".to_owned(),
+                "NONE".to_owned(),
+                "ENDDOWNRIGHT".to_owned(),
+            ],
+            bond_begin_atom_indices: vec![0, 1, 2],
+            bond_end_atom_indices: vec![1, 2, 3],
+        }
+    }
+
+    #[test]
+    fn stereo_root_validation_rejects_out_of_range_indices() {
+        let graph = sample_stereo_graph();
+        assert!(validate_root_idx(&graph, -1).is_err());
+        assert!(validate_root_idx(&graph, 4).is_err());
+    }
+
+    #[test]
+    fn stereo_surface_support_matches_expected() {
+        let graph = sample_stereo_graph();
+        let support = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
+            .expect("stereo enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        assert_eq!(BTreeSet::from(["F/[CH]=[CH]\\Cl".to_owned()]), support);
+    }
+
+    #[test]
+    fn stereo_initial_state_support_is_root_atom_token() {
+        let graph = sample_stereo_graph();
+        let runtime = build_walker_runtime(&graph).expect("runtime should build");
+        let state = initial_stereo_state_for_root(&runtime, &graph, 0);
+        assert_eq!(
+            vec!["F".to_owned()],
+            next_token_support_for_stereo_state(&runtime, &graph, &state)
+                .expect("support should be available"),
+        );
+    }
+
+    #[test]
+    fn stereo_walker_can_reach_expected_terminal_prefix() {
+        let graph = sample_stereo_graph();
+        let runtime = build_walker_runtime(&graph).expect("runtime should build");
+        let support = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
+            .expect("stereo enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let mut state = initial_stereo_state_for_root(&runtime, &graph, 0);
+
+        while !is_terminal_stereo_state(&state) {
+            let options = next_token_support_for_stereo_state(&runtime, &graph, &state)
+                .expect("support should be available");
+            assert!(
+                !options.is_empty(),
+                "non-terminal stereo state should expose at least one token"
+            );
+            let chosen = options[0].clone();
+            state = advance_stereo_token_state(&runtime, &graph, &state, &chosen)
+                .expect("advancing along an available path should succeed");
+        }
+
+        assert!(support.contains(&state.prefix), "unexpected terminal prefix: {}", state.prefix);
+    }
+
+    #[test]
+    fn stereo_walker_rejects_invalid_token_with_choices() {
+        let graph = sample_stereo_graph();
+        let runtime = build_walker_runtime(&graph).expect("runtime should build");
+        let state = initial_stereo_state_for_root(&runtime, &graph, 0);
+        Python::initialize();
+        let err = advance_stereo_token_state(&runtime, &graph, &state, "(")
+            .expect_err("invalid token should be rejected");
+        assert!(
+            err.to_string().contains("choices=[\"F\"]"),
+            "unexpected error: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn stereo_surface_rejects_unsupported_chiral_tag() {
+        let mut graph = sample_stereo_graph();
+        graph.atom_chiral_tags[1] = "CHI_SQUAREPLANAR".to_owned();
+        Python::initialize();
+        let err = check_supported_stereo_writer_surface(&graph)
+            .expect_err("unsupported chiral tags should be rejected");
+        assert!(
+            err.to_string().contains("Unsupported chiral tag"),
+            "unexpected error: {:?}",
+            err
+        );
+    }
+}

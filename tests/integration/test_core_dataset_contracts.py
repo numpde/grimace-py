@@ -4,10 +4,9 @@ import unittest
 
 from rdkit import Chem
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     CONNECTED_STEREO_SURFACE,
     load_default_connected_nonstereo_molecule_cases,
-    prepare_smiles_graph,
     validate_rooted_connected_stereo_smiles_support,
 )
 from tests.helpers.cases import (
@@ -28,16 +27,20 @@ class CoreDatasetContractsTests(unittest.TestCase):
         cls.policy = load_connected_nonstereo_policy()
 
     def test_kernel_prepared_graph_roundtrips_dataset_slice(self) -> None:
+        from smiles_next_token import _runtime
+
         cases = load_default_connected_nonstereo_molecule_cases(limit=25, max_smiles_length=20)
         self.assertEqual(25, len(cases))
 
         for case in cases:
             with self.subTest(cid=case.cid, smiles=case.smiles):
-                prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
+                prepared = _runtime.prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
                 kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
                 self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
 
     def test_kernel_stereo_outputs_canonicalize_on_representative_case_set(self) -> None:
+        from smiles_next_token import _runtime
+
         cases: list[tuple[str, str, str]] = []
         cases.extend(
             (cid, smiles, "atom")
@@ -55,7 +58,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
 
         total_generated = 0
         for cid, smiles, category in cases:
-            prepared = prepare_smiles_graph(
+            prepared = _runtime.prepare_smiles_graph(
                 parse_smiles(smiles),
                 self.policy,
                 surface_kind=CONNECTED_STEREO_SURFACE,

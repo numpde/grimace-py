@@ -7,12 +7,12 @@ from typing import Any
 
 from rdkit import Chem
 
-from smiles_next_token.reference.dataset import (
+from smiles_next_token._reference.dataset import (
     MoleculeCase,
     iter_molecule_cases_from_input_source,
 )
-from smiles_next_token.reference.policy import ReferencePolicy
-from smiles_next_token.reference.rdkit_random import sample_and_validate_rdkit_random
+from smiles_next_token._reference.policy import ReferencePolicy
+from smiles_next_token._reference.rdkit_random import sample_and_validate_rdkit_random
 
 
 DEFAULT_CORE_SELECTION_LIMIT = 100

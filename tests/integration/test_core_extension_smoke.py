@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 
-import smiles_next_token
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
@@ -16,10 +15,12 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         cls.policy = load_connected_nonstereo_policy()
 
     def test_core_objects_construct_and_advance(self) -> None:
+        from smiles_next_token import _runtime
+
         mol = parse_smiles("CCO")
-        prepared = smiles_next_token.prepare_smiles_graph(mol, self.policy)
+        prepared = _runtime.prepare_smiles_graph(mol, self.policy)
         kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
-        walker = smiles_next_token.make_nonstereo_walker(prepared, 0)
+        walker = _runtime.make_nonstereo_walker(prepared, 0)
         state = walker.initial_state()
 
         self.assertEqual(prepared.atom_count, kernel_prepared.atom_count)

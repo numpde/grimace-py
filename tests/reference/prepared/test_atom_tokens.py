@@ -4,12 +4,12 @@ import unittest
 
 from rdkit import Chem
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     PreparedSmilesGraph,
     load_default_connected_nonstereo_molecule_cases,
     prepare_smiles_graph,
 )
-from smiles_next_token.reference.rooted.connected_nonstereo import (
+from smiles_next_token._reference.rooted.connected_nonstereo import (
     build_atom_tokens,
     enumerate_rooted_connected_nonstereo_smiles_support,
 )

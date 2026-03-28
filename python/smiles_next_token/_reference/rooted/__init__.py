@@ -1,17 +1,12 @@
-"""Legacy rooted reference exports.
+"""Internal rooted exports for oracle and test workflows."""
 
-This package is kept importable for compatibility and parity coverage. Runtime
-callers should prefer ``smiles_next_token`` and reference-oracle workflows
-should prefer ``smiles_next_token.rdkit_reference``.
-"""
-
-from smiles_next_token.reference.rooted.connected_nonstereo import (
+from smiles_next_token._reference.rooted.connected_nonstereo import (
     RootedConnectedNonStereoWalker,
     RootedConnectedNonStereoWalkerState,
     enumerate_rooted_connected_nonstereo_smiles_support,
     validate_rooted_connected_nonstereo_smiles_support,
 )
-from smiles_next_token.reference.rooted.connected_stereo import (
+from smiles_next_token._reference.rooted.connected_stereo import (
     enumerate_rooted_connected_stereo_smiles_support,
     validate_rooted_connected_stereo_smiles_support,
 )

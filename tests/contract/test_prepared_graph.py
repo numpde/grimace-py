@@ -5,7 +5,7 @@ import unittest
 
 from rdkit import Chem, rdBase
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
     DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,

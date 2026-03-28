@@ -5,7 +5,7 @@ from typing import Any, Mapping
 
 from rdkit import Chem, rdBase
 
-from smiles_next_token.reference.policy import ReferencePolicy
+from smiles_next_token._reference.policy import ReferencePolicy
 
 
 SAMPLING_KEYS = {

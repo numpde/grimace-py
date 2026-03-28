@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import unittest
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     RootedConnectedNonStereoWalker as PythonRootedConnectedNonStereoWalker,
     enumerate_rooted_nonstereo_smiles_support,
     load_default_connected_nonstereo_molecule_cases,

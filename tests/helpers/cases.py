@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rdkit import Chem
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     load_default_molecule_cases,
     molecule_is_connected,
 )

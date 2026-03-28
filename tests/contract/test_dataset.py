@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     DEFAULT_MOLECULE_SOURCE_PATH,
     iter_default_molecule_cases,
     load_default_connected_nonstereo_molecule_cases,

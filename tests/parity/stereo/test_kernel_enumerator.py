@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     CONNECTED_STEREO_SURFACE,
     enumerate_rooted_connected_stereo_smiles_support,
     prepare_smiles_graph,

@@ -4,11 +4,11 @@ import unittest
 
 from rdkit import Chem, rdBase
 
-from smiles_next_token.reference import (
+from smiles_next_token._reference import (
     enumerate_rooted_connected_stereo_smiles_support,
     validate_rooted_connected_stereo_smiles_support,
 )
-from smiles_next_token.reference.rdkit_random import sample_rdkit_random_smiles_from_root
+from smiles_next_token._reference.rdkit_random import sample_rdkit_random_smiles_from_root
 from tests.helpers.cases import (
     STEREO_ATOM_CURATED_CASES,
     STEREO_BOND_CURATED_CASES,

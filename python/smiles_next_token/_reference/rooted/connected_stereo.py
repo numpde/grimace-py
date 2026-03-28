@@ -8,8 +8,8 @@ from typing import Iterable, Iterator
 
 from rdkit import Chem
 
-from smiles_next_token.reference.policy import ReferencePolicy
-from smiles_next_token.reference.prepared_graph import (
+from smiles_next_token._reference.policy import ReferencePolicy
+from smiles_next_token._reference.prepared_graph import (
     AROMATIC_SUBSET,
     CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph,

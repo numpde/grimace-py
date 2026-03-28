@@ -5,7 +5,7 @@ The test suite is organized by intent first, then by feature.
 ## Layout
 
 - `tests/contract/`: API, serialization, dataset, policy, and export invariants.
-- `tests/reference/`: pure-Python behavior checks, split into `prepared/`, `nonstereo/`, and `stereo/`.
+- `tests/reference/`: internal `_reference` behavior checks, split into `prepared/`, `nonstereo/`, and `stereo/`.
 - `tests/parity/`: Rust kernel versus Python reference parity checks on curated and representative slices.
 - `tests/integration/`: import, end-to-end smoke coverage, and kernel dataset contract checks.
 - `tests/perf/`: opt-in timing checks that are excluded by default.

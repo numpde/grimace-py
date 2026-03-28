@@ -2,9 +2,9 @@
 
 ## Goal
 
-The repository should treat the Rust crate as the source of truth for runtime
-behavior, while Python remains the packaging, bindings, and reference-oracle
-layer.
+Build a Rust-first, tests-first library where Rust is the source of truth for
+runtime behavior and Python provides a thin public façade plus internal
+RDKit-based bridge and oracle code.
 
 ## Ownership
 
@@ -14,24 +14,11 @@ layer.
   - next-token walkers
   - runtime invariants and schema evolution
 - Python owns:
-  - PyO3 binding surface
-  - RDKit interop
+  - the thin public wrapper over `_core`
+  - RDKit interop and transport construction
   - policy loading
   - dataset and artifact tooling
   - oracle/reference checks
-
-## Current Transition State
-
-The runtime is still partly duplicated between Rust and the legacy
-pure-Python implementation under `python/smiles_next_token/reference/`.
-
-The intended direction is:
-
-1. Rust stays authoritative for runtime behavior.
-2. Python top-level imports prefer `_core` bindings.
-3. `smiles_next_token.reference` remains available for compatibility and tests.
-4. `smiles_next_token.rdkit_reference` is the explicit home for oracle and
-   fixture-generation workflows.
 
 ## Implications
 
@@ -41,13 +28,12 @@ The intended direction is:
 - RDKit-backed checks remain valuable, but as oracle coverage rather than as
   the main implementation path.
 
-## Preferred Surface
+## Public And Internal Boundaries
 
-- Runtime callers should prefer `smiles_next_token`.
-- Reference-oracle and fixture-generation workflows should prefer
-  `smiles_next_token.rdkit_reference`.
-- `smiles_next_token.reference` remains available for compatibility, tests, and
-  debugging, but it is not the preferred runtime API.
+- `smiles_next_token` is the only supported public Python API.
+- `smiles_next_token._core` is required and remains hidden implementation detail.
+- `smiles_next_token._runtime` is internal bridge code.
+- `smiles_next_token._reference` is internal oracle/reference code.
 
 ## Test Authority
 
@@ -67,7 +53,6 @@ of expanding later ones.
 ## Change Rules
 
 - New runtime behavior should land in Rust first.
-- If Python fallback behavior is required, keep it explicitly limited to the
-  top-level runtime wrapper or to `rdkit_reference`.
-- Avoid adding new dual implementations unless there is a concrete oracle or
-  debugging need.
+- Avoid adding dual implementations unless there is a concrete oracle or test
+  need.
+- Public API changes should happen in `smiles_next_token`, not in internal modules.

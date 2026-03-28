@@ -5,8 +5,8 @@ from typing import Any
 
 from rdkit import Chem, rdBase
 
-from smiles_next_token.reference.policy import ReferencePolicy
-from smiles_next_token.reference.rdkit_random import identity_smiles
+from smiles_next_token._reference.policy import ReferencePolicy
+from smiles_next_token._reference.rdkit_random import identity_smiles
 
 
 PREPARED_SMILES_GRAPH_SCHEMA_VERSION = 1

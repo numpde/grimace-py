@@ -9,7 +9,7 @@ from typing import Iterable, Iterator
 
 from rdkit import Chem
 
-from smiles_next_token.reference.prepared_graph import (
+from smiles_next_token._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     PreparedSmilesGraph,
     build_atom_tokens as _build_atom_tokens_from_mol,
@@ -17,7 +17,7 @@ from smiles_next_token.reference.prepared_graph import (
     prepare_smiles_graph,
     ring_label_text,
 )
-from smiles_next_token.reference.policy import ReferencePolicy
+from smiles_next_token._reference.policy import ReferencePolicy
 
 
 @dataclass(frozen=True)

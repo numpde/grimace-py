@@ -1,15 +1,9 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import unittest
 
-from rdkit import Chem
-
 from smiles_next_token.reference import (
-    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
-    DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     PreparedSmilesGraph,
-    ReferencePolicy,
     enumerate_rooted_nonstereo_smiles_support,
     enumerate_rooted_smiles_support,
     load_default_connected_nonstereo_molecule_cases,
@@ -18,26 +12,20 @@ from smiles_next_token.reference import (
     validate_rooted_nonstereo_smiles_support,
     validate_rooted_smiles_support,
 )
-
-
-def with_sampling_override(
-    policy: ReferencePolicy,
-    **sampling_overrides: object,
-) -> ReferencePolicy:
-    data = deepcopy(policy.data)
-    sampling = dict(data["sampling"])
-    sampling.update(sampling_overrides)
-    data["sampling"] = sampling
-    return ReferencePolicy(data=data)
+from tests.helpers.cases import NONSTEREO_AWKWARD_CASES
+from tests.helpers.mols import parse_smiles
+from tests.helpers.policies import (
+    load_connected_nonstereo_policy,
+    load_default_policy,
+    with_sampling_override,
+)
 
 
 class RootedEnumeratorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
-        cls.connected_nonstereo_policy = ReferencePolicy.from_path(
-            DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH
-        )
+        cls.policy = load_default_policy()
+        cls.connected_nonstereo_policy = load_connected_nonstereo_policy()
         cls.high_budget_connected_nonstereo_policy = with_sampling_override(
             cls.connected_nonstereo_policy,
             draw_budget=2000,
@@ -49,12 +37,11 @@ class RootedEnumeratorTest(unittest.TestCase):
         root_idx: int,
         *,
         expected_draw_budget_floor: int = 1,
-        policy: ReferencePolicy | None = None,
+        policy=None,
         enumerator=enumerate_rooted_smiles_support,
         validator=validate_rooted_smiles_support,
     ) -> None:
-        mol = Chem.MolFromSmiles(smiles)
-        self.assertIsNotNone(mol)
+        mol = parse_smiles(smiles)
 
         policy = self.policy if policy is None else policy
         prepared = prepare_smiles_graph(mol, policy)
@@ -100,35 +87,19 @@ class RootedEnumeratorTest(unittest.TestCase):
 
         for smiles, root_idx, expected in cases:
             with self.subTest(smiles=smiles, root_idx=root_idx):
-                mol = Chem.MolFromSmiles(smiles)
-                self.assertIsNotNone(mol)
-                assert mol is not None
-                prepared = prepare_smiles_graph(mol, self.connected_nonstereo_policy)
-                self.assertEqual(
-                    expected,
-                    enumerate_rooted_nonstereo_smiles_support(
-                        prepared,
-                        root_idx,
-                    ),
-                )
+                prepared = prepare_smiles_graph(parse_smiles(smiles), self.connected_nonstereo_policy)
+                self.assertEqual(expected, enumerate_rooted_nonstereo_smiles_support(prepared, root_idx))
 
-    def test_connected_nonstereo_branch_matches_sampled_rdkit_for_all_roots_on_dataset_slice(
-        self,
-    ) -> None:
+    def test_connected_nonstereo_branch_matches_sampled_rdkit_for_all_roots_on_dataset_slice(self) -> None:
         cases = load_default_connected_nonstereo_molecule_cases(limit=120, max_smiles_length=14)
         self.assertEqual(120, len(cases))
 
         for case in cases:
-            mol = Chem.MolFromSmiles(case.smiles)
-            self.assertIsNotNone(mol)
-            assert mol is not None
+            mol = parse_smiles(case.smiles)
             prepared = prepare_smiles_graph(mol, self.high_budget_connected_nonstereo_policy)
             for root_idx in range(mol.GetNumAtoms()):
                 with self.subTest(cid=case.cid, smiles=case.smiles, root_idx=root_idx):
-                    exact = enumerate_rooted_nonstereo_smiles_support(
-                        prepared,
-                        root_idx,
-                    )
+                    exact = enumerate_rooted_nonstereo_smiles_support(prepared, root_idx)
                     sampled = set(
                         sample_rdkit_random_smiles_from_root(
                             mol,
@@ -139,68 +110,33 @@ class RootedEnumeratorTest(unittest.TestCase):
                     self.assertEqual(exact, sampled)
                     self.assertEqual(
                         [],
-                        validate_rooted_nonstereo_smiles_support(
-                            prepared,
-                            root_idx,
-                            None,
-                            exact,
-                        ),
+                        validate_rooted_nonstereo_smiles_support(prepared, root_idx, None, exact),
                     )
 
-    def test_connected_nonstereo_branch_roundtrips_for_all_roots_on_larger_dataset_slice(
-        self,
-    ) -> None:
+    def test_connected_nonstereo_branch_roundtrips_for_all_roots_on_larger_dataset_slice(self) -> None:
         cases = load_default_connected_nonstereo_molecule_cases(limit=120, max_smiles_length=20)
         self.assertEqual(120, len(cases))
 
         for case in cases:
-            mol = Chem.MolFromSmiles(case.smiles)
-            self.assertIsNotNone(mol)
-            assert mol is not None
+            mol = parse_smiles(case.smiles)
             prepared = prepare_smiles_graph(mol, self.connected_nonstereo_policy)
             rebuilt = PreparedSmilesGraph.from_dict(prepared.to_dict())
             for root_idx in range(mol.GetNumAtoms()):
                 with self.subTest(cid=case.cid, smiles=case.smiles, root_idx=root_idx):
-                    support = enumerate_rooted_nonstereo_smiles_support(
-                        rebuilt,
-                        root_idx,
-                    )
+                    support = enumerate_rooted_nonstereo_smiles_support(rebuilt, root_idx)
                     self.assertTrue(support)
                     self.assertEqual(
                         [],
-                        validate_rooted_nonstereo_smiles_support(
-                            rebuilt,
-                            root_idx,
-                            None,
-                            support,
-                        ),
+                        validate_rooted_nonstereo_smiles_support(rebuilt, root_idx, None, support),
                     )
 
-    def test_connected_nonstereo_branch_matches_sampled_rdkit_on_curated_awkward_cases(
-        self,
-    ) -> None:
-        for smiles in [
-            "O=[Ti]=O",
-            "O=[Cr](=O)=O",
-            "Cl[Fe]Cl",
-            "F[Mg]",
-            "C[Ge]",
-            "C[Al]",
-            "C[Cu]",
-            "O=[Se]=O",
-            "C[Si]",
-            "O=[P]=O",
-        ]:
-            mol = Chem.MolFromSmiles(smiles)
-            self.assertIsNotNone(mol)
-            assert mol is not None
+    def test_connected_nonstereo_branch_matches_sampled_rdkit_on_curated_awkward_cases(self) -> None:
+        for smiles in NONSTEREO_AWKWARD_CASES:
+            mol = parse_smiles(smiles)
             prepared = prepare_smiles_graph(mol, self.high_budget_connected_nonstereo_policy)
             for root_idx in range(mol.GetNumAtoms()):
                 with self.subTest(smiles=smiles, root_idx=root_idx):
-                    exact = enumerate_rooted_nonstereo_smiles_support(
-                        prepared,
-                        root_idx,
-                    )
+                    exact = enumerate_rooted_nonstereo_smiles_support(prepared, root_idx)
                     sampled = set(
                         sample_rdkit_random_smiles_from_root(
                             mol,
@@ -211,30 +147,21 @@ class RootedEnumeratorTest(unittest.TestCase):
                     self.assertEqual(exact, sampled)
                     self.assertEqual(
                         [],
-                        validate_rooted_nonstereo_smiles_support(
-                            prepared,
-                            root_idx,
-                            None,
-                            exact,
-                        ),
+                        validate_rooted_nonstereo_smiles_support(prepared, root_idx, None, exact),
                     )
 
     def test_stereochemistry_is_rejected_for_now(self) -> None:
-        mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
-        self.assertIsNotNone(mol)
+        mol = parse_smiles("F[C@H](Cl)Br")
         with self.assertRaisesRegex(ValueError, "stereochemistry"):
             enumerate_rooted_smiles_support(mol, 0, self.policy)
 
     def test_connected_nonstereo_branch_rejects_stereo_input(self) -> None:
-        mol = Chem.MolFromSmiles("F/C=C\\Cl")
-        self.assertIsNotNone(mol)
+        mol = parse_smiles("F/C=C\\Cl")
         with self.assertRaisesRegex(ValueError, "stereochemistry|Directional bond tokens"):
             enumerate_rooted_nonstereo_smiles_support(mol, 1, self.connected_nonstereo_policy)
 
     def test_connected_nonstereo_branch_rejects_unsupported_bond_types(self) -> None:
-        mol = Chem.MolFromSmiles("[NH3][Cu]")
-        self.assertIsNotNone(mol)
-        assert mol is not None
+        mol = parse_smiles("[NH3][Cu]")
         with self.assertRaisesRegex(ValueError, "Unsupported bond type"):
             enumerate_rooted_nonstereo_smiles_support(mol, 0, self.connected_nonstereo_policy)
 

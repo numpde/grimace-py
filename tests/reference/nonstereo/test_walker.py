@@ -3,11 +3,7 @@ from __future__ import annotations
 import random
 import unittest
 
-from rdkit import Chem
-
 from smiles_next_token.reference import (
-    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
-    ReferencePolicy,
     RootedConnectedNonStereoWalker,
     RootedConnectedNonStereoWalkerState,
     enumerate_rooted_nonstereo_smiles_support,
@@ -15,6 +11,9 @@ from smiles_next_token.reference import (
     prepare_smiles_graph,
     validate_rooted_nonstereo_smiles_support,
 )
+from tests.helpers.cases import NONSTEREO_CURATED_ROOT_CASES
+from tests.helpers.mols import parse_smiles
+from tests.helpers.policies import load_connected_nonstereo_policy
 
 
 def enumerate_walker_support(
@@ -36,7 +35,7 @@ def enumerate_walker_support(
 class RootedNextTokenWalkerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH)
+        cls.policy = load_connected_nonstereo_policy()
 
     def test_initial_support_is_the_root_atom_token(self) -> None:
         cases = [
@@ -47,34 +46,17 @@ class RootedNextTokenWalkerTests(unittest.TestCase):
 
         for smiles, root_idx, expected in cases:
             with self.subTest(smiles=smiles, root_idx=root_idx):
-                mol = Chem.MolFromSmiles(smiles)
-                self.assertIsNotNone(mol)
-                assert mol is not None
                 walker = RootedConnectedNonStereoWalker.from_mol(
-                    mol,
+                    parse_smiles(smiles),
                     root_idx,
                     self.policy,
                 )
                 self.assertEqual(expected, walker.next_token_support(walker.initial_state()))
 
     def test_walker_exact_support_matches_rooted_enumerator_on_curated_cases(self) -> None:
-        cases = [
-            ("Cc1ccccc1", 0),
-            ("Cc1ccccc1", 1),
-            ("C1CCCC=C1", 0),
-            ("c1ccncc1", 0),
-            ("O=[Ti]=O", 0),
-            ("O=[Ti]=O", 1),
-            ("C[Ge]", 0),
-            ("C[Ge]", 1),
-        ]
-
-        for smiles, root_idx in cases:
+        for smiles, root_idx in NONSTEREO_CURATED_ROOT_CASES:
             with self.subTest(smiles=smiles, root_idx=root_idx):
-                mol = Chem.MolFromSmiles(smiles)
-                self.assertIsNotNone(mol)
-                assert mol is not None
-                prepared = prepare_smiles_graph(mol, self.policy)
+                prepared = prepare_smiles_graph(parse_smiles(smiles), self.policy)
                 walker = RootedConnectedNonStereoWalker(prepared, root_idx)
 
                 expected = enumerate_rooted_nonstereo_smiles_support(prepared, root_idx)
@@ -95,10 +77,7 @@ class RootedNextTokenWalkerTests(unittest.TestCase):
         ]
 
         for smiles, root_idx in cases:
-            mol = Chem.MolFromSmiles(smiles)
-            self.assertIsNotNone(mol)
-            assert mol is not None
-            prepared = prepare_smiles_graph(mol, self.policy)
+            prepared = prepare_smiles_graph(parse_smiles(smiles), self.policy)
             expected_support = enumerate_rooted_nonstereo_smiles_support(prepared, root_idx)
 
             for seed in range(3):
@@ -124,10 +103,7 @@ class RootedNextTokenWalkerTests(unittest.TestCase):
         self.assertEqual(20, len(cases))
 
         for case in cases:
-            mol = Chem.MolFromSmiles(case.smiles)
-            self.assertIsNotNone(mol)
-            assert mol is not None
-            prepared = prepare_smiles_graph(mol, self.policy)
+            prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
 
             for root_idx in range(prepared.atom_count):
                 with self.subTest(cid=case.cid, smiles=case.smiles, root_idx=root_idx):
@@ -138,10 +114,7 @@ class RootedNextTokenWalkerTests(unittest.TestCase):
                     self.assertEqual(expected, observed)
 
     def test_invalid_token_is_rejected(self) -> None:
-        mol = Chem.MolFromSmiles("CCO")
-        self.assertIsNotNone(mol)
-        assert mol is not None
-        walker = RootedConnectedNonStereoWalker.from_mol(mol, 0, self.policy)
+        walker = RootedConnectedNonStereoWalker.from_mol(parse_smiles("CCO"), 0, self.policy)
         state = walker.initial_state()
 
         with self.assertRaisesRegex(KeyError, "choices"):

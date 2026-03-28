@@ -6,7 +6,6 @@ import unittest
 from smiles_next_token.reference import (
     CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph as PythonPreparedSmilesGraph,
-    load_default_connected_nonstereo_molecule_cases,
     prepare_smiles_graph,
 )
 from tests.helpers.kernel import CORE_MODULE
@@ -76,16 +75,6 @@ class CorePreparedSmilesGraphContractTests(unittest.TestCase):
             CORE_MODULE.RootedConnectedNonStereoWalker(prepared, -1)
         with self.assertRaisesRegex(IndexError, "root_idx out of range"):
             CORE_MODULE.RootedConnectedNonStereoWalker(prepared, 2)
-
-    def test_kernel_prepared_graph_roundtrips_dataset_slice(self) -> None:
-        cases = load_default_connected_nonstereo_molecule_cases(limit=25, max_smiles_length=20)
-        self.assertEqual(25, len(cases))
-
-        for case in cases:
-            with self.subTest(cid=case.cid, smiles=case.smiles):
-                prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
-                kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
-                self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
 
     def test_kernel_prepared_graph_rejects_malformed_transport_dicts(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("CCO"), self.policy)

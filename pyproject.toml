@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "smiles-next-token"
 version = "0.0.0"
-description = "SMILES and next-token tooling with a private Rust kernel."
+description = "Rust-first SMILES and next-token tooling with Python bindings and RDKit reference helpers."
 readme = "README.md"
 requires-python = ">=3.11"
 

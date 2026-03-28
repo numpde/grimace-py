@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import smiles_next_token
+from smiles_next_token import rdkit_reference
 from smiles_next_token.reference import (
     RootedConnectedNonStereoWalker,
     enumerate_rooted_connected_stereo_smiles_support,
@@ -16,6 +18,16 @@ class PythonApiSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.policy = load_connected_nonstereo_policy()
+
+    def test_top_level_api_exposes_runtime_surface(self) -> None:
+        self.assertTrue(hasattr(smiles_next_token, "prepare_smiles_graph"))
+        self.assertTrue(hasattr(smiles_next_token, "CONNECTED_NONSTEREO_SURFACE"))
+        self.assertTrue(hasattr(smiles_next_token, "HAVE_CORE_BINDINGS"))
+
+    def test_rdkit_reference_module_exposes_oracle_surface(self) -> None:
+        self.assertTrue(hasattr(rdkit_reference, "ReferencePolicy"))
+        self.assertTrue(hasattr(rdkit_reference, "sample_rdkit_random_smiles"))
+        self.assertTrue(hasattr(rdkit_reference, "build_core_exact_sets_artifact"))
 
     def test_reference_surface_end_to_end_smoke(self) -> None:
         mol = parse_smiles("CCO")

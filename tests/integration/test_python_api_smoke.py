@@ -16,29 +16,45 @@ class PythonApiSmokeTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.policy = load_connected_nonstereo_policy()
 
-    def test_top_level_api_exposes_only_narrow_runtime_surface(self) -> None:
+    def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(hasattr(smiles_next_token, "ReferencePolicy"))
-        self.assertFalse(hasattr(smiles_next_token, "prepare_smiles_graph"))
-        self.assertFalse(hasattr(smiles_next_token, "make_prepared_graph"))
-        self.assertFalse(hasattr(smiles_next_token, "make_nonstereo_walker"))
-        self.assertFalse(hasattr(smiles_next_token, "make_stereo_walker"))
-        self.assertFalse(hasattr(smiles_next_token, "PreparedSmilesGraph"))
-        self.assertFalse(hasattr(smiles_next_token, "HAVE_CORE_BINDINGS"))
+        self.assertTrue(callable(smiles_next_token.MolToSmilesSupport))
+        self.assertFalse(hasattr(smiles_next_token, "enumerate_rooted_connected_nonstereo_smiles_support"))
+        self.assertFalse(hasattr(smiles_next_token, "enumerate_rooted_connected_stereo_smiles_support"))
         if CORE_MODULE is None:
             with self.assertRaises(ImportError):
-                getattr(
-                    smiles_next_token,
-                    "enumerate_rooted_connected_nonstereo_smiles_support",
-                )
-            with self.assertRaises(ImportError):
-                getattr(
-                    smiles_next_token,
-                    "enumerate_rooted_connected_stereo_smiles_support",
+                smiles_next_token.MolToSmilesSupport(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                    policy=self.policy,
                 )
             return
 
-        self.assertTrue(callable(smiles_next_token.enumerate_rooted_connected_nonstereo_smiles_support))
-        self.assertTrue(callable(smiles_next_token.enumerate_rooted_connected_stereo_smiles_support))
+        from smiles_next_token import _runtime
+
+        self.assertEqual(
+            _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
+                parse_smiles("CCO"),
+                0,
+                self.policy,
+            ),
+            smiles_next_token.MolToSmilesSupport(
+                parse_smiles("CCO"),
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                policy=self.policy,
+            ),
+        )
+
+    def test_public_api_rejects_unimplemented_connected_flag(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "connectedOnly=False"):
+            smiles_next_token.MolToSmilesSupport(
+                parse_smiles("CCO"),
+                rootedAtAtom=0,
+                connectedOnly=False,
+                policy=self.policy,
+            )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:
@@ -62,10 +78,11 @@ class PythonApiSmokeTests(unittest.TestCase):
             self.policy,
         )
 
-        support = smiles_next_token.enumerate_rooted_connected_nonstereo_smiles_support(
+        support = smiles_next_token.MolToSmilesSupport(
             mol,
-            0,
-            self.policy,
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            policy=self.policy,
         )
 
         self.assertEqual(expected, support)
@@ -81,10 +98,11 @@ class PythonApiSmokeTests(unittest.TestCase):
             0,
             self.policy,
         )
-        support = smiles_next_token.enumerate_rooted_connected_stereo_smiles_support(
+        support = smiles_next_token.MolToSmilesSupport(
             mol,
-            0,
-            self.policy,
+            rootedAtAtom=0,
+            isomericSmiles=True,
+            policy=self.policy,
         )
 
         self.assertEqual(expected, support)

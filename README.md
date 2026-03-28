@@ -19,10 +19,7 @@ The only supported public Python surface is `smiles_next_token`.
 Current top-level exports:
 
 - `ReferencePolicy`
-- `enumerate_rooted_connected_nonstereo_smiles_support`
-- `enumerate_rooted_connected_stereo_smiles_support`
-- `enumerate_rooted_nonstereo_smiles_support`
-- `enumerate_rooted_smiles_support`
+- `MolToSmilesSupport`
 
 The compiled extension `smiles_next_token._core` is required for the public runtime package.
 

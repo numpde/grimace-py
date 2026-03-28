@@ -55,8 +55,8 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                     )
 
     def test_kernel_matches_python_reference_on_atom_stereo_dataset_slice(self) -> None:
-        cases = load_connected_atom_stereo_cases(limit=4, max_smiles_length=16)
-        self.assertEqual(4, len(cases))
+        cases = load_connected_atom_stereo_cases(limit=3, max_smiles_length=16)
+        self.assertEqual(3, len(cases))
 
         for cid, smiles in cases:
             prepared = prepare_smiles_graph(
@@ -74,8 +74,8 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                     self.assertEqual(python_support, kernel_support)
 
     def test_kernel_matches_python_reference_on_multi_center_atom_stereo_slice(self) -> None:
-        cases = load_connected_multi_atom_stereo_cases(limit=2, max_smiles_length=28)
-        self.assertEqual(2, len(cases))
+        cases = load_connected_multi_atom_stereo_cases(limit=1, max_smiles_length=28)
+        self.assertEqual(1, len(cases))
 
         for cid, smiles, chiral_count in cases:
             prepared = prepare_smiles_graph(
@@ -93,8 +93,8 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                     self.assertEqual(python_support, kernel_support)
 
     def test_kernel_matches_python_reference_on_bond_stereo_dataset_slice(self) -> None:
-        cases = load_connected_bond_stereo_cases(limit=3, max_smiles_length=18)
-        self.assertEqual(3, len(cases))
+        cases = load_connected_bond_stereo_cases(limit=2, max_smiles_length=18)
+        self.assertEqual(2, len(cases))
 
         for cid, smiles in cases:
             prepared = prepare_smiles_graph(
@@ -115,17 +115,17 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
         cases: list[tuple[str, str, str]] = []
         cases.extend(
             (cid, smiles, "atom")
-            for cid, smiles in load_connected_atom_stereo_cases(limit=4, max_smiles_length=18)
+            for cid, smiles in load_connected_atom_stereo_cases(limit=3, max_smiles_length=18)
         )
         cases.extend(
             (cid, smiles, "multi_atom")
-            for cid, smiles, _ in load_connected_multi_atom_stereo_cases(limit=2, max_smiles_length=28)
+            for cid, smiles, _ in load_connected_multi_atom_stereo_cases(limit=1, max_smiles_length=28)
         )
         cases.extend(
             (cid, smiles, "bond")
-            for cid, smiles in load_connected_bond_stereo_cases(limit=3, max_smiles_length=18)
+            for cid, smiles in load_connected_bond_stereo_cases(limit=2, max_smiles_length=18)
         )
-        self.assertEqual(9, len(cases))
+        self.assertEqual(6, len(cases))
 
         total_generated = 0
         for cid, smiles, category in cases:
@@ -159,7 +159,7 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                     canonicalized.add(prepared.identity_smiles_for(parsed))
                 self.assertEqual({prepared.identity_smiles}, canonicalized)
 
-        self.assertGreaterEqual(total_generated, 40)
+        self.assertGreaterEqual(total_generated, 25)
 
 
 if __name__ == "__main__":

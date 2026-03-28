@@ -886,6 +886,58 @@ mod tests {
         }
     }
 
+    fn titanium_dioxide_graph() -> PreparedSmilesGraphData {
+        PreparedSmilesGraphData {
+            schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+            surface_kind: CONNECTED_NONSTEREO_SURFACE.to_owned(),
+            policy_name: "test_policy".to_owned(),
+            policy_digest: "deadbeef".to_owned(),
+            rdkit_version: "2025.09.6".to_owned(),
+            identity_smiles: "[O]=[Ti]=[O]".to_owned(),
+            atom_count: 3,
+            bond_count: 2,
+            atom_atomic_numbers: vec![8, 22, 8],
+            atom_is_aromatic: vec![false, false, false],
+            atom_isotopes: vec![0, 0, 0],
+            atom_formal_charges: vec![0, 0, 0],
+            atom_total_hs: vec![0, 0, 0],
+            atom_radical_electrons: vec![0, 0, 0],
+            atom_map_numbers: vec![0, 0, 0],
+            atom_tokens: vec!["[O]".to_owned(), "[Ti]".to_owned(), "[O]".to_owned()],
+            neighbors: vec![vec![1], vec![0, 2], vec![1]],
+            neighbor_bond_tokens: vec![
+                vec!["=".to_owned()],
+                vec!["=".to_owned(), "=".to_owned()],
+                vec!["=".to_owned()],
+            ],
+            bond_pairs: vec![(0, 1), (1, 2)],
+            bond_kinds: vec!["DOUBLE".to_owned(), "DOUBLE".to_owned()],
+            writer_do_isomeric_smiles: true,
+            writer_kekule_smiles: false,
+            writer_all_bonds_explicit: false,
+            writer_all_hs_explicit: false,
+            writer_ignore_atom_map_numbers: false,
+            identity_parse_with_rdkit: true,
+            identity_canonical: true,
+            identity_do_isomeric_smiles: true,
+            identity_kekule_smiles: false,
+            identity_rooted_at_atom: -1,
+            identity_all_bonds_explicit: false,
+            identity_all_hs_explicit: false,
+            identity_do_random: false,
+            identity_ignore_atom_map_numbers: false,
+            atom_chiral_tags: Vec::new(),
+            atom_stereo_neighbor_orders: Vec::new(),
+            atom_explicit_h_counts: Vec::new(),
+            atom_implicit_h_counts: Vec::new(),
+            bond_stereo_kinds: Vec::new(),
+            bond_stereo_atoms: Vec::new(),
+            bond_dirs: Vec::new(),
+            bond_begin_atom_indices: Vec::new(),
+            bond_end_atom_indices: Vec::new(),
+        }
+    }
+
     #[test]
     fn permutation_order_matches_python_style() {
         let perms = permutations_py_order(&[1usize, 2usize, 3usize]);
@@ -927,6 +979,22 @@ mod tests {
             .into_iter()
             .collect::<BTreeSet<_>>();
         assert_eq!(BTreeSet::from(["C1CC1".to_owned()]), support);
+    }
+
+    #[test]
+    fn awkward_metal_case_support_matches_expected() {
+        let graph = titanium_dioxide_graph();
+        let support_root_0 = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 0)
+            .expect("enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let support_root_1 = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 1)
+            .expect("enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(BTreeSet::from(["[O]=[Ti]=[O]".to_owned()]), support_root_0);
+        assert_eq!(BTreeSet::from(["[Ti](=[O])=[O]".to_owned()]), support_root_1);
     }
 
     #[test]

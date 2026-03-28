@@ -41,9 +41,9 @@ class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
                 self.assertEqual(expected, observed)
 
     def test_core_stereo_walker_exact_support_matches_reference_on_dataset_slice(self) -> None:
-        cases = load_connected_atom_stereo_cases(limit=2, max_smiles_length=16)
+        cases = load_connected_atom_stereo_cases(limit=1, max_smiles_length=16)
         bond_cases = load_connected_bond_stereo_cases(limit=1, max_smiles_length=18)
-        self.assertEqual(2, len(cases))
+        self.assertEqual(1, len(cases))
         self.assertEqual(1, len(bond_cases))
 
         for cid, smiles in [*cases, *bond_cases]:

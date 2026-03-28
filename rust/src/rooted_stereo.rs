@@ -2549,6 +2549,72 @@ mod tests {
         }
     }
 
+    fn atom_stereo_graph() -> PreparedSmilesGraphData {
+        PreparedSmilesGraphData {
+            schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+            surface_kind: CONNECTED_STEREO_SURFACE.to_owned(),
+            policy_name: "test_policy".to_owned(),
+            policy_digest: "deadbeef".to_owned(),
+            rdkit_version: "2025.09.6".to_owned(),
+            identity_smiles: "F[C@H](Cl)Br".to_owned(),
+            atom_count: 4,
+            bond_count: 3,
+            atom_atomic_numbers: vec![9, 6, 17, 35],
+            atom_is_aromatic: vec![false, false, false, false],
+            atom_isotopes: vec![0, 0, 0, 0],
+            atom_formal_charges: vec![0, 0, 0, 0],
+            atom_total_hs: vec![0, 1, 0, 0],
+            atom_radical_electrons: vec![0, 0, 0, 0],
+            atom_map_numbers: vec![0, 0, 0, 0],
+            atom_tokens: vec!["F".to_owned(), "C".to_owned(), "Cl".to_owned(), "Br".to_owned()],
+            neighbors: vec![vec![1], vec![0, 2, 3], vec![1], vec![1]],
+            neighbor_bond_tokens: vec![
+                vec!["".to_owned()],
+                vec!["".to_owned(), "".to_owned(), "".to_owned()],
+                vec!["".to_owned()],
+                vec!["".to_owned()],
+            ],
+            bond_pairs: vec![(0, 1), (1, 2), (1, 3)],
+            bond_kinds: vec![
+                "SINGLE".to_owned(),
+                "SINGLE".to_owned(),
+                "SINGLE".to_owned(),
+            ],
+            writer_do_isomeric_smiles: true,
+            writer_kekule_smiles: false,
+            writer_all_bonds_explicit: false,
+            writer_all_hs_explicit: false,
+            writer_ignore_atom_map_numbers: false,
+            identity_parse_with_rdkit: true,
+            identity_canonical: true,
+            identity_do_isomeric_smiles: true,
+            identity_kekule_smiles: false,
+            identity_rooted_at_atom: -1,
+            identity_all_bonds_explicit: false,
+            identity_all_hs_explicit: false,
+            identity_do_random: false,
+            identity_ignore_atom_map_numbers: false,
+            atom_chiral_tags: vec![
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_TETRAHEDRAL_CCW".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+                "CHI_UNSPECIFIED".to_owned(),
+            ],
+            atom_stereo_neighbor_orders: vec![vec![1], vec![0, 2, 3], vec![1], vec![1]],
+            atom_explicit_h_counts: vec![0, 1, 0, 0],
+            atom_implicit_h_counts: vec![0, 0, 0, 0],
+            bond_stereo_kinds: vec![
+                "STEREONONE".to_owned(),
+                "STEREONONE".to_owned(),
+                "STEREONONE".to_owned(),
+            ],
+            bond_stereo_atoms: vec![(-1, -1), (-1, -1), (-1, -1)],
+            bond_dirs: vec!["NONE".to_owned(), "NONE".to_owned(), "NONE".to_owned()],
+            bond_begin_atom_indices: vec![0, 1, 1],
+            bond_end_atom_indices: vec![1, 2, 3],
+        }
+    }
+
     #[test]
     fn stereo_root_validation_rejects_out_of_range_indices() {
         let graph = sample_stereo_graph();
@@ -2564,6 +2630,38 @@ mod tests {
             .into_iter()
             .collect::<BTreeSet<_>>();
         assert_eq!(BTreeSet::from(["F/[CH]=[CH]\\Cl".to_owned()]), support);
+    }
+
+    #[test]
+    fn atom_stereo_support_matches_expected_curated_outputs() {
+        let graph = atom_stereo_graph();
+        let root_0 = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
+            .expect("stereo enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let root_1 = enumerate_rooted_connected_stereo_smiles_support(&graph, 1)
+            .expect("stereo enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            BTreeSet::from([
+                "F[C@H](Cl)Br".to_owned(),
+                "F[C@@H](Br)Cl".to_owned(),
+            ]),
+            root_0,
+        );
+        assert_eq!(
+            BTreeSet::from([
+                "[C@H](Cl)(F)Br".to_owned(),
+                "[C@@H](F)(Cl)Br".to_owned(),
+                "[C@@H](Br)(F)Cl".to_owned(),
+                "[C@H](F)(Br)Cl".to_owned(),
+                "[C@H](Br)(Cl)F".to_owned(),
+                "[C@@H](Cl)(Br)F".to_owned(),
+            ]),
+            root_1,
+        );
     }
 
     #[test]

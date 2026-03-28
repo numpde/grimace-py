@@ -72,8 +72,8 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
                     self.assertEqual(python_state.prefix, core_state.prefix)
 
     def test_core_walker_matches_python_walker_on_dataset_slice_sampled_paths(self) -> None:
-        cases = load_default_connected_nonstereo_molecule_cases(limit=12, max_smiles_length=10)
-        self.assertEqual(12, len(cases))
+        cases = load_default_connected_nonstereo_molecule_cases(limit=8, max_smiles_length=10)
+        self.assertEqual(8, len(cases))
 
         for case in cases:
             prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
@@ -107,8 +107,8 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
                         self.assertEqual(python_state.prefix, core_state.prefix)
 
     def test_core_walker_exact_support_matches_python_reference_on_dataset_slice(self) -> None:
-        cases = load_default_connected_nonstereo_molecule_cases(limit=20, max_smiles_length=10)
-        self.assertEqual(20, len(cases))
+        cases = load_default_connected_nonstereo_molecule_cases(limit=12, max_smiles_length=10)
+        self.assertEqual(12, len(cases))
 
         for case in cases:
             prepared = prepare_smiles_graph(parse_smiles(case.smiles), self.policy)

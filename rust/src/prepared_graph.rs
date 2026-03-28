@@ -6,6 +6,31 @@ pub const PREPARED_SMILES_GRAPH_SCHEMA_VERSION: usize = 1;
 pub const CONNECTED_NONSTEREO_SURFACE: &str = "connected_nonstereo";
 pub const CONNECTED_STEREO_SURFACE: &str = "connected_stereo";
 
+pub(crate) fn mol_to_smiles_support_data(
+    graph: &PreparedSmilesGraphData,
+    root_idx: isize,
+    isomeric_smiles: bool,
+) -> PyResult<Vec<String>> {
+    if isomeric_smiles {
+        if graph.surface_kind != CONNECTED_STEREO_SURFACE {
+            return Err(PyValueError::new_err(format!(
+                "PreparedSmilesGraph surface_kind={} is not compatible with isomeric_smiles=True",
+                graph.surface_kind
+            )));
+        }
+        return crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(
+            graph, root_idx,
+        );
+    }
+    if graph.surface_kind != CONNECTED_NONSTEREO_SURFACE {
+        return Err(PyValueError::new_err(format!(
+            "PreparedSmilesGraph surface_kind={} is not compatible with isomeric_smiles=False",
+            graph.surface_kind
+        )));
+    }
+    crate::rooted_nonstereo::enumerate_rooted_connected_nonstereo_smiles_support(graph, root_idx)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PreparedSmilesGraphData {
     pub(crate) schema_version: usize,
@@ -735,11 +760,21 @@ pub fn prepared_smiles_graph_schema_version() -> usize {
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION
 }
 
+#[pyfunction]
+pub fn mol_to_smiles_support(
+    graph: &Bound<'_, PyAny>,
+    root_idx: isize,
+    isomeric_smiles: bool,
+) -> PyResult<Vec<String>> {
+    let graph = PreparedSmilesGraphData::from_any(graph)?;
+    mol_to_smiles_support_data(&graph, root_idx, isomeric_smiles)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, CONNECTED_STEREO_SURFACE,
-        PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+        mol_to_smiles_support_data, PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE,
+        CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
     use pyo3::Python;
 
@@ -972,5 +1007,48 @@ mod tests {
         let graph = sample_graph();
         assert_eq!(Some(""), graph.bond_token(0, 1));
         assert_eq!(None, graph.bond_token(0, 0));
+    }
+
+    #[test]
+    fn mol_to_smiles_support_dispatches_nonstereo() {
+        let graph = sample_graph();
+        let support = mol_to_smiles_support_data(&graph, 0, false).expect("nonstereo support");
+        let expected =
+            crate::rooted_nonstereo::enumerate_rooted_connected_nonstereo_smiles_support(
+                &graph, 0,
+            )
+            .expect("direct nonstereo support");
+        assert_eq!(expected, support);
+    }
+
+    #[test]
+    fn mol_to_smiles_support_dispatches_stereo() {
+        let graph = sample_stereo_graph();
+        let support = mol_to_smiles_support_data(&graph, 0, true).expect("stereo support");
+        let expected = crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(
+            &graph, 0,
+        )
+        .expect("direct stereo support");
+        assert_eq!(expected, support);
+    }
+
+    #[test]
+    fn mol_to_smiles_support_rejects_surface_mismatch() {
+        Python::initialize();
+        let err = mol_to_smiles_support_data(&sample_graph(), 0, true).expect_err("should fail");
+        assert!(
+            err.to_string().contains("isomeric_smiles=True"),
+            "unexpected error: {err}",
+        );
+    }
+
+    #[test]
+    fn mol_to_smiles_support_preserves_root_validation() {
+        Python::initialize();
+        let err = mol_to_smiles_support_data(&sample_graph(), -1, false).expect_err("should fail");
+        assert!(
+            err.to_string().contains("root_idx out of range"),
+            "unexpected error: {err}",
+        );
     }
 }

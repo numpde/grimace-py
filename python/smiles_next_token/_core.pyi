@@ -94,3 +94,9 @@ class RootedConnectedStereoWalker:
 
 
 def prepared_smiles_graph_schema_version() -> int: ...
+def mol_to_smiles_support(
+    graph: object,
+    root_idx: int,
+    isomeric_smiles: bool,
+    /,
+) -> list[str]: ...

@@ -112,7 +112,7 @@ def enumerate_rooted_connected_nonstereo_smiles_support(
         policy,
         surface_kind=CONNECTED_NONSTEREO_SURFACE,
     )
-    return set(prepared.enumerate_rooted_connected_nonstereo_support(root_idx))
+    return set(_core.mol_to_smiles_support(prepared, root_idx, False))
 
 
 def enumerate_rooted_connected_stereo_smiles_support(
@@ -125,7 +125,7 @@ def enumerate_rooted_connected_stereo_smiles_support(
         policy,
         surface_kind=CONNECTED_STEREO_SURFACE,
     )
-    return set(prepared.enumerate_rooted_connected_stereo_support(root_idx))
+    return set(_core.mol_to_smiles_support(prepared, root_idx, True))
 
 
 def make_nonstereo_walker(

@@ -773,6 +773,11 @@ def _coerce_prepared_graph(
         if policy is not None:
             mol_or_prepared.validate_policy(policy)
         return mol_or_prepared
+    if hasattr(mol_or_prepared, "to_dict"):
+        prepared = PreparedSmilesGraph.from_dict(mol_or_prepared.to_dict())
+        if policy is not None:
+            prepared.validate_policy(policy)
+        return prepared
     if policy is None:
         raise TypeError("policy is required when preparing a graph from an RDKit molecule")
     return prepare_smiles_graph(

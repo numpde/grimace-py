@@ -6,6 +6,7 @@ from rdkit import Chem
 
 from smiles_next_token._reference import (
     CONNECTED_STEREO_SURFACE,
+    PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     load_default_connected_nonstereo_molecule_cases,
     validate_rooted_connected_stereo_smiles_support,
 )
@@ -63,6 +64,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
                 self.policy,
                 surface_kind=CONNECTED_STEREO_SURFACE,
             )
+            reference_prepared = ReferencePreparedSmilesGraph.from_dict(prepared.to_dict())
             kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
             generated: set[str] = set()
             for root_idx in range(prepared.atom_count):
@@ -74,7 +76,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
                 self.assertEqual(
                     [],
                     validate_rooted_connected_stereo_smiles_support(
-                        prepared,
+                        reference_prepared,
                         0,
                         None,
                         generated,
@@ -85,8 +87,8 @@ class CoreDatasetContractsTests(unittest.TestCase):
                     parsed = Chem.MolFromSmiles(output_smiles)
                     self.assertIsNotNone(parsed, msg=output_smiles)
                     assert parsed is not None
-                    canonicalized.add(prepared.identity_smiles_for(parsed))
-                self.assertEqual({prepared.identity_smiles}, canonicalized)
+                    canonicalized.add(reference_prepared.identity_smiles_for(parsed))
+                self.assertEqual({reference_prepared.identity_smiles}, canonicalized)
 
         self.assertGreaterEqual(total_generated, 12)
 

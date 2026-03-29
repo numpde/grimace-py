@@ -117,6 +117,19 @@ Example timings from the opt-in performance benchmark, measured in release mode
 on one development machine. Treat them as indicative, not as a portability or
 stability guarantee.
 
+- `Support`: the size of the exact rooted SMILES support across all root atoms.
+- `Grimace enum (all roots)`: direct exact enumeration with `MolToSmilesEnum(...)`,
+  unioned across all roots.
+- `Decoder enum (all roots)`: exact enumeration by exhaustive traversal of
+  `MolToSmilesDecoder(...)`, unioned across all roots.
+- `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,
+  doRandom=True)` draws across all roots until half of the exact support has
+  been seen.
+- `RDKit to full support`: the same sampling process until the full exact
+  support has been seen.
+- RDKit timings are shown as `time mean ± std (draw mean ± std)`, over repeated
+  seeded trials.
+
 | Canonical SMILES | Atoms | Support | Grimace enum (all roots) | Decoder enum (all roots) | RDKit to 1/2 support | RDKit to full support |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **15.8** ms | **30.6** ms | **5.4** ± 0.5 ms (230.0 ± 18.8 draws) | **60.0** ± 14.3 ms (3086.7 ± 921.8 draws) |

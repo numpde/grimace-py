@@ -113,10 +113,10 @@ maturin develop --release
 
 ## License
 
-`grimace` is source-available under PolyForm Noncommercial 1.0.0.
+`grimace` is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
 Commercial use requires a separate commercial license from the author.
 The software is provided as is, without warranty or liability, to the extent
-allowed by law. See [LICENSE](LICENSE) for the full terms.
+allowed by law.
 
 ## Current limits
 

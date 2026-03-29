@@ -5,9 +5,14 @@ SMILES enumeration with next-token distribution.
 `grimace` is a Rust-first cheminformatics library for exact rooted SMILES
 enumeration and online next-token decoding from RDKit molecules. It computes
 the full rooted SMILES support of a molecule under an RDKit-style writing
-regime, and it can also step through the same support one token at a time:
-at each prefix it exposes the legal next tokens, then advances when you choose
-one.
+regime, and it can also step through that support one token at a time: at each
+prefix it exposes the legal next tokens, then advances when you choose one.
+By "support" we mean the full set of reachable rooted SMILES strings for the
+given molecule and writer flags.
+
+The reason this library exists is that RDKit does not provide a deterministic
+SMILES enumeration routine, and it does not expose the legal continuations of a
+SMILES prefix as an online decoding API.
 
 The package is motivated by research on NMR spectroscopy with language
 transformers: <https://numpde.github.io/shared/msc/>.
@@ -105,6 +110,19 @@ python -m venv .venv
 python -m pip install maturin
 maturin develop --release
 ```
+
+## Timings
+
+Example timings from the opt-in performance benchmark, measured in release mode
+on one development machine. Treat them as indicative, not as a portability or
+stability guarantee.
+
+| Canonical SMILES | Atoms | Support | Grimace enum (all roots) | Decoder enum (all roots) | RDKit to 1/2 support | RDKit to full support |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **16.3** ms | **31.1** ms | **5.1** ± 0.5 ms (230.0 ± 18.8 draws) | **58.1** ± 14.3 ms (3086.7 ± 921.8 draws) |
+| `C1CC2(CCO1)CO2` | 8 | 36 | **3.5** ms | **4.7** ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.9** ± 0.5 ms (155.6 ± 35.8 draws) |
+| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **14.6** ms | **25.4** ms | **2.0** ± 0.2 ms (97.4 ± 8.7 draws) | **18.2** ± 3.2 ms (987.9 ± 169.9 draws) |
+| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **29.3** ms | **41.6** ms | **0.6** ± 0.0 ms (44.1 ± 2.5 draws) | **6.0** ± 1.5 ms (483.0 ± 122.3 draws) |
 
 ## License
 

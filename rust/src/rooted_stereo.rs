@@ -1197,7 +1197,7 @@ pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
     let runtime = build_walker_runtime(graph)?;
     let initial_state = initial_stereo_state_for_root(&runtime, graph, root_idx);
     let mut out = BTreeSet::new();
-    enumerate_support_from_stereo_state(&runtime, graph, initial_state, &mut out)?;
+    enumerate_support_from_stereo_frontier(&runtime, graph, vec![initial_state], &mut out)?;
     Ok(out.into_iter().collect())
 }
 
@@ -1913,6 +1913,26 @@ fn stereo_frontier_is_terminal(
     Ok(frontier_next_token_support_for_stereo(runtime, graph, frontier)?.is_empty())
 }
 
+fn enumerate_support_from_stereo_frontier(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    frontier: Vec<RootedConnectedStereoWalkerStateData>,
+    out: &mut BTreeSet<String>,
+) -> PyResult<()> {
+    let tokens = frontier_next_token_support_for_stereo(runtime, graph, &frontier)?;
+    if tokens.is_empty() {
+        out.insert(stereo_frontier_prefix(&frontier));
+        return Ok(());
+    }
+
+    for token in tokens {
+        let next_frontier = advance_stereo_token_frontier(runtime, graph, &frontier, &token)?;
+        enumerate_support_from_stereo_frontier(runtime, graph, next_frontier, out)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn enumerate_support_from_stereo_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -2033,11 +2053,7 @@ impl PyRootedConnectedStereoWalker {
     }
 
     fn enumerate_support(&self) -> PyResult<Vec<String>> {
-        let initial_state =
-            initial_stereo_state_for_root(&self.runtime, &self.graph, self.root_idx);
-        let mut out = BTreeSet::new();
-        enumerate_support_from_stereo_state(&self.runtime, &self.graph, initial_state, &mut out)?;
-        Ok(out.into_iter().collect())
+        enumerate_rooted_connected_stereo_smiles_support(&self.graph, self.root_idx as isize)
     }
 
     fn __repr__(&self) -> String {

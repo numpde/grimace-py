@@ -222,14 +222,8 @@ def mol_to_smiles_enum(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     _validate_supported_flags(flags)
-    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
-    return iter(
-        _core.mol_to_smiles_support(
-            prepared,
-            flags.rooted_at_atom,
-            flags.isomeric_smiles,
-        )
-    )
+    walker = _make_walker(mol_or_prepared, flags)
+    return iter(walker.enumerate_support())
 
 
 def mol_to_smiles_support(

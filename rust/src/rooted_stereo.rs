@@ -55,25 +55,6 @@ enum Part {
     Deferred(DeferredDirectionalToken),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct SearchState {
-    visited: Vec<bool>,
-    visited_count: usize,
-    pending: Vec<Vec<PendingRing>>,
-    free_labels: Vec<usize>,
-    next_label: usize,
-    stereo_component_phases: Vec<i8>,
-    stereo_selected_neighbors: Vec<isize>,
-    stereo_selected_orientations: Vec<i8>,
-    stereo_component_begin_atoms: Vec<isize>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct SearchResult {
-    parts: Vec<Part>,
-    state: SearchState,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct StereoSideInfo {
     component_idx: usize,
@@ -93,7 +74,10 @@ enum RingAction {
 enum WalkerAction {
     EmitLiteral(String),
     EmitDeferred(DeferredDirectionalToken),
-    EnterAtom { atom_idx: usize, parent_idx: Option<usize> },
+    EnterAtom {
+        atom_idx: usize,
+        parent_idx: Option<usize>,
+    },
     ProcessChildren {
         parent_idx: usize,
         child_order: Vec<usize>,
@@ -192,7 +176,9 @@ fn prepared_atom_symbol(graph: &PreparedSmilesGraphData, atom_idx: usize) -> PyR
 
 fn permutation_parity(reference_order: &[isize], emitted_order: &[isize]) -> PyResult<usize> {
     if reference_order.len() != emitted_order.len() {
-        return Err(PyValueError::new_err("Stereo neighbor order length mismatch"));
+        return Err(PyValueError::new_err(
+            "Stereo neighbor order length mismatch",
+        ));
     }
     let reference_set = reference_order.iter().copied().collect::<BTreeSet<_>>();
     let emitted_set = emitted_order.iter().copied().collect::<BTreeSet<_>>();
@@ -210,9 +196,10 @@ fn permutation_parity(reference_order: &[isize], emitted_order: &[isize]) -> PyR
     let permutation = emitted_order
         .iter()
         .map(|neighbor| {
-            reference_index.get(neighbor).copied().ok_or_else(|| {
-                PyValueError::new_err("Stereo neighbor order membership mismatch")
-            })
+            reference_index
+                .get(neighbor)
+                .copied()
+                .ok_or_else(|| PyValueError::new_err("Stereo neighbor order membership mismatch"))
         })
         .collect::<PyResult<Vec<_>>>()?;
 
@@ -234,7 +221,8 @@ fn stereo_neighbor_order(
     ring_neighbor_order: &[usize],
     child_order: &[usize],
 ) -> PyResult<Vec<isize>> {
-    let hydrogen_count = graph.atom_explicit_h_counts[atom_idx] + graph.atom_implicit_h_counts[atom_idx];
+    let hydrogen_count =
+        graph.atom_explicit_h_counts[atom_idx] + graph.atom_implicit_h_counts[atom_idx];
     if hydrogen_count > 1 {
         return Err(PyValueError::new_err(
             "Tetrahedral stereo currently supports at most one hydrogen ligand",
@@ -268,7 +256,8 @@ fn stereo_atom_token(
         )));
     }
 
-    let hydrogen_count = graph.atom_explicit_h_counts[atom_idx] + graph.atom_implicit_h_counts[atom_idx];
+    let hydrogen_count =
+        graph.atom_explicit_h_counts[atom_idx] + graph.atom_implicit_h_counts[atom_idx];
     let mut reference_order = graph.atom_stereo_neighbor_orders[atom_idx]
         .iter()
         .map(|&neighbor| neighbor as isize)
@@ -590,7 +579,11 @@ fn component_sizes(stereo_component_ids: &[isize]) -> Vec<usize> {
     counts
 }
 
-fn with_component_phase(component_phases: &[i8], component_idx: usize, phase: i8) -> PyResult<Vec<i8>> {
+fn with_component_phase(
+    component_phases: &[i8],
+    component_idx: usize,
+    phase: i8,
+) -> PyResult<Vec<i8>> {
     let existing = component_phases[component_idx];
     if existing == phase {
         return Ok(component_phases.to_vec());
@@ -723,15 +716,27 @@ fn stereo_side_infos(
             if oriented_for_side.len() == 2 {
                 let left_node = oriented_for_side[0];
                 let right_node = oriented_for_side[1];
-                parity_edges.entry(left_node).or_default().push((right_node, true));
-                parity_edges.entry(right_node).or_default().push((left_node, true));
+                parity_edges
+                    .entry(left_node)
+                    .or_default()
+                    .push((right_node, true));
+                parity_edges
+                    .entry(right_node)
+                    .or_default()
+                    .push((left_node, true));
             }
 
             for node in oriented_for_side {
                 let reverse_node = (node.1, node.0);
                 if oriented_nodes.contains(&reverse_node) {
-                    parity_edges.entry(node).or_default().push((reverse_node, true));
-                    parity_edges.entry(reverse_node).or_default().push((node, true));
+                    parity_edges
+                        .entry(node)
+                        .or_default()
+                        .push((reverse_node, true));
+                    parity_edges
+                        .entry(reverse_node)
+                        .or_default()
+                        .push((node, true));
                 }
 
                 let stored_token = graph.directed_bond_token(node.0, node.1)?;
@@ -858,23 +863,26 @@ fn stereo_side_infos(
 
     let side_infos = side_candidates
         .into_iter()
-        .map(|(component_idx, endpoint_idx, other_idx, candidate_neighbors)| {
-            let candidate_base_tokens = candidate_neighbors
-                .iter()
-                .map(|&neighbor_idx| {
-                    assignments.get(&(endpoint_idx, neighbor_idx)).cloned().ok_or_else(|| {
-                        PyKeyError::new_err("Missing stereo carrier assignment")
+        .map(
+            |(component_idx, endpoint_idx, other_idx, candidate_neighbors)| {
+                let candidate_base_tokens = candidate_neighbors
+                    .iter()
+                    .map(|&neighbor_idx| {
+                        assignments
+                            .get(&(endpoint_idx, neighbor_idx))
+                            .cloned()
+                            .ok_or_else(|| PyKeyError::new_err("Missing stereo carrier assignment"))
                     })
+                    .collect::<PyResult<Vec<_>>>()?;
+                Ok(StereoSideInfo {
+                    component_idx,
+                    endpoint_atom_idx: endpoint_idx,
+                    other_endpoint_atom_idx: other_idx,
+                    candidate_neighbors,
+                    candidate_base_tokens,
                 })
-                .collect::<PyResult<Vec<_>>>()?;
-            Ok(StereoSideInfo {
-                component_idx,
-                endpoint_atom_idx: endpoint_idx,
-                other_endpoint_atom_idx: other_idx,
-                candidate_neighbors,
-                candidate_base_tokens,
-            })
-        })
+            },
+        )
         .collect::<PyResult<Vec<_>>>()?;
 
     let mut edge_to_side_ids = BTreeMap::<(usize, usize), Vec<usize>>::new();
@@ -913,7 +921,9 @@ fn emitted_candidate_token(
     if end_idx == side_info.endpoint_atom_idx {
         return flip_direction_token(&candidate_base_token(side_info, begin_idx)?);
     }
-    Err(PyKeyError::new_err("Emitted edge does not match the stereo side"))
+    Err(PyKeyError::new_err(
+        "Emitted edge does not match the stereo side",
+    ))
 }
 
 fn emitted_edge_part_generic(
@@ -1146,7 +1156,10 @@ fn emitted_edge_part(
 
     let uses_isolated_component = side_ids.iter().any(|&side_idx| {
         let component_idx = side_infos[side_idx].component_idx;
-        isolated_components.get(component_idx).copied().unwrap_or(false)
+        isolated_components
+            .get(component_idx)
+            .copied()
+            .unwrap_or(false)
     });
     if uses_isolated_component {
         emitted_isolated_edge_part(
@@ -1172,452 +1185,6 @@ fn emitted_edge_part(
     }
 }
 
-fn resolve_part(
-    part: &Part,
-    component_phases: &[i8],
-    component_flips: Option<&[bool]>,
-) -> PyResult<String> {
-    match part {
-        Part::Literal(value) => Ok(value.clone()),
-        Part::Deferred(deferred) => {
-            let mut resolved = if component_phases[deferred.component_idx] == FLIPPED_COMPONENT_PHASE {
-                flip_direction_token(&deferred.stored_token)?
-            } else {
-                deferred.stored_token.clone()
-            };
-            if component_flips
-                .and_then(|flips| flips.get(deferred.component_idx))
-                .copied()
-                .unwrap_or(false)
-            {
-                resolved = flip_direction_token(&resolved)?;
-            }
-            Ok(resolved)
-        }
-    }
-}
-
-fn resolve_parts(
-    parts: &[Part],
-    component_phases: &[i8],
-    component_flips: Option<&[bool]>,
-) -> PyResult<String> {
-    let mut resolved = String::new();
-    for part in parts {
-        resolved.push_str(&resolve_part(part, component_phases, component_flips)?);
-    }
-    Ok(resolved)
-}
-
-fn isolated_component_flips(
-    graph: &PreparedSmilesGraphData,
-    stereo_component_ids: &[isize],
-    side_infos: &[StereoSideInfo],
-    isolated_components: &[bool],
-    state: &SearchState,
-) -> Vec<bool> {
-    if isolated_components.is_empty() {
-        return Vec::new();
-    }
-
-    let mut component_bond_indices = BTreeMap::<usize, usize>::new();
-    for (bond_idx, &component_idx) in stereo_component_ids.iter().enumerate() {
-        if component_idx >= 0 {
-            component_bond_indices.entry(component_idx as usize).or_insert(bond_idx);
-        }
-    }
-
-    let mut side_ids_by_component = BTreeMap::<usize, Vec<usize>>::new();
-    for (side_idx, side_info) in side_infos.iter().enumerate() {
-        side_ids_by_component
-            .entry(side_info.component_idx)
-            .or_default()
-            .push(side_idx);
-    }
-
-    let mut flips = vec![false; isolated_components.len()];
-    for (component_idx, &isolated) in isolated_components.iter().enumerate() {
-        if !isolated {
-            continue;
-        }
-
-        let Some(side_ids) = side_ids_by_component.get(&component_idx) else {
-            continue;
-        };
-        if side_ids
-            .iter()
-            .all(|&side_idx| side_infos[side_idx].candidate_neighbors.len() == 1)
-        {
-            continue;
-        }
-
-        let begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
-        if begin_atom_idx < 0 {
-            continue;
-        }
-        let begin_atom_idx = begin_atom_idx as usize;
-        let Some(begin_side_idx) = side_ids
-            .iter()
-            .copied()
-            .find(|&side_idx| side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
-        else {
-            continue;
-        };
-
-        let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
-        if selected_neighbor_idx < 0 {
-            continue;
-        }
-        let selected_neighbor_idx = selected_neighbor_idx as usize;
-        let Some(selected_rank) = side_infos[begin_side_idx]
-            .candidate_neighbors
-            .iter()
-            .position(|&neighbor_idx| neighbor_idx == selected_neighbor_idx)
-        else {
-            continue;
-        };
-
-        let Some(&bond_idx) = component_bond_indices.get(&component_idx) else {
-            continue;
-        };
-        let begin_is_stored_begin = begin_atom_idx == graph.bond_begin_atom_indices[bond_idx];
-        flips[component_idx] = selected_rank == if begin_is_stored_begin { 1 } else { 0 };
-    }
-    flips
-}
-
-fn expand_children(
-    graph: &PreparedSmilesGraphData,
-    stereo_component_ids: &[isize],
-    side_infos: &[StereoSideInfo],
-    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
-    isolated_components: &[bool],
-    parent_idx: usize,
-    child_order: &[usize],
-    prefix_parts: &[Part],
-    state: &SearchState,
-) -> PyResult<Vec<SearchResult>> {
-    if child_order.is_empty() {
-        return Ok(vec![SearchResult {
-            parts: prefix_parts.to_vec(),
-            state: state.clone(),
-        }]);
-    }
-
-    let branch_children = &child_order[..child_order.len() - 1];
-    let main_child = child_order[child_order.len() - 1];
-
-    fn recurse_branch_children(
-        graph: &PreparedSmilesGraphData,
-        stereo_component_ids: &[isize],
-        side_infos: &[StereoSideInfo],
-        edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
-        isolated_components: &[bool],
-        parent_idx: usize,
-        branch_children: &[usize],
-        main_child: usize,
-        branch_index: usize,
-        partial: &SearchResult,
-    ) -> PyResult<Vec<SearchResult>> {
-        if branch_index == branch_children.len() {
-            let (edge_part, main_selected_neighbors, main_selected_orientations) = emitted_edge_part(
-                graph,
-                side_infos,
-                edge_to_side_ids,
-                &partial.state.stereo_component_phases,
-                &partial.state.stereo_selected_neighbors,
-                &partial.state.stereo_selected_orientations,
-                isolated_components,
-                parent_idx,
-                main_child,
-            )?;
-            let (main_component_phases, main_component_begin_atoms) = component_phases_after_edge(
-                graph,
-                stereo_component_ids,
-                &partial.state.stereo_component_phases,
-                &partial.state.stereo_component_begin_atoms,
-                parent_idx,
-                main_child,
-            )?;
-            let main_state = SearchState {
-                visited: partial.state.visited.clone(),
-                visited_count: partial.state.visited_count,
-                pending: partial.state.pending.clone(),
-                free_labels: partial.state.free_labels.clone(),
-                next_label: partial.state.next_label,
-                stereo_component_phases: main_component_phases,
-                stereo_selected_neighbors: main_selected_neighbors,
-                stereo_selected_orientations: main_selected_orientations,
-                stereo_component_begin_atoms: main_component_begin_atoms,
-            };
-            let main_results = enumerate_from_atom(
-                graph,
-                stereo_component_ids,
-                side_infos,
-                edge_to_side_ids,
-                isolated_components,
-                main_child,
-                Some(parent_idx),
-                &main_state,
-            )?;
-            return Ok(main_results
-                .into_iter()
-                .map(|main_result| {
-                    let mut parts = partial.parts.clone();
-                    parts.push(edge_part.clone());
-                    parts.extend(main_result.parts);
-                    SearchResult {
-                        parts,
-                        state: main_result.state,
-                    }
-                })
-                .collect());
-        }
-
-        let child_idx = branch_children[branch_index];
-        let (branch_part, branch_selected_neighbors, branch_selected_orientations) = emitted_edge_part(
-            graph,
-            side_infos,
-            edge_to_side_ids,
-            &partial.state.stereo_component_phases,
-            &partial.state.stereo_selected_neighbors,
-            &partial.state.stereo_selected_orientations,
-            isolated_components,
-            parent_idx,
-            child_idx,
-        )?;
-        let (child_component_phases, child_component_begin_atoms) = component_phases_after_edge(
-            graph,
-            stereo_component_ids,
-            &partial.state.stereo_component_phases,
-            &partial.state.stereo_component_begin_atoms,
-            parent_idx,
-            child_idx,
-        )?;
-        let branch_state = SearchState {
-            visited: partial.state.visited.clone(),
-            visited_count: partial.state.visited_count,
-            pending: partial.state.pending.clone(),
-            free_labels: partial.state.free_labels.clone(),
-            next_label: partial.state.next_label,
-            stereo_component_phases: child_component_phases,
-            stereo_selected_neighbors: branch_selected_neighbors,
-            stereo_selected_orientations: branch_selected_orientations,
-            stereo_component_begin_atoms: child_component_begin_atoms,
-        };
-        let branch_results = enumerate_from_atom(
-            graph,
-            stereo_component_ids,
-            side_infos,
-            edge_to_side_ids,
-            isolated_components,
-            child_idx,
-            Some(parent_idx),
-            &branch_state,
-        )?;
-
-        let mut results = Vec::new();
-        for branch_result in branch_results {
-            let mut parts = partial.parts.clone();
-            parts.push(Part::Literal("(".to_owned()));
-            parts.push(branch_part.clone());
-            parts.extend(branch_result.parts.clone());
-            parts.push(Part::Literal(")".to_owned()));
-            let next_partial = SearchResult {
-                parts,
-                state: branch_result.state,
-            };
-            results.extend(recurse_branch_children(
-                graph,
-                stereo_component_ids,
-                side_infos,
-                edge_to_side_ids,
-                isolated_components,
-                parent_idx,
-                branch_children,
-                main_child,
-                branch_index + 1,
-                &next_partial,
-            )?);
-        }
-        Ok(results)
-    }
-
-    recurse_branch_children(
-        graph,
-        stereo_component_ids,
-        side_infos,
-        edge_to_side_ids,
-        isolated_components,
-        parent_idx,
-        branch_children,
-        main_child,
-        0,
-        &SearchResult {
-            parts: prefix_parts.to_vec(),
-            state: state.clone(),
-        },
-    )
-}
-
-fn enumerate_from_atom(
-    graph: &PreparedSmilesGraphData,
-    stereo_component_ids: &[isize],
-    side_infos: &[StereoSideInfo],
-    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
-    isolated_components: &[bool],
-    atom_idx: usize,
-    parent_idx: Option<usize>,
-    state: &SearchState,
-) -> PyResult<Vec<SearchResult>> {
-    let mut visited_now = state.visited.clone();
-    visited_now[atom_idx] = true;
-    let visited_count_now = state.visited_count + 1;
-
-    let mut pending = state.pending.clone();
-    let closures_here = std::mem::take(&mut pending[atom_idx]);
-    let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
-
-    let mut results = Vec::new();
-    for chosen_children in collect_cartesian_choices(&ordered_groups) {
-        let child_order_seed = chosen_children.clone();
-        let child_set = chosen_children.iter().copied().collect::<BTreeSet<_>>();
-        let opening_targets = ordered_groups
-            .iter()
-            .flat_map(|group| group.iter().copied())
-            .filter(|neighbor_idx| !child_set.contains(neighbor_idx))
-            .collect::<Vec<_>>();
-
-        let mut ring_actions = Vec::new();
-        for closure_idx in 0..closures_here.len() {
-            ring_actions.push(RingAction::Close(closure_idx));
-        }
-        for target_idx in &opening_targets {
-            ring_actions.push(RingAction::Open(*target_idx));
-        }
-
-        for ring_action_order in collect_unique_permutations(&ring_actions) {
-            let mut current_pending = pending.clone();
-            let mut current_free = state.free_labels.clone();
-            let mut current_next = state.next_label;
-            let mut current_component_phases = state.stereo_component_phases.clone();
-            let mut current_selected_neighbors = state.stereo_selected_neighbors.clone();
-            let mut current_selected_orientations = state.stereo_selected_orientations.clone();
-            let mut current_component_begin_atoms = state.stereo_component_begin_atoms.clone();
-            let mut current_ring_parts = Vec::<Part>::new();
-            let mut labels_freed_after_atom = Vec::<usize>::new();
-            let mut ring_neighbor_order = Vec::<usize>::new();
-
-            for ring_action in &ring_action_order {
-                match *ring_action {
-                    RingAction::Close(closure_idx) => {
-                        let closure = &closures_here[closure_idx];
-                        let (bond_part, updated_neighbors, updated_orientations) = emitted_edge_part(
-                            graph,
-                            side_infos,
-                            edge_to_side_ids,
-                            &current_component_phases,
-                            &current_selected_neighbors,
-                            &current_selected_orientations,
-                            isolated_components,
-                            atom_idx,
-                            closure.other_atom_idx,
-                        )?;
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
-                        current_ring_parts.push(bond_part);
-                        current_ring_parts.push(Part::Literal(ring_label_text(closure.label)));
-                        labels_freed_after_atom.push(closure.label);
-                        ring_neighbor_order.push(closure.other_atom_idx);
-                    }
-                    RingAction::Open(target_idx) => {
-                        let label = allocate_label(&mut current_free, &mut current_next);
-                        current_ring_parts.push(Part::Literal(ring_label_text(label)));
-                        let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-                            graph,
-                            stereo_component_ids,
-                            &current_component_phases,
-                            &current_component_begin_atoms,
-                            atom_idx,
-                            target_idx,
-                        )?;
-                        current_component_phases = updated_phases;
-                        current_component_begin_atoms = updated_begin_atoms;
-                        let (_bond_part, updated_neighbors, updated_orientations) = emitted_edge_part(
-                            graph,
-                            side_infos,
-                            edge_to_side_ids,
-                            &current_component_phases,
-                            &current_selected_neighbors,
-                            &current_selected_orientations,
-                            isolated_components,
-                            atom_idx,
-                            target_idx,
-                        )?;
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
-                        add_pending(
-                            &mut current_pending,
-                            target_idx,
-                            PendingRing {
-                                label,
-                                other_atom_idx: atom_idx,
-                            },
-                        );
-                        ring_neighbor_order.push(target_idx);
-                    }
-                }
-            }
-
-            for label in labels_freed_after_atom {
-                insert_sorted(&mut current_free, label);
-            }
-
-            for child_order in collect_unique_permutations(&child_order_seed) {
-                let atom_token = if graph.atom_chiral_tags[atom_idx] == "CHI_UNSPECIFIED" {
-                    graph.atom_tokens[atom_idx].clone()
-                } else {
-                    let emitted_neighbor_order = stereo_neighbor_order(
-                        graph,
-                        atom_idx,
-                        parent_idx,
-                        &ring_neighbor_order,
-                        &child_order,
-                    )?;
-                    stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
-                };
-                let mut prefix_parts = vec![Part::Literal(atom_token)];
-                prefix_parts.extend(current_ring_parts.clone());
-                let current_state = SearchState {
-                    visited: visited_now.clone(),
-                    visited_count: visited_count_now,
-                    pending: current_pending.clone(),
-                    free_labels: current_free.clone(),
-                    next_label: current_next,
-                    stereo_component_phases: current_component_phases.clone(),
-                    stereo_selected_neighbors: current_selected_neighbors.clone(),
-                    stereo_selected_orientations: current_selected_orientations.clone(),
-                    stereo_component_begin_atoms: current_component_begin_atoms.clone(),
-                };
-                let mut expanded = expand_children(
-                    graph,
-                    stereo_component_ids,
-                    side_infos,
-                    edge_to_side_ids,
-                    isolated_components,
-                    atom_idx,
-                    &child_order,
-                    &prefix_parts,
-                    &current_state,
-                )?;
-                results.append(&mut expanded);
-            }
-        }
-    }
-
-    Ok(results)
-}
-
 pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
     graph: &PreparedSmilesGraphData,
     root_idx: isize,
@@ -1627,61 +1194,11 @@ pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
         return Ok(vec![String::new()]);
     }
     let root_idx = validate_root_idx(graph, root_idx)?;
-
-    let stereo_component_ids = stereo_component_ids(graph);
-    let component_count = stereo_component_ids.iter().copied().max().unwrap_or(-1) + 1;
-    let isolated_components = component_sizes(&stereo_component_ids)
-        .into_iter()
-        .map(|size| size == 1)
-        .collect::<Vec<_>>();
-    let side_infos;
-    let edge_to_side_ids;
-    (side_infos, edge_to_side_ids) = stereo_side_infos(graph, &stereo_component_ids)?;
-
-    let initial_state = SearchState {
-        visited: vec![false; graph.atom_count()],
-        visited_count: 0,
-        pending: vec![Vec::new(); graph.atom_count()],
-        free_labels: Vec::new(),
-        next_label: 1,
-        stereo_component_phases: vec![UNKNOWN_COMPONENT_PHASE; component_count as usize],
-        stereo_selected_neighbors: vec![-1; side_infos.len()],
-        stereo_selected_orientations: vec![UNKNOWN_EDGE_ORIENTATION; side_infos.len()],
-        stereo_component_begin_atoms: vec![-1; component_count as usize],
-    };
-
-    let results = enumerate_from_atom(
-        graph,
-        &stereo_component_ids,
-        &side_infos,
-        &edge_to_side_ids,
-        &isolated_components,
-        root_idx,
-        None,
-        &initial_state,
-    )?;
-    let mut support = BTreeSet::new();
-    for result in results {
-        if result.state.visited_count != graph.atom_count() {
-            continue;
-        }
-        if result.state.pending.iter().any(|rings| !rings.is_empty()) {
-            continue;
-        }
-        let component_flips = isolated_component_flips(
-            graph,
-            &stereo_component_ids,
-            &side_infos,
-            &isolated_components,
-            &result.state,
-        );
-        support.insert(resolve_parts(
-            &result.parts,
-            &result.state.stereo_component_phases,
-            Some(&component_flips),
-        )?);
-    }
-    Ok(support.into_iter().collect())
+    let runtime = build_walker_runtime(graph)?;
+    let initial_state = initial_stereo_state_for_root(&runtime, graph, root_idx);
+    let mut out = BTreeSet::new();
+    enumerate_support_from_stereo_state(&runtime, graph, initial_state, &mut out)?;
+    Ok(out.into_iter().collect())
 }
 
 fn build_walker_runtime(graph: &PreparedSmilesGraphData) -> PyResult<StereoWalkerRuntimeData> {
@@ -1695,7 +1212,9 @@ fn build_walker_runtime(graph: &PreparedSmilesGraphData) -> PyResult<StereoWalke
     let mut side_ids_by_component = vec![Vec::new(); component_count as usize];
     for (side_idx, side_info) in side_infos.iter().enumerate() {
         if side_info.component_idx >= side_ids_by_component.len() {
-            return Err(PyValueError::new_err("stereo side component index out of range"));
+            return Err(PyValueError::new_err(
+                "stereo side component index out of range",
+            ));
         }
         side_ids_by_component[side_info.component_idx].push(side_idx);
     }
@@ -1758,7 +1277,10 @@ fn initial_stereo_state_for_root(
         stereo_selected_neighbors: vec![-1; runtime.side_infos.len()],
         stereo_selected_orientations: vec![UNKNOWN_EDGE_ORIENTATION; runtime.side_infos.len()],
         stereo_component_begin_atoms: vec![-1; runtime.isolated_components.len()],
-        stereo_component_token_flips: vec![UNKNOWN_COMPONENT_TOKEN_FLIP; runtime.isolated_components.len()],
+        stereo_component_token_flips: vec![
+            UNKNOWN_COMPONENT_TOKEN_FLIP;
+            runtime.isolated_components.len()
+        ],
         action_stack,
     }
 }
@@ -1880,7 +1402,9 @@ fn token_from_stored_with_flip(stored_token: &str, token_flip: i8) -> PyResult<S
     match token_flip {
         STORED_COMPONENT_TOKEN_FLIP => Ok(stored_token.to_owned()),
         FLIPPED_COMPONENT_TOKEN_FLIP => flip_direction_token(stored_token),
-        _ => Err(PyValueError::new_err("Unsupported component token flip value")),
+        _ => Err(PyValueError::new_err(
+            "Unsupported component token flip value",
+        )),
     }
 }
 
@@ -1996,29 +1520,32 @@ fn enter_atom_successors_by_token(
                 match *ring_action {
                     RingAction::Close(closure_idx) => {
                         let closure = &closures_here[closure_idx];
-                        let (bond_part, updated_neighbors, updated_orientations) = emitted_edge_part(
-                            graph,
-                            &runtime.side_infos,
-                            &runtime.edge_to_side_ids,
-                            &current_component_phases,
-                            &current_selected_neighbors,
-                            &current_selected_orientations,
-                            &runtime.isolated_components,
-                            atom_idx,
-                            closure.other_atom_idx,
-                        )?;
+                        let (bond_part, updated_neighbors, updated_orientations) =
+                            emitted_edge_part(
+                                graph,
+                                &runtime.side_infos,
+                                &runtime.edge_to_side_ids,
+                                &current_component_phases,
+                                &current_selected_neighbors,
+                                &current_selected_orientations,
+                                &runtime.isolated_components,
+                                atom_idx,
+                                closure.other_atom_idx,
+                            )?;
                         current_selected_neighbors = updated_neighbors;
                         current_selected_orientations = updated_orientations;
                         if let Some(action) = part_to_action(bond_part) {
                             current_ring_actions.push(action);
                         }
-                        current_ring_actions.push(WalkerAction::EmitLiteral(ring_label_text(closure.label)));
+                        current_ring_actions
+                            .push(WalkerAction::EmitLiteral(ring_label_text(closure.label)));
                         labels_freed_after_atom.push(closure.label);
                         ring_neighbor_order.push(closure.other_atom_idx);
                     }
                     RingAction::Open(target_idx) => {
                         let label = allocate_label(&mut current_free, &mut current_next);
-                        current_ring_actions.push(WalkerAction::EmitLiteral(ring_label_text(label)));
+                        current_ring_actions
+                            .push(WalkerAction::EmitLiteral(ring_label_text(label)));
                         let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
                             graph,
                             &runtime.stereo_component_ids,
@@ -2296,9 +1823,10 @@ fn successors_by_token_stereo(
             }
             Ok(out)
         }
-        WalkerAction::EnterAtom { atom_idx, parent_idx } => {
-            enter_atom_successors_by_token(runtime, graph, state, atom_idx, parent_idx)
-        }
+        WalkerAction::EnterAtom {
+            atom_idx,
+            parent_idx,
+        } => enter_atom_successors_by_token(runtime, graph, state, atom_idx, parent_idx),
         WalkerAction::ProcessChildren {
             parent_idx,
             child_order,
@@ -2322,8 +1850,8 @@ fn advance_stereo_token_state(
 ) -> PyResult<RootedConnectedStereoWalkerStateData> {
     let mut successors = successors_by_token_stereo(runtime, graph, state)?;
     let candidates = successors.remove(chosen_token).ok_or_else(|| {
-        let available = next_token_support_for_stereo_state(runtime, graph, state)
-            .unwrap_or_default();
+        let available =
+            next_token_support_for_stereo_state(runtime, graph, state).unwrap_or_default();
         PyKeyError::new_err(format!(
             "Token {chosen_token:?} is not available; choices={available:?}"
         ))
@@ -2359,7 +1887,11 @@ fn enumerate_support_from_stereo_state(
     Ok(())
 }
 
-#[pyclass(name = "RootedConnectedStereoWalkerState", module = "smiles_next_token._core", frozen)]
+#[pyclass(
+    name = "RootedConnectedStereoWalkerState",
+    module = "smiles_next_token._core",
+    frozen
+)]
 pub struct PyRootedConnectedStereoWalkerState {
     data: RootedConnectedStereoWalkerStateData,
 }
@@ -2383,7 +1915,11 @@ impl PyRootedConnectedStereoWalkerState {
     }
 }
 
-#[pyclass(name = "RootedConnectedStereoWalker", module = "smiles_next_token._core", frozen)]
+#[pyclass(
+    name = "RootedConnectedStereoWalker",
+    module = "smiles_next_token._core",
+    frozen
+)]
 pub struct PyRootedConnectedStereoWalker {
     graph: PreparedSmilesGraphData,
     runtime: StereoWalkerRuntimeData,
@@ -2431,7 +1967,12 @@ impl PyRootedConnectedStereoWalker {
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
         Ok(PyRootedConnectedStereoWalkerState {
-            data: advance_stereo_token_state(&self.runtime, &self.graph, &state.data, chosen_token)?,
+            data: advance_stereo_token_state(
+                &self.runtime,
+                &self.graph,
+                &state.data,
+                chosen_token,
+            )?,
         })
     }
 
@@ -2441,7 +1982,8 @@ impl PyRootedConnectedStereoWalker {
     }
 
     fn enumerate_support(&self) -> PyResult<Vec<String>> {
-        let initial_state = initial_stereo_state_for_root(&self.runtime, &self.graph, self.root_idx);
+        let initial_state =
+            initial_stereo_state_for_root(&self.runtime, &self.graph, self.root_idx);
         let mut out = BTreeSet::new();
         enumerate_support_from_stereo_state(&self.runtime, &self.graph, initial_state, &mut out)?;
         Ok(out.into_iter().collect())
@@ -2466,12 +2008,12 @@ mod tests {
 
     use super::{
         advance_stereo_token_state, build_walker_runtime, check_supported_stereo_writer_surface,
-        enumerate_rooted_connected_stereo_smiles_support, initial_stereo_state_for_root,
-        is_terminal_stereo_state, next_token_support_for_stereo_state, validate_root_idx,
+        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
+        initial_stereo_state_for_root, is_terminal_stereo_state,
+        next_token_support_for_stereo_state, validate_root_idx,
     };
     use crate::prepared_graph::{
-        PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE,
-        PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+        PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
 
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
@@ -2566,7 +2108,12 @@ mod tests {
             atom_total_hs: vec![0, 1, 0, 0],
             atom_radical_electrons: vec![0, 0, 0, 0],
             atom_map_numbers: vec![0, 0, 0, 0],
-            atom_tokens: vec!["F".to_owned(), "C".to_owned(), "Cl".to_owned(), "Br".to_owned()],
+            atom_tokens: vec![
+                "F".to_owned(),
+                "C".to_owned(),
+                "Cl".to_owned(),
+                "Br".to_owned(),
+            ],
             neighbors: vec![vec![1], vec![0, 2, 3], vec![1], vec![1]],
             neighbor_bond_tokens: vec![
                 vec!["".to_owned()],
@@ -2645,10 +2192,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(
-            BTreeSet::from([
-                "F[C@H](Cl)Br".to_owned(),
-                "F[C@@H](Br)Cl".to_owned(),
-            ]),
+            BTreeSet::from(["F[C@H](Cl)Br".to_owned(), "F[C@@H](Br)Cl".to_owned(),]),
             root_0,
         );
         assert_eq!(
@@ -2662,6 +2206,66 @@ mod tests {
             ]),
             root_1,
         );
+    }
+
+    #[test]
+    fn stereo_direct_enumerator_matches_walker_state_machine_support() {
+        for (graph, root_idx) in [
+            (sample_stereo_graph(), 0usize),
+            (atom_stereo_graph(), 1usize),
+        ] {
+            let runtime = build_walker_runtime(&graph).expect("runtime should build");
+            let initial_state = initial_stereo_state_for_root(&runtime, &graph, root_idx);
+            let mut walker_support = BTreeSet::new();
+            enumerate_support_from_stereo_state(
+                &runtime,
+                &graph,
+                initial_state,
+                &mut walker_support,
+            )
+            .expect("walker state-machine support should enumerate");
+
+            let direct_support =
+                enumerate_rooted_connected_stereo_smiles_support(&graph, root_idx as isize)
+                    .expect("direct stereo enumeration should succeed")
+                    .into_iter()
+                    .collect::<BTreeSet<_>>();
+
+            assert_eq!(direct_support, walker_support);
+        }
+    }
+
+    #[test]
+    fn stereo_empty_graph_enumerates_empty_string() {
+        let mut graph = sample_stereo_graph();
+        graph.atom_count = 0;
+        graph.bond_count = 0;
+        graph.atom_atomic_numbers.clear();
+        graph.atom_is_aromatic.clear();
+        graph.atom_isotopes.clear();
+        graph.atom_formal_charges.clear();
+        graph.atom_total_hs.clear();
+        graph.atom_radical_electrons.clear();
+        graph.atom_map_numbers.clear();
+        graph.atom_tokens.clear();
+        graph.neighbors.clear();
+        graph.neighbor_bond_tokens.clear();
+        graph.bond_pairs.clear();
+        graph.bond_kinds.clear();
+        graph.atom_chiral_tags.clear();
+        graph.atom_stereo_neighbor_orders.clear();
+        graph.atom_explicit_h_counts.clear();
+        graph.atom_implicit_h_counts.clear();
+        graph.bond_stereo_kinds.clear();
+        graph.bond_stereo_atoms.clear();
+        graph.bond_dirs.clear();
+        graph.bond_begin_atom_indices.clear();
+        graph.bond_end_atom_indices.clear();
+        graph.identity_smiles.clear();
+
+        let support = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
+            .expect("empty stereo graph should enumerate");
+        assert_eq!(vec![String::new()], support);
     }
 
     #[test]
@@ -2698,7 +2302,11 @@ mod tests {
                 .expect("advancing along an available path should succeed");
         }
 
-        assert!(support.contains(&state.prefix), "unexpected terminal prefix: {}", state.prefix);
+        assert!(
+            support.contains(&state.prefix),
+            "unexpected terminal prefix: {}",
+            state.prefix
+        );
     }
 
     #[test]

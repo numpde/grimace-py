@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import unittest
 
 import smiles_next_token
+from smiles_next_token import _runtime
 from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
@@ -197,6 +198,57 @@ class PublicDecoderTests(unittest.TestCase):
                 canonical=False,
                 doRandom=True,
             )
+
+    def test_decoder_empty_molecule_is_terminal_with_empty_prefix(self) -> None:
+        decoder = smiles_next_token.MolToSmilesDecoder(
+            parse_smiles(""),
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        self.assertEqual("", decoder.prefix())
+        self.assertTrue(decoder.isTerminal())
+        self.assertEqual((), decoder.nextTokens())
+        self.assertEqual(
+            {""},
+            set(
+                smiles_next_token.MolToSmilesEnum(
+                    parse_smiles(""),
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                    canonical=False,
+                    doRandom=True,
+                )
+            ),
+        )
+
+    def test_public_enum_matches_internal_walker_enumeration(self) -> None:
+        cases = (
+            DecoderCase(
+                name="walker_nonstereo",
+                smiles="CCO",
+                rooted_at_atom=0,
+                isomeric_smiles=False,
+            ),
+            DecoderCase(
+                name="walker_stereo",
+                smiles="F[C@H](Cl)Br",
+                rooted_at_atom=0,
+                isomeric_smiles=True,
+            ),
+        )
+
+        for case in cases:
+            with self.subTest(case=case.name, smiles=case.smiles):
+                mol = parse_smiles(case.smiles)
+                enum_outputs = self._enumerate_outputs(case)
+                if case.isomeric_smiles:
+                    walker = _runtime.make_stereo_walker(mol, case.rooted_at_atom)
+                else:
+                    walker = _runtime.make_nonstereo_walker(mol, case.rooted_at_atom)
+                self.assertEqual(enum_outputs, set(walker.enumerate_support()))
 
 
 if __name__ == "__main__":

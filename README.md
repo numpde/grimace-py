@@ -2,6 +2,10 @@
 
 Rust-first SMILES enumeration and next-token decoding, with a small Python API.
 
+> [!WARNING]
+> This library is work in progress. Expect API changes, incomplete feature
+> coverage, and rough edges between releases.
+
 ## Public API
 
 The only supported public Python package is `grimace`.

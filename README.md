@@ -1,6 +1,15 @@
 # grimace-py
 
-Rust-first SMILES enumeration and next-token decoding, with a small Python API.
+`grimace` is a Rust-first cheminformatics library for exact SMILES enumeration
+and next-token decoding from RDKit molecules. It computes the full rooted SMILES
+support of a molecule under an RDKit-style writing regime, and exposes the
+corresponding next-token choices during decoding. This is useful when you want
+to train, test, or debug molecular generation models against all valid rooted
+SMILES continuations of the same molecule, rather than against a single
+serialization or a few random samples.
+
+The package is motivated by research on NMR spectroscopy with language
+transformers: <https://numpde.github.io/shared/msc/>.
 
 > [!WARNING]
 > This library is work in progress. Expect API changes, incomplete feature

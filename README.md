@@ -49,6 +49,21 @@ tokens = decoder.nextTokens()
 python -m pip install grimace
 ```
 
+For the current GitHub release, install the wheel that matches your Python
+version:
+
+```bash
+python3.12 -m pip install \
+  https://github.com/numpde/grimace-py/releases/download/v0.1.0/grimace-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl
+
+python3.13 -m pip install \
+  https://github.com/numpde/grimace-py/releases/download/v0.1.0/grimace-0.1.0-cp313-cp313-manylinux_2_34_x86_64.whl
+```
+
+The repo is private, so direct installs from release URLs require GitHub
+authentication. If needed, use `gh release download` first and install the
+downloaded wheel locally.
+
 For local development:
 
 ```bash

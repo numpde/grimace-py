@@ -87,6 +87,8 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
     def test_public_runtime_matches_internal_oracle_for_supported_writer_flags(self) -> None:
         for case in self.CASES:
             with self.subTest(case=case.name, smiles=case.smiles):
+                from smiles_next_token import _runtime
+
                 mol = parse_smiles(case.smiles)
                 reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
                     mol,
@@ -108,19 +110,33 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
                         case.rooted_at_atom,
                     )
 
-                actual = smiles_next_token.MolToSmilesSupport(
+                actual_from_enum = set(
+                    smiles_next_token.MolToSmilesEnum(
+                        mol,
+                        isomericSmiles=case.isomeric_smiles,
+                        kekuleSmiles=case.kekule_smiles,
+                        rootedAtAtom=case.rooted_at_atom,
+                        canonical=False,
+                        allBondsExplicit=case.all_bonds_explicit,
+                        allHsExplicit=case.all_hs_explicit,
+                        doRandom=True,
+                        ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                    )
+                )
+                actual = _runtime.mol_to_smiles_support(
                     mol,
-                    isomericSmiles=case.isomeric_smiles,
-                    kekuleSmiles=case.kekule_smiles,
-                    rootedAtAtom=case.rooted_at_atom,
+                    isomeric_smiles=case.isomeric_smiles,
+                    kekule_smiles=case.kekule_smiles,
+                    rooted_at_atom=case.rooted_at_atom,
                     canonical=False,
-                    allBondsExplicit=case.all_bonds_explicit,
-                    allHsExplicit=case.all_hs_explicit,
-                    doRandom=True,
-                    ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                    all_bonds_explicit=case.all_bonds_explicit,
+                    all_hs_explicit=case.all_hs_explicit,
+                    do_random=True,
+                    ignore_atom_map_numbers=case.ignore_atom_map_numbers,
                 )
 
                 self.assertEqual(expected, actual)
+                self.assertEqual(actual_from_enum, actual)
                 for output_smiles in sorted(actual):
                     parsed = parse_smiles(output_smiles)
                     self.assertEqual(

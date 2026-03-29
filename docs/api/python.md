@@ -6,14 +6,14 @@ The only supported public Python API is `smiles_next_token`.
 
 Current top-level exports:
 
-- `MolToSmilesSupport`
+- `MolToSmilesEnum`
 
 The compiled extension `smiles_next_token._core` is required. There is no
 public runtime fallback.
 
-## MolToSmilesSupport
+## MolToSmilesEnum
 
-`MolToSmilesSupport(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+`MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This is the supported exact-support runtime entrypoint. Its keyword surface
 mirrors RDKit `MolToSmiles`, but the current engine only implements rooted

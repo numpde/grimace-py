@@ -12,18 +12,21 @@ from tests.helpers.mols import parse_smiles
 
 class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
-        self.assertTrue(callable(smiles_next_token.MolToSmilesSupport))
+        self.assertTrue(callable(smiles_next_token.MolToSmilesEnum))
+        self.assertFalse(hasattr(smiles_next_token, "MolToSmilesSupport"))
         self.assertFalse(hasattr(smiles_next_token, "ReferencePolicy"))
         self.assertFalse(hasattr(smiles_next_token, "enumerate_rooted_connected_nonstereo_smiles_support"))
         self.assertFalse(hasattr(smiles_next_token, "enumerate_rooted_connected_stereo_smiles_support"))
         if CORE_MODULE is None:
             with self.assertRaises(ImportError):
-                smiles_next_token.MolToSmilesSupport(
-                    parse_smiles("CCO"),
-                    rootedAtAtom=0,
-                    isomericSmiles=False,
-                    canonical=False,
-                    doRandom=True,
+                tuple(
+                    smiles_next_token.MolToSmilesEnum(
+                        parse_smiles("CCO"),
+                        rootedAtAtom=0,
+                        isomericSmiles=False,
+                        canonical=False,
+                        doRandom=True,
+                    )
                 )
             return
 
@@ -34,35 +37,61 @@ class PythonApiSmokeTests(unittest.TestCase):
                 parse_smiles("CCO"),
                 0,
             ),
-            smiles_next_token.MolToSmilesSupport(
+            set(
+                smiles_next_token.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                    canonical=False,
+                    doRandom=True,
+                )
+            ),
+        )
+        self.assertEqual(
+            set(
+                smiles_next_token.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                    canonical=False,
+                    doRandom=True,
+                )
+            ),
+            _runtime.mol_to_smiles_support(
                 parse_smiles("CCO"),
-                rootedAtAtom=0,
-                isomericSmiles=False,
+                rooted_at_atom=0,
+                isomeric_smiles=False,
                 canonical=False,
-                doRandom=True,
+                do_random=True,
             ),
         )
 
     def test_public_api_rejects_unsupported_flag_combination(self) -> None:
         with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
-            smiles_next_token.MolToSmilesSupport(
-                parse_smiles("CCO"),
-                rootedAtAtom=0,
+            tuple(
+                smiles_next_token.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                )
             )
         with self.assertRaisesRegex(NotImplementedError, "doRandom=True"):
-            smiles_next_token.MolToSmilesSupport(
-                parse_smiles("CCO"),
-                rootedAtAtom=0,
-                canonical=False,
+            tuple(
+                smiles_next_token.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=0,
+                    canonical=False,
+                )
             )
 
     def test_public_api_rejects_disconnected_molecules(self) -> None:
         with self.assertRaisesRegex(NotImplementedError, "singly-connected"):
-            smiles_next_token.MolToSmilesSupport(
-                parse_smiles("CC.O"),
-                rootedAtAtom=0,
-                canonical=False,
-                doRandom=True,
+            tuple(
+                smiles_next_token.MolToSmilesEnum(
+                    parse_smiles("CC.O"),
+                    rootedAtAtom=0,
+                    canonical=False,
+                    doRandom=True,
+                )
             )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
@@ -98,14 +127,24 @@ class PythonApiSmokeTests(unittest.TestCase):
             0,
         )
 
-        support = smiles_next_token.MolToSmilesSupport(
+        support_from_enum = set(
+            smiles_next_token.MolToSmilesEnum(
+                mol,
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                canonical=False,
+                doRandom=True,
+            )
+        )
+        support = _runtime.mol_to_smiles_support(
             mol,
-            rootedAtAtom=0,
-            isomericSmiles=False,
+            rooted_at_atom=0,
+            isomeric_smiles=False,
             canonical=False,
-            doRandom=True,
+            do_random=True,
         )
 
+        self.assertEqual(support_from_enum, support)
         self.assertEqual(expected, support)
 
     def test_top_level_runtime_stereo_surface_smoke(self) -> None:
@@ -118,14 +157,24 @@ class PythonApiSmokeTests(unittest.TestCase):
             mol,
             0,
         )
-        support = smiles_next_token.MolToSmilesSupport(
+        support_from_enum = set(
+            smiles_next_token.MolToSmilesEnum(
+                mol,
+                rootedAtAtom=0,
+                isomericSmiles=True,
+                canonical=False,
+                doRandom=True,
+            )
+        )
+        support = _runtime.mol_to_smiles_support(
             mol,
-            rootedAtAtom=0,
-            isomericSmiles=True,
+            rooted_at_atom=0,
+            isomeric_smiles=True,
             canonical=False,
-            doRandom=True,
+            do_random=True,
         )
 
+        self.assertEqual(support_from_enum, support)
         self.assertEqual(expected, support)
 
 

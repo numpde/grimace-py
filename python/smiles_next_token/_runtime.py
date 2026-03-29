@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from rdkit import Chem
@@ -77,17 +78,17 @@ def _validate_writer_flags(
     )
     if actual != expected:
         raise ValueError(
-            "PreparedSmilesGraph writer flags do not match the requested MolToSmilesSupport options"
+            "PreparedSmilesGraph writer flags do not match the requested MolToSmilesEnum options"
         )
 
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
     if flags.rooted_at_atom < 0:
-        raise NotImplementedError("MolToSmilesSupport requires rootedAtAtom >= 0")
+        raise NotImplementedError("MolToSmilesEnum requires rootedAtAtom >= 0")
     if flags.canonical:
-        raise NotImplementedError("MolToSmilesSupport requires canonical=False")
+        raise NotImplementedError("MolToSmilesEnum requires canonical=False")
     if not flags.do_random:
-        raise NotImplementedError("MolToSmilesSupport requires doRandom=True")
+        raise NotImplementedError("MolToSmilesEnum requires doRandom=True")
 
 
 def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
@@ -95,7 +96,7 @@ def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
         return
     if len(Chem.GetMolFrags(mol)) != 1:
         raise NotImplementedError(
-            "MolToSmilesSupport currently supports only singly-connected molecules"
+            "MolToSmilesEnum currently supports only singly-connected molecules"
         )
 
 
@@ -130,7 +131,7 @@ def prepare_smiles_graph(
 make_prepared_graph = prepare_smiles_graph
 
 
-def mol_to_smiles_support(
+def mol_to_smiles_enum(
     mol_or_prepared: object,
     *,
     isomeric_smiles: bool = True,
@@ -141,7 +142,7 @@ def mol_to_smiles_support(
     all_hs_explicit: bool = False,
     do_random: bool = False,
     ignore_atom_map_numbers: bool = False,
-) -> set[str]:
+) -> Iterator[str]:
     flags = MolToSmilesFlags(
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
@@ -154,11 +155,38 @@ def mol_to_smiles_support(
     )
     _validate_supported_flags(flags)
     prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
-    return set(
+    return iter(
         _core.mol_to_smiles_support(
             prepared,
             flags.rooted_at_atom,
             flags.isomeric_smiles,
+        )
+    )
+
+
+def mol_to_smiles_support(
+    mol_or_prepared: object,
+    *,
+    isomeric_smiles: bool = True,
+    kekule_smiles: bool = False,
+    rooted_at_atom: int = -1,
+    canonical: bool = True,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    do_random: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> set[str]:
+    return set(
+        mol_to_smiles_enum(
+            mol_or_prepared,
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            rooted_at_atom=rooted_at_atom,
+            canonical=canonical,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            do_random=do_random,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
     )
 
@@ -241,6 +269,7 @@ __all__ = [
     "make_nonstereo_walker",
     "make_prepared_graph",
     "make_stereo_walker",
+    "mol_to_smiles_enum",
     "mol_to_smiles_support",
     "prepare_smiles_graph",
     "prepared_smiles_graph_schema_version",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Iterator
 from typing import Any
 
 try:
@@ -24,7 +25,7 @@ def _require_runtime() -> Any:
     return _RUNTIME
 
 
-def MolToSmilesSupport(
+def MolToSmilesEnum(
     mol: object,
     *,
     isomericSmiles: bool = True,
@@ -35,16 +36,11 @@ def MolToSmilesSupport(
     allHsExplicit: bool = False,
     doRandom: bool = False,
     ignoreAtomMapNumbers: bool = False,
-) -> set[str]:
-    """Return the exact rooted SMILES support for a molecule.
-
-    Parameters mirror RDKit ``MolToSmiles``. The current runtime implements
-    exact support only for rooted random generation, so callers must provide
-    the rooted-random combination explicitly.
-    """
+) -> Iterator[str]:
+    """Yield the exact rooted SMILES support for a molecule."""
 
     runtime = _require_runtime()
-    return runtime.mol_to_smiles_support(
+    return runtime.mol_to_smiles_enum(
         mol,
         isomeric_smiles=isomericSmiles,
         kekule_smiles=kekuleSmiles,
@@ -57,4 +53,4 @@ def MolToSmilesSupport(
     )
 
 
-__all__ = ["MolToSmilesSupport"]
+__all__ = ["MolToSmilesEnum"]

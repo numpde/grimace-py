@@ -101,10 +101,10 @@ class RootedAtomTokenTests(unittest.TestCase):
         prepared = prepare_smiles_graph(benzene, self.policy)
         self.assertEqual("[cH:7]", prepared.atom_tokens[0])
 
-    def test_ignore_atom_map_numbers_removes_map_driven_brackets(self) -> None:
+    def test_ignore_atom_map_numbers_does_not_change_emitted_atom_maps(self) -> None:
         ignore_maps_policy = with_sampling_override(self.policy, ignoreAtomMapNumbers=True)
         prepared = prepare_smiles_graph(parse_smiles("[CH3:7]C"), ignore_maps_policy)
-        self.assertEqual(("C", "C"), prepared.atom_tokens)
+        self.assertEqual(("[CH3:7]", "C"), prepared.atom_tokens)
 
     def test_all_hs_explicit_is_emitted_locally(self) -> None:
         explicit_h_policy = with_sampling_override(self.policy, allHsExplicit=True)

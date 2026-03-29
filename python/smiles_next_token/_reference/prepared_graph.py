@@ -177,7 +177,7 @@ def atom_requires_brackets(atom: Chem.Atom, sampling: dict[str, object]) -> bool
     if bool(sampling["allHsExplicit"]):
         return True
 
-    atom_map_num = 0 if bool(sampling["ignoreAtomMapNumbers"]) else atom.GetAtomMapNum()
+    atom_map_num = atom.GetAtomMapNum()
     if atom.GetIsotope() or atom_map_num or atom.GetFormalCharge() or atom.GetNumRadicalElectrons():
         return True
 
@@ -199,7 +199,7 @@ def atom_token(atom: Chem.Atom, sampling: dict[str, object]) -> str:
     if not atom_requires_brackets(atom, sampling):
         return symbol
 
-    atom_map_num = 0 if bool(sampling["ignoreAtomMapNumbers"]) else atom.GetAtomMapNum()
+    atom_map_num = atom.GetAtomMapNum()
     parts = ["["]
     if atom.GetIsotope():
         parts.append(str(atom.GetIsotope()))
@@ -700,6 +700,8 @@ def _prepare_smiles_graph_with_sections(
     sampling: dict[str, object],
     identity: dict[str, object],
 ) -> PreparedSmilesGraph:
+    if bool(sampling["kekuleSmiles"]):
+        Chem.Kekulize(working_mol, clearAromaticFlags=True)
 
     neighbors: list[tuple[int, ...]] = []
     neighbor_bond_tokens: list[tuple[str, ...]] = []

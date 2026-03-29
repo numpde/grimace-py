@@ -52,6 +52,11 @@ python -m pip install maturin
 maturin develop --release
 ```
 
+## License
+
+`grimace` is source-available under PolyForm Noncommercial 1.0.0.
+Commercial use requires a separate commercial license from the author.
+
 ## Current limits
 
 The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset

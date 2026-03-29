@@ -7,6 +7,8 @@ name = "grimace"
 version = "0.0.0"
 description = "Rust-first SMILES enumeration and next-token decoding with Python bindings."
 readme = "README.md"
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = ["rdkit>=2025.9"]
 keywords = ["smiles", "chemistry", "rdkit", "enumeration", "decoding"]

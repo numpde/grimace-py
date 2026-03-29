@@ -1,6 +1,6 @@
 # Python API
 
-## Public Surface
+## Public surface
 
 The only supported public Python API is `smiles_next_token`.
 
@@ -16,9 +16,21 @@ public runtime fallback.
 
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This is the supported exact-support runtime entrypoint. Its keyword surface
-mirrors RDKit `MolToSmiles`, but the current engine only implements rooted
-random support generation.
+This yields the complete exact support as whole SMILES strings.
+
+```python
+outputs = list(
+    smiles_next_token.MolToSmilesEnum(
+        mol,
+        rootedAtAtom=0,
+        canonical=False,
+        doRandom=True,
+    )
+)
+```
+
+The keyword names mirror RDKit `MolToSmiles`, but the current engine only
+implements rooted random support generation.
 
 Supported combination:
 
@@ -41,8 +53,18 @@ multiple disconnected fragments also raise `NotImplementedError`.
 
 `MolToSmilesDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This is the supported incremental next-token runtime entrypoint. It accepts the
-same public flags and contract as `MolToSmilesEnum(...)`.
+This is the incremental next-token API. It accepts the same flags and the same
+current limits as `MolToSmilesEnum(...)`.
+
+```python
+decoder = smiles_next_token.MolToSmilesDecoder(
+    mol,
+    rootedAtAtom=0,
+    canonical=False,
+    doRandom=True,
+)
+tokens = decoder.nextTokens()
+```
 
 Available methods:
 
@@ -59,7 +81,7 @@ The package also contains internal support code:
 - `smiles_next_token._runtime`
   Internal RDKit-to-core bridge helpers.
 - `smiles_next_token._reference`
-  Internal pure-Python oracle/reference implementation used by tests, fixtures,
-  and artifact workflows.
+  Internal pure-Python oracle/reference implementation used by tests and
+  fixtures.
 
 These are not part of the supported public API.

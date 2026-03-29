@@ -1,6 +1,8 @@
 # Docs
 
-User-facing documentation and architecture notes live here.
+Minimal docs for the current public surface and design.
 
-- `architecture/`: design decisions and repository shape.
-- `api/`: public Python-facing API notes.
+- [api/python.md](/home/ra/repos/grimace-py/docs/api/python.md): public Python API
+- [concepts.md](/home/ra/repos/grimace-py/docs/concepts.md): support, decoder, tokens
+- [correctness.md](/home/ra/repos/grimace-py/docs/correctness.md): what is authoritative and how it is tested
+- `architecture/`: internal design notes

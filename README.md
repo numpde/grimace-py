@@ -1,34 +1,67 @@
 # grimace-py
 
-Rust-first SMILES and next-token engine with Python bindings.
+Rust-first SMILES enumeration and next-token decoding, with a small Python API.
 
-## Direction
+## Public API
 
-The repository is organized around a Rust core in [`rust/src/`](/home/ra/repos/grimace-py/rust/src), surfaced to Python through [`python/smiles_next_token/`](/home/ra/repos/grimace-py/python/smiles_next_token).
+The only supported public Python package is `smiles_next_token`.
 
-The intended roles are:
+Current entrypoints:
 
-- Rust: source of truth for runtime data structures, validation, and exact-support algorithms.
-- Python: thin public API over the Rust core, plus internal RDKit bridge code.
-- Internal reference code: oracle checks, fixtures, policy handling, and artifact production.
+- `MolToSmilesEnum(...)`
+- `MolToSmilesDecoder(...)`
 
-## Package Surface
+Both use the compiled Rust extension. There is no public runtime fallback.
 
-The only supported public Python surface is `smiles_next_token`.
+## Quickstart
 
-Current top-level exports:
+```python
+from rdkit import Chem
+import smiles_next_token
 
-- `MolToSmilesDecoder`
-- `MolToSmilesEnum`
+mol = Chem.MolFromSmiles("F/C=C\\Cl")
 
-The compiled extension `smiles_next_token._core` is required for the public runtime package.
-`MolToSmilesEnum(...)` mirrors RDKit `MolToSmiles` flag names, but currently
-supports only rooted random support generation on singly-connected molecules.
-`MolToSmilesDecoder(...)` exposes the same rooted runtime as an incremental
-next-token decoder.
+outputs = list(
+    smiles_next_token.MolToSmilesEnum(
+        mol,
+        rootedAtAtom=0,
+        canonical=False,
+        doRandom=True,
+    )
+)
+
+decoder = smiles_next_token.MolToSmilesDecoder(
+    mol,
+    rootedAtAtom=0,
+    canonical=False,
+    doRandom=True,
+)
+tokens = decoder.nextTokens()
+```
+
+## Current limits
+
+The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset
+is implemented today:
+
+- `rootedAtAtom >= 0`
+- `canonical=False`
+- `doRandom=True`
+- singly-connected molecules only
+
+Supported writer flags:
+
+- `isomericSmiles`
+- `kekuleSmiles`
+- `allBondsExplicit`
+- `allHsExplicit`
+- `ignoreAtomMapNumbers`
+
+Unsupported combinations fail fast with `NotImplementedError`.
 
 ## Docs
 
-- [`docs/README.md`](/home/ra/repos/grimace-py/docs/README.md)
-- [`docs/architecture/rust-first.md`](/home/ra/repos/grimace-py/docs/architecture/rust-first.md)
-- [`docs/api/python.md`](/home/ra/repos/grimace-py/docs/api/python.md)
+- [Docs index](/home/ra/repos/grimace-py/docs/README.md)
+- [Python API](/home/ra/repos/grimace-py/docs/api/python.md)
+- [Concepts](/home/ra/repos/grimace-py/docs/concepts.md)
+- [Correctness](/home/ra/repos/grimace-py/docs/correctness.md)

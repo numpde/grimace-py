@@ -39,6 +39,19 @@ decoder = grimace.MolToSmilesDecoder(
 tokens = decoder.nextTokens()
 ```
 
+## Install
+
+```bash
+python -m pip install grimace
+```
+
+For local development:
+
+```bash
+python -m pip install maturin
+maturin develop --release
+```
+
 ## Current limits
 
 The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset

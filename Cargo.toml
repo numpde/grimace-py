@@ -1,8 +1,12 @@
 [package]
-name = "smiles-next-token-kernel"
+name = "grimace-kernel"
 version = "0.0.0"
+description = "Rust core for the grimace Python package."
 edition = "2021"
 rust-version = "1.83"
+homepage = "https://github.com/numpde/grimace-py"
+repository = "https://github.com/numpde/grimace-py"
+documentation = "https://github.com/numpde/grimace-py/tree/main/docs"
 
 [features]
 default = []

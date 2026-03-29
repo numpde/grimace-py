@@ -8,6 +8,26 @@ version = "0.0.0"
 description = "Rust-first SMILES enumeration and next-token decoding with Python bindings."
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = ["rdkit>=2025.9"]
+keywords = ["smiles", "chemistry", "rdkit", "enumeration", "decoding"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/numpde/grimace-py"
+Source = "https://github.com/numpde/grimace-py"
+Issues = "https://github.com/numpde/grimace-py/issues"
 
 [tool.maturin]
 python-source = "python"

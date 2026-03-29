@@ -91,8 +91,7 @@ step it exposes the legal next tokens for the current emitted prefix.
 
 ## pip install ...
 
-For the current GitHub release, download the wheel that matches your system and
-Python version, then install it with `python -m pip install <wheel>`.
+Install with `pip install <wheel>` with one of those (download or use the link directly):
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |

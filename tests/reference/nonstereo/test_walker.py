@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import unittest
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     RootedConnectedNonStereoWalker,
     RootedConnectedNonStereoWalkerState,
     enumerate_rooted_nonstereo_smiles_support,

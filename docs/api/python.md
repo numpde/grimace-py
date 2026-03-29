@@ -2,14 +2,14 @@
 
 ## Public surface
 
-The only supported public Python API is `smiles_next_token`.
+The only supported public Python API is `grimace`.
 
 Current top-level exports:
 
 - `MolToSmilesDecoder`
 - `MolToSmilesEnum`
 
-The compiled extension `smiles_next_token._core` is required. There is no
+The compiled extension `grimace._core` is required. There is no
 public runtime fallback.
 
 ## MolToSmilesEnum
@@ -20,7 +20,7 @@ This yields the complete exact support as whole SMILES strings.
 
 ```python
 outputs = list(
-    smiles_next_token.MolToSmilesEnum(
+    grimace.MolToSmilesEnum(
         mol,
         rootedAtAtom=0,
         canonical=False,
@@ -65,7 +65,7 @@ It exposes next-token support for the same rooted random writer mode. It does
 not expose RDKit's internal writer directly.
 
 ```python
-decoder = smiles_next_token.MolToSmilesDecoder(
+decoder = grimace.MolToSmilesDecoder(
     mol,
     rootedAtAtom=0,
     canonical=False,
@@ -114,9 +114,9 @@ The test suite is layered:
 
 The package also contains internal support code:
 
-- `smiles_next_token._runtime`
+- `grimace._runtime`
   Internal RDKit-to-core bridge helpers.
-- `smiles_next_token._reference`
+- `grimace._reference`
   Internal pure-Python oracle/reference implementation used by tests and
   fixtures.
 

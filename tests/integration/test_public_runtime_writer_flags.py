@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unittest
 
-import smiles_next_token
-from smiles_next_token._reference.prepared_graph import (
+import grimace
+from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
-from smiles_next_token._reference.rooted_enumerator import (
+from grimace._reference.rooted_enumerator import (
     enumerate_rooted_connected_nonstereo_smiles_support,
     enumerate_rooted_connected_stereo_smiles_support,
 )
@@ -87,7 +87,7 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
     def test_public_runtime_matches_internal_oracle_for_supported_writer_flags(self) -> None:
         for case in self.CASES:
             with self.subTest(case=case.name, smiles=case.smiles):
-                from smiles_next_token import _runtime
+                from grimace import _runtime
 
                 mol = parse_smiles(case.smiles)
                 reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
@@ -111,7 +111,7 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
                     )
 
                 actual_from_enum = set(
-                    smiles_next_token.MolToSmilesEnum(
+                    grimace.MolToSmilesEnum(
                         mol,
                         isomericSmiles=case.isomeric_smiles,
                         kekuleSmiles=case.kekule_smiles,

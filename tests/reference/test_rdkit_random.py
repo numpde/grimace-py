@@ -4,7 +4,7 @@ import unittest
 
 from rdkit import Chem, rdBase
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     ReferencePolicy,
     load_default_molecule_cases,

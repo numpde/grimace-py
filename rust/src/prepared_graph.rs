@@ -632,7 +632,7 @@ impl PreparedSmilesGraphData {
 
 #[pyclass(
     name = "PreparedSmilesGraph",
-    module = "smiles_next_token._core",
+    module = "grimace._core",
     frozen
 )]
 pub struct PyPreparedSmilesGraph {

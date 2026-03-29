@@ -7,7 +7,7 @@ import unittest
 
 from rdkit import Chem
 
-from smiles_next_token._reference import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
+from grimace._reference import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy

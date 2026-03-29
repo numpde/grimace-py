@@ -3,15 +3,15 @@ requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "smiles-next-token"
+name = "grimace"
 version = "0.0.0"
-description = "Rust-first SMILES and next-token tooling with Python bindings and RDKit reference helpers."
+description = "Rust-first SMILES enumeration and next-token decoding with Python bindings."
 readme = "README.md"
 requires-python = ">=3.11"
 
 [tool.maturin]
 python-source = "python"
-module-name = "smiles_next_token._core"
+module-name = "grimace._core"
 features = ["python-extension"]
 
 [dependency-groups]

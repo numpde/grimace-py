@@ -7,7 +7,7 @@ import unittest
 
 from rdkit import Chem
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     enumerate_rooted_nonstereo_smiles_support,
     load_default_connected_nonstereo_molecule_cases,
     prepare_smiles_graph,

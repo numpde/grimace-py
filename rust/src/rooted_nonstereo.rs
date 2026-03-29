@@ -682,7 +682,7 @@ pub(crate) fn enumerate_rooted_connected_nonstereo_smiles_support(
 
 #[pyclass(
     name = "RootedConnectedNonStereoWalkerState",
-    module = "smiles_next_token._core",
+    module = "grimace._core",
     frozen
 )]
 pub struct PyRootedConnectedNonStereoWalkerState {
@@ -710,7 +710,7 @@ impl PyRootedConnectedNonStereoWalkerState {
 
 #[pyclass(
     name = "RootedConnectedNonStereoWalker",
-    module = "smiles_next_token._core",
+    module = "grimace._core",
     frozen
 )]
 pub struct PyRootedConnectedNonStereoWalker {

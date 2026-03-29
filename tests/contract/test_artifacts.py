@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
     DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     ReferencePolicy,

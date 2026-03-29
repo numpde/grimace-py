@@ -4,7 +4,7 @@ Rust-first SMILES enumeration and next-token decoding, with a small Python API.
 
 ## Public API
 
-The only supported public Python package is `smiles_next_token`.
+The only supported public Python package is `grimace`.
 
 Current entrypoints:
 
@@ -17,12 +17,12 @@ Both use the compiled Rust extension. There is no public runtime fallback.
 
 ```python
 from rdkit import Chem
-import smiles_next_token
+import grimace
 
 mol = Chem.MolFromSmiles("F/C=C\\Cl")
 
 outputs = list(
-    smiles_next_token.MolToSmilesEnum(
+    grimace.MolToSmilesEnum(
         mol,
         rootedAtAtom=0,
         canonical=False,
@@ -30,7 +30,7 @@ outputs = list(
     )
 )
 
-decoder = smiles_next_token.MolToSmilesDecoder(
+decoder = grimace.MolToSmilesDecoder(
     mol,
     rootedAtAtom=0,
     canonical=False,

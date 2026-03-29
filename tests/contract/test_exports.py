@@ -1,6 +1,6 @@
 import unittest
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     RootedConnectedNonStereoWalker,
     RootedConnectedNonStereoWalkerState,
     enumerate_rooted_connected_nonstereo_smiles_support,

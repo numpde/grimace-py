@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     PreparedSmilesGraph,
     enumerate_rooted_nonstereo_smiles_support,
     enumerate_rooted_smiles_support,

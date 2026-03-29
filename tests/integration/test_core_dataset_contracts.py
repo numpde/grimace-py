@@ -4,7 +4,7 @@ import unittest
 
 from rdkit import Chem
 
-from smiles_next_token._reference import (
+from grimace._reference import (
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     load_default_connected_nonstereo_molecule_cases,
     validate_rooted_connected_stereo_smiles_support,
@@ -25,7 +25,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
             raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_kernel_prepared_graph_roundtrips_dataset_slice(self) -> None:
-        from smiles_next_token import _runtime
+        from grimace import _runtime
 
         cases = load_default_connected_nonstereo_molecule_cases(limit=25, max_smiles_length=20)
         self.assertEqual(25, len(cases))
@@ -45,7 +45,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
                 self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
 
     def test_kernel_stereo_outputs_canonicalize_on_representative_case_set(self) -> None:
-        from smiles_next_token import _runtime
+        from grimace import _runtime
 
         cases: list[tuple[str, str, str]] = []
         cases.extend(

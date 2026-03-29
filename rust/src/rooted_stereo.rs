@@ -1889,7 +1889,7 @@ fn enumerate_support_from_stereo_state(
 
 #[pyclass(
     name = "RootedConnectedStereoWalkerState",
-    module = "smiles_next_token._core",
+    module = "grimace._core",
     frozen
 )]
 pub struct PyRootedConnectedStereoWalkerState {
@@ -1917,7 +1917,7 @@ impl PyRootedConnectedStereoWalkerState {
 
 #[pyclass(
     name = "RootedConnectedStereoWalker",
-    module = "smiles_next_token._core",
+    module = "grimace._core",
     frozen
 )]
 pub struct PyRootedConnectedStereoWalker {

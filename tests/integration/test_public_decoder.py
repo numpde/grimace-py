@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unittest
 
-import smiles_next_token
-from smiles_next_token import _runtime
+import grimace
+from grimace import _runtime
 from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
@@ -74,8 +74,8 @@ class PublicDecoderTests(unittest.TestCase):
     def _make_decoder(
         self,
         case: DecoderCase,
-    ) -> smiles_next_token.MolToSmilesDecoder:
-        return smiles_next_token.MolToSmilesDecoder(
+    ) -> grimace.MolToSmilesDecoder:
+        return grimace.MolToSmilesDecoder(
             parse_smiles(case.smiles),
             isomericSmiles=case.isomeric_smiles,
             kekuleSmiles=case.kekule_smiles,
@@ -89,7 +89,7 @@ class PublicDecoderTests(unittest.TestCase):
 
     def _enumerate_outputs(self, case: DecoderCase) -> set[str]:
         return set(
-            smiles_next_token.MolToSmilesEnum(
+            grimace.MolToSmilesEnum(
                 parse_smiles(case.smiles),
                 isomericSmiles=case.isomeric_smiles,
                 kekuleSmiles=case.kekule_smiles,
@@ -153,7 +153,7 @@ class PublicDecoderTests(unittest.TestCase):
         self.assertTrue(any(output.startswith(right.prefix()) for output in outputs))
 
     def test_decoder_rejects_invalid_token_with_available_choices(self) -> None:
-        decoder = smiles_next_token.MolToSmilesDecoder(
+        decoder = grimace.MolToSmilesDecoder(
             parse_smiles("CCO"),
             rootedAtAtom=0,
             isomericSmiles=False,
@@ -168,21 +168,21 @@ class PublicDecoderTests(unittest.TestCase):
         mol = parse_smiles("CCO")
 
         with self.assertRaisesRegex(NotImplementedError, "rootedAtAtom >= 0"):
-            smiles_next_token.MolToSmilesDecoder(
+            grimace.MolToSmilesDecoder(
                 mol,
                 isomericSmiles=False,
                 canonical=False,
                 doRandom=True,
             )
         with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
-            smiles_next_token.MolToSmilesDecoder(
+            grimace.MolToSmilesDecoder(
                 mol,
                 rootedAtAtom=0,
                 isomericSmiles=False,
                 doRandom=True,
             )
         with self.assertRaisesRegex(NotImplementedError, "doRandom=True"):
-            smiles_next_token.MolToSmilesDecoder(
+            grimace.MolToSmilesDecoder(
                 mol,
                 rootedAtAtom=0,
                 isomericSmiles=False,
@@ -191,7 +191,7 @@ class PublicDecoderTests(unittest.TestCase):
 
     def test_decoder_rejects_disconnected_molecules(self) -> None:
         with self.assertRaisesRegex(NotImplementedError, "singly-connected"):
-            smiles_next_token.MolToSmilesDecoder(
+            grimace.MolToSmilesDecoder(
                 parse_smiles("CC.O"),
                 rootedAtAtom=0,
                 isomericSmiles=False,
@@ -200,7 +200,7 @@ class PublicDecoderTests(unittest.TestCase):
             )
 
     def test_decoder_empty_molecule_is_terminal_with_empty_prefix(self) -> None:
-        decoder = smiles_next_token.MolToSmilesDecoder(
+        decoder = grimace.MolToSmilesDecoder(
             parse_smiles(""),
             rootedAtAtom=0,
             isomericSmiles=False,
@@ -214,7 +214,7 @@ class PublicDecoderTests(unittest.TestCase):
         self.assertEqual(
             {""},
             set(
-                smiles_next_token.MolToSmilesEnum(
+                grimace.MolToSmilesEnum(
                     parse_smiles(""),
                     rootedAtAtom=0,
                     isomericSmiles=False,

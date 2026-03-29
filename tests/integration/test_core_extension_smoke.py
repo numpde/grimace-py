@@ -13,7 +13,7 @@ class CoreExtensionSmokeTests(unittest.TestCase):
             raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_core_objects_construct_and_advance(self) -> None:
-        from smiles_next_token import _runtime
+        from grimace import _runtime
 
         mol = parse_smiles("CCO")
         prepared = _runtime.prepare_smiles_graph(

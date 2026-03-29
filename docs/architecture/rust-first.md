@@ -30,10 +30,10 @@ RDKit-based bridge and oracle code.
 
 ## Public And Internal Boundaries
 
-- `smiles_next_token` is the only supported public Python API.
-- `smiles_next_token._core` is required and remains hidden implementation detail.
-- `smiles_next_token._runtime` is internal bridge code.
-- `smiles_next_token._reference` is internal oracle/reference code.
+- `grimace` is the only supported public Python API.
+- `grimace._core` is required and remains hidden implementation detail.
+- `grimace._runtime` is internal bridge code.
+- `grimace._reference` is internal oracle/reference code.
 
 ## Test Authority
 
@@ -55,4 +55,4 @@ of expanding later ones.
 - New runtime behavior should land in Rust first.
 - Avoid adding dual implementations unless there is a concrete oracle or test
   need.
-- Public API changes should happen in `smiles_next_token`, not in internal modules.
+- Public API changes should happen in `grimace`, not in internal modules.

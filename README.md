@@ -61,7 +61,7 @@ Unsupported combinations fail fast with `NotImplementedError`.
 
 ## Docs
 
-- [Docs index](/home/ra/repos/grimace-py/docs/README.md)
-- [Python API](/home/ra/repos/grimace-py/docs/api/python.md)
-- [Concepts](/home/ra/repos/grimace-py/docs/concepts.md)
-- [Correctness](/home/ra/repos/grimace-py/docs/correctness.md)
+- [Docs index](docs/README.md)
+- [Python API](docs/api/python.md)
+- [Concepts](docs/concepts.md)
+- [Correctness](docs/correctness.md)

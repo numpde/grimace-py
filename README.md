@@ -59,6 +59,8 @@ python3.13 -m pip install \
 For local development:
 
 ```bash
+python -m venv .venv
+. .venv/bin/activate
 python -m pip install maturin
 maturin develop --release
 ```

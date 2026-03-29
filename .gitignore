@@ -15,10 +15,10 @@ htmlcov/
 .venv/
 .python-version
 
-python/smiles_next_token/_core*.so
-python/smiles_next_token/_core*.dylib
-python/smiles_next_token/_core*.dll
-python/smiles_next_token/_core*.pyd
+python/grimace/_core*.so
+python/grimace/_core*.dylib
+python/grimace/_core*.dll
+python/grimace/_core*.pyd
 
 Cargo.lock
 

@@ -8,9 +8,10 @@ on:
 
 jobs:
   wheel:
-    name: Build wheel (linux-x86_64, cp312)
+    name: Build wheel (linux-x86_64, cp${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: linux-x86_64
@@ -18,6 +19,11 @@ jobs:
             target: x86_64
             manylinux: "2_28"
             python-version: "3.12"
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64
+            manylinux: "2_28"
+            python-version: "3.13"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

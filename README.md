@@ -68,22 +68,22 @@ while not decoder.is_terminal:
 Expected output:
 
 ```text
-  -> ['C']
- C -> ['C']
- CC -> ['(']
- CC( -> ['=', 'O']
- CC(= -> ['O']
- CC(=O -> [')']
- ...
- CC(=O)Oc1 -> ['c']
- CC(=O)Oc1c -> ['(', 'c']
- CC(=O)Oc1c( -> ['C', 'c']
- CC(=O)Oc1c(C -> ['(']
- CC(=O)Oc1c(C( -> ['=', 'O']
- CC(=O)Oc1c(C(= -> ['O']
- CC(=O)Oc1c(C(=O -> [')']
- ...
- CC(=O)Oc1c(C(=O)O)cccc -> ['1']
+-> ['C']
+C -> ['C']
+CC -> ['(']
+CC( -> ['=', 'O']
+CC(= -> ['O']
+CC(=O -> [')']
+...
+CC(=O)Oc1 -> ['c']
+CC(=O)Oc1c -> ['(', 'c']
+CC(=O)Oc1c( -> ['C', 'c']
+CC(=O)Oc1c(C -> ['(']
+CC(=O)Oc1c(C( -> ['=', 'O']
+CC(=O)Oc1c(C(= -> ['O']
+CC(=O)Oc1c(C(=O -> [')']
+...
+CC(=O)Oc1c(C(=O)O)cccc -> ['1']
 ```
 
 The decoder is online. It does not precompute one fixed trajectory. At each

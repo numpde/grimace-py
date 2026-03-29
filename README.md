@@ -119,10 +119,12 @@ stability guarantee.
 
 | Canonical SMILES | Atoms | Support | Grimace enum (all roots) | Decoder enum (all roots) | RDKit to 1/2 support | RDKit to full support |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **16.3** ms | **31.1** ms | **5.1** ± 0.5 ms (230.0 ± 18.8 draws) | **58.1** ± 14.3 ms (3086.7 ± 921.8 draws) |
-| `C1CC2(CCO1)CO2` | 8 | 36 | **3.5** ms | **4.7** ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.9** ± 0.5 ms (155.6 ± 35.8 draws) |
-| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **14.6** ms | **25.4** ms | **2.0** ± 0.2 ms (97.4 ± 8.7 draws) | **18.2** ± 3.2 ms (987.9 ± 169.9 draws) |
-| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **29.3** ms | **41.6** ms | **0.6** ± 0.0 ms (44.1 ± 2.5 draws) | **6.0** ± 1.5 ms (483.0 ± 122.3 draws) |
+| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **15.8** ms | **30.6** ms | **5.4** ± 0.5 ms (230.0 ± 18.8 draws) | **60.0** ± 14.3 ms (3086.7 ± 921.8 draws) |
+| `C1CC2(CCO1)CO2` | 8 | 36 | **3.3** ms | **4.5** ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.8** ± 0.4 ms (155.6 ± 35.8 draws) |
+| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **13.5** ms | **22.7** ms | **1.8** ± 0.2 ms (97.4 ± 8.7 draws) | **18.2** ± 2.7 ms (987.9 ± 169.9 draws) |
+| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **29.3** ms | **40.8** ms | **0.6** ± 0.0 ms (44.1 ± 2.5 draws) | **5.9** ± 1.5 ms (483.0 ± 122.3 draws) |
+| `N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O` | 14 | 688 | **44.0** ms | **94.3** ms | **9.7** ± 0.2 ms (514.3 ± 12.9 draws) | **150.1** ± 46.2 ms (7946.7 ± 2448.6 draws) |
+| `COc1ccc2cc([C@H](C)C(=O)O)ccc2c1` | 17 | 1504 | **98.9** ms | **227.0** ms | **27.3** ± 1.0 ms (1143.0 ± 34.0 draws) | **579.6** ± 111.9 ms (24406.3 ± 4916.2 draws) |
 
 ## License
 

@@ -76,6 +76,16 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             rooted_at_atom=0,
             isomeric_smiles=True,
         ),
+        TimingCase(
+            smiles="C1=CC(=C(C=C1C[C@@H](C(=O)O)N)O)O",
+            rooted_at_atom=0,
+            isomeric_smiles=True,
+        ),
+        TimingCase(
+            smiles="C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)O",
+            rooted_at_atom=0,
+            isomeric_smiles=True,
+        ),
     )
 
     def test_generate_readme_timing_table(self) -> None:

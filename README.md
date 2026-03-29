@@ -18,11 +18,14 @@ The only supported public Python surface is `smiles_next_token`.
 
 Current top-level exports:
 
+- `MolToSmilesDecoder`
 - `MolToSmilesEnum`
 
 The compiled extension `smiles_next_token._core` is required for the public runtime package.
 `MolToSmilesEnum(...)` mirrors RDKit `MolToSmiles` flag names, but currently
 supports only rooted random support generation on singly-connected molecules.
+`MolToSmilesDecoder(...)` exposes the same rooted runtime as an incremental
+next-token decoder.
 
 ## Docs
 

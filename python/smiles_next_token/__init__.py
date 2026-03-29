@@ -53,4 +53,56 @@ def MolToSmilesEnum(
     )
 
 
-__all__ = ["MolToSmilesEnum"]
+class MolToSmilesDecoder:
+    __slots__ = ("_impl",)
+
+    def __init__(
+        self,
+        mol: object,
+        *,
+        isomericSmiles: bool = True,
+        kekuleSmiles: bool = False,
+        rootedAtAtom: int = -1,
+        canonical: bool = True,
+        allBondsExplicit: bool = False,
+        allHsExplicit: bool = False,
+        doRandom: bool = False,
+        ignoreAtomMapNumbers: bool = False,
+    ) -> None:
+        runtime = _require_runtime()
+        self._impl = runtime.MolToSmilesDecoder(
+            mol,
+            isomeric_smiles=isomericSmiles,
+            kekule_smiles=kekuleSmiles,
+            rooted_at_atom=rootedAtAtom,
+            canonical=canonical,
+            all_bonds_explicit=allBondsExplicit,
+            all_hs_explicit=allHsExplicit,
+            do_random=doRandom,
+            ignore_atom_map_numbers=ignoreAtomMapNumbers,
+        )
+
+    @classmethod
+    def _from_impl(cls, impl: object) -> "MolToSmilesDecoder":
+        decoder = cls.__new__(cls)
+        decoder._impl = impl
+        return decoder
+
+    def nextTokens(self) -> tuple[str, ...]:
+        return self._impl.nextTokens()
+
+    def advance(self, token: str) -> "MolToSmilesDecoder":
+        self._impl.advance(token)
+        return self
+
+    def prefix(self) -> str:
+        return self._impl.prefix()
+
+    def isTerminal(self) -> bool:
+        return self._impl.isTerminal()
+
+    def copy(self) -> "MolToSmilesDecoder":
+        return type(self)._from_impl(self._impl.copy())
+
+
+__all__ = ["MolToSmilesDecoder", "MolToSmilesEnum"]

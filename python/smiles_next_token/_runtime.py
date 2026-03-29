@@ -78,17 +78,17 @@ def _validate_writer_flags(
     )
     if actual != expected:
         raise ValueError(
-            "PreparedSmilesGraph writer flags do not match the requested MolToSmilesEnum options"
+            "PreparedSmilesGraph writer flags do not match the requested public runtime options"
         )
 
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
     if flags.rooted_at_atom < 0:
-        raise NotImplementedError("MolToSmilesEnum requires rootedAtAtom >= 0")
+        raise NotImplementedError("MolToSmiles runtime requires rootedAtAtom >= 0")
     if flags.canonical:
-        raise NotImplementedError("MolToSmilesEnum requires canonical=False")
+        raise NotImplementedError("MolToSmiles runtime requires canonical=False")
     if not flags.do_random:
-        raise NotImplementedError("MolToSmilesEnum requires doRandom=True")
+        raise NotImplementedError("MolToSmiles runtime requires doRandom=True")
 
 
 def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
@@ -96,7 +96,7 @@ def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
         return
     if len(Chem.GetMolFrags(mol)) != 1:
         raise NotImplementedError(
-            "MolToSmilesEnum currently supports only singly-connected molecules"
+            "MolToSmiles runtime currently supports only singly-connected molecules"
         )
 
 
@@ -129,6 +129,74 @@ def prepare_smiles_graph(
 
 
 make_prepared_graph = prepare_smiles_graph
+
+
+def _make_walker(
+    mol_or_prepared: object,
+    flags: MolToSmilesFlags,
+) -> object:
+    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
+    if flags.isomeric_smiles:
+        return _core.RootedConnectedStereoWalker(prepared, flags.rooted_at_atom)
+    return _core.RootedConnectedNonStereoWalker(prepared, flags.rooted_at_atom)
+
+
+class MolToSmilesDecoder:
+    __slots__ = ("_walker", "_state")
+
+    def __init__(
+        self,
+        mol_or_prepared: object,
+        *,
+        isomeric_smiles: bool = True,
+        kekule_smiles: bool = False,
+        rooted_at_atom: int = -1,
+        canonical: bool = True,
+        all_bonds_explicit: bool = False,
+        all_hs_explicit: bool = False,
+        do_random: bool = False,
+        ignore_atom_map_numbers: bool = False,
+    ) -> None:
+        flags = MolToSmilesFlags(
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            rooted_at_atom=rooted_at_atom,
+            canonical=canonical,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            do_random=do_random,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
+        )
+        _validate_supported_flags(flags)
+        self._walker = _make_walker(mol_or_prepared, flags)
+        self._state = self._walker.initial_state()
+
+    @classmethod
+    def _from_parts(
+        cls,
+        walker: object,
+        state: object,
+    ) -> "MolToSmilesDecoder":
+        decoder = cls.__new__(cls)
+        decoder._walker = walker
+        decoder._state = state
+        return decoder
+
+    def nextTokens(self) -> tuple[str, ...]:
+        return tuple(self._walker.next_token_support(self._state))
+
+    def advance(self, token: str) -> "MolToSmilesDecoder":
+        self._state = self._walker.advance_token(self._state, token)
+        return self
+
+    def prefix(self) -> str:
+        return self._state.prefix
+
+    def isTerminal(self) -> bool:
+        return self._walker.is_terminal(self._state)
+
+    def copy(self) -> "MolToSmilesDecoder":
+        return type(self)._from_parts(self._walker, self._state)
 
 
 def mol_to_smiles_enum(
@@ -262,6 +330,7 @@ def prepared_smiles_graph_schema_version() -> int:
 __all__ = [
     "CONNECTED_NONSTEREO_SURFACE",
     "CONNECTED_STEREO_SURFACE",
+    "MolToSmilesDecoder",
     "MolToSmilesFlags",
     "PREPARED_SMILES_GRAPH_SCHEMA_VERSION",
     "enumerate_rooted_connected_nonstereo_smiles_support",

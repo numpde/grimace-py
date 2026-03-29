@@ -12,6 +12,7 @@ from tests.helpers.mols import parse_smiles
 
 class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
+        self.assertTrue(callable(smiles_next_token.MolToSmilesDecoder))
         self.assertTrue(callable(smiles_next_token.MolToSmilesEnum))
         self.assertFalse(hasattr(smiles_next_token, "MolToSmilesSupport"))
         self.assertFalse(hasattr(smiles_next_token, "ReferencePolicy"))

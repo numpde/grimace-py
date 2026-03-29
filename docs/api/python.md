@@ -6,6 +6,7 @@ The only supported public Python API is `smiles_next_token`.
 
 Current top-level exports:
 
+- `MolToSmilesDecoder`
 - `MolToSmilesEnum`
 
 The compiled extension `smiles_next_token._core` is required. There is no
@@ -35,6 +36,21 @@ Supported writer flags:
 
 Unsupported combinations fail fast with `NotImplementedError`. Molecules with
 multiple disconnected fragments also raise `NotImplementedError`.
+
+## MolToSmilesDecoder
+
+`MolToSmilesDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+
+This is the supported incremental next-token runtime entrypoint. It accepts the
+same public flags and contract as `MolToSmilesEnum(...)`.
+
+Available methods:
+
+- `nextTokens() -> tuple[str, ...]`
+- `advance(token: str)`
+- `prefix() -> str`
+- `isTerminal() -> bool`
+- `copy() -> MolToSmilesDecoder`
 
 ## Internal Modules
 

@@ -45,10 +45,6 @@ tokens = decoder.nextTokens()
 
 ## Install
 
-```bash
-python -m pip install grimace
-```
-
 For the current GitHub release, install the wheel that matches your Python
 version:
 

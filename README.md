@@ -89,18 +89,14 @@ CC(=O)Oc1c(C(=O)O)cccc -> ['1']
 The decoder is online. It does not precompute one fixed trajectory. At each
 step it exposes the legal next tokens for the current emitted prefix.
 
-## Install
+## pip install ...
 
-For the current GitHub release, install the wheel that matches your Python
-version:
+For the current GitHub release, download the wheel that matches your system and
+Python version, then install it with `python -m pip install <wheel>`.
 
-```bash
-python3.12 -m pip install \
-  https://github.com/numpde/grimace-py/releases/download/v0.1.0/grimace-0.1.0-cp312-cp312-manylinux_2_34_x86_64.whl
-
-python3.13 -m pip install \
-  https://github.com/numpde/grimace-py/releases/download/v0.1.0/grimace-0.1.0-cp313-cp313-manylinux_2_34_x86_64.whl
-```
+| System | 3.12 | 3.13 |
+| --- | --- | --- |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.0/grimace-0.1.0-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.0/grimace-0.1.0-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 For local development:
 

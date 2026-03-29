@@ -88,18 +88,21 @@ class MolToSmilesDecoder:
         decoder._impl = impl
         return decoder
 
-    def nextTokens(self) -> tuple[str, ...]:
-        return self._impl.nextTokens()
+    @property
+    def next_tokens(self) -> tuple[str, ...]:
+        return self._impl.next_tokens
 
     def advance(self, token: str) -> "MolToSmilesDecoder":
         self._impl.advance(token)
         return self
 
+    @property
     def prefix(self) -> str:
-        return self._impl.prefix()
+        return self._impl.prefix
 
-    def isTerminal(self) -> bool:
-        return self._impl.isTerminal()
+    @property
+    def is_terminal(self) -> bool:
+        return self._impl.is_terminal
 
     def copy(self) -> "MolToSmilesDecoder":
         return type(self)._from_impl(self._impl.copy())

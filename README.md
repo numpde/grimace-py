@@ -53,11 +53,11 @@ decoder = grimace.MolToSmilesDecoder(
     canonical=False,
     doRandom=True,
 )
-while decoder.prefix() != "CC(=O)Oc1c":
-    print(f"{decoder.prefix()} -> {list(decoder.nextTokens())}")
-    decoder.advance(decoder.nextTokens()[0])
+while not decoder.is_terminal:
+    print(f"{decoder.prefix} -> {list(decoder.next_tokens)}")
+    decoder.advance(decoder.next_tokens[0])
 
-print(f"{decoder.prefix()} -> {list(decoder.nextTokens())}")
+print(decoder.prefix)
 ```
 
 Expected output:
@@ -66,7 +66,7 @@ Expected output:
 #  -> ['C']
 # C -> ['C']
 # CC -> ['(']
-# CC( -> ['=']
+# CC( -> ['=', 'O']
 # CC(= -> ['O']
 # CC(=O -> [')']
 # CC(=O) -> ['O']
@@ -74,6 +74,19 @@ Expected output:
 # CC(=O)Oc -> ['1']
 # CC(=O)Oc1 -> ['c']
 # CC(=O)Oc1c -> ['(', 'c']
+# CC(=O)Oc1c( -> ['C', 'c']
+# CC(=O)Oc1c(C -> ['(']
+# CC(=O)Oc1c(C( -> ['=', 'O']
+# CC(=O)Oc1c(C(= -> ['O']
+# CC(=O)Oc1c(C(=O -> [')']
+# CC(=O)Oc1c(C(=O) -> ['O']
+# CC(=O)Oc1c(C(=O)O -> [')']
+# CC(=O)Oc1c(C(=O)O) -> ['c']
+# CC(=O)Oc1c(C(=O)O)c -> ['c']
+# CC(=O)Oc1c(C(=O)O)cc -> ['c']
+# CC(=O)Oc1c(C(=O)O)ccc -> ['c']
+# CC(=O)Oc1c(C(=O)O)cccc -> ['1']
+# CC(=O)Oc1c(C(=O)O)cccc1
 ```
 
 The decoder is online. It does not precompute one fixed trajectory. At each

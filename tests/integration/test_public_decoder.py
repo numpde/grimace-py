@@ -129,12 +129,12 @@ class PublicDecoderTests(unittest.TestCase):
                     atom_tokens = self._atom_tokens(case)
                     chosen_tokens: list[str] = []
 
-                    while not decoder.isTerminal():
-                        options = decoder.nextTokens()
+                    while not decoder.is_terminal:
+                        options = decoder.next_tokens
                         self.assertTrue(options)
                         assert_prefix_options_match_outputs(
                             self,
-                            decoder.prefix(),
+                            decoder.prefix,
                             options,
                             outputs,
                             atom_tokens=atom_tokens,
@@ -143,9 +143,9 @@ class PublicDecoderTests(unittest.TestCase):
                         chosen_tokens.append(chosen_token)
                         decoder.advance(chosen_token)
 
-                    self.assertEqual((), decoder.nextTokens())
-                    self.assertEqual(decoder.prefix(), "".join(chosen_tokens))
-                    self.assertIn(decoder.prefix(), outputs)
+                    self.assertEqual((), decoder.next_tokens)
+                    self.assertEqual(decoder.prefix, "".join(chosen_tokens))
+                    self.assertIn(decoder.prefix, outputs)
 
     def test_decoder_copy_forks_state_without_mutating_original(self) -> None:
         case = DecoderCase(
@@ -157,25 +157,25 @@ class PublicDecoderTests(unittest.TestCase):
         outputs = self._enumerate_outputs(case)
         decoder = self._make_decoder(case)
 
-        while not decoder.isTerminal():
-            options = decoder.nextTokens()
+        while not decoder.is_terminal:
+            options = decoder.next_tokens
             if len(options) > 1:
                 break
             decoder.advance(options[0])
 
-        self.assertGreater(len(decoder.nextTokens()), 1)
-        original_prefix = decoder.prefix()
+        self.assertGreater(len(decoder.next_tokens), 1)
+        original_prefix = decoder.prefix
         left = decoder.copy()
         right = decoder.copy()
-        left_token, right_token = decoder.nextTokens()[:2]
+        left_token, right_token = decoder.next_tokens[:2]
 
         left.advance(left_token)
         right.advance(right_token)
 
-        self.assertEqual(original_prefix, decoder.prefix())
-        self.assertNotEqual(left.prefix(), right.prefix())
-        self.assertTrue(any(output.startswith(left.prefix()) for output in outputs))
-        self.assertTrue(any(output.startswith(right.prefix()) for output in outputs))
+        self.assertEqual(original_prefix, decoder.prefix)
+        self.assertNotEqual(left.prefix, right.prefix)
+        self.assertTrue(any(output.startswith(left.prefix) for output in outputs))
+        self.assertTrue(any(output.startswith(right.prefix) for output in outputs))
 
     def test_decoder_rejects_invalid_token_with_available_choices(self) -> None:
         decoder = grimace.MolToSmilesDecoder(
@@ -233,9 +233,9 @@ class PublicDecoderTests(unittest.TestCase):
             doRandom=True,
         )
 
-        self.assertEqual("", decoder.prefix())
-        self.assertTrue(decoder.isTerminal())
-        self.assertEqual((), decoder.nextTokens())
+        self.assertEqual("", decoder.prefix)
+        self.assertTrue(decoder.is_terminal)
+        self.assertEqual((), decoder.next_tokens)
         self.assertEqual(
             {""},
             set(
@@ -261,15 +261,15 @@ class PublicDecoderTests(unittest.TestCase):
         decoder = self._make_decoder(case)
 
         target_prefix = "CC(=O)Oc1c"
-        while decoder.prefix() != target_prefix:
-            options = decoder.nextTokens()
+        while decoder.prefix != target_prefix:
+            options = decoder.next_tokens
             self.assertTrue(options)
             decoder.advance(options[0])
 
         assert_prefix_options_match_outputs(
             self,
-            decoder.prefix(),
-            decoder.nextTokens(),
+            decoder.prefix,
+            decoder.next_tokens,
             outputs,
             atom_tokens=atom_tokens,
         )

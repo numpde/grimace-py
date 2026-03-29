@@ -73,28 +73,28 @@ decoder = grimace.MolToSmilesDecoder(
     canonical=False,
     doRandom=True,
 )
-while decoder.prefix() != "CC(=O)Oc1c":
-    decoder.advance(decoder.nextTokens()[0])
+while decoder.prefix != "CC(=O)Oc1c":
+    decoder.advance(decoder.next_tokens[0])
 
-decoder.prefix()      # 'CC(=O)Oc1c'
-decoder.nextTokens()  # ('(', 'c')
+decoder.prefix       # 'CC(=O)Oc1c'
+decoder.next_tokens  # ('(', 'c')
 ```
 
-Available methods:
+Available interface:
 
-- `nextTokens() -> tuple[str, ...]`
+- `next_tokens: tuple[str, ...]`
 - `advance(token: str)`
-- `prefix() -> str`
-- `isTerminal() -> bool`
+- `prefix: str`
+- `is_terminal: bool`
 - `copy() -> MolToSmilesDecoder`
 
 ## Decoder model
 
 `MolToSmilesDecoder(...)` exposes the same runtime as a stateful decoder:
 
-- `nextTokens()` returns the allowed next SMILES fragments
+- `next_tokens` returns the allowed next SMILES fragments
 - `advance(token)` moves the decoder forward
-- `prefix()` returns the current prefix
+- `prefix` returns the current prefix
 
 The tokens are literal SMILES fragments, not token ids. A token may be one
 character or many characters, for example `"C"`, `"[C@H]"`, or `"%12"`.

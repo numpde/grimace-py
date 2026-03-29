@@ -232,14 +232,12 @@ fn make_after_atom_action(
         .map(|group| group.len().saturating_sub(1))
         .sum::<usize>();
     let ring_action_count = closures_here.len() + opening_count;
-    let linear_child_idx = if ring_action_count == 0
-        && neighbor_groups.len() == 1
-        && neighbor_groups[0].len() == 1
-    {
-        Some(neighbor_groups[0][0])
-    } else {
-        None
-    };
+    let linear_child_idx =
+        if ring_action_count == 0 && neighbor_groups.len() == 1 && neighbor_groups[0].len() == 1 {
+            Some(neighbor_groups[0][0])
+        } else {
+            None
+        };
     AfterAtomAction {
         atom_idx,
         closures_here,
@@ -386,11 +384,13 @@ fn consume_enter_atom(
     state.visited_count += 1;
     let closures_here = std::mem::take(&mut state.pending[atom_idx]);
     let neighbor_groups = ordered_neighbor_groups(graph, atom_idx, &state.visited);
-    state.action_stack.push(Action::AfterAtom(make_after_atom_action(
-        atom_idx,
-        closures_here,
-        neighbor_groups,
-    )));
+    state
+        .action_stack
+        .push(Action::AfterAtom(make_after_atom_action(
+            atom_idx,
+            closures_here,
+            neighbor_groups,
+        )));
 }
 
 fn apply_exact_ring_plan(
@@ -448,7 +448,13 @@ fn apply_exact_ring_plan(
     state.pending = current_pending;
     state.free_labels = current_free;
     state.next_label = current_next;
-    push_child_actions(graph, &mut state.action_stack, action.atom_idx, child_order, false);
+    push_child_actions(
+        graph,
+        &mut state.action_stack,
+        action.atom_idx,
+        child_order,
+        false,
+    );
     for token in emitted_suffix_tokens.into_iter().rev() {
         state.action_stack.push(Action::EmitToken(token));
     }
@@ -521,7 +527,8 @@ fn successors_by_token(
             BTreeMap::from([(graph.atom_token(atom_idx).to_owned(), vec![successor])])
         }
         Action::AfterAtom(action) => {
-            let mut successors = BTreeMap::<String, Vec<RootedConnectedNonStereoWalkerStateData>>::new();
+            let mut successors =
+                BTreeMap::<String, Vec<RootedConnectedNonStereoWalkerStateData>>::new();
 
             if action.ring_action_count > 0 {
                 for_each_cartesian_choice(&action.neighbor_groups, &mut |chosen_children| {
@@ -673,7 +680,11 @@ pub(crate) fn enumerate_rooted_connected_nonstereo_smiles_support(
     Ok(results.into_iter().collect())
 }
 
-#[pyclass(name = "RootedConnectedNonStereoWalkerState", module = "smiles_next_token._core", frozen)]
+#[pyclass(
+    name = "RootedConnectedNonStereoWalkerState",
+    module = "smiles_next_token._core",
+    frozen
+)]
 pub struct PyRootedConnectedNonStereoWalkerState {
     data: RootedConnectedNonStereoWalkerStateData,
 }
@@ -697,7 +708,11 @@ impl PyRootedConnectedNonStereoWalkerState {
     }
 }
 
-#[pyclass(name = "RootedConnectedNonStereoWalker", module = "smiles_next_token._core", frozen)]
+#[pyclass(
+    name = "RootedConnectedNonStereoWalker",
+    module = "smiles_next_token._core",
+    frozen
+)]
 pub struct PyRootedConnectedNonStereoWalker {
     graph: PreparedSmilesGraphData,
     root_idx: usize,
@@ -774,8 +789,7 @@ mod tests {
         permutations_py_order, validate_root_idx,
     };
     use crate::prepared_graph::{
-        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE,
-        PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
 
     fn linear_ccc_graph() -> PreparedSmilesGraphData {
@@ -994,14 +1008,20 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(BTreeSet::from(["[O]=[Ti]=[O]".to_owned()]), support_root_0);
-        assert_eq!(BTreeSet::from(["[Ti](=[O])=[O]".to_owned()]), support_root_1);
+        assert_eq!(
+            BTreeSet::from(["[Ti](=[O])=[O]".to_owned()]),
+            support_root_1
+        );
     }
 
     #[test]
     fn initial_state_support_is_root_atom_token() {
         let graph = linear_ccc_graph();
         let state = initial_state_for_root(&graph, 1);
-        assert_eq!(vec!["C".to_owned()], next_token_support_for_state(&graph, &state));
+        assert_eq!(
+            vec!["C".to_owned()],
+            next_token_support_for_state(&graph, &state)
+        );
     }
 
     #[test]
@@ -1012,7 +1032,11 @@ mod tests {
 
         while !is_terminal_state(&state) {
             let options = next_token_support_for_state(&graph, &state);
-            assert_eq!(1, options.len(), "linear chain should have a single next token");
+            assert_eq!(
+                1,
+                options.len(),
+                "linear chain should have a single next token"
+            );
             let chosen = options[0].clone();
             prefix.push_str(&chosen);
             state = advance_token_state(&graph, &state, &chosen)
@@ -1027,8 +1051,8 @@ mod tests {
         let graph = linear_ccc_graph();
         let state = initial_state_for_root(&graph, 0);
         Python::initialize();
-        let err = advance_token_state(&graph, &state, "(")
-            .expect_err("invalid token should be rejected");
+        let err =
+            advance_token_state(&graph, &state, "(").expect_err("invalid token should be rejected");
         assert!(
             err.to_string().contains("choices=[\"C\"]"),
             "unexpected error: {:?}",

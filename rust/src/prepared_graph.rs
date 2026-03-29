@@ -83,17 +83,11 @@ fn required_item<'py>(dict: &Bound<'py, PyDict>, key: &str) -> PyResult<Bound<'p
         .ok_or_else(|| PyKeyError::new_err(format!("missing PreparedSmilesGraph field: {key}")))
 }
 
-fn extract_vec_vec_usize(
-    dict: &Bound<'_, PyDict>,
-    key: &str,
-) -> PyResult<Vec<Vec<usize>>> {
+fn extract_vec_vec_usize(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<Vec<usize>>> {
     required_item(dict, key)?.extract()
 }
 
-fn extract_vec_vec_string(
-    dict: &Bound<'_, PyDict>,
-    key: &str,
-) -> PyResult<Vec<Vec<String>>> {
+fn extract_vec_vec_string(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<Vec<Vec<String>>> {
     required_item(dict, key)?.extract()
 }
 
@@ -111,10 +105,7 @@ fn extract_bond_pairs(dict: &Bound<'_, PyDict>) -> PyResult<Vec<(usize, usize)>>
     Ok(pairs)
 }
 
-fn optional_item<'py>(
-    dict: &Bound<'py, PyDict>,
-    key: &str,
-) -> PyResult<Option<Bound<'py, PyAny>>> {
+fn optional_item<'py>(dict: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
     dict.get_item(key)
 }
 
@@ -195,9 +186,11 @@ impl PreparedSmilesGraphData {
             neighbor_bond_tokens: extract_vec_vec_string(dict, "neighbor_bond_tokens")?,
             bond_pairs: extract_bond_pairs(dict)?,
             bond_kinds: required_item(dict, "bond_kinds")?.extract()?,
-            writer_do_isomeric_smiles: required_item(dict, "writer_do_isomeric_smiles")?.extract()?,
+            writer_do_isomeric_smiles: required_item(dict, "writer_do_isomeric_smiles")?
+                .extract()?,
             writer_kekule_smiles: required_item(dict, "writer_kekule_smiles")?.extract()?,
-            writer_all_bonds_explicit: required_item(dict, "writer_all_bonds_explicit")?.extract()?,
+            writer_all_bonds_explicit: required_item(dict, "writer_all_bonds_explicit")?
+                .extract()?,
             writer_all_hs_explicit: required_item(dict, "writer_all_hs_explicit")?.extract()?,
             writer_ignore_atom_map_numbers: required_item(dict, "writer_ignore_atom_map_numbers")?
                 .extract()?,
@@ -210,11 +203,13 @@ impl PreparedSmilesGraphData {
             identity_rooted_at_atom: required_item(dict, "identity_rooted_at_atom")?.extract()?,
             identity_all_bonds_explicit: required_item(dict, "identity_all_bonds_explicit")?
                 .extract()?,
-            identity_all_hs_explicit: required_item(dict, "identity_all_hs_explicit")?
-                .extract()?,
+            identity_all_hs_explicit: required_item(dict, "identity_all_hs_explicit")?.extract()?,
             identity_do_random: required_item(dict, "identity_do_random")?.extract()?,
-            identity_ignore_atom_map_numbers: required_item(dict, "identity_ignore_atom_map_numbers")?
-                .extract()?,
+            identity_ignore_atom_map_numbers: required_item(
+                dict,
+                "identity_ignore_atom_map_numbers",
+            )?
+            .extract()?,
             atom_chiral_tags: extract_optional_vec_string(dict, "atom_chiral_tags")?,
             atom_stereo_neighbor_orders: extract_optional_vec_vec_usize(
                 dict,
@@ -327,7 +322,10 @@ impl PreparedSmilesGraphData {
                 ));
             }
 
-            let unique_neighbors = neighbors.iter().copied().collect::<std::collections::BTreeSet<_>>();
+            let unique_neighbors = neighbors
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>();
             if unique_neighbors.len() != neighbors.len() {
                 return Err(PyValueError::new_err(
                     "PreparedSmilesGraph neighbor rows must be unique",
@@ -345,7 +343,8 @@ impl PreparedSmilesGraphData {
                         "PreparedSmilesGraph cannot contain self-loops",
                     ));
                 }
-                neighbor_pairs_seen.insert((atom_idx.min(neighbor_idx), atom_idx.max(neighbor_idx)));
+                neighbor_pairs_seen
+                    .insert((atom_idx.min(neighbor_idx), atom_idx.max(neighbor_idx)));
             }
         }
 
@@ -387,9 +386,7 @@ impl PreparedSmilesGraphData {
                     .iter()
                     .position(|&candidate| candidate == begin_idx)
                     .ok_or_else(|| {
-                        PyValueError::new_err(
-                            "PreparedSmilesGraph neighbors must be symmetric",
-                        )
+                        PyValueError::new_err("PreparedSmilesGraph neighbors must be symmetric")
                     })?;
                 if self.neighbor_bond_tokens[begin_idx][offset]
                     != self.neighbor_bond_tokens[end_idx][reverse_offset]
@@ -402,7 +399,9 @@ impl PreparedSmilesGraphData {
         }
 
         if !self.atom_stereo_neighbor_orders.is_empty() {
-            for (atom_idx, stereo_neighbor_order) in self.atom_stereo_neighbor_orders.iter().enumerate() {
+            for (atom_idx, stereo_neighbor_order) in
+                self.atom_stereo_neighbor_orders.iter().enumerate()
+            {
                 if stereo_neighbor_order.len() != self.neighbors[atom_idx].len() {
                     return Err(PyValueError::new_err(
                         "PreparedSmilesGraph stereo neighbor order length mismatch",
@@ -493,19 +492,13 @@ impl PreparedSmilesGraphData {
             .position(|&(left_idx, right_idx)| left_idx == low_idx && right_idx == high_idx)
     }
 
-    pub(crate) fn directed_bond_token(
-        &self,
-        begin_idx: usize,
-        end_idx: usize,
-    ) -> PyResult<String> {
+    pub(crate) fn directed_bond_token(&self, begin_idx: usize, end_idx: usize) -> PyResult<String> {
         let bond_idx = self.bond_index(begin_idx, end_idx).ok_or_else(|| {
             PyKeyError::new_err(format!("No bond between atoms {begin_idx} and {end_idx}"))
         })?;
-        let base_token = self
-            .bond_token(begin_idx, end_idx)
-            .ok_or_else(|| PyKeyError::new_err(format!(
-                "No bond between atoms {begin_idx} and {end_idx}"
-            )))?;
+        let base_token = self.bond_token(begin_idx, end_idx).ok_or_else(|| {
+            PyKeyError::new_err(format!("No bond between atoms {begin_idx} and {end_idx}"))
+        })?;
         if self.bond_dirs.is_empty() {
             return Ok(base_token.to_owned());
         }
@@ -608,8 +601,14 @@ impl PreparedSmilesGraphData {
                 "atom_stereo_neighbor_orders",
                 self.atom_stereo_neighbor_orders.clone(),
             )?;
-            dict.set_item("atom_explicit_h_counts", self.atom_explicit_h_counts.clone())?;
-            dict.set_item("atom_implicit_h_counts", self.atom_implicit_h_counts.clone())?;
+            dict.set_item(
+                "atom_explicit_h_counts",
+                self.atom_explicit_h_counts.clone(),
+            )?;
+            dict.set_item(
+                "atom_implicit_h_counts",
+                self.atom_implicit_h_counts.clone(),
+            )?;
         }
         if !self.bond_stereo_kinds.is_empty() {
             dict.set_item("bond_stereo_kinds", self.bond_stereo_kinds.clone())?;
@@ -631,7 +630,11 @@ impl PreparedSmilesGraphData {
     }
 }
 
-#[pyclass(name = "PreparedSmilesGraph", module = "smiles_next_token._core", frozen)]
+#[pyclass(
+    name = "PreparedSmilesGraph",
+    module = "smiles_next_token._core",
+    frozen
+)]
 pub struct PyPreparedSmilesGraph {
     data: PreparedSmilesGraphData,
 }
@@ -705,9 +708,9 @@ impl PyPreparedSmilesGraph {
         self.data
             .bond_token(begin_idx, end_idx)
             .map(str::to_owned)
-            .ok_or_else(|| PyKeyError::new_err(format!(
-                "No bond between atoms {begin_idx} and {end_idx}"
-            )))
+            .ok_or_else(|| {
+                PyKeyError::new_err(format!("No bond between atoms {begin_idx} and {end_idx}"))
+            })
     }
 
     fn validate_policy(&self, policy_name: &str, policy_digest: &str) -> PyResult<()> {
@@ -724,19 +727,12 @@ impl PyPreparedSmilesGraph {
         root_idx: isize,
     ) -> PyResult<Vec<String>> {
         crate::rooted_nonstereo::enumerate_rooted_connected_nonstereo_smiles_support(
-            &self.data,
-            root_idx,
+            &self.data, root_idx,
         )
     }
 
-    fn enumerate_rooted_connected_stereo_support(
-        &self,
-        root_idx: isize,
-    ) -> PyResult<Vec<String>> {
-        crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(
-            &self.data,
-            root_idx,
-        )
+    fn enumerate_rooted_connected_stereo_support(&self, root_idx: isize) -> PyResult<Vec<String>> {
+        crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(&self.data, root_idx)
     }
 
     fn to_dict(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
@@ -913,7 +909,9 @@ mod tests {
 
     #[test]
     fn validate_accepts_consistent_graph() {
-        sample_graph().validate().expect("sample graph should validate");
+        sample_graph()
+            .validate()
+            .expect("sample graph should validate");
     }
 
     #[test]
@@ -1014,10 +1012,8 @@ mod tests {
         let graph = sample_graph();
         let support = mol_to_smiles_support_data(&graph, 0, false).expect("nonstereo support");
         let expected =
-            crate::rooted_nonstereo::enumerate_rooted_connected_nonstereo_smiles_support(
-                &graph, 0,
-            )
-            .expect("direct nonstereo support");
+            crate::rooted_nonstereo::enumerate_rooted_connected_nonstereo_smiles_support(&graph, 0)
+                .expect("direct nonstereo support");
         assert_eq!(expected, support);
     }
 
@@ -1025,10 +1021,9 @@ mod tests {
     fn mol_to_smiles_support_dispatches_stereo() {
         let graph = sample_stereo_graph();
         let support = mol_to_smiles_support_data(&graph, 0, true).expect("stereo support");
-        let expected = crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(
-            &graph, 0,
-        )
-        .expect("direct stereo support");
+        let expected =
+            crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
+                .expect("direct stereo support");
         assert_eq!(expected, support);
     }
 

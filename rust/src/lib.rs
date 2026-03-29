@@ -11,9 +11,7 @@ use crate::prepared_graph::{
 use crate::rooted_nonstereo::{
     PyRootedConnectedNonStereoWalker, PyRootedConnectedNonStereoWalkerState,
 };
-use crate::rooted_stereo::{
-    PyRootedConnectedStereoWalker, PyRootedConnectedStereoWalkerState,
-};
+use crate::rooted_stereo::{PyRootedConnectedStereoWalker, PyRootedConnectedStereoWalkerState};
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {

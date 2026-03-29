@@ -5,7 +5,6 @@ import unittest
 from rdkit import Chem
 
 from smiles_next_token._reference import (
-    CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     load_default_connected_nonstereo_molecule_cases,
     validate_rooted_connected_stereo_smiles_support,
@@ -17,7 +16,6 @@ from tests.helpers.cases import (
 )
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
-from tests.helpers.policies import load_connected_nonstereo_policy
 
 
 class CoreDatasetContractsTests(unittest.TestCase):
@@ -25,7 +23,6 @@ class CoreDatasetContractsTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
-        cls.policy = load_connected_nonstereo_policy()
 
     def test_kernel_prepared_graph_roundtrips_dataset_slice(self) -> None:
         from smiles_next_token import _runtime
@@ -35,7 +32,15 @@ class CoreDatasetContractsTests(unittest.TestCase):
 
         for case in cases:
             with self.subTest(cid=case.cid, smiles=case.smiles):
-                prepared = _runtime.prepare_smiles_graph(parse_smiles(case.smiles), self.policy)
+                prepared = _runtime.prepare_smiles_graph(
+                    parse_smiles(case.smiles),
+                    flags=_runtime.MolToSmilesFlags(
+                        isomeric_smiles=False,
+                        rooted_at_atom=0,
+                        canonical=False,
+                        do_random=True,
+                    ),
+                )
                 kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
                 self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
 
@@ -61,8 +66,12 @@ class CoreDatasetContractsTests(unittest.TestCase):
         for cid, smiles, category in cases:
             prepared = _runtime.prepare_smiles_graph(
                 parse_smiles(smiles),
-                self.policy,
-                surface_kind=CONNECTED_STEREO_SURFACE,
+                flags=_runtime.MolToSmilesFlags(
+                    isomeric_smiles=True,
+                    rooted_at_atom=0,
+                    canonical=False,
+                    do_random=True,
+                ),
             )
             reference_prepared = ReferencePreparedSmilesGraph.from_dict(prepared.to_dict())
             kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)

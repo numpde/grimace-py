@@ -21,6 +21,8 @@ Current top-level exports:
 - `MolToSmilesSupport`
 
 The compiled extension `smiles_next_token._core` is required for the public runtime package.
+`MolToSmilesSupport(...)` mirrors RDKit `MolToSmiles` flag names, but currently
+supports only rooted random support generation on singly-connected molecules.
 
 ## Docs
 

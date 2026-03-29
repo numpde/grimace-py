@@ -3,19 +3,14 @@ from __future__ import annotations
 import unittest
 
 import smiles_next_token
-from smiles_next_token._reference import (
-    prepare_smiles_graph as prepare_reference_smiles_graph,
+from smiles_next_token._reference.prepared_graph import (
+    prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
-from tests.helpers.policies import load_connected_nonstereo_policy
 
 
 class PythonApiSmokeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.policy = load_connected_nonstereo_policy()
-
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(callable(smiles_next_token.MolToSmilesSupport))
         self.assertFalse(hasattr(smiles_next_token, "ReferencePolicy"))
@@ -27,6 +22,8 @@ class PythonApiSmokeTests(unittest.TestCase):
                     parse_smiles("CCO"),
                     rootedAtAtom=0,
                     isomericSmiles=False,
+                    canonical=False,
+                    doRandom=True,
                 )
             return
 
@@ -41,15 +38,31 @@ class PythonApiSmokeTests(unittest.TestCase):
                 parse_smiles("CCO"),
                 rootedAtAtom=0,
                 isomericSmiles=False,
+                canonical=False,
+                doRandom=True,
             ),
         )
 
-    def test_public_api_rejects_unimplemented_connected_flag(self) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "connectedOnly=False"):
+    def test_public_api_rejects_unsupported_flag_combination(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
             smiles_next_token.MolToSmilesSupport(
                 parse_smiles("CCO"),
                 rootedAtAtom=0,
-                connectedOnly=False,
+            )
+        with self.assertRaisesRegex(NotImplementedError, "doRandom=True"):
+            smiles_next_token.MolToSmilesSupport(
+                parse_smiles("CCO"),
+                rootedAtAtom=0,
+                canonical=False,
+            )
+
+    def test_public_api_rejects_disconnected_molecules(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "singly-connected"):
+            smiles_next_token.MolToSmilesSupport(
+                parse_smiles("CC.O"),
+                rootedAtAtom=0,
+                canonical=False,
+                doRandom=True,
             )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
@@ -57,8 +70,20 @@ class PythonApiSmokeTests(unittest.TestCase):
             raise unittest.SkipTest("private Rust extension is not installed")
         from smiles_next_token import _runtime
 
-        reference_prepared = prepare_reference_smiles_graph(parse_smiles("CCO"), self.policy)
-        prepared = _runtime.prepare_smiles_graph(reference_prepared, self.policy)
+        reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
+            parse_smiles("CCO"),
+            surface_kind=_runtime.CONNECTED_NONSTEREO_SURFACE,
+            isomeric_smiles=False,
+        )
+        prepared = _runtime.prepare_smiles_graph(
+            reference_prepared,
+            flags=_runtime.MolToSmilesFlags(
+                isomeric_smiles=False,
+                rooted_at_atom=0,
+                canonical=False,
+                do_random=True,
+            ),
+        )
 
         self.assertEqual(reference_prepared.to_dict(), prepared.to_dict())
 
@@ -77,6 +102,8 @@ class PythonApiSmokeTests(unittest.TestCase):
             mol,
             rootedAtAtom=0,
             isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
         )
 
         self.assertEqual(expected, support)
@@ -95,6 +122,8 @@ class PythonApiSmokeTests(unittest.TestCase):
             mol,
             rootedAtAtom=0,
             isomericSmiles=True,
+            canonical=False,
+            doRandom=True,
         )
 
         self.assertEqual(expected, support)

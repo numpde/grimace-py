@@ -27,29 +27,33 @@ def _require_runtime() -> Any:
 def MolToSmilesSupport(
     mol: object,
     *,
-    rootedAtAtom: int,
     isomericSmiles: bool = True,
-    connectedOnly: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int = -1,
+    canonical: bool = True,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = False,
+    ignoreAtomMapNumbers: bool = False,
 ) -> set[str]:
     """Return the exact rooted SMILES support for a molecule.
 
-    Parameters mirror the RDKit naming style where possible. The current
-    runtime supports only connected molecules, so ``connectedOnly=False`` is
-    rejected explicitly.
+    Parameters mirror RDKit ``MolToSmiles``. The current runtime implements
+    exact support only for rooted random generation, so callers must provide
+    the rooted-random combination explicitly.
     """
 
-    if not connectedOnly:
-        raise NotImplementedError("connectedOnly=False is not implemented")
-
     runtime = _require_runtime()
-    if isomericSmiles:
-        return runtime.enumerate_rooted_connected_stereo_smiles_support(
-            mol,
-            rootedAtAtom,
-        )
-    return runtime.enumerate_rooted_connected_nonstereo_smiles_support(
+    return runtime.mol_to_smiles_support(
         mol,
-        rootedAtAtom,
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
     )
 
 

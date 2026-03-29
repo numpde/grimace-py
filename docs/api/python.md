@@ -13,15 +13,28 @@ public runtime fallback.
 
 ## MolToSmilesSupport
 
-`MolToSmilesSupport(mol, *, rootedAtAtom, isomericSmiles=True, connectedOnly=True)`
+`MolToSmilesSupport(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This is the supported exact-support runtime entrypoint.
+This is the supported exact-support runtime entrypoint. Its keyword surface
+mirrors RDKit `MolToSmiles`, but the current engine only implements rooted
+random support generation.
 
-- `rootedAtAtom` selects the root atom, following RDKit keyword style.
-- `isomericSmiles=True` dispatches to the stereochemical surface.
-- `isomericSmiles=False` dispatches to the nonstereo surface.
-- `connectedOnly` is currently required to stay `True`; `False` raises `NotImplementedError`.
-- Internal bridge policy selection happens behind the public API.
+Supported combination:
+
+- `rootedAtAtom >= 0`
+- `canonical=False`
+- `doRandom=True`
+
+Supported writer flags:
+
+- `isomericSmiles`
+- `kekuleSmiles`
+- `allBondsExplicit`
+- `allHsExplicit`
+- `ignoreAtomMapNumbers`
+
+Unsupported combinations fail fast with `NotImplementedError`. Molecules with
+multiple disconnected fragments also raise `NotImplementedError`.
 
 ## Internal Modules
 

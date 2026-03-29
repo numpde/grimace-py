@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -628,6 +630,76 @@ def prepare_smiles_graph(
     check_supported_smiles_graph_surface(working_mol, surface_kind=surface_kind)
     sampling = sampling_section(policy)
     identity = identity_section(policy)
+    return _prepare_smiles_graph_with_sections(
+        working_mol,
+        surface_kind=surface_kind,
+        policy_name=policy.policy_name,
+        policy_digest=policy.digest(),
+        sampling=sampling,
+        identity=identity,
+    )
+
+
+def _digest_runtime_descriptor(descriptor: dict[str, object]) -> str:
+    payload = json.dumps(descriptor, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:8]
+
+
+def prepare_smiles_graph_from_mol_to_smiles_kwargs(
+    mol: Chem.Mol,
+    *,
+    surface_kind: str = CONNECTED_NONSTEREO_SURFACE,
+    isomeric_smiles: bool = True,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> PreparedSmilesGraph:
+    working_mol = Chem.Mol(mol)
+    check_supported_smiles_graph_surface(working_mol, surface_kind=surface_kind)
+
+    sampling = {
+        "isomericSmiles": bool(isomeric_smiles),
+        "kekuleSmiles": bool(kekule_smiles),
+        "allBondsExplicit": bool(all_bonds_explicit),
+        "allHsExplicit": bool(all_hs_explicit),
+        "ignoreAtomMapNumbers": bool(ignore_atom_map_numbers),
+    }
+    identity = {
+        "parse_with_rdkit": True,
+        "canonical": True,
+        "isomericSmiles": bool(isomeric_smiles),
+        "kekuleSmiles": bool(kekule_smiles),
+        "rootedAtAtom": -1,
+        "allBondsExplicit": bool(all_bonds_explicit),
+        "allHsExplicit": bool(all_hs_explicit),
+        "doRandom": False,
+        "ignoreAtomMapNumbers": bool(ignore_atom_map_numbers),
+    }
+    descriptor = {
+        "surface_kind": surface_kind,
+        "sampling": sampling,
+        "identity_check": identity,
+    }
+    return _prepare_smiles_graph_with_sections(
+        working_mol,
+        surface_kind=surface_kind,
+        policy_name="runtime_mol_to_smiles_support_v1",
+        policy_digest=_digest_runtime_descriptor(descriptor),
+        sampling=sampling,
+        identity=identity,
+    )
+
+
+def _prepare_smiles_graph_with_sections(
+    working_mol: Chem.Mol,
+    *,
+    surface_kind: str,
+    policy_name: str,
+    policy_digest: str,
+    sampling: dict[str, object],
+    identity: dict[str, object],
+) -> PreparedSmilesGraph:
 
     neighbors: list[tuple[int, ...]] = []
     neighbor_bond_tokens: list[tuple[str, ...]] = []
@@ -709,10 +781,20 @@ def prepare_smiles_graph(
     return PreparedSmilesGraph(
         schema_version=PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
         surface_kind=surface_kind,
-        policy_name=policy.policy_name,
-        policy_digest=policy.digest(),
+        policy_name=policy_name,
+        policy_digest=policy_digest,
         rdkit_version=rdBase.rdkitVersion,
-        identity_smiles=identity_smiles(working_mol, policy),
+        identity_smiles=Chem.MolToSmiles(
+            Chem.Mol(working_mol),
+            canonical=bool(identity["canonical"]),
+            isomericSmiles=bool(identity["isomericSmiles"]),
+            kekuleSmiles=bool(identity["kekuleSmiles"]),
+            rootedAtAtom=int(identity["rootedAtAtom"]),
+            allBondsExplicit=bool(identity["allBondsExplicit"]),
+            allHsExplicit=bool(identity["allHsExplicit"]),
+            doRandom=bool(identity["doRandom"]),
+            ignoreAtomMapNumbers=bool(identity["ignoreAtomMapNumbers"]),
+        ),
         atom_count=working_mol.GetNumAtoms(),
         bond_count=working_mol.GetNumBonds(),
         atom_atomic_numbers=tuple(atom_atomic_numbers),
@@ -722,7 +804,7 @@ def prepare_smiles_graph(
         atom_total_hs=tuple(atom_total_hs),
         atom_radical_electrons=tuple(atom_radical_electrons),
         atom_map_numbers=tuple(atom_map_numbers),
-        atom_tokens=build_atom_tokens(working_mol, policy),
+        atom_tokens=tuple(atom_token(working_mol.GetAtomWithIdx(atom_idx), sampling) for atom_idx in range(working_mol.GetNumAtoms())),
         neighbors=tuple(neighbors),
         neighbor_bond_tokens=tuple(neighbor_bond_tokens),
         bond_pairs=bond_pairs,

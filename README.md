@@ -35,17 +35,23 @@ import grimace
 
 mol = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
 
-outputs = list(
-    grimace.MolToSmilesEnum(
+all_smiles = {
+    smiles
+    for root_atom in range(mol.GetNumAtoms())
+    for smiles in grimace.MolToSmilesEnum(
         mol,
-        rootedAtAtom=0,
+        rootedAtAtom=root_atom,
         isomericSmiles=False,
         canonical=False,
         doRandom=True,
     )
-)
-# len(outputs) == 12
+}
+```
 
+Then `len(all_smiles) == 304`.
+
+
+```python
 decoder = grimace.MolToSmilesDecoder(
     mol,
     rootedAtAtom=0,
@@ -53,40 +59,31 @@ decoder = grimace.MolToSmilesDecoder(
     canonical=False,
     doRandom=True,
 )
+
 while not decoder.is_terminal:
     print(f"{decoder.prefix} -> {list(decoder.next_tokens)}")
     decoder.advance(decoder.next_tokens[0])
-
-print(decoder.prefix)
 ```
 
 Expected output:
 
-```python
-#  -> ['C']
-# C -> ['C']
-# CC -> ['(']
-# CC( -> ['=', 'O']
-# CC(= -> ['O']
-# CC(=O -> [')']
-# CC(=O) -> ['O']
-# CC(=O)O -> ['c']
-# CC(=O)Oc -> ['1']
-# CC(=O)Oc1 -> ['c']
-# CC(=O)Oc1c -> ['(', 'c']
-# CC(=O)Oc1c( -> ['C', 'c']
-# CC(=O)Oc1c(C -> ['(']
-# CC(=O)Oc1c(C( -> ['=', 'O']
-# CC(=O)Oc1c(C(= -> ['O']
-# CC(=O)Oc1c(C(=O -> [')']
-# CC(=O)Oc1c(C(=O) -> ['O']
-# CC(=O)Oc1c(C(=O)O -> [')']
-# CC(=O)Oc1c(C(=O)O) -> ['c']
-# CC(=O)Oc1c(C(=O)O)c -> ['c']
-# CC(=O)Oc1c(C(=O)O)cc -> ['c']
-# CC(=O)Oc1c(C(=O)O)ccc -> ['c']
-# CC(=O)Oc1c(C(=O)O)cccc -> ['1']
-# CC(=O)Oc1c(C(=O)O)cccc1
+```text
+  -> ['C']
+ C -> ['C']
+ CC -> ['(']
+ CC( -> ['=', 'O']
+ CC(= -> ['O']
+ CC(=O -> [')']
+ ...
+ CC(=O)Oc1 -> ['c']
+ CC(=O)Oc1c -> ['(', 'c']
+ CC(=O)Oc1c( -> ['C', 'c']
+ CC(=O)Oc1c(C -> ['(']
+ CC(=O)Oc1c(C( -> ['=', 'O']
+ CC(=O)Oc1c(C(= -> ['O']
+ CC(=O)Oc1c(C(=O -> [')']
+ ...
+ CC(=O)Oc1c(C(=O)O)cccc -> ['1']
 ```
 
 The decoder is online. It does not precompute one fixed trajectory. At each

@@ -63,5 +63,3 @@ Unsupported combinations fail fast with `NotImplementedError`.
 
 - [Docs index](docs/README.md)
 - [Python API](docs/api/python.md)
-- [Concepts](docs/concepts.md)
-- [Correctness](docs/correctness.md)

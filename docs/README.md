@@ -1,8 +1,6 @@
 # Docs
 
-Minimal docs for the current public surface and design.
+Minimal docs for the current public surface.
 
-- [api/python.md](api/python.md): public Python API
-- [concepts.md](concepts.md): support, decoder, tokens
-- [correctness.md](correctness.md): what is authoritative and how it is tested
+- [api/python.md](api/python.md): public Python API, semantics, and limits
 - `architecture/`: internal design notes

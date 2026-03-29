@@ -12,7 +12,7 @@ struct PendingRing {
     bond_token: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct AfterAtomAction {
     atom_idx: usize,
     closures_here: Vec<PendingRing>,
@@ -22,14 +22,14 @@ struct AfterAtomAction {
     linear_child_idx: Option<usize>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Action {
     EmitToken(String),
     EnterAtom(usize),
     AfterAtom(AfterAtomAction),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct RootedConnectedNonStereoWalkerStateData {
     prefix: String,
     visited: Vec<bool>,
@@ -641,6 +641,54 @@ fn advance_token_state(
         .expect("chosen token should have at least one successor"))
 }
 
+fn frontier_next_token_support(
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedNonStereoWalkerStateData],
+) -> Vec<String> {
+    let mut tokens = BTreeSet::new();
+    for state in frontier {
+        for token in next_token_support_for_state(graph, state) {
+            tokens.insert(token);
+        }
+    }
+    tokens.into_iter().collect()
+}
+
+fn advance_token_frontier(
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedNonStereoWalkerStateData],
+    chosen_token: &str,
+) -> PyResult<Vec<RootedConnectedNonStereoWalkerStateData>> {
+    let mut next_frontier = BTreeSet::new();
+    for state in frontier {
+        let mut successors = successors_by_token(graph, state);
+        if let Some(candidates) = successors.remove(chosen_token) {
+            next_frontier.extend(candidates);
+        }
+    }
+    if next_frontier.is_empty() {
+        let available = frontier_next_token_support(graph, frontier);
+        return Err(PyKeyError::new_err(format!(
+            "Token {chosen_token:?} is not available; choices={available:?}"
+        )));
+    }
+    Ok(next_frontier.into_iter().collect())
+}
+
+fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> String {
+    frontier
+        .first()
+        .map(|state| state.prefix.clone())
+        .unwrap_or_default()
+}
+
+fn frontier_is_terminal(
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedNonStereoWalkerStateData],
+) -> bool {
+    frontier_next_token_support(graph, frontier).is_empty()
+}
+
 fn enumerate_support_from_state(
     graph: &PreparedSmilesGraphData,
     state: RootedConnectedNonStereoWalkerStateData,
@@ -773,6 +821,60 @@ impl PyRootedConnectedNonStereoWalker {
             self.graph.atom_count(),
             self.graph.policy_name,
             self.graph.policy_digest,
+        )
+    }
+}
+
+#[pyclass(
+    skip_from_py_object,
+    name = "RootedConnectedNonStereoDecoder",
+    module = "grimace._core"
+)]
+#[derive(Clone)]
+pub struct PyRootedConnectedNonStereoDecoder {
+    graph: PreparedSmilesGraphData,
+    frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
+}
+
+#[pymethods]
+impl PyRootedConnectedNonStereoDecoder {
+    #[new]
+    fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
+        let graph = PreparedSmilesGraphData::from_any(graph)?;
+        let root_idx = validate_root_idx(&graph, root_idx)?;
+        Ok(Self {
+            frontier: vec![initial_state_for_root(&graph, root_idx)],
+            graph,
+        })
+    }
+
+    fn next_token_support(&self) -> Vec<String> {
+        frontier_next_token_support(&self.graph, &self.frontier)
+    }
+
+    fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
+        self.frontier = advance_token_frontier(&self.graph, &self.frontier, chosen_token)?;
+        Ok(())
+    }
+
+    fn prefix(&self) -> String {
+        frontier_prefix(&self.frontier)
+    }
+
+    fn is_terminal(&self) -> bool {
+        frontier_is_terminal(&self.graph, &self.frontier)
+    }
+
+    fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RootedConnectedNonStereoDecoder(prefix={:?}, frontier_size={}, atom_count={})",
+            self.prefix(),
+            self.frontier.len(),
+            self.graph.atom_count(),
         )
     }
 }

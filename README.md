@@ -1,12 +1,13 @@
-# grimace-py
+# GRIMACE
 
-`grimace` is a Rust-first cheminformatics library for exact SMILES enumeration
-and next-token decoding from RDKit molecules. It computes the full rooted SMILES
-support of a molecule under an RDKit-style writing regime, and exposes the
-corresponding next-token choices during decoding. This is useful when you want
-to train, test, or debug molecular generation models against all valid rooted
-SMILES continuations of the same molecule, rather than against a single
-serialization or a few random samples.
+SMILES enumeration with next-token distribution.
+
+`grimace` is a Rust-first cheminformatics library for exact rooted SMILES
+enumeration and online next-token decoding from RDKit molecules. It computes
+the full rooted SMILES support of a molecule under an RDKit-style writing
+regime, and it can also step through the same support one token at a time:
+at each prefix it exposes the legal next tokens, then advances when you choose
+one.
 
 The package is motivated by research on NMR spectroscopy with language
 transformers: <https://numpde.github.io/shared/msc/>.
@@ -32,25 +33,51 @@ Both use the compiled Rust extension. There is no public runtime fallback.
 from rdkit import Chem
 import grimace
 
-mol = Chem.MolFromSmiles("F/C=C\\Cl")
+mol = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
 
 outputs = list(
     grimace.MolToSmilesEnum(
         mol,
         rootedAtAtom=0,
+        isomericSmiles=False,
         canonical=False,
         doRandom=True,
     )
 )
+# len(outputs) == 12
 
 decoder = grimace.MolToSmilesDecoder(
     mol,
     rootedAtAtom=0,
+    isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
-tokens = decoder.nextTokens()
+while decoder.prefix() != "CC(=O)Oc1c":
+    print(f"{decoder.prefix()} -> {list(decoder.nextTokens())}")
+    decoder.advance(decoder.nextTokens()[0])
+
+print(f"{decoder.prefix()} -> {list(decoder.nextTokens())}")
 ```
+
+Expected output:
+
+```python
+#  -> ['C']
+# C -> ['C']
+# CC -> ['(']
+# CC( -> ['=']
+# CC(= -> ['O']
+# CC(=O -> [')']
+# CC(=O) -> ['O']
+# CC(=O)O -> ['c']
+# CC(=O)Oc -> ['1']
+# CC(=O)Oc1 -> ['c']
+# CC(=O)Oc1c -> ['(', 'c']
+```
+
+The decoder is online. It does not precompute one fixed trajectory. At each
+step it exposes the legal next tokens for the current emitted prefix.
 
 ## Install
 

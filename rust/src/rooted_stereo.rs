@@ -43,7 +43,7 @@ struct PendingRing {
     other_atom_idx: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct DeferredDirectionalToken {
     component_idx: usize,
     stored_token: String,
@@ -70,7 +70,7 @@ enum RingAction {
     Open(usize),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum WalkerAction {
     EmitLiteral(String),
     EmitDeferred(DeferredDirectionalToken),
@@ -85,7 +85,7 @@ enum WalkerAction {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct RootedConnectedStereoWalkerStateData {
     prefix: String,
     visited: Vec<bool>,
@@ -1862,6 +1862,57 @@ fn advance_stereo_token_state(
         .expect("chosen token should have at least one successor"))
 }
 
+fn frontier_next_token_support_for_stereo(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedStereoWalkerStateData],
+) -> PyResult<Vec<String>> {
+    let mut tokens = BTreeSet::new();
+    for state in frontier {
+        for token in next_token_support_for_stereo_state(runtime, graph, state)? {
+            tokens.insert(token);
+        }
+    }
+    Ok(tokens.into_iter().collect())
+}
+
+fn advance_stereo_token_frontier(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedStereoWalkerStateData],
+    chosen_token: &str,
+) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
+    let mut next_frontier = BTreeSet::new();
+    for state in frontier {
+        let mut successors = successors_by_token_stereo(runtime, graph, state)?;
+        if let Some(candidates) = successors.remove(chosen_token) {
+            next_frontier.extend(candidates);
+        }
+    }
+    if next_frontier.is_empty() {
+        let available = frontier_next_token_support_for_stereo(runtime, graph, frontier)?;
+        return Err(PyKeyError::new_err(format!(
+            "Token {chosen_token:?} is not available; choices={available:?}"
+        )));
+    }
+    Ok(next_frontier.into_iter().collect())
+}
+
+fn stereo_frontier_prefix(frontier: &[RootedConnectedStereoWalkerStateData]) -> String {
+    frontier
+        .first()
+        .map(|state| state.prefix.clone())
+        .unwrap_or_default()
+}
+
+fn stereo_frontier_is_terminal(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedStereoWalkerStateData],
+) -> PyResult<bool> {
+    Ok(frontier_next_token_support_for_stereo(runtime, graph, frontier)?.is_empty())
+}
+
 fn enumerate_support_from_stereo_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -1996,6 +2047,69 @@ impl PyRootedConnectedStereoWalker {
             self.graph.atom_count(),
             self.graph.policy_name,
             self.graph.policy_digest,
+        )
+    }
+}
+
+#[pyclass(
+    skip_from_py_object,
+    name = "RootedConnectedStereoDecoder",
+    module = "grimace._core"
+)]
+#[derive(Clone)]
+pub struct PyRootedConnectedStereoDecoder {
+    graph: PreparedSmilesGraphData,
+    runtime: StereoWalkerRuntimeData,
+    frontier: Vec<RootedConnectedStereoWalkerStateData>,
+}
+
+#[pymethods]
+impl PyRootedConnectedStereoDecoder {
+    #[new]
+    fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
+        let graph = PreparedSmilesGraphData::from_any(graph)?;
+        check_supported_stereo_writer_surface(&graph)?;
+        let root_idx = validate_root_idx(&graph, root_idx)?;
+        let runtime = build_walker_runtime(&graph)?;
+        Ok(Self {
+            frontier: vec![initial_stereo_state_for_root(&runtime, &graph, root_idx)],
+            graph,
+            runtime,
+        })
+    }
+
+    fn next_token_support(&self) -> PyResult<Vec<String>> {
+        frontier_next_token_support_for_stereo(&self.runtime, &self.graph, &self.frontier)
+    }
+
+    fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
+        self.frontier = advance_stereo_token_frontier(
+            &self.runtime,
+            &self.graph,
+            &self.frontier,
+            chosen_token,
+        )?;
+        Ok(())
+    }
+
+    fn prefix(&self) -> String {
+        stereo_frontier_prefix(&self.frontier)
+    }
+
+    fn is_terminal(&self) -> PyResult<bool> {
+        stereo_frontier_is_terminal(&self.runtime, &self.graph, &self.frontier)
+    }
+
+    fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "RootedConnectedStereoDecoder(prefix={:?}, frontier_size={}, atom_count={})",
+            self.prefix(),
+            self.frontier.len(),
+            self.graph.atom_count(),
         )
     }
 }

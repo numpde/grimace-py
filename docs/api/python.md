@@ -61,17 +61,23 @@ multiple disconnected fragments also raise `NotImplementedError`.
 This is the incremental next-token API. It accepts the same flags and the same
 current limits as `MolToSmilesEnum(...)`.
 
-It exposes next-token support for the same rooted random writer mode. It does
-not expose RDKit's internal writer directly.
+It exposes next-token support for the same rooted random writer mode. The
+decoder is online: it shows the legal next tokens for the current emitted
+prefix, and `advance(token)` moves it to the next prefix state.
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
     mol,
     rootedAtAtom=0,
+    isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
-tokens = decoder.nextTokens()
+while decoder.prefix() != "CC(=O)Oc1c":
+    decoder.advance(decoder.nextTokens()[0])
+
+decoder.prefix()      # 'CC(=O)Oc1c'
+decoder.nextTokens()  # ('(', 'c')
 ```
 
 Available methods:
@@ -93,8 +99,17 @@ Available methods:
 The tokens are literal SMILES fragments, not token ids. A token may be one
 character or many characters, for example `"C"`, `"[C@H]"`, or `"%12"`.
 
-The decoder does not expose enough information to reconstruct the full support
-by itself, because one token can lead to more than one successor state.
+Important semantic point:
+
+- the decoder is online
+- it reports the legal next tokens for the current emitted prefix
+- choosing a token advances it to the next prefix state
+- it does not precompute one fixed full output before you start stepping
+
+So:
+
+- `MolToSmilesEnum(...)` gives exact full support
+- `MolToSmilesDecoder(...)` lets you step through that support one token at a time
 
 ## Correctness
 

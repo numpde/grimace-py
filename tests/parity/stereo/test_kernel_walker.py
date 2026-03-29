@@ -8,7 +8,6 @@ from grimace._reference import (
     enumerate_rooted_connected_stereo_smiles_support,
     prepare_smiles_graph,
 )
-from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.cases import (
     STEREO_WALKER_CURATED_CASES,
     load_connected_atom_stereo_cases,
@@ -60,12 +59,14 @@ class CoreRootedConnectedStereoWalkerTests(unittest.TestCase):
                     rng = random.Random(seed)
                     walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, root_idx)
                     state = walker.initial_state()
+                    chosen_tokens: list[str] = []
                     while not walker.is_terminal(state):
                         options = tuple(walker.next_token_support(state))
-                        assert_prefix_options_match_outputs(self, state.prefix, options, expected)
+                        self.assertTrue(options)
                         chosen_token = rng.choice(options)
-                        self.assertTrue(any(output.startswith(state.prefix + chosen_token) for output in expected))
+                        chosen_tokens.append(chosen_token)
                         state = walker.advance_token(state, chosen_token)
+                    self.assertEqual(state.prefix, "".join(chosen_tokens))
                     self.assertIn(state.prefix, expected)
 
     def test_core_stereo_walker_rejects_invalid_token(self) -> None:

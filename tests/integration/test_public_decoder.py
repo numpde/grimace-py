@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
 import unittest
 
 import grimace
@@ -102,25 +103,49 @@ class PublicDecoderTests(unittest.TestCase):
             )
         )
 
+    def _atom_tokens(self, case: DecoderCase) -> tuple[str, ...]:
+        prepared = _runtime.prepare_smiles_graph(
+            parse_smiles(case.smiles),
+            flags=_runtime.MolToSmilesFlags(
+                isomeric_smiles=case.isomeric_smiles,
+                kekule_smiles=case.kekule_smiles,
+                rooted_at_atom=case.rooted_at_atom,
+                canonical=False,
+                all_bonds_explicit=case.all_bonds_explicit,
+                all_hs_explicit=case.all_hs_explicit,
+                do_random=True,
+                ignore_atom_map_numbers=case.ignore_atom_map_numbers,
+            ),
+        )
+        return tuple(prepared.atom_tokens)
+
     def test_decoder_sampled_paths_stay_within_public_enum_outputs(self) -> None:
         for case in self.CASES:
-            with self.subTest(case=case.name, smiles=case.smiles):
-                outputs = self._enumerate_outputs(case)
-                decoder = self._make_decoder(case)
+            outputs = self._enumerate_outputs(case)
+            for seed in range(3):
+                with self.subTest(case=case.name, smiles=case.smiles, seed=seed):
+                    rng = random.Random(seed)
+                    decoder = self._make_decoder(case)
+                    atom_tokens = self._atom_tokens(case)
+                    chosen_tokens: list[str] = []
 
-                while not decoder.isTerminal():
-                    options = decoder.nextTokens()
-                    self.assertTrue(options)
-                    assert_prefix_options_match_outputs(
-                        self,
-                        decoder.prefix(),
-                        options,
-                        outputs,
-                    )
-                    decoder.advance(options[0])
+                    while not decoder.isTerminal():
+                        options = decoder.nextTokens()
+                        self.assertTrue(options)
+                        assert_prefix_options_match_outputs(
+                            self,
+                            decoder.prefix(),
+                            options,
+                            outputs,
+                            atom_tokens=atom_tokens,
+                        )
+                        chosen_token = rng.choice(options)
+                        chosen_tokens.append(chosen_token)
+                        decoder.advance(chosen_token)
 
-                self.assertEqual((), decoder.nextTokens())
-                self.assertIn(decoder.prefix(), outputs)
+                    self.assertEqual((), decoder.nextTokens())
+                    self.assertEqual(decoder.prefix(), "".join(chosen_tokens))
+                    self.assertIn(decoder.prefix(), outputs)
 
     def test_decoder_copy_forks_state_without_mutating_original(self) -> None:
         case = DecoderCase(
@@ -222,6 +247,31 @@ class PublicDecoderTests(unittest.TestCase):
                     doRandom=True,
                 )
             ),
+        )
+
+    def test_decoder_reports_branching_choices_for_aspirin_prefix(self) -> None:
+        case = DecoderCase(
+            name="aspirin",
+            smiles="CC(=O)Oc1ccccc1C(=O)O",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+        )
+        outputs = self._enumerate_outputs(case)
+        atom_tokens = self._atom_tokens(case)
+        decoder = self._make_decoder(case)
+
+        target_prefix = "CC(=O)Oc1c"
+        while decoder.prefix() != target_prefix:
+            options = decoder.nextTokens()
+            self.assertTrue(options)
+            decoder.advance(options[0])
+
+        assert_prefix_options_match_outputs(
+            self,
+            decoder.prefix(),
+            decoder.nextTokens(),
+            outputs,
+            atom_tokens=atom_tokens,
         )
 
     def test_public_enum_matches_internal_walker_enumeration(self) -> None:

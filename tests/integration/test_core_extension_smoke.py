@@ -32,6 +32,29 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         self.assertEqual(prepared.atom_count, kernel_prepared.atom_count)
         self.assertTrue(walker.next_token_support(state))
 
+    def test_core_decoder_reports_branching_prefix(self) -> None:
+        from grimace import _runtime
+
+        prepared = _runtime.prepare_smiles_graph(
+            parse_smiles("CC(=O)Oc1ccccc1C(=O)O"),
+            flags=_runtime.MolToSmilesFlags(
+                isomeric_smiles=False,
+                rooted_at_atom=0,
+                canonical=False,
+                do_random=True,
+            ),
+        )
+        decoder = CORE_MODULE.RootedConnectedNonStereoDecoder(
+            prepared,
+            0,
+        )
+
+        while decoder.prefix() != "CC(=O)Oc1c" and not decoder.is_terminal():
+            decoder.advance_token(decoder.next_token_support()[0])
+
+        self.assertEqual("CC(=O)Oc1c", decoder.prefix())
+        self.assertEqual(["(", "c"], decoder.next_token_support())
+
 
 if __name__ == "__main__":
     unittest.main()

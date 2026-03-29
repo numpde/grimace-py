@@ -9,15 +9,21 @@ use crate::prepared_graph::{
     mol_to_smiles_support, prepared_smiles_graph_schema_version, PyPreparedSmilesGraph,
 };
 use crate::rooted_nonstereo::{
-    PyRootedConnectedNonStereoWalker, PyRootedConnectedNonStereoWalkerState,
+    PyRootedConnectedNonStereoDecoder, PyRootedConnectedNonStereoWalker,
+    PyRootedConnectedNonStereoWalkerState,
 };
-use crate::rooted_stereo::{PyRootedConnectedStereoWalker, PyRootedConnectedStereoWalkerState};
+use crate::rooted_stereo::{
+    PyRootedConnectedStereoDecoder, PyRootedConnectedStereoWalker,
+    PyRootedConnectedStereoWalkerState,
+};
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPreparedSmilesGraph>()?;
+    m.add_class::<PyRootedConnectedNonStereoDecoder>()?;
     m.add_class::<PyRootedConnectedNonStereoWalker>()?;
     m.add_class::<PyRootedConnectedNonStereoWalkerState>()?;
+    m.add_class::<PyRootedConnectedStereoDecoder>()?;
     m.add_class::<PyRootedConnectedStereoWalker>()?;
     m.add_class::<PyRootedConnectedStereoWalkerState>()?;
     m.add_function(wrap_pyfunction!(prepared_smiles_graph_schema_version, m)?)?;

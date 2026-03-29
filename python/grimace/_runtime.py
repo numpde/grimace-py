@@ -141,8 +141,18 @@ def _make_walker(
     return _core.RootedConnectedNonStereoWalker(prepared, flags.rooted_at_atom)
 
 
+def _make_decoder(
+    mol_or_prepared: object,
+    flags: MolToSmilesFlags,
+) -> object:
+    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
+    if flags.isomeric_smiles:
+        return _core.RootedConnectedStereoDecoder(prepared, flags.rooted_at_atom)
+    return _core.RootedConnectedNonStereoDecoder(prepared, flags.rooted_at_atom)
+
+
 class MolToSmilesDecoder:
-    __slots__ = ("_walker", "_state")
+    __slots__ = ("_decoder",)
 
     def __init__(
         self,
@@ -168,35 +178,32 @@ class MolToSmilesDecoder:
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
         _validate_supported_flags(flags)
-        self._walker = _make_walker(mol_or_prepared, flags)
-        self._state = self._walker.initial_state()
+        self._decoder = _make_decoder(mol_or_prepared, flags)
 
     @classmethod
     def _from_parts(
         cls,
-        walker: object,
-        state: object,
+        decoder_impl: object,
     ) -> "MolToSmilesDecoder":
         decoder = cls.__new__(cls)
-        decoder._walker = walker
-        decoder._state = state
+        decoder._decoder = decoder_impl
         return decoder
 
     def nextTokens(self) -> tuple[str, ...]:
-        return tuple(self._walker.next_token_support(self._state))
+        return tuple(self._decoder.next_token_support())
 
     def advance(self, token: str) -> "MolToSmilesDecoder":
-        self._state = self._walker.advance_token(self._state, token)
+        self._decoder.advance_token(token)
         return self
 
     def prefix(self) -> str:
-        return self._state.prefix
+        return self._decoder.prefix()
 
     def isTerminal(self) -> bool:
-        return self._walker.is_terminal(self._state)
+        return self._decoder.is_terminal()
 
     def copy(self) -> "MolToSmilesDecoder":
-        return type(self)._from_parts(self._walker, self._state)
+        return type(self)._from_parts(self._decoder.copy())
 
 
 def mol_to_smiles_enum(

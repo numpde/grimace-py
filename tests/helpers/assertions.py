@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import unittest
 
+from tests.helpers.tokenization import expected_next_tokens_from_support
+
 
 def assert_support_valid(
     test_case: unittest.TestCase,
@@ -20,8 +22,8 @@ def assert_prefix_options_match_outputs(
     prefix: str,
     options,
     outputs,
+    *,
+    atom_tokens,
 ) -> None:
-    test_case.assertTrue(options)
-    test_case.assertTrue(
-        any(output.startswith(prefix + token) for output in outputs for token in options)
-    )
+    expected = expected_next_tokens_from_support(outputs, prefix, atom_tokens=atom_tokens)
+    test_case.assertEqual(expected, tuple(sorted(options)))

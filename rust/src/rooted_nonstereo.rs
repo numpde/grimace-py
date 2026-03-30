@@ -677,6 +677,23 @@ fn frontier_is_terminal(
     frontier_next_token_support(graph, frontier).is_empty()
 }
 
+fn enumerate_support_from_frontier(
+    graph: &PreparedSmilesGraphData,
+    frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
+    out: &mut BTreeSet<String>,
+) {
+    let transitions = frontier_transitions(graph, &frontier);
+    if transitions.is_empty() {
+        out.insert(frontier_prefix(&frontier));
+        return;
+    }
+
+    for next_frontier in transitions.into_values() {
+        enumerate_support_from_frontier(graph, next_frontier, out);
+    }
+}
+
+#[cfg(test)]
 fn enumerate_support_from_state(
     graph: &PreparedSmilesGraphData,
     state: RootedConnectedNonStereoWalkerStateData,
@@ -712,7 +729,7 @@ pub(crate) fn enumerate_rooted_connected_nonstereo_smiles_support(
     let root_idx = validate_root_idx(graph, root_idx)?;
     let initial_state = initial_state_for_root(graph, root_idx);
     let mut results = BTreeSet::new();
-    enumerate_support_from_state(graph, initial_state, &mut results);
+    enumerate_support_from_frontier(graph, vec![initial_state], &mut results);
     Ok(results.into_iter().collect())
 }
 
@@ -897,8 +914,8 @@ mod tests {
 
     use super::{
         advance_token_state, enumerate_rooted_connected_nonstereo_smiles_support,
-        initial_state_for_root, is_terminal_state, next_token_support_for_state,
-        permutations_py_order, validate_root_idx,
+        enumerate_support_from_state, initial_state_for_root, is_terminal_state,
+        next_token_support_for_state, permutations_py_order, validate_root_idx,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -1124,6 +1141,22 @@ mod tests {
             BTreeSet::from(["[Ti](=[O])=[O]".to_owned()]),
             support_root_1
         );
+    }
+
+    #[test]
+    fn direct_enumerator_matches_frontier_decoder_support() {
+        let graph = titanium_dioxide_graph();
+        let initial_state = initial_state_for_root(&graph, 1);
+
+        let mut direct = BTreeSet::new();
+        enumerate_support_from_state(&graph, initial_state, &mut direct);
+
+        let frontier = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 1)
+            .expect("frontier enumeration should succeed")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(direct, frontier);
     }
 
     #[test]

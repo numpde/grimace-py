@@ -127,17 +127,18 @@ stability guarantee.
   been seen.
 - `RDKit to full support`: the same sampling process until the full exact
   support has been seen.
-- RDKit timings are shown as `time mean ± std (draw mean ± std)`, over repeated
-  seeded trials.
+- All timing columns are shown as `time mean ± std`.
+- The two RDKit columns also show `(draw mean ± std)` over repeated seeded
+  trials.
 
 | Canonical SMILES | Atoms | Support | Grimace enum (all roots) | Decoder enum (all roots) | RDKit to 1/2 support | RDKit to full support |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **8.6** ms | **24.7** ms | **4.1** ± 0.3 ms (230.0 ± 18.8 draws) | **54.1** ± 16.4 ms (3086.7 ± 921.8 draws) |
-| `C1CC2(CCO1)CO2` | 8 | 36 | **2.9** ms | **5.2** ms | **0.3** ± 0.1 ms (23.0 ± 1.8 draws) | **1.8** ± 0.4 ms (155.6 ± 35.8 draws) |
-| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **14.7** ms | **22.5** ms | **1.8** ± 0.2 ms (97.4 ± 8.7 draws) | **18.0** ± 3.0 ms (987.9 ± 169.9 draws) |
-| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **17.8** ms | **20.1** ms | **0.6** ± 0.0 ms (44.1 ± 2.5 draws) | **5.9** ± 1.5 ms (483.0 ± 122.3 draws) |
-| `N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O` | 14 | 688 | **49.3** ms | **88.7** ms | **9.9** ± 0.3 ms (514.3 ± 12.9 draws) | **152.4** ± 47.2 ms (7946.7 ± 2448.6 draws) |
-| `COc1ccc2cc([C@H](C)C(=O)O)ccc2c1` | 17 | 1504 | **110.4** ms | **221.8** ms | **27.1** ± 0.7 ms (1143.0 ± 34.0 draws) | **583.3** ± 119.0 ms (24406.3 ± 4916.2 draws) |
+| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **15.3** ± 1.0 ms | **34.1** ± 2.4 ms | **4.7** ± 0.4 ms (230.0 ± 18.8 draws) | **56.2** ± 15.2 ms (3086.7 ± 921.8 draws) |
+| `C1CC2(CCO1)CO2` | 8 | 36 | **3.1** ± 0.2 ms | **5.3** ± 0.2 ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.9** ± 0.4 ms (155.6 ± 35.8 draws) |
+| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **14.3** ± 0.3 ms | **22.2** ± 0.5 ms | **1.8** ± 0.2 ms (97.4 ± 8.7 draws) | **18.0** ± 3.1 ms (987.9 ± 169.9 draws) |
+| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **17.5** ± 0.1 ms | **19.8** ± 0.1 ms | **0.6** ± 0.0 ms (44.1 ± 2.5 draws) | **6.0** ± 1.5 ms (483.0 ± 122.3 draws) |
+| `N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O` | 14 | 688 | **50.4** ± 2.2 ms | **96.8** ± 4.2 ms | **10.1** ± 0.4 ms (514.3 ± 12.9 draws) | **150.6** ± 45.9 ms (7946.7 ± 2448.6 draws) |
+| `COc1ccc2cc([C@H](C)C(=O)O)ccc2c1` | 17 | 1504 | **111.6** ± 1.4 ms | **219.9** ± 1.5 ms | **26.5** ± 0.7 ms (1143.0 ± 34.0 draws) | **570.1** ± 115.7 ms (24406.3 ± 4916.2 draws) |
 
 ## License
 

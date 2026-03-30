@@ -20,14 +20,14 @@ class TimingCase:
     isomeric_smiles: bool
 
 
-def _median_runtime(fn, *, repeats: int = 5) -> float:
+def _runtime_trials(fn, *, repeats: int = 7) -> list[float]:
     fn()
     timings: list[float] = []
     for _ in range(repeats):
         start = time.perf_counter()
         fn()
         timings.append(time.perf_counter() - start)
-    return statistics.median(timings)
+    return timings
 
 
 def _format_ms(seconds: float) -> str:
@@ -109,10 +109,10 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 support_size = len(support)
                 self.assertGreater(support_size, 0)
 
-                enum_time = _median_runtime(
+                enum_times = _runtime_trials(
                     lambda: self._enumerate_all_roots(mol, case)
                 )
-                decoder_time = _median_runtime(
+                decoder_times = _runtime_trials(
                     lambda: self._enumerate_all_roots_with_decoder(mol, case)
                 )
                 self.assertEqual(support, self._enumerate_all_roots_with_decoder(mol, case))
@@ -136,8 +136,9 @@ class ReadmeTimingPerfTests(unittest.TestCase):
 
                 rows.append(
                     "| "
-                    f"`{canonical_smiles}` | {mol.GetNumAtoms()} | {support_size} | {_format_bold_ms(enum_time)} | "
-                    f"{_format_bold_ms(decoder_time)} | "
+                    f"`{canonical_smiles}` | {mol.GetNumAtoms()} | {support_size} | "
+                    f"{_format_bold_duration(statistics.mean(enum_times), statistics.stdev(enum_times))} | "
+                    f"{_format_bold_duration(statistics.mean(decoder_times), statistics.stdev(decoder_times))} | "
                     f"{_format_bold_duration(statistics.mean(half_times), statistics.stdev(half_times))} "
                     f"({_format_draws(statistics.mean(half_draws), statistics.stdev(half_draws))} draws) | "
                     f"{_format_bold_duration(statistics.mean(full_times), statistics.stdev(full_times))} "

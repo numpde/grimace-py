@@ -628,9 +628,7 @@ fn advance_token_state(
 ) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
     let mut successors = successors_by_token(graph, state);
     let candidates = successors.remove(chosen_token).ok_or_else(|| {
-        let available = successors_by_token(graph, state)
-            .into_keys()
-            .collect::<Vec<_>>();
+        let available = successors.keys().cloned().collect::<Vec<_>>();
         PyKeyError::new_err(format!(
             "Token {chosen_token:?} is not available; choices={available:?}"
         ))

@@ -643,34 +643,24 @@ fn frontier_next_token_support(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
 ) -> Vec<String> {
-    let mut tokens = BTreeSet::new();
-    for state in frontier {
-        for token in next_token_support_for_state(graph, state) {
-            tokens.insert(token);
-        }
-    }
-    tokens.into_iter().collect()
+    frontier_transitions(graph, frontier).into_keys().collect()
 }
 
-fn advance_token_frontier(
+fn frontier_transitions(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
-    chosen_token: &str,
-) -> PyResult<Vec<RootedConnectedNonStereoWalkerStateData>> {
-    let mut next_frontier = BTreeSet::new();
+) -> BTreeMap<String, Vec<RootedConnectedNonStereoWalkerStateData>> {
+    let mut transitions =
+        BTreeMap::<String, BTreeSet<RootedConnectedNonStereoWalkerStateData>>::new();
     for state in frontier {
-        let mut successors = successors_by_token(graph, state);
-        if let Some(candidates) = successors.remove(chosen_token) {
-            next_frontier.extend(candidates);
+        for (token, successors) in successors_by_token(graph, state) {
+            transitions.entry(token).or_default().extend(successors);
         }
     }
-    if next_frontier.is_empty() {
-        let available = frontier_next_token_support(graph, frontier);
-        return Err(PyKeyError::new_err(format!(
-            "Token {chosen_token:?} is not available; choices={available:?}"
-        )));
-    }
-    Ok(next_frontier.into_iter().collect())
+    transitions
+        .into_iter()
+        .map(|(token, states)| (token, states.into_iter().collect()))
+        .collect()
 }
 
 fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> String {
@@ -832,6 +822,7 @@ impl PyRootedConnectedNonStereoWalker {
 pub struct PyRootedConnectedNonStereoDecoder {
     graph: PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
+    cached_transitions: Option<BTreeMap<String, Vec<RootedConnectedNonStereoWalkerStateData>>>,
 }
 
 #[pymethods]
@@ -843,15 +834,33 @@ impl PyRootedConnectedNonStereoDecoder {
         Ok(Self {
             frontier: vec![initial_state_for_root(&graph, root_idx)],
             graph,
+            cached_transitions: None,
         })
     }
 
-    fn next_token_support(&self) -> Vec<String> {
-        frontier_next_token_support(&self.graph, &self.frontier)
+    fn next_token_support(&mut self) -> Vec<String> {
+        if self.cached_transitions.is_none() {
+            self.cached_transitions = Some(frontier_transitions(&self.graph, &self.frontier));
+        }
+        self.cached_transitions
+            .as_ref()
+            .expect("cache should be populated")
+            .keys()
+            .cloned()
+            .collect()
     }
 
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
-        self.frontier = advance_token_frontier(&self.graph, &self.frontier, chosen_token)?;
+        let mut transitions = self
+            .cached_transitions
+            .take()
+            .unwrap_or_else(|| frontier_transitions(&self.graph, &self.frontier));
+        self.frontier = transitions.remove(chosen_token).ok_or_else(|| {
+            let available = transitions.keys().cloned().collect::<Vec<_>>();
+            PyKeyError::new_err(format!(
+                "Token {chosen_token:?} is not available; choices={available:?}"
+            ))
+        })?;
         Ok(())
     }
 
@@ -860,7 +869,10 @@ impl PyRootedConnectedNonStereoDecoder {
     }
 
     fn is_terminal(&self) -> bool {
-        frontier_is_terminal(&self.graph, &self.frontier)
+        self.cached_transitions
+            .as_ref()
+            .map(|transitions| transitions.is_empty())
+            .unwrap_or_else(|| frontier_is_terminal(&self.graph, &self.frontier))
     }
 
     fn copy(&self) -> Self {

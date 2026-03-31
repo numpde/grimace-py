@@ -95,6 +95,18 @@ CC(=O)Oc1c(C(=O)O)cccc -> ['1']
 The decoder is online. It does not precompute one fixed trajectory. At each
 step it exposes the legal next tokens for the current emitted prefix.
 
+Here a "token" means one string emitted by one decoder transition. Tokens are
+defined by the walker itself, not by splitting a finished SMILES into
+characters and not by integer token IDs. They come from two places:
+
+- the prepared graph's RDKit-style atom and bond tokens, such as `C`, `c`,
+  `Cl`, `[C@H]`, `=`, `/`, or `\\`
+- SMILES syntax literals inserted by the walker, such as `(`, `)`, `1`, or
+  `%10`
+
+So a token is exactly one appendable SMILES fragment for the current state. It
+may be one character or several.
+
 ## pip install ...
 
 Install with `pip install <wheel>` with one of those (download or use the link directly):

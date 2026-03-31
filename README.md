@@ -30,6 +30,7 @@ Current entrypoints:
 
 - `MolToSmilesEnum(...)`
 - `MolToSmilesDecoder(...)`
+- `MolToSmilesTokenInventory(...)`
 
 Both use the compiled Rust extension. There is no public runtime fallback.
 

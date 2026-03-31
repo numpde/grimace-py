@@ -53,6 +53,34 @@ def MolToSmilesEnum(
     )
 
 
+def MolToSmilesTokenInventory(
+    mol: object,
+    *,
+    isomericSmiles: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int | None = None,
+    canonical: bool = True,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = False,
+    ignoreAtomMapNumbers: bool = False,
+) -> tuple[str, ...]:
+    """Return the token inventory for a molecule under the public runtime flags."""
+
+    runtime = _require_runtime()
+    return runtime.mol_to_smiles_token_inventory(
+        mol,
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+    )
+
+
 class MolToSmilesDecoder:
     __slots__ = ("_impl",)
 
@@ -108,4 +136,4 @@ class MolToSmilesDecoder:
         return type(self)._from_impl(self._impl.copy())
 
 
-__all__ = ["MolToSmilesDecoder", "MolToSmilesEnum"]
+__all__ = ["MolToSmilesDecoder", "MolToSmilesEnum", "MolToSmilesTokenInventory"]

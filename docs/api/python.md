@@ -8,6 +8,7 @@ Current top-level exports:
 
 - `MolToSmilesDecoder`
 - `MolToSmilesEnum`
+- `MolToSmilesTokenInventory`
 
 The compiled extension `grimace._core` is required. There is no
 public runtime fallback.
@@ -110,6 +111,16 @@ So:
 
 - `MolToSmilesEnum(...)` gives exact full support
 - `MolToSmilesDecoder(...)` lets you step through that support one token at a time
+
+## MolToSmilesTokenInventory
+
+`MolToSmilesTokenInventory(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=None, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+
+This returns a sorted tuple of possible decoder tokens for one molecule under
+the same public writer flags.
+
+This first implementation is fast and local-graph based. It is intended as a
+token-inventory helper, not as a proof that every returned token is reachable.
 
 ## Correctness
 

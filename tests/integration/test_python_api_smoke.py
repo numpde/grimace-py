@@ -14,6 +14,7 @@ class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
         self.assertTrue(callable(grimace.MolToSmilesEnum))
+        self.assertTrue(callable(grimace.MolToSmilesTokenInventory))
         self.assertFalse(hasattr(grimace, "MolToSmilesSupport"))
         self.assertFalse(hasattr(grimace, "ReferencePolicy"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import cast
 
 from rdkit import Chem
 
@@ -261,6 +262,118 @@ def mol_to_smiles_support(
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
     )
+
+
+def mol_to_smiles_token_inventory(
+    mol_or_prepared: object,
+    *,
+    isomeric_smiles: bool = True,
+    kekule_smiles: bool = False,
+    rooted_at_atom: int | None = None,
+    canonical: bool = True,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    do_random: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> tuple[str, ...]:
+    """Build a cheap token inventory from local prepared-graph structure."""
+
+    effective_root = 0 if rooted_at_atom is None else rooted_at_atom
+    flags = MolToSmilesFlags(
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        rooted_at_atom=effective_root,
+        canonical=canonical,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        do_random=do_random,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
+    _validate_supported_flags(flags)
+    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
+    prepared_data = prepared.to_dict()
+
+    atom_tokens = cast(list[str], prepared_data["atom_tokens"])
+    neighbors = cast(list[list[int]], prepared_data["neighbors"])
+    neighbor_bond_tokens = cast(list[list[str]], prepared_data["neighbor_bond_tokens"])
+
+    inventory: set[str] = set()
+
+    chiral_tags = cast(list[str], prepared_data.get("atom_chiral_tags", []))
+    explicit_h_counts = cast(list[int], prepared_data.get("atom_explicit_h_counts", []))
+    implicit_h_counts = cast(list[int], prepared_data.get("atom_implicit_h_counts", []))
+    isotopes = cast(list[int], prepared_data.get("atom_isotopes", []))
+    formal_charges = cast(list[int], prepared_data.get("atom_formal_charges", []))
+    atom_map_numbers = cast(list[int], prepared_data.get("atom_map_numbers", []))
+
+    def _format_hydrogen_count(hydrogen_count: int) -> str:
+        if hydrogen_count == 0:
+            return ""
+        if hydrogen_count == 1:
+            return "H"
+        return f"H{hydrogen_count}"
+
+    def _format_charge(formal_charge: int) -> str:
+        if formal_charge == 0:
+            return ""
+        sign = "+" if formal_charge > 0 else "-"
+        magnitude = abs(formal_charge)
+        if magnitude == 1:
+            return sign
+        return f"{sign}{magnitude}"
+
+    def _ring_label_text(label: int) -> str:
+        if label < 10:
+            return str(label)
+        if label < 100:
+            return f"%{label}"
+        return f"%({label})"
+
+    for atom_idx, base_token in enumerate(atom_tokens):
+        if flags.isomeric_smiles and chiral_tags and chiral_tags[atom_idx] != "CHI_UNSPECIFIED":
+            hydrogen_count = explicit_h_counts[atom_idx] + implicit_h_counts[atom_idx]
+            isotope = isotopes[atom_idx]
+            formal_charge = formal_charges[atom_idx]
+            atom_map_number = 0 if flags.ignore_atom_map_numbers else atom_map_numbers[atom_idx]
+            symbol = base_token
+            for stereo_mark in ("@", "@@"):
+                parts = ["["]
+                if isotope:
+                    parts.append(str(isotope))
+                parts.append(symbol)
+                parts.append(stereo_mark)
+                parts.append(_format_hydrogen_count(hydrogen_count))
+                parts.append(_format_charge(formal_charge))
+                if atom_map_number:
+                    parts.append(f":{atom_map_number}")
+                parts.append("]")
+                inventory.add("".join(parts))
+        else:
+            inventory.add(base_token)
+
+    has_branching = False
+    for begin_idx, bonded_tokens in enumerate(neighbor_bond_tokens):
+        if len(neighbors[begin_idx]) > 2:
+            has_branching = True
+        for token in bonded_tokens:
+            if token:
+                inventory.add(token)
+
+    if has_branching:
+        inventory.update({"(", ")"})
+
+    bond_count = cast(int, prepared_data["bond_count"])
+    atom_count = cast(int, prepared_data["atom_count"])
+    ring_rank = max(0, bond_count - atom_count + 1)
+    for label in range(1, ring_rank + 1):
+        inventory.add(_ring_label_text(label))
+
+    if flags.isomeric_smiles:
+        bond_dirs = cast(list[str], prepared_data.get("bond_dirs", []))
+        if any(bond_dir != "NONE" for bond_dir in bond_dirs):
+            inventory.update({"/", "\\"})
+
+    return tuple(sorted(inventory))
 
 
 def enumerate_rooted_connected_nonstereo_smiles_support(

@@ -150,10 +150,9 @@ allowed by law.
 The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset
 is implemented today:
 
-- `rootedAtAtom >= 0`
+- `rootedAtAtom == -1` or `rootedAtAtom >= 0`
 - `canonical=False`
 - `doRandom=True`
-- singly-connected molecules only
 
 Supported writer flags:
 
@@ -165,9 +164,10 @@ Supported writer flags:
 
 Unsupported combinations fail fast with `NotImplementedError`.
 
-Disconnected molecules are supported by `MolToSmilesEnum(...)` and
-`MolToSmilesDecoder(...)`. `MolToSmilesTokenInventory(...)` still requires a
-singly connected molecule.
+Disconnected molecules are supported by the public APIs. `MolToSmilesEnum(...)`
+and `MolToSmilesDecoder(...)` compose fragment-wise behavior directly;
+`MolToSmilesTokenInventory(...)` returns the union of fragment inventories plus
+the `"."` separator token.
 
 ## Docs
 

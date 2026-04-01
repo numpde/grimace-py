@@ -221,9 +221,10 @@ class PublicDecoderTests(unittest.TestCase):
     def test_decoder_rejects_unsupported_flag_combinations(self) -> None:
         mol = parse_smiles("CCO")
 
-        with self.assertRaisesRegex(NotImplementedError, "rootedAtAtom >= 0"):
+        with self.assertRaisesRegex(NotImplementedError, "rootedAtAtom == -1 or rootedAtAtom >= 0"):
             grimace.MolToSmilesDecoder(
                 mol,
+                rootedAtAtom=-2,
                 isomericSmiles=False,
                 canonical=False,
                 doRandom=True,
@@ -242,6 +243,35 @@ class PublicDecoderTests(unittest.TestCase):
                 isomericSmiles=False,
                 canonical=False,
             )
+
+    def test_decoder_without_explicit_root_samples_paths_within_public_enum_outputs(self) -> None:
+        for smiles, isomeric_smiles in (
+            ("CCO", False),
+            ("O.CCO", True),
+            ("F[C@H](Cl)Br", True),
+        ):
+            mol = parse_smiles(smiles)
+            outputs = set(
+                grimace.MolToSmilesEnum(
+                    mol,
+                    isomericSmiles=isomeric_smiles,
+                    canonical=False,
+                    doRandom=True,
+                )
+            )
+            with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
+                for seed in range(3):
+                    rng = random.Random(seed)
+                    decoder = grimace.MolToSmilesDecoder(
+                        mol,
+                        isomericSmiles=isomeric_smiles,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                    while not decoder.is_terminal:
+                        choice = rng.choice(decoder.next_choices)
+                        decoder = choice.next_state
+                    self.assertIn(decoder.prefix, outputs)
 
     def test_decoder_supports_disconnected_molecules_and_emits_dot_between_fragments(self) -> None:
         decoder = grimace.MolToSmilesDecoder(

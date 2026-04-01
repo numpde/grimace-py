@@ -40,7 +40,7 @@ This is the important semantic point:
 
 Supported combination:
 
-- `rootedAtAtom >= 0`
+- `rootedAtAtom == -1` or `rootedAtAtom >= 0`
 - `canonical=False`
 - `doRandom=True`
 
@@ -53,8 +53,8 @@ Supported writer flags:
 - `ignoreAtomMapNumbers`
 
 Unsupported combinations fail fast with `NotImplementedError`. Molecules with
-multiple disconnected fragments are supported here and in
-`MolToSmilesDecoder(...)`, but not yet in `MolToSmilesTokenInventory(...)`.
+multiple disconnected fragments are supported here, in
+`MolToSmilesDecoder(...)`, and in `MolToSmilesTokenInventory(...)`.
 
 ## MolToSmilesDecoder
 
@@ -127,6 +127,8 @@ the same public writer flags.
 
 This first implementation is fast and local-graph based. It is intended as a
 token-inventory helper, not as a proof that every returned token is reachable.
+For disconnected molecules it returns the union of fragment inventories plus
+the `"."` separator token.
 
 ## Correctness
 

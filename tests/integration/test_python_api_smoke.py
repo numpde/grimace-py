@@ -50,22 +50,20 @@ class PythonApiSmokeTests(unittest.TestCase):
         self,
         mol: Chem.Mol,
         *,
-        root_idx: int,
+        root_idx: int | None,
         isomeric_smiles: bool,
         draw_budget: int,
         seed: int = 12345,
     ) -> set[str]:
         rdBase.SeedRandomNumberGenerator(seed)
-        return {
-            Chem.MolToSmiles(
-                Chem.Mol(mol),
-                rootedAtAtom=root_idx,
-                isomericSmiles=isomeric_smiles,
-                canonical=False,
-                doRandom=True,
-            )
-            for _ in range(draw_budget)
-        }
+        kwargs = dict(
+            isomericSmiles=isomeric_smiles,
+            canonical=False,
+            doRandom=True,
+        )
+        if root_idx is not None:
+            kwargs["rootedAtAtom"] = root_idx
+        return {Chem.MolToSmiles(Chem.Mol(mol), **kwargs) for _ in range(draw_budget)}
 
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(callable(grimace.MolToSmilesChoice))
@@ -135,6 +133,15 @@ class PythonApiSmokeTests(unittest.TestCase):
         )
 
     def test_public_api_rejects_unsupported_flag_combination(self) -> None:
+        with self.assertRaisesRegex(NotImplementedError, "rootedAtAtom == -1 or rootedAtAtom >= 0"):
+            tuple(
+                grimace.MolToSmilesEnum(
+                    parse_smiles("CCO"),
+                    rootedAtAtom=-2,
+                    canonical=False,
+                    doRandom=True,
+                )
+            )
         with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
             tuple(
                 grimace.MolToSmilesEnum(
@@ -148,8 +155,34 @@ class PythonApiSmokeTests(unittest.TestCase):
                     parse_smiles("CCO"),
                     rootedAtAtom=0,
                     canonical=False,
+                    )
                 )
-            )
+
+    def test_public_api_matches_rdkit_when_root_is_omitted(self) -> None:
+        for smiles, isomeric_smiles in (
+            ("CCO", False),
+            ("O.CCO", True),
+            ("F[C@H](Cl)Br", True),
+        ):
+            mol = parse_smiles(smiles)
+            with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
+                expected = self._sample_rdkit_random_support(
+                    mol,
+                    root_idx=None,
+                    isomeric_smiles=isomeric_smiles,
+                    draw_budget=512,
+                )
+                self.assertEqual(
+                    expected,
+                    set(
+                        grimace.MolToSmilesEnum(
+                            mol,
+                            isomericSmiles=isomeric_smiles,
+                            canonical=False,
+                            doRandom=True,
+                        )
+                    ),
+                )
 
     def test_public_api_matches_rdkit_on_disconnected_cyanide_salt(self) -> None:
         mol = parse_smiles("[Na+].C#N")

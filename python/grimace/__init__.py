@@ -117,12 +117,10 @@ class MolToSmilesDecoder:
         return decoder
 
     @property
-    def next_tokens(self) -> tuple[str, ...]:
-        return self._impl.next_tokens
-
-    def advance(self, token: str) -> "MolToSmilesDecoder":
-        self._impl.advance(token)
-        return self
+    def next_choices(self) -> tuple["MolToSmilesChoice", ...]:
+        return tuple(
+            MolToSmilesChoice._from_impl(choice_impl) for choice_impl in self._impl.choices()
+        )
 
     @property
     def prefix(self) -> str:
@@ -136,4 +134,27 @@ class MolToSmilesDecoder:
         return type(self)._from_impl(self._impl.copy())
 
 
-__all__ = ["MolToSmilesDecoder", "MolToSmilesEnum", "MolToSmilesTokenInventory"]
+class MolToSmilesChoice:
+    __slots__ = ("_impl",)
+
+    @classmethod
+    def _from_impl(cls, impl: object) -> "MolToSmilesChoice":
+        choice = cls.__new__(cls)
+        choice._impl = impl
+        return choice
+
+    @property
+    def text(self) -> str:
+        return self._impl.text
+
+    @property
+    def next_state(self) -> MolToSmilesDecoder:
+        return MolToSmilesDecoder._from_impl(self._impl.next_state)
+
+
+__all__ = [
+    "MolToSmilesChoice",
+    "MolToSmilesDecoder",
+    "MolToSmilesEnum",
+    "MolToSmilesTokenInventory",
+]

@@ -192,50 +192,55 @@ def _fragmented_mol_to_smiles_support(
     return {".".join(parts) for parts in product(*fragment_supports)}
 
 
-class _CoreDecoderAdapter:
+@dataclass(frozen=True, slots=True)
+class _ChoiceImpl:
+    text: str
+    next_state: object
+
+
+class _CoreStateAdapter:
     __slots__ = ("_decoder",)
 
     def __init__(self, decoder: object) -> None:
         self._decoder = decoder
 
-    def next_token_support(self) -> tuple[str, ...]:
-        return tuple(self._decoder.next_token_support())
+    def _choice_with_advanced_decoder(self, text: str) -> _ChoiceImpl:
+        next_decoder = self._decoder.copy()
+        next_decoder.advance_token(text)
+        return _ChoiceImpl(text=text, next_state=type(self)(next_decoder))
 
-    def advance_token(self, token: str) -> None:
-        self._decoder.advance_token(token)
+    def choices(self) -> tuple[_ChoiceImpl, ...]:
+        choice_texts = tuple(self._decoder.next_token_support())
+        return tuple(
+            self._choice_with_advanced_decoder(text)
+            for text in choice_texts
+        )
 
     def prefix(self) -> str:
         return self._decoder.prefix()
 
     def is_terminal(self) -> bool:
-        return self._decoder.is_terminal()
+        return bool(self._decoder.is_terminal())
 
-    def copy(self) -> "_CoreDecoderAdapter":
+    def copy(self) -> "_CoreStateAdapter":
         return type(self)(self._decoder.copy())
 
 
-class _MergedDecoderAdapter:
+class _MergedStateAdapter:
     __slots__ = ("_states",)
 
     def __init__(self, states: tuple[object, ...]) -> None:
         if not states:
-            raise ValueError("Merged decoder requires at least one state")
+            raise ValueError("Merged decoder state requires at least one branch")
         self._states = states
 
-    def next_token_support(self) -> tuple[str, ...]:
-        return tuple(sorted({token for state in self._states for token in state.next_token_support()}))
-
-    def advance_token(self, token: str) -> None:
-        next_states: list[object] = []
-        choices = self.next_token_support()
-        for state in self._states:
-            if token in state.next_token_support():
-                child = state.copy()
-                child.advance_token(token)
-                next_states.append(child)
-        if not next_states:
-            raise KeyError(f"Invalid token {token!r}; choices={choices}")
-        self._states = tuple(next_states)
+    def choices(self) -> tuple[_ChoiceImpl, ...]:
+        return tuple(
+            choice
+            for state in self._states
+            if not state.is_terminal()
+            for choice in state.choices()
+        )
 
     def prefix(self) -> str:
         prefix = self._states[0].prefix()
@@ -247,11 +252,11 @@ class _MergedDecoderAdapter:
     def is_terminal(self) -> bool:
         return all(state.is_terminal() for state in self._states)
 
-    def copy(self) -> "_MergedDecoderAdapter":
+    def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
 
 
-class _DisconnectedDecoderAdapter:
+class _DisconnectedStateAdapter:
     __slots__ = ("_fragment_states", "_fragment_idx", "_completed_prefix")
 
     def __init__(
@@ -270,24 +275,35 @@ class _DisconnectedDecoderAdapter:
     def _active_state(self) -> object:
         return self._fragment_states[self._fragment_idx]
 
-    def next_token_support(self) -> tuple[str, ...]:
+    def choices(self) -> tuple[_ChoiceImpl, ...]:
         active = self._active_state()
         if not active.is_terminal():
-            return active.next_token_support()
+            return tuple(
+                _ChoiceImpl(
+                    text=choice.text,
+                    next_state=type(self)(
+                        self._fragment_states[: self._fragment_idx]
+                        + (choice.next_state,)
+                        + self._fragment_states[self._fragment_idx + 1 :],
+                        fragment_idx=self._fragment_idx,
+                        completed_prefix=self._completed_prefix,
+                    ),
+                )
+                for choice in active.choices()
+            )
         if self._fragment_idx + 1 < len(self._fragment_states):
-            return (".",)
+            next_active = self._fragment_states[self._fragment_idx + 1]
+            return (
+                _ChoiceImpl(
+                    text=".",
+                    next_state=type(self)(
+                        self._fragment_states,
+                        fragment_idx=self._fragment_idx + 1,
+                        completed_prefix=f"{self._completed_prefix}{active.prefix()}.",
+                    ),
+                ),
+            )
         return ()
-
-    def advance_token(self, token: str) -> None:
-        active = self._active_state()
-        if not active.is_terminal():
-            active.advance_token(token)
-            return
-        choices = self.next_token_support()
-        if token != "." or choices != (".",):
-            raise KeyError(f"Invalid token {token!r}; choices={choices}")
-        self._completed_prefix = f"{self._completed_prefix}{active.prefix()}."
-        self._fragment_idx += 1
 
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"
@@ -296,7 +312,7 @@ class _DisconnectedDecoderAdapter:
         active = self._active_state()
         return active.is_terminal() and self._fragment_idx + 1 == len(self._fragment_states)
 
-    def copy(self) -> "_DisconnectedDecoderAdapter":
+    def copy(self) -> "_DisconnectedStateAdapter":
         return type(self)(
             tuple(state.copy() for state in self._fragment_states),
             fragment_idx=self._fragment_idx,
@@ -394,48 +410,48 @@ def _make_decoder(
     )
 
 
-def _make_connected_decoder_adapter(
+def _make_connected_state_adapter(
     mol_or_prepared: object,
     flags: MolToSmilesFlags,
-) -> _CoreDecoderAdapter:
-    return _CoreDecoderAdapter(_make_decoder(mol_or_prepared, flags))
+) -> _CoreStateAdapter:
+    return _CoreStateAdapter(_make_decoder(mol_or_prepared, flags))
 
 
-def _make_fragment_decoder_adapter(
+def _make_fragment_state_adapter(
     fragment_mol: Chem.Mol,
     *,
     flags: MolToSmilesFlags,
     rooted_at_atom: int | None,
 ) -> object:
     if rooted_at_atom is not None:
-        return _make_connected_decoder_adapter(fragment_mol, flags.with_rooted_at_atom(rooted_at_atom))
+        return _make_connected_state_adapter(fragment_mol, flags.with_rooted_at_atom(rooted_at_atom))
 
     states = tuple(
-        _make_connected_decoder_adapter(fragment_mol, flags.with_rooted_at_atom(local_root_idx))
+        _make_connected_state_adapter(fragment_mol, flags.with_rooted_at_atom(local_root_idx))
         for local_root_idx in range(fragment_mol.GetNumAtoms())
     )
     if len(states) == 1:
         return states[0]
-    return _MergedDecoderAdapter(states)
+    return _MergedStateAdapter(states)
 
 
 def _make_disconnected_decoder(
     mol: Chem.Mol,
     flags: MolToSmilesFlags,
-) -> _DisconnectedDecoderAdapter:
+) -> _DisconnectedStateAdapter:
     fragment_states = tuple(
-        _make_fragment_decoder_adapter(
+        _make_fragment_state_adapter(
             plan.mol,
             flags=flags,
             rooted_at_atom=plan.rooted_at_atom,
         )
         for plan in _fragment_plans_for_molecule(mol, rooted_at_atom=flags.rooted_at_atom)
     )
-    return _DisconnectedDecoderAdapter(fragment_states)
+    return _DisconnectedStateAdapter(fragment_states)
 
 
 class MolToSmilesDecoder:
-    __slots__ = ("_decoder",)
+    __slots__ = ("_state",)
 
     def __init__(
         self,
@@ -462,37 +478,38 @@ class MolToSmilesDecoder:
         )
         _validate_supported_flags(flags)
         if _is_disconnected_molecule(mol_or_prepared):
-            self._decoder = _make_disconnected_decoder(cast(Chem.Mol, mol_or_prepared), flags)
+            self._state = _make_disconnected_decoder(cast(Chem.Mol, mol_or_prepared), flags)
         else:
-            self._decoder = _make_connected_decoder_adapter(mol_or_prepared, flags)
+            self._state = _make_connected_state_adapter(mol_or_prepared, flags)
 
     @classmethod
     def _from_parts(
         cls,
-        decoder_impl: object,
+        state_impl: object,
     ) -> "MolToSmilesDecoder":
         decoder = cls.__new__(cls)
-        decoder._decoder = decoder_impl
+        decoder._state = state_impl
         return decoder
 
-    @property
-    def next_tokens(self) -> tuple[str, ...]:
-        return tuple(self._decoder.next_token_support())
-
-    def advance(self, token: str) -> "MolToSmilesDecoder":
-        self._decoder.advance_token(token)
-        return self
+    def choices(self) -> tuple[_ChoiceImpl, ...]:
+        return tuple(
+            _ChoiceImpl(
+                text=choice.text,
+                next_state=type(self)._from_parts(choice.next_state),
+            )
+            for choice in self._state.choices()
+        )
 
     @property
     def prefix(self) -> str:
-        return self._decoder.prefix()
+        return self._state.prefix()
 
     @property
     def is_terminal(self) -> bool:
-        return self._decoder.is_terminal()
+        return self._state.is_terminal()
 
     def copy(self) -> "MolToSmilesDecoder":
-        return type(self)._from_parts(self._decoder.copy())
+        return type(self)._from_parts(self._state.copy())
 
 
 def mol_to_smiles_enum(

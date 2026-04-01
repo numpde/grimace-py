@@ -56,10 +56,21 @@ class RootedConnectedNonStereoWalker:
         state: RootedConnectedNonStereoWalkerState,
         /,
     ) -> list[str]: ...
+    def next_choice_texts(
+        self,
+        state: RootedConnectedNonStereoWalkerState,
+        /,
+    ) -> list[str]: ...
     def advance_token(
         self,
         state: RootedConnectedNonStereoWalkerState,
         chosen_token: str,
+        /,
+    ) -> RootedConnectedNonStereoWalkerState: ...
+    def advance_choice(
+        self,
+        state: RootedConnectedNonStereoWalkerState,
+        chosen_idx: int,
         /,
     ) -> RootedConnectedNonStereoWalkerState: ...
     def is_terminal(self, state: RootedConnectedNonStereoWalkerState, /) -> bool: ...
@@ -92,10 +103,21 @@ class RootedConnectedStereoWalker:
         state: RootedConnectedStereoWalkerState,
         /,
     ) -> list[str]: ...
+    def next_choice_texts(
+        self,
+        state: RootedConnectedStereoWalkerState,
+        /,
+    ) -> list[str]: ...
     def advance_token(
         self,
         state: RootedConnectedStereoWalkerState,
         chosen_token: str,
+        /,
+    ) -> RootedConnectedStereoWalkerState: ...
+    def advance_choice(
+        self,
+        state: RootedConnectedStereoWalkerState,
+        chosen_idx: int,
         /,
     ) -> RootedConnectedStereoWalkerState: ...
     def is_terminal(self, state: RootedConnectedStereoWalkerState, /) -> bool: ...

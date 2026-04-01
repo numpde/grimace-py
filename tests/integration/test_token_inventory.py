@@ -139,11 +139,9 @@ class TokenInventoryTests(unittest.TestCase):
             ]
             while stack:
                 decoder = stack.pop()
-                inventory.update(decoder.next_tokens)
-                for token in decoder.next_tokens:
-                    next_state = decoder.copy()
-                    next_state.advance(token)
-                    stack.append(next_state)
+                choices = decoder.next_choices
+                inventory.update(choice.text for choice in choices)
+                stack.extend(choice.next_state for choice in choices)
 
         return tuple(sorted(inventory))
 

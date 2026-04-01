@@ -6,7 +6,7 @@ SMILES enumeration with next-token distribution.
 enumeration and online next-token decoding from RDKit molecules. It computes
 the full rooted SMILES support of a molecule under an RDKit-style writing
 regime, and it can also step through that support one token at a time: at each
-prefix it exposes the legal next tokens, then advances when you choose one.
+prefix it exposes the legal next choices, then advances when you choose one.
 By "support" we mean the full set of reachable rooted SMILES strings for the
 given molecule and writer flags.
 
@@ -68,8 +68,8 @@ decoder = grimace.MolToSmilesDecoder(
 )
 
 while not decoder.is_terminal:
-    print(f"{decoder.prefix} -> {list(decoder.next_tokens)}")
-    decoder.advance(decoder.next_tokens[0])
+    print(f"{decoder.prefix} -> {[choice.text for choice in decoder.next_choices]}")
+    decoder = decoder.next_choices[0].next_state
 ```
 
 Expected output:
@@ -94,7 +94,7 @@ CC(=O)Oc1c(C(=O)O)cccc -> ['1']
 ```
 
 The decoder is online. It does not precompute one fixed trajectory. At each
-step it exposes the legal next tokens for the current emitted prefix.
+step it exposes the legal next choices for the current emitted prefix.
 
 Here a "token" means one string emitted by one decoder transition. Tokens are
 defined by the walker itself, not by splitting a finished SMILES into
@@ -164,6 +164,10 @@ Supported writer flags:
 - `ignoreAtomMapNumbers`
 
 Unsupported combinations fail fast with `NotImplementedError`.
+
+Disconnected molecules are supported by `MolToSmilesEnum(...)` and
+`MolToSmilesDecoder(...)`. `MolToSmilesTokenInventory(...)` still requires a
+singly connected molecule.
 
 ## Docs
 

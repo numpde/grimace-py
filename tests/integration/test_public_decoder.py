@@ -131,6 +131,14 @@ class PublicDecoderTests(unittest.TestCase):
         )
         return tuple(prepared.atom_tokens)
 
+    @staticmethod
+    def _choice_texts(decoder: grimace.MolToSmilesDecoder) -> tuple[str, ...]:
+        return tuple(choice.text for choice in decoder.next_choices)
+
+    @staticmethod
+    def _unique_choice_texts(decoder: grimace.MolToSmilesDecoder) -> tuple[str, ...]:
+        return tuple(sorted({choice.text for choice in decoder.next_choices}))
+
     def test_decoder_sampled_paths_stay_within_public_enum_outputs(self) -> None:
         for case in self.CASES:
             outputs = self._enumerate_outputs(case)
@@ -142,20 +150,21 @@ class PublicDecoderTests(unittest.TestCase):
                     chosen_tokens: list[str] = []
 
                     while not decoder.is_terminal:
-                        options = decoder.next_tokens
-                        self.assertTrue(options)
+                        choices = decoder.next_choices
+                        options = self._choice_texts(decoder)
+                        self.assertTrue(choices)
                         assert_prefix_options_match_outputs(
                             self,
                             decoder.prefix,
-                            options,
+                            tuple(sorted(set(options))),
                             outputs,
                             atom_tokens=atom_tokens,
                         )
-                        chosen_token = rng.choice(options)
-                        chosen_tokens.append(chosen_token)
-                        decoder.advance(chosen_token)
+                        chosen_choice = rng.choice(choices)
+                        chosen_tokens.append(chosen_choice.text)
+                        decoder = chosen_choice.next_state
 
-                    self.assertEqual((), decoder.next_tokens)
+                    self.assertEqual((), decoder.next_choices)
                     self.assertEqual(decoder.prefix, "".join(chosen_tokens))
                     self.assertIn(decoder.prefix, outputs)
 
@@ -170,19 +179,26 @@ class PublicDecoderTests(unittest.TestCase):
         decoder = self._make_decoder(case)
 
         while not decoder.is_terminal:
-            options = decoder.next_tokens
+            options = decoder.next_choices
             if len(options) > 1:
                 break
-            decoder.advance(options[0])
+            decoder = options[0].next_state
 
-        self.assertGreater(len(decoder.next_tokens), 1)
+        self.assertGreater(len(decoder.next_choices), 1)
         original_prefix = decoder.prefix
         left = decoder.copy()
         right = decoder.copy()
-        left_token, right_token = decoder.next_tokens[:2]
+        distinct_pairs = [
+            (left_choice, right_choice)
+            for idx, left_choice in enumerate(decoder.next_choices)
+            for right_choice in decoder.next_choices[idx + 1 :]
+            if left_choice.next_state.prefix != right_choice.next_state.prefix
+        ]
+        self.assertTrue(distinct_pairs)
+        left_choice, right_choice = distinct_pairs[0]
 
-        left.advance(left_token)
-        right.advance(right_token)
+        left = left_choice.next_state
+        right = right_choice.next_state
 
         self.assertEqual(original_prefix, decoder.prefix)
         self.assertNotEqual(left.prefix, right.prefix)
@@ -198,8 +214,9 @@ class PublicDecoderTests(unittest.TestCase):
             doRandom=True,
         )
 
-        with self.assertRaisesRegex(KeyError, "choices"):
-            decoder.advance("(")
+        with self.assertRaisesRegex(KeyError, "choice_count"):
+            walker = grimace._runtime.make_nonstereo_walker(parse_smiles("CCO"), 0)
+            walker.advance_choice(walker.initial_state(), 99)
 
     def test_decoder_rejects_unsupported_flag_combinations(self) -> None:
         mol = parse_smiles("CCO")
@@ -236,13 +253,36 @@ class PublicDecoderTests(unittest.TestCase):
         )
 
         self.assertEqual("", decoder.prefix)
-        self.assertEqual(("[Na+]",), decoder.next_tokens)
-        decoder.advance("[Na+]")
+        self.assertEqual(("[Na+]",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
         self.assertEqual("[Na+]", decoder.prefix)
-        self.assertEqual((".",), decoder.next_tokens)
-        decoder.advance(".")
+        self.assertEqual((".",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
         self.assertEqual("[Na+].", decoder.prefix)
-        self.assertEqual(("C", "N"), decoder.next_tokens)
+        self.assertEqual(("C", "N"), self._choice_texts(decoder))
+
+    def test_decoder_preserves_duplicate_same_text_choices(self) -> None:
+        decoder = grimace.MolToSmilesDecoder(
+            parse_smiles("[Na+].CC"),
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("[Na+]", decoder.prefix)
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("[Na+].", decoder.prefix)
+        self.assertEqual(("C", "C"), self._choice_texts(decoder))
+        left, right = decoder.next_choices
+        left_state = left.next_state
+        right_state = right.next_state
+        self.assertEqual("C", left.text)
+        self.assertEqual("C", right.text)
+        self.assertIsNot(left_state, right_state)
+        self.assertEqual("[Na+].C", left_state.prefix)
+        self.assertEqual("[Na+].C", right_state.prefix)
 
     def test_decoder_disconnected_sampled_paths_stay_within_public_enum_outputs(self) -> None:
         mol = parse_smiles("[Na+].C#N")
@@ -275,11 +315,11 @@ class PublicDecoderTests(unittest.TestCase):
                         chosen_tokens: list[str] = []
 
                         while not decoder.is_terminal:
-                            options = decoder.next_tokens
-                            self.assertTrue(options)
-                            chosen_token = rng.choice(options)
-                            chosen_tokens.append(chosen_token)
-                            decoder.advance(chosen_token)
+                            choices = decoder.next_choices
+                            self.assertTrue(choices)
+                            chosen_choice = rng.choice(choices)
+                            chosen_tokens.append(chosen_choice.text)
+                            decoder = chosen_choice.next_state
 
                         self.assertEqual(decoder.prefix, "".join(chosen_tokens))
                         self.assertIn(decoder.prefix, outputs)
@@ -295,7 +335,7 @@ class PublicDecoderTests(unittest.TestCase):
 
         self.assertEqual("", decoder.prefix)
         self.assertTrue(decoder.is_terminal)
-        self.assertEqual((), decoder.next_tokens)
+        self.assertEqual((), decoder.next_choices)
         self.assertEqual(
             {""},
             set(
@@ -322,14 +362,14 @@ class PublicDecoderTests(unittest.TestCase):
 
         target_prefix = "CC(=O)Oc1c"
         while decoder.prefix != target_prefix:
-            options = decoder.next_tokens
-            self.assertTrue(options)
-            decoder.advance(options[0])
+            choices = decoder.next_choices
+            self.assertTrue(choices)
+            decoder = choices[0].next_state
 
         assert_prefix_options_match_outputs(
             self,
             decoder.prefix,
-            decoder.next_tokens,
+            self._unique_choice_texts(decoder),
             outputs,
             atom_tokens=atom_tokens,
         )

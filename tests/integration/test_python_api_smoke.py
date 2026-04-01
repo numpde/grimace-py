@@ -68,6 +68,7 @@ class PythonApiSmokeTests(unittest.TestCase):
         }
 
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
+        self.assertTrue(callable(grimace.MolToSmilesChoice))
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
         self.assertTrue(callable(grimace.MolToSmilesEnum))
         self.assertTrue(callable(grimace.MolToSmilesTokenInventory))
@@ -75,6 +76,15 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertFalse(hasattr(grimace, "ReferencePolicy"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_stereo_smiles_support"))
+        decoder = grimace.MolToSmilesDecoder(
+            parse_smiles("CCO"),
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+        self.assertFalse(hasattr(decoder, "next_tokens"))
+        self.assertFalse(hasattr(decoder, "advance"))
         if CORE_MODULE is None:
             with self.assertRaises(ImportError):
                 tuple(

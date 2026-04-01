@@ -273,10 +273,8 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 if decoder.is_terminal:
                     outputs.add(decoder.prefix)
                     continue
-                for token in reversed(decoder.next_tokens):
-                    next_state = decoder.copy()
-                    next_state.advance(token)
-                    stack.append(next_state)
+                for choice in reversed(decoder.next_choices):
+                    stack.append(choice.next_state)
 
         return outputs
 

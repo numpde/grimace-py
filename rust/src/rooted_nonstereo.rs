@@ -5,8 +5,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
 use crate::frontier::{
-    extend_transitions, finalize_transitions, frontier_prefix as shared_frontier_prefix,
-    take_transition_or_err,
+    choice_texts, extend_transitions, finalize_transitions, grouped_choice_texts,
+    frontier_prefix as shared_frontier_prefix, take_choice_or_err,
+    take_grouped_choices_or_err, DecoderChoice,
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
 
@@ -643,6 +644,41 @@ fn advance_token_state(
         .expect("chosen token should have at least one successor"))
 }
 
+fn choices_for_state(
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedNonStereoWalkerStateData,
+) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
+    let mut choices = Vec::new();
+    for (token, successors) in successors_by_token(graph, state) {
+        for successor in successors {
+            choices.push(DecoderChoice {
+                text: token.clone(),
+                next_frontier: vec![successor],
+            });
+        }
+    }
+    choices
+}
+
+fn next_choice_texts_for_state(
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedNonStereoWalkerStateData,
+) -> Vec<String> {
+    choice_texts(&choices_for_state(graph, state))
+}
+
+fn advance_choice_state(
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedNonStereoWalkerStateData,
+    chosen_idx: usize,
+) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
+    let mut choices = choices_for_state(graph, state);
+    Ok(take_choice_or_err(&mut choices, chosen_idx)?
+        .into_iter()
+        .next()
+        .expect("choice should advance to exactly one successor state"))
+}
+
 fn frontier_next_token_support(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
@@ -660,6 +696,24 @@ fn frontier_transitions(
         extend_transitions(&mut transitions, successors_by_token(graph, state));
     }
     finalize_transitions(transitions)
+}
+
+fn frontier_choices(
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedNonStereoWalkerStateData],
+) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
+    let mut choices = Vec::new();
+    for state in frontier {
+        for (token, successors) in successors_by_token(graph, state) {
+            for successor in successors {
+                choices.push(DecoderChoice {
+                    text: token.clone(),
+                    next_frontier: vec![successor],
+                });
+            }
+        }
+    }
+    choices
 }
 
 fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> String {
@@ -795,6 +849,14 @@ impl PyRootedConnectedNonStereoWalker {
         Ok(next_token_support_for_state(&self.graph, &state.data))
     }
 
+    fn next_choice_texts(
+        &self,
+        state: &PyRootedConnectedNonStereoWalkerState,
+    ) -> PyResult<Vec<String>> {
+        validate_state_shape(&self.graph, &state.data)?;
+        Ok(next_choice_texts_for_state(&self.graph, &state.data))
+    }
+
     fn advance_token(
         &self,
         state: &PyRootedConnectedNonStereoWalkerState,
@@ -803,6 +865,17 @@ impl PyRootedConnectedNonStereoWalker {
         validate_state_shape(&self.graph, &state.data)?;
         Ok(PyRootedConnectedNonStereoWalkerState {
             data: advance_token_state(&self.graph, &state.data, chosen_token)?,
+        })
+    }
+
+    fn advance_choice(
+        &self,
+        state: &PyRootedConnectedNonStereoWalkerState,
+        chosen_idx: usize,
+    ) -> PyResult<PyRootedConnectedNonStereoWalkerState> {
+        validate_state_shape(&self.graph, &state.data)?;
+        Ok(PyRootedConnectedNonStereoWalkerState {
+            data: advance_choice_state(&self.graph, &state.data, chosen_idx)?,
         })
     }
 
@@ -835,7 +908,7 @@ impl PyRootedConnectedNonStereoWalker {
 pub struct PyRootedConnectedNonStereoDecoder {
     graph: PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-    cached_transitions: Option<BTreeMap<String, Vec<RootedConnectedNonStereoWalkerStateData>>>,
+    cached_choices: Option<Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>>>,
 }
 
 #[pymethods]
@@ -847,28 +920,47 @@ impl PyRootedConnectedNonStereoDecoder {
         Ok(Self {
             frontier: vec![initial_state_for_root(&graph, root_idx)],
             graph,
-            cached_transitions: None,
+            cached_choices: None,
         })
     }
 
     fn next_token_support(&mut self) -> Vec<String> {
-        if self.cached_transitions.is_none() {
-            self.cached_transitions = Some(frontier_transitions(&self.graph, &self.frontier));
+        if self.cached_choices.is_none() {
+            self.cached_choices = Some(frontier_choices(&self.graph, &self.frontier));
         }
-        self.cached_transitions
+        grouped_choice_texts(
+            self.cached_choices
             .as_ref()
-            .expect("cache should be populated")
-            .keys()
-            .cloned()
-            .collect()
+            .expect("cache should be populated"),
+        )
     }
 
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
-        let mut transitions = self
-            .cached_transitions
+        let choices = self
+            .cached_choices
             .take()
-            .unwrap_or_else(|| frontier_transitions(&self.graph, &self.frontier));
-        self.frontier = take_transition_or_err(&mut transitions, chosen_token)?;
+            .unwrap_or_else(|| frontier_choices(&self.graph, &self.frontier));
+        self.frontier = take_grouped_choices_or_err(choices, chosen_token)?;
+        Ok(())
+    }
+
+    fn next_choice_texts(&mut self) -> Vec<String> {
+        if self.cached_choices.is_none() {
+            self.cached_choices = Some(frontier_choices(&self.graph, &self.frontier));
+        }
+        choice_texts(
+            self.cached_choices
+                .as_ref()
+                .expect("cache should be populated"),
+        )
+    }
+
+    fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
+        let mut choices = self
+            .cached_choices
+            .take()
+            .unwrap_or_else(|| frontier_choices(&self.graph, &self.frontier));
+        self.frontier = take_choice_or_err(&mut choices, chosen_idx)?;
         Ok(())
     }
 
@@ -877,9 +969,9 @@ impl PyRootedConnectedNonStereoDecoder {
     }
 
     fn is_terminal(&self) -> bool {
-        self.cached_transitions
+        self.cached_choices
             .as_ref()
-            .map(|transitions| transitions.is_empty())
+            .map(|choices| choices.is_empty())
             .unwrap_or_else(|| frontier_is_terminal(&self.graph, &self.frontier))
     }
 

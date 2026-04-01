@@ -31,6 +31,8 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertEqual(prepared.atom_count, kernel_prepared.atom_count)
         self.assertTrue(walker.next_token_support(state))
+        self.assertEqual(["C"], walker.next_choice_texts(state))
+        self.assertEqual("C", walker.advance_choice(state, 0).prefix)
 
     def test_core_decoder_reports_branching_prefix(self) -> None:
         from grimace import _runtime

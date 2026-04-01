@@ -53,7 +53,8 @@ Supported writer flags:
 - `ignoreAtomMapNumbers`
 
 Unsupported combinations fail fast with `NotImplementedError`. Molecules with
-multiple disconnected fragments also raise `NotImplementedError`.
+multiple disconnected fragments are supported here and in
+`MolToSmilesDecoder(...)`, but not yet in `MolToSmilesTokenInventory(...)`.
 
 ## MolToSmilesDecoder
 
@@ -62,9 +63,9 @@ multiple disconnected fragments also raise `NotImplementedError`.
 This is the incremental next-token API. It accepts the same flags and the same
 current limits as `MolToSmilesEnum(...)`.
 
-It exposes next-token support for the same rooted random writer mode. The
-decoder is online: it shows the legal next tokens for the current emitted
-prefix, and `advance(token)` moves it to the next prefix state.
+It exposes online next choices for the same rooted random writer mode. The
+decoder is online: it shows the legal next choices for the current emitted
+prefix, and each choice already carries the next decoder state.
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
@@ -75,26 +76,31 @@ decoder = grimace.MolToSmilesDecoder(
     doRandom=True,
 )
 while decoder.prefix != "CC(=O)Oc1c":
-    decoder.advance(decoder.next_tokens[0])
+    decoder = decoder.next_choices[0].next_state
 
 decoder.prefix       # 'CC(=O)Oc1c'
-decoder.next_tokens  # ('(', 'c')
+[choice.text for choice in decoder.next_choices]  # ['(', 'c']
 ```
 
 Available interface:
 
-- `next_tokens: tuple[str, ...]`
-- `advance(token: str)`
+- `next_choices: tuple[MolToSmilesChoice, ...]`
 - `prefix: str`
 - `is_terminal: bool`
 - `copy() -> MolToSmilesDecoder`
+
+Each `MolToSmilesChoice` has:
+
+- `text: str`
+- `next_state: MolToSmilesDecoder`
 
 ## Decoder model
 
 `MolToSmilesDecoder(...)` exposes the same runtime as a stateful decoder:
 
-- `next_tokens` returns the allowed next SMILES fragments
-- `advance(token)` moves the decoder forward
+- `next_choices` returns the allowed next logical choices
+- `choice.text` is the emitted SMILES fragment for that choice
+- `choice.next_state` is the decoder state after taking that choice
 - `prefix` returns the current prefix
 
 The tokens are literal SMILES fragments, not token ids. A token may be one
@@ -103,8 +109,8 @@ character or many characters, for example `"C"`, `"[C@H]"`, or `"%12"`.
 Important semantic point:
 
 - the decoder is online
-- it reports the legal next tokens for the current emitted prefix
-- choosing a token advances it to the next prefix state
+- it reports the legal next choices for the current emitted prefix
+- choosing a choice advances it to the next decoder state
 - it does not precompute one fixed full output before you start stepping
 
 So:

@@ -869,11 +869,6 @@ def _isolated_component_flips(
     if not isolated_components:
         return ()
 
-    component_bond_indices: dict[int, int] = {}
-    for bond_idx, component_idx in enumerate(stereo_component_ids):
-        if component_idx >= 0 and component_idx not in component_bond_indices:
-            component_bond_indices[component_idx] = bond_idx
-
     side_ids_by_component: defaultdict[int, list[int]] = defaultdict(list)
     for side_idx, side_info in enumerate(side_infos):
         side_ids_by_component[side_info.component_idx].append(side_idx)
@@ -908,10 +903,15 @@ def _isolated_component_flips(
         if selected_neighbor_idx < 0:
             continue
 
-        selected_rank = side_infos[begin_side_idx].candidate_neighbors.index(selected_neighbor_idx)
-        bond_idx = component_bond_indices[component_idx]
-        begin_is_stored_begin = begin_atom_idx == prepared.bond_begin_atom_indices[bond_idx]
-        flips[component_idx] = selected_rank == (1 if begin_is_stored_begin else 0)
+        side_info = side_infos[begin_side_idx]
+        selected_base_token = _candidate_base_token(side_info, selected_neighbor_idx)
+        phase = result.stereo_component_phases[component_idx]
+        if phase == _UNKNOWN_COMPONENT_PHASE:
+            continue
+        flips[component_idx] = (
+            selected_base_token
+            == ("/" if phase == _STORED_COMPONENT_PHASE else "\\")
+        )
 
     return tuple(flips)
 
@@ -999,17 +999,6 @@ def enumerate_from_atom(
                     stereo_component_ids,
                     current_component_phases,
                     current_component_begin_atoms,
-                    begin_idx=atom_idx,
-                    end_idx=target_idx,
-                )
-                _, current_selected_neighbors, current_selected_orientations = _emitted_edge_part(
-                    prepared,
-                    side_infos,
-                    edge_to_side_ids,
-                    current_component_phases,
-                    current_selected_neighbors,
-                    current_selected_orientations,
-                    isolated_components,
                     begin_idx=atom_idx,
                     end_idx=target_idx,
                 )

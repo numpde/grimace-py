@@ -113,7 +113,6 @@ struct StereoWalkerRuntimeData {
     side_infos: Vec<StereoSideInfo>,
     edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
     side_ids_by_component: Vec<Vec<usize>>,
-    component_bond_indices: Vec<Option<usize>>,
 }
 
 fn ring_label_text(label: usize) -> String {
@@ -1223,19 +1222,12 @@ fn build_walker_runtime(graph: &PreparedSmilesGraphData) -> PyResult<StereoWalke
         }
         side_ids_by_component[side_info.component_idx].push(side_idx);
     }
-    let mut component_bond_indices = vec![None; component_count as usize];
-    for (bond_idx, &component_idx) in stereo_component_ids.iter().enumerate() {
-        if component_idx >= 0 && component_bond_indices[component_idx as usize].is_none() {
-            component_bond_indices[component_idx as usize] = Some(bond_idx);
-        }
-    }
     Ok(StereoWalkerRuntimeData {
         stereo_component_ids,
         isolated_components,
         side_infos,
         edge_to_side_ids,
         side_ids_by_component,
-        component_bond_indices,
     })
 }
 
@@ -1311,7 +1303,7 @@ fn inferred_component_token_flip(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     component_idx: usize,
-    graph: &PreparedSmilesGraphData,
+    _graph: &PreparedSmilesGraphData,
 ) -> PyResult<Option<i8>> {
     let phase = state.stereo_component_phases[component_idx];
     let isolated = runtime.isolated_components[component_idx];
@@ -1355,18 +1347,15 @@ fn inferred_component_token_flip(
         return Ok(None);
     }
     let selected_neighbor_idx = selected_neighbor_idx as usize;
-    let Some(selected_rank) = runtime.side_infos[begin_side_idx]
-        .candidate_neighbors
-        .iter()
-        .position(|&neighbor_idx| neighbor_idx == selected_neighbor_idx)
-    else {
-        return Ok(None);
-    };
-    let Some(bond_idx) = runtime.component_bond_indices[component_idx] else {
-        return Ok(None);
-    };
-    let begin_is_stored_begin = begin_atom_idx == graph.bond_begin_atom_indices[bond_idx];
-    let component_flip = if selected_rank == if begin_is_stored_begin { 1 } else { 0 } {
+    let selected_side_info = &runtime.side_infos[begin_side_idx];
+    let selected_base_token = candidate_base_token(selected_side_info, selected_neighbor_idx)?;
+    let component_flip = if selected_base_token
+        == if phase == STORED_COMPONENT_PHASE {
+            "/"
+        } else {
+            "\\"
+        }
+    {
         FLIPPED_COMPONENT_TOKEN_FLIP
     } else {
         STORED_COMPONENT_TOKEN_FLIP
@@ -1561,20 +1550,6 @@ fn enter_atom_successors_by_token(
                         )?;
                         current_component_phases = updated_phases;
                         current_component_begin_atoms = updated_begin_atoms;
-                        let (_ignored_part, updated_neighbors, updated_orientations) =
-                            emitted_edge_part(
-                                graph,
-                                &runtime.side_infos,
-                                &runtime.edge_to_side_ids,
-                                &current_component_phases,
-                                &current_selected_neighbors,
-                                &current_selected_orientations,
-                                &runtime.isolated_components,
-                                atom_idx,
-                                target_idx,
-                            )?;
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
                         add_pending(
                             &mut current_pending,
                             target_idx,

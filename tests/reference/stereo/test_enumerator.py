@@ -210,6 +210,18 @@ class RootedConnectedStereoTests(unittest.TestCase):
                     )
                     self.assertEqual(sampled, observed)
 
+    def test_dataset_regression_ring_opening_does_not_precommit_stereo_carrier(self) -> None:
+        mol = parse_smiles("CC\\1=C(C2=C(/C1=C\\C3=CC=C(C=C3)S(=O)C)C=CC(=C2)F)CC(=O)O")
+        expected = "CC1=C(CC(=O)O)c2c(ccc(F)c2)/C1=C\\c1ccc(S(=O)C)cc1"
+
+        observed = enumerate_rooted_connected_stereo_smiles_support(
+            mol,
+            0,
+            self.policy,
+        )
+        self.assertIn(expected, observed)
+        _assert_support_valid(self, mol, self.policy, 0, observed)
+
     def test_degree_three_alkene_carrier_selection_matches_rooted_rdkit_samples(self) -> None:
         mol = parse_smiles("F/C(Cl)=C/F")
 

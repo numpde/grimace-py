@@ -10,11 +10,19 @@ def grimace_support(
     *,
     rooted_at_atom: int | None,
     isomeric_smiles: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
 ) -> set[str]:
     kwargs = dict(
         isomericSmiles=isomeric_smiles,
+        kekuleSmiles=kekule_smiles,
         canonical=False,
+        allBondsExplicit=all_bonds_explicit,
+        allHsExplicit=all_hs_explicit,
         doRandom=True,
+        ignoreAtomMapNumbers=ignore_atom_map_numbers,
     )
     if rooted_at_atom is not None:
         kwargs["rootedAtAtom"] = rooted_at_atom

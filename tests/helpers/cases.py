@@ -10,7 +10,7 @@ from grimace._reference import (
 )
 
 
-NONSTEREO_CURATED_ROOT_CASES: tuple[tuple[str, int], ...] = (
+SHARED_CURATED_ROOT_CASES: tuple[tuple[str, int], ...] = (
     ("Cc1ccccc1", 0),
     ("Cc1ccccc1", 1),
     ("C1CCCC=C1", 0),
@@ -19,7 +19,15 @@ NONSTEREO_CURATED_ROOT_CASES: tuple[tuple[str, int], ...] = (
     ("O=[Ti]=O", 1),
     ("C[Ge]", 0),
     ("C[Ge]", 1),
+    ("F[C@H](Cl)Br", 0),
+    ("F/C=C\\Cl", 0),
+    ("C/C=C/C=C/C(=O)O", 0),
+    ("C/C(=N\\\\OC(=O)NC)/SC", 0),
 )
+
+SHARED_CURATED_CASES: tuple[str, ...] = tuple(dict.fromkeys(smiles for smiles, _ in SHARED_CURATED_ROOT_CASES))
+
+NONSTEREO_CURATED_ROOT_CASES: tuple[tuple[str, int], ...] = SHARED_CURATED_ROOT_CASES
 
 NONSTEREO_AWKWARD_CASES: tuple[str, ...] = (
     "O=[Ti]=O",
@@ -34,32 +42,9 @@ NONSTEREO_AWKWARD_CASES: tuple[str, ...] = (
     "O=[P]=O",
 )
 
-STEREO_CURATED_CASES: tuple[str, ...] = (
-    "F[C@H](Cl)Br",
-    "F[C@](Cl)(Br)I",
-    "C[C@H](O)[C@@H](F)Cl",
-    "F/C=C\\Cl",
-    "F/C=C/C",
-    "C(/C=C/Cl)Cl",
-    "C(=C/Cl)\\Cl",
-    "CC/C=C\\CCO",
-    "C/C=C/C=O",
-    "C/C=C/C=C/C(=O)O",
-    "C/C=C(\\C)/C(=O)O",
-    "C/C(=N\\\\OC(=O)NC)/SC",
-    "F/C(Cl)=C/F",
-)
+STEREO_CURATED_CASES: tuple[str, ...] = SHARED_CURATED_CASES
 
-STEREO_WALKER_CURATED_CASES: tuple[tuple[str, int], ...] = (
-    ("F[C@H](Cl)Br", 0),
-    ("F[C@](Cl)(Br)I", 0),
-    ("C[C@H](O)[C@@H](F)Cl", 0),
-    ("F/C=C\\Cl", 0),
-    ("C/C=C/C=C/C(=O)O", 0),
-    ("C/C=C(\\C)/C(=O)O", 0),
-    ("C/C(=N\\\\OC(=O)NC)/SC", 0),
-    ("F/C(Cl)=C/F", 0),
-)
+STEREO_WALKER_CURATED_CASES: tuple[tuple[str, int], ...] = SHARED_CURATED_ROOT_CASES
 
 STEREO_ATOM_CURATED_CASES: tuple[str, ...] = (
     "F[C@H](Cl)Br",

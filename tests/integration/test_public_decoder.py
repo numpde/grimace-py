@@ -226,15 +226,63 @@ class PublicDecoderTests(unittest.TestCase):
                 canonical=False,
             )
 
-    def test_decoder_rejects_disconnected_molecules(self) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "singly-connected"):
-            grimace.MolToSmilesDecoder(
-                parse_smiles("CC.O"),
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                canonical=False,
-                doRandom=True,
-            )
+    def test_decoder_supports_disconnected_molecules_and_emits_dot_between_fragments(self) -> None:
+        decoder = grimace.MolToSmilesDecoder(
+            parse_smiles("[Na+].C#N"),
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        self.assertEqual("", decoder.prefix)
+        self.assertEqual(("[Na+]",), decoder.next_tokens)
+        decoder.advance("[Na+]")
+        self.assertEqual("[Na+]", decoder.prefix)
+        self.assertEqual((".",), decoder.next_tokens)
+        decoder.advance(".")
+        self.assertEqual("[Na+].", decoder.prefix)
+        self.assertEqual(("C", "N"), decoder.next_tokens)
+
+    def test_decoder_disconnected_sampled_paths_stay_within_public_enum_outputs(self) -> None:
+        mol = parse_smiles("[Na+].C#N")
+
+        for isomeric_smiles in (False, True):
+            for root_idx in range(mol.GetNumAtoms()):
+                outputs = set(
+                    grimace.MolToSmilesEnum(
+                        mol,
+                        rootedAtAtom=root_idx,
+                        isomericSmiles=isomeric_smiles,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                )
+                for seed in range(3):
+                    with self.subTest(
+                        isomeric_smiles=isomeric_smiles,
+                        root_idx=root_idx,
+                        seed=seed,
+                    ):
+                        rng = random.Random(seed)
+                        decoder = grimace.MolToSmilesDecoder(
+                            mol,
+                            rootedAtAtom=root_idx,
+                            isomericSmiles=isomeric_smiles,
+                            canonical=False,
+                            doRandom=True,
+                        )
+                        chosen_tokens: list[str] = []
+
+                        while not decoder.is_terminal:
+                            options = decoder.next_tokens
+                            self.assertTrue(options)
+                            chosen_token = rng.choice(options)
+                            chosen_tokens.append(chosen_token)
+                            decoder.advance(chosen_token)
+
+                        self.assertEqual(decoder.prefix, "".join(chosen_tokens))
+                        self.assertIn(decoder.prefix, outputs)
 
     def test_decoder_empty_molecule_is_terminal_with_empty_prefix(self) -> None:
         decoder = grimace.MolToSmilesDecoder(

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from itertools import product
 from typing import cast
 
 from rdkit import Chem
@@ -35,6 +36,15 @@ class MolToSmilesFlags:
         if self.isomeric_smiles:
             return CONNECTED_STEREO_SURFACE
         return CONNECTED_NONSTEREO_SURFACE
+
+    def with_rooted_at_atom(self, rooted_at_atom: int) -> "MolToSmilesFlags":
+        return replace(self, rooted_at_atom=rooted_at_atom)
+
+
+@dataclass(frozen=True, slots=True)
+class _FragmentPlan:
+    mol: Chem.Mol
+    rooted_at_atom: int | None
 
 
 def _validate_surface_kind(
@@ -98,6 +108,199 @@ def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
     if len(Chem.GetMolFrags(mol)) != 1:
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only singly-connected molecules"
+        )
+
+
+def _is_disconnected_molecule(mol_or_prepared: object) -> bool:
+    return isinstance(mol_or_prepared, Chem.Mol) and len(Chem.GetMolFrags(mol_or_prepared)) > 1
+
+
+def _fragment_plans_for_molecule(
+    mol: Chem.Mol,
+    *,
+    rooted_at_atom: int,
+) -> tuple[_FragmentPlan, ...]:
+    fragments = Chem.GetMolFrags(mol)
+    fragment_mols = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+    global_to_local: dict[int, tuple[int, int]] = {}
+    for fragment_idx, fragment_atom_indices in enumerate(fragments):
+        for local_idx, global_idx in enumerate(fragment_atom_indices):
+            global_to_local[global_idx] = (fragment_idx, local_idx)
+
+    rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
+    plans: list[_FragmentPlan] = []
+    for fragment_idx, fragment_mol in enumerate(fragment_mols):
+        if fragment_idx == rooted_fragment_idx:
+            plans.append(_FragmentPlan(fragment_mol, rooted_local_idx))
+        else:
+            plans.append(_FragmentPlan(fragment_mol, None))
+    return tuple(plans)
+
+
+def _connected_fragment_support(
+    fragment_mol: Chem.Mol,
+    *,
+    flags: MolToSmilesFlags,
+    rooted_at_atom: int | None,
+) -> set[str]:
+    if rooted_at_atom is not None:
+        return mol_to_smiles_support(
+            fragment_mol,
+            isomeric_smiles=flags.isomeric_smiles,
+            kekule_smiles=flags.kekule_smiles,
+            rooted_at_atom=rooted_at_atom,
+            canonical=flags.canonical,
+            all_bonds_explicit=flags.all_bonds_explicit,
+            all_hs_explicit=flags.all_hs_explicit,
+            do_random=flags.do_random,
+            ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
+        )
+
+    support: set[str] = set()
+    for local_root_idx in range(fragment_mol.GetNumAtoms()):
+        support.update(
+            mol_to_smiles_support(
+                fragment_mol,
+                isomeric_smiles=flags.isomeric_smiles,
+                kekule_smiles=flags.kekule_smiles,
+                rooted_at_atom=local_root_idx,
+                canonical=flags.canonical,
+                all_bonds_explicit=flags.all_bonds_explicit,
+                all_hs_explicit=flags.all_hs_explicit,
+                do_random=flags.do_random,
+                ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
+            )
+        )
+    return support
+
+
+def _fragmented_mol_to_smiles_support(
+    mol: Chem.Mol,
+    *,
+    flags: MolToSmilesFlags,
+) -> set[str]:
+    fragment_supports: list[tuple[str, ...]] = []
+
+    for plan in _fragment_plans_for_molecule(mol, rooted_at_atom=flags.rooted_at_atom):
+        support = _connected_fragment_support(
+            plan.mol,
+            flags=flags,
+            rooted_at_atom=plan.rooted_at_atom,
+        )
+        fragment_supports.append(tuple(sorted(support)))
+
+    return {".".join(parts) for parts in product(*fragment_supports)}
+
+
+class _CoreDecoderAdapter:
+    __slots__ = ("_decoder",)
+
+    def __init__(self, decoder: object) -> None:
+        self._decoder = decoder
+
+    def next_token_support(self) -> tuple[str, ...]:
+        return tuple(self._decoder.next_token_support())
+
+    def advance_token(self, token: str) -> None:
+        self._decoder.advance_token(token)
+
+    def prefix(self) -> str:
+        return self._decoder.prefix()
+
+    def is_terminal(self) -> bool:
+        return self._decoder.is_terminal()
+
+    def copy(self) -> "_CoreDecoderAdapter":
+        return type(self)(self._decoder.copy())
+
+
+class _MergedDecoderAdapter:
+    __slots__ = ("_states",)
+
+    def __init__(self, states: tuple[object, ...]) -> None:
+        if not states:
+            raise ValueError("Merged decoder requires at least one state")
+        self._states = states
+
+    def next_token_support(self) -> tuple[str, ...]:
+        return tuple(sorted({token for state in self._states for token in state.next_token_support()}))
+
+    def advance_token(self, token: str) -> None:
+        next_states: list[object] = []
+        choices = self.next_token_support()
+        for state in self._states:
+            if token in state.next_token_support():
+                child = state.copy()
+                child.advance_token(token)
+                next_states.append(child)
+        if not next_states:
+            raise KeyError(f"Invalid token {token!r}; choices={choices}")
+        self._states = tuple(next_states)
+
+    def prefix(self) -> str:
+        prefix = self._states[0].prefix()
+        for state in self._states[1:]:
+            if state.prefix() != prefix:
+                raise RuntimeError("Merged decoder states diverged on prefix")
+        return prefix
+
+    def is_terminal(self) -> bool:
+        return all(state.is_terminal() for state in self._states)
+
+    def copy(self) -> "_MergedDecoderAdapter":
+        return type(self)(tuple(state.copy() for state in self._states))
+
+
+class _DisconnectedDecoderAdapter:
+    __slots__ = ("_fragment_states", "_fragment_idx", "_completed_prefix")
+
+    def __init__(
+        self,
+        fragment_states: tuple[object, ...],
+        *,
+        fragment_idx: int = 0,
+        completed_prefix: str = "",
+    ) -> None:
+        if not fragment_states:
+            raise ValueError("Disconnected decoder requires at least one fragment state")
+        self._fragment_states = fragment_states
+        self._fragment_idx = fragment_idx
+        self._completed_prefix = completed_prefix
+
+    def _active_state(self) -> object:
+        return self._fragment_states[self._fragment_idx]
+
+    def next_token_support(self) -> tuple[str, ...]:
+        active = self._active_state()
+        if not active.is_terminal():
+            return active.next_token_support()
+        if self._fragment_idx + 1 < len(self._fragment_states):
+            return (".",)
+        return ()
+
+    def advance_token(self, token: str) -> None:
+        active = self._active_state()
+        if not active.is_terminal():
+            active.advance_token(token)
+            return
+        choices = self.next_token_support()
+        if token != "." or choices != (".",):
+            raise KeyError(f"Invalid token {token!r}; choices={choices}")
+        self._completed_prefix = f"{self._completed_prefix}{active.prefix()}."
+        self._fragment_idx += 1
+
+    def prefix(self) -> str:
+        return f"{self._completed_prefix}{self._active_state().prefix()}"
+
+    def is_terminal(self) -> bool:
+        active = self._active_state()
+        return active.is_terminal() and self._fragment_idx + 1 == len(self._fragment_states)
+
+    def copy(self) -> "_DisconnectedDecoderAdapter":
+        return type(self)(
+            tuple(state.copy() for state in self._fragment_states),
+            fragment_idx=self._fragment_idx,
+            completed_prefix=self._completed_prefix,
         )
 
 
@@ -191,6 +394,46 @@ def _make_decoder(
     )
 
 
+def _make_connected_decoder_adapter(
+    mol_or_prepared: object,
+    flags: MolToSmilesFlags,
+) -> _CoreDecoderAdapter:
+    return _CoreDecoderAdapter(_make_decoder(mol_or_prepared, flags))
+
+
+def _make_fragment_decoder_adapter(
+    fragment_mol: Chem.Mol,
+    *,
+    flags: MolToSmilesFlags,
+    rooted_at_atom: int | None,
+) -> object:
+    if rooted_at_atom is not None:
+        return _make_connected_decoder_adapter(fragment_mol, flags.with_rooted_at_atom(rooted_at_atom))
+
+    states = tuple(
+        _make_connected_decoder_adapter(fragment_mol, flags.with_rooted_at_atom(local_root_idx))
+        for local_root_idx in range(fragment_mol.GetNumAtoms())
+    )
+    if len(states) == 1:
+        return states[0]
+    return _MergedDecoderAdapter(states)
+
+
+def _make_disconnected_decoder(
+    mol: Chem.Mol,
+    flags: MolToSmilesFlags,
+) -> _DisconnectedDecoderAdapter:
+    fragment_states = tuple(
+        _make_fragment_decoder_adapter(
+            plan.mol,
+            flags=flags,
+            rooted_at_atom=plan.rooted_at_atom,
+        )
+        for plan in _fragment_plans_for_molecule(mol, rooted_at_atom=flags.rooted_at_atom)
+    )
+    return _DisconnectedDecoderAdapter(fragment_states)
+
+
 class MolToSmilesDecoder:
     __slots__ = ("_decoder",)
 
@@ -218,7 +461,10 @@ class MolToSmilesDecoder:
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
         _validate_supported_flags(flags)
-        self._decoder = _make_decoder(mol_or_prepared, flags)
+        if _is_disconnected_molecule(mol_or_prepared):
+            self._decoder = _make_disconnected_decoder(cast(Chem.Mol, mol_or_prepared), flags)
+        else:
+            self._decoder = _make_connected_decoder_adapter(mol_or_prepared, flags)
 
     @classmethod
     def _from_parts(
@@ -272,6 +518,15 @@ def mol_to_smiles_enum(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     _validate_supported_flags(flags)
+    if _is_disconnected_molecule(mol_or_prepared):
+        return iter(
+            sorted(
+                _fragmented_mol_to_smiles_support(
+                    cast(Chem.Mol, mol_or_prepared),
+                    flags=flags,
+                )
+            )
+        )
     walker = _make_walker(mol_or_prepared, flags)
     return iter(walker.enumerate_support())
 

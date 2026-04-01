@@ -935,6 +935,30 @@ fn emitted_candidate_token(
     ))
 }
 
+fn should_defer_unknown_two_candidate_side_commit(
+    graph: &PreparedSmilesGraphData,
+    side_info: &StereoSideInfo,
+    component_phases: &[i8],
+    neighbor_idx: usize,
+) -> bool {
+    if side_info.candidate_neighbors.len() != 2
+        || component_phases
+            .get(side_info.component_idx)
+            .copied()
+            .unwrap_or(UNKNOWN_COMPONENT_PHASE)
+            != UNKNOWN_COMPONENT_PHASE
+    {
+        return false;
+    }
+    let terminal_candidates = side_info
+        .candidate_neighbors
+        .iter()
+        .copied()
+        .filter(|&candidate_neighbor| graph.neighbors[candidate_neighbor].len() == 1)
+        .collect::<Vec<_>>();
+    terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
+}
+
 fn emitted_edge_part_generic(
     graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
@@ -978,6 +1002,14 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
+            if should_defer_unknown_two_candidate_side_commit(
+                graph,
+                side_info,
+                component_phases,
+                neighbor_idx,
+            ) {
+                continue;
+            }
             updated_neighbors[side_idx] = neighbor_idx as isize;
             updated_orientations[side_idx] = edge_orientation;
         }

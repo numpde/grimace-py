@@ -658,6 +658,25 @@ def _emitted_candidate_token(
     raise KeyError("Emitted edge does not match the stereo side")
 
 
+def _should_defer_unknown_two_candidate_side_commit(
+    prepared: PreparedSmilesGraph,
+    side_info: StereoSideInfo,
+    component_phases: tuple[int, ...],
+    neighbor_idx: int,
+) -> bool:
+    if (
+        len(side_info.candidate_neighbors) != 2
+        or component_phases[side_info.component_idx] != _UNKNOWN_COMPONENT_PHASE
+    ):
+        return False
+    terminal_candidates = tuple(
+        candidate_neighbor
+        for candidate_neighbor in side_info.candidate_neighbors
+        if len(prepared.neighbors_of(candidate_neighbor)) == 1
+    )
+    return len(terminal_candidates) == 1 and neighbor_idx == terminal_candidates[0]
+
+
 def _emitted_edge_part_generic(
     prepared: PreparedSmilesGraph,
     side_infos: tuple[StereoSideInfo, ...],
@@ -690,6 +709,13 @@ def _emitted_edge_part_generic(
 
         selected_neighbor = updated_neighbors[side_idx]
         if selected_neighbor < 0:
+            if _should_defer_unknown_two_candidate_side_commit(
+                prepared,
+                side_info,
+                component_phases,
+                neighbor_idx,
+            ):
+                continue
             updated_neighbors[side_idx] = neighbor_idx
             updated_orientations[side_idx] = edge_orientation
             selected_neighbor = neighbor_idx
@@ -754,6 +780,7 @@ def _emitted_isolated_edge_part(
 
     for side_idx in side_ids:
         side_info = side_infos[side_idx]
+        component_idx = side_info.component_idx
         if begin_idx == side_info.endpoint_atom_idx:
             neighbor_idx = end_idx
             edge_orientation = _AFTER_ATOM_EDGE_ORIENTATION

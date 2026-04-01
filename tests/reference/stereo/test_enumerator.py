@@ -239,6 +239,17 @@ class RootedConnectedStereoTests(unittest.TestCase):
         )
         self.assertIn(expected, observed)
 
+    def test_dataset_regression_terminal_methyl_root_preserves_isolated_stereo_choice(self) -> None:
+        mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
+        expected = "CC(/C=C/C=C(/C=C/C1=C(C)CCCC1(C)C)C)=C\\C(=O)O"
+
+        observed = enumerate_rooted_connected_stereo_smiles_support(
+            mol,
+            20,
+            self.policy,
+        )
+        self.assertIn(expected, observed)
+
     def test_degree_three_alkene_carrier_selection_matches_rooted_rdkit_samples(self) -> None:
         mol = parse_smiles("F/C(Cl)=C/F")
 

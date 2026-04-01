@@ -61,6 +61,43 @@ class RDKITDatasetRegressionTests(unittest.TestCase):
         )
         self.assertIn(expected, support)
 
+    def test_cid_444795_terminal_methyl_root_does_not_precommit_isolated_stereo_carrier(self) -> None:
+        smiles = "CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C"
+        rooted_expected = "CC(/C=C/C=C(/C=C/C1=C(C)CCCC1(C)C)C)=C\\C(=O)O"
+        omitted_root_expected = "CC1=C(/C=C/C(=C/C=C/C(=C/C(=O)O)C)C)C(C)(C)CCC1"
+        mol = parse_smiles(smiles)
+
+        rdkit_rooted = Chem.MolToSmiles(
+            Chem.Mol(mol),
+            rootedAtAtom=20,
+            isomericSmiles=True,
+            canonical=False,
+            doRandom=False,
+        )
+        self.assertEqual(rooted_expected, rdkit_rooted)
+
+        rooted_support = grimace_support(
+            mol,
+            rooted_at_atom=20,
+            isomeric_smiles=True,
+        )
+        self.assertIn(rooted_expected, rooted_support)
+
+        rdkit_omitted_root = Chem.MolToSmiles(
+            Chem.Mol(mol),
+            isomericSmiles=True,
+            canonical=False,
+            doRandom=False,
+        )
+        self.assertEqual(omitted_root_expected, rdkit_omitted_root)
+
+        omitted_root_support = grimace_support(
+            mol,
+            rooted_at_atom=None,
+            isomeric_smiles=True,
+        )
+        self.assertIn(omitted_root_expected, omitted_root_support)
+
 
 if __name__ == "__main__":
     unittest.main()

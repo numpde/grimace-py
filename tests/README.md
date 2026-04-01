@@ -6,6 +6,7 @@ The test suite is organized by intent first, then by feature.
 
 - `tests/contract/`: API, serialization, dataset, policy, and export invariants.
 - `tests/reference/`: internal `_reference` behavior checks, split into `prepared/`, `nonstereo/`, and `stereo/`.
+- `tests/rdkit_serialization/`: RDKit-derived writer conformance tests, organized by behavior and mapped onto Grimace's public support/decoder surface.
 - `tests/parity/`: Rust kernel versus Python reference parity checks on curated and representative slices.
 - `tests/integration/`: import, end-to-end smoke coverage, and kernel dataset contract checks.
 - `tests/perf/`: opt-in timing checks that are excluded by default.
@@ -21,5 +22,6 @@ The test suite is organized by intent first, then by feature.
 - Performance assertions do not belong in correctness suites.
 - Kernel parity tests belong under `tests/parity/`, not `tests/reference/`.
 - Dataset-backed kernel contract checks belong under `tests/integration/` once they stop being cross-language parity checks.
+- RDKit-derived writer expectations belong under `tests/rdkit_serialization/`, not scattered through smoke tests.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.
 - Prefer strengthening Rust-native tests before expanding parity breadth.

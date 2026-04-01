@@ -3,7 +3,6 @@ from __future__ import annotations
 import unittest
 
 import grimace
-from rdkit import Chem, rdBase
 from grimace._reference.prepared_graph import (
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
@@ -11,60 +10,7 @@ from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
 
-DISCONNECTED_PARITY_CASES_ROOT_ZERO: tuple[str, ...] = (
-    "[Na+].[Cl-]",
-    "[K+].[Cl-]",
-    "[F-].[Na+]",
-    "[NH4+].[Cl-]",
-    "[O-2].[Zn+2]",
-    "CC.O",
-    "C#N.O",
-    "CC.[Na+]",
-    "C=C.[Na+]",
-    "[Na+].C#N",
-    "[Na+].[O-]C=O",
-    "[Cl-].C#N",
-    "[NH4+].C#N",
-    "C#N.[Na+]",
-    "C#N.[NH4+]",
-    "c1ccccc1.O",
-    "CO.O",
-    "CCN.O",
-    "CCCl.O",
-    "CCBr.O",
-    "CC(=O)O.O",
-    "CC(=O)[O-].[Na+]",
-    "C(=O)([O-])[O-].[Ca+2]",
-    "[O-]P(=O)([O-])F.[Na+].[Na+]",
-    "[O-]S(=O)(=O)[O-].[Ba+2]",
-    "C1CCCCC1.O",
-    "CC(C)O.O",
-    "CC(C)N.O",
-    "CCS.O",
-    "CC#N.O",
-)
-
-
 class PythonApiSmokeTests(unittest.TestCase):
-    def _sample_rdkit_random_support(
-        self,
-        mol: Chem.Mol,
-        *,
-        root_idx: int | None,
-        isomeric_smiles: bool,
-        draw_budget: int,
-        seed: int = 12345,
-    ) -> set[str]:
-        rdBase.SeedRandomNumberGenerator(seed)
-        kwargs = dict(
-            isomericSmiles=isomeric_smiles,
-            canonical=False,
-            doRandom=True,
-        )
-        if root_idx is not None:
-            kwargs["rootedAtAtom"] = root_idx
-        return {Chem.MolToSmiles(Chem.Mol(mol), **kwargs) for _ in range(draw_budget)}
-
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(callable(grimace.MolToSmilesChoice))
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
@@ -157,84 +103,6 @@ class PythonApiSmokeTests(unittest.TestCase):
                     canonical=False,
                     )
                 )
-
-    def test_public_api_matches_rdkit_when_root_is_omitted(self) -> None:
-        for smiles, isomeric_smiles in (
-            ("CCO", False),
-            ("O.CCO", True),
-            ("F[C@H](Cl)Br", True),
-        ):
-            mol = parse_smiles(smiles)
-            with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
-                expected = self._sample_rdkit_random_support(
-                    mol,
-                    root_idx=None,
-                    isomeric_smiles=isomeric_smiles,
-                    draw_budget=512,
-                )
-                self.assertEqual(
-                    expected,
-                    set(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            isomericSmiles=isomeric_smiles,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    ),
-                )
-
-    def test_public_api_matches_rdkit_on_disconnected_cyanide_salt(self) -> None:
-        mol = parse_smiles("[Na+].C#N")
-
-        for isomeric_smiles in (False, True):
-            for root_idx in range(mol.GetNumAtoms()):
-                with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
-                    expected = self._sample_rdkit_random_support(
-                        mol,
-                        root_idx=root_idx,
-                        isomeric_smiles=isomeric_smiles,
-                        draw_budget=256,
-                    )
-                    self.assertEqual(
-                        expected,
-                        set(
-                            grimace.MolToSmilesEnum(
-                                mol,
-                                rootedAtAtom=root_idx,
-                                isomericSmiles=isomeric_smiles,
-                                canonical=False,
-                                doRandom=True,
-                            )
-                        ),
-                    )
-
-    def test_public_api_matches_rdkit_on_disconnected_case_suite_root_zero(self) -> None:
-        self.assertEqual(30, len(DISCONNECTED_PARITY_CASES_ROOT_ZERO))
-
-        for smiles in DISCONNECTED_PARITY_CASES_ROOT_ZERO:
-            mol = parse_smiles(smiles)
-            self.assertGreater(len(Chem.GetMolFrags(mol)), 1)
-            for isomeric_smiles in (False, True):
-                with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
-                    expected = self._sample_rdkit_random_support(
-                        mol,
-                        root_idx=0,
-                        isomeric_smiles=isomeric_smiles,
-                        draw_budget=256,
-                    )
-                    self.assertEqual(
-                        expected,
-                        set(
-                            grimace.MolToSmilesEnum(
-                                mol,
-                                rootedAtAtom=0,
-                                isomericSmiles=isomeric_smiles,
-                                canonical=False,
-                                doRandom=True,
-                            )
-                        ),
-                    )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:

@@ -44,6 +44,18 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
             isomeric_smiles=False,
         ),
         WriterFlagCase(
+            name="nonstereo_drops_atom_stereo",
+            smiles="F[C@H](Cl)Br",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+        ),
+        WriterFlagCase(
+            name="nonstereo_drops_bond_stereo",
+            smiles="F/C=C\\Cl",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+        ),
+        WriterFlagCase(
             name="stereo_baseline",
             smiles="F/C=C\\Cl",
             rooted_at_atom=0,

@@ -122,6 +122,17 @@ def check_supported_smiles_graph_surface(
                 raise ValueError(f"Unsupported bond direction: {bond.GetBondDir()}")
 
 
+def coerce_molecule_to_supported_surface(
+    mol: Chem.Mol,
+    *,
+    surface_kind: str = CONNECTED_NONSTEREO_SURFACE,
+) -> Chem.Mol:
+    working_mol = Chem.Mol(mol)
+    if surface_kind == CONNECTED_NONSTEREO_SURFACE:
+        Chem.RemoveStereochemistry(working_mol)
+    return working_mol
+
+
 def sampling_section(policy: ReferencePolicy) -> dict[str, object]:
     sampling = policy.data["sampling"]
     if not isinstance(sampling, dict):
@@ -626,7 +637,7 @@ def prepare_smiles_graph(
     *,
     surface_kind: str = CONNECTED_NONSTEREO_SURFACE,
 ) -> PreparedSmilesGraph:
-    working_mol = Chem.Mol(mol)
+    working_mol = coerce_molecule_to_supported_surface(mol, surface_kind=surface_kind)
     check_supported_smiles_graph_surface(working_mol, surface_kind=surface_kind)
     sampling = sampling_section(policy)
     identity = identity_section(policy)
@@ -655,7 +666,7 @@ def prepare_smiles_graph_from_mol_to_smiles_kwargs(
     all_hs_explicit: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> PreparedSmilesGraph:
-    working_mol = Chem.Mol(mol)
+    working_mol = coerce_molecule_to_supported_surface(mol, surface_kind=surface_kind)
     check_supported_smiles_graph_surface(working_mol, surface_kind=surface_kind)
 
     sampling = {

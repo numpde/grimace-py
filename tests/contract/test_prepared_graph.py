@@ -120,6 +120,17 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual((0, 1, 0, 0), prepared.atom_explicit_h_counts)
         self.assertEqual((0, 0, 0, 0), prepared.atom_implicit_h_counts)
 
+    def test_connected_nonstereo_prepared_graph_drops_atom_stereo_metadata(self) -> None:
+        mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_NONSTEREO_SURFACE)
+
+        self.assertEqual(CONNECTED_NONSTEREO_SURFACE, prepared.surface_kind)
+        self.assertEqual((), prepared.atom_chiral_tags)
+        self.assertEqual((), prepared.atom_stereo_neighbor_orders)
+
     def test_connected_stereo_prepared_graph_carries_bond_stereo_metadata(self) -> None:
         mol = Chem.MolFromSmiles("F/C=C\\Cl")
         self.assertIsNotNone(mol)
@@ -138,6 +149,17 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual("\\", prepared.directed_bond_token(1, 0))
         self.assertEqual("\\", prepared.directed_bond_token(2, 3))
         self.assertEqual("/", prepared.directed_bond_token(3, 2))
+
+    def test_connected_nonstereo_prepared_graph_drops_bond_stereo_metadata(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C\\Cl")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_NONSTEREO_SURFACE)
+
+        self.assertEqual((), prepared.bond_stereo_kinds)
+        self.assertEqual((), prepared.bond_stereo_atoms)
+        self.assertEqual((), prepared.bond_dirs)
 
     def test_connected_stereo_surface_still_rejects_unsupported_stereo_families(self) -> None:
         mol = Chem.MolFromSmiles("C/C=C/C")

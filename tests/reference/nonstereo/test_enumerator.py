@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import unittest
+
+from rdkit import Chem
 
 from grimace._reference import (
     PreparedSmilesGraph,
+    ReferencePolicy,
     enumerate_rooted_nonstereo_smiles_support,
     enumerate_rooted_smiles_support,
     load_default_connected_nonstereo_molecule_cases,
@@ -30,6 +34,10 @@ class RootedEnumeratorTest(unittest.TestCase):
             cls.connected_nonstereo_policy,
             draw_budget=2000,
         )
+        policy_data = deepcopy(cls.connected_nonstereo_policy.data)
+        policy_data["sampling"] = dict(policy_data["sampling"], isomericSmiles=False)
+        policy_data["identity_check"] = dict(policy_data["identity_check"], isomericSmiles=False)
+        cls.nonstereo_output_policy = ReferencePolicy(data=policy_data)
 
     def assert_rooted_support_matches_sampled_rdkit(
         self,
@@ -150,15 +158,25 @@ class RootedEnumeratorTest(unittest.TestCase):
                         validate_rooted_nonstereo_smiles_support(prepared, root_idx, None, exact),
                     )
 
-    def test_stereochemistry_is_rejected_for_now(self) -> None:
+    def test_stereochemistry_is_dropped_for_general_nonstereo_surface(self) -> None:
         mol = parse_smiles("F[C@H](Cl)Br")
-        with self.assertRaisesRegex(ValueError, "stereochemistry"):
-            enumerate_rooted_smiles_support(mol, 0, self.policy)
+        stripped = Chem.Mol(mol)
+        Chem.RemoveStereochemistry(stripped)
 
-    def test_connected_nonstereo_branch_rejects_stereo_input(self) -> None:
+        self.assertEqual(
+            enumerate_rooted_smiles_support(stripped, 0, self.nonstereo_output_policy),
+            enumerate_rooted_smiles_support(mol, 0, self.nonstereo_output_policy),
+        )
+
+    def test_connected_nonstereo_branch_drops_bond_stereo_input(self) -> None:
         mol = parse_smiles("F/C=C\\Cl")
-        with self.assertRaisesRegex(ValueError, "stereochemistry|Directional bond tokens"):
-            enumerate_rooted_nonstereo_smiles_support(mol, 1, self.connected_nonstereo_policy)
+        stripped = Chem.Mol(mol)
+        Chem.RemoveStereochemistry(stripped)
+
+        self.assertEqual(
+            enumerate_rooted_nonstereo_smiles_support(stripped, 1, self.nonstereo_output_policy),
+            enumerate_rooted_nonstereo_smiles_support(mol, 1, self.nonstereo_output_policy),
+        )
 
     def test_connected_nonstereo_branch_rejects_unsupported_bond_types(self) -> None:
         mol = parse_smiles("[NH3][Cu]")

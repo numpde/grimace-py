@@ -32,6 +32,18 @@ class PublicDecoderTests(unittest.TestCase):
             isomeric_smiles=False,
         ),
         DecoderCase(
+            name="nonstereo_atom_stereo_input",
+            smiles="F[C@H](Cl)Br",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+        ),
+        DecoderCase(
+            name="nonstereo_bond_stereo_input",
+            smiles="F/C=C\\Cl",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+        ),
+        DecoderCase(
             name="stereo_baseline",
             smiles="F/C=C\\Cl",
             rooted_at_atom=0,

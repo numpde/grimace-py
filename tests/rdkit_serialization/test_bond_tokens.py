@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-import grimace
 from tests.helpers.mols import parse_smiles
+from tests.rdkit_serialization._support import assert_grimace_support_equals
 
 
 class RDKITBondTokenWriterTests(unittest.TestCase):
@@ -24,16 +24,13 @@ class RDKITBondTokenWriterTests(unittest.TestCase):
         for isomeric_smiles in (False, True):
             for root_idx, expected in expected_by_root.items():
                 with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
-                    actual = set(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            isomericSmiles=isomeric_smiles,
-                            rootedAtAtom=root_idx,
-                            canonical=False,
-                            doRandom=True,
-                        )
+                    assert_grimace_support_equals(
+                        self,
+                        mol=mol,
+                        expected=expected,
+                        rooted_at_atom=root_idx,
+                        isomeric_smiles=isomeric_smiles,
                     )
-                    self.assertEqual(expected, actual)
 
     def test_aromatic_bridge_single_bond_matches_rdkit(self) -> None:
         mol = parse_smiles("C1=CC=C(C=C1)N2C=C(C=N2)C=O")
@@ -53,16 +50,13 @@ class RDKITBondTokenWriterTests(unittest.TestCase):
         for isomeric_smiles in (False, True):
             for root_idx, expected in expected_by_root.items():
                 with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
-                    actual = set(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            isomericSmiles=isomeric_smiles,
-                            rootedAtAtom=root_idx,
-                            canonical=False,
-                            doRandom=True,
-                        )
+                    assert_grimace_support_equals(
+                        self,
+                        mol=mol,
+                        expected=expected,
+                        rooted_at_atom=root_idx,
+                        isomeric_smiles=isomeric_smiles,
                     )
-                    self.assertEqual(expected, actual)
 
 
 if __name__ == "__main__":

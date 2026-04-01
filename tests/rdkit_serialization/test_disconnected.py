@@ -4,10 +4,9 @@ import unittest
 
 from rdkit import Chem
 
-import grimace
 from tests.helpers.mols import parse_smiles
 from tests.helpers.rdkit_writer_cases import DISCONNECTED_ROOT_ZERO_CASES
-from tests.rdkit_serialization._support import sample_rdkit_random_support
+from tests.rdkit_serialization._support import assert_grimace_support_matches_rdkit_sampling
 
 
 class RDKITDisconnectedWriterTests(unittest.TestCase):
@@ -26,21 +25,13 @@ class RDKITDisconnectedWriterTests(unittest.TestCase):
         ):
             mol = parse_smiles(smiles)
             with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
-                expected = sample_rdkit_random_support(
-                    mol,
-                    root_idx=None,
+                assert_grimace_support_matches_rdkit_sampling(
+                    self,
+                    mol=mol,
+                    rooted_at_atom=None,
                     isomeric_smiles=isomeric_smiles,
                     draw_budget=512,
                 )
-                actual = set(
-                    grimace.MolToSmilesEnum(
-                        mol,
-                        isomericSmiles=isomeric_smiles,
-                        canonical=False,
-                        doRandom=True,
-                    )
-                )
-                self.assertEqual(expected, actual)
 
     def test_disconnected_cyanide_salt_matches_rdkit_across_all_roots(self) -> None:
         mol = parse_smiles("[Na+].C#N")
@@ -48,22 +39,13 @@ class RDKITDisconnectedWriterTests(unittest.TestCase):
         for isomeric_smiles in (False, True):
             for root_idx in range(mol.GetNumAtoms()):
                 with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
-                    expected = sample_rdkit_random_support(
-                        mol,
-                        root_idx=root_idx,
+                    assert_grimace_support_matches_rdkit_sampling(
+                        self,
+                        mol=mol,
+                        rooted_at_atom=root_idx,
                         isomeric_smiles=isomeric_smiles,
                         draw_budget=256,
                     )
-                    actual = set(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            rootedAtAtom=root_idx,
-                            isomericSmiles=isomeric_smiles,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    )
-                    self.assertEqual(expected, actual)
 
     def test_disconnected_root_zero_suite_matches_rdkit_sampling(self) -> None:
         self.assertEqual(30, len(DISCONNECTED_ROOT_ZERO_CASES))
@@ -73,22 +55,13 @@ class RDKITDisconnectedWriterTests(unittest.TestCase):
             self.assertGreater(len(Chem.GetMolFrags(mol)), 1)
             for isomeric_smiles in (False, True):
                 with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
-                    expected = sample_rdkit_random_support(
-                        mol,
-                        root_idx=0,
+                    assert_grimace_support_matches_rdkit_sampling(
+                        self,
+                        mol=mol,
+                        rooted_at_atom=0,
                         isomeric_smiles=isomeric_smiles,
                         draw_budget=256,
                     )
-                    actual = set(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            rootedAtAtom=0,
-                            isomericSmiles=isomeric_smiles,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    )
-                    self.assertEqual(expected, actual)
 
 
 if __name__ == "__main__":

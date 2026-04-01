@@ -79,3 +79,50 @@ def assert_exact_writer_case_in_grimace_support(test_case, case: ExactWriterCase
         ignore_atom_map_numbers=case.ignore_atom_map_numbers,
     )
     test_case.assertIn(case.expected, support)
+
+
+def assert_grimace_support_equals(
+    test_case,
+    *,
+    mol: Chem.Mol,
+    expected: set[str],
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> None:
+    actual = grimace_support(
+        mol,
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
+    test_case.assertEqual(expected, actual)
+
+
+def assert_grimace_support_matches_rdkit_sampling(
+    test_case,
+    *,
+    mol: Chem.Mol,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    draw_budget: int,
+) -> None:
+    expected = sample_rdkit_random_support(
+        mol,
+        root_idx=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+        draw_budget=draw_budget,
+    )
+    assert_grimace_support_equals(
+        test_case,
+        mol=mol,
+        expected=expected,
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+    )

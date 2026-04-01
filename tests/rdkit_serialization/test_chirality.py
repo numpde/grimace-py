@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from rdkit import Chem
-
-from tests.helpers.mols import parse_smiles
 from tests.helpers.rdkit_writer_cases import CANONICAL_CHIRALITY_CASES
-from tests.rdkit_serialization._support import grimace_support
+from tests.rdkit_serialization._support import assert_exact_writer_case_in_grimace_support
 
 
 class RDKITChiralityWriterTests(unittest.TestCase):
@@ -18,17 +15,8 @@ class RDKITChiralityWriterTests(unittest.TestCase):
 
     def test_rdkit_canonical_chirality_serializations_are_members_of_grimace_support(self) -> None:
         for case in CANONICAL_CHIRALITY_CASES:
-            mol = parse_smiles(case.smiles)
             with self.subTest(smiles=case.smiles):
-                rdkit_canonical = Chem.MolToSmiles(mol, isomericSmiles=True)
-                self.assertEqual(case.expected, rdkit_canonical)
-
-                support = grimace_support(
-                    mol,
-                    rooted_at_atom=None,
-                    isomeric_smiles=True,
-                )
-                self.assertIn(case.expected, support)
+                assert_exact_writer_case_in_grimace_support(self, case)
 
 
 if __name__ == "__main__":

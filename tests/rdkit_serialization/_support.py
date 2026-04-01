@@ -3,6 +3,7 @@ from __future__ import annotations
 from rdkit import Chem, rdBase
 
 import grimace
+from tests.helpers.rdkit_writer_cases import ExactWriterCase
 
 
 def grimace_support(
@@ -46,3 +47,35 @@ def sample_rdkit_random_support(
     if root_idx is not None:
         kwargs["rootedAtAtom"] = root_idx
     return {Chem.MolToSmiles(Chem.Mol(mol), **kwargs) for _ in range(draw_budget)}
+
+
+def rdkit_exact_writer_output(case: ExactWriterCase) -> str:
+    mol = Chem.MolFromSmiles(case.smiles)
+    kwargs = dict(
+        isomericSmiles=case.isomeric_smiles,
+        canonical=case.rdkit_canonical,
+        doRandom=False,
+        kekuleSmiles=case.kekule_smiles,
+        allBondsExplicit=case.all_bonds_explicit,
+        allHsExplicit=case.all_hs_explicit,
+        ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+    )
+    if case.rooted_at_atom is not None:
+        kwargs["rootedAtAtom"] = case.rooted_at_atom
+    return Chem.MolToSmiles(Chem.Mol(mol), **kwargs)
+
+
+def assert_exact_writer_case_in_grimace_support(test_case, case: ExactWriterCase) -> None:
+    rdkit_out = rdkit_exact_writer_output(case)
+    test_case.assertEqual(case.expected, rdkit_out)
+
+    support = grimace_support(
+        Chem.MolFromSmiles(case.smiles),
+        rooted_at_atom=case.rooted_at_atom,
+        isomeric_smiles=case.isomeric_smiles,
+        kekule_smiles=case.kekule_smiles,
+        all_bonds_explicit=case.all_bonds_explicit,
+        all_hs_explicit=case.all_hs_explicit,
+        ignore_atom_map_numbers=case.ignore_atom_map_numbers,
+    )
+    test_case.assertIn(case.expected, support)

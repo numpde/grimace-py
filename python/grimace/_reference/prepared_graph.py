@@ -241,6 +241,8 @@ def bond_token(
             return ":" if all_bonds_explicit else ""
         return ":"
     if bond_type == Chem.BondType.SINGLE:
+        if begin.GetIsAromatic() and end.GetIsAromatic():
+            return "-"
         return "-" if all_bonds_explicit else ""
     if bond_type == Chem.BondType.DOUBLE:
         return "="

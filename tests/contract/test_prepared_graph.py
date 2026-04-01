@@ -93,6 +93,16 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual("<-", prepared.bond_token(1, 0))
         self.assertEqual(("DATIVE",), prepared.bond_kinds)
 
+    def test_prepared_graph_keeps_explicit_single_bond_between_aromatic_atoms(self) -> None:
+        mol = Chem.MolFromSmiles("c1ccccc1-n1cccc1")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy)
+
+        self.assertEqual("-", prepared.bond_token(5, 6))
+        self.assertEqual("-", prepared.bond_token(6, 5))
+
     def test_prepared_graph_rejects_inconsistent_shape(self) -> None:
         mol = Chem.MolFromSmiles("CC")
         self.assertIsNotNone(mol)

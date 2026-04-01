@@ -81,13 +81,17 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
 
         self.assertEqual(prepared.identity_smiles, rebuilt.identity_smiles_for(mol))
 
-    def test_prepared_graph_rejects_unsupported_surface_input(self) -> None:
+    def test_prepared_graph_supports_dative_bond_surface_input(self) -> None:
         mol = Chem.MolFromSmiles("[NH3][Cu]")
         self.assertIsNotNone(mol)
         assert mol is not None
 
-        with self.assertRaisesRegex(ValueError, "Unsupported bond type"):
-            prepare_smiles_graph(mol, self.policy)
+        prepared = prepare_smiles_graph(mol, self.policy)
+
+        self.assertEqual(("[NH3]", "[Cu]"), prepared.atom_tokens)
+        self.assertEqual("->", prepared.bond_token(0, 1))
+        self.assertEqual("<-", prepared.bond_token(1, 0))
+        self.assertEqual(("DATIVE",), prepared.bond_kinds)
 
     def test_prepared_graph_rejects_inconsistent_shape(self) -> None:
         mol = Chem.MolFromSmiles("CC")

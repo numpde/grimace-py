@@ -178,10 +178,16 @@ class RootedEnumeratorTest(unittest.TestCase):
             enumerate_rooted_nonstereo_smiles_support(mol, 1, self.nonstereo_output_policy),
         )
 
-    def test_connected_nonstereo_branch_rejects_unsupported_bond_types(self) -> None:
+    def test_connected_nonstereo_branch_supports_dative_bonds(self) -> None:
         mol = parse_smiles("[NH3][Cu]")
-        with self.assertRaisesRegex(ValueError, "Unsupported bond type"):
-            enumerate_rooted_nonstereo_smiles_support(mol, 0, self.connected_nonstereo_policy)
+        self.assertEqual(
+            {"[NH3]->[Cu]"},
+            enumerate_rooted_nonstereo_smiles_support(mol, 0, self.connected_nonstereo_policy),
+        )
+        self.assertEqual(
+            {"[Cu]<-[NH3]"},
+            enumerate_rooted_nonstereo_smiles_support(mol, 1, self.connected_nonstereo_policy),
+        )
 
 
 if __name__ == "__main__":

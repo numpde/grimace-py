@@ -388,9 +388,20 @@ impl PreparedSmilesGraphData {
                     .ok_or_else(|| {
                         PyValueError::new_err("PreparedSmilesGraph neighbors must be symmetric")
                     })?;
-                if self.neighbor_bond_tokens[begin_idx][offset]
-                    != self.neighbor_bond_tokens[end_idx][reverse_offset]
-                {
+                let left_token = &self.neighbor_bond_tokens[begin_idx][offset];
+                let right_token = &self.neighbor_bond_tokens[end_idx][reverse_offset];
+                if left_token == right_token {
+                    continue;
+                }
+                let bond_idx = self.bond_index(begin_idx, end_idx).ok_or_else(|| {
+                    PyValueError::new_err(
+                        "PreparedSmilesGraph bond_pairs must agree with neighbors",
+                    )
+                })?;
+                let is_dative_pair = self.bond_kinds[bond_idx] == "DATIVE"
+                    && ((left_token == "->" && right_token == "<-")
+                        || (left_token == "<-" && right_token == "->"));
+                if !is_dative_pair {
                     return Err(PyValueError::new_err(
                         "PreparedSmilesGraph bond tokens must be symmetric",
                     ));

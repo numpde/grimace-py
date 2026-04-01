@@ -20,6 +20,7 @@ SUPPORTED_BOND_TYPES = {
     Chem.BondType.DOUBLE,
     Chem.BondType.TRIPLE,
     Chem.BondType.AROMATIC,
+    Chem.BondType.DATIVE,
 }
 
 SUPPORTED_STEREO_CHIRAL_TAGS = {
@@ -223,7 +224,13 @@ def atom_token(atom: Chem.Atom, sampling: dict[str, object]) -> str:
     return "".join(parts)
 
 
-def bond_token(bond: Chem.Bond, sampling: dict[str, object]) -> str:
+def bond_token(
+    bond: Chem.Bond,
+    sampling: dict[str, object],
+    *,
+    begin_idx: int | None = None,
+    end_idx: int | None = None,
+) -> str:
     begin = bond.GetBeginAtom()
     end = bond.GetEndAtom()
     bond_type = bond.GetBondType()
@@ -239,6 +246,16 @@ def bond_token(bond: Chem.Bond, sampling: dict[str, object]) -> str:
         return "="
     if bond_type == Chem.BondType.TRIPLE:
         return "#"
+    if bond_type == Chem.BondType.DATIVE:
+        if begin_idx is None or end_idx is None:
+            raise ValueError("Dative bond tokens require directed begin/end atom indices")
+        stored_begin_idx = bond.GetBeginAtomIdx()
+        stored_end_idx = bond.GetEndAtomIdx()
+        if (begin_idx, end_idx) == (stored_begin_idx, stored_end_idx):
+            return "->"
+        if (begin_idx, end_idx) == (stored_end_idx, stored_begin_idx):
+            return "<-"
+        raise KeyError(f"No dative bond between atoms {begin_idx} and {end_idx}")
     raise ValueError(f"Unsupported bond type: {bond_type}")
 
 
@@ -256,6 +273,8 @@ def _bond_kind_name(bond_type: Chem.BondType) -> str:
         return "TRIPLE"
     if bond_type == Chem.BondType.AROMATIC:
         return "AROMATIC"
+    if bond_type == Chem.BondType.DATIVE:
+        return "DATIVE"
     return str(bond_type)
 
 
@@ -438,8 +457,14 @@ class PreparedSmilesGraph:
                 if begin_idx not in self.neighbors[end_idx]:
                     raise ValueError("PreparedSmilesGraph neighbors must be symmetric")
                 reverse_offset = self.neighbors[end_idx].index(begin_idx)
-                if self.neighbor_bond_tokens[begin_idx][offset] != self.neighbor_bond_tokens[end_idx][reverse_offset]:
-                    raise ValueError("PreparedSmilesGraph bond tokens must be symmetric")
+                left_token = self.neighbor_bond_tokens[begin_idx][offset]
+                right_token = self.neighbor_bond_tokens[end_idx][reverse_offset]
+                if left_token == right_token:
+                    continue
+                bond_idx = self.bond_index(begin_idx, end_idx)
+                if self.bond_kinds[bond_idx] == "DATIVE" and {left_token, right_token} == {"->", "<-"}:
+                    continue
+                raise ValueError("PreparedSmilesGraph bond tokens must be symmetric")
 
         if self.atom_stereo_neighbor_orders:
             for atom_idx, stereo_neighbor_order in enumerate(self.atom_stereo_neighbor_orders):
@@ -737,7 +762,12 @@ def _prepare_smiles_graph_with_sections(
         neighbors.append(atom_neighbors)
         neighbor_bond_tokens.append(
             tuple(
-                bond_token(working_mol.GetBondBetweenAtoms(atom.GetIdx(), neighbor_idx), sampling)
+                bond_token(
+                    working_mol.GetBondBetweenAtoms(atom.GetIdx(), neighbor_idx),
+                    sampling,
+                    begin_idx=atom.GetIdx(),
+                    end_idx=neighbor_idx,
+                )
                 for neighbor_idx in atom_neighbors
             )
         )

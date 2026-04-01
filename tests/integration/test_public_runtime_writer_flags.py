@@ -156,6 +156,29 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
                         reference_prepared.identity_smiles_for(parsed),
                     )
 
+    def test_public_runtime_serializes_dative_bond_like_rdkit(self) -> None:
+        mol = parse_smiles("[NH3][Cu]")
+        expected_by_root = {
+            0: {"[NH3]->[Cu]"},
+            1: {"[Cu]<-[NH3]"},
+        }
+
+        for isomeric_smiles in (False, True):
+            for root_idx, expected in expected_by_root.items():
+                with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
+                    self.assertEqual(
+                        expected,
+                        set(
+                            grimace.MolToSmilesEnum(
+                                mol,
+                                isomericSmiles=isomeric_smiles,
+                                rootedAtAtom=root_idx,
+                                canonical=False,
+                                doRandom=True,
+                            )
+                        ),
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

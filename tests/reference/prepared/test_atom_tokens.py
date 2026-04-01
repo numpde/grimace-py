@@ -70,9 +70,10 @@ class RootedAtomTokenTests(unittest.TestCase):
                 self.assertEqual(rdkit_fragment_tokens(mol, self.policy), prepared.atom_tokens)
                 self.assertEqual(prepared.atom_tokens, build_atom_tokens(prepared))
 
-    def test_prepared_graph_rejects_unsupported_bond_types(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Unsupported bond type"):
-            prepare_smiles_graph(parse_smiles("[NH3][Cu]"), self.policy)
+    def test_prepared_graph_supports_dative_bond_tokens(self) -> None:
+        prepared = prepare_smiles_graph(parse_smiles("[NH3][Cu]"), self.policy)
+        self.assertEqual(("[NH3]", "[Cu]"), prepared.atom_tokens)
+        self.assertEqual((("->",), ("<-",)), prepared.neighbor_bond_tokens)
 
     def test_local_atom_tokens_match_rdkit_on_dataset_slice(self) -> None:
         cases = load_default_connected_nonstereo_molecule_cases(limit=120, max_smiles_length=20)

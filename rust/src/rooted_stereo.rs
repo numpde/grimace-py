@@ -4,6 +4,10 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
+use crate::frontier::{
+    extend_transitions, finalize_transitions, frontier_prefix as shared_frontier_prefix,
+    take_transition_or_err,
+};
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
 
 const HYDROGEN_NEIGHBOR: isize = -1;
@@ -1751,12 +1755,8 @@ fn process_children_successors_by_token(
                     atom_idx: child_idx,
                     parent_idx: Some(parent_idx),
                 });
-                if can_complete_from_stereo_state_memo(
-                    runtime,
-                    graph,
-                    &successor,
-                    completion_cache,
-                ) {
+                if can_complete_from_stereo_state_memo(runtime, graph, &successor, completion_cache)
+                {
                     out.entry(token).or_default().push(successor);
                 }
             }
@@ -2071,12 +2071,8 @@ fn successors_by_token_stereo_impl(
                 successor.action_stack.pop();
                 commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, &token)?;
                 successor.prefix.push_str(&token);
-                if can_complete_from_stereo_state_memo(
-                    runtime,
-                    graph,
-                    &successor,
-                    completion_cache,
-                ) {
+                if can_complete_from_stereo_state_memo(runtime, graph, &successor, completion_cache)
+                {
                     out.entry(token).or_default().push(successor);
                 }
             }
@@ -2145,17 +2141,14 @@ fn frontier_transitions_for_stereo(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedStereoWalkerStateData],
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
-    let mut transitions =
-        BTreeMap::<String, BTreeSet<RootedConnectedStereoWalkerStateData>>::new();
+    let mut transitions = BTreeMap::<String, BTreeSet<RootedConnectedStereoWalkerStateData>>::new();
     for state in frontier {
-        for (token, successors) in successors_by_token_stereo(runtime, graph, state)? {
-            transitions.entry(token).or_default().extend(successors);
-        }
+        extend_transitions(
+            &mut transitions,
+            successors_by_token_stereo(runtime, graph, state)?,
+        );
     }
-    Ok(transitions
-        .into_iter()
-        .map(|(token, states)| (token, states.into_iter().collect()))
-        .collect())
+    Ok(finalize_transitions(transitions))
 }
 
 fn advance_stereo_token_frontier(
@@ -2165,20 +2158,12 @@ fn advance_stereo_token_frontier(
     chosen_token: &str,
 ) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
     let mut transitions = frontier_transitions_for_stereo(runtime, graph, frontier)?;
-    let next_frontier = transitions.remove(chosen_token).ok_or_else(|| {
-        let available = transitions.keys().cloned().collect::<Vec<_>>();
-        PyKeyError::new_err(format!(
-            "Token {chosen_token:?} is not available; choices={available:?}"
-        ))
-    })?;
+    let next_frontier = take_transition_or_err(&mut transitions, chosen_token)?;
     Ok(next_frontier)
 }
 
 fn stereo_frontier_prefix(frontier: &[RootedConnectedStereoWalkerStateData]) -> String {
-    frontier
-        .first()
-        .map(|state| state.prefix.clone())
-        .unwrap_or_default()
+    shared_frontier_prefix(frontier, |state| state.prefix.as_str())
 }
 
 fn stereo_frontier_is_terminal(
@@ -2262,11 +2247,7 @@ impl PyRootedConnectedStereoWalkerState {
     }
 }
 
-#[pyclass(
-    name = "RootedConnectedStereoWalker",
-    module = "grimace._core",
-    frozen
-)]
+#[pyclass(name = "RootedConnectedStereoWalker", module = "grimace._core", frozen)]
 pub struct PyRootedConnectedStereoWalker {
     graph: PreparedSmilesGraphData,
     runtime: StereoWalkerRuntimeData,
@@ -2394,12 +2375,7 @@ impl PyRootedConnectedStereoDecoder {
             Some(transitions) => transitions,
             None => frontier_transitions_for_stereo(&self.runtime, &self.graph, &self.frontier)?,
         };
-        self.frontier = transitions.remove(chosen_token).ok_or_else(|| {
-            let available = transitions.keys().cloned().collect::<Vec<_>>();
-            PyKeyError::new_err(format!(
-                "Token {chosen_token:?} is not available; choices={available:?}"
-            ))
-        })?;
+        self.frontier = take_transition_or_err(&mut transitions, chosen_token)?;
         Ok(())
     }
 

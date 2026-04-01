@@ -55,6 +55,88 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         self.assertEqual("CC(=O)Oc1c", decoder.prefix())
         self.assertEqual(["(", "c"], decoder.next_token_support())
 
+    def test_runtime_factories_select_correct_core_types(self) -> None:
+        from grimace import _runtime
+
+        mol = parse_smiles("F[C@H](Cl)Br")
+
+        nonstereo_walker = _runtime.make_nonstereo_walker(mol, 0)
+        stereo_walker = _runtime.make_stereo_walker(mol, 0)
+
+        self.assertIsInstance(
+            nonstereo_walker,
+            CORE_MODULE.RootedConnectedNonStereoWalker,
+        )
+        self.assertIsInstance(
+            stereo_walker,
+            CORE_MODULE.RootedConnectedStereoWalker,
+        )
+
+        self.assertEqual(
+            ["F"],
+            nonstereo_walker.next_token_support(nonstereo_walker.initial_state()),
+        )
+        self.assertEqual(
+            ["F"],
+            stereo_walker.next_token_support(stereo_walker.initial_state()),
+        )
+
+    def test_runtime_decoder_factory_selects_correct_core_type(self) -> None:
+        from grimace import _runtime
+
+        mol = parse_smiles("F/C=C\\Cl")
+        nonstereo_flags = _runtime.MolToSmilesFlags(
+            isomeric_smiles=False,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+        stereo_flags = _runtime.MolToSmilesFlags(
+            isomeric_smiles=True,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+
+        nonstereo_decoder = _runtime._make_decoder(mol, nonstereo_flags)
+        stereo_decoder = _runtime._make_decoder(mol, stereo_flags)
+
+        self.assertIsInstance(
+            nonstereo_decoder,
+            CORE_MODULE.RootedConnectedNonStereoDecoder,
+        )
+        self.assertIsInstance(
+            stereo_decoder,
+            CORE_MODULE.RootedConnectedStereoDecoder,
+        )
+
+        self.assertEqual(["F"], nonstereo_decoder.next_token_support())
+        self.assertEqual(["F"], stereo_decoder.next_token_support())
+
+    def test_runtime_factories_reject_prepared_surface_mismatch(self) -> None:
+        from grimace import _runtime
+
+        mol = parse_smiles("F[C@H](Cl)Br")
+        nonstereo_flags = _runtime.MolToSmilesFlags(
+            isomeric_smiles=False,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+        stereo_flags = _runtime.MolToSmilesFlags(
+            isomeric_smiles=True,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+        nonstereo_prepared = _runtime.prepare_smiles_graph(mol, flags=nonstereo_flags)
+        stereo_prepared = _runtime.prepare_smiles_graph(mol, flags=stereo_flags)
+
+        with self.assertRaisesRegex(ValueError, "surface_kind"):
+            _runtime.make_stereo_walker(nonstereo_prepared, 0)
+        with self.assertRaisesRegex(ValueError, "surface_kind"):
+            _runtime.make_nonstereo_walker(stereo_prepared, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

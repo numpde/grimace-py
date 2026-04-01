@@ -4,6 +4,10 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
+use crate::frontier::{
+    extend_transitions, finalize_transitions, frontier_prefix as shared_frontier_prefix,
+    take_transition_or_err,
+};
 use crate::prepared_graph::PreparedSmilesGraphData;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -653,21 +657,13 @@ fn frontier_transitions(
     let mut transitions =
         BTreeMap::<String, BTreeSet<RootedConnectedNonStereoWalkerStateData>>::new();
     for state in frontier {
-        for (token, successors) in successors_by_token(graph, state) {
-            transitions.entry(token).or_default().extend(successors);
-        }
+        extend_transitions(&mut transitions, successors_by_token(graph, state));
     }
-    transitions
-        .into_iter()
-        .map(|(token, states)| (token, states.into_iter().collect()))
-        .collect()
+    finalize_transitions(transitions)
 }
 
 fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> String {
-    frontier
-        .first()
-        .map(|state| state.prefix.clone())
-        .unwrap_or_default()
+    shared_frontier_prefix(frontier, |state| state.prefix.as_str())
 }
 
 fn frontier_is_terminal(
@@ -872,12 +868,7 @@ impl PyRootedConnectedNonStereoDecoder {
             .cached_transitions
             .take()
             .unwrap_or_else(|| frontier_transitions(&self.graph, &self.frontier));
-        self.frontier = transitions.remove(chosen_token).ok_or_else(|| {
-            let available = transitions.keys().cloned().collect::<Vec<_>>();
-            PyKeyError::new_err(format!(
-                "Token {chosen_token:?} is not available; choices={available:?}"
-            ))
-        })?;
+        self.frontier = take_transition_or_err(&mut transitions, chosen_token)?;
         Ok(())
     }
 

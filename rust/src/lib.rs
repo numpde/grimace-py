@@ -1,3 +1,4 @@
+mod frontier;
 mod prepared_graph;
 mod rooted_nonstereo;
 mod rooted_stereo;

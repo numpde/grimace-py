@@ -630,11 +630,7 @@ impl PreparedSmilesGraphData {
     }
 }
 
-#[pyclass(
-    name = "PreparedSmilesGraph",
-    module = "grimace._core",
-    frozen
-)]
+#[pyclass(name = "PreparedSmilesGraph", module = "grimace._core", frozen)]
 pub struct PyPreparedSmilesGraph {
     data: PreparedSmilesGraphData,
 }

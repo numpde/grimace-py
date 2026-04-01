@@ -132,24 +132,63 @@ def prepare_smiles_graph(
 make_prepared_graph = prepare_smiles_graph
 
 
+def _make_flags(
+    *,
+    isomeric_smiles: bool = True,
+    kekule_smiles: bool = False,
+    rooted_at_atom: int = -1,
+    canonical: bool = True,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    do_random: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> MolToSmilesFlags:
+    return MolToSmilesFlags(
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        rooted_at_atom=rooted_at_atom,
+        canonical=canonical,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        do_random=do_random,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
+
+
+def _instantiate_core_object(
+    mol_or_prepared: object,
+    flags: MolToSmilesFlags,
+    *,
+    stereo_type: type,
+    nonstereo_type: type,
+) -> object:
+    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
+    core_type = stereo_type if flags.isomeric_smiles else nonstereo_type
+    return core_type(prepared, flags.rooted_at_atom)
+
+
 def _make_walker(
     mol_or_prepared: object,
     flags: MolToSmilesFlags,
 ) -> object:
-    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
-    if flags.isomeric_smiles:
-        return _core.RootedConnectedStereoWalker(prepared, flags.rooted_at_atom)
-    return _core.RootedConnectedNonStereoWalker(prepared, flags.rooted_at_atom)
+    return _instantiate_core_object(
+        mol_or_prepared,
+        flags,
+        stereo_type=_core.RootedConnectedStereoWalker,
+        nonstereo_type=_core.RootedConnectedNonStereoWalker,
+    )
 
 
 def _make_decoder(
     mol_or_prepared: object,
     flags: MolToSmilesFlags,
 ) -> object:
-    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
-    if flags.isomeric_smiles:
-        return _core.RootedConnectedStereoDecoder(prepared, flags.rooted_at_atom)
-    return _core.RootedConnectedNonStereoDecoder(prepared, flags.rooted_at_atom)
+    return _instantiate_core_object(
+        mol_or_prepared,
+        flags,
+        stereo_type=_core.RootedConnectedStereoDecoder,
+        nonstereo_type=_core.RootedConnectedNonStereoDecoder,
+    )
 
 
 class MolToSmilesDecoder:
@@ -168,7 +207,7 @@ class MolToSmilesDecoder:
         do_random: bool = False,
         ignore_atom_map_numbers: bool = False,
     ) -> None:
-        flags = MolToSmilesFlags(
+        flags = _make_flags(
             isomeric_smiles=isomeric_smiles,
             kekule_smiles=kekule_smiles,
             rooted_at_atom=rooted_at_atom,
@@ -222,7 +261,7 @@ def mol_to_smiles_enum(
     do_random: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> Iterator[str]:
-    flags = MolToSmilesFlags(
+    flags = _make_flags(
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
         rooted_at_atom=rooted_at_atom,
@@ -279,7 +318,7 @@ def mol_to_smiles_token_inventory(
     """Build a cheap token inventory from local prepared-graph structure."""
 
     effective_root = 0 if rooted_at_atom is None else rooted_at_atom
-    flags = MolToSmilesFlags(
+    flags = _make_flags(
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
         rooted_at_atom=effective_root,
@@ -406,32 +445,42 @@ def make_nonstereo_walker(
     mol_or_prepared: object,
     root_idx: int,
 ) -> _core.RootedConnectedNonStereoWalker:
-    prepared = prepare_smiles_graph(
-        mol_or_prepared,
-        flags=MolToSmilesFlags(
-            isomeric_smiles=False,
-            rooted_at_atom=root_idx,
-            canonical=False,
-            do_random=True,
+    flags = _make_flags(
+        isomeric_smiles=False,
+        rooted_at_atom=root_idx,
+        canonical=False,
+        do_random=True,
+    )
+    return cast(
+        _core.RootedConnectedNonStereoWalker,
+        _instantiate_core_object(
+            mol_or_prepared,
+            flags,
+            stereo_type=_core.RootedConnectedStereoWalker,
+            nonstereo_type=_core.RootedConnectedNonStereoWalker,
         ),
     )
-    return _core.RootedConnectedNonStereoWalker(prepared, root_idx)
 
 
 def make_stereo_walker(
     mol_or_prepared: object,
     root_idx: int,
 ) -> _core.RootedConnectedStereoWalker:
-    prepared = prepare_smiles_graph(
-        mol_or_prepared,
-        flags=MolToSmilesFlags(
-            isomeric_smiles=True,
-            rooted_at_atom=root_idx,
-            canonical=False,
-            do_random=True,
+    flags = _make_flags(
+        isomeric_smiles=True,
+        rooted_at_atom=root_idx,
+        canonical=False,
+        do_random=True,
+    )
+    return cast(
+        _core.RootedConnectedStereoWalker,
+        _instantiate_core_object(
+            mol_or_prepared,
+            flags,
+            stereo_type=_core.RootedConnectedStereoWalker,
+            nonstereo_type=_core.RootedConnectedNonStereoWalker,
         ),
     )
-    return _core.RootedConnectedStereoWalker(prepared, root_idx)
 
 
 def prepared_smiles_graph_schema_version() -> int:

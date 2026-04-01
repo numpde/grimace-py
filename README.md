@@ -127,32 +127,16 @@ maturin develop --release
 
 ## Timings
 
-Example timings from the opt-in performance benchmark, measured in release mode
-on one development machine. Treat them as indicative, not as a portability or
-stability guarantee.
+The opt-in timing benchmark generates a small markdown document with the
+current table and a short explanation of the columns:
 
-- `Support`: the size of the exact rooted SMILES support across all root atoms.
-- `Grimace enum (all roots)`: direct exact enumeration with `MolToSmilesEnum(...)`,
-  unioned across all roots.
-- `Decoder enum (all roots)`: exact enumeration by exhaustive traversal of
-  `MolToSmilesDecoder(...)`, unioned across all roots.
-- `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,
-  doRandom=True)` draws across all roots until half of the exact support has
-  been seen.
-- `RDKit to full support`: the same sampling process until the full exact
-  support has been seen.
-- All timing columns are shown as `time mean ± std`.
-- The two RDKit columns also show `(draw mean ± std)` over repeated seeded
-  trials.
+- [docs/timings.md](docs/timings.md)
 
-| Canonical SMILES | Atoms | Support | Grimace enum (all roots) | Decoder enum (all roots) | RDKit to 1/2 support | RDKit to full support |
-| --- | ---: | ---: | ---: | ---: | --- | --- |
-| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **15.3** ± 1.0 ms | **34.1** ± 2.4 ms | **4.7** ± 0.4 ms (230.0 ± 18.8 draws) | **56.2** ± 15.2 ms (3086.7 ± 921.8 draws) |
-| `C1CC2(CCO1)CO2` | 8 | 36 | **3.1** ± 0.2 ms | **5.3** ± 0.2 ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.9** ± 0.4 ms (155.6 ± 35.8 draws) |
-| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **14.3** ± 0.3 ms | **22.2** ± 0.5 ms | **1.8** ± 0.2 ms (97.4 ± 8.7 draws) | **18.0** ± 3.1 ms (987.9 ± 169.9 draws) |
-| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **17.5** ± 0.1 ms | **19.8** ± 0.1 ms | **0.6** ± 0.0 ms (44.1 ± 2.5 draws) | **6.0** ± 1.5 ms (483.0 ± 122.3 draws) |
-| `N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O` | 14 | 688 | **50.4** ± 2.2 ms | **96.8** ± 4.2 ms | **10.1** ± 0.4 ms (514.3 ± 12.9 draws) | **150.6** ± 45.9 ms (7946.7 ± 2448.6 draws) |
-| `COc1ccc2cc([C@H](C)C(=O)O)ccc2c1` | 17 | 1504 | **111.6** ± 1.4 ms | **219.9** ± 1.5 ms | **26.5** ± 0.7 ms (1143.0 ± 34.0 draws) | **570.1** ± 115.7 ms (24406.3 ± 4916.2 draws) |
+Regenerate it with:
+
+```bash
+RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest tests.perf.test_readme_timings -q
+```
 
 ## License
 

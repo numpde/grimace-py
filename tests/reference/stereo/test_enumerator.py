@@ -222,6 +222,23 @@ class RootedConnectedStereoTests(unittest.TestCase):
         self.assertIn(expected, observed)
         _assert_support_valid(self, mol, self.policy, 0, observed)
 
+    def test_dataset_regression_porphyrin_like_fragment_matches_rooted_rdkit(self) -> None:
+        mol = parse_smiles(
+            "C1=CC=C2/C/3=N/C4=C5C(=C([N-]4)/N=C/6\\[N-]/C(=N\\C7=C8C(=C([N-]7)"
+            "/N=C(/C2=C1)\\[N-]3)C=CC=C8)/C9=CC=CC=C69)C=CC=C5"
+        )
+        expected = (
+            "c1ccc2/c3[n-]/c(c2c1)=N\\c1c2c(c([n-]1)/N=c1\\[n-]/c(c4c1cccc4)"
+            "=N\\c1c4c(c([n-]1)/N=3)cccc4)cccc2"
+        )
+
+        observed = enumerate_rooted_connected_stereo_smiles_support(
+            mol,
+            0,
+            self.policy,
+        )
+        self.assertIn(expected, observed)
+
     def test_degree_three_alkene_carrier_selection_matches_rooted_rdkit_samples(self) -> None:
         mol = parse_smiles("F/C(Cl)=C/F")
 

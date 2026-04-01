@@ -520,7 +520,8 @@ def _stereo_side_infos(
                 neighbor_idx
                 for neighbor_idx in prepared.neighbors_of(endpoint_idx)
                 if neighbor_idx != other_idx
-                and prepared.bond_kinds[prepared.bond_index(endpoint_idx, neighbor_idx)] == "SINGLE"
+                and prepared.bond_kinds[prepared.bond_index(endpoint_idx, neighbor_idx)]
+                in {"SINGLE", "AROMATIC"}
             )
             if not candidate_neighbors:
                 continue
@@ -551,7 +552,7 @@ def _stereo_side_infos(
                         raise ValueError("Inconsistent stored directional token assignment")
                     seed_tokens[node] = stored_token
 
-    for _, endpoint_idx, _, candidate_neighbors in side_candidates:
+    for _component_idx, endpoint_idx, _other_idx, candidate_neighbors in side_candidates:
         if len(candidate_neighbors) != 2:
             continue
         known_neighbors = [
@@ -562,8 +563,9 @@ def _stereo_side_infos(
         if len(known_neighbors) == 1:
             known_neighbor = known_neighbors[0]
             other_neighbor = candidate_neighbors[0] if candidate_neighbors[1] == known_neighbor else candidate_neighbors[1]
+            known_token = seed_tokens[(endpoint_idx, known_neighbor)]
             seed_tokens[(endpoint_idx, other_neighbor)] = _flip_direction_token(
-                seed_tokens[(endpoint_idx, known_neighbor)]
+                known_token
             )
 
     assignments: dict[tuple[int, int], str] = {}
@@ -733,6 +735,7 @@ def _emitted_isolated_edge_part(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    component_begin_atoms: tuple[int, ...],
     *,
     begin_idx: int,
     end_idx: int,
@@ -744,6 +747,10 @@ def _emitted_isolated_edge_part(
     updated_neighbors = list(selected_neighbors)
     updated_orientations = list(selected_orientations)
     stored_tokens: list[tuple[int, str]] = []
+
+    side_ids_by_component: defaultdict[int, list[int]] = defaultdict(list)
+    for idx, side_info in enumerate(side_infos):
+        side_ids_by_component[side_info.component_idx].append(idx)
 
     for side_idx in side_ids:
         side_info = side_infos[side_idx]
@@ -764,10 +771,52 @@ def _emitted_isolated_edge_part(
         if selected_neighbor != neighbor_idx:
             continue
 
+        stored_token = _emitted_candidate_token(side_info, begin_idx=begin_idx, end_idx=end_idx)
+        component_idx = side_info.component_idx
+        begin_atom_idx = component_begin_atoms[component_idx]
+        if (
+            len(side_info.candidate_neighbors) == 1
+            and begin_atom_idx >= 0
+            and begin_atom_idx != side_info.endpoint_atom_idx
+        ):
+            begin_side_idx = next(
+                (
+                    other_side_idx
+                    for other_side_idx in side_ids_by_component[component_idx]
+                    if side_infos[other_side_idx].endpoint_atom_idx == begin_atom_idx
+                    and len(side_infos[other_side_idx].candidate_neighbors) == 2
+                ),
+                None,
+            )
+            if begin_side_idx is not None:
+                begin_side_info = side_infos[begin_side_idx]
+                begin_selected_neighbor = updated_neighbors[begin_side_idx]
+                if (
+                    begin_selected_neighbor >= 0
+                    and all(
+                        prepared.bond_kinds[
+                            prepared.bond_index(
+                                begin_side_info.endpoint_atom_idx,
+                                candidate_neighbor,
+                            )
+                        ]
+                        == "AROMATIC"
+                        for candidate_neighbor in begin_side_info.candidate_neighbors
+                    )
+                ):
+                    begin_selected_token = _candidate_base_token(
+                        begin_side_info,
+                        begin_selected_neighbor,
+                    )
+                    if begin_idx == side_info.endpoint_atom_idx:
+                        stored_token = begin_selected_token
+                    else:
+                        stored_token = _flip_direction_token(begin_selected_token)
+
         stored_tokens.append(
             (
                 side_info.component_idx,
-                _emitted_candidate_token(side_info, begin_idx=begin_idx, end_idx=end_idx),
+                stored_token,
             )
         )
 
@@ -821,6 +870,7 @@ def _emitted_edge_part(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    component_begin_atoms: tuple[int, ...],
     isolated_components: tuple[bool, ...],
     *,
     begin_idx: int,
@@ -844,6 +894,7 @@ def _emitted_edge_part(
             component_phases,
             selected_neighbors,
             selected_orientations,
+            component_begin_atoms,
             begin_idx=begin_idx,
             end_idx=end_idx,
         )
@@ -904,12 +955,12 @@ def _isolated_component_flips(
             continue
 
         side_info = side_infos[begin_side_idx]
-        selected_base_token = _candidate_base_token(side_info, selected_neighbor_idx)
+        selected_token = _candidate_base_token(side_info, selected_neighbor_idx)
         phase = result.stereo_component_phases[component_idx]
         if phase == _UNKNOWN_COMPONENT_PHASE:
             continue
         flips[component_idx] = (
-            selected_base_token
+            selected_token
             == ("/" if phase == _STORED_COMPONENT_PHASE else "\\")
         )
 
@@ -978,6 +1029,7 @@ def enumerate_from_atom(
                         current_component_phases,
                         current_selected_neighbors,
                         current_selected_orientations,
+                        current_component_begin_atoms,
                         isolated_components,
                         begin_idx=atom_idx,
                         end_idx=closure.other_atom_idx,
@@ -1099,6 +1151,7 @@ def expand_children(
                 partial.stereo_component_phases,
                 partial.stereo_selected_neighbors,
                 partial.stereo_selected_orientations,
+                partial.stereo_component_begin_atoms,
                 isolated_components,
                 begin_idx=parent_idx,
                 end_idx=main_child,
@@ -1149,6 +1202,7 @@ def expand_children(
             partial.stereo_component_phases,
             partial.stereo_selected_neighbors,
             partial.stereo_selected_orientations,
+            partial.stereo_component_begin_atoms,
             isolated_components,
             begin_idx=parent_idx,
             end_idx=child_idx,

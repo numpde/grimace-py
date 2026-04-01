@@ -689,7 +689,12 @@ fn stereo_side_infos(
                     neighbor_idx != other_idx
                         && graph
                             .bond_index(endpoint_idx, neighbor_idx)
-                            .map(|bond_idx| graph.bond_kinds[bond_idx] == "SINGLE")
+                            .map(|bond_idx| {
+                                matches!(
+                                    graph.bond_kinds[bond_idx].as_str(),
+                                    "SINGLE" | "AROMATIC"
+                                )
+                            })
                             .unwrap_or(false)
                 })
                 .collect::<Vec<_>>();
@@ -759,7 +764,7 @@ fn stereo_side_infos(
         }
     }
 
-    for (_, endpoint_idx, _, candidate_neighbors) in &side_candidates {
+    for (_, endpoint_idx, _other_idx, candidate_neighbors) in &side_candidates {
         if candidate_neighbors.len() != 2 {
             continue;
         }
@@ -1035,9 +1040,11 @@ fn emitted_edge_part_generic(
 fn emitted_isolated_edge_part(
     graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
+    side_ids_by_component: &[Vec<usize>],
     edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
     selected_neighbors: &[isize],
     selected_orientations: &[i8],
+    component_begin_atoms: &[isize],
     begin_idx: usize,
     end_idx: usize,
 ) -> PyResult<(Part, Vec<isize>, Vec<i8>)> {
@@ -1081,9 +1088,50 @@ fn emitted_isolated_edge_part(
         if selected_neighbor != neighbor_idx as isize {
             continue;
         }
+        let mut stored_token = emitted_candidate_token(side_info, begin_idx, end_idx)?;
+        let component_idx = side_info.component_idx;
+        let begin_atom_idx = component_begin_atoms
+            .get(component_idx)
+            .copied()
+            .unwrap_or(-1);
+        if side_info.candidate_neighbors.len() == 1
+            && begin_atom_idx >= 0
+            && begin_atom_idx as usize != side_info.endpoint_atom_idx
+        {
+            if let Some(begin_side_idx) = side_ids_by_component
+                .get(component_idx)
+                .into_iter()
+                .flatten()
+                .copied()
+                .find(|&other_side_idx| {
+                    let other_side = &side_infos[other_side_idx];
+                    other_side.endpoint_atom_idx == begin_atom_idx as usize
+                        && other_side.candidate_neighbors.len() == 2
+                })
+            {
+                let begin_side = &side_infos[begin_side_idx];
+                let begin_selected_neighbor = updated_neighbors[begin_side_idx];
+                if begin_selected_neighbor >= 0
+                    && begin_side.candidate_neighbors.iter().all(|&candidate_neighbor| {
+                        graph
+                            .bond_index(begin_side.endpoint_atom_idx, candidate_neighbor)
+                            .map(|bond_idx| graph.bond_kinds[bond_idx] == "AROMATIC")
+                            .unwrap_or(false)
+                    })
+                {
+                    let begin_selected_token =
+                        candidate_base_token(begin_side, begin_selected_neighbor as usize)?;
+                    stored_token = if begin_idx == side_info.endpoint_atom_idx {
+                        begin_selected_token
+                    } else {
+                        flip_direction_token(&begin_selected_token)?
+                    };
+                }
+            }
+        }
         stored_tokens.push((
-            side_info.component_idx,
-            emitted_candidate_token(side_info, begin_idx, end_idx)?,
+            component_idx,
+            stored_token,
         ));
     }
 
@@ -1132,10 +1180,12 @@ fn emitted_isolated_edge_part(
 fn emitted_edge_part(
     graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
+    side_ids_by_component: &[Vec<usize>],
     edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
     component_phases: &[i8],
     selected_neighbors: &[isize],
     selected_orientations: &[i8],
+    component_begin_atoms: &[isize],
     isolated_components: &[bool],
     begin_idx: usize,
     end_idx: usize,
@@ -1169,9 +1219,11 @@ fn emitted_edge_part(
         emitted_isolated_edge_part(
             graph,
             side_infos,
+            side_ids_by_component,
             edge_to_side_ids,
             selected_neighbors,
             selected_orientations,
+            component_begin_atoms,
             begin_idx,
             end_idx,
         )
@@ -1518,10 +1570,12 @@ fn enter_atom_successors_by_token(
                             emitted_edge_part(
                                 graph,
                                 &runtime.side_infos,
+                                &runtime.side_ids_by_component,
                                 &runtime.edge_to_side_ids,
                                 &current_component_phases,
                                 &current_selected_neighbors,
                                 &current_selected_orientations,
+                                &current_component_begin_atoms,
                                 &runtime.isolated_components,
                                 atom_idx,
                                 closure.other_atom_idx,
@@ -1635,10 +1689,12 @@ fn process_children_successors_by_token(
         let (edge_part, updated_neighbors, updated_orientations) = emitted_edge_part(
             graph,
             &runtime.side_infos,
+            &runtime.side_ids_by_component,
             &runtime.edge_to_side_ids,
             &successor.stereo_component_phases,
             &successor.stereo_selected_neighbors,
             &successor.stereo_selected_orientations,
+            &successor.stereo_component_begin_atoms,
             &runtime.isolated_components,
             parent_idx,
             child_idx,
@@ -1680,10 +1736,12 @@ fn process_children_successors_by_token(
     let (edge_part, updated_neighbors, updated_orientations) = emitted_edge_part(
         graph,
         &runtime.side_infos,
+        &runtime.side_ids_by_component,
         &runtime.edge_to_side_ids,
         &state.stereo_component_phases,
         &state.stereo_selected_neighbors,
         &state.stereo_selected_orientations,
+        &state.stereo_component_begin_atoms,
         &runtime.isolated_components,
         parent_idx,
         child_idx,
@@ -1794,10 +1852,12 @@ fn collect_enter_atom_tokens(
                             emitted_edge_part(
                                 graph,
                                 &runtime.side_infos,
+                                &runtime.side_ids_by_component,
                                 &runtime.edge_to_side_ids,
                                 &current_component_phases,
                                 &current_selected_neighbors,
                                 &current_selected_orientations,
+                                &current_component_begin_atoms,
                                 &runtime.isolated_components,
                                 atom_idx,
                                 closure.other_atom_idx,
@@ -1822,10 +1882,12 @@ fn collect_enter_atom_tokens(
                             emitted_edge_part(
                                 graph,
                                 &runtime.side_infos,
+                                &runtime.side_ids_by_component,
                                 &runtime.edge_to_side_ids,
                                 &current_component_phases,
                                 &current_selected_neighbors,
                                 &current_selected_orientations,
+                                &current_component_begin_atoms,
                                 &runtime.isolated_components,
                                 atom_idx,
                                 target_idx,
@@ -1940,10 +2002,12 @@ fn next_token_support_for_stereo_state_impl(
             let (edge_part, updated_neighbors, updated_orientations) = emitted_edge_part(
                 graph,
                 &runtime.side_infos,
+                &runtime.side_ids_by_component,
                 &runtime.edge_to_side_ids,
                 &state.stereo_component_phases,
                 &state.stereo_selected_neighbors,
                 &state.stereo_selected_orientations,
+                &state.stereo_component_begin_atoms,
                 &runtime.isolated_components,
                 parent_idx,
                 child_idx,

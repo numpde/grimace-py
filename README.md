@@ -141,6 +141,8 @@ RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest tests.perf.test_readme_
 ## License
 
 `grimace` is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
+Third-party components remain under their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 Commercial use requires a separate commercial license from the author.
 The software is provided as is, without warranty or liability, to the extent
 allowed by law.

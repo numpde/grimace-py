@@ -3,7 +3,7 @@ from __future__ import annotations
 from rdkit import Chem, rdBase
 
 import grimace
-from tests.helpers.rdkit_writer_cases import ExactWriterCase
+from tests.helpers.rdkit_writer_cases import ExactSupportCase, ExactWriterCase, RootedRandomCase
 
 
 def grimace_support(
@@ -81,6 +81,31 @@ def assert_exact_writer_case_in_grimace_support(test_case, case: ExactWriterCase
     test_case.assertIn(case.expected, support)
 
 
+def assert_rooted_random_case_in_grimace_support(test_case, case: RootedRandomCase) -> None:
+    mol = Chem.MolFromSmiles(case.smiles)
+    test_case.assertEqual(mol.GetNumAtoms(), len(case.rooted_outputs))
+
+    for root_idx, expected in enumerate(case.rooted_outputs):
+        with test_case.subTest(smiles=case.smiles, root_idx=root_idx):
+            rdkit_rooted = Chem.MolToSmiles(
+                Chem.Mol(mol),
+                isomericSmiles=True,
+                kekuleSmiles=False,
+                rootedAtAtom=root_idx,
+                canonical=False,
+                doRandom=False,
+            )
+            test_case.assertEqual(expected, rdkit_rooted)
+
+            support = grimace_support(
+                mol,
+                rooted_at_atom=root_idx,
+                isomeric_smiles=True,
+            )
+            test_case.assertIn(expected, support)
+            test_case.assertGreaterEqual(len(support), 3)
+
+
 def assert_grimace_support_equals(
     test_case,
     *,
@@ -103,6 +128,28 @@ def assert_grimace_support_equals(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     test_case.assertEqual(expected, actual)
+
+
+def assert_exact_support_case_equals_grimace_support(
+    test_case,
+    case: ExactSupportCase,
+    *,
+    isomeric_smiles: bool,
+) -> None:
+    mol = Chem.MolFromSmiles(case.smiles)
+    for root_idx, expected in case.expected_by_root:
+        with test_case.subTest(
+            smiles=case.smiles,
+            root_idx=root_idx,
+            isomeric_smiles=isomeric_smiles,
+        ):
+            assert_grimace_support_equals(
+                test_case,
+                mol=mol,
+                expected=set(expected),
+                rooted_at_atom=root_idx,
+                isomeric_smiles=isomeric_smiles,
+            )
 
 
 def assert_grimace_support_matches_rdkit_sampling(

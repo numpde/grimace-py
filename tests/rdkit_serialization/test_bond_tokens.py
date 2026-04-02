@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.mols import parse_smiles
-from tests.rdkit_serialization._support import assert_grimace_support_equals
+from tests.helpers.rdkit_writer_cases import BOND_TOKEN_CASES
+from tests.rdkit_serialization._support import assert_exact_support_case_equals_grimace_support
 
 
 class RDKITBondTokenWriterTests(unittest.TestCase):
@@ -14,49 +14,14 @@ class RDKITBondTokenWriterTests(unittest.TestCase):
     - explicit '-' between aromatic atoms when RDKit writes it
     """
 
-    def test_dative_bond_serialization_matches_rdkit(self) -> None:
-        mol = parse_smiles("[NH3][Cu]")
-        expected_by_root = {
-            0: {"[NH3]->[Cu]"},
-            1: {"[Cu]<-[NH3]"},
-        }
-
-        for isomeric_smiles in (False, True):
-            for root_idx, expected in expected_by_root.items():
-                with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
-                    assert_grimace_support_equals(
-                        self,
-                        mol=mol,
-                        expected=expected,
-                        rooted_at_atom=root_idx,
-                        isomeric_smiles=isomeric_smiles,
-                    )
-
-    def test_aromatic_bridge_single_bond_matches_rdkit(self) -> None:
-        mol = parse_smiles("C1=CC=C(C=C1)N2C=C(C=N2)C=O")
-        expected_by_root = {
-            0: {
-                "c1ccc(-n2cc(C=O)cn2)cc1",
-                "c1ccc(-n2cc(cn2)C=O)cc1",
-                "c1ccc(-n2ncc(C=O)c2)cc1",
-                "c1ccc(-n2ncc(c2)C=O)cc1",
-                "c1ccc(cc1)-n1cc(C=O)cn1",
-                "c1ccc(cc1)-n1cc(cn1)C=O",
-                "c1ccc(cc1)-n1ncc(C=O)c1",
-                "c1ccc(cc1)-n1ncc(c1)C=O",
-            }
-        }
-
-        for isomeric_smiles in (False, True):
-            for root_idx, expected in expected_by_root.items():
-                with self.subTest(isomeric_smiles=isomeric_smiles, root_idx=root_idx):
-                    assert_grimace_support_equals(
-                        self,
-                        mol=mol,
-                        expected=expected,
-                        rooted_at_atom=root_idx,
-                        isomeric_smiles=isomeric_smiles,
-                    )
+    def test_bond_token_cases_match_rdkit(self) -> None:
+        for case in BOND_TOKEN_CASES:
+            for isomeric_smiles in (False, True):
+                assert_exact_support_case_equals_grimace_support(
+                    self,
+                    case,
+                    isomeric_smiles=isomeric_smiles,
+                )
 
 
 if __name__ == "__main__":

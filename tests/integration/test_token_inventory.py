@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import unittest
 
 import grimace
+from grimace import _runtime
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
@@ -146,20 +147,19 @@ class TokenInventoryTests(unittest.TestCase):
         inventory: set[str] = set()
 
         for root_idx in roots:
-            stack = [
-                grimace.MolToSmilesDecoder(
-                    mol,
-                    rootedAtAtom=root_idx,
-                    isomericSmiles=isomeric_smiles,
-                    canonical=False,
-                    doRandom=True,
-                )
-            ]
+            decoder = _runtime.MolToSmilesDecoder(
+                mol,
+                rooted_at_atom=root_idx,
+                isomeric_smiles=isomeric_smiles,
+                canonical=False,
+                do_random=True,
+            )
+            stack = [decoder._state]
             while stack:
-                decoder = stack.pop()
-                choices = decoder.next_choices
-                inventory.update(choice.text for choice in choices)
-                stack.extend(choice.next_state for choice in choices)
+                state = stack.pop()
+                grouped_successors = _runtime._grouped_choice_successor_states(state)
+                inventory.update(text for text, _ in grouped_successors)
+                stack.extend(successor for _, successor in grouped_successors)
 
         return tuple(sorted(inventory))
 

@@ -76,10 +76,10 @@ decoder = grimace.MolToSmilesDecoder(
     doRandom=True,
 )
 while decoder.prefix != "CC(=O)Oc1c":
-    decoder = decoder.next_choices[0].next_state
+decoder = decoder.next_choices[0].next_state
 
 decoder.prefix       # 'CC(=O)Oc1c'
-[choice.text for choice in decoder.next_choices]  # ['(', 'c']
+[choice.text for choice in decoder.next_choices]  # ['(', '(']
 ```
 
 Available interface:
@@ -127,6 +127,8 @@ Public semantic choice:
   `next_choices`
 - this preserves branch identity instead of hiding distinct continuations
   behind one merged token choice
+- two decoder states may therefore share the same `prefix` while exposing
+  different `next_choices`
 
 So:
 

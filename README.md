@@ -83,8 +83,8 @@ CC(= -> ['O']
 CC(=O -> [')']
 ...
 CC(=O)Oc1 -> ['c']
-CC(=O)Oc1c -> ['(', 'c']
-CC(=O)Oc1c( -> ['C', 'c']
+CC(=O)Oc1c -> ['(', '(']
+CC(=O)Oc1c( -> ['C']
 CC(=O)Oc1c(C -> ['(']
 CC(=O)Oc1c(C( -> ['=', 'O']
 CC(=O)Oc1c(C(= -> ['O']
@@ -107,6 +107,9 @@ GRIMACE intentionally preserves branch identity in the public decoder. Apparent
 duplicates are therefore meaningful. This avoids hiding distinct continuations
 behind one merged token choice and avoids pushing the cost of that implicit
 determinization into the runtime.
+
+As a consequence, two decoder states may share the same `prefix` but expose
+different `next_choices`, depending on which earlier branch led there.
 
 Here a "token" means one string emitted by one decoder transition. Tokens are
 defined by the walker itself, not by splitting a finished SMILES into

@@ -272,16 +272,16 @@ class _CoreStateAdapter:
     def __init__(self, decoder: object) -> None:
         self._decoder = decoder
 
-    def _choice_with_advanced_decoder(self, text: str) -> _ChoiceImpl:
+    def _choice_with_advanced_decoder(self, choice_idx: int, text: str) -> _ChoiceImpl:
         next_decoder = self._decoder.copy()
-        next_decoder.advance_token(text)
+        next_decoder.advance_choice(choice_idx)
         return _ChoiceImpl(text=text, next_state=type(self)(next_decoder))
 
     def choices(self) -> tuple[_ChoiceImpl, ...]:
-        choice_texts = tuple(self._decoder.next_token_support())
+        choice_texts = tuple(self._decoder.next_choice_texts())
         return tuple(
-            self._choice_with_advanced_decoder(text)
-            for text in choice_texts
+            self._choice_with_advanced_decoder(choice_idx, text)
+            for choice_idx, text in enumerate(choice_texts)
         )
 
     def prefix(self) -> str:
@@ -292,6 +292,17 @@ class _CoreStateAdapter:
 
     def copy(self) -> "_CoreStateAdapter":
         return type(self)(self._decoder.copy())
+
+    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
+        return tuple(
+            (text, self._advance_token(text))
+            for text in self._decoder.next_token_support()
+        )
+
+    def _advance_token(self, text: str) -> "_CoreStateAdapter":
+        next_decoder = self._decoder.copy()
+        next_decoder.advance_token(text)
+        return type(self)(next_decoder)
 
 
 class _MergedStateAdapter:
@@ -322,6 +333,16 @@ class _MergedStateAdapter:
 
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
+
+    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
+        grouped: dict[str, list[object]] = {}
+        for state in self._states:
+            for text, successor in state.grouped_successor_states():
+                grouped.setdefault(text, []).append(successor)
+        return tuple(
+            (text, _merge_choice_successor_states(tuple(successors)))
+            for text, successors in grouped.items()
+        )
 
 
 class _DisconnectedStateAdapter:
@@ -386,6 +407,51 @@ class _DisconnectedStateAdapter:
             fragment_idx=self._fragment_idx,
             completed_prefix=self._completed_prefix,
         )
+
+    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
+        active = self._active_state()
+        if not active.is_terminal():
+            return tuple(
+                (
+                    text,
+                    type(self)(
+                        self._fragment_states[: self._fragment_idx]
+                        + (successor,)
+                        + self._fragment_states[self._fragment_idx + 1 :],
+                        fragment_idx=self._fragment_idx,
+                        completed_prefix=self._completed_prefix,
+                    ),
+                )
+                for text, successor in active.grouped_successor_states()
+            )
+        if self._fragment_idx + 1 < len(self._fragment_states):
+            return (
+                (
+                    ".",
+                    type(self)(
+                        self._fragment_states,
+                        fragment_idx=self._fragment_idx + 1,
+                        completed_prefix=f"{self._completed_prefix}{active.prefix()}.",
+                    ),
+                ),
+            )
+        return ()
+
+
+def _merge_choice_successor_states(states: tuple[object, ...]) -> object:
+    flattened: list[object] = []
+    for state in states:
+        if isinstance(state, _MergedStateAdapter):
+            flattened.extend(state._states)
+        else:
+            flattened.append(state)
+    if len(flattened) == 1:
+        return flattened[0]
+    return _MergedStateAdapter(tuple(flattened))
+
+
+def _grouped_choice_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+    return state.grouped_successor_states()
 
 
 def prepare_smiles_graph(
@@ -622,25 +688,24 @@ def _exact_token_inventory_from_decoder(
         mol_or_prepared,
         rooted_at_atom=rooted_at_atom,
     ):
-        stack = [
-            MolToSmilesDecoder(
-                mol_or_prepared,
-                isomeric_smiles=isomeric_smiles,
-                kekule_smiles=kekule_smiles,
-                rooted_at_atom=root_idx,
-                canonical=canonical,
-                all_bonds_explicit=all_bonds_explicit,
-                all_hs_explicit=all_hs_explicit,
-                do_random=do_random,
-                ignore_atom_map_numbers=ignore_atom_map_numbers,
-            )
-        ]
+        decoder = MolToSmilesDecoder(
+            mol_or_prepared,
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            rooted_at_atom=root_idx,
+            canonical=canonical,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            do_random=do_random,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
+        )
+        stack = [decoder._state]
 
         while stack:
-            decoder = stack.pop()
-            choices = decoder.choices()
-            inventory.update(choice.text for choice in choices)
-            stack.extend(choice.next_state for choice in choices)
+            state = stack.pop()
+            grouped_successors = _grouped_choice_successor_states(state)
+            inventory.update(text for text, _ in grouped_successors)
+            stack.extend(successor for _, successor in grouped_successors)
 
     return tuple(sorted(inventory))
 

@@ -35,10 +35,8 @@ class MolToSmilesFlags:
         return replace(self, rooted_at_atom=rooted_at_atom)
 
 
-def _prepared_metadata_sequence(prepared: object, field_name: str) -> tuple[str, ...]:
-    if isinstance(prepared, _core.PreparedSmilesGraph):
-        return tuple(str(value) for value in prepared.to_dict().get(field_name, ()))
-    return tuple(str(value) for value in getattr(prepared, field_name, ()))
+def _prepared_bond_dirs(prepared: object) -> tuple[str, ...]:
+    return tuple(str(value) for value in getattr(prepared, "bond_dirs", ()))
 
 
 def _requires_stereo_runtime_surface(
@@ -57,10 +55,7 @@ def _requires_stereo_runtime_surface(
         )
     if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
         return False
-    return any(
-        bond_dir != "NONE"
-        for bond_dir in _prepared_metadata_sequence(mol_or_prepared, "bond_dirs")
-    )
+    return any(bond_dir != "NONE" for bond_dir in _prepared_bond_dirs(mol_or_prepared))
 
 
 def _runtime_surface_kind(

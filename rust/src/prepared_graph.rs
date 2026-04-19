@@ -705,6 +705,11 @@ impl PyPreparedSmilesGraph {
         self.data.atom_tokens.clone()
     }
 
+    #[getter]
+    fn bond_dirs(&self) -> Vec<String> {
+        self.data.bond_dirs.clone()
+    }
+
     fn neighbors_of(&self, atom_idx: usize) -> PyResult<Vec<usize>> {
         self.data
             .neighbors

@@ -122,13 +122,12 @@ So:
 
 `MolToSmilesTokenInventory(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=None, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This returns a sorted tuple of possible decoder tokens for one molecule under
-the same public writer flags.
+This returns the exact sorted tuple of reachable decoder tokens for one
+molecule under the same public writer flags.
 
-This first implementation is fast and local-graph based. It is intended as a
-token-inventory helper, not as a proof that every returned token is reachable.
-For disconnected molecules it returns the union of fragment inventories plus
-the `"."` separator token.
+When `rootedAtAtom=None`, it unions the exact reachable token inventories
+across all roots. For disconnected molecules it includes the `"."` separator
+token when fragment transitions are reachable under the requested root mode.
 
 ## Correctness
 

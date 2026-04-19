@@ -1,3 +1,18 @@
+"""Scan the bundled RDKit-backed dataset for writer-support mismatches.
+
+The controller walks the local molecule fixture, filters it to the requested
+public-surface mode, and evaluates one molecule per subprocess. The worker
+subprocess computes:
+
+- the single deterministic RDKit serialization for the chosen writer flags
+- Grimace's exact support for the same public mode
+
+The scan succeeds for a molecule when the deterministic RDKit string is a
+member of Grimace's exact support. Running each molecule in a subprocess keeps
+timeouts and crashes local to the current case, which is useful when mining
+large or pathological inputs.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -39,6 +54,7 @@ def _parse_bool(value: str) -> bool:
 
 
 def _rooted_at_atom(root_mode: str, mol: Chem.Mol) -> int | None:
+    """Resolve the CLI root selector against one parsed molecule."""
     if root_mode == "none":
         return None
     if root_mode == "zero":
@@ -112,6 +128,7 @@ def _rdkit_expected(
 
 
 def _worker_main(args: argparse.Namespace) -> int:
+    """Evaluate one concrete molecule/mode pair and emit a compact JSON result."""
     mol = Chem.MolFromSmiles(args.smiles)
     if mol is None:
         raise ValueError(f"RDKit failed to parse SMILES: {args.smiles!r}")
@@ -148,6 +165,7 @@ def _worker_main(args: argparse.Namespace) -> int:
 
 
 def _controller_main(args: argparse.Namespace) -> int:
+    """Iterate the dataset and stop at the first concrete regression."""
     config = ScanConfig(
         root_mode=args.root,
         isomeric_smiles=args.isomeric,
@@ -167,6 +185,7 @@ def _controller_main(args: argparse.Namespace) -> int:
     checked = 0
 
     for idx, case in enumerate(iter_default_molecule_cases(), start=1):
+        # `start_after` is a resume cursor for long scans, not a filter value.
         if not seen_start:
             if case.cid == config.start_after:
                 seen_start = True
@@ -183,6 +202,8 @@ def _controller_main(args: argparse.Namespace) -> int:
         rooted_at_atom = _rooted_at_atom(config.root_mode, mol)
         checked += 1
 
+        # Run each case in a fresh interpreter so timeouts and crashes do not
+        # poison the whole scan.
         worker_cmd = [
             sys.executable,
             __file__,
@@ -230,6 +251,7 @@ def _controller_main(args: argparse.Namespace) -> int:
                 print(detail, flush=True)
             return 1
 
+        # The worker only prints one JSON payload on success.
         payload = json.loads(proc.stdout.strip())
         print(
             f"MATCH checked={checked} idx={idx} cid={case.cid} atoms={mol.GetNumAtoms()} "
@@ -248,6 +270,7 @@ def _controller_main(args: argparse.Namespace) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build one parser shared by the controller and hidden worker mode."""
     parser = argparse.ArgumentParser(
         description="Mine the local RDKit fixture for Grimace writer regressions.",
     )

@@ -5,7 +5,6 @@ import unittest
 
 import grimace
 from grimace._reference.prepared_graph import (
-    CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
@@ -28,12 +27,6 @@ class WriterFlagCase:
     all_hs_explicit: bool = False
     ignore_atom_map_numbers: bool = False
 
-    @property
-    def surface_kind(self) -> str:
-        if self.isomeric_smiles:
-            return CONNECTED_STEREO_SURFACE
-        return CONNECTED_NONSTEREO_SURFACE
-
 
 class PublicRuntimeWriterFlagsTests(unittest.TestCase):
     CASES = (
@@ -54,6 +47,13 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
             smiles="F/C=C\\Cl",
             rooted_at_atom=0,
             isomeric_smiles=False,
+        ),
+        WriterFlagCase(
+            name="nonstereo_preserves_bond_direction_when_all_bonds_explicit",
+            smiles="F/C=C\\Cl",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+            all_bonds_explicit=True,
         ),
         WriterFlagCase(
             name="stereo_baseline",
@@ -96,22 +96,41 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
 
+    @staticmethod
+    def _runtime_surface_kind(case: WriterFlagCase, mol):
+        from grimace import _runtime
+
+        return _runtime._runtime_surface_kind(
+            mol,
+            flags=_runtime.MolToSmilesFlags(
+                isomeric_smiles=case.isomeric_smiles,
+                kekule_smiles=case.kekule_smiles,
+                rooted_at_atom=case.rooted_at_atom,
+                canonical=False,
+                all_bonds_explicit=case.all_bonds_explicit,
+                all_hs_explicit=case.all_hs_explicit,
+                do_random=True,
+                ignore_atom_map_numbers=case.ignore_atom_map_numbers,
+            ),
+        )
+
     def test_public_runtime_matches_internal_oracle_for_supported_writer_flags(self) -> None:
         for case in self.CASES:
             with self.subTest(case=case.name, smiles=case.smiles):
                 from grimace import _runtime
 
                 mol = parse_smiles(case.smiles)
+                surface_kind = self._runtime_surface_kind(case, mol)
                 reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
                     mol,
-                    surface_kind=case.surface_kind,
+                    surface_kind=surface_kind,
                     isomeric_smiles=case.isomeric_smiles,
                     kekule_smiles=case.kekule_smiles,
                     all_bonds_explicit=case.all_bonds_explicit,
                     all_hs_explicit=case.all_hs_explicit,
                     ignore_atom_map_numbers=case.ignore_atom_map_numbers,
                 )
-                if case.isomeric_smiles:
+                if surface_kind == CONNECTED_STEREO_SURFACE:
                     expected = enumerate_rooted_connected_stereo_smiles_support(
                         reference_prepared,
                         case.rooted_at_atom,
@@ -155,43 +174,6 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
                         reference_prepared.identity_smiles,
                         reference_prepared.identity_smiles_for(parsed),
                     )
-
-    def test_nonisomeric_all_bonds_explicit_bond_stereo_uses_stereo_surface(self) -> None:
-        from grimace import _runtime
-
-        mol = parse_smiles("F/C=C\\Cl")
-        reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
-            mol,
-            surface_kind=CONNECTED_STEREO_SURFACE,
-            isomeric_smiles=False,
-            all_bonds_explicit=True,
-        )
-        expected = enumerate_rooted_connected_stereo_smiles_support(
-            reference_prepared,
-            0,
-        )
-
-        actual_from_enum = set(
-            grimace.MolToSmilesEnum(
-                mol,
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                canonical=False,
-                doRandom=True,
-                allBondsExplicit=True,
-            )
-        )
-        actual = _runtime.mol_to_smiles_support(
-            mol,
-            rooted_at_atom=0,
-            isomeric_smiles=False,
-            canonical=False,
-            do_random=True,
-            all_bonds_explicit=True,
-        )
-
-        self.assertEqual(expected, actual)
-        self.assertEqual(actual_from_enum, actual)
 
 
 if __name__ == "__main__":

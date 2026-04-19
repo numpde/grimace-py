@@ -18,6 +18,10 @@ from grimace._reference.dataset import iter_default_molecule_cases, molecule_is_
 class ScanConfig:
     root_mode: str
     isomeric_smiles: bool
+    kekule_smiles: bool
+    all_bonds_explicit: bool
+    all_hs_explicit: bool
+    ignore_atom_map_numbers: bool
     connected_mode: str
     max_atoms: int | None
     limit: int
@@ -64,11 +68,19 @@ def _grimace_support(
     *,
     rooted_at_atom: int | None,
     isomeric_smiles: bool,
+    kekule_smiles: bool,
+    all_bonds_explicit: bool,
+    all_hs_explicit: bool,
+    ignore_atom_map_numbers: bool,
 ) -> set[str]:
     kwargs: dict[str, Any] = {
         "isomericSmiles": isomeric_smiles,
+        "kekuleSmiles": kekule_smiles,
         "canonical": False,
+        "allBondsExplicit": all_bonds_explicit,
+        "allHsExplicit": all_hs_explicit,
         "doRandom": True,
+        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
     }
     if rooted_at_atom is not None:
         kwargs["rootedAtAtom"] = rooted_at_atom
@@ -80,11 +92,19 @@ def _rdkit_expected(
     *,
     rooted_at_atom: int | None,
     isomeric_smiles: bool,
+    kekule_smiles: bool,
+    all_bonds_explicit: bool,
+    all_hs_explicit: bool,
+    ignore_atom_map_numbers: bool,
 ) -> str:
     kwargs: dict[str, Any] = {
         "isomericSmiles": isomeric_smiles,
+        "kekuleSmiles": kekule_smiles,
         "canonical": False,
+        "allBondsExplicit": all_bonds_explicit,
+        "allHsExplicit": all_hs_explicit,
         "doRandom": False,
+        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
     }
     if rooted_at_atom is not None:
         kwargs["rootedAtAtom"] = rooted_at_atom
@@ -100,11 +120,19 @@ def _worker_main(args: argparse.Namespace) -> int:
         mol,
         rooted_at_atom=rooted_at_atom,
         isomeric_smiles=args.isomeric,
+        kekule_smiles=args.kekule,
+        all_bonds_explicit=args.all_bonds_explicit,
+        all_hs_explicit=args.all_hs_explicit,
+        ignore_atom_map_numbers=args.ignore_atom_map_numbers,
     )
     support = _grimace_support(
         mol,
         rooted_at_atom=rooted_at_atom,
         isomeric_smiles=args.isomeric,
+        kekule_smiles=args.kekule,
+        all_bonds_explicit=args.all_bonds_explicit,
+        all_hs_explicit=args.all_hs_explicit,
+        ignore_atom_map_numbers=args.ignore_atom_map_numbers,
     )
     print(
         json.dumps(
@@ -123,6 +151,10 @@ def _controller_main(args: argparse.Namespace) -> int:
     config = ScanConfig(
         root_mode=args.root,
         isomeric_smiles=args.isomeric,
+        kekule_smiles=args.kekule,
+        all_bonds_explicit=args.all_bonds_explicit,
+        all_hs_explicit=args.all_hs_explicit,
+        ignore_atom_map_numbers=args.ignore_atom_map_numbers,
         connected_mode=args.connected,
         max_atoms=args.max_atoms,
         limit=args.limit,
@@ -159,6 +191,14 @@ def _controller_main(args: argparse.Namespace) -> int:
             case.smiles,
             "--isomeric",
             "true" if config.isomeric_smiles else "false",
+            "--kekule",
+            "true" if config.kekule_smiles else "false",
+            "--all-bonds-explicit",
+            "true" if config.all_bonds_explicit else "false",
+            "--all-hs-explicit",
+            "true" if config.all_hs_explicit else "false",
+            "--ignore-atom-map-numbers",
+            "true" if config.ignore_atom_map_numbers else "false",
             "--rooted-at-atom",
             str(-1 if rooted_at_atom is None else rooted_at_atom),
         ]
@@ -235,6 +275,30 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_parse_bool,
         default=True,
         help="Whether to compare the isomeric writer surface (true/false)",
+    )
+    parser.add_argument(
+        "--kekule",
+        type=_parse_bool,
+        default=False,
+        help="Whether to compare kekulized writer output (true/false)",
+    )
+    parser.add_argument(
+        "--all-bonds-explicit",
+        type=_parse_bool,
+        default=False,
+        help="Whether to require explicit bond tokens in the writer output (true/false)",
+    )
+    parser.add_argument(
+        "--all-hs-explicit",
+        type=_parse_bool,
+        default=False,
+        help="Whether to require explicit hydrogens in the writer output (true/false)",
+    )
+    parser.add_argument(
+        "--ignore-atom-map-numbers",
+        type=_parse_bool,
+        default=False,
+        help="Whether to ignore atom map numbers in the writer output (true/false)",
     )
     parser.add_argument(
         "--connected",

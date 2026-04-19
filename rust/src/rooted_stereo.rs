@@ -250,6 +250,9 @@ fn stereo_atom_token(
     atom_idx: usize,
     emitted_neighbor_order: &[isize],
 ) -> PyResult<String> {
+    if !graph.writer_do_isomeric_smiles {
+        return Ok(graph.atom_tokens[atom_idx].clone());
+    }
     let chiral_tag = graph.atom_chiral_tags[atom_idx].as_str();
     if chiral_tag == "CHI_UNSPECIFIED" {
         return Ok(graph.atom_tokens[atom_idx].clone());

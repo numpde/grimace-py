@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.rdkit_writer_cases import WRITER_FLAG_CASES
+from tests.helpers.rdkit_writer_cases import ExactWriterCase, WRITER_FLAG_CASES
 from tests.rdkit_serialization._support import assert_exact_writer_case_in_grimace_support
 
 
@@ -33,6 +33,18 @@ class RDKITWriterFlagTests(unittest.TestCase):
                 ignore_atom_map_numbers=case.ignore_atom_map_numbers,
             ):
                 assert_exact_writer_case_in_grimace_support(self, case)
+
+    def test_all_bonds_explicit_nonisomeric_bond_stereo_exact_writer_is_member_of_support(self) -> None:
+        case = ExactWriterCase(
+            smiles="F/C=C\\Cl",
+            expected="F/C=C\\Cl",
+            isomeric_smiles=False,
+            rooted_at_atom=0,
+            rdkit_canonical=False,
+            all_bonds_explicit=True,
+        )
+
+        assert_exact_writer_case_in_grimace_support(self, case)
 
 
 if __name__ == "__main__":

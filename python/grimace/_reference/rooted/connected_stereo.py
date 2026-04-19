@@ -304,6 +304,8 @@ def _stereo_atom_token(
     *,
     emitted_neighbor_order: tuple[int, ...],
 ) -> str:
+    if not prepared.writer_do_isomeric_smiles:
+        return prepared.atom_tokens[atom_idx]
     chiral_tag = prepared.atom_chiral_tags[atom_idx]
     if chiral_tag == "CHI_UNSPECIFIED":
         return prepared.atom_tokens[atom_idx]

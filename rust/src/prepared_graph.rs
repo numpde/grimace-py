@@ -22,6 +22,11 @@ pub(crate) fn mol_to_smiles_support_data(
             graph, root_idx,
         );
     }
+    if graph.surface_kind == CONNECTED_STEREO_SURFACE {
+        return crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(
+            graph, root_idx,
+        );
+    }
     if graph.surface_kind != CONNECTED_NONSTEREO_SURFACE {
         return Err(PyValueError::new_err(format!(
             "PreparedSmilesGraph surface_kind={} is not compatible with isomeric_smiles=False",

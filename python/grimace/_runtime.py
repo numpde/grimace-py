@@ -41,6 +41,44 @@ class MolToSmilesFlags:
         return replace(self, rooted_at_atom=rooted_at_atom)
 
 
+def _prepared_metadata_sequence(prepared: object, field_name: str) -> tuple[str, ...]:
+    if isinstance(prepared, _core.PreparedSmilesGraph):
+        return tuple(str(value) for value in prepared.to_dict().get(field_name, ()))
+    return tuple(str(value) for value in getattr(prepared, field_name, ()))
+
+
+def _requires_stereo_runtime_surface(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> bool:
+    if flags.isomeric_smiles:
+        return True
+    if not flags.all_bonds_explicit:
+        return False
+    if isinstance(mol_or_prepared, Chem.Mol):
+        return any(
+            bond.GetStereo() != Chem.BondStereo.STEREONONE or bond.GetBondDir() != Chem.BondDir.NONE
+            for bond in mol_or_prepared.GetBonds()
+        )
+    if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
+        return False
+    return any(
+        bond_dir != "NONE"
+        for bond_dir in _prepared_metadata_sequence(mol_or_prepared, "bond_dirs")
+    )
+
+
+def _runtime_surface_kind(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> str:
+    if _requires_stereo_runtime_surface(mol_or_prepared, flags=flags):
+        return CONNECTED_STEREO_SURFACE
+    return CONNECTED_NONSTEREO_SURFACE
+
+
 @dataclass(frozen=True, slots=True)
 class _FragmentPlan:
     mol: Chem.Mol
@@ -459,20 +497,21 @@ def prepare_smiles_graph(
     *,
     flags: MolToSmilesFlags,
 ) -> _core.PreparedSmilesGraph:
+    surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
-        _validate_surface_kind(mol_or_prepared, surface_kind=flags.surface_kind)
+        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_writer_flags(mol_or_prepared, flags)
         return mol_or_prepared
 
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
-        _validate_surface_kind(mol_or_prepared, surface_kind=flags.surface_kind)
+        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_writer_flags(mol_or_prepared, flags)
         return _core.PreparedSmilesGraph(mol_or_prepared)
 
     _ensure_singly_connected_molecule(mol_or_prepared)
     reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
         mol_or_prepared,
-        surface_kind=flags.surface_kind,
+        surface_kind=surface_kind,
         isomeric_smiles=flags.isomeric_smiles,
         kekule_smiles=flags.kekule_smiles,
         all_bonds_explicit=flags.all_bonds_explicit,
@@ -516,7 +555,7 @@ def _instantiate_core_object(
     nonstereo_type: type,
 ) -> object:
     prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
-    core_type = stereo_type if flags.isomeric_smiles else nonstereo_type
+    core_type = stereo_type if prepared.surface_kind == CONNECTED_STEREO_SURFACE else nonstereo_type
     return core_type(prepared, flags.rooted_at_atom)
 
 

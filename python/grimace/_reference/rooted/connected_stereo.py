@@ -66,6 +66,7 @@ class SearchResult:
     stereo_component_phases: tuple[int, ...]
     stereo_selected_neighbors: tuple[int, ...]
     stereo_selected_orientations: tuple[int, ...]
+    stereo_first_emitted_candidates: tuple[int, ...]
     stereo_component_begin_atoms: tuple[int, ...]
 
 
@@ -461,6 +462,7 @@ def _with_component_begin_atom(
 def _component_phases_after_edge(
     prepared: PreparedSmilesGraph,
     stereo_component_ids: tuple[int, ...],
+    isolated_components: tuple[bool, ...],
     component_phases: tuple[int, ...],
     component_begin_atoms: tuple[int, ...],
     *,
@@ -475,6 +477,8 @@ def _component_phases_after_edge(
         return component_phases, component_begin_atoms
     if component_phases[component_idx] != _UNKNOWN_COMPONENT_PHASE:
         return component_phases, component_begin_atoms
+    if not isolated_components[component_idx] and component_begin_atoms[component_idx] >= 0:
+        return component_phases, component_begin_atoms
 
     stored_begin_idx = prepared.bond_begin_atom_indices[bond_idx]
     stored_end_idx = prepared.bond_end_atom_indices[bond_idx]
@@ -487,17 +491,95 @@ def _component_phases_after_edge(
         phase = _FLIPPED_COMPONENT_PHASE
     else:
         raise NotImplementedError(f"Unsupported stereo bond kind: {stereo_kind}")
+    updated_begin_atoms = (
+        component_begin_atoms
+        if component_begin_atoms[component_idx] >= 0
+        else _with_component_begin_atom(
+            component_begin_atoms,
+            component_idx=component_idx,
+            atom_idx=begin_idx,
+        )
+    )
     return (
         _with_component_phase(
             component_phases,
             component_idx=component_idx,
             phase=phase,
         ),
-        _with_component_begin_atom(
-            component_begin_atoms,
-            component_idx=component_idx,
-            atom_idx=begin_idx,
+        updated_begin_atoms,
+    )
+
+
+def _defer_coupled_component_phase_if_begin_side_is_unresolved(
+    prepared: PreparedSmilesGraph,
+    stereo_component_ids: tuple[int, ...],
+    side_infos: tuple[StereoSideInfo, ...],
+    isolated_components: tuple[bool, ...],
+    component_phases: tuple[int, ...],
+    component_begin_atoms: tuple[int, ...],
+    selected_neighbors: tuple[int, ...],
+    *,
+    begin_idx: int,
+    end_idx: int,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    bond_idx = prepared.bond_index(begin_idx, end_idx)
+    component_idx = stereo_component_ids[bond_idx]
+    if component_idx < 0 or not _is_stereo_double_bond(prepared, bond_idx):
+        return component_phases, component_begin_atoms
+    if isolated_components[component_idx]:
+        return component_phases, component_begin_atoms
+
+    begin_side_idx = next(
+        (
+            side_idx
+            for side_idx, side_info in enumerate(side_infos)
+            if side_info.component_idx == component_idx
+            and side_info.endpoint_atom_idx == begin_idx
         ),
+        None,
+    )
+    if begin_side_idx is None:
+        return component_phases, component_begin_atoms
+    begin_side = side_infos[begin_side_idx]
+    if len(begin_side.candidate_neighbors) <= 1 or selected_neighbors[begin_side_idx] >= 0:
+        return component_phases, component_begin_atoms
+
+    updated = list(component_phases)
+    updated[component_idx] = _UNKNOWN_COMPONENT_PHASE
+    return tuple(updated), _with_component_begin_atom(
+        component_begin_atoms,
+        component_idx=component_idx,
+        atom_idx=begin_idx,
+    )
+
+
+def _commit_coupled_component_phase_from_deferred_part(
+    isolated_components: tuple[bool, ...],
+    component_phases: tuple[int, ...],
+    component_begin_atoms: tuple[int, ...],
+    *,
+    begin_idx: int,
+    part: str | DeferredDirectionalToken,
+) -> tuple[int, ...]:
+    if not isinstance(part, DeferredDirectionalToken):
+        return component_phases
+    component_idx = part.component_idx
+    if (
+        isolated_components[component_idx]
+        or component_phases[component_idx] != _UNKNOWN_COMPONENT_PHASE
+        or component_begin_atoms[component_idx] != begin_idx
+    ):
+        return component_phases
+    phase = {
+        "/": _STORED_COMPONENT_PHASE,
+        "\\": _FLIPPED_COMPONENT_PHASE,
+    }.get(part.stored_token)
+    if phase is None:
+        raise ValueError(f"Unsupported deferred directional token: {part.stored_token!r}")
+    return _with_component_phase(
+        component_phases,
+        component_idx=component_idx,
+        phase=phase,
     )
 
 
@@ -686,16 +768,28 @@ def _emitted_edge_part_generic(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    first_emitted_candidates: tuple[int, ...],
     *,
     begin_idx: int,
     end_idx: int,
-) -> tuple[str | DeferredDirectionalToken, tuple[int, ...], tuple[int, ...]]:
+) -> tuple[
+    str | DeferredDirectionalToken,
+    tuple[int, ...],
+    tuple[int, ...],
+    tuple[int, ...],
+]:
     side_ids = edge_to_side_ids.get(_canonical_edge(begin_idx, end_idx), ())
     if not side_ids:
-        return prepared.bond_token(begin_idx, end_idx), selected_neighbors, selected_orientations
+        return (
+            prepared.bond_token(begin_idx, end_idx),
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+        )
 
     updated_neighbors = list(selected_neighbors)
     updated_orientations = list(selected_orientations)
+    updated_first_candidates = list(first_emitted_candidates)
     stored_tokens: list[tuple[int, str]] = []
 
     for side_idx in side_ids:
@@ -708,6 +802,12 @@ def _emitted_edge_part_generic(
             edge_orientation = _BEFORE_ATOM_EDGE_ORIENTATION
         else:
             continue
+
+        if (
+            len(side_info.candidate_neighbors) == 2
+            and updated_first_candidates[side_idx] < 0
+        ):
+            updated_first_candidates[side_idx] = neighbor_idx
 
         selected_neighbor = updated_neighbors[side_idx]
         if selected_neighbor < 0:
@@ -733,8 +833,14 @@ def _emitted_edge_part_generic(
 
     updated_state = tuple(updated_neighbors)
     updated_orientation_state = tuple(updated_orientations)
+    updated_first_state = tuple(updated_first_candidates)
     if not stored_tokens:
-        return prepared.bond_token(begin_idx, end_idx), updated_state, updated_orientation_state
+        return (
+            prepared.bond_token(begin_idx, end_idx),
+            updated_state,
+            updated_orientation_state,
+            updated_first_state,
+        )
 
     component_idx = stored_tokens[0][0]
     stored_token = stored_tokens[0][1]
@@ -744,16 +850,12 @@ def _emitted_edge_part_generic(
         if other_stored_token != stored_token:
             raise ValueError("Carrier edge received conflicting stereo token assignments")
 
-    phase = component_phases[component_idx]
-    if phase == _UNKNOWN_COMPONENT_PHASE:
-        return (
-            DeferredDirectionalToken(component_idx=component_idx, stored_token=stored_token),
-            updated_state,
-            updated_orientation_state,
-        )
-    if phase == _STORED_COMPONENT_PHASE:
-        return stored_token, updated_state, updated_orientation_state
-    return _flip_direction_token(stored_token), updated_state, updated_orientation_state
+    return (
+        DeferredDirectionalToken(component_idx=component_idx, stored_token=stored_token),
+        updated_state,
+        updated_orientation_state,
+        updated_first_state,
+    )
 
 
 def _emitted_isolated_edge_part(
@@ -763,17 +865,29 @@ def _emitted_isolated_edge_part(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    first_emitted_candidates: tuple[int, ...],
     component_begin_atoms: tuple[int, ...],
     *,
     begin_idx: int,
     end_idx: int,
-) -> tuple[str | DeferredDirectionalToken, tuple[int, ...], tuple[int, ...]]:
+) -> tuple[
+    str | DeferredDirectionalToken,
+    tuple[int, ...],
+    tuple[int, ...],
+    tuple[int, ...],
+]:
     side_ids = edge_to_side_ids.get(_canonical_edge(begin_idx, end_idx), ())
     if not side_ids:
-        return prepared.bond_token(begin_idx, end_idx), selected_neighbors, selected_orientations
+        return (
+            prepared.bond_token(begin_idx, end_idx),
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+        )
 
     updated_neighbors = list(selected_neighbors)
     updated_orientations = list(selected_orientations)
+    updated_first_candidates = list(first_emitted_candidates)
     stored_tokens: list[tuple[int, str]] = []
 
     side_ids_by_component: defaultdict[int, list[int]] = defaultdict(list)
@@ -791,6 +905,12 @@ def _emitted_isolated_edge_part(
             edge_orientation = _BEFORE_ATOM_EDGE_ORIENTATION
         else:
             continue
+
+        if (
+            len(side_info.candidate_neighbors) == 2
+            and updated_first_candidates[side_idx] < 0
+        ):
+            updated_first_candidates[side_idx] = neighbor_idx
 
         selected_neighbor = updated_neighbors[side_idx]
         if selected_neighbor < 0:
@@ -851,8 +971,14 @@ def _emitted_isolated_edge_part(
 
     updated_state = tuple(updated_neighbors)
     updated_orientation_state = tuple(updated_orientations)
+    updated_first_state = tuple(updated_first_candidates)
     if not stored_tokens:
-        return prepared.bond_token(begin_idx, end_idx), updated_state, updated_orientation_state
+        return (
+            prepared.bond_token(begin_idx, end_idx),
+            updated_state,
+            updated_orientation_state,
+            updated_first_state,
+        )
 
     component_idx = stored_tokens[0][0]
     stored_token = stored_tokens[0][1]
@@ -866,6 +992,7 @@ def _emitted_isolated_edge_part(
         DeferredDirectionalToken(component_idx=component_idx, stored_token=stored_token),
         updated_state,
         updated_orientation_state,
+        updated_first_state,
     )
 
 
@@ -876,10 +1003,16 @@ def _emitted_coupled_edge_part(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    first_emitted_candidates: tuple[int, ...],
     *,
     begin_idx: int,
     end_idx: int,
-) -> tuple[str | DeferredDirectionalToken, tuple[int, ...], tuple[int, ...]]:
+) -> tuple[
+    str | DeferredDirectionalToken,
+    tuple[int, ...],
+    tuple[int, ...],
+    tuple[int, ...],
+]:
     return _emitted_edge_part_generic(
         prepared,
         side_infos,
@@ -887,6 +1020,7 @@ def _emitted_coupled_edge_part(
         component_phases,
         selected_neighbors,
         selected_orientations,
+        first_emitted_candidates,
         begin_idx=begin_idx,
         end_idx=end_idx,
     )
@@ -899,16 +1033,27 @@ def _emitted_edge_part(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    first_emitted_candidates: tuple[int, ...],
     component_begin_atoms: tuple[int, ...],
     isolated_components: tuple[bool, ...],
     *,
     begin_idx: int,
     end_idx: int,
-) -> tuple[str | DeferredDirectionalToken, tuple[int, ...], tuple[int, ...]]:
+) -> tuple[
+    str | DeferredDirectionalToken,
+    tuple[int, ...],
+    tuple[int, ...],
+    tuple[int, ...],
+]:
     edge = _canonical_edge(begin_idx, end_idx)
     side_ids = edge_to_side_ids.get(edge, ())
     if not side_ids:
-        return prepared.bond_token(begin_idx, end_idx), selected_neighbors, selected_orientations
+        return (
+            prepared.bond_token(begin_idx, end_idx),
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+        )
 
     uses_isolated_component = any(
         isolated_components[side_infos[side_idx].component_idx]
@@ -923,6 +1068,7 @@ def _emitted_edge_part(
             component_phases,
             selected_neighbors,
             selected_orientations,
+            first_emitted_candidates,
             component_begin_atoms,
             begin_idx=begin_idx,
             end_idx=end_idx,
@@ -934,6 +1080,7 @@ def _emitted_edge_part(
         component_phases,
         selected_neighbors,
         selected_orientations,
+        first_emitted_candidates,
         begin_idx=begin_idx,
         end_idx=end_idx,
     )
@@ -996,6 +1143,57 @@ def _isolated_component_flips(
     return tuple(flips)
 
 
+def _coupled_begin_side_flips(
+    side_infos: tuple[StereoSideInfo, ...],
+    isolated_components: tuple[bool, ...],
+    result: SearchResult,
+    component_count: int,
+) -> tuple[bool, ...]:
+    flips = [False for _ in range(component_count)]
+    for component_idx in range(component_count):
+        if isolated_components[component_idx]:
+            continue
+        begin_atom_idx = result.stereo_component_begin_atoms[component_idx]
+        if begin_atom_idx < 0:
+            continue
+        begin_side_idx = next(
+            (
+                side_idx
+                for side_idx, side_info in enumerate(side_infos)
+                if side_info.component_idx == component_idx
+                and side_info.endpoint_atom_idx == begin_atom_idx
+            ),
+            None,
+        )
+        if begin_side_idx is None:
+            continue
+        begin_side = side_infos[begin_side_idx]
+        if len(begin_side.candidate_neighbors) != 2:
+            continue
+
+        selected_neighbor_idx = result.stereo_selected_neighbors[begin_side_idx]
+        first_neighbor_idx = result.stereo_first_emitted_candidates[begin_side_idx]
+        if selected_neighbor_idx < 0 or first_neighbor_idx < 0:
+            continue
+
+        stored_token = _candidate_base_token(begin_side, selected_neighbor_idx)
+        if result.stereo_selected_orientations[begin_side_idx] == _BEFORE_ATOM_EDGE_ORIENTATION:
+            stored_token = _flip_direction_token(stored_token)
+        phase = result.stereo_component_phases[component_idx]
+        resolved_token = (
+            stored_token
+            if phase in {_UNKNOWN_COMPONENT_PHASE, _STORED_COMPONENT_PHASE}
+            else _flip_direction_token(stored_token)
+        )
+        desired_token = (
+            stored_token
+            if first_neighbor_idx == selected_neighbor_idx
+            else _flip_direction_token(stored_token)
+        )
+        flips[component_idx] = desired_token != resolved_token
+    return tuple(flips)
+
+
 def enumerate_from_atom(
     prepared: PreparedSmilesGraph,
     stereo_component_ids: tuple[int, ...],
@@ -1012,6 +1210,7 @@ def enumerate_from_atom(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    first_emitted_candidates: tuple[int, ...],
     component_begin_atoms: tuple[int, ...],
 ) -> Iterator[SearchResult]:
     visited_now = visited | {atom_idx}
@@ -1043,6 +1242,7 @@ def enumerate_from_atom(
             current_component_phases = component_phases
             current_selected_neighbors = selected_neighbors
             current_selected_orientations = selected_orientations
+            current_first_emitted_candidates = first_emitted_candidates
             current_component_begin_atoms = component_begin_atoms
             current_ring_parts: list[str | DeferredDirectionalToken] = []
             labels_freed_after_atom: list[int] = []
@@ -1051,13 +1251,19 @@ def enumerate_from_atom(
             for action_kind, payload in ring_action_order:
                 if action_kind == "close":
                     closure = closures_here[payload]
-                    bond_part, current_selected_neighbors, current_selected_orientations = _emitted_edge_part(
+                    (
+                        bond_part,
+                        current_selected_neighbors,
+                        current_selected_orientations,
+                        current_first_emitted_candidates,
+                    ) = _emitted_edge_part(
                         prepared,
                         side_infos,
                         edge_to_side_ids,
                         current_component_phases,
                         current_selected_neighbors,
                         current_selected_orientations,
+                        current_first_emitted_candidates,
                         current_component_begin_atoms,
                         isolated_components,
                         begin_idx=atom_idx,
@@ -1078,10 +1284,24 @@ def enumerate_from_atom(
                 current_component_phases, current_component_begin_atoms = _component_phases_after_edge(
                     prepared,
                     stereo_component_ids,
+                    isolated_components,
                     current_component_phases,
                     current_component_begin_atoms,
                     begin_idx=atom_idx,
                     end_idx=target_idx,
+                )
+                current_component_phases, current_component_begin_atoms = (
+                    _defer_coupled_component_phase_if_begin_side_is_unresolved(
+                        prepared,
+                        stereo_component_ids,
+                        side_infos,
+                        isolated_components,
+                        current_component_phases,
+                        current_component_begin_atoms,
+                        current_selected_neighbors,
+                        begin_idx=atom_idx,
+                        end_idx=target_idx,
+                    )
                 )
                 current_pending = add_pending(
                     current_pending,
@@ -1129,6 +1349,7 @@ def enumerate_from_atom(
                     component_phases=current_component_phases,
                     selected_neighbors=current_selected_neighbors,
                     selected_orientations=current_selected_orientations,
+                    first_emitted_candidates=current_first_emitted_candidates,
                     component_begin_atoms=current_component_begin_atoms,
                 )
 
@@ -1150,6 +1371,7 @@ def expand_children(
     component_phases: tuple[int, ...],
     selected_neighbors: tuple[int, ...],
     selected_orientations: tuple[int, ...],
+    first_emitted_candidates: tuple[int, ...],
     component_begin_atoms: tuple[int, ...],
 ) -> Iterator[SearchResult]:
     if not child_order:
@@ -1162,6 +1384,7 @@ def expand_children(
             stereo_component_phases=component_phases,
             stereo_selected_neighbors=selected_neighbors,
             stereo_selected_orientations=selected_orientations,
+            stereo_first_emitted_candidates=first_emitted_candidates,
             stereo_component_begin_atoms=component_begin_atoms,
         )
         return
@@ -1173,13 +1396,19 @@ def expand_children(
         partial: SearchResult,
     ) -> Iterator[SearchResult]:
         if branch_index == len(branch_children):
-            edge_part, main_selected_neighbors, main_selected_orientations = _emitted_edge_part(
+            (
+                edge_part,
+                main_selected_neighbors,
+                main_selected_orientations,
+                main_first_emitted_candidates,
+            ) = _emitted_edge_part(
                 prepared,
                 side_infos,
                 edge_to_side_ids,
                 partial.stereo_component_phases,
                 partial.stereo_selected_neighbors,
                 partial.stereo_selected_orientations,
+                partial.stereo_first_emitted_candidates,
                 partial.stereo_component_begin_atoms,
                 isolated_components,
                 begin_idx=parent_idx,
@@ -1188,10 +1417,31 @@ def expand_children(
             main_component_phases, main_component_begin_atoms = _component_phases_after_edge(
                 prepared,
                 stereo_component_ids,
+                isolated_components,
                 partial.stereo_component_phases,
                 partial.stereo_component_begin_atoms,
                 begin_idx=parent_idx,
                 end_idx=main_child,
+            )
+            main_component_phases, main_component_begin_atoms = (
+                _defer_coupled_component_phase_if_begin_side_is_unresolved(
+                    prepared,
+                    stereo_component_ids,
+                    side_infos,
+                    isolated_components,
+                    main_component_phases,
+                    main_component_begin_atoms,
+                    main_selected_neighbors,
+                    begin_idx=parent_idx,
+                    end_idx=main_child,
+                )
+            )
+            main_component_phases = _commit_coupled_component_phase_from_deferred_part(
+                isolated_components,
+                main_component_phases,
+                main_component_begin_atoms,
+                begin_idx=parent_idx,
+                part=edge_part,
             )
             for main_result in enumerate_from_atom(
                 prepared=prepared,
@@ -1208,6 +1458,7 @@ def expand_children(
                 component_phases=main_component_phases,
                 selected_neighbors=main_selected_neighbors,
                 selected_orientations=main_selected_orientations,
+                first_emitted_candidates=main_first_emitted_candidates,
                 component_begin_atoms=main_component_begin_atoms,
             ):
                 yield SearchResult(
@@ -1219,18 +1470,25 @@ def expand_children(
                     stereo_component_phases=main_result.stereo_component_phases,
                     stereo_selected_neighbors=main_result.stereo_selected_neighbors,
                     stereo_selected_orientations=main_result.stereo_selected_orientations,
+                    stereo_first_emitted_candidates=main_result.stereo_first_emitted_candidates,
                     stereo_component_begin_atoms=main_result.stereo_component_begin_atoms,
                 )
             return
 
         child_idx = int(branch_children[branch_index])
-        branch_part, branch_selected_neighbors, branch_selected_orientations = _emitted_edge_part(
+        (
+            branch_part,
+            branch_selected_neighbors,
+            branch_selected_orientations,
+            branch_first_emitted_candidates,
+        ) = _emitted_edge_part(
             prepared,
             side_infos,
             edge_to_side_ids,
             partial.stereo_component_phases,
             partial.stereo_selected_neighbors,
             partial.stereo_selected_orientations,
+            partial.stereo_first_emitted_candidates,
             partial.stereo_component_begin_atoms,
             isolated_components,
             begin_idx=parent_idx,
@@ -1239,10 +1497,31 @@ def expand_children(
         child_component_phases, child_component_begin_atoms = _component_phases_after_edge(
             prepared,
             stereo_component_ids,
+            isolated_components,
             partial.stereo_component_phases,
             partial.stereo_component_begin_atoms,
             begin_idx=parent_idx,
             end_idx=child_idx,
+        )
+        child_component_phases, child_component_begin_atoms = (
+            _defer_coupled_component_phase_if_begin_side_is_unresolved(
+                prepared,
+                stereo_component_ids,
+                side_infos,
+                isolated_components,
+                child_component_phases,
+                child_component_begin_atoms,
+                branch_selected_neighbors,
+                begin_idx=parent_idx,
+                end_idx=child_idx,
+            )
+        )
+        child_component_phases = _commit_coupled_component_phase_from_deferred_part(
+            isolated_components,
+            child_component_phases,
+            child_component_begin_atoms,
+            begin_idx=parent_idx,
+            part=branch_part,
         )
         for branch_result in enumerate_from_atom(
             prepared=prepared,
@@ -1259,6 +1538,7 @@ def expand_children(
             component_phases=child_component_phases,
             selected_neighbors=branch_selected_neighbors,
             selected_orientations=branch_selected_orientations,
+            first_emitted_candidates=branch_first_emitted_candidates,
             component_begin_atoms=child_component_begin_atoms,
         ):
             yield from recurse_branch_children(
@@ -1278,6 +1558,7 @@ def expand_children(
                     stereo_component_phases=branch_result.stereo_component_phases,
                     stereo_selected_neighbors=branch_result.stereo_selected_neighbors,
                     stereo_selected_orientations=branch_result.stereo_selected_orientations,
+                    stereo_first_emitted_candidates=branch_result.stereo_first_emitted_candidates,
                     stereo_component_begin_atoms=branch_result.stereo_component_begin_atoms,
                 ),
             )
@@ -1293,6 +1574,7 @@ def expand_children(
             stereo_component_phases=component_phases,
             stereo_selected_neighbors=selected_neighbors,
             stereo_selected_orientations=selected_orientations,
+            stereo_first_emitted_candidates=first_emitted_candidates,
             stereo_component_begin_atoms=component_begin_atoms,
         ),
     )
@@ -1340,6 +1622,7 @@ def enumerate_rooted_connected_stereo_smiles_support(
     side_infos, edge_to_side_ids = _stereo_side_infos(prepared, stereo_component_ids)
     initial_selected_neighbors = tuple(-1 for _ in range(len(side_infos)))
     initial_selected_orientations = tuple(_UNKNOWN_EDGE_ORIENTATION for _ in range(len(side_infos)))
+    initial_first_emitted_candidates = tuple(-1 for _ in range(len(side_infos)))
     initial_component_begin_atoms = tuple(-1 for _ in range(component_count))
 
     results: set[str] = set()
@@ -1358,22 +1641,37 @@ def enumerate_rooted_connected_stereo_smiles_support(
         component_phases=initial_component_phases,
         selected_neighbors=initial_selected_neighbors,
         selected_orientations=initial_selected_orientations,
+        first_emitted_candidates=initial_first_emitted_candidates,
         component_begin_atoms=initial_component_begin_atoms,
     ):
         if len(result.visited) != prepared.atom_count:
             continue
         if result.pending:
             continue
+        isolated_flips = _isolated_component_flips(
+            prepared,
+            stereo_component_ids,
+            side_infos,
+            isolated_components,
+            result,
+        )
+        coupled_begin_side_flips = _coupled_begin_side_flips(
+            side_infos,
+            isolated_components,
+            result,
+            component_count,
+        )
         results.add(
             _resolve_parts(
                 result.parts,
                 result.stereo_component_phases,
-                component_flips=_isolated_component_flips(
-                    prepared,
-                    stereo_component_ids,
-                    side_infos,
-                    isolated_components,
-                    result,
+                component_flips=tuple(
+                    isolated_flip ^ coupled_begin_side_flip
+                    for isolated_flip, coupled_begin_side_flip in zip(
+                        isolated_flips,
+                        coupled_begin_side_flips,
+                        strict=True,
+                    )
                 ),
             )
         )

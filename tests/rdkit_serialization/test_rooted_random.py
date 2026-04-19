@@ -9,6 +9,7 @@ from tests.helpers.rdkit_writer_cases import ROOTED_RANDOM_CASES
 from tests.rdkit_serialization._support import (
     assert_rooted_random_case_in_grimace_support,
     grimace_support,
+    sample_rdkit_random_support,
 )
 
 
@@ -51,6 +52,25 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
         self.assertTrue({"C", "c"} <= grimace_starts)
         self.assertTrue("n" in grimace_starts or "O" in grimace_starts)
         self.assertTrue(rdkit_starts <= grimace_starts)
+
+    def test_rooted_polyene_bond_stereo_case_matches_high_draw_rdkit_support(self) -> None:
+        mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
+        expected = sample_rdkit_random_support(
+            mol,
+            root_idx=11,
+            isomeric_smiles=True,
+            draw_budget=2000,
+        )
+
+        self.assertEqual(120, len(expected))
+        self.assertEqual(
+            expected,
+            grimace_support(
+                mol,
+                rooted_at_atom=11,
+                isomeric_smiles=True,
+            ),
+        )
 
 
 if __name__ == "__main__":

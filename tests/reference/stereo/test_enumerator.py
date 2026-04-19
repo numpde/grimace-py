@@ -186,6 +186,24 @@ class RootedConnectedStereoTests(unittest.TestCase):
                 self.assertEqual(sampled, observed)
                 _assert_support_valid(self, mol, self.policy, root_idx, observed)
 
+    def test_rooted_polyene_bond_stereo_case_matches_high_draw_rdkit_samples(self) -> None:
+        mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
+        observed = enumerate_rooted_connected_stereo_smiles_support(
+            mol,
+            11,
+            self.policy,
+        )
+        sampled = _sample_rooted_rdkit_support(
+            mol,
+            self.policy,
+            11,
+            draws=2000,
+        )
+
+        self.assertEqual(120, len(sampled))
+        self.assertEqual(sampled, observed)
+        _assert_support_valid(self, mol, self.policy, 11, observed)
+
     def test_branched_and_hetero_bond_stereo_cases_match_rooted_rdkit_samples(self) -> None:
         cases = (
             "C/C=C(\\C)/C(=O)O",

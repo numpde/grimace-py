@@ -479,7 +479,8 @@ def _merge_choice_successor_states(states: tuple[object, ...]) -> object:
     return _MergedStateAdapter(tuple(flattened))
 
 
-def _grouped_choice_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+def _determinized_choice_successors(state: object) -> tuple[tuple[str, object], ...]:
+    """Return one successor per token text by merging same-text branches."""
     return state.grouped_successor_states()
 
 
@@ -733,7 +734,7 @@ def _exact_token_inventory_from_decoder(
 
         while stack:
             state = stack.pop()
-            grouped_successors = _grouped_choice_successor_states(state)
+            grouped_successors = _determinized_choice_successors(state)
             inventory.update(text for text, _ in grouped_successors)
             stack.extend(successor for _, successor in grouped_successors)
 

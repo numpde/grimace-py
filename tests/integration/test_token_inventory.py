@@ -157,7 +157,7 @@ class TokenInventoryTests(unittest.TestCase):
             stack = [decoder._state]
             while stack:
                 state = stack.pop()
-                grouped_successors = _runtime._grouped_choice_successor_states(state)
+                grouped_successors = _runtime._determinized_choice_successors(state)
                 inventory.update(text for text, _ in grouped_successors)
                 stack.extend(successor for _, successor in grouped_successors)
 

@@ -198,6 +198,52 @@ class TokenInventoryTests(unittest.TestCase):
                         ),
                     )
 
+    def test_token_inventory_includes_branch_tokens_for_rooted_degree_two_branch_point(self) -> None:
+        expected = self._exact_inventory_via_decoder(
+            "C(CO)O",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+        )
+
+        self.assertEqual(
+            expected,
+            grimace.MolToSmilesTokenInventory(
+                parse_smiles("C(CO)O"),
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                canonical=False,
+                doRandom=True,
+            ),
+        )
+        self.assertIn("(", expected)
+        self.assertIn(")", expected)
+
+    def test_token_inventory_matches_exact_decoder_for_bracketed_stereo_atom_tokens(self) -> None:
+        cases = (
+            ("[13C@H](F)(Cl)Br", frozenset({"[13C@H]", "[13C@@H]"})),
+            ("[Si@H](F)(Cl)Br", frozenset({"[Si@H]", "[Si@@H]"})),
+            ("[C@H:7](F)(Cl)Br", frozenset({"[C@H:7]", "[C@@H:7]"})),
+        )
+
+        for smiles, required_tokens in cases:
+            with self.subTest(smiles=smiles):
+                expected = self._exact_inventory_via_decoder(
+                    smiles,
+                    rooted_at_atom=0,
+                    isomeric_smiles=True,
+                )
+                actual = grimace.MolToSmilesTokenInventory(
+                    parse_smiles(smiles),
+                    rootedAtAtom=0,
+                    isomericSmiles=True,
+                    canonical=False,
+                    doRandom=True,
+                )
+
+                self.assertEqual(expected, actual)
+                for token in required_tokens:
+                    self.assertIn(token, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -104,6 +104,46 @@ class PythonApiSmokeTests(unittest.TestCase):
                     )
                 )
 
+    def test_public_api_reports_out_of_range_root_consistently_for_disconnected_molecules(self) -> None:
+        mol = parse_smiles("C.C")
+
+        entrypoints = (
+            (
+                "enum",
+                lambda: tuple(
+                    grimace.MolToSmilesEnum(
+                        mol,
+                        rootedAtAtom=99,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                ),
+            ),
+            (
+                "decoder",
+                lambda: grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=99,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+            (
+                "inventory",
+                lambda: grimace.MolToSmilesTokenInventory(
+                    mol,
+                    rootedAtAtom=99,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+        )
+
+        for name, call in entrypoints:
+            with self.subTest(entrypoint=name):
+                with self.assertRaisesRegex(IndexError, "root_idx out of range"):
+                    call()
+
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")

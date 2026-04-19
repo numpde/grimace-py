@@ -96,6 +96,18 @@ CC(=O)Oc1c(C(=O)O)cccc -> ['1']
 The decoder is online. It does not precompute one fixed trajectory. At each
 step it exposes the legal next choices for the current emitted prefix.
 
+The decoder is branch-preserving, not a determinized frontier decoder. Here
+"branch-preserving" means `next_choices` may contain multiple choices with the
+same `choice.text` when they correspond to different underlying continuations.
+Those are semantically different choices because they carry different successor
+states. By contrast, a "determinized frontier" decoder would merge all
+same-text continuations into one combined successor state for that token.
+
+GRIMACE intentionally preserves branch identity in the public decoder. Apparent
+duplicates are therefore meaningful. This avoids hiding distinct continuations
+behind one merged token choice and avoids pushing the cost of that implicit
+determinization into the runtime.
+
 Here a "token" means one string emitted by one decoder transition. Tokens are
 defined by the walker itself, not by splitting a finished SMILES into
 characters and not by integer token IDs. They come from two places:

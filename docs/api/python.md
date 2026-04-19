@@ -113,6 +113,21 @@ Important semantic point:
 - choosing a choice advances it to the next decoder state
 - it does not precompute one fixed full output before you start stepping
 
+Terminology:
+
+- branch-preserving means `next_choices` may contain duplicate `choice.text`
+  values when they represent different underlying branches
+- determinized frontier means same-text continuations would be merged into one
+  combined successor state for that token
+
+Public semantic choice:
+
+- `MolToSmilesDecoder(...)` is branch-preserving
+- duplicate same-text choices are therefore meaningful and may appear in
+  `next_choices`
+- this preserves branch identity instead of hiding distinct continuations
+  behind one merged token choice
+
 So:
 
 - `MolToSmilesEnum(...)` gives exact full support

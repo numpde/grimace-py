@@ -5,8 +5,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
 use crate::frontier::{
-    choice_texts, extend_transitions, finalize_transitions, grouped_choice_texts,
-    frontier_prefix as shared_frontier_prefix, take_choice_or_err,
+    choice_texts, extend_transitions, finalize_transitions,
+    frontier_prefix as shared_frontier_prefix, grouped_choice_texts, take_choice_or_err,
     take_grouped_choices_or_err, take_transition_or_err, DecoderChoice,
 };
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
@@ -693,10 +693,7 @@ fn stereo_side_infos(
                         && graph
                             .bond_index(endpoint_idx, neighbor_idx)
                             .map(|bond_idx| {
-                                matches!(
-                                    graph.bond_kinds[bond_idx].as_str(),
-                                    "SINGLE" | "AROMATIC"
-                                )
+                                matches!(graph.bond_kinds[bond_idx].as_str(), "SINGLE" | "AROMATIC")
                             })
                             .unwrap_or(false)
                 })
@@ -1147,12 +1144,15 @@ fn emitted_isolated_edge_part(
                 let begin_side = &side_infos[begin_side_idx];
                 let begin_selected_neighbor = updated_neighbors[begin_side_idx];
                 if begin_selected_neighbor >= 0
-                    && begin_side.candidate_neighbors.iter().all(|&candidate_neighbor| {
-                        graph
-                            .bond_index(begin_side.endpoint_atom_idx, candidate_neighbor)
-                            .map(|bond_idx| graph.bond_kinds[bond_idx] == "AROMATIC")
-                            .unwrap_or(false)
-                    })
+                    && begin_side
+                        .candidate_neighbors
+                        .iter()
+                        .all(|&candidate_neighbor| {
+                            graph
+                                .bond_index(begin_side.endpoint_atom_idx, candidate_neighbor)
+                                .map(|bond_idx| graph.bond_kinds[bond_idx] == "AROMATIC")
+                                .unwrap_or(false)
+                        })
                 {
                     let begin_selected_token =
                         candidate_base_token(begin_side, begin_selected_neighbor as usize)?;
@@ -1164,10 +1164,7 @@ fn emitted_isolated_edge_part(
                 }
             }
         }
-        stored_tokens.push((
-            component_idx,
-            stored_token,
-        ));
+        stored_tokens.push((component_idx, stored_token));
     }
 
     if stored_tokens.is_empty() {
@@ -1441,8 +1438,7 @@ fn inferred_component_token_flip(
             "/"
         } else {
             "\\"
-        }
-    {
+        } {
         FLIPPED_COMPONENT_TOKEN_FLIP
     } else {
         STORED_COMPONENT_TOKEN_FLIP
@@ -2223,7 +2219,9 @@ fn next_choice_texts_for_stereo_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<String>> {
-    Ok(choice_texts(&choices_for_stereo_state(runtime, graph, state)?))
+    Ok(choice_texts(&choices_for_stereo_state(
+        runtime, graph, state,
+    )?))
 }
 
 fn advance_stereo_choice_state(
@@ -2451,12 +2449,7 @@ impl PyRootedConnectedStereoWalker {
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
         Ok(PyRootedConnectedStereoWalkerState {
-            data: advance_stereo_choice_state(
-                &self.runtime,
-                &self.graph,
-                &state.data,
-                chosen_idx,
-            )?,
+            data: advance_stereo_choice_state(&self.runtime, &self.graph, &state.data, chosen_idx)?,
         })
     }
 
@@ -2559,6 +2552,10 @@ impl PyRootedConnectedStereoDecoder {
 
     fn prefix(&self) -> String {
         stereo_frontier_prefix(&self.frontier)
+    }
+
+    fn cache_key(&self) -> String {
+        format!("{:?}", self.frontier)
     }
 
     fn is_terminal(&self) -> PyResult<bool> {

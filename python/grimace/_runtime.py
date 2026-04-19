@@ -322,6 +322,9 @@ class _CoreStateAdapter:
     def copy(self) -> "_CoreStateAdapter":
         return type(self)(self._decoder.copy())
 
+    def cache_key(self) -> str:
+        return repr(("core", self._decoder.cache_key()))
+
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         return tuple(
             (text, self._advance_token(text))
@@ -362,6 +365,9 @@ class _MergedStateAdapter:
 
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
+
+    def cache_key(self) -> str:
+        return repr(("merged", tuple(sorted(state.cache_key() for state in self._states))))
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         grouped: dict[str, list[object]] = {}
@@ -437,6 +443,16 @@ class _DisconnectedStateAdapter:
             completed_prefix=self._completed_prefix,
         )
 
+    def cache_key(self) -> str:
+        return repr(
+            (
+                "disconnected",
+                self._fragment_idx,
+                self._completed_prefix,
+                tuple(state.cache_key() for state in self._fragment_states),
+            )
+        )
+
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         active = self._active_state()
         if not active.is_terminal():
@@ -482,6 +498,37 @@ def _merge_choice_successor_states(states: tuple[object, ...]) -> object:
 def _determinized_choice_successors(state: object) -> tuple[tuple[str, object], ...]:
     """Return one successor per token text by merging same-text branches."""
     return state.grouped_successor_states()
+
+
+def _state_cache_key(state: object) -> str:
+    return cast(str, state.cache_key())
+
+
+def _reachable_terminal_prefixes(
+    state: object,
+    *,
+    memo: dict[str, frozenset[str]] | None = None,
+) -> frozenset[str]:
+    """Return every terminal prefix reachable from one internal decoder state."""
+    if memo is None:
+        memo = {}
+
+    key = _state_cache_key(state)
+    cached = memo.get(key)
+    if cached is not None:
+        return cached
+
+    if state.is_terminal():
+        terminal = frozenset({state.prefix()})
+        memo[key] = terminal
+        return terminal
+
+    outputs: set[str] = set()
+    for choice in state.choices():
+        outputs.update(_reachable_terminal_prefixes(choice.next_state, memo=memo))
+    resolved = frozenset(outputs)
+    memo[key] = resolved
+    return resolved
 
 
 def prepare_smiles_graph(
@@ -714,6 +761,7 @@ def _exact_token_inventory_from_decoder(
     ignore_atom_map_numbers: bool,
 ) -> tuple[str, ...]:
     inventory: set[str] = set()
+    visited_state_keys: set[str] = set()
 
     for root_idx in _token_inventory_root_indices(
         mol_or_prepared,
@@ -734,6 +782,10 @@ def _exact_token_inventory_from_decoder(
 
         while stack:
             state = stack.pop()
+            state_key = _state_cache_key(state)
+            if state_key in visited_state_keys:
+                continue
+            visited_state_keys.add(state_key)
             grouped_successors = _determinized_choice_successors(state)
             inventory.update(text for text, _ in grouped_successors)
             stack.extend(successor for _, successor in grouped_successors)

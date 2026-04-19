@@ -6,10 +6,15 @@ Utility scripts for local development, validation, and release support.
 
 Local dataset miner for RDKit-derived writer regressions.
 
-It scans the bundled `top_100000` fixture, computes the deterministic RDKit
-string for a chosen public-surface mode, and checks whether that string is
-contained in Grimace's exact support. Each molecule is evaluated in a
-subprocess so slow or wedged cases can be skipped with a timeout.
+It scans the bundled `top_100000` fixture and can either:
+
+- compare the deterministic RDKit writer output against Grimace support
+- sample RDKit random writer outputs until a simple plateau heuristic fires
+  and classify the case as `clean`, `rdkit_only`, `grimace_only`, or
+  `uncertain`
+
+Each molecule is evaluated in a subprocess so slow or wedged cases can be
+skipped with a timeout.
 
 It can also compare the public writer flags exposed by `MolToSmilesEnum(...)`,
 including `kekuleSmiles`, `allBondsExplicit`, `allHsExplicit`, and
@@ -44,4 +49,17 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
   --connected connected \
   --max-atoms 30 \
   --limit 120
+```
+
+```bash
+PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+  --root none \
+  --isomeric true \
+  --rdkit-mode sampled \
+  --draws-per-round 40 \
+  --stagnation-rounds 5 \
+  --max-draws 400 \
+  --connected connected \
+  --max-atoms 25 \
+  --limit 80
 ```

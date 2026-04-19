@@ -5,8 +5,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
 use crate::frontier::{
-    choice_texts, extend_transitions, finalize_transitions, grouped_choice_texts,
-    frontier_prefix as shared_frontier_prefix, take_choice_or_err,
+    choice_texts, extend_transitions, finalize_transitions,
+    frontier_prefix as shared_frontier_prefix, grouped_choice_texts, take_choice_or_err,
     take_grouped_choices_or_err, DecoderChoice,
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
@@ -930,8 +930,8 @@ impl PyRootedConnectedNonStereoDecoder {
         }
         grouped_choice_texts(
             self.cached_choices
-            .as_ref()
-            .expect("cache should be populated"),
+                .as_ref()
+                .expect("cache should be populated"),
         )
     }
 
@@ -966,6 +966,10 @@ impl PyRootedConnectedNonStereoDecoder {
 
     fn prefix(&self) -> String {
         frontier_prefix(&self.frontier)
+    }
+
+    fn cache_key(&self) -> String {
+        format!("{:?}", self.frontier)
     }
 
     fn is_terminal(&self) -> bool {

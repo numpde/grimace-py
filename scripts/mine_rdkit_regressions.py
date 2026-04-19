@@ -2,15 +2,26 @@
 
 The controller walks the local molecule fixture, filters it to the requested
 public-surface mode, and evaluates one molecule per subprocess. The worker
-subprocess computes:
+subprocess computes either:
 
 - the single deterministic RDKit serialization for the chosen writer flags
+- a many-draw RDKit sample set with a simple saturation heuristic
 - Grimace's exact support for the same public mode
 
-The scan succeeds for a molecule when the deterministic RDKit string is a
-member of Grimace's exact support. Running each molecule in a subprocess keeps
-timeouts and crashes local to the current case, which is useful when mining
-large or pathological inputs.
+The deterministic scan succeeds for a molecule when the deterministic RDKit
+string is a member of Grimace's exact support. The sampled scan classifies one
+case as:
+
+- `clean` when the sampled RDKit outputs stay within Grimace support and either
+  match it exactly or the deterministic member check passes with no sampled
+  discrepancy
+- `rdkit_only` when RDKit emits a sampled string that Grimace cannot produce
+- `grimace_only` when the RDKit sample plateaus and still misses Grimace outputs
+- `uncertain` when the sample remains a strict subset of Grimace support but the
+  plateau heuristic never triggered
+
+Running each molecule in a subprocess keeps timeouts and crashes local to the
+current case, which is useful when mining large or pathological inputs.
 """
 
 from __future__ import annotations
@@ -23,7 +34,7 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from rdkit import Chem
+from rdkit import Chem, rdBase
 
 import grimace
 from grimace._reference.dataset import iter_default_molecule_cases, molecule_is_connected
@@ -37,6 +48,11 @@ class ScanConfig:
     all_bonds_explicit: bool
     all_hs_explicit: bool
     ignore_atom_map_numbers: bool
+    rdkit_mode: str
+    draws_per_round: int
+    stagnation_rounds: int
+    max_draws: int
+    seed: int
     connected_mode: str
     max_atoms: int | None
     limit: int
@@ -127,21 +143,86 @@ def _rdkit_expected(
     return Chem.MolToSmiles(Chem.Mol(mol), **kwargs)
 
 
+def _sample_rdkit_support(
+    mol: Chem.Mol,
+    *,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool,
+    all_bonds_explicit: bool,
+    all_hs_explicit: bool,
+    ignore_atom_map_numbers: bool,
+    draws_per_round: int,
+    stagnation_rounds: int,
+    max_draws: int,
+    seed: int,
+) -> tuple[set[str], int, bool]:
+    rdBase.SeedRandomNumberGenerator(seed)
+    kwargs: dict[str, Any] = {
+        "isomericSmiles": isomeric_smiles,
+        "kekuleSmiles": kekule_smiles,
+        "canonical": False,
+        "allBondsExplicit": all_bonds_explicit,
+        "allHsExplicit": all_hs_explicit,
+        "doRandom": True,
+        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
+    }
+    if rooted_at_atom is not None:
+        kwargs["rootedAtAtom"] = rooted_at_atom
+
+    sampled: set[str] = set()
+    draw_count = 0
+    stalled_rounds = 0
+
+    while draw_count < max_draws and stalled_rounds < stagnation_rounds:
+        before_round = len(sampled)
+        round_budget = min(draws_per_round, max_draws - draw_count)
+        for _ in range(round_budget):
+            sampled.add(Chem.MolToSmiles(Chem.Mol(mol), **kwargs))
+            draw_count += 1
+        if len(sampled) == before_round:
+            stalled_rounds += 1
+        else:
+            stalled_rounds = 0
+
+    return sampled, draw_count, stalled_rounds >= stagnation_rounds
+
+
+def _preview_strings(values: set[str], *, limit: int = 8) -> list[str]:
+    return sorted(values)[:limit]
+
+
+def _classify_support_comparison(
+    *,
+    sampled_support: set[str],
+    grimace_support: set[str],
+    plateau_reached: bool,
+) -> dict[str, Any]:
+    rdkit_only = sampled_support - grimace_support
+    grimace_only = grimace_support - sampled_support
+    if rdkit_only:
+        status = "rdkit_only"
+    elif not grimace_only:
+        status = "clean"
+    elif plateau_reached:
+        status = "grimace_only"
+    else:
+        status = "uncertain"
+    return {
+        "status": status,
+        "rdkit_only_count": len(rdkit_only),
+        "grimace_only_count": len(grimace_only),
+        "rdkit_only_preview": _preview_strings(rdkit_only),
+        "grimace_only_preview": _preview_strings(grimace_only),
+    }
+
+
 def _worker_main(args: argparse.Namespace) -> int:
     """Evaluate one concrete molecule/mode pair and emit a compact JSON result."""
     mol = Chem.MolFromSmiles(args.smiles)
     if mol is None:
         raise ValueError(f"RDKit failed to parse SMILES: {args.smiles!r}")
     rooted_at_atom = None if args.rooted_at_atom < 0 else args.rooted_at_atom
-    expected = _rdkit_expected(
-        mol,
-        rooted_at_atom=rooted_at_atom,
-        isomeric_smiles=args.isomeric,
-        kekule_smiles=args.kekule,
-        all_bonds_explicit=args.all_bonds_explicit,
-        all_hs_explicit=args.all_hs_explicit,
-        ignore_atom_map_numbers=args.ignore_atom_map_numbers,
-    )
     support = _grimace_support(
         mol,
         rooted_at_atom=rooted_at_atom,
@@ -151,15 +232,65 @@ def _worker_main(args: argparse.Namespace) -> int:
         all_hs_explicit=args.all_hs_explicit,
         ignore_atom_map_numbers=args.ignore_atom_map_numbers,
     )
-    print(
-        json.dumps(
+    expected = _rdkit_expected(
+        mol,
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=args.isomeric,
+        kekule_smiles=args.kekule,
+        all_bonds_explicit=args.all_bonds_explicit,
+        all_hs_explicit=args.all_hs_explicit,
+        ignore_atom_map_numbers=args.ignore_atom_map_numbers,
+    )
+    payload: dict[str, Any] = {
+        "expected": expected,
+        "support_size": len(support),
+    }
+    if args.rdkit_mode == "deterministic":
+        payload.update(
             {
-                "expected": expected,
+                "status": "clean" if expected in support else "rdkit_only",
                 "contains": expected in support,
-                "support_size": len(support),
-            },
-            sort_keys=True,
+            }
         )
+    elif args.rdkit_mode == "sampled":
+        sampled_support, draw_count, plateau_reached = _sample_rdkit_support(
+            mol,
+            rooted_at_atom=rooted_at_atom,
+            isomeric_smiles=args.isomeric,
+            kekule_smiles=args.kekule,
+            all_bonds_explicit=args.all_bonds_explicit,
+            all_hs_explicit=args.all_hs_explicit,
+            ignore_atom_map_numbers=args.ignore_atom_map_numbers,
+            draws_per_round=args.draws_per_round,
+            stagnation_rounds=args.stagnation_rounds,
+            max_draws=args.max_draws,
+            seed=args.seed,
+        )
+        payload.update(
+            _classify_support_comparison(
+                sampled_support=sampled_support,
+                grimace_support=support,
+                plateau_reached=plateau_reached,
+            )
+        )
+        if expected not in support:
+            payload["status"] = "rdkit_only"
+            payload["rdkit_only_count"] = payload.get("rdkit_only_count", 0) + 1
+            payload["rdkit_only_preview"] = _preview_strings(
+                set(payload.get("rdkit_only_preview", ())) | {expected}
+            )
+        payload.update(
+            {
+                "contains": expected in support,
+                "sampled_size": len(sampled_support),
+                "draw_count": draw_count,
+                "plateau_reached": plateau_reached,
+            }
+        )
+    else:
+        raise ValueError(f"Unsupported RDKit comparison mode: {args.rdkit_mode!r}")
+    print(
+        json.dumps(payload, sort_keys=True)
     )
     return 0
 
@@ -173,6 +304,11 @@ def _controller_main(args: argparse.Namespace) -> int:
         all_bonds_explicit=args.all_bonds_explicit,
         all_hs_explicit=args.all_hs_explicit,
         ignore_atom_map_numbers=args.ignore_atom_map_numbers,
+        rdkit_mode=args.rdkit_mode,
+        draws_per_round=args.draws_per_round,
+        stagnation_rounds=args.stagnation_rounds,
+        max_draws=args.max_draws,
+        seed=args.seed,
         connected_mode=args.connected,
         max_atoms=args.max_atoms,
         limit=args.limit,
@@ -220,6 +356,16 @@ def _controller_main(args: argparse.Namespace) -> int:
             "true" if config.all_hs_explicit else "false",
             "--ignore-atom-map-numbers",
             "true" if config.ignore_atom_map_numbers else "false",
+            "--rdkit-mode",
+            config.rdkit_mode,
+            "--draws-per-round",
+            str(config.draws_per_round),
+            "--stagnation-rounds",
+            str(config.stagnation_rounds),
+            "--max-draws",
+            str(config.max_draws),
+            "--seed",
+            str(config.seed),
             "--rooted-at-atom",
             str(-1 if rooted_at_atom is None else rooted_at_atom),
         ]
@@ -253,14 +399,28 @@ def _controller_main(args: argparse.Namespace) -> int:
 
         # The worker only prints one JSON payload on success.
         payload = json.loads(proc.stdout.strip())
+        summary = (
+            f"{payload['status'].upper()} checked={checked} idx={idx} cid={case.cid} "
+            f"atoms={mol.GetNumAtoms()} root={rooted_at_atom} support={payload['support_size']}"
+        )
+        if config.rdkit_mode == "sampled":
+            summary += (
+                f" sampled={payload['sampled_size']} draws={payload['draw_count']} "
+                f"plateau={payload['plateau_reached']} contains={payload['contains']}"
+            )
+        else:
+            summary += f" contains={payload['contains']}"
         print(
-            f"MATCH checked={checked} idx={idx} cid={case.cid} atoms={mol.GetNumAtoms()} "
-            f"root={rooted_at_atom} support={payload['support_size']} contains={payload['contains']}",
+            summary,
             flush=True,
         )
-        if not payload["contains"]:
+        if payload["status"] in {"rdkit_only", "grimace_only"}:
             print(case.smiles, flush=True)
             print(f"expected {payload['expected']}", flush=True)
+            for key in ("rdkit_only_preview", "grimace_only_preview"):
+                preview = payload.get(key)
+                if preview:
+                    print(f"{key} {preview}", flush=True)
             return 1
 
         if checked >= config.limit:
@@ -322,6 +482,36 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_parse_bool,
         default=False,
         help="Whether to ignore atom map numbers in the writer output (true/false)",
+    )
+    parser.add_argument(
+        "--rdkit-mode",
+        choices=("deterministic", "sampled"),
+        default="deterministic",
+        help="Compare deterministic RDKit output or a plateau-sampled RDKit support subset",
+    )
+    parser.add_argument(
+        "--draws-per-round",
+        type=int,
+        default=40,
+        help="RDKit random draws per sampling round when --rdkit-mode=sampled",
+    )
+    parser.add_argument(
+        "--stagnation-rounds",
+        type=int,
+        default=5,
+        help="Consecutive no-new-output rounds required to call the RDKit sample saturated",
+    )
+    parser.add_argument(
+        "--max-draws",
+        type=int,
+        default=400,
+        help="Maximum RDKit random draws per molecule when --rdkit-mode=sampled",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=12345,
+        help="Seed passed to RDKit's RNG when --rdkit-mode=sampled",
     )
     parser.add_argument(
         "--connected",

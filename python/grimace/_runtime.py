@@ -31,12 +31,6 @@ class MolToSmilesFlags:
     do_random: bool = False
     ignore_atom_map_numbers: bool = False
 
-    @property
-    def surface_kind(self) -> str:
-        if self.isomeric_smiles:
-            return CONNECTED_STEREO_SURFACE
-        return CONNECTED_NONSTEREO_SURFACE
-
     def with_rooted_at_atom(self, rooted_at_atom: int) -> "MolToSmilesFlags":
         return replace(self, rooted_at_atom=rooted_at_atom)
 
@@ -74,6 +68,8 @@ def _runtime_surface_kind(
     *,
     flags: MolToSmilesFlags,
 ) -> str:
+    # The runtime is mostly keyed by isomeric_smiles, but explicit single-bond
+    # directions still require the stereo surface even when isomeric_smiles=False.
     if _requires_stereo_runtime_surface(mol_or_prepared, flags=flags):
         return CONNECTED_STEREO_SURFACE
     return CONNECTED_NONSTEREO_SURFACE

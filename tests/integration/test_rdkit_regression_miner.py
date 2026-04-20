@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from tests.helpers.kernel import CORE_MODULE
@@ -82,6 +83,19 @@ class RdkitRegressionMinerTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, msg=proc.stderr or proc.stdout)
         return json.loads(proc.stdout.strip())
 
+    def _run_controller(self, *extra_args: str) -> subprocess.CompletedProcess[str]:
+        env = os.environ.copy()
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = "python:." if not existing_pythonpath else f"python:.:{existing_pythonpath}"
+        return subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), *extra_args],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     def test_worker_sampled_mode_reports_clean_plateau_case(self) -> None:
         payload = self._run_worker(
             "--worker",
@@ -150,6 +164,138 @@ class RdkitRegressionMinerTests(unittest.TestCase):
         self.assertFalse(payload["plateau_reached"])
         self.assertTrue(payload["contains"])
         self.assertLess(payload["sampled_size"], payload["support_size"])
+
+    def test_load_resume_state_uses_last_recorded_cid(self) -> None:
+        config = MINER.ScanConfig(
+            root_mode="none",
+            isomeric_smiles=True,
+            kekule_smiles=False,
+            all_bonds_explicit=False,
+            all_hs_explicit=False,
+            ignore_atom_map_numbers=False,
+            rdkit_mode="sampled",
+            draws_per_round=40,
+            stagnation_rounds=5,
+            max_draws=400,
+            seed=12345,
+            connected_mode="connected",
+            max_atoms=30,
+            limit=100,
+            start_after=None,
+            timeout=12.0,
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "scan.jsonl"
+            path.write_text(
+                "\n".join(
+                    (
+                        json.dumps({"record_type": "mode", "mode": MINER.asdict(config)}),
+                        json.dumps({"record_type": "case", "cid": "100", "checked": 1}),
+                        json.dumps({"record_type": "timeout", "cid": "200", "checked": 2}),
+                        json.dumps({"record_type": "stop", "reason": "limit", "checked": 2}),
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            state = MINER._load_resume_state(str(path), config)
+
+        self.assertEqual(2, state.checked)
+        self.assertEqual("200", state.start_after)
+
+    def test_load_resume_state_rejects_incompatible_mode(self) -> None:
+        config = MINER.ScanConfig(
+            root_mode="none",
+            isomeric_smiles=True,
+            kekule_smiles=False,
+            all_bonds_explicit=False,
+            all_hs_explicit=False,
+            ignore_atom_map_numbers=False,
+            rdkit_mode="deterministic",
+            draws_per_round=40,
+            stagnation_rounds=5,
+            max_draws=400,
+            seed=12345,
+            connected_mode="connected",
+            max_atoms=30,
+            limit=100,
+            start_after=None,
+            timeout=12.0,
+        )
+        incompatible_mode = {
+            "root_mode": "zero",
+            "isomeric_smiles": True,
+            "kekule_smiles": False,
+            "all_bonds_explicit": False,
+            "all_hs_explicit": False,
+            "ignore_atom_map_numbers": False,
+            "rdkit_mode": "deterministic",
+            "draws_per_round": 40,
+            "stagnation_rounds": 5,
+            "max_draws": 400,
+            "seed": 12345,
+            "connected_mode": "connected",
+            "max_atoms": 30,
+            "limit": 100,
+            "start_after": None,
+            "timeout": 12.0,
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "scan.jsonl"
+            path.write_text(
+                json.dumps({"record_type": "mode", "mode": incompatible_mode}) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                MINER._load_resume_state(str(path), config)
+
+    def test_controller_jsonl_resume_continues_checked_counter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            jsonl_path = Path(tmp_dir) / "scan.jsonl"
+            base_args = (
+                "--root",
+                "none",
+                "--isomeric",
+                "false",
+                "--connected",
+                "connected",
+                "--max-atoms",
+                "4",
+                "--timeout",
+                "5",
+                "--jsonl-output",
+                str(jsonl_path),
+            )
+            first = self._run_controller(
+                *base_args,
+                "--limit",
+                "2",
+            )
+            self.assertEqual(0, first.returncode, msg=first.stderr or first.stdout)
+
+            second = self._run_controller(
+                *base_args,
+                "--limit",
+                "4",
+                "--resume-jsonl",
+            )
+            self.assertEqual(0, second.returncode, msg=second.stderr or second.stdout)
+
+            records = [
+                json.loads(line)
+                for line in jsonl_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+
+        case_records = [record for record in records if record.get("record_type") == "case"]
+        mode_records = [record for record in records if record.get("record_type") == "mode"]
+        self.assertEqual([1, 2, 3, 4], [record["checked"] for record in case_records])
+        self.assertEqual(2, len(mode_records))
+        self.assertEqual(0, mode_records[0]["resume_checked"])
+        self.assertEqual(2, mode_records[1]["resume_checked"])
+        self.assertEqual(case_records[1]["cid"], mode_records[1]["resume_start_after"])
 
 
 if __name__ == "__main__":

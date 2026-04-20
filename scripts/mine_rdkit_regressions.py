@@ -22,6 +22,9 @@ case as:
 
 Running each molecule in a subprocess keeps timeouts and crashes local to the
 current case, which is useful when mining large or pathological inputs.
+
+The controller can also append one JSON record per event to a `.jsonl` file.
+That gives long scans a durable audit trail and an automatic resume cursor.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -58,6 +62,12 @@ class ScanConfig:
     limit: int
     start_after: str | None
     timeout: float
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeState:
+    checked: int
+    start_after: str | None
 
 
 def _parse_bool(value: str) -> bool:
@@ -192,6 +202,84 @@ def _preview_strings(values: set[str], *, limit: int = 8) -> list[str]:
     return sorted(values)[:limit]
 
 
+def _resume_mode_signature(config: ScanConfig) -> dict[str, Any]:
+    """Return the compatibility-relevant mode subset for JSONL resume."""
+    signature = asdict(config)
+    for key in ("limit", "start_after", "timeout"):
+        signature.pop(key, None)
+    return signature
+
+
+def _append_jsonl_record(path: str | None, record: dict[str, Any]) -> None:
+    if path is None:
+        return
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True))
+        handle.write("\n")
+
+
+def _iter_jsonl_records(path: str | Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    with Path(path).open(encoding="utf-8") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Malformed JSONL record at {path}:{line_number}"
+                ) from exc
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"JSONL record at {path}:{line_number} is not an object"
+                )
+            records.append(record)
+    return records
+
+
+def _load_resume_state(path: str, config: ScanConfig) -> ResumeState:
+    """Infer the effective resume cursor from one prior JSONL scan log."""
+    records = _iter_jsonl_records(path)
+    expected_signature = _resume_mode_signature(config)
+    recorded_signature: dict[str, Any] | None = None
+    checked = 0
+    last_cid: str | None = None
+
+    for record in records:
+        record_type = record.get("record_type")
+        if record_type == "mode":
+            mode = record.get("mode")
+            if not isinstance(mode, dict):
+                raise ValueError("JSONL mode record is missing the mode object")
+            signature = {
+                key: mode[key]
+                for key in expected_signature
+                if key in mode
+            }
+            if set(signature) != set(expected_signature):
+                raise ValueError("JSONL mode record is missing required mode fields")
+            if recorded_signature is None:
+                recorded_signature = signature
+            elif signature != recorded_signature:
+                raise ValueError("JSONL file mixes incompatible scan modes")
+            continue
+
+        if record_type in {"case", "timeout", "error"}:
+            cid = record.get("cid")
+            if not isinstance(cid, str):
+                raise ValueError("JSONL case record is missing the CID")
+            checked += 1
+            last_cid = cid
+
+    if recorded_signature is not None and recorded_signature != expected_signature:
+        raise ValueError("JSONL resume mode does not match the requested scan mode")
+    return ResumeState(checked=checked, start_after=last_cid)
+
+
 def _classify_support_comparison(
     *,
     sampled_support: set[str],
@@ -315,15 +403,58 @@ def _controller_main(args: argparse.Namespace) -> int:
         start_after=args.start_after,
         timeout=args.timeout,
     )
-    print(json.dumps({"mode": asdict(config)}, sort_keys=True), flush=True)
+    if args.resume_jsonl and args.jsonl_output is None:
+        raise ValueError("--resume-jsonl requires --jsonl-output")
+    if args.resume_jsonl and config.start_after is not None:
+        raise ValueError("--resume-jsonl cannot be combined with --start-after")
 
-    seen_start = config.start_after is None
-    checked = 0
+    resume_state = ResumeState(checked=0, start_after=config.start_after)
+    if args.resume_jsonl and args.jsonl_output is not None and Path(args.jsonl_output).exists():
+        resume_state = _load_resume_state(args.jsonl_output, config)
+
+    print(json.dumps({"mode": asdict(config)}, sort_keys=True), flush=True)
+    if args.resume_jsonl:
+        print(
+            json.dumps(
+                {
+                    "resume": {
+                        "checked": resume_state.checked,
+                        "start_after": resume_state.start_after,
+                        "path": args.jsonl_output,
+                    }
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+    _append_jsonl_record(
+        args.jsonl_output,
+        {
+            "record_type": "mode",
+            "mode": asdict(config),
+            "resume_checked": resume_state.checked,
+            "resume_start_after": resume_state.start_after,
+        },
+    )
+
+    seen_start = resume_state.start_after is None
+    checked = resume_state.checked
+
+    if checked >= config.limit:
+        _append_jsonl_record(
+            args.jsonl_output,
+            {
+                "record_type": "stop",
+                "reason": "limit",
+                "checked": checked,
+            },
+        )
+        return 0
 
     for idx, case in enumerate(iter_default_molecule_cases(), start=1):
         # `start_after` is a resume cursor for long scans, not a filter value.
         if not seen_start:
-            if case.cid == config.start_after:
+            if case.cid == resume_state.start_after:
                 seen_start = True
             continue
 
@@ -380,6 +511,18 @@ def _controller_main(args: argparse.Namespace) -> int:
                 check=False,
             )
         except subprocess.TimeoutExpired:
+            _append_jsonl_record(
+                args.jsonl_output,
+                {
+                    "record_type": "timeout",
+                    "checked": checked,
+                    "idx": idx,
+                    "cid": case.cid,
+                    "smiles": case.smiles,
+                    "atoms": mol.GetNumAtoms(),
+                    "root": rooted_at_atom,
+                },
+            )
             print(
                 f"TIMEOUT checked={checked} idx={idx} cid={case.cid} atoms={mol.GetNumAtoms()}",
                 flush=True,
@@ -388,6 +531,19 @@ def _controller_main(args: argparse.Namespace) -> int:
 
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout).strip()
+            _append_jsonl_record(
+                args.jsonl_output,
+                {
+                    "record_type": "error",
+                    "checked": checked,
+                    "idx": idx,
+                    "cid": case.cid,
+                    "smiles": case.smiles,
+                    "atoms": mol.GetNumAtoms(),
+                    "root": rooted_at_atom,
+                    "detail": detail,
+                },
+            )
             print(
                 f"ERROR checked={checked} idx={idx} cid={case.cid} atoms={mol.GetNumAtoms()}",
                 flush=True,
@@ -399,6 +555,19 @@ def _controller_main(args: argparse.Namespace) -> int:
 
         # The worker only prints one JSON payload on success.
         payload = json.loads(proc.stdout.strip())
+        _append_jsonl_record(
+            args.jsonl_output,
+            {
+                "record_type": "case",
+                "checked": checked,
+                "idx": idx,
+                "cid": case.cid,
+                "smiles": case.smiles,
+                "atoms": mol.GetNumAtoms(),
+                "root": rooted_at_atom,
+                **payload,
+            },
+        )
         summary = (
             f"{payload['status'].upper()} checked={checked} idx={idx} cid={case.cid} "
             f"atoms={mol.GetNumAtoms()} root={rooted_at_atom} support={payload['support_size']}"
@@ -421,10 +590,38 @@ def _controller_main(args: argparse.Namespace) -> int:
                 preview = payload.get(key)
                 if preview:
                     print(f"{key} {preview}", flush=True)
+            _append_jsonl_record(
+                args.jsonl_output,
+                {
+                    "record_type": "stop",
+                    "reason": payload["status"],
+                    "checked": checked,
+                    "cid": case.cid,
+                },
+            )
             return 1
 
         if checked >= config.limit:
+            _append_jsonl_record(
+                args.jsonl_output,
+                {
+                    "record_type": "stop",
+                    "reason": "limit",
+                    "checked": checked,
+                    "cid": case.cid,
+                },
+            )
             break
+
+    else:
+        _append_jsonl_record(
+            args.jsonl_output,
+            {
+                "record_type": "stop",
+                "reason": "complete",
+                "checked": checked,
+            },
+        )
 
     return 0
 
@@ -541,6 +738,16 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=12.0,
         help="Per-molecule subprocess timeout in seconds",
+    )
+    parser.add_argument(
+        "--jsonl-output",
+        default=None,
+        help="Append JSONL progress records to this path",
+    )
+    parser.add_argument(
+        "--resume-jsonl",
+        action="store_true",
+        help="Resume from the last CID recorded in --jsonl-output",
     )
     return parser
 

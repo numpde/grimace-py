@@ -1,0 +1,140 @@
+RDKit regression miner: JSONL persistence and resume
+
+Context
+
+The regression miner in
+`scripts/mine_rdkit_regressions.py`
+had become useful enough that the operational limits started to matter more
+than the basic comparison logic.
+
+The main failure modes were:
+
+- long sampled scans producing many `UNCERTAIN` cases before any concrete bug
+- expensive unrooted cases timing out
+- manual resume via `--start-after` being easy to misuse
+- no durable record of what was checked, skipped, or timed out
+
+That made repeated mining sessions noisy and partly irreproducible.
+
+What changed
+
+The miner now supports:
+
+- `--jsonl-output PATH`
+- `--resume-jsonl`
+
+When `--jsonl-output` is set, the controller appends one JSON object per event
+to the chosen file. The current record types are:
+
+- `mode`
+- `case`
+- `timeout`
+- `error`
+- `stop`
+
+This gives each scan a durable event log instead of only transient terminal
+output.
+
+Why JSONL
+
+JSONL was the pragmatic choice because it matches how the miner already works:
+
+- one controller event happens at a time
+- records should be append-only
+- partial progress should survive interruptions
+- shell tools can inspect it without a custom reader
+
+That is a better fit here than one large JSON summary written only at the end.
+
+Resume semantics
+
+`--resume-jsonl` uses the JSONL file as the authoritative resume cursor.
+
+Concretely, it derives:
+
+- `start_after` from the last recorded case-like event CID
+- `checked` from the number of prior `case` / `timeout` / `error` records
+
+That means the resume counter is cumulative, not per invocation.
+
+Example:
+
+- first run writes `170` checked events
+- second run uses `--limit 200 --resume-jsonl`
+- the resumed run stops after the next `30` checked events
+
+This is intentional. The file represents one continuing scan, not a bag of
+independent runs.
+
+Mode compatibility
+
+Resume only makes sense if the scan mode is the same.
+
+So the miner now records a `mode` header and rejects JSONL resume if the file
+was produced with incompatible settings, such as:
+
+- different root mode
+- different isomeric / kekule / explicit-bond flags
+- different connected/disconnected filter
+- different RDKit comparison mode or sampling budget
+
+This avoids silently resuming into a mixed log that cannot be interpreted.
+
+What gets recorded
+
+For successful case evaluations, the JSONL record includes:
+
+- dataset identity: `cid`, `smiles`, `idx`
+- execution identity: `checked`, `root`, atom count
+- comparison result: `status`, `contains`, support sizes
+- sampled-mode details when applicable:
+  `sampled_size`, `draw_count`, `plateau_reached`
+- previews for `rdkit_only` and `grimace_only` discrepancies
+
+For failures or interruptions, the file also records:
+
+- `timeout` events
+- `error` events with captured detail
+- final `stop` reason such as `limit`, `complete`, `rdkit_only`, or
+  `grimace_only`
+
+Operational impact
+
+This does not reduce uncertainty by itself. It is infrastructure, not a new
+oracle.
+
+What it does improve is:
+
+- resumability of long scans
+- auditability of what was actually checked
+- post-hoc prioritization of `UNCERTAIN` and `TIMEOUT` cases
+- safety against accidental mode drift across scan sessions
+
+That is especially useful now that the remaining search space is dominated by
+large-support sampled cases rather than frequent obvious mismatches.
+
+What this enables next
+
+With JSONL logs in place, the next workflow is simpler:
+
+1. run a broad sampled scan and persist it
+2. extract the `UNCERTAIN` and `TIMEOUT` backlog from the JSONL file
+3. rerun only the promising cases with higher draw budgets or rooted modes
+4. stop at the first concrete `rdkit_only` or `grimace_only` result
+
+This is a better use of time than repeatedly restarting broad scans from
+scratch.
+
+Practical lesson
+
+Once the obvious bugs are gone, mining quality depends as much on state
+management as on comparison logic.
+
+For this repo, the right pattern is:
+
+- keep the miner append-only
+- make resume semantics explicit
+- reject mixed-mode logs early
+- separate "useful operational history" from "found a bug"
+
+That should make the next bug-hunting passes cheaper and less error-prone.

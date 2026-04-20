@@ -16,6 +16,12 @@ It scans the bundled `top_100000` fixture and can either:
 Each molecule is evaluated in a subprocess so slow or wedged cases can be
 skipped with a timeout.
 
+For long scans, `--jsonl-output` writes one JSON record per event and
+`--resume-jsonl` resumes from the last recorded CID in that file. The resume
+counter is cumulative: if the file already contains `170` checked cases and you
+rerun with `--limit 200 --resume-jsonl`, the resumed run stops after the next
+`30` checked cases.
+
 It can also compare the public writer flags exposed by `MolToSmilesEnum(...)`,
 including `kekuleSmiles`, `allBondsExplicit`, `allHsExplicit`, and
 `ignoreAtomMapNumbers`.
@@ -62,4 +68,27 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
   --connected connected \
   --max-atoms 25 \
   --limit 80
+```
+
+```bash
+PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+  --root none \
+  --isomeric true \
+  --rdkit-mode sampled \
+  --connected connected \
+  --max-atoms 30 \
+  --limit 200 \
+  --jsonl-output tmp/rdkit-scan.jsonl
+```
+
+```bash
+PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+  --root none \
+  --isomeric true \
+  --rdkit-mode sampled \
+  --connected connected \
+  --max-atoms 30 \
+  --limit 400 \
+  --jsonl-output tmp/rdkit-scan.jsonl \
+  --resume-jsonl
 ```

@@ -543,6 +543,11 @@ def _defer_coupled_component_phase_if_begin_side_is_unresolved(
     begin_side = side_infos[begin_side_idx]
     if len(begin_side.candidate_neighbors) <= 1 or selected_neighbors[begin_side_idx] >= 0:
         return component_phases, component_begin_atoms
+    if (
+        component_begin_atoms[component_idx] >= 0
+        and component_begin_atoms[component_idx] != begin_idx
+    ):
+        return component_phases, component_begin_atoms
 
     updated = list(component_phases)
     updated[component_idx] = _UNKNOWN_COMPONENT_PHASE
@@ -764,6 +769,7 @@ def _should_defer_unknown_two_candidate_side_commit(
 def _forced_shared_candidate_neighbor(
     side_infos: tuple[StereoSideInfo, ...],
     edge_to_side_ids: dict[tuple[int, int], tuple[int, ...]],
+    component_phases: tuple[int, ...],
     side_idx: int,
 ) -> int | None:
     side_info = side_infos[side_idx]
@@ -784,7 +790,44 @@ def _forced_shared_candidate_neighbor(
     )
     if len(shared_neighbors) != 1:
         return None
-    return shared_neighbors[0]
+    shared_neighbor = shared_neighbors[0]
+    if component_phases[side_info.component_idx] == _UNKNOWN_COMPONENT_PHASE:
+        return shared_neighbor
+    if any(
+        other_side_idx != side_idx
+        and side_infos[other_side_idx].component_idx == side_info.component_idx
+        and len(side_infos[other_side_idx].candidate_neighbors) == 2
+        for other_side_idx in edge_to_side_ids.get(
+            _canonical_edge(side_info.endpoint_atom_idx, shared_neighbor),
+            (),
+        )
+    ):
+        return None
+    return shared_neighbor
+
+
+def _should_defer_known_shared_two_candidate_side_commit(
+    side_infos: tuple[StereoSideInfo, ...],
+    edge_to_side_ids: dict[tuple[int, int], tuple[int, ...]],
+    component_phases: tuple[int, ...],
+    side_idx: int,
+    neighbor_idx: int,
+) -> bool:
+    side_info = side_infos[side_idx]
+    if (
+        len(side_info.candidate_neighbors) != 2
+        or component_phases[side_info.component_idx] == _UNKNOWN_COMPONENT_PHASE
+    ):
+        return False
+    return any(
+        other_side_idx != side_idx
+        and side_infos[other_side_idx].component_idx == side_info.component_idx
+        and len(side_infos[other_side_idx].candidate_neighbors) == 2
+        for other_side_idx in edge_to_side_ids.get(
+            _canonical_edge(side_info.endpoint_atom_idx, neighbor_idx),
+            (),
+        )
+    )
 
 
 def _emitted_edge_part_generic(
@@ -837,9 +880,18 @@ def _emitted_edge_part_generic(
 
         selected_neighbor = updated_neighbors[side_idx]
         if selected_neighbor < 0:
+            if _should_defer_known_shared_two_candidate_side_commit(
+                side_infos,
+                edge_to_side_ids,
+                component_phases,
+                side_idx,
+                neighbor_idx,
+            ):
+                continue
             forced_neighbor = _forced_shared_candidate_neighbor(
                 side_infos,
                 edge_to_side_ids,
+                component_phases,
                 side_idx,
             )
             if forced_neighbor is not None and neighbor_idx != forced_neighbor:

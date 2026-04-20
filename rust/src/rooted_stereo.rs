@@ -708,6 +708,11 @@ fn defer_coupled_component_phase_if_begin_side_is_unresolved(
     if begin_side.candidate_neighbors.len() <= 1 || selected_neighbors[begin_side_idx] >= 0 {
         return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
     }
+    if component_begin_atoms[component_idx] >= 0
+        && component_begin_atoms[component_idx] != begin_idx as isize
+    {
+        return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
+    }
 
     let mut updated_phases = component_phases.to_vec();
     updated_phases[component_idx] = UNKNOWN_COMPONENT_PHASE;
@@ -1046,6 +1051,7 @@ fn should_defer_unknown_two_candidate_side_commit(
 fn forced_shared_candidate_neighbor(
     side_infos: &[StereoSideInfo],
     edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
+    component_phases: &[i8],
     side_idx: usize,
 ) -> Option<usize> {
     let side_info = &side_infos[side_idx];
@@ -1072,7 +1078,53 @@ fn forced_shared_candidate_neighbor(
     if shared_neighbors.len() != 1 {
         return None;
     }
-    Some(shared_neighbors[0])
+    let shared_neighbor = shared_neighbors[0];
+    if component_phases[side_info.component_idx] == UNKNOWN_COMPONENT_PHASE {
+        return Some(shared_neighbor);
+    }
+    if edge_to_side_ids
+        .get(&canonical_edge(
+            side_info.endpoint_atom_idx,
+            shared_neighbor,
+        ))
+        .into_iter()
+        .flatten()
+        .copied()
+        .any(|other_side_idx| {
+            other_side_idx != side_idx
+                && side_infos[other_side_idx].component_idx == side_info.component_idx
+                && side_infos[other_side_idx].candidate_neighbors.len() == 2
+        })
+    {
+        return None;
+    }
+    Some(shared_neighbor)
+}
+
+fn should_defer_known_shared_two_candidate_side_commit(
+    side_infos: &[StereoSideInfo],
+    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
+    component_phases: &[i8],
+    side_idx: usize,
+    neighbor_idx: usize,
+) -> bool {
+    let side_info = &side_infos[side_idx];
+    if side_info.candidate_neighbors.len() != 2
+        || component_phases[side_info.component_idx] == UNKNOWN_COMPONENT_PHASE
+    {
+        return false;
+    }
+
+    edge_to_side_ids
+        .get(&canonical_edge(side_info.endpoint_atom_idx, neighbor_idx))
+        .into_iter()
+        .flatten()
+        .copied()
+        .any(|other_side_idx| {
+            other_side_idx != side_idx
+                && side_infos[other_side_idx].component_idx == side_info.component_idx
+                && side_infos[other_side_idx].candidate_neighbors.len() == 2
+        })
 }
 
 fn emitted_edge_part_generic(
@@ -1125,8 +1177,21 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
-            let forced_neighbor =
-                forced_shared_candidate_neighbor(side_infos, edge_to_side_ids, side_idx);
+            if should_defer_known_shared_two_candidate_side_commit(
+                side_infos,
+                edge_to_side_ids,
+                component_phases,
+                side_idx,
+                neighbor_idx,
+            ) {
+                continue;
+            }
+            let forced_neighbor = forced_shared_candidate_neighbor(
+                side_infos,
+                edge_to_side_ids,
+                component_phases,
+                side_idx,
+            );
             if forced_neighbor.is_some() && forced_neighbor != Some(neighbor_idx) {
                 continue;
             }

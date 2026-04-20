@@ -46,6 +46,15 @@ class RDKITWriterFlagTests(unittest.TestCase):
 
         assert_exact_writer_case_in_grimace_support(self, case)
 
+    def test_aromatic_selenium_exact_writer_is_member_of_support(self) -> None:
+        case = ExactWriterCase(
+            smiles="C1=CC=C(C=C1)N2C(=O)C3=CC=CC=C3[Se]2",
+            expected="O=c1c2ccccc2[se]n1-c1ccccc1",
+            isomeric_smiles=True,
+        )
+
+        assert_exact_writer_case_in_grimace_support(self, case)
+
 
 if __name__ == "__main__":
     unittest.main()

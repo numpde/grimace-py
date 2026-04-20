@@ -57,7 +57,7 @@ ORGANIC_SUBSET = {
     "I",
 }
 
-AROMATIC_SUBSET = {
+AROMATIC_LOWERCASE_SUBSET = {
     "b",
     "c",
     "n",
@@ -66,6 +66,15 @@ AROMATIC_SUBSET = {
     "s",
     "se",
     "as",
+}
+
+AROMATIC_UNBRACKETED_SUBSET = {
+    "b",
+    "c",
+    "n",
+    "o",
+    "p",
+    "s",
 }
 
 UNBRACKETED_NEIGHBOR_ATOMIC_NUMS = {
@@ -160,7 +169,7 @@ def atom_symbol(atom: Chem.Atom, sampling: dict[str, object]) -> str:
     symbol = atom.GetSymbol()
     if atom.GetIsAromatic() and not bool(sampling["kekuleSmiles"]):
         lowered = symbol.lower()
-        if lowered in AROMATIC_SUBSET:
+        if lowered in AROMATIC_LOWERCASE_SUBSET:
             return lowered
     return symbol
 
@@ -201,8 +210,10 @@ def atom_requires_brackets(atom: Chem.Atom, sampling: dict[str, object]) -> bool
         return True
     if symbol in ORGANIC_SUBSET:
         return False
-    if symbol in AROMATIC_SUBSET:
+    if symbol in AROMATIC_UNBRACKETED_SUBSET:
         return atom.GetTotalNumHs() > 0 and symbol not in {"b", "c"}
+    if symbol in AROMATIC_LOWERCASE_SUBSET:
+        return True
     return True
 
 

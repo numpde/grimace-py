@@ -10,7 +10,7 @@ from rdkit import Chem
 
 from grimace._reference.policy import ReferencePolicy
 from grimace._reference.prepared_graph import (
-    AROMATIC_SUBSET,
+    AROMATIC_LOWERCASE_SUBSET,
     CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph,
     format_charge,
@@ -253,7 +253,7 @@ def _prepared_atom_symbol(prepared: PreparedSmilesGraph, atom_idx: int) -> str:
     symbol = _PERIODIC_TABLE.GetElementSymbol(prepared.atom_atomic_numbers[atom_idx])
     if prepared.atom_is_aromatic[atom_idx] and not prepared.writer_kekule_smiles:
         lowered = symbol.lower()
-        if lowered in AROMATIC_SUBSET:
+        if lowered in AROMATIC_LOWERCASE_SUBSET:
             return lowered
     return symbol
 

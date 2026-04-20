@@ -68,6 +68,45 @@ class RdkitRegressionMinerTests(unittest.TestCase):
         self.assertEqual("rdkit_only", rdkit_only["status"])
         self.assertEqual(["C"], rdkit_only["rdkit_only_preview"])
 
+    def test_confirmation_downgrades_single_seed_grimace_only_false_positive(self) -> None:
+        result = MINER._classify_support_with_confirmation(
+            sampled_support={"A", "B"},
+            grimace_support={"A", "B", "C"},
+            plateau_reached=True,
+            confirmation_support={"C"},
+            confirmation_plateau_reached=True,
+        )
+
+        self.assertEqual("clean", result["status"])
+        self.assertEqual("grimace_only", result["initial_status"])
+        self.assertFalse(result["grimace_only_confirmed"])
+
+    def test_confirmation_requires_confirmed_plateau_for_grimace_only(self) -> None:
+        result = MINER._classify_support_with_confirmation(
+            sampled_support={"A"},
+            grimace_support={"A", "B"},
+            plateau_reached=True,
+            confirmation_support={"A"},
+            confirmation_plateau_reached=False,
+        )
+
+        self.assertEqual("uncertain", result["status"])
+        self.assertEqual("grimace_only", result["initial_status"])
+        self.assertFalse(result["grimace_only_confirmed"])
+
+    def test_confirmation_preserves_real_grimace_only_when_gap_survives(self) -> None:
+        result = MINER._classify_support_with_confirmation(
+            sampled_support={"A"},
+            grimace_support={"A", "B"},
+            plateau_reached=True,
+            confirmation_support={"A"},
+            confirmation_plateau_reached=True,
+        )
+
+        self.assertEqual("grimace_only", result["status"])
+        self.assertEqual(["B"], result["grimace_only_preview"])
+        self.assertTrue(result["grimace_only_confirmed"])
+
     def _run_worker(self, *extra_args: str) -> dict[str, object]:
         env = os.environ.copy()
         existing_pythonpath = env.get("PYTHONPATH")

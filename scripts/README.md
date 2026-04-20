@@ -13,6 +13,11 @@ It scans the bundled `top_100000` fixture and can either:
   and classify the case as `clean`, `rdkit_only`, `grimace_only`, or
   `uncertain`
 
+`grimace_only` is a confirmed status: the miner only reports it after an
+initial plateaued miss survives a higher-budget confirmation pass across
+additional RDKit RNG seeds. That avoids treating single-seed sampling artifacts
+as real support gaps.
+
 Each molecule is evaluated in a subprocess so slow or wedged cases can be
 skipped with a timeout.
 

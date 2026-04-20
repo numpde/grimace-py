@@ -16,7 +16,8 @@ case as:
   match it exactly or the deterministic member check passes with no sampled
   discrepancy
 - `rdkit_only` when RDKit emits a sampled string that Grimace cannot produce
-- `grimace_only` when the RDKit sample plateaus and still misses Grimace outputs
+- `grimace_only` only after a plateaued single-seed miss survives a
+  higher-budget confirmation pass across extra seeds
 - `uncertain` when the sample remains a strict subset of Grimace support but the
   plateau heuristic never triggered
 
@@ -42,6 +43,11 @@ from rdkit import Chem, rdBase
 
 import grimace
 from grimace._reference.dataset import iter_default_molecule_cases, molecule_is_connected
+
+_CONFIRM_GRIMACE_ONLY_SEED_COUNT = 4
+_CONFIRM_GRIMACE_ONLY_DRAWS_PER_ROUND = 100
+_CONFIRM_GRIMACE_ONLY_STAGNATION_ROUNDS = 8
+_CONFIRM_GRIMACE_ONLY_MAX_DRAWS = 20_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +311,75 @@ def _classify_support_comparison(
     }
 
 
+def _confirm_grimace_only_support(
+    mol: Chem.Mol,
+    *,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool,
+    all_bonds_explicit: bool,
+    all_hs_explicit: bool,
+    ignore_atom_map_numbers: bool,
+    seed: int,
+) -> tuple[set[str], int, bool, int]:
+    """Re-sample a suspected grimace_only case with more budget and more seeds."""
+    combined_support: set[str] = set()
+    total_draw_count = 0
+    all_plateau_reached = True
+
+    for seed_offset in range(1, _CONFIRM_GRIMACE_ONLY_SEED_COUNT + 1):
+        sampled_support, draw_count, plateau_reached = _sample_rdkit_support(
+            mol,
+            rooted_at_atom=rooted_at_atom,
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
+            draws_per_round=_CONFIRM_GRIMACE_ONLY_DRAWS_PER_ROUND,
+            stagnation_rounds=_CONFIRM_GRIMACE_ONLY_STAGNATION_ROUNDS,
+            max_draws=_CONFIRM_GRIMACE_ONLY_MAX_DRAWS,
+            seed=seed + seed_offset,
+        )
+        combined_support.update(sampled_support)
+        total_draw_count += draw_count
+        all_plateau_reached = all_plateau_reached and plateau_reached
+
+    return (
+        combined_support,
+        total_draw_count,
+        all_plateau_reached,
+        _CONFIRM_GRIMACE_ONLY_SEED_COUNT,
+    )
+
+
+def _classify_support_with_confirmation(
+    *,
+    sampled_support: set[str],
+    grimace_support: set[str],
+    plateau_reached: bool,
+    confirmation_support: set[str] | None = None,
+    confirmation_plateau_reached: bool | None = None,
+) -> dict[str, Any]:
+    """Classify one sampled comparison, optionally confirming grimace_only."""
+    initial = _classify_support_comparison(
+        sampled_support=sampled_support,
+        grimace_support=grimace_support,
+        plateau_reached=plateau_reached,
+    )
+    if initial["status"] != "grimace_only" or confirmation_support is None:
+        return initial
+
+    confirmed = _classify_support_comparison(
+        sampled_support=sampled_support | confirmation_support,
+        grimace_support=grimace_support,
+        plateau_reached=plateau_reached and bool(confirmation_plateau_reached),
+    )
+    confirmed["initial_status"] = initial["status"]
+    confirmed["grimace_only_confirmed"] = confirmed["status"] == "grimace_only"
+    return confirmed
+
+
 def _worker_main(args: argparse.Namespace) -> int:
     """Evaluate one concrete molecule/mode pair and emit a compact JSON result."""
     mol = Chem.MolFromSmiles(args.smiles)
@@ -354,13 +429,43 @@ def _worker_main(args: argparse.Namespace) -> int:
             max_draws=args.max_draws,
             seed=args.seed,
         )
-        payload.update(
-            _classify_support_comparison(
+        classification = _classify_support_comparison(
+            sampled_support=sampled_support,
+            grimace_support=support,
+            plateau_reached=plateau_reached,
+        )
+        if classification["status"] == "grimace_only":
+            (
+                confirmation_support,
+                confirmation_draw_count,
+                confirmation_plateau_reached,
+                confirmation_seed_count,
+            ) = _confirm_grimace_only_support(
+                mol,
+                rooted_at_atom=rooted_at_atom,
+                isomeric_smiles=args.isomeric,
+                kekule_smiles=args.kekule,
+                all_bonds_explicit=args.all_bonds_explicit,
+                all_hs_explicit=args.all_hs_explicit,
+                ignore_atom_map_numbers=args.ignore_atom_map_numbers,
+                seed=args.seed,
+            )
+            payload.update(
+                {
+                    "confirmation_draw_count": confirmation_draw_count,
+                    "confirmation_plateau_reached": confirmation_plateau_reached,
+                    "confirmation_sampled_size": len(confirmation_support),
+                    "confirmation_seed_count": confirmation_seed_count,
+                }
+            )
+            classification = _classify_support_with_confirmation(
                 sampled_support=sampled_support,
                 grimace_support=support,
                 plateau_reached=plateau_reached,
+                confirmation_support=confirmation_support,
+                confirmation_plateau_reached=confirmation_plateau_reached,
             )
-        )
+        payload.update(classification)
         if expected not in support:
             payload["status"] = "rdkit_only"
             payload["rdkit_only_count"] = payload.get("rdkit_only_count", 0) + 1

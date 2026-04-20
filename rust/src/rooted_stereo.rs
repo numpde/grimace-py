@@ -109,6 +109,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
 
 #[derive(Clone, Debug)]
 struct StereoWalkerRuntimeData {
+    root_idx: usize,
     stereo_component_ids: Vec<isize>,
     isolated_components: Vec<bool>,
     side_infos: Vec<StereoSideInfo>,
@@ -1049,6 +1050,7 @@ fn should_defer_unknown_two_candidate_side_commit(
 }
 
 fn forced_shared_candidate_neighbor(
+    graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
     edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
     component_phases: &[i8],
@@ -1087,6 +1089,9 @@ fn forced_shared_candidate_neighbor(
     if component_phases[side_info.component_idx] == UNKNOWN_COMPONENT_PHASE {
         return Some(shared_neighbor);
     }
+    if uses_post_2026_bond_stereo_token_convention(graph) {
+        return Some(shared_neighbor);
+    }
     if edge_to_side_ids
         .get(&canonical_edge(
             side_info.endpoint_atom_idx,
@@ -1107,6 +1112,7 @@ fn forced_shared_candidate_neighbor(
 }
 
 fn should_defer_known_shared_two_candidate_side_commit(
+    graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
     edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
     component_phases: &[i8],
@@ -1117,6 +1123,9 @@ fn should_defer_known_shared_two_candidate_side_commit(
     if side_info.candidate_neighbors.len() != 2
         || component_phases[side_info.component_idx] == UNKNOWN_COMPONENT_PHASE
     {
+        return false;
+    }
+    if uses_post_2026_bond_stereo_token_convention(graph) {
         return false;
     }
 
@@ -1194,6 +1203,7 @@ fn emitted_edge_part_generic(
             //    unresolved two-candidate side, defer until the more
             //    informative non-terminal candidate appears.
             if should_defer_known_shared_two_candidate_side_commit(
+                graph,
                 side_infos,
                 edge_to_side_ids,
                 component_phases,
@@ -1203,6 +1213,7 @@ fn emitted_edge_part_generic(
                 continue;
             }
             let forced_neighbor = forced_shared_candidate_neighbor(
+                graph,
                 side_infos,
                 edge_to_side_ids,
                 component_phases,
@@ -1502,14 +1513,17 @@ pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
         return Ok(vec![String::new()]);
     }
     let root_idx = validate_root_idx(graph, root_idx)?;
-    let runtime = build_walker_runtime(graph)?;
+    let runtime = build_walker_runtime(graph, root_idx)?;
     let initial_state = initial_stereo_state_for_root(&runtime, graph, root_idx);
     let mut out = BTreeSet::new();
     enumerate_support_from_stereo_frontier(&runtime, graph, vec![initial_state], &mut out)?;
     Ok(out.into_iter().collect())
 }
 
-fn build_walker_runtime(graph: &PreparedSmilesGraphData) -> PyResult<StereoWalkerRuntimeData> {
+fn build_walker_runtime(
+    graph: &PreparedSmilesGraphData,
+    root_idx: usize,
+) -> PyResult<StereoWalkerRuntimeData> {
     let stereo_component_ids = stereo_component_ids(graph);
     let component_count = stereo_component_ids.iter().copied().max().unwrap_or(-1) + 1;
     let isolated_components = component_sizes(&stereo_component_ids)
@@ -1527,6 +1541,7 @@ fn build_walker_runtime(graph: &PreparedSmilesGraphData) -> PyResult<StereoWalke
         side_ids_by_component[side_info.component_idx].push(side_idx);
     }
     Ok(StereoWalkerRuntimeData {
+        root_idx,
         stereo_component_ids,
         isolated_components,
         side_infos,
@@ -1605,11 +1620,93 @@ fn part_to_action(part: Part) -> Option<WalkerAction> {
     }
 }
 
+fn uses_post_2026_bond_stereo_token_convention(graph: &PreparedSmilesGraphData) -> bool {
+    graph
+        .rdkit_version
+        .split('.')
+        .next()
+        .and_then(|major| major.parse::<usize>().ok())
+        .map(|major| major >= 2026)
+        .unwrap_or(false)
+}
+
+fn toggled_component_token_flip(token_flip: i8) -> PyResult<i8> {
+    match token_flip {
+        STORED_COMPONENT_TOKEN_FLIP => Ok(FLIPPED_COMPONENT_TOKEN_FLIP),
+        FLIPPED_COMPONENT_TOKEN_FLIP => Ok(STORED_COMPONENT_TOKEN_FLIP),
+        _ => Err(PyValueError::new_err(
+            "Unsupported component token flip value",
+        )),
+    }
+}
+
+fn rdkit_component_token_flip_adjustment(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    component_idx: usize,
+    graph: &PreparedSmilesGraphData,
+) -> bool {
+    if !uses_post_2026_bond_stereo_token_convention(graph) {
+        return false;
+    }
+
+    let begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
+    if begin_atom_idx < 0 {
+        return false;
+    }
+    let begin_atom_idx = begin_atom_idx as usize;
+
+    let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
+        .iter()
+        .copied()
+        .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
+    else {
+        return false;
+    };
+
+    let begin_side = &runtime.side_infos[begin_side_idx];
+    let mut adjustment = begin_atom_idx == runtime.root_idx
+        && state.stereo_selected_orientations[begin_side_idx] == AFTER_ATOM_EDGE_ORIENTATION;
+
+    if runtime.isolated_components[component_idx] || begin_side.candidate_neighbors.len() != 1 {
+        return adjustment;
+    }
+
+    let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
+    if selected_neighbor_idx < 0 {
+        return adjustment;
+    }
+    let selected_neighbor_idx = selected_neighbor_idx as usize;
+
+    let adjacent_two_side_idx = runtime.side_ids_by_component[component_idx]
+        .iter()
+        .copied()
+        .find(|&side_idx| {
+            let side_info = &runtime.side_infos[side_idx];
+            side_info.candidate_neighbors.len() == 2
+                && side_info.endpoint_atom_idx == selected_neighbor_idx
+                && side_info.candidate_neighbors.contains(&begin_atom_idx)
+        });
+
+    let Some(adjacent_two_side_idx) = adjacent_two_side_idx else {
+        return adjustment;
+    };
+
+    let first_neighbor_idx = state.stereo_first_emitted_candidates[adjacent_two_side_idx];
+    if selected_neighbor_idx == runtime.root_idx
+        && first_neighbor_idx >= 0
+        && first_neighbor_idx as usize != begin_atom_idx
+    {
+        adjustment = !adjustment;
+    }
+    adjustment
+}
+
 fn inferred_component_token_flip(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     component_idx: usize,
-    _graph: &PreparedSmilesGraphData,
+    graph: &PreparedSmilesGraphData,
 ) -> PyResult<Option<i8>> {
     let phase = state.stereo_component_phases[component_idx];
     let isolated = runtime.isolated_components[component_idx];
@@ -1617,6 +1714,7 @@ fn inferred_component_token_flip(
     if side_ids.is_empty() {
         return Ok(None);
     }
+    let adjustment = rdkit_component_token_flip_adjustment(runtime, state, component_idx, graph);
     let begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
     if begin_atom_idx >= 0 {
         let begin_atom_idx = begin_atom_idx as usize;
@@ -1661,7 +1759,7 @@ fn inferred_component_token_flip(
                 } else {
                     return Ok(None);
                 };
-                return Ok(match phase {
+                let inferred = match phase {
                     STORED_COMPONENT_PHASE => Some(if final_flip {
                         FLIPPED_COMPONENT_TOKEN_FLIP
                     } else {
@@ -1673,21 +1771,69 @@ fn inferred_component_token_flip(
                         FLIPPED_COMPONENT_TOKEN_FLIP
                     }),
                     _ => None,
-                });
+                };
+                return inferred
+                    .map(|token_flip| {
+                        if adjustment {
+                            toggled_component_token_flip(token_flip)
+                        } else {
+                            Ok(token_flip)
+                        }
+                    })
+                    .transpose();
             }
         }
     }
 
-    if !isolated
-        || side_ids
-            .iter()
-            .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1)
-    {
-        return Ok(match phase {
+    if !isolated {
+        let inferred = match phase {
             STORED_COMPONENT_PHASE => Some(STORED_COMPONENT_TOKEN_FLIP),
             FLIPPED_COMPONENT_PHASE => Some(FLIPPED_COMPONENT_TOKEN_FLIP),
             _ => None,
-        });
+        };
+        return inferred
+            .map(|token_flip| {
+                if adjustment {
+                    toggled_component_token_flip(token_flip)
+                } else {
+                    Ok(token_flip)
+                }
+            })
+            .transpose();
+    }
+    if side_ids
+        .iter()
+        .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1)
+    {
+        if begin_atom_idx < 0 {
+            return Ok(None);
+        }
+        let begin_atom_idx = begin_atom_idx as usize;
+        let Some(begin_side_idx) = side_ids
+            .iter()
+            .copied()
+            .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
+        else {
+            return Ok(None);
+        };
+        let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
+        if selected_neighbor_idx < 0 {
+            return Ok(None);
+        }
+        let selected_neighbor_idx = selected_neighbor_idx as usize;
+        let selected_side_info = &runtime.side_infos[begin_side_idx];
+        let selected_base_token = candidate_base_token(selected_side_info, selected_neighbor_idx)?;
+        let stored_token = match state.stereo_selected_orientations[begin_side_idx] {
+            AFTER_ATOM_EDGE_ORIENTATION => selected_base_token,
+            BEFORE_ATOM_EDGE_ORIENTATION => flip_direction_token(&selected_base_token)?,
+            _ => return Ok(None),
+        };
+        let inferred = if stored_token == "\\" {
+            FLIPPED_COMPONENT_TOKEN_FLIP
+        } else {
+            STORED_COMPONENT_TOKEN_FLIP
+        };
+        return Ok(Some(inferred));
     }
     if begin_atom_idx < 0 {
         return Ok(None);
@@ -1717,7 +1863,7 @@ fn inferred_component_token_flip(
     } else {
         STORED_COMPONENT_TOKEN_FLIP
     };
-    Ok(match phase {
+    let inferred = match phase {
         STORED_COMPONENT_PHASE => Some(component_flip),
         FLIPPED_COMPONENT_PHASE => Some(if component_flip == STORED_COMPONENT_TOKEN_FLIP {
             FLIPPED_COMPONENT_TOKEN_FLIP
@@ -1725,7 +1871,16 @@ fn inferred_component_token_flip(
             STORED_COMPONENT_TOKEN_FLIP
         }),
         _ => None,
-    })
+    };
+    inferred
+        .map(|token_flip| {
+            if adjustment {
+                toggled_component_token_flip(token_flip)
+            } else {
+                Ok(token_flip)
+            }
+        })
+        .transpose()
 }
 
 fn normalize_component_token_flips(
@@ -1737,9 +1892,7 @@ fn normalize_component_token_flips(
         let inferred = inferred_component_token_flip(runtime, state, component_idx, graph)?;
         if let Some(inferred) = inferred {
             let existing = state.stereo_component_token_flips[component_idx];
-            if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
-                state.stereo_component_token_flips[component_idx] = inferred;
-            } else if existing != inferred {
+            if existing != UNKNOWN_COMPONENT_TOKEN_FLIP && existing != inferred {
                 return Err(PyValueError::new_err(
                     "Stereo component token flip was committed inconsistently",
                 ));
@@ -2166,152 +2319,6 @@ fn process_children_successors_by_token(
     }
 }
 
-fn collect_enter_atom_tokens(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoWalkerStateData,
-    atom_idx: usize,
-    parent_idx: Option<usize>,
-) -> PyResult<Vec<String>> {
-    let mut base_state = state.clone();
-    base_state.action_stack.pop();
-
-    let mut visited_now = base_state.visited.clone();
-    debug_assert!(!visited_now[atom_idx]);
-    visited_now[atom_idx] = true;
-
-    let mut pending_now = base_state.pending.clone();
-    let closures_here = std::mem::take(&mut pending_now[atom_idx]);
-    let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
-
-    let mut tokens = BTreeSet::new();
-    for chosen_children in collect_cartesian_choices(&ordered_groups) {
-        let child_order_seed = chosen_children.clone();
-        let child_set = chosen_children.iter().copied().collect::<BTreeSet<_>>();
-        let opening_targets = ordered_groups
-            .iter()
-            .flat_map(|group| group.iter().copied())
-            .filter(|neighbor_idx| !child_set.contains(neighbor_idx))
-            .collect::<Vec<_>>();
-
-        let mut ring_actions = Vec::new();
-        for closure_idx in 0..closures_here.len() {
-            ring_actions.push(RingAction::Close(closure_idx));
-        }
-        for &target_idx in &opening_targets {
-            ring_actions.push(RingAction::Open(target_idx));
-        }
-
-        for ring_action_order in collect_unique_permutations(&ring_actions) {
-            let mut current_free = base_state.free_labels.clone();
-            let mut current_next = base_state.next_label;
-            let mut current_component_phases = base_state.stereo_component_phases.clone();
-            let mut current_selected_neighbors = base_state.stereo_selected_neighbors.clone();
-            let mut current_selected_orientations = base_state.stereo_selected_orientations.clone();
-            let mut current_first_emitted_candidates =
-                base_state.stereo_first_emitted_candidates.clone();
-            let mut current_component_begin_atoms = base_state.stereo_component_begin_atoms.clone();
-            let mut ring_neighbor_order = Vec::<usize>::new();
-
-            for ring_action in &ring_action_order {
-                match *ring_action {
-                    RingAction::Close(closure_idx) => {
-                        let closure = &closures_here[closure_idx];
-                        let (
-                            _bond_part,
-                            updated_neighbors,
-                            updated_orientations,
-                            updated_first_candidates,
-                        ) = emitted_edge_part(
-                            graph,
-                            &runtime.side_infos,
-                            &runtime.side_ids_by_component,
-                            &runtime.edge_to_side_ids,
-                            &current_component_phases,
-                            &current_selected_neighbors,
-                            &current_selected_orientations,
-                            &current_first_emitted_candidates,
-                            &current_component_begin_atoms,
-                            &runtime.isolated_components,
-                            atom_idx,
-                            closure.other_atom_idx,
-                        )?;
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
-                        current_first_emitted_candidates = updated_first_candidates;
-                        ring_neighbor_order.push(closure.other_atom_idx);
-                    }
-                    RingAction::Open(target_idx) => {
-                        let _label = allocate_label(&mut current_free, &mut current_next);
-                        let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-                            graph,
-                            &runtime.stereo_component_ids,
-                            &runtime.isolated_components,
-                            &current_component_phases,
-                            &current_component_begin_atoms,
-                            atom_idx,
-                            target_idx,
-                        )?;
-                        let (updated_phases, updated_begin_atoms) =
-                            defer_coupled_component_phase_if_begin_side_is_unresolved(
-                                runtime,
-                                graph,
-                                &updated_phases,
-                                &updated_begin_atoms,
-                                &current_selected_neighbors,
-                                atom_idx,
-                                target_idx,
-                            )?;
-                        current_component_phases = updated_phases;
-                        current_component_begin_atoms = updated_begin_atoms;
-                        let (
-                            _ignored_part,
-                            updated_neighbors,
-                            updated_orientations,
-                            updated_first_candidates,
-                        ) = emitted_edge_part(
-                            graph,
-                            &runtime.side_infos,
-                            &runtime.side_ids_by_component,
-                            &runtime.edge_to_side_ids,
-                            &current_component_phases,
-                            &current_selected_neighbors,
-                            &current_selected_orientations,
-                            &current_first_emitted_candidates,
-                            &current_component_begin_atoms,
-                            &runtime.isolated_components,
-                            atom_idx,
-                            target_idx,
-                        )?;
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
-                        current_first_emitted_candidates = updated_first_candidates;
-                        ring_neighbor_order.push(target_idx);
-                    }
-                }
-            }
-
-            for child_order in collect_unique_permutations(&child_order_seed) {
-                let atom_token = if graph.atom_chiral_tags[atom_idx] == "CHI_UNSPECIFIED" {
-                    graph.atom_tokens[atom_idx].clone()
-                } else {
-                    let emitted_neighbor_order = stereo_neighbor_order(
-                        graph,
-                        atom_idx,
-                        parent_idx,
-                        &ring_neighbor_order,
-                        &child_order,
-                    )?;
-                    stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
-                };
-                tokens.insert(atom_token);
-            }
-        }
-    }
-
-    Ok(tokens.into_iter().collect())
-}
-
 fn can_complete_from_stereo_state_memo(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -2344,150 +2351,38 @@ fn can_complete_from_stereo_state_memo(
     result
 }
 
+fn filter_complete_successors(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    successors: BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
+    completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
+) -> BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>> {
+    let mut filtered = BTreeMap::new();
+    for (token, successor_group) in successors {
+        let kept = successor_group
+            .into_iter()
+            .filter(|successor| {
+                can_complete_from_stereo_state_memo(runtime, graph, successor, completion_cache)
+            })
+            .collect::<Vec<_>>();
+        if !kept.is_empty() {
+            filtered.insert(token, kept);
+        }
+    }
+    filtered
+}
+
 fn next_token_support_for_stereo_state_impl(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
 ) -> PyResult<Vec<String>> {
-    let action = match state.action_stack.last() {
-        Some(action) => action.clone(),
-        None => return Ok(Vec::new()),
-    };
-
-    match action {
-        WalkerAction::EmitLiteral(token) => Ok(vec![token]),
-        WalkerAction::EmitDeferred(deferred) => {
-            let mut tokens = Vec::new();
-            for token in deferred_token_support(runtime, graph, state, &deferred)? {
-                let mut successor = state.clone();
-                successor.action_stack.pop();
-                commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, &token)?;
-                successor.prefix.push_str(&token);
-                if can_complete_from_stereo_state_memo(runtime, graph, &successor, completion_cache)
-                {
-                    tokens.push(token);
-                }
-            }
-            tokens.sort();
-            tokens.dedup();
-            Ok(tokens)
-        }
-        WalkerAction::EnterAtom {
-            atom_idx,
-            parent_idx,
-        } => collect_enter_atom_tokens(runtime, graph, state, atom_idx, parent_idx),
-        WalkerAction::ProcessChildren {
-            parent_idx,
-            child_order,
-            next_branch_index,
-        } => {
-            if child_order.is_empty() {
-                return Ok(Vec::new());
-            }
-            let branch_count = child_order.len().saturating_sub(1);
-            if next_branch_index < branch_count {
-                return Ok(vec!["(".to_owned()]);
-            }
-
-            let child_idx = child_order[child_order.len() - 1];
-            let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
-                emitted_edge_part(
-                    graph,
-                    &runtime.side_infos,
-                    &runtime.side_ids_by_component,
-                    &runtime.edge_to_side_ids,
-                    &state.stereo_component_phases,
-                    &state.stereo_selected_neighbors,
-                    &state.stereo_selected_orientations,
-                    &state.stereo_first_emitted_candidates,
-                    &state.stereo_component_begin_atoms,
-                    &runtime.isolated_components,
-                    parent_idx,
-                    child_idx,
-                )?;
-            let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-                graph,
-                &runtime.stereo_component_ids,
-                &runtime.isolated_components,
-                &state.stereo_component_phases,
-                &state.stereo_component_begin_atoms,
-                parent_idx,
-                child_idx,
-            )?;
-            let (updated_phases, updated_begin_atoms) =
-                defer_coupled_component_phase_if_begin_side_is_unresolved(
-                    runtime,
-                    graph,
-                    &updated_phases,
-                    &updated_begin_atoms,
-                    &updated_neighbors,
-                    parent_idx,
-                    child_idx,
-                )?;
-            let updated_phases = commit_coupled_component_phase_from_deferred_part(
-                runtime,
-                &updated_phases,
-                &updated_begin_atoms,
-                parent_idx,
-                &edge_part,
-            )?;
-
-            let mut base_state = state.clone();
-            base_state.action_stack.pop();
-            base_state.stereo_selected_neighbors = updated_neighbors;
-            base_state.stereo_selected_orientations = updated_orientations;
-            base_state.stereo_first_emitted_candidates = updated_first_candidates;
-            base_state.stereo_component_phases = updated_phases;
-            base_state.stereo_component_begin_atoms = updated_begin_atoms;
-            normalize_component_token_flips(runtime, graph, &mut base_state)?;
-
-            match edge_part {
-                Part::Literal(token) if token.is_empty() => {
-                    base_state.action_stack.push(WalkerAction::EnterAtom {
-                        atom_idx: child_idx,
-                        parent_idx: Some(parent_idx),
-                    });
-                    next_token_support_for_stereo_state_impl(
-                        runtime,
-                        graph,
-                        &base_state,
-                        completion_cache,
-                    )
-                }
-                Part::Literal(token) => Ok(vec![token]),
-                Part::Deferred(deferred) => {
-                    let mut tokens = Vec::new();
-                    for token in deferred_token_support(runtime, graph, &base_state, &deferred)? {
-                        let mut successor = base_state.clone();
-                        commit_deferred_token_choice(
-                            runtime,
-                            graph,
-                            &mut successor,
-                            &deferred,
-                            &token,
-                        )?;
-                        successor.prefix.push_str(&token);
-                        successor.action_stack.push(WalkerAction::EnterAtom {
-                            atom_idx: child_idx,
-                            parent_idx: Some(parent_idx),
-                        });
-                        if can_complete_from_stereo_state_memo(
-                            runtime,
-                            graph,
-                            &successor,
-                            completion_cache,
-                        ) {
-                            tokens.push(token);
-                        }
-                    }
-                    tokens.sort();
-                    tokens.dedup();
-                    Ok(tokens)
-                }
-            }
-        }
-    }
+    Ok(
+        successors_by_token_stereo_impl(runtime, graph, state, completion_cache)?
+            .into_keys()
+            .collect(),
+    )
 }
 
 fn next_token_support_for_stereo_state(
@@ -2509,13 +2404,12 @@ fn successors_by_token_stereo_impl(
         Some(action) => action.clone(),
         None => return Ok(BTreeMap::new()),
     };
-
-    match action {
+    let raw_successors = match action {
         WalkerAction::EmitLiteral(token) => {
             let mut successor = state.clone();
             successor.action_stack.pop();
             successor.prefix.push_str(&token);
-            Ok(BTreeMap::from([(token, vec![successor])]))
+            BTreeMap::from([(token, vec![successor])])
         }
         WalkerAction::EmitDeferred(deferred) => {
             let mut out = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
@@ -2524,17 +2418,14 @@ fn successors_by_token_stereo_impl(
                 successor.action_stack.pop();
                 commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, &token)?;
                 successor.prefix.push_str(&token);
-                if can_complete_from_stereo_state_memo(runtime, graph, &successor, completion_cache)
-                {
-                    out.entry(token).or_default().push(successor);
-                }
+                out.entry(token).or_default().push(successor);
             }
-            Ok(out)
+            out
         }
         WalkerAction::EnterAtom {
             atom_idx,
             parent_idx,
-        } => enter_atom_successors_by_token(runtime, graph, state, atom_idx, parent_idx),
+        } => enter_atom_successors_by_token(runtime, graph, state, atom_idx, parent_idx)?,
         WalkerAction::ProcessChildren {
             parent_idx,
             child_order,
@@ -2547,8 +2438,10 @@ fn successors_by_token_stereo_impl(
             &child_order,
             next_branch_index,
             completion_cache,
-        ),
-    }
+        )?,
+    };
+    let successors = filter_complete_successors(runtime, graph, raw_successors, completion_cache);
+    Ok(successors)
 }
 
 fn successors_by_token_stereo(
@@ -2773,7 +2666,7 @@ impl PyRootedConnectedStereoWalker {
         let graph = PreparedSmilesGraphData::from_any(graph)?;
         check_supported_stereo_writer_surface(&graph)?;
         let root_idx = validate_root_idx(&graph, root_idx)?;
-        let runtime = build_walker_runtime(&graph)?;
+        let runtime = build_walker_runtime(&graph, root_idx)?;
         Ok(Self {
             graph,
             runtime,
@@ -2875,7 +2768,7 @@ impl PyRootedConnectedStereoDecoder {
         let graph = PreparedSmilesGraphData::from_any(graph)?;
         check_supported_stereo_writer_surface(&graph)?;
         let root_idx = validate_root_idx(&graph, root_idx)?;
-        let runtime = build_walker_runtime(&graph)?;
+        let runtime = build_walker_runtime(&graph, root_idx)?;
         Ok(Self {
             frontier: vec![initial_stereo_state_for_root(&runtime, &graph, root_idx)],
             graph,
@@ -3176,7 +3069,7 @@ mod tests {
             (sample_stereo_graph(), 0usize),
             (atom_stereo_graph(), 1usize),
         ] {
-            let runtime = build_walker_runtime(&graph).expect("runtime should build");
+            let runtime = build_walker_runtime(&graph, root_idx).expect("runtime should build");
             let initial_state = initial_stereo_state_for_root(&runtime, &graph, root_idx);
             let mut walker_support = BTreeSet::new();
             enumerate_support_from_stereo_state(
@@ -3233,7 +3126,7 @@ mod tests {
     #[test]
     fn stereo_initial_state_support_is_root_atom_token() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph).expect("runtime should build");
+        let runtime = build_walker_runtime(&graph, 0).expect("runtime should build");
         let state = initial_stereo_state_for_root(&runtime, &graph, 0);
         assert_eq!(
             vec!["F".to_owned()],
@@ -3245,7 +3138,7 @@ mod tests {
     #[test]
     fn stereo_walker_can_reach_expected_terminal_prefix() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph).expect("runtime should build");
+        let runtime = build_walker_runtime(&graph, 0).expect("runtime should build");
         let support = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
             .expect("stereo enumeration should succeed")
             .into_iter()
@@ -3274,7 +3167,7 @@ mod tests {
     #[test]
     fn stereo_walker_rejects_invalid_token_with_choices() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph).expect("runtime should build");
+        let runtime = build_walker_runtime(&graph, 0).expect("runtime should build");
         let state = initial_stereo_state_for_root(&runtime, &graph, 0);
         Python::initialize();
         let err = advance_stereo_token_state(&runtime, &graph, &state, "(")

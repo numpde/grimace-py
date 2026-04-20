@@ -87,6 +87,14 @@ def _flip_direction_token(token: str) -> str:
     raise ValueError(f"Unsupported directional token: {token!r}")
 
 
+def _uses_post_2026_bond_stereo_token_convention(prepared: PreparedSmilesGraph) -> bool:
+    major_text, _, _ = prepared.rdkit_version.partition(".")
+    try:
+        return int(major_text) >= 2026
+    except ValueError:
+        return False
+
+
 def _part_tuple(part: str | DeferredDirectionalToken) -> tuple[str | DeferredDirectionalToken, ...]:
     if isinstance(part, str) and not part:
         return ()
@@ -767,6 +775,7 @@ def _should_defer_unknown_two_candidate_side_commit(
 
 
 def _forced_shared_candidate_neighbor(
+    prepared: PreparedSmilesGraph,
     side_infos: tuple[StereoSideInfo, ...],
     edge_to_side_ids: dict[tuple[int, int], tuple[int, ...]],
     component_phases: tuple[int, ...],
@@ -799,6 +808,8 @@ def _forced_shared_candidate_neighbor(
     shared_neighbor = shared_neighbors[0]
     if component_phases[side_info.component_idx] == _UNKNOWN_COMPONENT_PHASE:
         return shared_neighbor
+    if _uses_post_2026_bond_stereo_token_convention(prepared):
+        return shared_neighbor
     if any(
         other_side_idx != side_idx
         and side_infos[other_side_idx].component_idx == side_info.component_idx
@@ -813,6 +824,7 @@ def _forced_shared_candidate_neighbor(
 
 
 def _should_defer_known_shared_two_candidate_side_commit(
+    prepared: PreparedSmilesGraph,
     side_infos: tuple[StereoSideInfo, ...],
     edge_to_side_ids: dict[tuple[int, int], tuple[int, ...]],
     component_phases: tuple[int, ...],
@@ -824,6 +836,8 @@ def _should_defer_known_shared_two_candidate_side_commit(
         len(side_info.candidate_neighbors) != 2
         or component_phases[side_info.component_idx] == _UNKNOWN_COMPONENT_PHASE
     ):
+        return False
+    if _uses_post_2026_bond_stereo_token_convention(prepared):
         return False
     # After the coupled component phase is known, do not let the first side that
     # happens to traverse a shared two-candidate edge lock in the carrier. Defer
@@ -898,6 +912,7 @@ def _emitted_edge_part_generic(
             #    unresolved two-candidate side, defer until the more informative
             #    non-terminal candidate appears.
             if _should_defer_known_shared_two_candidate_side_commit(
+                prepared,
                 side_infos,
                 edge_to_side_ids,
                 component_phases,
@@ -906,6 +921,7 @@ def _emitted_edge_part_generic(
             ):
                 continue
             forced_neighbor = _forced_shared_candidate_neighbor(
+                prepared,
                 side_infos,
                 edge_to_side_ids,
                 component_phases,
@@ -1300,6 +1316,80 @@ def _coupled_begin_side_flips(
             desired_token = _flip_direction_token(stored_token)
         flips[component_idx] = desired_token != resolved_token
     return tuple(flips)
+
+
+def _rdkit_component_token_flip_adjustments(
+    prepared: PreparedSmilesGraph,
+    side_infos: tuple[StereoSideInfo, ...],
+    isolated_components: tuple[bool, ...],
+    result: SearchResult,
+    component_count: int,
+    *,
+    root_idx: int,
+) -> tuple[bool, ...]:
+    if not _uses_post_2026_bond_stereo_token_convention(prepared):
+        return tuple(False for _ in range(component_count))
+
+    adjustments = [False for _ in range(component_count)]
+    for component_idx in range(component_count):
+        begin_atom_idx = result.stereo_component_begin_atoms[component_idx]
+        if begin_atom_idx < 0:
+            continue
+
+        begin_side_idx = next(
+            (
+                side_idx
+                for side_idx, side_info in enumerate(side_infos)
+                if side_info.component_idx == component_idx
+                and side_info.endpoint_atom_idx == begin_atom_idx
+            ),
+            None,
+        )
+        if begin_side_idx is None:
+            continue
+
+        # RDKit 2026.x only applies the begin-side family inversion when the
+        # traversal actually starts on that stereo endpoint. Entering the same
+        # endpoint later from another branch still follows the older family.
+        if (
+            begin_atom_idx == root_idx
+            and result.stereo_selected_orientations[begin_side_idx] == _AFTER_ATOM_EDGE_ORIENTATION
+        ):
+            adjustments[component_idx] = not adjustments[component_idx]
+
+        if isolated_components[component_idx]:
+            continue
+
+        begin_side = side_infos[begin_side_idx]
+        if len(begin_side.candidate_neighbors) != 1:
+            continue
+
+        selected_neighbor_idx = result.stereo_selected_neighbors[begin_side_idx]
+        if selected_neighbor_idx < 0:
+            continue
+
+        adjacent_two_side_idx = next(
+            (
+                side_idx
+                for side_idx, side_info in enumerate(side_infos)
+                if side_info.component_idx == component_idx
+                and len(side_info.candidate_neighbors) == 2
+                and side_info.endpoint_atom_idx == selected_neighbor_idx
+                and begin_atom_idx in side_info.candidate_neighbors
+            ),
+            None,
+        )
+        if adjacent_two_side_idx is None or selected_neighbor_idx != root_idx:
+            continue
+
+        # With a one-candidate begin side, RDKit 2026.x also keys the family on
+        # whether the adjacent two-candidate side first exposed the edge back
+        # toward the begin atom or its branch candidate.
+        first_neighbor_idx = result.stereo_first_emitted_candidates[adjacent_two_side_idx]
+        if first_neighbor_idx >= 0 and first_neighbor_idx != begin_atom_idx:
+            adjustments[component_idx] = not adjustments[component_idx]
+
+    return tuple(adjustments)
 
 
 def enumerate_from_atom(
@@ -1769,15 +1859,24 @@ def enumerate_rooted_connected_stereo_smiles_support(
             result,
             component_count,
         )
+        rdkit_adjustments = _rdkit_component_token_flip_adjustments(
+            prepared,
+            side_infos,
+            isolated_components,
+            result,
+            component_count,
+            root_idx=root_idx,
+        )
         results.add(
             _resolve_parts(
                 result.parts,
                 result.stereo_component_phases,
                 component_flips=tuple(
-                    isolated_flip ^ coupled_begin_side_flip
-                    for isolated_flip, coupled_begin_side_flip in zip(
+                    isolated_flip ^ coupled_begin_side_flip ^ rdkit_adjustment
+                    for isolated_flip, coupled_begin_side_flip, rdkit_adjustment in zip(
                         isolated_flips,
                         coupled_begin_side_flips,
+                        rdkit_adjustments,
                         strict=True,
                     )
                 ),

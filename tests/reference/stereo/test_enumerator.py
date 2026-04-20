@@ -324,45 +324,44 @@ class RootedConnectedStereoTests(unittest.TestCase):
                 self.assertIn(expected, observed)
                 _assert_support_valid(self, mol, self.policy, root_idx, observed)
 
-    def test_dataset_regression_coupled_diphenyl_diene_terminal_rooted_outputs_are_in_support(self) -> None:
+    def test_dataset_regression_coupled_diphenyl_diene_terminal_roots_match_rdkit_samples(self) -> None:
         mol = parse_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\\\c1ccccc1")
 
         for root_idx in (0, 1, 4, 5):
             with self.subTest(root_idx=root_idx):
-                expected = Chem.MolToSmiles(
-                    Chem.Mol(mol),
-                    rootedAtAtom=root_idx,
-                    canonical=False,
-                    doRandom=False,
-                    isomericSmiles=True,
-                )
                 observed = enumerate_rooted_connected_stereo_smiles_support(
                     mol,
                     root_idx,
                     self.policy,
                 )
-                self.assertIn(expected, observed)
+                sampled = _sample_rooted_rdkit_support(
+                    mol,
+                    self.policy,
+                    root_idx,
+                    draws=20_000,
+                )
+
+                self.assertEqual(sampled, observed)
                 _assert_support_valid(self, mol, self.policy, root_idx, observed)
 
-    def test_rooted_tetrasubstituted_alkene_outputs_are_in_support(self) -> None:
+    def test_rooted_tetrasubstituted_alkene_matches_rdkit_samples(self) -> None:
         mol = parse_smiles("C/C(=C(/C)\\\\c1ccccc1)/c1ccccc1")
-        expected_by_root = {
-            1: (
-                "C(\\C)(=C(/C)c1ccccc1)c1ccccc1"
-            ),
-            2: (
-                "C(=C(/C)c1ccccc1)(\\C)c1ccccc1"
-            ),
-        }
 
-        for root_idx, expected in expected_by_root.items():
+        for root_idx in (1, 2):
             with self.subTest(root_idx=root_idx):
                 observed = enumerate_rooted_connected_stereo_smiles_support(
                     mol,
                     root_idx,
                     self.policy,
                 )
-                self.assertIn(expected, observed)
+                sampled = _sample_rooted_rdkit_support(
+                    mol,
+                    self.policy,
+                    root_idx,
+                    draws=20_000,
+                )
+
+                self.assertEqual(sampled, observed)
                 _assert_support_valid(self, mol, self.policy, root_idx, observed)
 
     def test_dataset_regression_terminal_methyl_root_preserves_isolated_stereo_choice(self) -> None:

@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import unittest
 
+from rdkit import Chem
+
 from tests.helpers.rdkit_writer_cases import ExactWriterCase, WRITER_FLAG_CASES
-from tests.rdkit_serialization._support import assert_exact_writer_case_in_grimace_support
+from tests.rdkit_serialization._support import (
+    assert_exact_writer_case_in_grimace_support,
+    grimace_support,
+    sample_rdkit_random_support,
+)
 
 
 class RDKITWriterFlagTests(unittest.TestCase):
@@ -56,13 +62,19 @@ class RDKITWriterFlagTests(unittest.TestCase):
         assert_exact_writer_case_in_grimace_support(self, case)
 
     def test_coupled_diphenyl_diene_exact_writer_is_member_of_support(self) -> None:
-        case = ExactWriterCase(
-            smiles="C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1",
-            expected="C/C=C(C(=C/C)/c1ccccc1)\\c1ccccc1",
+        mol = Chem.MolFromSmiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1")
+        expected = sample_rdkit_random_support(
+            mol,
+            root_idx=None,
+            isomeric_smiles=True,
+            draw_budget=20_000,
+        )
+        support = grimace_support(
+            mol,
+            rooted_at_atom=None,
             isomeric_smiles=True,
         )
-
-        assert_exact_writer_case_in_grimace_support(self, case)
+        self.assertEqual(expected, support)
 
     def test_rooted_tetrasubstituted_alkene_explicit_writer_is_member_of_support(self) -> None:
         cases = (

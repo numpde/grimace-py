@@ -11,13 +11,17 @@ Current top-level exports:
 - `MolToSmilesTokenInventory`
 
 The compiled extension `grimace._core` is required. There is no
-public runtime fallback.
+public runtime fallback. Run the public API from the same Python environment
+where the extension was built or installed.
 
 ## MolToSmilesEnum
 
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This yields the complete exact support as whole SMILES strings.
+
+When `rootedAtAtom == -1`, the result is the exact union across all valid
+roots for the requested writer flags.
 
 ```python
 outputs = list(
@@ -76,7 +80,7 @@ decoder = grimace.MolToSmilesDecoder(
     doRandom=True,
 )
 while decoder.prefix != "CC(=O)Oc1c":
-decoder = decoder.next_choices[0].next_state
+    decoder = decoder.next_choices[0].next_state
 
 decoder.prefix       # 'CC(=O)Oc1c'
 [choice.text for choice in decoder.next_choices]  # ['(', '(']
@@ -145,6 +149,9 @@ molecule under the same public writer flags.
 When `rootedAtAtom=None`, it unions the exact reachable token inventories
 across all roots. For disconnected molecules it includes the `"."` separator
 token when fragment transitions are reachable under the requested root mode.
+
+This is an exact runtime inventory, not a probabilistic distribution and not a
+general-purpose tokenizer vocabulary.
 
 ## Correctness
 

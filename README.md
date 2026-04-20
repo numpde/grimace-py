@@ -1,14 +1,14 @@
 # GRIMACE
 
-SMILES enumeration with next-token distribution.
+SMILES enumeration with exact next-token decoding.
 
 `grimace` is a Rust-first cheminformatics library for exact rooted SMILES
-enumeration and online next-token decoding from RDKit molecules. It computes
-the full rooted SMILES support of a molecule under an RDKit-style writing
-regime, and it can also step through that support one token at a time: at each
-prefix it exposes the legal next choices, then advances when you choose one.
-By "support" we mean the full set of reachable rooted SMILES strings for the
-given molecule and writer flags.
+enumeration, exact token inventory extraction, and online next-token decoding
+from RDKit molecules. It computes the full rooted SMILES support of a molecule
+under an RDKit-style writing regime, and it can also step through that support
+one token at a time: at each prefix it exposes the legal next choices, then
+advances when you choose one. By "support" we mean the full set of reachable
+rooted SMILES strings for the given molecule and writer flags.
 
 The reason this library exists is that RDKit does not provide a deterministic
 SMILES enumeration routine, and it does not expose the legal continuations of a

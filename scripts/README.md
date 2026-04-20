@@ -2,6 +2,11 @@
 
 Utility scripts for local development, validation, and release support.
 
+Examples below assume you are running them from the same Python environment
+where `grimace` is installed or built, for example an activated `.venv`.
+Using a different interpreter can silently compare against a different RDKit or
+extension build than the one you intended to validate.
+
 ## `mine_rdkit_regressions.py`
 
 Local dataset miner for RDKit-derived writer regressions.
@@ -17,6 +22,11 @@ It scans the bundled `top_100000` fixture and can either:
 initial plateaued miss survives a higher-budget confirmation pass across
 additional RDKit RNG seeds. That avoids treating single-seed sampling artifacts
 as real support gaps.
+
+In practice, most large sampled cases end up as `uncertain`, not because they
+contradict Grimace support, but because exact support grows much faster than a
+reasonable RDKit draw budget. The highest-signal correctness failure remains
+`rdkit_only`: RDKit emitted a string that Grimace cannot produce.
 
 Each molecule is evaluated in a subprocess so slow or wedged cases can be
 skipped with a timeout.
@@ -34,7 +44,7 @@ including `kekuleSmiles`, `allBondsExplicit`, `allHsExplicit`, and
 Examples:
 
 ```bash
-PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --connected connected \
@@ -43,7 +53,7 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --root last \
   --isomeric true \
   --connected connected \
@@ -52,7 +62,7 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --root zero \
   --isomeric false \
   --all-bonds-explicit true \
@@ -63,7 +73,7 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --rdkit-mode sampled \
@@ -76,7 +86,7 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --rdkit-mode sampled \
@@ -87,7 +97,7 @@ PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python3 scripts/mine_rdkit_regressions.py \
+PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --rdkit-mode sampled \

@@ -301,6 +301,29 @@ class RootedConnectedStereoTests(unittest.TestCase):
         self.assertNotIn(rejected, observed)
         _assert_support_valid(self, mol, self.policy, 0, observed)
 
+    def test_dataset_regression_sidechain_steroid_rooted_outputs_are_in_support(self) -> None:
+        mol = parse_smiles(
+            "C[C@H](CCCC(C)C)[C@H]1CC[C@@H]\\\\2"
+            "[C@@]1(CCC/C2=C\\\\C=C/3\\\\C[C@H](CCC3=C)O)C"
+        )
+
+        for root_idx in (16, 17, 18, 19):
+            with self.subTest(root_idx=root_idx):
+                expected = Chem.MolToSmiles(
+                    Chem.Mol(mol),
+                    rootedAtAtom=root_idx,
+                    canonical=False,
+                    doRandom=False,
+                    isomericSmiles=True,
+                )
+                observed = enumerate_rooted_connected_stereo_smiles_support(
+                    mol,
+                    root_idx,
+                    self.policy,
+                )
+                self.assertIn(expected, observed)
+                _assert_support_valid(self, mol, self.policy, root_idx, observed)
+
     def test_dataset_regression_terminal_methyl_root_preserves_isolated_stereo_choice(self) -> None:
         mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
         expected = "CC(/C=C/C=C(/C=C/C1=C(C)CCCC1(C)C)C)=C\\C(=O)O"

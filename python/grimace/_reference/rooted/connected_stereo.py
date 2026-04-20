@@ -1201,26 +1201,31 @@ def _coupled_begin_side_flips(
         if begin_side_idx is None:
             continue
         begin_side = side_infos[begin_side_idx]
-        if len(begin_side.candidate_neighbors) != 2:
+        if len(begin_side.candidate_neighbors) > 2:
             continue
 
         selected_neighbor_idx = result.stereo_selected_neighbors[begin_side_idx]
-        first_neighbor_idx = result.stereo_first_emitted_candidates[begin_side_idx]
-        if selected_neighbor_idx < 0 or first_neighbor_idx < 0:
+        if selected_neighbor_idx < 0:
             continue
 
         stored_token = _candidate_base_token(begin_side, selected_neighbor_idx)
         phase = result.stereo_component_phases[component_idx]
+        if len(begin_side.candidate_neighbors) == 1:
+            flips[component_idx] = stored_token == (
+                "/" if phase == _STORED_COMPONENT_PHASE else "\\"
+            )
+            continue
+
+        first_neighbor_idx = result.stereo_first_emitted_candidates[begin_side_idx]
+        if first_neighbor_idx < 0:
+            continue
+
         resolved_token = (
             stored_token
             if phase in {_UNKNOWN_COMPONENT_PHASE, _STORED_COMPONENT_PHASE}
             else _flip_direction_token(stored_token)
         )
-        invert_selected_first = (
-            result.stereo_selected_orientations[begin_side_idx]
-            == _BEFORE_ATOM_EDGE_ORIENTATION
-            and _candidate_base_token(begin_side, selected_neighbor_idx) == "/"
-        )
+        invert_selected_first = stored_token == "/"
         desired_token = stored_token
         if (first_neighbor_idx == selected_neighbor_idx) == invert_selected_first:
             desired_token = _flip_direction_token(stored_token)

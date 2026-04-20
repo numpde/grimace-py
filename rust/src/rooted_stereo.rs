@@ -1545,26 +1545,54 @@ fn inferred_component_token_flip(
             .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
         {
             let begin_side = &runtime.side_infos[begin_side_idx];
-            if !isolated && begin_side.candidate_neighbors.len() == 2 {
+            if !isolated {
                 let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
-                let first_neighbor_idx = state.stereo_first_emitted_candidates[begin_side_idx];
-                let selected_orientation = state.stereo_selected_orientations[begin_side_idx];
-                if selected_neighbor_idx >= 0 && first_neighbor_idx >= 0 {
-                    let selected_neighbor_idx = selected_neighbor_idx as usize;
-                    let selected_base_token =
-                        candidate_base_token(begin_side, selected_neighbor_idx)?;
-                    let selected_first =
-                        first_neighbor_idx == state.stereo_selected_neighbors[begin_side_idx];
-                    let invert_selected_first =
-                        selected_orientation == BEFORE_ATOM_EDGE_ORIENTATION
-                            && selected_base_token == "/";
-                    return Ok(Some(if selected_first == invert_selected_first {
+                if selected_neighbor_idx < 0 {
+                    return Ok(None);
+                }
+                let selected_neighbor_idx = selected_neighbor_idx as usize;
+                let selected_base_token = candidate_base_token(begin_side, selected_neighbor_idx)?;
+                let final_flip = if begin_side.candidate_neighbors.len() == 1 {
+                    match phase {
+                        STORED_COMPONENT_PHASE => selected_base_token == "/",
+                        FLIPPED_COMPONENT_PHASE => selected_base_token == "\\",
+                        _ => return Ok(None),
+                    }
+                } else if begin_side.candidate_neighbors.len() == 2 {
+                    let first_neighbor_idx = state.stereo_first_emitted_candidates[begin_side_idx];
+                    if first_neighbor_idx < 0 {
+                        return Ok(None);
+                    }
+                    let resolved_token =
+                        if matches!(phase, UNKNOWN_COMPONENT_PHASE | STORED_COMPONENT_PHASE) {
+                            selected_base_token.clone()
+                        } else {
+                            flip_direction_token(&selected_base_token)?
+                        };
+                    let invert_selected_first = selected_base_token == "/";
+                    let mut desired_token = selected_base_token.clone();
+                    if (first_neighbor_idx == state.stereo_selected_neighbors[begin_side_idx])
+                        == invert_selected_first
+                    {
+                        desired_token = flip_direction_token(&selected_base_token)?;
+                    }
+                    desired_token != resolved_token
+                } else {
+                    return Ok(None);
+                };
+                return Ok(match phase {
+                    STORED_COMPONENT_PHASE => Some(if final_flip {
                         FLIPPED_COMPONENT_TOKEN_FLIP
                     } else {
                         STORED_COMPONENT_TOKEN_FLIP
-                    }));
-                }
-                return Ok(None);
+                    }),
+                    FLIPPED_COMPONENT_PHASE => Some(if final_flip {
+                        STORED_COMPONENT_TOKEN_FLIP
+                    } else {
+                        FLIPPED_COMPONENT_TOKEN_FLIP
+                    }),
+                    _ => None,
+                });
             }
         }
     }

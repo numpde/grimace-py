@@ -116,6 +116,28 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
         self.assertIn(expected, support)
         self.assertNotIn(rejected, support)
 
+    def test_rooted_sidechain_steroid_outputs_are_in_support(self) -> None:
+        mol = parse_smiles(
+            "C[C@H](CCCC(C)C)[C@H]1CC[C@@H]\\\\2"
+            "[C@@]1(CCC/C2=C\\\\C=C/3\\\\C[C@H](CCC3=C)O)C"
+        )
+
+        for root_idx in (16, 17, 18, 19):
+            with self.subTest(root_idx=root_idx):
+                expected = Chem.MolToSmiles(
+                    Chem.Mol(mol),
+                    rootedAtAtom=root_idx,
+                    canonical=False,
+                    doRandom=False,
+                    isomericSmiles=True,
+                )
+                support = grimace_support(
+                    mol,
+                    rooted_at_atom=root_idx,
+                    isomeric_smiles=True,
+                )
+                self.assertIn(expected, support)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -111,6 +111,31 @@ def _include_case(connected_mode: str, mol: Chem.Mol) -> bool:
     raise ValueError(f"Unsupported connected mode: {connected_mode!r}")
 
 
+def _writer_kwargs(
+    *,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool,
+    all_bonds_explicit: bool,
+    all_hs_explicit: bool,
+    ignore_atom_map_numbers: bool,
+    do_random: bool,
+) -> dict[str, Any]:
+    """Return one public-writer kwargs dict shared by RDKit and Grimace calls."""
+    kwargs: dict[str, Any] = {
+        "isomericSmiles": isomeric_smiles,
+        "kekuleSmiles": kekule_smiles,
+        "canonical": False,
+        "allBondsExplicit": all_bonds_explicit,
+        "allHsExplicit": all_hs_explicit,
+        "doRandom": do_random,
+        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
+    }
+    if rooted_at_atom is not None:
+        kwargs["rootedAtAtom"] = rooted_at_atom
+    return kwargs
+
+
 def _grimace_support(
     mol: Chem.Mol,
     *,
@@ -121,17 +146,15 @@ def _grimace_support(
     all_hs_explicit: bool,
     ignore_atom_map_numbers: bool,
 ) -> set[str]:
-    kwargs: dict[str, Any] = {
-        "isomericSmiles": isomeric_smiles,
-        "kekuleSmiles": kekule_smiles,
-        "canonical": False,
-        "allBondsExplicit": all_bonds_explicit,
-        "allHsExplicit": all_hs_explicit,
-        "doRandom": True,
-        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
-    }
-    if rooted_at_atom is not None:
-        kwargs["rootedAtAtom"] = rooted_at_atom
+    kwargs = _writer_kwargs(
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+        do_random=True,
+    )
     return set(grimace.MolToSmilesEnum(mol, **kwargs))
 
 
@@ -145,17 +168,15 @@ def _rdkit_expected(
     all_hs_explicit: bool,
     ignore_atom_map_numbers: bool,
 ) -> str:
-    kwargs: dict[str, Any] = {
-        "isomericSmiles": isomeric_smiles,
-        "kekuleSmiles": kekule_smiles,
-        "canonical": False,
-        "allBondsExplicit": all_bonds_explicit,
-        "allHsExplicit": all_hs_explicit,
-        "doRandom": False,
-        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
-    }
-    if rooted_at_atom is not None:
-        kwargs["rootedAtAtom"] = rooted_at_atom
+    kwargs = _writer_kwargs(
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+        do_random=False,
+    )
     return Chem.MolToSmiles(Chem.Mol(mol), **kwargs)
 
 
@@ -174,17 +195,15 @@ def _sample_rdkit_support(
     seed: int,
 ) -> tuple[set[str], int, bool]:
     rdBase.SeedRandomNumberGenerator(seed)
-    kwargs: dict[str, Any] = {
-        "isomericSmiles": isomeric_smiles,
-        "kekuleSmiles": kekule_smiles,
-        "canonical": False,
-        "allBondsExplicit": all_bonds_explicit,
-        "allHsExplicit": all_hs_explicit,
-        "doRandom": True,
-        "ignoreAtomMapNumbers": ignore_atom_map_numbers,
-    }
-    if rooted_at_atom is not None:
-        kwargs["rootedAtAtom"] = rooted_at_atom
+    kwargs = _writer_kwargs(
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+        do_random=True,
+    )
 
     sampled: set[str] = set()
     draw_count = 0

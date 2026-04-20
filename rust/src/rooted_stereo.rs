@@ -1059,6 +1059,11 @@ fn forced_shared_candidate_neighbor(
         return None;
     }
 
+    // When exactly one candidate edge is shared with another side of the same
+    // coupled component, the unresolved phase often has to flow through that
+    // shared edge first so both sides stay phase-compatible. Once the component
+    // phase is known, stop forcing if that edge is still contested by another
+    // two-candidate side; that later side may need to own the visible token.
     let shared_neighbors = side_info
         .candidate_neighbors
         .iter()
@@ -1115,6 +1120,10 @@ fn should_defer_known_shared_two_candidate_side_commit(
         return false;
     }
 
+    // After the coupled component phase is known, do not let the first side
+    // that reaches a shared two-candidate edge lock in the carrier. Defer here
+    // and let the later side emit the token if that edge is still shared inside
+    // the same component.
     edge_to_side_ids
         .get(&canonical_edge(side_info.endpoint_atom_idx, neighbor_idx))
         .into_iter()
@@ -1177,6 +1186,13 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
+            // The ordering matters:
+            // 1. If a known-phase shared edge is still contested, defer here.
+            // 2. Otherwise, if the unresolved component must flow through one
+            //    shared candidate to stay coherent, force that candidate.
+            // 3. Otherwise, if this is the unique terminal candidate on an
+            //    unresolved two-candidate side, defer until the more
+            //    informative non-terminal candidate appears.
             if should_defer_known_shared_two_candidate_side_commit(
                 side_infos,
                 edge_to_side_ids,

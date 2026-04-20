@@ -55,6 +55,15 @@ class RDKITWriterFlagTests(unittest.TestCase):
 
         assert_exact_writer_case_in_grimace_support(self, case)
 
+    def test_coupled_diphenyl_diene_exact_writer_is_member_of_support(self) -> None:
+        case = ExactWriterCase(
+            smiles="C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1",
+            expected="C/C=C(C(=C/C)/c1ccccc1)\\c1ccccc1",
+            isomeric_smiles=True,
+        )
+
+        assert_exact_writer_case_in_grimace_support(self, case)
+
 
 if __name__ == "__main__":
     unittest.main()

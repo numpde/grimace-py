@@ -324,6 +324,26 @@ class RootedConnectedStereoTests(unittest.TestCase):
                 self.assertIn(expected, observed)
                 _assert_support_valid(self, mol, self.policy, root_idx, observed)
 
+    def test_dataset_regression_coupled_diphenyl_diene_terminal_rooted_outputs_are_in_support(self) -> None:
+        mol = parse_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\\\c1ccccc1")
+
+        for root_idx in (0, 1, 4, 5):
+            with self.subTest(root_idx=root_idx):
+                expected = Chem.MolToSmiles(
+                    Chem.Mol(mol),
+                    rootedAtAtom=root_idx,
+                    canonical=False,
+                    doRandom=False,
+                    isomericSmiles=True,
+                )
+                observed = enumerate_rooted_connected_stereo_smiles_support(
+                    mol,
+                    root_idx,
+                    self.policy,
+                )
+                self.assertIn(expected, observed)
+                _assert_support_valid(self, mol, self.policy, root_idx, observed)
+
     def test_dataset_regression_terminal_methyl_root_preserves_isolated_stereo_choice(self) -> None:
         mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
         expected = "CC(/C=C/C=C(/C=C/C1=C(C)CCCC1(C)C)C)=C\\C(=O)O"

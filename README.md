@@ -30,6 +30,7 @@ Current entrypoints:
 
 - `MolToSmilesEnum(...)`
 - `MolToSmilesDecoder(...)`
+- `MolToSmilesDeterminizedDecoder(...)`
 - `MolToSmilesTokenInventory(...)`
 
 Both use the compiled Rust extension. There is no public runtime fallback.
@@ -72,29 +73,35 @@ while not decoder.is_terminal:
     decoder = decoder.next_choices[0].next_state
 ```
 
-Expected output:
+Expected output from that exact snippet:
 
 ```text
 -> ['C']
 C -> ['C']
-CC -> ['(']
-CC( -> ['=', 'O']
+CC -> ['(', '(']
+CC( -> ['=']
 CC(= -> ['O']
 CC(=O -> [')']
-...
+CC(=O) -> ['O']
+CC(=O)O -> ['c']
+CC(=O)Oc -> ['1', '1']
 CC(=O)Oc1 -> ['c']
-CC(=O)Oc1c -> ['(', '(']
-CC(=O)Oc1c( -> ['C']
-CC(=O)Oc1c(C -> ['(']
-CC(=O)Oc1c(C( -> ['=', 'O']
-CC(=O)Oc1c(C(= -> ['O']
-CC(=O)Oc1c(C(=O -> [')']
-...
-CC(=O)Oc1c(C(=O)O)cccc -> ['1']
+CC(=O)Oc1c -> ['c']
+CC(=O)Oc1cc -> ['c']
+CC(=O)Oc1ccc -> ['c']
+CC(=O)Oc1cccc -> ['c']
+CC(=O)Oc1ccccc -> ['1']
+CC(=O)Oc1ccccc1 -> ['C']
+CC(=O)Oc1ccccc1C -> ['(', '(']
+CC(=O)Oc1ccccc1C( -> ['=']
+CC(=O)Oc1ccccc1C(= -> ['O']
+CC(=O)Oc1ccccc1C(=O -> [')']
+CC(=O)Oc1ccccc1C(=O) -> ['O']
 ```
 
-The decoder is online. It does not precompute one fixed trajectory. At each
-step it exposes the legal next choices for the current emitted prefix.
+This transcript follows `next_choices[0]` at each step. The decoder is online.
+It does not precompute one fixed trajectory. At each step it exposes the legal
+next choices for the current emitted prefix.
 
 The decoder is branch-preserving, not a determinized frontier decoder. Here
 "branch-preserving" means `next_choices` may contain multiple choices with the
@@ -110,6 +117,44 @@ determinization into the runtime.
 
 As a consequence, two decoder states may share the same `prefix` but expose
 different `next_choices`, depending on which earlier branch led there.
+
+`MolToSmilesDeterminizedDecoder(...)` is the merged alternative. It exposes at
+most one choice per token text by merging same-text continuations into one
+combined successor state. Use it when you want prefix-level next-token choices
+without preserving branch identity.
+
+For example, the unrooted determinized decoder can trace one exact route to
+`c1(ccccc1OC(=O)C)C(O)=O` for aspirin:
+
+```python
+route = [
+    "c", "1", "(", "c", "c", "c", "c", "c", "1",
+    "O", "C", "(", "=", "O", ")", "C", ")",
+    "C", "(", "O", ")", "=", "O",
+]
+
+decoder = grimace.MolToSmilesDeterminizedDecoder(
+    mol,
+    rootedAtAtom=-1,
+    isomericSmiles=False,
+    canonical=False,
+    doRandom=True,
+)
+
+for token in route:
+    choices = {choice.text: choice.next_state for choice in decoder.next_choices}
+    decoder = choices[token]
+
+assert decoder.is_terminal
+assert decoder.prefix == "".join(route)
+```
+
+The merged early decisions on that route are:
+
+- `""`: choose `"c"` from `["C", "O", "c"]`
+- `"c1"`: choose `"("` from `["(", "c"]`
+- `"c1("`: choose `"c"` from `["O", "c", "C"]`
+- `"c1(ccccc1"`: choose `"O"` from `["C", "O"]`
 
 Here a "token" means one string emitted by one decoder transition. Tokens are
 defined by the walker itself, not by splitting a finished SMILES into

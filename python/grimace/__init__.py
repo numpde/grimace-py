@@ -81,8 +81,9 @@ def MolToSmilesTokenInventory(
     )
 
 
-class MolToSmilesDecoder:
+class _PublicDecoderBase:
     __slots__ = ("_impl",)
+    _impl_name: str
 
     def __init__(
         self,
@@ -98,7 +99,7 @@ class MolToSmilesDecoder:
         ignoreAtomMapNumbers: bool = False,
     ) -> None:
         runtime = _require_runtime()
-        self._impl = runtime.MolToSmilesDecoder(
+        self._impl = getattr(runtime, type(self)._impl_name)(
             mol,
             isomeric_smiles=isomericSmiles,
             kekule_smiles=kekuleSmiles,
@@ -111,7 +112,7 @@ class MolToSmilesDecoder:
         )
 
     @classmethod
-    def _from_impl(cls, impl: object) -> "MolToSmilesDecoder":
+    def _from_impl(cls, impl: object) -> "_PublicDecoderBase":
         decoder = cls.__new__(cls)
         decoder._impl = impl
         return decoder
@@ -119,7 +120,8 @@ class MolToSmilesDecoder:
     @property
     def next_choices(self) -> tuple["MolToSmilesChoice", ...]:
         return tuple(
-            MolToSmilesChoice._from_impl(choice_impl) for choice_impl in self._impl.choices()
+            MolToSmilesChoice._from_impl(choice_impl, decoder_cls=type(self))
+            for choice_impl in self._impl.choices()
         )
 
     @property
@@ -130,17 +132,31 @@ class MolToSmilesDecoder:
     def is_terminal(self) -> bool:
         return self._impl.is_terminal
 
-    def copy(self) -> "MolToSmilesDecoder":
+    def copy(self) -> "_PublicDecoderBase":
         return type(self)._from_impl(self._impl.copy())
 
 
+class MolToSmilesDecoder(_PublicDecoderBase):
+    _impl_name = "MolToSmilesDecoder"
+
+
+class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
+    _impl_name = "MolToSmilesDeterminizedDecoder"
+
+
 class MolToSmilesChoice:
-    __slots__ = ("_impl",)
+    __slots__ = ("_decoder_cls", "_impl")
 
     @classmethod
-    def _from_impl(cls, impl: object) -> "MolToSmilesChoice":
+    def _from_impl(
+        cls,
+        impl: object,
+        *,
+        decoder_cls: type[_PublicDecoderBase],
+    ) -> "MolToSmilesChoice":
         choice = cls.__new__(cls)
         choice._impl = impl
+        choice._decoder_cls = decoder_cls
         return choice
 
     @property
@@ -148,13 +164,14 @@ class MolToSmilesChoice:
         return self._impl.text
 
     @property
-    def next_state(self) -> MolToSmilesDecoder:
-        return MolToSmilesDecoder._from_impl(self._impl.next_state)
+    def next_state(self) -> _PublicDecoderBase:
+        return self._decoder_cls._from_impl(self._impl.next_state)
 
 
 __all__ = [
     "MolToSmilesChoice",
     "MolToSmilesDecoder",
+    "MolToSmilesDeterminizedDecoder",
     "MolToSmilesEnum",
     "MolToSmilesTokenInventory",
 ]

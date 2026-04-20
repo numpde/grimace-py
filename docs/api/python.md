@@ -7,6 +7,7 @@ The only supported public Python API is `grimace`.
 Current top-level exports:
 
 - `MolToSmilesDecoder`
+- `MolToSmilesDeterminizedDecoder`
 - `MolToSmilesEnum`
 - `MolToSmilesTokenInventory`
 
@@ -96,7 +97,37 @@ Available interface:
 Each `MolToSmilesChoice` has:
 
 - `text: str`
-- `next_state: MolToSmilesDecoder`
+- `next_state`: the same decoder class as the parent choice came from
+
+## MolToSmilesDeterminizedDecoder
+
+`MolToSmilesDeterminizedDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+
+This is the merged alternative to `MolToSmilesDecoder(...)`. It accepts the
+same flags and current limits, but it returns at most one next choice per token
+text by merging same-text continuations into one successor state.
+
+```python
+decoder = grimace.MolToSmilesDeterminizedDecoder(
+    mol,
+    rootedAtAtom=9,
+    isomericSmiles=False,
+    canonical=False,
+    doRandom=True,
+)
+decoder = decoder.next_choices[0].next_state  # 'c'
+decoder = decoder.next_choices[0].next_state  # 'c1'
+decoder = decoder.next_choices[0].next_state  # 'c1('
+
+[choice.text for choice in decoder.next_choices]  # ['C', 'c']
+```
+
+Available interface:
+
+- `next_choices: tuple[MolToSmilesChoice, ...]`
+- `prefix: str`
+- `is_terminal: bool`
+- `copy() -> MolToSmilesDeterminizedDecoder`
 
 ## Decoder model
 
@@ -134,10 +165,17 @@ Public semantic choice:
 - two decoder states may therefore share the same `prefix` while exposing
   different `next_choices`
 
+- `MolToSmilesDeterminizedDecoder(...)` is determinized
+- same-text continuations are merged into one combined successor state
+- this gives at most one public choice per token text
+- the merged successor can still represent many underlying branches
+
 So:
 
 - `MolToSmilesEnum(...)` gives exact full support
 - `MolToSmilesDecoder(...)` lets you step through that support one token at a time
+- `MolToSmilesDeterminizedDecoder(...)` lets you step through the same support
+  with same-text branches merged
 
 ## MolToSmilesTokenInventory
 

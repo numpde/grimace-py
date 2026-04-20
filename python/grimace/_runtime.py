@@ -667,7 +667,23 @@ def _make_disconnected_decoder(
     return _DisconnectedStateAdapter(fragment_states)
 
 
-class MolToSmilesDecoder:
+def _make_decoder_state_impl(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> object:
+    if _is_disconnected_molecule(mol_or_prepared):
+        return _make_disconnected_decoder(cast(Chem.Mol, mol_or_prepared), flags)
+    if flags.rooted_at_atom < 0:
+        return _make_fragment_state_adapter(
+            mol_or_prepared,
+            flags=flags,
+            rooted_at_atom=None,
+        )
+    return _make_connected_state_adapter(mol_or_prepared, flags)
+
+
+class _PublicDecoderBase:
     __slots__ = ("_state",)
 
     def __init__(
@@ -694,34 +710,16 @@ class MolToSmilesDecoder:
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
         _validate_supported_flags(flags)
-        if _is_disconnected_molecule(mol_or_prepared):
-            self._state = _make_disconnected_decoder(cast(Chem.Mol, mol_or_prepared), flags)
-        elif flags.rooted_at_atom < 0:
-            self._state = _make_fragment_state_adapter(
-                mol_or_prepared,
-                flags=flags,
-                rooted_at_atom=None,
-            )
-        else:
-            self._state = _make_connected_state_adapter(mol_or_prepared, flags)
+        self._state = _make_decoder_state_impl(mol_or_prepared, flags=flags)
 
     @classmethod
     def _from_parts(
         cls,
         state_impl: object,
-    ) -> "MolToSmilesDecoder":
+    ) -> "_PublicDecoderBase":
         decoder = cls.__new__(cls)
         decoder._state = state_impl
         return decoder
-
-    def choices(self) -> tuple[_ChoiceImpl, ...]:
-        return tuple(
-            _ChoiceImpl(
-                text=choice.text,
-                next_state=type(self)._from_parts(choice.next_state),
-            )
-            for choice in self._state.choices()
-        )
 
     @property
     def prefix(self) -> str:
@@ -731,8 +729,30 @@ class MolToSmilesDecoder:
     def is_terminal(self) -> bool:
         return self._state.is_terminal()
 
-    def copy(self) -> "MolToSmilesDecoder":
+    def copy(self) -> "_PublicDecoderBase":
         return type(self)._from_parts(self._state.copy())
+
+
+class MolToSmilesDecoder(_PublicDecoderBase):
+    def choices(self) -> tuple[_ChoiceImpl, ...]:
+        return tuple(
+            _ChoiceImpl(
+                text=choice.text,
+                next_state=type(self)._from_parts(choice.next_state),
+            )
+            for choice in self._state.choices()
+        )
+
+
+class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
+    def choices(self) -> tuple[_ChoiceImpl, ...]:
+        return tuple(
+            _ChoiceImpl(
+                text=text,
+                next_state=type(self)._from_parts(successor),
+            )
+            for text, successor in _determinized_choice_successors(self._state)
+        )
 
 
 def _token_inventory_root_indices(
@@ -996,6 +1016,7 @@ __all__ = [
     "CONNECTED_NONSTEREO_SURFACE",
     "CONNECTED_STEREO_SURFACE",
     "MolToSmilesDecoder",
+    "MolToSmilesDeterminizedDecoder",
     "MolToSmilesFlags",
     "PREPARED_SMILES_GRAPH_SCHEMA_VERSION",
     "enumerate_rooted_connected_nonstereo_smiles_support",

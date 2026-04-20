@@ -5,6 +5,7 @@ import random
 import unittest
 
 import grimace
+from rdkit import Chem
 from grimace import _runtime
 from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.kernel import CORE_MODULE
@@ -112,6 +113,22 @@ class PublicDecoderTests(unittest.TestCase):
             ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
         )
 
+    def _make_determinized_decoder(
+        self,
+        case: DecoderCase,
+    ) -> grimace.MolToSmilesDeterminizedDecoder:
+        return grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles(case.smiles),
+            isomericSmiles=case.isomeric_smiles,
+            kekuleSmiles=case.kekule_smiles,
+            rootedAtAtom=case.rooted_at_atom,
+            canonical=False,
+            allBondsExplicit=case.all_bonds_explicit,
+            allHsExplicit=case.all_hs_explicit,
+            doRandom=True,
+            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+        )
+
     def _enumerate_outputs(self, case: DecoderCase) -> set[str]:
         return set(
             grimace.MolToSmilesEnum(
@@ -128,20 +145,29 @@ class PublicDecoderTests(unittest.TestCase):
         )
 
     def _atom_tokens(self, case: DecoderCase) -> tuple[str, ...]:
-        prepared = _runtime.prepare_smiles_graph(
-            parse_smiles(case.smiles),
-            flags=_runtime.MolToSmilesFlags(
-                isomeric_smiles=case.isomeric_smiles,
-                kekule_smiles=case.kekule_smiles,
-                rooted_at_atom=case.rooted_at_atom,
-                canonical=False,
-                all_bonds_explicit=case.all_bonds_explicit,
-                all_hs_explicit=case.all_hs_explicit,
-                do_random=True,
-                ignore_atom_map_numbers=case.ignore_atom_map_numbers,
-            ),
+        mol = parse_smiles(case.smiles)
+        flags = _runtime.MolToSmilesFlags(
+            isomeric_smiles=case.isomeric_smiles,
+            kekule_smiles=case.kekule_smiles,
+            rooted_at_atom=case.rooted_at_atom,
+            canonical=False,
+            all_bonds_explicit=case.all_bonds_explicit,
+            all_hs_explicit=case.all_hs_explicit,
+            do_random=True,
+            ignore_atom_map_numbers=case.ignore_atom_map_numbers,
         )
-        return tuple(prepared.atom_tokens)
+        if len(Chem.GetMolFrags(mol)) == 1:
+            prepared = _runtime.prepare_smiles_graph(mol, flags=flags)
+            return tuple(prepared.atom_tokens)
+
+        atom_tokens: set[str] = set()
+        for fragment_mol in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False):
+            prepared = _runtime.prepare_smiles_graph(
+                fragment_mol,
+                flags=flags.with_rooted_at_atom(0),
+            )
+            atom_tokens.update(prepared.atom_tokens)
+        return tuple(sorted(atom_tokens))
 
     @staticmethod
     def _choice_texts(decoder: grimace.MolToSmilesDecoder) -> tuple[str, ...]:
@@ -153,7 +179,7 @@ class PublicDecoderTests(unittest.TestCase):
 
     @staticmethod
     def _reachable_outputs_from_decoder(
-        decoder: grimace.MolToSmilesDecoder,
+        decoder: object,
         *,
         memo: dict[str, frozenset[str]] | None = None,
     ) -> frozenset[str]:
@@ -366,6 +392,179 @@ class PublicDecoderTests(unittest.TestCase):
             },
             branch_supports,
         )
+
+    def test_determinized_decoder_collapses_connected_duplicate_same_text_choices(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("C1CCC2=NN=NN2CC1"),
+            rootedAtAtom=2,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        while decoder.prefix != "C1CCCCn":
+            choices = decoder.next_choices
+            self.assertTrue(choices)
+            decoder = choices[0].next_state
+
+        self.assertEqual(("2",), self._choice_texts(decoder))
+        merged_outputs = self._reachable_outputs_from_decoder(decoder.next_choices[0].next_state)
+        self.assertEqual(
+            frozenset({"C1CCCCn2c1nnn2", "C1CCCCn2nnnc12", "C1CCCCn2nnnc21"}),
+            merged_outputs,
+        )
+
+    def test_determinized_decoder_exposes_visible_divergence_after_same_text_merge(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("CC(=O)Oc1ccccc1C(=O)O"),
+            rootedAtAtom=9,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        self.assertEqual(("c",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("c", decoder.prefix)
+        self.assertEqual(("1",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("c1", decoder.prefix)
+        self.assertEqual(("(",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("c1(", decoder.prefix)
+        self.assertEqual(("C", "c"), self._choice_texts(decoder))
+
+    def test_determinized_decoder_supports_disconnected_visible_forks(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("[Na+].C#N"),
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        self.assertEqual(("[Na+]",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("[Na+]", decoder.prefix)
+        self.assertEqual((".",), self._choice_texts(decoder))
+        decoder = decoder.next_choices[0].next_state
+        self.assertEqual("[Na+].", decoder.prefix)
+        self.assertEqual(("C", "N"), self._choice_texts(decoder))
+
+    def test_determinized_decoder_state_audit_covers_all_reachable_states(self) -> None:
+        cases = (
+            DecoderAuditCase(
+                name="rooted_nonstereo",
+                smiles="CCO",
+                rooted_at_atom=0,
+                isomeric_smiles=False,
+            ),
+            DecoderAuditCase(
+                name="rooted_stereo",
+                smiles="F[C@H](Cl)Br",
+                rooted_at_atom=0,
+                isomeric_smiles=True,
+            ),
+            DecoderAuditCase(
+                name="disconnected_rooted",
+                smiles="[Na+].C#N",
+                rooted_at_atom=0,
+                isomeric_smiles=False,
+            ),
+            DecoderAuditCase(
+                name="duplicate_same_text_connected",
+                smiles="C1CCC2=NN=NN2CC1",
+                rooted_at_atom=2,
+                isomeric_smiles=False,
+            ),
+            DecoderAuditCase(
+                name="merged_then_visible_divergence",
+                smiles="CC(=O)Oc1ccccc1C(=O)O",
+                rooted_at_atom=9,
+                isomeric_smiles=False,
+            ),
+        )
+
+        for case in cases:
+            mol = parse_smiles(case.smiles)
+            kwargs = dict(
+                isomericSmiles=case.isomeric_smiles,
+                kekuleSmiles=case.kekule_smiles,
+                canonical=False,
+                allBondsExplicit=case.all_bonds_explicit,
+                allHsExplicit=case.all_hs_explicit,
+                doRandom=True,
+                ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+            )
+            if case.rooted_at_atom is not None:
+                kwargs["rootedAtAtom"] = case.rooted_at_atom
+            outputs = frozenset(grimace.MolToSmilesEnum(mol, **kwargs))
+            decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)
+            memo: dict[str, frozenset[str]] = {}
+            seen_state_keys: set[str] = set()
+            stack = [decoder._impl._state]
+            audited_state_count = 0
+
+            with self.subTest(case=case.name, smiles=case.smiles):
+                while stack:
+                    state = stack.pop()
+                    state_key = _runtime._state_cache_key(state)
+                    if state_key in seen_state_keys:
+                        continue
+                    seen_state_keys.add(state_key)
+                    audited_state_count += 1
+
+                    reachable = _runtime._reachable_terminal_prefixes(state, memo=memo)
+                    prefix = state.prefix()
+                    grouped_successors = _runtime._determinized_choice_successors(state)
+                    option_texts = tuple(text for text, _ in grouped_successors)
+
+                    self.assertTrue(reachable)
+                    self.assertTrue(reachable <= outputs)
+                    self.assertTrue(all(output.startswith(prefix) for output in reachable))
+
+                    if state.is_terminal():
+                        self.assertEqual((), grouped_successors)
+                        self.assertEqual(frozenset({prefix}), reachable)
+                        continue
+
+                    self.assertTrue(grouped_successors)
+                    assert_prefix_options_match_outputs(
+                        self,
+                        prefix,
+                        option_texts,
+                        reachable,
+                        atom_tokens=self._atom_tokens(
+                            DecoderCase(
+                                name=case.name,
+                                smiles=case.smiles,
+                                rooted_at_atom=0 if case.rooted_at_atom is None else case.rooted_at_atom,
+                                isomeric_smiles=case.isomeric_smiles,
+                                kekule_smiles=case.kekule_smiles,
+                                all_bonds_explicit=case.all_bonds_explicit,
+                                all_hs_explicit=case.all_hs_explicit,
+                                ignore_atom_map_numbers=case.ignore_atom_map_numbers,
+                            )
+                        ),
+                    )
+
+                    union_of_branch_outputs: set[str] = set()
+                    for _, successor in grouped_successors:
+                        branch_outputs = _runtime._reachable_terminal_prefixes(
+                            successor,
+                            memo=memo,
+                        )
+                        self.assertTrue(branch_outputs)
+                        self.assertTrue(branch_outputs <= reachable)
+                        self.assertTrue(
+                            all(output.startswith(successor.prefix()) for output in branch_outputs)
+                        )
+                        union_of_branch_outputs.update(branch_outputs)
+                        stack.append(successor)
+
+                    self.assertEqual(reachable, frozenset(union_of_branch_outputs))
+
+                self.assertGreater(audited_state_count, 0)
 
     def test_decoder_state_audit_covers_all_reachable_states(self) -> None:
         cases = (

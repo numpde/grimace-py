@@ -1043,6 +1043,38 @@ fn should_defer_unknown_two_candidate_side_commit(
     terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
 }
 
+fn forced_shared_candidate_neighbor(
+    side_infos: &[StereoSideInfo],
+    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
+    side_idx: usize,
+) -> Option<usize> {
+    let side_info = &side_infos[side_idx];
+    if side_info.candidate_neighbors.len() != 2 {
+        return None;
+    }
+
+    let shared_neighbors = side_info
+        .candidate_neighbors
+        .iter()
+        .copied()
+        .filter(|&neighbor_idx| {
+            edge_to_side_ids
+                .get(&canonical_edge(side_info.endpoint_atom_idx, neighbor_idx))
+                .into_iter()
+                .flatten()
+                .copied()
+                .any(|other_side_idx| {
+                    other_side_idx != side_idx
+                        && side_infos[other_side_idx].component_idx == side_info.component_idx
+                })
+        })
+        .collect::<Vec<_>>();
+    if shared_neighbors.len() != 1 {
+        return None;
+    }
+    Some(shared_neighbors[0])
+}
+
 fn emitted_edge_part_generic(
     graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
@@ -1093,6 +1125,11 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
+            let forced_neighbor =
+                forced_shared_candidate_neighbor(side_infos, edge_to_side_ids, side_idx);
+            if forced_neighbor.is_some() && forced_neighbor != Some(neighbor_idx) {
+                continue;
+            }
             if should_defer_unknown_two_candidate_side_commit(
                 graph,
                 side_info,
@@ -1511,11 +1548,20 @@ fn inferred_component_token_flip(
             if !isolated && begin_side.candidate_neighbors.len() == 2 {
                 let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
                 let first_neighbor_idx = state.stereo_first_emitted_candidates[begin_side_idx];
+                let selected_orientation = state.stereo_selected_orientations[begin_side_idx];
                 if selected_neighbor_idx >= 0 && first_neighbor_idx >= 0 {
-                    return Ok(Some(if first_neighbor_idx == selected_neighbor_idx {
-                        STORED_COMPONENT_TOKEN_FLIP
-                    } else {
+                    let selected_neighbor_idx = selected_neighbor_idx as usize;
+                    let selected_base_token =
+                        candidate_base_token(begin_side, selected_neighbor_idx)?;
+                    let selected_first =
+                        first_neighbor_idx == state.stereo_selected_neighbors[begin_side_idx];
+                    let invert_selected_first =
+                        selected_orientation == BEFORE_ATOM_EDGE_ORIENTATION
+                            && selected_base_token == "/";
+                    return Ok(Some(if selected_first == invert_selected_first {
                         FLIPPED_COMPONENT_TOKEN_FLIP
+                    } else {
+                        STORED_COMPONENT_TOKEN_FLIP
                     }));
                 }
                 return Ok(None);

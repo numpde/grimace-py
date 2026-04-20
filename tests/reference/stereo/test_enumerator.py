@@ -204,6 +204,24 @@ class RootedConnectedStereoTests(unittest.TestCase):
         self.assertEqual(sampled, observed)
         _assert_support_valid(self, mol, self.policy, 11, observed)
 
+    def test_rooted_polyene_internal_branch_carrier_case_matches_high_draw_rdkit_samples(self) -> None:
+        mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
+        observed = enumerate_rooted_connected_stereo_smiles_support(
+            mol,
+            12,
+            self.policy,
+        )
+        sampled = _sample_rooted_rdkit_support(
+            mol,
+            self.policy,
+            12,
+            draws=5000,
+        )
+
+        self.assertEqual(80, len(sampled))
+        self.assertEqual(sampled, observed)
+        _assert_support_valid(self, mol, self.policy, 12, observed)
+
     def test_branched_and_hetero_bond_stereo_cases_match_rooted_rdkit_samples(self) -> None:
         cases = (
             "C/C=C(\\C)/C(=O)O",
@@ -256,6 +274,32 @@ class RootedConnectedStereoTests(unittest.TestCase):
             self.policy,
         )
         self.assertIn(expected, observed)
+
+    def test_dataset_regression_steroid_ring_coupled_component_matches_rooted_rdkit_samples(self) -> None:
+        mol = parse_smiles(
+            "C[C@H](/C=C/[C@H](C)C(C)C)[C@H]1CC[C@@H]\\\\2"
+            "[C@@]1(CCC/C2=C\\\\C=C/3\\\\C[C@H](CCC3=C)O)C"
+        )
+        observed = enumerate_rooted_connected_stereo_smiles_support(
+            mol,
+            0,
+            self.policy,
+        )
+        # These two rooted outputs differ only in the coupled begin-side token
+        # family. The first was observed in RDKit samples and was missing before
+        # the coupled-component fix; the second is the prior wrong-family form.
+        expected = (
+            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
+            "/C=C/[C@@H](C(C)C)C"
+        )
+        rejected = (
+            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)\\C(=C\\C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
+            "/C=C/[C@@H](C(C)C)C"
+        )
+
+        self.assertIn(expected, observed)
+        self.assertNotIn(rejected, observed)
+        _assert_support_valid(self, mol, self.policy, 0, observed)
 
     def test_dataset_regression_terminal_methyl_root_preserves_isolated_stereo_choice(self) -> None:
         mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")

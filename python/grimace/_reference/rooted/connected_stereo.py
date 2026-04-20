@@ -761,6 +761,32 @@ def _should_defer_unknown_two_candidate_side_commit(
     return len(terminal_candidates) == 1 and neighbor_idx == terminal_candidates[0]
 
 
+def _forced_shared_candidate_neighbor(
+    side_infos: tuple[StereoSideInfo, ...],
+    edge_to_side_ids: dict[tuple[int, int], tuple[int, ...]],
+    side_idx: int,
+) -> int | None:
+    side_info = side_infos[side_idx]
+    if len(side_info.candidate_neighbors) != 2:
+        return None
+
+    shared_neighbors = tuple(
+        neighbor_idx
+        for neighbor_idx in side_info.candidate_neighbors
+        if any(
+            other_side_idx != side_idx
+            and side_infos[other_side_idx].component_idx == side_info.component_idx
+            for other_side_idx in edge_to_side_ids.get(
+                _canonical_edge(side_info.endpoint_atom_idx, neighbor_idx),
+                (),
+            )
+        )
+    )
+    if len(shared_neighbors) != 1:
+        return None
+    return shared_neighbors[0]
+
+
 def _emitted_edge_part_generic(
     prepared: PreparedSmilesGraph,
     side_infos: tuple[StereoSideInfo, ...],
@@ -811,6 +837,13 @@ def _emitted_edge_part_generic(
 
         selected_neighbor = updated_neighbors[side_idx]
         if selected_neighbor < 0:
+            forced_neighbor = _forced_shared_candidate_neighbor(
+                side_infos,
+                edge_to_side_ids,
+                side_idx,
+            )
+            if forced_neighbor is not None and neighbor_idx != forced_neighbor:
+                continue
             if _should_defer_unknown_two_candidate_side_commit(
                 prepared,
                 side_info,
@@ -1177,19 +1210,20 @@ def _coupled_begin_side_flips(
             continue
 
         stored_token = _candidate_base_token(begin_side, selected_neighbor_idx)
-        if result.stereo_selected_orientations[begin_side_idx] == _BEFORE_ATOM_EDGE_ORIENTATION:
-            stored_token = _flip_direction_token(stored_token)
         phase = result.stereo_component_phases[component_idx]
         resolved_token = (
             stored_token
             if phase in {_UNKNOWN_COMPONENT_PHASE, _STORED_COMPONENT_PHASE}
             else _flip_direction_token(stored_token)
         )
-        desired_token = (
-            stored_token
-            if first_neighbor_idx == selected_neighbor_idx
-            else _flip_direction_token(stored_token)
+        invert_selected_first = (
+            result.stereo_selected_orientations[begin_side_idx]
+            == _BEFORE_ATOM_EDGE_ORIENTATION
+            and _candidate_base_token(begin_side, selected_neighbor_idx) == "/"
         )
+        desired_token = stored_token
+        if (first_neighbor_idx == selected_neighbor_idx) == invert_selected_first:
+            desired_token = _flip_direction_token(stored_token)
         flips[component_idx] = desired_token != resolved_token
     return tuple(flips)
 

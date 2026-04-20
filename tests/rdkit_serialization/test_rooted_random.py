@@ -72,6 +72,50 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
             ),
         )
 
+    def test_rooted_polyene_internal_branch_carrier_case_matches_high_draw_rdkit_support(self) -> None:
+        mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
+        expected = sample_rdkit_random_support(
+            mol,
+            root_idx=12,
+            isomeric_smiles=True,
+            draw_budget=5000,
+        )
+
+        self.assertEqual(80, len(expected))
+        self.assertEqual(
+            expected,
+            grimace_support(
+                mol,
+                rooted_at_atom=12,
+                isomeric_smiles=True,
+            ),
+        )
+
+    def test_rooted_steroid_ring_coupled_stereo_case_matches_high_draw_rdkit_support(self) -> None:
+        mol = parse_smiles(
+            "C[C@H](/C=C/[C@H](C)C(C)C)[C@H]1CC[C@@H]\\\\2"
+            "[C@@]1(CCC/C2=C\\\\C=C/3\\\\C[C@H](CCC3=C)O)C"
+        )
+        support = grimace_support(
+            mol,
+            rooted_at_atom=0,
+            isomeric_smiles=True,
+        )
+        # These two rooted outputs differ only in the coupled begin-side token
+        # family. The first was observed in RDKit samples and was missing before
+        # the coupled-component fix; the second is the prior wrong-family form.
+        expected = (
+            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
+            "/C=C/[C@@H](C(C)C)C"
+        )
+        rejected = (
+            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)\\C(=C\\C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
+            "/C=C/[C@@H](C(C)C)C"
+        )
+
+        self.assertIn(expected, support)
+        self.assertNotIn(rejected, support)
+
 
 if __name__ == "__main__":
     unittest.main()

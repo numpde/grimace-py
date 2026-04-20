@@ -344,6 +344,27 @@ class RootedConnectedStereoTests(unittest.TestCase):
                 self.assertIn(expected, observed)
                 _assert_support_valid(self, mol, self.policy, root_idx, observed)
 
+    def test_rooted_tetrasubstituted_alkene_outputs_are_in_support(self) -> None:
+        mol = parse_smiles("C/C(=C(/C)\\\\c1ccccc1)/c1ccccc1")
+        expected_by_root = {
+            1: (
+                "C(\\C)(=C(/C)c1ccccc1)c1ccccc1"
+            ),
+            2: (
+                "C(=C(/C)c1ccccc1)(\\C)c1ccccc1"
+            ),
+        }
+
+        for root_idx, expected in expected_by_root.items():
+            with self.subTest(root_idx=root_idx):
+                observed = enumerate_rooted_connected_stereo_smiles_support(
+                    mol,
+                    root_idx,
+                    self.policy,
+                )
+                self.assertIn(expected, observed)
+                _assert_support_valid(self, mol, self.policy, root_idx, observed)
+
     def test_dataset_regression_terminal_methyl_root_preserves_isolated_stereo_choice(self) -> None:
         mol = parse_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
         expected = "CC(/C=C/C=C(/C=C/C1=C(C)CCCC1(C)C)C)=C\\C(=O)O"

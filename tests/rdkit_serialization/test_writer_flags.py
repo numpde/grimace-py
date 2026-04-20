@@ -64,6 +64,38 @@ class RDKITWriterFlagTests(unittest.TestCase):
 
         assert_exact_writer_case_in_grimace_support(self, case)
 
+    def test_rooted_tetrasubstituted_alkene_explicit_writer_is_member_of_support(self) -> None:
+        cases = (
+            ExactWriterCase(
+                smiles="C/C(=C(/C)\\c1ccccc1)/c1ccccc1",
+                expected=(
+                    "[C](\\[CH3])(=[C](/[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)"
+                    "-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1"
+                ),
+                isomeric_smiles=True,
+                rooted_at_atom=1,
+                rdkit_canonical=False,
+                all_bonds_explicit=True,
+                all_hs_explicit=True,
+            ),
+            ExactWriterCase(
+                smiles="C/C(=C(/C)\\c1ccccc1)/c1ccccc1",
+                expected=(
+                    "[C](=[C](/[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)(\\[CH3])"
+                    "-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1"
+                ),
+                isomeric_smiles=True,
+                rooted_at_atom=2,
+                rdkit_canonical=False,
+                all_bonds_explicit=True,
+                all_hs_explicit=True,
+            ),
+        )
+
+        for case in cases:
+            with self.subTest(rooted_at_atom=case.rooted_at_atom, expected=case.expected):
+                assert_exact_writer_case_in_grimace_support(self, case)
+
 
 if __name__ == "__main__":
     unittest.main()

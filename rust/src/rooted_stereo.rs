@@ -52,6 +52,8 @@ struct PendingRing {
 struct DeferredDirectionalToken {
     component_idx: usize,
     stored_token: String,
+    begin_idx: isize,
+    end_idx: isize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,9 +104,18 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     stereo_selected_neighbors: Vec<isize>,
     stereo_selected_orientations: Vec<i8>,
     stereo_first_emitted_candidates: Vec<isize>,
+    stereo_component_entry_atoms: Vec<isize>,
     stereo_component_begin_atoms: Vec<isize>,
     stereo_component_token_flips: Vec<i8>,
     action_stack: Vec<WalkerAction>,
+}
+
+#[derive(Clone, Debug)]
+struct AmbiguousSharedEdgeGroup {
+    left_side_idx: usize,
+    right_side_idx: usize,
+    left_shared_neighbor: usize,
+    right_shared_neighbor: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -115,6 +126,7 @@ struct StereoWalkerRuntimeData {
     side_infos: Vec<StereoSideInfo>,
     edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
     side_ids_by_component: Vec<Vec<usize>>,
+    ambiguous_shared_edge_groups: Vec<AmbiguousSharedEdgeGroup>,
 }
 
 fn ring_label_text(label: usize) -> String {
@@ -1025,6 +1037,89 @@ fn emitted_candidate_token(
     ))
 }
 
+fn ambiguous_shared_edge_groups(
+    side_infos: &[StereoSideInfo],
+    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
+    isolated_components: &[bool],
+) -> Vec<AmbiguousSharedEdgeGroup> {
+    let mut seen_edges = BTreeSet::new();
+    let mut groups = Vec::new();
+
+    for side_info in side_infos {
+        if isolated_components[side_info.component_idx] || side_info.candidate_neighbors.len() != 2 {
+            continue;
+        }
+        for &neighbor_idx in &side_info.candidate_neighbors {
+            let edge = canonical_edge(side_info.endpoint_atom_idx, neighbor_idx);
+            if seen_edges.contains(&edge) {
+                continue;
+            }
+            let two_candidate_side_ids = edge_to_side_ids
+                .get(&edge)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|&other_side_idx| {
+                    side_infos[other_side_idx].component_idx == side_info.component_idx
+                        && side_infos[other_side_idx].candidate_neighbors.len() == 2
+                })
+                .collect::<Vec<_>>();
+            if two_candidate_side_ids.len() != 2 {
+                continue;
+            }
+            seen_edges.insert(edge);
+            let left_side_idx = two_candidate_side_ids[0];
+            let right_side_idx = two_candidate_side_ids[1];
+            let left_shared_neighbor = if side_infos[left_side_idx].endpoint_atom_idx == edge.0 {
+                edge.1
+            } else {
+                edge.0
+            };
+            let right_shared_neighbor = if side_infos[right_side_idx].endpoint_atom_idx == edge.0 {
+                edge.1
+            } else {
+                edge.0
+            };
+            groups.push(AmbiguousSharedEdgeGroup {
+                left_side_idx,
+                right_side_idx,
+                left_shared_neighbor,
+                right_shared_neighbor,
+            });
+        }
+    }
+
+    groups
+}
+
+fn with_component_entry_atom(
+    component_entry_atoms: &[isize],
+    component_idx: usize,
+    atom_idx: usize,
+) -> Vec<isize> {
+    if component_entry_atoms[component_idx] >= 0 {
+        return component_entry_atoms.to_vec();
+    }
+    let mut updated = component_entry_atoms.to_vec();
+    updated[component_idx] = atom_idx as isize;
+    updated
+}
+
+fn component_entry_atoms_after_visiting_atom(
+    runtime: &StereoWalkerRuntimeData,
+    component_entry_atoms: &[isize],
+    atom_idx: usize,
+) -> Vec<isize> {
+    let mut updated = component_entry_atoms.to_vec();
+    for side_info in &runtime.side_infos {
+        if side_info.endpoint_atom_idx != atom_idx {
+            continue;
+        }
+        updated = with_component_entry_atom(&updated, side_info.component_idx, atom_idx);
+    }
+    updated
+}
+
 fn should_defer_unknown_two_candidate_side_commit(
     graph: &PreparedSmilesGraphData,
     side_info: &StereoSideInfo,
@@ -1280,6 +1375,8 @@ fn emitted_edge_part_generic(
         Part::Deferred(DeferredDirectionalToken {
             component_idx,
             stored_token,
+            begin_idx: -1,
+            end_idx: -1,
         }),
         updated_neighbors,
         updated_orientations,
@@ -1429,6 +1526,8 @@ fn emitted_isolated_edge_part(
         Part::Deferred(DeferredDirectionalToken {
             component_idx,
             stored_token,
+            begin_idx: -1,
+            end_idx: -1,
         }),
         updated_neighbors,
         updated_orientations,
@@ -1490,18 +1589,118 @@ fn emitted_edge_part(
             end_idx,
         )
     } else {
-        emitted_edge_part_generic(
-            graph,
-            side_infos,
-            edge_to_side_ids,
-            component_phases,
-            selected_neighbors,
-            selected_orientations,
-            first_emitted_candidates,
-            begin_idx,
-            end_idx,
-        )
+        let (part, updated_neighbors, updated_orientations, updated_first_candidates) =
+            emitted_edge_part_generic(
+                graph,
+                side_infos,
+                edge_to_side_ids,
+                component_phases,
+                selected_neighbors,
+                selected_orientations,
+                first_emitted_candidates,
+                begin_idx,
+                end_idx,
+            )?;
+        if side_ids.is_empty() {
+            return Ok((
+                part,
+                updated_neighbors,
+                updated_orientations,
+                updated_first_candidates,
+            ));
+        }
+        let component_idx = side_infos[side_ids[0]].component_idx;
+        let stored_token = emitted_candidate_token(&side_infos[side_ids[0]], begin_idx, end_idx)?;
+        for &side_idx in &side_ids[1..] {
+            let side_info = &side_infos[side_idx];
+            if side_info.component_idx != component_idx {
+                return Err(PyValueError::new_err(
+                    "Carrier edge unexpectedly spans multiple stereo components",
+                ));
+            }
+            let side_token = emitted_candidate_token(side_info, begin_idx, end_idx)?;
+            if side_token != stored_token {
+                return Err(PyValueError::new_err(
+                    "Carrier edge received conflicting stereo token assignments",
+                ));
+            }
+        }
+        Ok((
+            Part::Deferred(DeferredDirectionalToken {
+                component_idx,
+                stored_token,
+                begin_idx: begin_idx as isize,
+                end_idx: end_idx as isize,
+            }),
+            updated_neighbors,
+            updated_orientations,
+            updated_first_candidates,
+        ))
     }
+}
+
+fn resolved_selected_neighbors(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> Vec<isize> {
+    let mut selected_neighbors = state.stereo_selected_neighbors.clone();
+
+    for group in &runtime.ambiguous_shared_edge_groups {
+        let left_saw_shared_first =
+            state.stereo_first_emitted_candidates[group.left_side_idx] == group.left_shared_neighbor as isize;
+        let right_saw_shared_first =
+            state.stereo_first_emitted_candidates[group.right_side_idx] == group.right_shared_neighbor as isize;
+
+        if left_saw_shared_first && right_saw_shared_first {
+            let component_idx = runtime.side_infos[group.left_side_idx].component_idx;
+            let entry_atom_idx = state.stereo_component_entry_atoms[component_idx];
+            if entry_atom_idx
+                == runtime.side_infos[group.left_side_idx].endpoint_atom_idx as isize
+                || entry_atom_idx
+                    == runtime.side_infos[group.right_side_idx].endpoint_atom_idx as isize
+            {
+                selected_neighbors[group.left_side_idx] = group.left_shared_neighbor as isize;
+                selected_neighbors[group.right_side_idx] = group.right_shared_neighbor as isize;
+            } else {
+                selected_neighbors[group.left_side_idx] = runtime.side_infos[group.left_side_idx]
+                    .candidate_neighbors
+                    .iter()
+                    .copied()
+                    .find(|&neighbor_idx| neighbor_idx != group.left_shared_neighbor)
+                    .unwrap_or(group.left_shared_neighbor) as isize;
+                selected_neighbors[group.right_side_idx] = runtime.side_infos[group.right_side_idx]
+                    .candidate_neighbors
+                    .iter()
+                    .copied()
+                    .find(|&neighbor_idx| neighbor_idx != group.right_shared_neighbor)
+                    .unwrap_or(group.right_shared_neighbor) as isize;
+            }
+            continue;
+        }
+
+        selected_neighbors[group.left_side_idx] = group.left_shared_neighbor as isize;
+        selected_neighbors[group.right_side_idx] = group.right_shared_neighbor as isize;
+    }
+
+    selected_neighbors
+}
+
+fn shared_neighbor_for_side(
+    runtime: &StereoWalkerRuntimeData,
+    side_idx: usize,
+) -> Option<usize> {
+    runtime
+        .ambiguous_shared_edge_groups
+        .iter()
+        .find_map(|group| {
+            if group.left_side_idx == side_idx {
+                Some(group.left_shared_neighbor)
+            } else if group.right_side_idx == side_idx {
+                Some(group.right_shared_neighbor)
+            } else {
+                None
+            }
+        })
 }
 
 pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
@@ -1540,6 +1739,8 @@ fn build_walker_runtime(
         }
         side_ids_by_component[side_info.component_idx].push(side_idx);
     }
+    let ambiguous_shared_edge_groups =
+        ambiguous_shared_edge_groups(&side_infos, &edge_to_side_ids, &isolated_components);
     Ok(StereoWalkerRuntimeData {
         root_idx,
         stereo_component_ids,
@@ -1547,6 +1748,7 @@ fn build_walker_runtime(
         side_infos,
         edge_to_side_ids,
         side_ids_by_component,
+        ambiguous_shared_edge_groups,
     })
 }
 
@@ -1558,6 +1760,7 @@ fn validate_stereo_state_shape(
     if state.visited.len() != graph.atom_count()
         || state.pending.len() != graph.atom_count()
         || state.stereo_component_phases.len() != runtime.isolated_components.len()
+        || state.stereo_component_entry_atoms.len() != runtime.isolated_components.len()
         || state.stereo_component_begin_atoms.len() != runtime.isolated_components.len()
         || state.stereo_component_token_flips.len() != runtime.isolated_components.len()
         || state.stereo_selected_neighbors.len() != runtime.side_infos.len()
@@ -1594,6 +1797,7 @@ fn initial_stereo_state_for_root(
         stereo_selected_neighbors: vec![-1; runtime.side_infos.len()],
         stereo_selected_orientations: vec![UNKNOWN_EDGE_ORIENTATION; runtime.side_infos.len()],
         stereo_first_emitted_candidates: vec![-1; runtime.side_infos.len()],
+        stereo_component_entry_atoms: vec![-1; runtime.isolated_components.len()],
         stereo_component_begin_atoms: vec![-1; runtime.isolated_components.len()],
         stereo_component_token_flips: vec![
             UNKNOWN_COMPONENT_TOKEN_FLIP;
@@ -1643,6 +1847,7 @@ fn toggled_component_token_flip(token_flip: i8) -> PyResult<i8> {
 fn rdkit_component_token_flip_adjustment(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
     component_idx: usize,
     graph: &PreparedSmilesGraphData,
 ) -> bool {
@@ -1672,7 +1877,7 @@ fn rdkit_component_token_flip_adjustment(
         return adjustment;
     }
 
-    let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
+    let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
     if selected_neighbor_idx < 0 {
         return adjustment;
     }
@@ -1714,7 +1919,14 @@ fn inferred_component_token_flip(
     if side_ids.is_empty() {
         return Ok(None);
     }
-    let adjustment = rdkit_component_token_flip_adjustment(runtime, state, component_idx, graph);
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let adjustment = rdkit_component_token_flip_adjustment(
+        runtime,
+        state,
+        &resolved_selected_neighbors,
+        component_idx,
+        graph,
+    );
     let begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
     if begin_atom_idx >= 0 {
         let begin_atom_idx = begin_atom_idx as usize;
@@ -1725,7 +1937,7 @@ fn inferred_component_token_flip(
         {
             let begin_side = &runtime.side_infos[begin_side_idx];
             if !isolated {
-                let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
+                let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
                 if selected_neighbor_idx < 0 {
                     return Ok(None);
                 }
@@ -1750,7 +1962,7 @@ fn inferred_component_token_flip(
                         };
                     let invert_selected_first = selected_base_token == "/";
                     let mut desired_token = selected_base_token.clone();
-                    if (first_neighbor_idx == state.stereo_selected_neighbors[begin_side_idx])
+                    if (first_neighbor_idx == resolved_selected_neighbors[begin_side_idx])
                         == invert_selected_first
                     {
                         desired_token = flip_direction_token(&selected_base_token)?;
@@ -1805,35 +2017,20 @@ fn inferred_component_token_flip(
         .iter()
         .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1)
     {
-        if begin_atom_idx < 0 {
-            return Ok(None);
-        }
-        let begin_atom_idx = begin_atom_idx as usize;
-        let Some(begin_side_idx) = side_ids
-            .iter()
-            .copied()
-            .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
-        else {
-            return Ok(None);
+        let inferred = match phase {
+            STORED_COMPONENT_PHASE => Some(STORED_COMPONENT_TOKEN_FLIP),
+            FLIPPED_COMPONENT_PHASE => Some(FLIPPED_COMPONENT_TOKEN_FLIP),
+            _ => None,
         };
-        let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
-        if selected_neighbor_idx < 0 {
-            return Ok(None);
-        }
-        let selected_neighbor_idx = selected_neighbor_idx as usize;
-        let selected_side_info = &runtime.side_infos[begin_side_idx];
-        let selected_base_token = candidate_base_token(selected_side_info, selected_neighbor_idx)?;
-        let stored_token = match state.stereo_selected_orientations[begin_side_idx] {
-            AFTER_ATOM_EDGE_ORIENTATION => selected_base_token,
-            BEFORE_ATOM_EDGE_ORIENTATION => flip_direction_token(&selected_base_token)?,
-            _ => return Ok(None),
-        };
-        let inferred = if stored_token == "\\" {
-            FLIPPED_COMPONENT_TOKEN_FLIP
-        } else {
-            STORED_COMPONENT_TOKEN_FLIP
-        };
-        return Ok(Some(inferred));
+        return inferred
+            .map(|token_flip| {
+                if adjustment {
+                    toggled_component_token_flip(token_flip)
+                } else {
+                    Ok(token_flip)
+                }
+            })
+            .transpose();
     }
     if begin_atom_idx < 0 {
         return Ok(None);
@@ -1846,7 +2043,7 @@ fn inferred_component_token_flip(
     else {
         return Ok(None);
     };
-    let selected_neighbor_idx = state.stereo_selected_neighbors[begin_side_idx];
+    let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
     if selected_neighbor_idx < 0 {
         return Ok(None);
     }
@@ -1912,12 +2109,102 @@ fn token_from_stored_with_flip(stored_token: &str, token_flip: i8) -> PyResult<S
     }
 }
 
+fn raw_token_for_deferred_edge(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+) -> PyResult<Option<String>> {
+    if deferred.begin_idx < 0 || deferred.end_idx < 0 {
+        return Ok(Some(deferred.stored_token.clone()));
+    }
+
+    let begin_idx = deferred.begin_idx as usize;
+    let end_idx = deferred.end_idx as usize;
+    let edge = canonical_edge(begin_idx, end_idx);
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let mut active_tokens = Vec::<String>::new();
+
+    for &side_idx in runtime
+        .edge_to_side_ids
+        .get(&edge)
+        .into_iter()
+        .flatten()
+    {
+        let side_info = &runtime.side_infos[side_idx];
+        let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+            end_idx
+        } else if end_idx == side_info.endpoint_atom_idx {
+            begin_idx
+        } else {
+            continue;
+        };
+
+        let selected_neighbor_idx = resolved_selected_neighbors[side_idx];
+        if selected_neighbor_idx == edge_neighbor_idx as isize {
+            active_tokens.push(emitted_candidate_token(side_info, begin_idx, end_idx)?);
+            continue;
+        }
+
+        let entry_atom_idx = state.stereo_component_entry_atoms[side_info.component_idx];
+        let begin_atom_idx = state.stereo_component_begin_atoms[side_info.component_idx];
+        let first_neighbor_idx = state.stereo_first_emitted_candidates[side_idx];
+        let Some(shared_neighbor_idx) = shared_neighbor_for_side(runtime, side_idx) else {
+            continue;
+        };
+
+        if side_info.endpoint_atom_idx as isize != entry_atom_idx
+            || begin_atom_idx == entry_atom_idx
+            || selected_neighbor_idx != shared_neighbor_idx as isize
+            || first_neighbor_idx != edge_neighbor_idx as isize
+            || first_neighbor_idx == shared_neighbor_idx as isize
+        {
+            continue;
+        }
+
+        active_tokens.push(candidate_base_token(
+            side_info,
+            selected_neighbor_idx as usize,
+        )?);
+    }
+
+    if active_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let raw_token = active_tokens[0].clone();
+    if active_tokens[1..].iter().any(|token| token != &raw_token) {
+        return Err(PyValueError::new_err(
+            "Carrier edge received conflicting stereo token assignments",
+        ));
+    }
+    Ok(Some(raw_token))
+}
+
 fn deferred_token_support(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
 ) -> PyResult<Vec<String>> {
+    let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
+        Some(
+            graph
+                .bond_token(deferred.begin_idx as usize, deferred.end_idx as usize)
+                .ok_or_else(|| {
+                    PyKeyError::new_err(format!(
+                        "No bond between atoms {} and {}",
+                        deferred.begin_idx, deferred.end_idx
+                    ))
+                })?
+                .to_owned(),
+        )
+    } else {
+        None
+    };
+    let Some(raw_token) = raw_token_for_deferred_edge(runtime, state, deferred)? else {
+        return Ok(vec![literal_token.unwrap_or_default()]);
+    };
+
     let known_flip = if state.stereo_component_token_flips[deferred.component_idx]
         != UNKNOWN_COMPONENT_TOKEN_FLIP
     {
@@ -1926,16 +2213,13 @@ fn deferred_token_support(
         inferred_component_token_flip(runtime, state, deferred.component_idx, graph)?
     };
     if let Some(token_flip) = known_flip {
-        return Ok(vec![token_from_stored_with_flip(
-            &deferred.stored_token,
-            token_flip,
-        )?]);
+        return Ok(vec![token_from_stored_with_flip(&raw_token, token_flip)?]);
     }
-    let flipped = flip_direction_token(&deferred.stored_token)?;
-    if flipped == deferred.stored_token {
-        Ok(vec![deferred.stored_token.clone()])
+    let flipped = flip_direction_token(&raw_token)?;
+    if flipped == raw_token {
+        Ok(vec![raw_token])
     } else {
-        let mut out = vec![deferred.stored_token.clone(), flipped];
+        let mut out = vec![raw_token, flipped];
         out.sort();
         out.dedup();
         Ok(out)
@@ -1949,9 +2233,30 @@ fn commit_deferred_token_choice(
     deferred: &DeferredDirectionalToken,
     chosen_token: &str,
 ) -> PyResult<()> {
-    let stored = deferred.stored_token.as_str();
-    let flipped = flip_direction_token(stored)?;
-    let chosen_flip = if chosen_token == stored {
+    let raw_token = raw_token_for_deferred_edge(runtime, state, deferred)?;
+    let Some(raw_token) = raw_token else {
+        let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
+            graph
+                .bond_token(deferred.begin_idx as usize, deferred.end_idx as usize)
+                .ok_or_else(|| {
+                    PyKeyError::new_err(format!(
+                        "No bond between atoms {} and {}",
+                        deferred.begin_idx, deferred.end_idx
+                    ))
+                })?
+        } else {
+            ""
+        };
+        if chosen_token != literal_token {
+            return Err(PyKeyError::new_err(format!(
+                "Token {chosen_token:?} is not available for deferred stereo token"
+            )));
+        }
+        return normalize_component_token_flips(runtime, graph, state);
+    };
+
+    let flipped = flip_direction_token(&raw_token)?;
+    let chosen_flip = if chosen_token == raw_token {
         STORED_COMPONENT_TOKEN_FLIP
     } else if chosen_token == flipped {
         FLIPPED_COMPONENT_TOKEN_FLIP
@@ -1985,6 +2290,8 @@ fn enter_atom_successors_by_token(
     debug_assert!(!visited_now[atom_idx]);
     visited_now[atom_idx] = true;
     let visited_count_now = base_state.visited_count + 1;
+    let component_entry_atoms_now =
+        component_entry_atoms_after_visiting_atom(runtime, &base_state.stereo_component_entry_atoms, atom_idx);
 
     let mut pending_now = base_state.pending.clone();
     let closures_here = std::mem::take(&mut pending_now[atom_idx]);
@@ -2017,6 +2324,7 @@ fn enter_atom_successors_by_token(
             let mut current_selected_orientations = base_state.stereo_selected_orientations.clone();
             let mut current_first_emitted_candidates =
                 base_state.stereo_first_emitted_candidates.clone();
+            let current_component_entry_atoms = component_entry_atoms_now.clone();
             let mut current_component_begin_atoms = base_state.stereo_component_begin_atoms.clone();
             let mut current_ring_actions = Vec::<WalkerAction>::new();
             let mut labels_freed_after_atom = Vec::<usize>::new();
@@ -2122,6 +2430,7 @@ fn enter_atom_successors_by_token(
                     stereo_selected_neighbors: current_selected_neighbors.clone(),
                     stereo_selected_orientations: current_selected_orientations.clone(),
                     stereo_first_emitted_candidates: current_first_emitted_candidates.clone(),
+                    stereo_component_entry_atoms: current_component_entry_atoms.clone(),
                     stereo_component_begin_atoms: current_component_begin_atoms.clone(),
                     stereo_component_token_flips: base_state.stereo_component_token_flips.clone(),
                     action_stack: base_state.action_stack.clone(),
@@ -2440,7 +2749,25 @@ fn successors_by_token_stereo_impl(
             completion_cache,
         )?,
     };
-    let successors = filter_complete_successors(runtime, graph, raw_successors, completion_cache);
+    let mut expanded = BTreeMap::<String, BTreeSet<RootedConnectedStereoWalkerStateData>>::new();
+    for (token, successor_group) in raw_successors {
+        if token.is_empty() {
+            for successor in successor_group {
+                extend_transitions(
+                    &mut expanded,
+                    successors_by_token_stereo_impl(runtime, graph, &successor, completion_cache)?,
+                );
+            }
+            continue;
+        }
+        expanded.entry(token).or_default().extend(successor_group);
+    }
+    let successors = filter_complete_successors(
+        runtime,
+        graph,
+        finalize_transitions(expanded),
+        completion_cache,
+    );
     Ok(successors)
 }
 

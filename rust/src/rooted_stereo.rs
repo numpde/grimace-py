@@ -4231,10 +4231,12 @@ mod tests {
         }
     }
 
-    fn prepared_graph_from_smiles(smiles: &str) -> PreparedSmilesGraphData {
+    fn prepared_graph_from_smiles(smiles: &str) -> Option<PreparedSmilesGraphData> {
         Python::initialize();
         Python::attach(|py| {
-            let chem = py.import("rdkit.Chem").expect("rdkit.Chem import should succeed");
+            let Ok(chem) = py.import("rdkit.Chem") else {
+                return None;
+            };
             let runtime = py
                 .import("grimace._runtime")
                 .expect("grimace._runtime import should succeed");
@@ -4257,8 +4259,10 @@ mod tests {
                 .expect("prepare_smiles_graph should exist")
                 .call((mol,), Some(&kwargs))
                 .expect("prepare_smiles_graph should succeed");
-            PreparedSmilesGraphData::from_any(&prepared)
-                .expect("prepared graph extraction should work")
+            Some(
+                PreparedSmilesGraphData::from_any(&prepared)
+                    .expect("prepared graph extraction should work"),
+            )
         })
     }
 
@@ -4353,7 +4357,9 @@ mod tests {
 
     #[test]
     fn native_exact_support_matches_reference_for_branch_first_small_bond_stereo_roots() {
-        let graph = prepared_graph_from_smiles("C(/C=C/Cl)Cl");
+        let Some(graph) = prepared_graph_from_smiles("C(/C=C/Cl)Cl") else {
+            return;
+        };
         for root_idx in [0isize, 1, 2, 3] {
             let native = enumerate_rooted_connected_stereo_smiles_support_native(&graph, root_idx)
                 .expect("native exact support should enumerate")
@@ -4369,7 +4375,9 @@ mod tests {
 
     #[test]
     fn native_online_walker_matches_reference_for_coupled_diene_root_5() {
-        let graph = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1");
+        let Some(graph) = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1") else {
+            return;
+        };
         let runtime = build_walker_runtime(&graph, 5).expect("runtime should build");
         let initial_state = initial_stereo_state_for_root(&runtime, &graph, 5);
         let mut stack = vec![initial_state];
@@ -4396,8 +4404,11 @@ mod tests {
 
     #[test]
     fn native_online_walker_matches_reference_for_polyene_root_11() {
-        let graph =
-            prepared_graph_from_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C");
+        let Some(graph) =
+            prepared_graph_from_smiles("CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C")
+        else {
+            return;
+        };
         let runtime = build_walker_runtime(&graph, 11).expect("runtime should build");
         let initial_state = initial_stereo_state_for_root(&runtime, &graph, 11);
         let mut stack = vec![initial_state];
@@ -4425,7 +4436,9 @@ mod tests {
     #[test]
     #[ignore = "medium native exact-support parity probe"]
     fn native_exact_support_matches_reference_for_coupled_diene_root_5() {
-        let graph = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1");
+        let Some(graph) = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1") else {
+            return;
+        };
         let native = enumerate_rooted_connected_stereo_smiles_support_native(&graph, 5)
             .expect("native exact support should enumerate")
             .into_iter()

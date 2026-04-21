@@ -14,6 +14,10 @@ The reason this library exists is that RDKit does not provide a deterministic
 SMILES enumeration routine, and it does not expose the legal continuations of a
 SMILES prefix as an online decoding API.
 
+`grimace` targets the current stable RDKit writer convention, currently
+`RDKit 2026.03.1`. Older slash/backslash serialization conventions are out of
+scope.
+
 GRIMACE stands for "graph representation integrating multiple alternate
 chemical equivalents", motivated by research on NMR spectroscopy
 with language transformers ([link](https://numpde.github.io/shared/msc/)).

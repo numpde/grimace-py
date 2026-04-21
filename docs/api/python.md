@@ -38,6 +38,10 @@ outputs = list(
 The keyword names mirror RDKit `MolToSmiles`, but the current engine only
 implements rooted random support generation.
 
+The serialization target is the current stable RDKit writer convention,
+currently `RDKit 2026.03.1`. Older slash/backslash serialization conventions
+are out of scope.
+
 This is the important semantic point:
 
 - in RDKit, `canonical=False, doRandom=True` returns one sampled SMILES string

@@ -18,6 +18,9 @@ from grimace._reference.prepared_graph import (
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
+from grimace._reference.rooted.connected_stereo import (
+    enumerate_rooted_connected_stereo_smiles_support as reference_enumerate_rooted_connected_stereo_smiles_support,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +223,38 @@ def _connected_fragment_support(
             )
         )
     return support
+
+
+def _reference_rooted_connected_stereo_support(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> set[str]:
+    if isinstance(mol_or_prepared, Chem.Mol):
+        prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
+            mol_or_prepared,
+            surface_kind=CONNECTED_STEREO_SURFACE,
+            isomeric_smiles=flags.isomeric_smiles,
+            kekule_smiles=flags.kekule_smiles,
+            all_bonds_explicit=flags.all_bonds_explicit,
+            all_hs_explicit=flags.all_hs_explicit,
+            ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
+        )
+    elif isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
+        _validate_surface_kind(mol_or_prepared, surface_kind=CONNECTED_STEREO_SURFACE)
+        _validate_writer_flags(mol_or_prepared, flags)
+        prepared = mol_or_prepared
+    elif isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
+        _validate_surface_kind(mol_or_prepared, surface_kind=CONNECTED_STEREO_SURFACE)
+        _validate_writer_flags(mol_or_prepared, flags)
+        prepared = ReferencePreparedSmilesGraph.from_dict(mol_or_prepared.to_dict())
+    else:
+        raise TypeError(f"Unsupported molecule/prepared type: {type(mol_or_prepared)!r}")
+
+    return reference_enumerate_rooted_connected_stereo_smiles_support(
+        prepared,
+        flags.rooted_at_atom,
+    )
 
 
 def _fragmented_mol_to_smiles_support(
@@ -861,6 +896,18 @@ def mol_to_smiles_enum(
                     mol_or_prepared,
                     flags=flags,
                     rooted_at_atom=None,
+                )
+            )
+        )
+    if _runtime_surface_kind(mol_or_prepared, flags=flags) == CONNECTED_STEREO_SURFACE:
+        # Rooted stereo exact support still uses the reference enumerator because
+        # the kernel walker does not yet match the aromatic entry-side carrier
+        # visibility cases in the coupled-diene witness.
+        return iter(
+            sorted(
+                _reference_rooted_connected_stereo_support(
+                    mol_or_prepared,
+                    flags=flags,
                 )
             )
         )

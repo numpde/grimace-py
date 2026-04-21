@@ -37,7 +37,7 @@ Current entrypoints:
 - `MolToSmilesDeterminizedDecoder(...)`
 - `MolToSmilesTokenInventory(...)`
 
-Both use the compiled Rust extension. There is no public runtime fallback.
+The public API uses the compiled Rust extension end to end.
 
 ## Quickstart
 

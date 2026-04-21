@@ -18,6 +18,8 @@ SMILES prefix as an online decoding API.
 `RDKit 2026.03.1`. Older slash/backslash serialization conventions are out of
 scope.
 
+It requires Python `>=3.11` and `rdkit>=2026.3`.
+
 GRIMACE stands for "graph representation integrating multiple alternate
 chemical equivalents", motivated by research on NMR spectroscopy
 with language transformers ([link](https://numpde.github.io/shared/msc/)).
@@ -36,6 +38,10 @@ Current entrypoints:
 - `MolToSmilesDecoder(...)`
 - `MolToSmilesDeterminizedDecoder(...)`
 - `MolToSmilesTokenInventory(...)`
+
+Supporting public result type:
+
+- `MolToSmilesChoice`
 
 The public API uses the compiled Rust extension end to end.
 
@@ -73,14 +79,15 @@ decoder = grimace.MolToSmilesDecoder(
 )
 
 while not decoder.is_terminal:
-    print(f"{decoder.prefix} -> {[choice.text for choice in decoder.next_choices]}")
+    prefix = decoder.prefix if decoder.prefix else '""'
+    print(f"{prefix} -> {[choice.text for choice in decoder.next_choices]}")
     decoder = decoder.next_choices[0].next_state
 ```
 
 Expected output from that exact snippet:
 
 ```text
--> ['C']
+"" -> ['C']
 C -> ['C']
 CC -> ['(', '(']
 CC( -> ['=']
@@ -174,11 +181,17 @@ may be one character or several.
 
 ## pip install ...
 
-Install with `pip install <wheel>` with one of those (download or use the link directly):
+`grimace` currently publishes Linux `x86_64` wheels for CPython `3.12` and
+`3.13`. Other supported Python versions and platforms currently require a
+source build.
+
+Install with `pip install <wheel>` using one of these release assets:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
 | Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.2/grimace-0.1.2-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.2/grimace-0.1.2-cp313-cp313-manylinux_2_28_x86_64.whl) |
+
+The built package depends on `rdkit>=2026.3`.
 
 For local development:
 
@@ -230,10 +243,13 @@ Supported writer flags:
 
 Unsupported combinations fail fast with `NotImplementedError`.
 
-Disconnected molecules are supported by the public APIs. `MolToSmilesEnum(...)`
-and `MolToSmilesDecoder(...)` compose fragment-wise behavior directly;
-`MolToSmilesTokenInventory(...)` returns the union of fragment inventories plus
-the `"."` separator token.
+Disconnected molecules are supported by the public APIs.
+
+- `MolToSmilesEnum(...)`, `MolToSmilesDecoder(...)`, and
+  `MolToSmilesDeterminizedDecoder(...)` compose fragment-wise behavior
+  directly.
+- `MolToSmilesTokenInventory(...)` returns the union of fragment inventories
+  plus the `"."` separator token.
 
 ## Docs
 

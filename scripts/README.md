@@ -5,7 +5,8 @@ Utility scripts for local development, validation, and release support.
 Examples below assume you are running them from the same Python environment
 where `grimace` is installed or built, for example an activated `.venv`.
 Using a different interpreter can silently compare against a different RDKit or
-extension build than the one you intended to validate.
+extension build than the one you intended to validate. These scripts are
+strictly local validation tools; they are not a supported public API surface.
 
 ## `mine_rdkit_regressions.py`
 

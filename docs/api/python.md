@@ -6,6 +6,7 @@ The only supported public Python API is `grimace`.
 
 Current top-level exports:
 
+- `MolToSmilesChoice`
 - `MolToSmilesDecoder`
 - `MolToSmilesDeterminizedDecoder`
 - `MolToSmilesEnum`
@@ -15,6 +16,11 @@ The compiled extension `grimace._core` is required. There is no
 public runtime fallback. Run the public API from the same Python environment
 where the extension was built or installed.
 
+Environment requirements:
+
+- Python `>=3.11`
+- `rdkit>=2026.3`
+
 ## MolToSmilesEnum
 
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
@@ -23,6 +29,10 @@ This yields the complete exact support as whole SMILES strings.
 
 When `rootedAtAtom == -1`, the result is the exact union across all valid
 roots for the requested writer flags.
+
+Set semantics are the contract here. `MolToSmilesEnum(...)` yields the exact
+support, but callers should not rely on the yielded iteration order as a
+stable public ordering guarantee.
 
 ```python
 outputs = list(
@@ -63,7 +73,8 @@ Supported writer flags:
 
 Unsupported combinations fail fast with `NotImplementedError`. Molecules with
 multiple disconnected fragments are supported here, in
-`MolToSmilesDecoder(...)`, and in `MolToSmilesTokenInventory(...)`.
+`MolToSmilesDecoder(...)`, in `MolToSmilesDeterminizedDecoder(...)`, and in
+`MolToSmilesTokenInventory(...)`.
 
 ## MolToSmilesDecoder
 
@@ -103,6 +114,9 @@ Each `MolToSmilesChoice` has:
 - `text: str`
 - `next_state`: the same decoder class as the parent choice came from
 
+Two different choices may therefore share the same `text` while leading to
+different successor states.
+
 ## MolToSmilesDeterminizedDecoder
 
 `MolToSmilesDeterminizedDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
@@ -133,6 +147,17 @@ Available interface:
 - `is_terminal: bool`
 - `copy() -> MolToSmilesDeterminizedDecoder`
 
+## MolToSmilesChoice
+
+`MolToSmilesChoice` is the public helper object returned from
+`decoder.next_choices`.
+
+Available interface:
+
+- `text: str`
+- `next_state`: `MolToSmilesDecoder` or `MolToSmilesDeterminizedDecoder`,
+  matching the parent decoder class
+
 ## Decoder model
 
 `MolToSmilesDecoder(...)` exposes the same runtime as a stateful decoder:
@@ -144,6 +169,9 @@ Available interface:
 
 The tokens are literal SMILES fragments, not token ids. A token may be one
 character or many characters, for example `"C"`, `"[C@H]"`, or `"%12"`.
+
+`prefix` is the literal concatenation of the tokens emitted so far on that
+decoder path.
 
 Important semantic point:
 
@@ -194,6 +222,10 @@ token when fragment transitions are reachable under the requested root mode.
 
 This is an exact runtime inventory, not a probabilistic distribution and not a
 general-purpose tokenizer vocabulary.
+
+Unlike the decoders, `MolToSmilesTokenInventory(...)` uses `rootedAtAtom=None`
+to mean "union across all roots". `rootedAtAtom=-1` is the unrooted decoder
+mode used by `MolToSmilesEnum(...)` and the decoder classes.
 
 ## Correctness
 

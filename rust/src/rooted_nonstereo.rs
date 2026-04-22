@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
@@ -39,7 +39,7 @@ pub(crate) struct RootedConnectedNonStereoWalkerStateData {
     prefix: String,
     visited: Vec<bool>,
     visited_count: usize,
-    pending: Vec<Vec<PendingRing>>,
+    pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
     next_label: usize,
     action_stack: Vec<Action>,
@@ -77,8 +77,18 @@ fn allocate_label(free_labels: &mut Vec<usize>, next_label: &mut usize) -> usize
     }
 }
 
-fn add_pending(pending: &mut [Vec<PendingRing>], target_atom: usize, ring: PendingRing) {
-    let current = &mut pending[target_atom];
+fn add_pending(
+    pending: &mut Vec<(usize, Vec<PendingRing>)>,
+    target_atom: usize,
+    ring: PendingRing,
+) {
+    let current = match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
+        Ok(offset) => &mut pending[offset].1,
+        Err(offset) => {
+            pending.insert(offset, (target_atom, Vec::new()));
+            &mut pending[offset].1
+        }
+    };
     let insert_at = current
         .binary_search_by(|candidate| {
             (candidate.label, candidate.bond_token.as_str())
@@ -86,6 +96,16 @@ fn add_pending(pending: &mut [Vec<PendingRing>], target_atom: usize, ring: Pendi
         })
         .unwrap_or_else(|offset| offset);
     current.insert(insert_at, ring);
+}
+
+fn take_pending_for_atom(
+    pending: &mut Vec<(usize, Vec<PendingRing>)>,
+    atom_idx: usize,
+) -> Vec<PendingRing> {
+    match pending.binary_search_by_key(&atom_idx, |(candidate_idx, _)| *candidate_idx) {
+        Ok(offset) => pending.remove(offset).1,
+        Err(_) => Vec::new(),
+    }
 }
 
 fn validate_root_idx(graph: &PreparedSmilesGraphData, root_idx: isize) -> PyResult<usize> {
@@ -102,7 +122,12 @@ fn validate_state_shape(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
 ) -> PyResult<()> {
-    if state.visited.len() != graph.atom_count() || state.pending.len() != graph.atom_count() {
+    if state.visited.len() != graph.atom_count()
+        || state
+            .pending
+            .iter()
+            .any(|(atom_idx, _rings)| *atom_idx >= graph.atom_count())
+    {
         return Err(PyValueError::new_err(
             "walker state is not compatible with this PreparedSmilesGraph",
         ));
@@ -115,22 +140,30 @@ fn ordered_neighbor_groups(
     atom_idx: usize,
     visited: &[bool],
 ) -> Vec<Vec<usize>> {
-    let mut remaining_neighbors = BTreeSet::new();
-    for &neighbor_idx in graph.neighbors_of(atom_idx) {
-        if !visited[neighbor_idx] {
-            remaining_neighbors.insert(neighbor_idx);
-        }
-    }
-    if remaining_neighbors.is_empty() {
+    let mut seeds = graph
+        .neighbors_of(atom_idx)
+        .iter()
+        .copied()
+        .filter(|&neighbor_idx| !visited[neighbor_idx])
+        .collect::<Vec<_>>();
+    if seeds.is_empty() {
         return Vec::new();
     }
+    seeds.sort_unstable();
+    if seeds.len() == 1 {
+        return vec![seeds];
+    }
+    let seed_list = seeds.clone();
 
     let mut groups_with_mins = Vec::<(usize, Vec<usize>)>::new();
-    while let Some(&seed) = remaining_neighbors.iter().next() {
-        remaining_neighbors.remove(&seed);
-        let mut queue = VecDeque::from([seed]);
-        let mut seen = vec![false; graph.atom_count()];
+    let mut seen = vec![false; graph.atom_count()];
+    let mut queue = VecDeque::new();
+    for seed in seeds {
+        if seen[seed] {
+            continue;
+        }
         seen[seed] = true;
+        queue.push_back(seed);
         let mut component_min = seed;
         let mut group = vec![seed];
 
@@ -143,7 +176,7 @@ fn ordered_neighbor_groups(
                     continue;
                 }
                 seen[neighbor_idx] = true;
-                if remaining_neighbors.remove(&neighbor_idx) {
+                if seed_list.binary_search(&neighbor_idx).is_ok() {
                     group.push(neighbor_idx);
                 }
                 queue.push_back(neighbor_idx);
@@ -265,7 +298,7 @@ fn initial_state_for_root(
         prefix: String::new(),
         visited: vec![false; graph.atom_count()],
         visited_count: 0,
-        pending: vec![Vec::new(); graph.atom_count()],
+        pending: Vec::new(),
         free_labels: Vec::new(),
         next_label: 1,
         action_stack,
@@ -387,7 +420,7 @@ fn consume_enter_atom(
     debug_assert!(!state.visited[atom_idx]);
     state.visited[atom_idx] = true;
     state.visited_count += 1;
-    let closures_here = std::mem::take(&mut state.pending[atom_idx]);
+    let closures_here = take_pending_for_atom(&mut state.pending, atom_idx);
     let neighbor_groups = ordered_neighbor_groups(graph, atom_idx, &state.visited);
     state
         .action_stack
@@ -626,6 +659,111 @@ fn successors_by_token(
     }
 }
 
+fn for_each_exact_successor_by_token_owned<F>(
+    graph: &PreparedSmilesGraphData,
+    mut state: RootedConnectedNonStereoWalkerStateData,
+    mut emit: F,
+) where
+    F: FnMut(String, RootedConnectedNonStereoWalkerStateData),
+{
+    normalize_state(&mut state);
+    let action = match state.action_stack.pop() {
+        Some(action) => action,
+        None => return,
+    };
+
+    match action {
+        Action::EmitToken(token) => {
+            state.prefix.push_str(&token);
+            normalize_state(&mut state);
+            emit(token, state);
+        }
+        Action::EnterAtom(atom_idx) => {
+            let token = graph.atom_token(atom_idx).to_owned();
+            state.prefix.push_str(graph.atom_token(atom_idx));
+            consume_enter_atom(graph, &mut state, atom_idx);
+            normalize_state(&mut state);
+            emit(token, state);
+        }
+        Action::AfterAtom(action) => {
+            if action.ring_action_count > 0 {
+                for_each_cartesian_choice(&action.neighbor_groups, &mut |chosen_children| {
+                    let opening_targets =
+                        opening_targets_from_choices(&action.neighbor_groups, chosen_children);
+                    let mut ring_actions = Vec::new();
+                    for closure_idx in 0..action.closures_here.len() {
+                        ring_actions.push(RingAction::Close(closure_idx));
+                    }
+                    for &target_idx in &opening_targets {
+                        ring_actions.push(RingAction::Open(target_idx));
+                    }
+
+                    for_each_permutation_py_order(&ring_actions, &mut |ring_action_order| {
+                        let first_token = match ring_action_order[0] {
+                            RingAction::Close(closure_idx) => {
+                                let closure = &action.closures_here[closure_idx];
+                                if closure.bond_token.is_empty() {
+                                    ring_label_text(closure.label)
+                                } else {
+                                    closure.bond_token.clone()
+                                }
+                            }
+                            RingAction::Open(_) => next_open_label_token(&state),
+                        };
+
+                        for_each_permutation_py_order(chosen_children, &mut |child_order| {
+                            let mut successor = state.clone();
+                            successor.prefix.push_str(&first_token);
+                            apply_exact_ring_plan(
+                                graph,
+                                &mut successor,
+                                &action,
+                                &ring_action_order,
+                                &child_order,
+                            );
+                            normalize_state(&mut successor);
+                            emit(first_token.clone(), successor);
+                        });
+                    });
+                });
+            } else if let Some(child_idx) = action.linear_child_idx {
+                let token = edge_prefix_or_atom(graph, action.atom_idx, child_idx);
+                state.prefix.push_str(&token);
+                let edge_prefix = graph
+                    .bond_token(action.atom_idx, child_idx)
+                    .expect("linear child should be adjacent");
+                if edge_prefix.is_empty() {
+                    consume_enter_atom(graph, &mut state, child_idx);
+                } else {
+                    state.action_stack.push(Action::EnterAtom(child_idx));
+                }
+                normalize_state(&mut state);
+                emit(token, state);
+            } else if action.neighbor_groups.is_empty() {
+            } else {
+                let child_order_seed = action
+                    .neighbor_groups
+                    .iter()
+                    .map(|group| group[0])
+                    .collect::<Vec<_>>();
+                for_each_permutation_py_order(&child_order_seed, &mut |child_order| {
+                    let mut successor = state.clone();
+                    successor.prefix.push('(');
+                    push_child_actions(
+                        graph,
+                        &mut successor.action_stack,
+                        action.atom_idx,
+                        &child_order,
+                        true,
+                    );
+                    normalize_state(&mut successor);
+                    emit("(".to_owned(), successor);
+                });
+            }
+        }
+    }
+}
+
 fn advance_token_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
@@ -727,18 +865,39 @@ fn frontier_is_terminal(
     frontier_next_token_support(graph, frontier).is_empty()
 }
 
+fn exact_frontier_successors(
+    graph: &PreparedSmilesGraphData,
+    frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
+) -> Vec<Vec<RootedConnectedNonStereoWalkerStateData>> {
+    let mut transitions = HashMap::<String, Vec<RootedConnectedNonStereoWalkerStateData>>::new();
+    for state in frontier {
+        for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
+            transitions.entry(token).or_default().push(successor);
+        });
+    }
+    transitions
+        .into_values()
+        .map(|mut states| {
+            states.sort_unstable();
+            states.dedup();
+            states
+        })
+        .collect()
+}
+
 fn enumerate_support_from_frontier(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-    out: &mut BTreeSet<String>,
+    out: &mut HashSet<String>,
 ) {
-    let transitions = frontier_transitions(graph, &frontier);
+    let prefix = frontier_prefix(&frontier);
+    let transitions = exact_frontier_successors(graph, frontier);
     if transitions.is_empty() {
-        out.insert(frontier_prefix(&frontier));
+        out.insert(prefix);
         return;
     }
 
-    for next_frontier in transitions.into_values() {
+    for next_frontier in transitions {
         enumerate_support_from_frontier(graph, next_frontier, out);
     }
 }
@@ -755,7 +914,7 @@ fn enumerate_support_from_state(
         normalize_state(&mut terminal);
         if terminal.action_stack.is_empty()
             && terminal.visited_count == graph.atom_count()
-            && terminal.pending.iter().all(|rings| rings.is_empty())
+            && terminal.pending.is_empty()
         {
             out.insert(terminal.prefix);
         }
@@ -778,9 +937,11 @@ pub(crate) fn enumerate_rooted_connected_nonstereo_smiles_support(
     }
     let root_idx = validate_root_idx(graph, root_idx)?;
     let initial_state = initial_state_for_root(graph, root_idx);
-    let mut results = BTreeSet::new();
+    let mut results = HashSet::new();
     enumerate_support_from_frontier(graph, vec![initial_state], &mut results);
-    Ok(results.into_iter().collect())
+    let mut results = results.into_iter().collect::<Vec<_>>();
+    results.sort_unstable();
+    Ok(results)
 }
 
 #[pyclass(
@@ -804,7 +965,7 @@ impl PyRootedConnectedNonStereoWalkerState {
             "RootedConnectedNonStereoWalkerState(prefix={:?}, visited_count={}, pending_sites={}, next_label={}, stack_depth={})",
             self.data.prefix,
             self.data.visited_count,
-            self.data.pending.iter().filter(|rings| !rings.is_empty()).count(),
+            self.data.pending.len(),
             self.data.next_label,
             self.data.action_stack.len(),
         )

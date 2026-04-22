@@ -88,7 +88,7 @@ enum WalkerAction {
     },
     ProcessChildren {
         parent_idx: usize,
-        child_order: Vec<usize>,
+        child_order: Arc<[usize]>,
         next_branch_index: usize,
     },
 }
@@ -3216,7 +3216,7 @@ fn enter_atom_successors_by_token(
                 if !child_order.is_empty() {
                     successor.action_stack.push(WalkerAction::ProcessChildren {
                         parent_idx: atom_idx,
-                        child_order: child_order.clone(),
+                        child_order: Arc::<[usize]>::from(child_order.clone()),
                         next_branch_index: 0,
                     });
                 }
@@ -3237,7 +3237,7 @@ fn process_children_successors_by_token(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     parent_idx: usize,
-    child_order: &[usize],
+    child_order: Arc<[usize]>,
     next_branch_index: usize,
     require_completable: bool,
     completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
@@ -3259,7 +3259,7 @@ fn process_children_successors_by_token(
             &successor.stereo_component_begin_atoms,
             &successor.stereo_selected_neighbors,
             parent_idx,
-            child_order,
+            child_order.as_ref(),
         )?;
         let (
             current_selected_neighbors,
@@ -3272,7 +3272,7 @@ fn process_children_successors_by_token(
             &successor.stereo_selected_orientations,
             &successor.stereo_first_emitted_candidates,
             parent_idx,
-            child_order,
+            child_order.as_ref(),
         );
         let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
             emitted_edge_part(
@@ -3328,12 +3328,12 @@ fn process_children_successors_by_token(
         successor.stereo_component_phases = updated_phases;
         successor.stereo_component_begin_atoms = updated_begin_atoms;
         if next_branch_index + 1 < child_order.len() {
-            successor.action_stack.push(WalkerAction::ProcessChildren {
-                parent_idx,
-                child_order: child_order.to_vec(),
-                next_branch_index: next_branch_index + 1,
-            });
-        }
+                successor.action_stack.push(WalkerAction::ProcessChildren {
+                    parent_idx,
+                    child_order: child_order.clone(),
+                    next_branch_index: next_branch_index + 1,
+                });
+            }
         successor
             .action_stack
             .push(WalkerAction::EmitLiteral(")".to_owned()));
@@ -3356,7 +3356,7 @@ fn process_children_successors_by_token(
             &state.stereo_component_begin_atoms,
             &state.stereo_selected_neighbors,
             parent_idx,
-            child_order,
+            child_order.as_ref(),
         )?;
     let (
         current_selected_neighbors,
@@ -3369,7 +3369,7 @@ fn process_children_successors_by_token(
         &state.stereo_selected_orientations,
         &state.stereo_first_emitted_candidates,
         parent_idx,
-        child_order,
+        child_order.as_ref(),
     );
     let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
         emitted_edge_part(
@@ -3610,7 +3610,7 @@ fn successors_by_token_stereo_impl(
             graph,
             state,
             parent_idx,
-            &child_order,
+            child_order,
             next_branch_index,
             require_completable,
             completion_cache,

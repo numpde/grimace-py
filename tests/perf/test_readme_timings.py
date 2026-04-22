@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import csv
 import math
 import os
 from pathlib import Path
 import statistics
 import time
 import unittest
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from rdkit import Chem, rdBase
 
@@ -21,6 +22,31 @@ class TimingCase:
     isomeric_smiles: bool
 
 
+@dataclass(frozen=True, slots=True)
+class TimingRow:
+    molecule: str
+    atoms: int
+    support: int
+    enum_mean_s: float
+    enum_std_s: float
+    decoder_mean_s: float
+    decoder_std_s: float
+    determinized_decoder_mean_s: float
+    determinized_decoder_std_s: float
+    rdkit_half_mean_s: float
+    rdkit_half_std_s: float
+    rdkit_half_draw_mean: float
+    rdkit_half_draw_std: float
+    rdkit_full_mean_s: float
+    rdkit_full_std_s: float
+    rdkit_full_draw_mean: float
+    rdkit_full_draw_std: float
+
+    @classmethod
+    def tsv_fieldnames(cls) -> tuple[str, ...]:
+        return tuple(cls.__dataclass_fields__.keys())
+
+
 def _runtime_trials(fn, *, repeats: int = 7) -> list[float]:
     fn()
     timings: list[float] = []
@@ -31,20 +57,8 @@ def _runtime_trials(fn, *, repeats: int = 7) -> list[float]:
     return timings
 
 
-def _format_ms(seconds: float) -> str:
-    return f"{seconds * 1_000:.1f} ms"
-
-
-def _format_bold_ms(seconds: float) -> str:
-    return f"**{seconds * 1_000:.1f}** ms"
-
-
 def _format_draws(mean: float, stdev: float) -> str:
     return f"{mean:.1f} ± {stdev:.1f}"
-
-
-def _format_duration(mean: float, stdev: float) -> str:
-    return f"{mean * 1_000:.1f} ± {stdev * 1_000:.1f} ms"
 
 
 def _format_bold_duration(mean: float, stdev: float) -> str:
@@ -56,7 +70,8 @@ def _format_bold_duration(mean: float, stdev: float) -> str:
     "set RUN_PERF_TESTS=1 to run performance checks",
 )
 class ReadmeTimingPerfTests(unittest.TestCase):
-    OUTPUT_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.md"
+    OUTPUT_TSV_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.tsv"
+    OUTPUT_MD_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.md"
     CASES = (
         TimingCase(
             smiles="CC(=O)Oc1ccccc1C(=O)O",
@@ -91,14 +106,19 @@ class ReadmeTimingPerfTests(unittest.TestCase):
     )
 
     def test_generate_readme_timing_table(self) -> None:
-        rows: list[str] = []
-        rows.append(
-            "| Molecule | Atoms | Support | Grimace enum (all roots) | "
-            "Decoder enum (all roots) | RDKit to 1/2 support | "
-            "RDKit to full support |"
-        )
-        rows.append("| --- | ---: | ---: | ---: | ---: | --- | --- |")
+        rows = self._measure_rows()
+        self._write_tsv(rows)
+        document = self._render_document_from_tsv()
+        self.OUTPUT_MD_PATH.write_text(document, encoding="utf-8")
 
+        print()
+        print(f"Wrote timing data: {self.OUTPUT_TSV_PATH}")
+        print(f"Wrote timing document: {self.OUTPUT_MD_PATH}")
+        for row in document.splitlines():
+            print(row)
+
+    def _measure_rows(self) -> list[TimingRow]:
+        rows: list[TimingRow] = []
         for case in self.CASES:
             mol = parse_smiles(case.smiles)
             canonical_smiles = Chem.MolToSmiles(
@@ -115,9 +135,35 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                     lambda: self._enumerate_all_roots(mol, case)
                 )
                 decoder_times = _runtime_trials(
-                    lambda: self._enumerate_all_roots_with_decoder(mol, case)
+                    lambda: self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDecoder,
+                    )
                 )
-                self.assertEqual(support, self._enumerate_all_roots_with_decoder(mol, case))
+                determinized_decoder_times = _runtime_trials(
+                    lambda: self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    )
+                )
+                self.assertEqual(
+                    support,
+                    self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDecoder,
+                    ),
+                )
+                self.assertEqual(
+                    support,
+                    self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    ),
+                )
 
                 half_target = math.ceil(support_size / 2)
                 full_target = support_size
@@ -137,29 +183,70 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 )
 
                 rows.append(
+                    TimingRow(
+                        molecule=canonical_smiles,
+                        atoms=mol.GetNumAtoms(),
+                        support=support_size,
+                        enum_mean_s=statistics.mean(enum_times),
+                        enum_std_s=statistics.stdev(enum_times),
+                        decoder_mean_s=statistics.mean(decoder_times),
+                        decoder_std_s=statistics.stdev(decoder_times),
+                        determinized_decoder_mean_s=statistics.mean(determinized_decoder_times),
+                        determinized_decoder_std_s=statistics.stdev(determinized_decoder_times),
+                        rdkit_half_mean_s=statistics.mean(half_times),
+                        rdkit_half_std_s=statistics.stdev(half_times),
+                        rdkit_half_draw_mean=statistics.mean(half_draws),
+                        rdkit_half_draw_std=statistics.stdev(half_draws),
+                        rdkit_full_mean_s=statistics.mean(full_times),
+                        rdkit_full_std_s=statistics.stdev(full_times),
+                        rdkit_full_draw_mean=statistics.mean(full_draws),
+                        rdkit_full_draw_std=statistics.stdev(full_draws),
+                    )
+                )
+        return rows
+
+    def _write_tsv(self, rows: list[TimingRow]) -> None:
+        with self.OUTPUT_TSV_PATH.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=TimingRow.tsv_fieldnames(),
+                dialect="excel-tab",
+            )
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(asdict(row))
+
+    def _render_document_from_tsv(self) -> str:
+        rows: list[str] = []
+        rows.append(
+            "| Molecule | Atoms | Support | Grimace enum (all roots) | "
+            "Decoder enum (branch-preserving, all roots) | "
+            "Decoder enum (determinized, all roots) | RDKit to 1/2 support | "
+            "RDKit to full support |"
+        )
+        rows.append("| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |")
+
+        with self.OUTPUT_TSV_PATH.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, dialect="excel-tab")
+            for row in reader:
+                rows.append(
                     "| "
-                    f"`{canonical_smiles}` | {mol.GetNumAtoms()} | {support_size} | "
-                    f"{_format_bold_duration(statistics.mean(enum_times), statistics.stdev(enum_times))} | "
-                    f"{_format_bold_duration(statistics.mean(decoder_times), statistics.stdev(decoder_times))} | "
-                    f"{_format_bold_duration(statistics.mean(half_times), statistics.stdev(half_times))} "
-                    f"({_format_draws(statistics.mean(half_draws), statistics.stdev(half_draws))} draws) | "
-                    f"{_format_bold_duration(statistics.mean(full_times), statistics.stdev(full_times))} "
-                    f"({_format_draws(statistics.mean(full_draws), statistics.stdev(full_draws))} draws) |"
+                    f"`{row['molecule']}` | {row['atoms']} | {row['support']} | "
+                    f"{_format_bold_duration(float(row['enum_mean_s']), float(row['enum_std_s']))} | "
+                    f"{_format_bold_duration(float(row['decoder_mean_s']), float(row['decoder_std_s']))} | "
+                    f"{_format_bold_duration(float(row['determinized_decoder_mean_s']), float(row['determinized_decoder_std_s']))} | "
+                    f"{_format_bold_duration(float(row['rdkit_half_mean_s']), float(row['rdkit_half_std_s']))} "
+                    f"({_format_draws(float(row['rdkit_half_draw_mean']), float(row['rdkit_half_draw_std']))} draws) | "
+                    f"{_format_bold_duration(float(row['rdkit_full_mean_s']), float(row['rdkit_full_std_s']))} "
+                    f"({_format_draws(float(row['rdkit_full_draw_mean']), float(row['rdkit_full_draw_std']))} draws) |"
                 )
 
-        document = self._render_document(rows)
-        self.OUTPUT_PATH.write_text(document, encoding="utf-8")
-
-        print()
-        print(f"Wrote timing document: {self.OUTPUT_PATH}")
-        for row in rows:
-            print(row)
-
-    def _render_document(self, rows: list[str]) -> str:
         lines = [
             "# Timings",
             "",
             "This file is generated by `tests/perf/test_readme_timings.py`.",
+            "The benchmark first writes `docs/timings.tsv`, then renders this",
+            "Markdown table from that TSV.",
             "",
             "Example timings from the opt-in performance benchmark, measured in release mode",
             "on one development machine. Treat them as indicative, not as a portability or",
@@ -168,8 +255,10 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "- `Support`: the size of the exact rooted SMILES support across all root atoms.",
             "- `Grimace enum (all roots)`: direct exact enumeration with `MolToSmilesEnum(...)`,",
             "  unioned across all roots.",
-            "- `Decoder enum (all roots)`: exact enumeration by exhaustive traversal of",
-            "  `MolToSmilesDecoder(...)`, unioned across all roots.",
+            "- `Decoder enum (branch-preserving, all roots)`: exact enumeration by",
+            "  exhaustive traversal of `MolToSmilesDecoder(...)`, unioned across all roots.",
+            "- `Decoder enum (determinized, all roots)`: exact enumeration by exhaustive",
+            "  traversal of `MolToSmilesDeterminizedDecoder(...)`, unioned across all roots.",
             "- `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,",
             "  doRandom=True)` draws across all roots until half of the exact support has",
             "  been seen.",
@@ -255,11 +344,17 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             )
         }
 
-    def _enumerate_all_roots_with_decoder(self, mol: Chem.Mol, case: TimingCase) -> set[str]:
+    def _enumerate_all_roots_with_decoder(
+        self,
+        mol: Chem.Mol,
+        case: TimingCase,
+        *,
+        decoder_cls,
+    ) -> set[str]:
         outputs: set[str] = set()
 
         for root_idx in range(mol.GetNumAtoms()):
-            root_decoder = grimace.MolToSmilesDecoder(
+            root_decoder = decoder_cls(
                 mol,
                 rootedAtAtom=root_idx,
                 isomericSmiles=case.isomeric_smiles,

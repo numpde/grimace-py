@@ -204,10 +204,15 @@ maturin develop --release
 
 ## Timings
 
-The opt-in timing benchmark generates a small markdown document with the
-current table and a short explanation of the columns:
+The opt-in timing benchmark now generates two artifacts:
 
-- [docs/timings.md](docs/timings.md)
+- [docs/timings.tsv](docs/timings.tsv): raw measured summary data
+- [docs/timings.md](docs/timings.md): rendered table and column descriptions
+
+The table currently reports both decoder variants:
+
+- branch-preserving exhaustive traversal via `MolToSmilesDecoder(...)`
+- determinized exhaustive traversal via `MolToSmilesDeterminizedDecoder(...)`
 
 Regenerate it with:
 

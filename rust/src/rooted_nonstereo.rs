@@ -30,13 +30,13 @@ enum LiteralToken {
     Bond(BondTokenCode),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum EmittedToken {
     Literal(LiteralToken),
     RingLabel(usize),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct PendingRing {
     label: usize,
     bond_token: BondTokenCode,
@@ -70,7 +70,7 @@ pub(crate) struct RootedConnectedNonStereoWalkerStateData {
     action_stack: Vec<Action>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum RingAction {
     Close(usize),
     Open(usize),
@@ -220,12 +220,10 @@ fn ordered_neighbor_groups(
     if seeds.len() == 1 {
         return vec![seeds];
     }
-    let seed_list = seeds.clone();
-
     let mut groups_with_mins = Vec::<(usize, Vec<usize>)>::new();
     let mut seen = vec![false; graph.atom_count()];
     let mut queue = VecDeque::new();
-    for seed in seeds {
+    for &seed in &seeds {
         if seen[seed] {
             continue;
         }
@@ -243,7 +241,7 @@ fn ordered_neighbor_groups(
                     continue;
                 }
                 seen[neighbor_idx] = true;
-                if seed_list.binary_search(&neighbor_idx).is_ok() {
+                if seeds.binary_search(&neighbor_idx).is_ok() {
                     group.push(neighbor_idx);
                 }
                 queue.push_back(neighbor_idx);
@@ -581,6 +579,165 @@ fn apply_exact_ring_plan(
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum LabelAllocUndo {
+    Reused(usize),
+    New(usize),
+}
+
+fn remove_pending(
+    pending: &mut Vec<(usize, Vec<PendingRing>)>,
+    target_atom: usize,
+    ring: &PendingRing,
+) {
+    let offset = pending
+        .binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx)
+        .expect("pending target should exist");
+    let rings = &mut pending[offset].1;
+    let ring_offset = rings
+        .binary_search_by(|candidate| {
+            (candidate.label, candidate.bond_token).cmp(&(ring.label, ring.bond_token))
+        })
+        .expect("pending ring should exist");
+    rings.remove(ring_offset);
+    if rings.is_empty() {
+        pending.remove(offset);
+    }
+}
+
+fn remove_sorted_label(labels: &mut Vec<usize>, label: usize) {
+    let offset = labels
+        .binary_search(&label)
+        .expect("label should exist in sorted free label pool");
+    labels.remove(offset);
+}
+
+fn allocate_label_with_undo(
+    free_labels: &mut Vec<usize>,
+    next_label: &mut usize,
+) -> (usize, LabelAllocUndo) {
+    if !free_labels.is_empty() {
+        let label = free_labels.remove(0);
+        (label, LabelAllocUndo::Reused(label))
+    } else {
+        let label = *next_label;
+        *next_label += 1;
+        (label, LabelAllocUndo::New(label))
+    }
+}
+
+fn undo_label_allocations(
+    free_labels: &mut Vec<usize>,
+    next_label: &mut usize,
+    undos: &[LabelAllocUndo],
+) {
+    for undo in undos.iter().rev() {
+        match *undo {
+            LabelAllocUndo::Reused(label) => insert_sorted(free_labels, label),
+            LabelAllocUndo::New(label) => {
+                debug_assert_eq!(*next_label, label + 1);
+                *next_label = label;
+            }
+        }
+    }
+}
+
+fn apply_exact_ring_plan_in_place(
+    graph: &PreparedSmilesGraphData,
+    state: &mut RootedConnectedNonStereoWalkerStateData,
+    action: &AfterAtomAction,
+    ring_action_order: &[RingAction],
+    child_order: &[usize],
+) -> (
+    Vec<(usize, PendingRing)>,
+    Vec<usize>,
+    Vec<LabelAllocUndo>,
+    usize,
+) {
+    let action_stack_len = state.action_stack.len();
+    let mut pending_opened = Vec::<(usize, PendingRing)>::new();
+    let mut freed_labels = Vec::<usize>::new();
+    let mut allocation_undos = Vec::<LabelAllocUndo>::new();
+    let mut emitted_suffix_tokens = Vec::<EmittedToken>::new();
+
+    for (index, ring_action) in ring_action_order.iter().enumerate() {
+        let is_first = index == 0;
+        match *ring_action {
+            RingAction::Close(closure_idx) => {
+                let closure = &action.closures_here[closure_idx];
+                if closure.bond_token != BondTokenCode::Elided {
+                    if !is_first {
+                        emitted_suffix_tokens.push(EmittedToken::Literal(LiteralToken::Bond(
+                            closure.bond_token,
+                        )));
+                    }
+                    emitted_suffix_tokens.push(EmittedToken::RingLabel(closure.label));
+                } else if !is_first {
+                    emitted_suffix_tokens.push(EmittedToken::RingLabel(closure.label));
+                }
+                freed_labels.push(closure.label);
+            }
+            RingAction::Open(target_idx) => {
+                let (label, undo) =
+                    allocate_label_with_undo(&mut state.free_labels, &mut state.next_label);
+                allocation_undos.push(undo);
+                let ring = PendingRing {
+                    label,
+                    bond_token: bond_token_code(
+                        graph
+                            .bond_token(action.atom_idx, target_idx)
+                            .expect("opening target should be adjacent"),
+                    ),
+                };
+                add_pending(&mut state.pending, target_idx, ring);
+                pending_opened.push((target_idx, ring));
+                if !is_first {
+                    emitted_suffix_tokens.push(EmittedToken::RingLabel(label));
+                }
+            }
+        }
+    }
+
+    for &label in &freed_labels {
+        insert_sorted(&mut state.free_labels, label);
+    }
+
+    push_child_actions(
+        graph,
+        &mut state.action_stack,
+        action.atom_idx,
+        child_order,
+        false,
+    );
+    for token in emitted_suffix_tokens.into_iter().rev() {
+        state.action_stack.push(Action::EmitToken(token));
+    }
+
+    (
+        pending_opened,
+        freed_labels,
+        allocation_undos,
+        action_stack_len,
+    )
+}
+
+fn undo_exact_ring_plan_in_place(
+    state: &mut RootedConnectedNonStereoWalkerStateData,
+    pending_opened: &[(usize, PendingRing)],
+    freed_labels: &[usize],
+    allocation_undos: &[LabelAllocUndo],
+    action_stack_len: usize,
+) {
+    state.action_stack.truncate(action_stack_len);
+    for &label in freed_labels.iter().rev() {
+        remove_sorted_label(&mut state.free_labels, label);
+    }
+    for (target_idx, ring) in pending_opened.iter().rev() {
+        remove_pending(&mut state.pending, *target_idx, ring);
+    }
+    undo_label_allocations(&mut state.free_labels, &mut state.next_label, allocation_undos);
+}
+
 fn next_token_support_for_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
@@ -795,17 +952,30 @@ fn for_each_exact_successor_by_token_owned<F>(
                         };
 
                         for_each_permutation_py_order(chosen_children, &mut |child_order| {
-                            let mut successor = state.clone();
-                            successor.prefix.push_str(&first_token);
-                            apply_exact_ring_plan(
+                            let prefix_len = state.prefix.len();
+                            state.prefix.push_str(&first_token);
+                            let (
+                                pending_opened,
+                                freed_labels,
+                                allocation_undos,
+                                action_stack_len,
+                            ) = apply_exact_ring_plan_in_place(
                                 graph,
-                                &mut successor,
+                                &mut state,
                                 &action,
                                 &ring_action_order,
                                 &child_order,
                             );
-                            normalize_state(&mut successor);
-                            emit(first_token.clone(), successor);
+                            normalize_state(&mut state);
+                            emit(first_token.clone(), state.clone());
+                            undo_exact_ring_plan_in_place(
+                                &mut state,
+                                &pending_opened,
+                                &freed_labels,
+                                &allocation_undos,
+                                action_stack_len,
+                            );
+                            state.prefix.truncate(prefix_len);
                         });
                     });
                 });
@@ -830,17 +1000,20 @@ fn for_each_exact_successor_by_token_owned<F>(
                     .map(|group| group[0])
                     .collect::<Vec<_>>();
                 for_each_permutation_py_order(&child_order_seed, &mut |child_order| {
-                    let mut successor = state.clone();
-                    successor.prefix.push('(');
+                    let prefix_len = state.prefix.len();
+                    let action_stack_len = state.action_stack.len();
+                    state.prefix.push('(');
                     push_child_actions(
                         graph,
-                        &mut successor.action_stack,
+                        &mut state.action_stack,
                         action.atom_idx,
                         &child_order,
                         true,
                     );
-                    normalize_state(&mut successor);
-                    emit("(".to_owned(), successor);
+                    normalize_state(&mut state);
+                    emit("(".to_owned(), state.clone());
+                    state.action_stack.truncate(action_stack_len);
+                    state.prefix.truncate(prefix_len);
                 });
             }
         }
@@ -1253,6 +1426,68 @@ mod tests {
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
 
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct ExactFrontierStats {
+        frontier_count: usize,
+        terminal_frontier_count: usize,
+        raw_successor_count: usize,
+        deduped_successor_count: usize,
+        duplicate_bucket_count: usize,
+        max_frontier_width: usize,
+        max_raw_bucket_size: usize,
+        max_deduped_bucket_size: usize,
+    }
+
+    impl ExactFrontierStats {
+        fn duplicate_ratio(&self) -> f64 {
+            if self.raw_successor_count == 0 {
+                0.0
+            } else {
+                1.0 - (self.deduped_successor_count as f64 / self.raw_successor_count as f64)
+            }
+        }
+    }
+
+    fn collect_exact_frontier_stats(
+        graph: &PreparedSmilesGraphData,
+        frontier: Vec<super::RootedConnectedNonStereoWalkerStateData>,
+        stats: &mut ExactFrontierStats,
+    ) {
+        stats.frontier_count += 1;
+        stats.max_frontier_width = stats.max_frontier_width.max(frontier.len());
+
+        let mut transitions =
+            rustc_hash::FxHashMap::<String, Vec<super::RootedConnectedNonStereoWalkerStateData>>::default();
+        for state in frontier {
+            super::for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
+                transitions.entry(token).or_default().push(successor);
+            });
+        }
+
+        if transitions.is_empty() {
+            stats.terminal_frontier_count += 1;
+            return;
+        }
+
+        for mut states in transitions.into_values() {
+            let raw_count = states.len();
+            stats.raw_successor_count += raw_count;
+            stats.max_raw_bucket_size = stats.max_raw_bucket_size.max(raw_count);
+
+            states.sort_unstable();
+            states.dedup();
+
+            let deduped_count = states.len();
+            stats.deduped_successor_count += deduped_count;
+            stats.max_deduped_bucket_size = stats.max_deduped_bucket_size.max(deduped_count);
+            if raw_count > deduped_count {
+                stats.duplicate_bucket_count += 1;
+            }
+
+            collect_exact_frontier_stats(graph, states, stats);
+        }
+    }
+
     fn linear_ccc_graph() -> PreparedSmilesGraphData {
         PreparedSmilesGraphData {
             schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -1413,6 +1648,86 @@ mod tests {
         }
     }
 
+    fn toluene_graph() -> PreparedSmilesGraphData {
+        PreparedSmilesGraphData {
+            schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+            surface_kind: CONNECTED_NONSTEREO_SURFACE.to_owned(),
+            policy_name: "test_policy".to_owned(),
+            policy_digest: "deadbeef".to_owned(),
+            rdkit_version: "2026.03.1".to_owned(),
+            identity_smiles: "Cc1ccccc1".to_owned(),
+            atom_count: 7,
+            bond_count: 7,
+            atom_atomic_numbers: vec![6, 6, 6, 6, 6, 6, 6],
+            atom_is_aromatic: vec![false, true, true, true, true, true, true],
+            atom_isotopes: vec![0; 7],
+            atom_formal_charges: vec![0; 7],
+            atom_total_hs: vec![3, 0, 1, 1, 1, 1, 1],
+            atom_radical_electrons: vec![0; 7],
+            atom_map_numbers: vec![0; 7],
+            atom_tokens: vec![
+                "C".to_owned(),
+                "c".to_owned(),
+                "c".to_owned(),
+                "c".to_owned(),
+                "c".to_owned(),
+                "c".to_owned(),
+                "c".to_owned(),
+            ],
+            neighbors: vec![
+                vec![1],
+                vec![0, 2, 6],
+                vec![1, 3],
+                vec![2, 4],
+                vec![3, 5],
+                vec![4, 6],
+                vec![1, 5],
+            ],
+            neighbor_bond_tokens: vec![
+                vec!["".to_owned()],
+                vec!["".to_owned(), "".to_owned(), "".to_owned()],
+                vec!["".to_owned(), "".to_owned()],
+                vec!["".to_owned(), "".to_owned()],
+                vec!["".to_owned(), "".to_owned()],
+                vec!["".to_owned(), "".to_owned()],
+                vec!["".to_owned(), "".to_owned()],
+            ],
+            bond_pairs: vec![(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (1, 6)],
+            bond_kinds: vec![
+                "SINGLE".to_owned(),
+                "AROMATIC".to_owned(),
+                "AROMATIC".to_owned(),
+                "AROMATIC".to_owned(),
+                "AROMATIC".to_owned(),
+                "AROMATIC".to_owned(),
+                "AROMATIC".to_owned(),
+            ],
+            writer_do_isomeric_smiles: true,
+            writer_kekule_smiles: false,
+            writer_all_bonds_explicit: false,
+            writer_all_hs_explicit: false,
+            writer_ignore_atom_map_numbers: false,
+            identity_parse_with_rdkit: true,
+            identity_canonical: true,
+            identity_do_isomeric_smiles: true,
+            identity_kekule_smiles: false,
+            identity_rooted_at_atom: -1,
+            identity_all_bonds_explicit: false,
+            identity_all_hs_explicit: false,
+            identity_do_random: false,
+            identity_ignore_atom_map_numbers: false,
+            atom_chiral_tags: Vec::new(),
+            atom_stereo_neighbor_orders: Vec::new(),
+            atom_explicit_h_counts: Vec::new(),
+            atom_implicit_h_counts: Vec::new(),
+            bond_stereo_kinds: Vec::new(),
+            bond_stereo_atoms: Vec::new(),
+            bond_dirs: Vec::new(),
+            bond_begin_atom_indices: Vec::new(),
+            bond_end_atom_indices: Vec::new(),
+        }
+    }
+
     #[test]
     fn permutation_order_matches_python_style() {
         let perms = permutations_py_order(&[1usize, 2usize, 3usize]);
@@ -1535,5 +1850,29 @@ mod tests {
             "unexpected error: {:?}",
             err
         );
+    }
+
+    #[test]
+    fn exact_frontier_stats_detect_duplicate_merging_on_toluene_ring_root() {
+        let graph = toluene_graph();
+        let initial_frontier = vec![initial_state_for_root(&graph, 1)];
+        let mut stats = ExactFrontierStats::default();
+        collect_exact_frontier_stats(&graph, initial_frontier, &mut stats);
+
+        eprintln!(
+            "toluene ring-root exact-frontier stats: frontiers={} terminal={} raw={} deduped={} dup_buckets={} dup_ratio={:.3} max_frontier={} max_raw_bucket={} max_deduped_bucket={}",
+            stats.frontier_count,
+            stats.terminal_frontier_count,
+            stats.raw_successor_count,
+            stats.deduped_successor_count,
+            stats.duplicate_bucket_count,
+            stats.duplicate_ratio(),
+            stats.max_frontier_width,
+            stats.max_raw_bucket_size,
+            stats.max_deduped_bucket_size,
+        );
+
+        assert!(stats.raw_successor_count > stats.deduped_successor_count);
+        assert!(stats.duplicate_bucket_count > 0);
     }
 }

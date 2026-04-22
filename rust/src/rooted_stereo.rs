@@ -451,12 +451,6 @@ where
     }
 }
 
-fn collect_cartesian_choices(groups: &[Vec<usize>]) -> Vec<Vec<usize>> {
-    let mut out = Vec::new();
-    for_each_cartesian_choice(groups, &mut |choice| out.push(choice.to_vec()));
-    out
-}
-
 fn unique_permutations<T, F>(items: &[T], f: &mut F)
 where
     T: Clone + Eq,
@@ -492,15 +486,6 @@ where
     if items.is_empty() {
         f(&[]);
     }
-}
-
-fn collect_unique_permutations<T>(items: &[T]) -> Vec<Vec<T>>
-where
-    T: Clone + Eq,
-{
-    let mut out = Vec::new();
-    unique_permutations(items, &mut |perm| out.push(perm.to_vec()));
-    out
 }
 
 fn add_pending(pending: &mut [Vec<PendingRing>], target_atom: usize, ring: PendingRing) {
@@ -3068,8 +3053,13 @@ fn enter_atom_successors_by_token(
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
 
     let mut successors = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
-    for chosen_children in collect_cartesian_choices(&ordered_groups) {
-        let child_order_seed = chosen_children.clone();
+    let mut status = Ok(());
+    for_each_cartesian_choice(&ordered_groups, &mut |chosen_children| {
+        if status.is_err() {
+            return;
+        }
+
+        let child_order_seed = chosen_children.to_vec();
         let child_set = chosen_children.iter().copied().collect::<BTreeSet<_>>();
         let opening_targets = ordered_groups
             .iter()
@@ -3085,150 +3075,178 @@ fn enter_atom_successors_by_token(
             ring_actions.push(RingAction::Open(target_idx));
         }
 
-        for ring_action_order in collect_unique_permutations(&ring_actions) {
-            let mut current_pending = pending_now.clone();
-            let mut current_free = base_state.free_labels.clone();
-            let mut current_next = base_state.next_label;
-            let mut current_component_phases = base_state.stereo_component_phases.clone();
-            let mut current_selected_neighbors = base_state.stereo_selected_neighbors.clone();
-            let mut current_selected_orientations = base_state.stereo_selected_orientations.clone();
-            let mut current_first_emitted_candidates =
-                base_state.stereo_first_emitted_candidates.clone();
-            let mut current_component_begin_atoms = base_state.stereo_component_begin_atoms.clone();
-            let mut current_ring_actions = Vec::<WalkerAction>::new();
-            let mut labels_freed_after_atom = Vec::<usize>::new();
-            let mut ring_neighbor_order = Vec::<usize>::new();
+        unique_permutations(&ring_actions, &mut |ring_action_order| {
+            if status.is_err() {
+                return;
+            }
 
-            for ring_action in &ring_action_order {
-                match *ring_action {
-                    RingAction::Close(closure_idx) => {
-                        let closure = &closures_here[closure_idx];
-                        let (
-                            bond_part,
-                            updated_neighbors,
-                            updated_orientations,
-                            updated_first_candidates,
-                        ) = emitted_edge_part(
-                            graph,
-                            &runtime.side_infos,
-                            &runtime.side_ids_by_component,
-                            &runtime.edge_to_side_ids,
-                            &current_component_phases,
-                            &current_selected_neighbors,
-                            &current_selected_orientations,
-                            &current_first_emitted_candidates,
-                            &current_component_begin_atoms,
-                            &runtime.isolated_components,
-                            atom_idx,
-                            closure.other_atom_idx,
-                        )?;
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
-                        current_first_emitted_candidates = updated_first_candidates;
-                        if let Some(action) = part_to_action(bond_part) {
-                            current_ring_actions.push(action);
-                        }
-                        current_ring_actions
-                            .push(WalkerAction::EmitLiteral(ring_label_text(closure.label)));
-                        labels_freed_after_atom.push(closure.label);
-                        ring_neighbor_order.push(closure.other_atom_idx);
-                    }
-                    RingAction::Open(target_idx) => {
-                        let label = allocate_label(&mut current_free, &mut current_next);
-                        current_ring_actions
-                            .push(WalkerAction::EmitLiteral(ring_label_text(label)));
-                        let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-                            graph,
-                            &runtime.stereo_component_ids,
-                            &runtime.isolated_components,
-                            &current_component_phases,
-                            &current_component_begin_atoms,
-                            atom_idx,
-                            target_idx,
-                        )?;
-                        let (updated_neighbors, updated_orientations) =
-                            force_known_begin_side_selection(
-                                runtime,
-                                &updated_phases,
-                                &updated_begin_atoms,
+            let outcome: PyResult<()> = (|| {
+                let mut current_pending = pending_now.clone();
+                let mut current_free = base_state.free_labels.clone();
+                let mut current_next = base_state.next_label;
+                let mut current_component_phases = base_state.stereo_component_phases.clone();
+                let mut current_selected_neighbors = base_state.stereo_selected_neighbors.clone();
+                let mut current_selected_orientations =
+                    base_state.stereo_selected_orientations.clone();
+                let mut current_first_emitted_candidates =
+                    base_state.stereo_first_emitted_candidates.clone();
+                let mut current_component_begin_atoms =
+                    base_state.stereo_component_begin_atoms.clone();
+                let mut current_ring_actions = Vec::<WalkerAction>::new();
+                let mut labels_freed_after_atom = Vec::<usize>::new();
+                let mut ring_neighbor_order = Vec::<usize>::new();
+
+                for ring_action in ring_action_order {
+                    match *ring_action {
+                        RingAction::Close(closure_idx) => {
+                            let closure = &closures_here[closure_idx];
+                            let (
+                                bond_part,
+                                updated_neighbors,
+                                updated_orientations,
+                                updated_first_candidates,
+                            ) = emitted_edge_part(
+                                graph,
+                                &runtime.side_infos,
+                                &runtime.side_ids_by_component,
+                                &runtime.edge_to_side_ids,
+                                &current_component_phases,
                                 &current_selected_neighbors,
                                 &current_selected_orientations,
-                            );
-                        current_selected_neighbors = updated_neighbors;
-                        current_selected_orientations = updated_orientations;
-                        let (updated_phases, updated_begin_atoms) =
-                            defer_coupled_component_phase_if_begin_side_is_unresolved(
-                                runtime,
+                                &current_first_emitted_candidates,
+                                &current_component_begin_atoms,
+                                &runtime.isolated_components,
+                                atom_idx,
+                                closure.other_atom_idx,
+                            )?;
+                            current_selected_neighbors = updated_neighbors;
+                            current_selected_orientations = updated_orientations;
+                            current_first_emitted_candidates = updated_first_candidates;
+                            if let Some(action) = part_to_action(bond_part) {
+                                current_ring_actions.push(action);
+                            }
+                            current_ring_actions
+                                .push(WalkerAction::EmitLiteral(ring_label_text(closure.label)));
+                            labels_freed_after_atom.push(closure.label);
+                            ring_neighbor_order.push(closure.other_atom_idx);
+                        }
+                        RingAction::Open(target_idx) => {
+                            let label = allocate_label(&mut current_free, &mut current_next);
+                            current_ring_actions
+                                .push(WalkerAction::EmitLiteral(ring_label_text(label)));
+                            let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
                                 graph,
-                                &updated_phases,
-                                &updated_begin_atoms,
-                                &current_selected_neighbors,
+                                &runtime.stereo_component_ids,
+                                &runtime.isolated_components,
+                                &current_component_phases,
+                                &current_component_begin_atoms,
                                 atom_idx,
                                 target_idx,
                             )?;
-                        current_component_phases = updated_phases;
-                        current_component_begin_atoms = updated_begin_atoms;
-                        add_pending(
-                            &mut current_pending,
-                            target_idx,
-                            PendingRing {
-                                label,
-                                other_atom_idx: atom_idx,
-                            },
-                        );
-                        ring_neighbor_order.push(target_idx);
+                            let (updated_neighbors, updated_orientations) =
+                                force_known_begin_side_selection(
+                                    runtime,
+                                    &updated_phases,
+                                    &updated_begin_atoms,
+                                    &current_selected_neighbors,
+                                    &current_selected_orientations,
+                                );
+                            current_selected_neighbors = updated_neighbors;
+                            current_selected_orientations = updated_orientations;
+                            let (updated_phases, updated_begin_atoms) =
+                                defer_coupled_component_phase_if_begin_side_is_unresolved(
+                                    runtime,
+                                    graph,
+                                    &updated_phases,
+                                    &updated_begin_atoms,
+                                    &current_selected_neighbors,
+                                    atom_idx,
+                                    target_idx,
+                                )?;
+                            current_component_phases = updated_phases;
+                            current_component_begin_atoms = updated_begin_atoms;
+                            add_pending(
+                                &mut current_pending,
+                                target_idx,
+                                PendingRing {
+                                    label,
+                                    other_atom_idx: atom_idx,
+                                },
+                            );
+                            ring_neighbor_order.push(target_idx);
+                        }
                     }
                 }
-            }
 
-            for label in labels_freed_after_atom {
-                insert_sorted(&mut current_free, label);
-            }
+                for label in labels_freed_after_atom {
+                    insert_sorted(&mut current_free, label);
+                }
 
-            for child_order in collect_unique_permutations(&child_order_seed) {
-                let atom_token = if graph.atom_chiral_tags[atom_idx] == "CHI_UNSPECIFIED" {
-                    graph.atom_tokens[atom_idx].clone()
-                } else {
-                    let emitted_neighbor_order = stereo_neighbor_order(
-                        graph,
-                        atom_idx,
-                        parent_idx,
-                        &ring_neighbor_order,
-                        &child_order,
-                    )?;
-                    stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
-                };
-                let mut successor = RootedConnectedStereoWalkerStateData {
-                    prefix: base_state.prefix.clone(),
-                    visited: visited_now.clone(),
-                    visited_count: visited_count_now,
-                    pending: current_pending.clone(),
-                    free_labels: current_free.clone(),
-                    next_label: current_next,
-                    stereo_component_phases: current_component_phases.clone(),
-                    stereo_selected_neighbors: current_selected_neighbors.clone(),
-                    stereo_selected_orientations: current_selected_orientations.clone(),
-                    stereo_first_emitted_candidates: current_first_emitted_candidates.clone(),
-                    stereo_component_begin_atoms: current_component_begin_atoms.clone(),
-                    stereo_component_token_flips: base_state.stereo_component_token_flips.clone(),
-                    action_stack: base_state.action_stack.clone(),
-                };
-                if !child_order.is_empty() {
-                    successor.action_stack.push(WalkerAction::ProcessChildren {
-                        parent_idx: atom_idx,
-                        child_order: Arc::<[usize]>::from(child_order.clone()),
-                        next_branch_index: 0,
-                    });
-                }
-                for action in current_ring_actions.iter().rev() {
-                    successor.action_stack.push(action.clone());
-                }
-                successor.prefix.push_str(&atom_token);
-                normalize_component_token_flips(runtime, graph, &mut successor)?;
-                successors.entry(atom_token).or_default().push(successor);
+                unique_permutations(&child_order_seed, &mut |child_order| {
+                    if status.is_err() {
+                        return;
+                    }
+
+                    let inner: PyResult<()> = (|| {
+                        let atom_token = if graph.atom_chiral_tags[atom_idx] == "CHI_UNSPECIFIED" {
+                            graph.atom_tokens[atom_idx].clone()
+                        } else {
+                            let emitted_neighbor_order = stereo_neighbor_order(
+                                graph,
+                                atom_idx,
+                                parent_idx,
+                                &ring_neighbor_order,
+                                child_order,
+                            )?;
+                            stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
+                        };
+                        let mut successor = RootedConnectedStereoWalkerStateData {
+                            prefix: base_state.prefix.clone(),
+                            visited: visited_now.clone(),
+                            visited_count: visited_count_now,
+                            pending: current_pending.clone(),
+                            free_labels: current_free.clone(),
+                            next_label: current_next,
+                            stereo_component_phases: current_component_phases.clone(),
+                            stereo_selected_neighbors: current_selected_neighbors.clone(),
+                            stereo_selected_orientations: current_selected_orientations.clone(),
+                            stereo_first_emitted_candidates: current_first_emitted_candidates
+                                .clone(),
+                            stereo_component_begin_atoms: current_component_begin_atoms.clone(),
+                            stereo_component_token_flips: base_state
+                                .stereo_component_token_flips
+                                .clone(),
+                            action_stack: base_state.action_stack.clone(),
+                        };
+                        if !child_order.is_empty() {
+                            successor.action_stack.push(WalkerAction::ProcessChildren {
+                                parent_idx: atom_idx,
+                                child_order: Arc::<[usize]>::from(child_order.to_vec()),
+                                next_branch_index: 0,
+                            });
+                        }
+                        for action in current_ring_actions.iter().rev() {
+                            successor.action_stack.push(action.clone());
+                        }
+                        successor.prefix.push_str(&atom_token);
+                        normalize_component_token_flips(runtime, graph, &mut successor)?;
+                        successors.entry(atom_token).or_default().push(successor);
+                        Ok(())
+                    })();
+                    if let Err(err) = inner {
+                        status = Err(err);
+                    }
+                });
+
+                Ok(())
+            })();
+
+            if let Err(err) = outcome {
+                status = Err(err);
             }
-        }
-    }
+        });
+    });
+    status?;
     Ok(successors)
 }
 

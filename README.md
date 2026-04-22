@@ -189,7 +189,7 @@ Install with `pip install <wheel>` using one of these release assets:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
-| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.2/grimace-0.1.2-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.2/grimace-0.1.2-cp313-cp313-manylinux_2_28_x86_64.whl) |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.3/grimace-0.1.3-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.3/grimace-0.1.3-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 The built package depends on `rdkit>=2026.3`.
 
@@ -214,10 +214,16 @@ The table currently reports both decoder variants:
 - branch-preserving exhaustive traversal via `MolToSmilesDecoder(...)`
 - determinized exhaustive traversal via `MolToSmilesDeterminizedDecoder(...)`
 
+Current takeaway from the generated table:
+
+- `MolToSmilesEnum(...)` is still the fastest exact route in every listed case
+- `MolToSmilesDeterminizedDecoder(...)` can reduce exhaustive decoder cost on
+  some molecules, but it is still slower than direct exact enumeration here
+
 Regenerate it with:
 
 ```bash
-RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest tests.perf.test_readme_timings -q
+RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest tests.perf.test_readme_timings -q
 ```
 
 ## License

@@ -203,11 +203,19 @@ def _connected_fragment_support(
             ""
         }
 
+    # For all-roots support on an RDKit molecule, build the prepared graph once
+    # and reuse it across roots instead of reparsing the same fragment each time.
+    prepared_or_fragment = (
+        prepare_smiles_graph(fragment_mol, flags=flags)
+        if isinstance(fragment_mol, Chem.Mol)
+        else fragment_mol
+    )
+
     support: set[str] = set()
     for local_root_idx in range(atom_count):
         support.update(
             mol_to_smiles_support(
-                fragment_mol,
+                prepared_or_fragment,
                 isomeric_smiles=flags.isomeric_smiles,
                 kekule_smiles=flags.kekule_smiles,
                 rooted_at_atom=local_root_idx,

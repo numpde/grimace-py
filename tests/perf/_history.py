@@ -15,7 +15,7 @@ from rdkit import rdBase
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HISTORY_PATH = REPO_ROOT / "notes" / "perf_history.jsonl"
+HISTORY_PATH = REPO_ROOT / "notes" / "004_perf_history.jsonl"
 REPORT_DIR = REPO_ROOT / "notes" / "perf_reports"
 
 _PERF_REPORT_LINE = re.compile(

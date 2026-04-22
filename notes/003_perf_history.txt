@@ -1,6 +1,6 @@
 Internal performance history lives in:
 
-- `notes/perf_history.jsonl`
+- `notes/004_perf_history.jsonl`
 - optional full perf reports under `notes/perf_reports/`
 
 The JSONL file is append-only and mixes two record kinds:

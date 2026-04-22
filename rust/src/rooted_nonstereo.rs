@@ -1,9 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use crate::frontier::{
     choice_texts, extend_transitions, finalize_transitions,
@@ -222,17 +222,17 @@ fn ordered_neighbor_groups(
     }
     let mut groups_with_mins = Vec::<(usize, Vec<usize>)>::new();
     let mut seen = vec![false; graph.atom_count()];
-    let mut queue = VecDeque::new();
+    let mut stack = Vec::new();
     for &seed in &seeds {
         if seen[seed] {
             continue;
         }
         seen[seed] = true;
-        queue.push_back(seed);
+        stack.push(seed);
         let mut component_min = seed;
         let mut group = vec![seed];
 
-        while let Some(current) = queue.pop_front() {
+        while let Some(current) = stack.pop() {
             if current < component_min {
                 component_min = current;
             }
@@ -244,7 +244,7 @@ fn ordered_neighbor_groups(
                 if seeds.binary_search(&neighbor_idx).is_ok() {
                     group.push(neighbor_idx);
                 }
-                queue.push_back(neighbor_idx);
+                stack.push(neighbor_idx);
             }
         }
 
@@ -258,6 +258,7 @@ fn ordered_neighbor_groups(
         .map(|(_component_min, group)| group)
         .collect()
 }
+
 
 fn for_each_cartesian_choice<F>(groups: &[Vec<usize>], f: &mut F)
 where
@@ -1175,6 +1176,40 @@ fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> Stri
     shared_frontier_prefix(frontier, |state| state.prefix.as_str())
 }
 
+fn exact_state_structural_cmp(
+    left: &RootedConnectedNonStereoWalkerStateData,
+    right: &RootedConnectedNonStereoWalkerStateData,
+) -> std::cmp::Ordering {
+    (
+        &left.visited,
+        left.visited_count,
+        &left.pending,
+        &left.free_labels,
+        left.next_label,
+        &left.action_stack,
+    )
+        .cmp(&(
+            &right.visited,
+            right.visited_count,
+            &right.pending,
+            &right.free_labels,
+            right.next_label,
+            &right.action_stack,
+        ))
+}
+
+fn exact_state_same_structure(
+    left: &RootedConnectedNonStereoWalkerStateData,
+    right: &RootedConnectedNonStereoWalkerStateData,
+) -> bool {
+    left.visited_count == right.visited_count
+        && left.next_label == right.next_label
+        && left.visited == right.visited
+        && left.pending == right.pending
+        && left.free_labels == right.free_labels
+        && left.action_stack == right.action_stack
+}
+
 fn frontier_is_terminal(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
@@ -1185,20 +1220,36 @@ fn frontier_is_terminal(
 fn exact_frontier_successors(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-) -> Vec<Vec<RootedConnectedNonStereoWalkerStateData>> {
-    let mut transitions =
-        FxHashMap::<String, Vec<RootedConnectedNonStereoWalkerStateData>>::default();
+) -> Vec<(String, Vec<RootedConnectedNonStereoWalkerStateData>)> {
+    let mut transitions = Vec::<(
+        String,
+        Vec<RootedConnectedNonStereoWalkerStateData>,
+    )>::new();
     for state in frontier {
         for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
-            transitions.entry(token).or_default().push(successor);
+            if let Some((_, states)) = transitions
+                .iter_mut()
+                .find(|(existing_token, _)| *existing_token == token)
+            {
+                states.push(successor);
+            } else {
+                transitions.push((token, vec![successor]));
+            }
         });
     }
     transitions
-        .into_values()
-        .map(|mut states| {
-            states.sort_unstable();
-            states.dedup();
-            states
+        .into_iter()
+        .map(|(token, mut states)| {
+            debug_assert!(
+                states
+                    .first()
+                    .map(|first| states.iter().all(|state| state.prefix == first.prefix))
+                    .unwrap_or(true),
+                "exact frontier token buckets must stay prefix-homogeneous"
+            );
+            states.sort_unstable_by(exact_state_structural_cmp);
+            states.dedup_by(|left, right| exact_state_same_structure(left, right));
+            (token, states)
         })
         .collect()
 }
@@ -1215,7 +1266,7 @@ fn enumerate_support_from_frontier(
         return;
     }
 
-    for next_frontier in transitions {
+    for (_token, next_frontier) in transitions {
         enumerate_support_from_frontier(graph, next_frontier, out);
     }
 }
@@ -1476,6 +1527,7 @@ impl PyRootedConnectedNonStereoDecoder {
 mod tests {
     use std::collections::BTreeSet;
 
+    use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods};
     use pyo3::Python;
 
     use super::{
@@ -1548,6 +1600,55 @@ mod tests {
 
             collect_exact_frontier_stats(graph, states, stats);
         }
+    }
+
+    fn prepared_graph_from_smiles(smiles: &str) -> Option<PreparedSmilesGraphData> {
+        Python::initialize();
+        Python::attach(|py| {
+            let sys = py.import("sys").ok()?;
+            let path = sys.getattr("path").ok()?;
+            let version_info = sys.getattr("version_info").ok()?;
+            let major: usize = version_info.get_item(0).ok()?.extract().ok()?;
+            let minor: usize = version_info.get_item(1).ok()?.extract().ok()?;
+            let repo_python = format!("{}/python", env!("CARGO_MANIFEST_DIR"));
+            let venv_site_packages = format!(
+                "{}/.venv/lib/python{}.{}/site-packages",
+                env!("CARGO_MANIFEST_DIR"),
+                major,
+                minor
+            );
+            let _ = path.call_method1("insert", (0, repo_python));
+            let _ = path.call_method1("insert", (0, venv_site_packages));
+            let Ok(chem) = py.import("rdkit.Chem") else {
+                return None;
+            };
+            let runtime = py
+                .import("grimace._runtime")
+                .expect("grimace._runtime import should succeed");
+            let mol = chem
+                .getattr("MolFromSmiles")
+                .expect("MolFromSmiles should exist")
+                .call1((smiles,))
+                .expect("SMILES should parse");
+            let flags = runtime
+                .getattr("_make_flags")
+                .expect("_make_flags should exist")
+                .call0()
+                .expect("_make_flags should build default flags");
+            let kwargs = PyDict::new(py);
+            kwargs
+                .set_item("flags", flags)
+                .expect("kwargs population should succeed");
+            let prepared = runtime
+                .getattr("prepare_smiles_graph")
+                .expect("prepare_smiles_graph should exist")
+                .call((mol,), Some(&kwargs))
+                .expect("prepare_smiles_graph should succeed");
+            Some(
+                PreparedSmilesGraphData::from_any(&prepared)
+                    .expect("prepared graph extraction should work"),
+            )
+        })
     }
 
     fn linear_ccc_graph() -> PreparedSmilesGraphData {
@@ -1955,5 +2056,28 @@ mod tests {
 
         assert!(stats.raw_successor_count > stats.deduped_successor_count);
         assert!(stats.duplicate_bucket_count > 0);
+    }
+
+    #[test]
+    #[ignore = "diagnostic-only exact-frontier shape report for profiler-guided optimization"]
+    fn exact_frontier_stats_report_large_aromatic_case() {
+        let smiles = "CN(C)P(C1=CC=CC=C1)C2=CC=CC=C2C3=CC=C(C=C3)C4=CC=CC=C4P(C5=CC=CC=C5)N(C)C";
+        let graph = prepared_graph_from_smiles(smiles).expect("prepared graph should exist");
+        let initial_frontier = vec![initial_state_for_root(&graph, 0)];
+        let mut stats = ExactFrontierStats::default();
+        collect_exact_frontier_stats(&graph, initial_frontier, &mut stats);
+
+        eprintln!(
+            "large aromatic exact-frontier stats: frontiers={} terminal={} raw={} deduped={} dup_buckets={} dup_ratio={:.3} max_frontier={} max_raw_bucket={} max_deduped_bucket={}",
+            stats.frontier_count,
+            stats.terminal_frontier_count,
+            stats.raw_successor_count,
+            stats.deduped_successor_count,
+            stats.duplicate_bucket_count,
+            stats.duplicate_ratio(),
+            stats.max_frontier_width,
+            stats.max_raw_bucket_size,
+            stats.max_deduped_bucket_size,
+        );
     }
 }

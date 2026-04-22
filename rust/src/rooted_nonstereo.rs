@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::frontier::{
     choice_texts, extend_transitions, finalize_transitions,
@@ -11,10 +12,34 @@ use crate::frontier::{
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum BondTokenCode {
+    Elided,
+    Aromatic,
+    Single,
+    Double,
+    Triple,
+    DativeForward,
+    DativeBackward,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum LiteralToken {
+    BranchOpen,
+    BranchClose,
+    Bond(BondTokenCode),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum EmittedToken {
+    Literal(LiteralToken),
+    RingLabel(usize),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct PendingRing {
     label: usize,
-    bond_token: String,
+    bond_token: BondTokenCode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -29,7 +54,7 @@ struct AfterAtomAction {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Action {
-    EmitToken(String),
+    EmitToken(EmittedToken),
     EnterAtom(usize),
     AfterAtom(AfterAtomAction),
 }
@@ -58,6 +83,49 @@ fn ring_label_text(label: usize) -> String {
         format!("%{label}")
     } else {
         format!("%({label})")
+    }
+}
+
+fn bond_token_code(token: &str) -> BondTokenCode {
+    match token {
+        "" => BondTokenCode::Elided,
+        ":" => BondTokenCode::Aromatic,
+        "-" => BondTokenCode::Single,
+        "=" => BondTokenCode::Double,
+        "#" => BondTokenCode::Triple,
+        "->" => BondTokenCode::DativeForward,
+        "<-" => BondTokenCode::DativeBackward,
+        _ => panic!("unsupported nonstereo bond token: {token:?}"),
+    }
+}
+
+fn bond_token_text(token: BondTokenCode) -> &'static str {
+    match token {
+        BondTokenCode::Elided => "",
+        BondTokenCode::Aromatic => ":",
+        BondTokenCode::Single => "-",
+        BondTokenCode::Double => "=",
+        BondTokenCode::Triple => "#",
+        BondTokenCode::DativeForward => "->",
+        BondTokenCode::DativeBackward => "<-",
+    }
+}
+
+fn emitted_token_string(token: &EmittedToken) -> String {
+    match token {
+        EmittedToken::Literal(LiteralToken::BranchOpen) => "(".to_owned(),
+        EmittedToken::Literal(LiteralToken::BranchClose) => ")".to_owned(),
+        EmittedToken::Literal(LiteralToken::Bond(bond)) => bond_token_text(*bond).to_owned(),
+        EmittedToken::RingLabel(label) => ring_label_text(*label),
+    }
+}
+
+fn append_emitted_token(prefix: &mut String, token: &EmittedToken) {
+    match token {
+        EmittedToken::Literal(LiteralToken::BranchOpen) => prefix.push('('),
+        EmittedToken::Literal(LiteralToken::BranchClose) => prefix.push(')'),
+        EmittedToken::Literal(LiteralToken::Bond(bond)) => prefix.push_str(bond_token_text(*bond)),
+        EmittedToken::RingLabel(label) => prefix.push_str(&ring_label_text(*label)),
     }
 }
 
@@ -91,8 +159,7 @@ fn add_pending(
     };
     let insert_at = current
         .binary_search_by(|candidate| {
-            (candidate.label, candidate.bond_token.as_str())
-                .cmp(&(ring.label, ring.bond_token.as_str()))
+            (candidate.label, candidate.bond_token).cmp(&(ring.label, ring.bond_token))
         })
         .unwrap_or_else(|offset| offset);
     current.insert(insert_at, ring);
@@ -320,13 +387,12 @@ fn is_terminal_state(state: &RootedConnectedNonStereoWalkerStateData) -> bool {
     normalized.action_stack.is_empty()
 }
 
-fn next_open_label_token(state: &RootedConnectedNonStereoWalkerStateData) -> String {
-    let label = state
+fn next_open_label(state: &RootedConnectedNonStereoWalkerStateData) -> usize {
+    state
         .free_labels
         .first()
         .copied()
-        .unwrap_or(state.next_label);
-    ring_label_text(label)
+        .unwrap_or(state.next_label)
 }
 
 fn edge_prefix_or_atom(
@@ -379,7 +445,9 @@ fn push_child_actions(
         .expect("main child should be adjacent");
     action_stack.push(Action::EnterAtom(main_child));
     if !main_prefix.is_empty() {
-        action_stack.push(Action::EmitToken(main_prefix.to_owned()));
+        action_stack.push(Action::EmitToken(EmittedToken::Literal(
+            LiteralToken::Bond(bond_token_code(main_prefix)),
+        )));
     }
 
     if branch_children.is_empty() {
@@ -387,28 +455,40 @@ fn push_child_actions(
     }
 
     for &child_idx in branch_children[1..].iter().rev() {
-        action_stack.push(Action::EmitToken(")".to_owned()));
+        action_stack.push(Action::EmitToken(EmittedToken::Literal(
+            LiteralToken::BranchClose,
+        )));
         action_stack.push(Action::EnterAtom(child_idx));
         let edge_prefix = graph
             .bond_token(parent_idx, child_idx)
             .expect("branch child should be adjacent");
         if !edge_prefix.is_empty() {
-            action_stack.push(Action::EmitToken(edge_prefix.to_owned()));
+            action_stack.push(Action::EmitToken(EmittedToken::Literal(
+                LiteralToken::Bond(bond_token_code(edge_prefix)),
+            )));
         }
-        action_stack.push(Action::EmitToken("(".to_owned()));
+        action_stack.push(Action::EmitToken(EmittedToken::Literal(
+            LiteralToken::BranchOpen,
+        )));
     }
 
     let first_branch_child = branch_children[0];
-    action_stack.push(Action::EmitToken(")".to_owned()));
+    action_stack.push(Action::EmitToken(EmittedToken::Literal(
+        LiteralToken::BranchClose,
+    )));
     action_stack.push(Action::EnterAtom(first_branch_child));
     let first_edge_prefix = graph
         .bond_token(parent_idx, first_branch_child)
         .expect("first branch child should be adjacent");
     if !first_edge_prefix.is_empty() {
-        action_stack.push(Action::EmitToken(first_edge_prefix.to_owned()));
+        action_stack.push(Action::EmitToken(EmittedToken::Literal(
+            LiteralToken::Bond(bond_token_code(first_edge_prefix)),
+        )));
     }
     if !first_branch_open_consumed {
-        action_stack.push(Action::EmitToken("(".to_owned()));
+        action_stack.push(Action::EmitToken(EmittedToken::Literal(
+            LiteralToken::BranchOpen,
+        )));
     }
 }
 
@@ -442,20 +522,22 @@ fn apply_exact_ring_plan(
     let mut current_free = state.free_labels.clone();
     let mut current_next = state.next_label;
     let mut freed_labels = Vec::new();
-    let mut emitted_suffix_tokens = Vec::new();
+    let mut emitted_suffix_tokens = Vec::<EmittedToken>::new();
 
     for (index, ring_action) in ring_action_order.iter().enumerate() {
         let is_first = index == 0;
         match *ring_action {
             RingAction::Close(closure_idx) => {
                 let closure = &action.closures_here[closure_idx];
-                if !closure.bond_token.is_empty() {
+                if closure.bond_token != BondTokenCode::Elided {
                     if !is_first {
-                        emitted_suffix_tokens.push(closure.bond_token.clone());
+                        emitted_suffix_tokens.push(EmittedToken::Literal(LiteralToken::Bond(
+                            closure.bond_token,
+                        )));
                     }
-                    emitted_suffix_tokens.push(ring_label_text(closure.label));
+                    emitted_suffix_tokens.push(EmittedToken::RingLabel(closure.label));
                 } else if !is_first {
-                    emitted_suffix_tokens.push(ring_label_text(closure.label));
+                    emitted_suffix_tokens.push(EmittedToken::RingLabel(closure.label));
                 }
                 freed_labels.push(closure.label);
             }
@@ -466,14 +548,15 @@ fn apply_exact_ring_plan(
                     target_idx,
                     PendingRing {
                         label,
-                        bond_token: graph
-                            .bond_token(action.atom_idx, target_idx)
-                            .expect("opening target should be adjacent")
-                            .to_owned(),
+                        bond_token: bond_token_code(
+                            graph
+                                .bond_token(action.atom_idx, target_idx)
+                                .expect("opening target should be adjacent"),
+                        ),
                     },
                 );
                 if !is_first {
-                    emitted_suffix_tokens.push(ring_label_text(label));
+                    emitted_suffix_tokens.push(EmittedToken::RingLabel(label));
                 }
             }
         }
@@ -510,20 +593,20 @@ fn next_token_support_for_state(
     };
 
     match action {
-        Action::EmitToken(token) => vec![token.clone()],
+        Action::EmitToken(token) => vec![emitted_token_string(token)],
         Action::EnterAtom(atom_idx) => vec![graph.atom_token(*atom_idx).to_owned()],
         Action::AfterAtom(action) => {
             if action.ring_action_count > 0 {
                 let mut tokens = BTreeSet::new();
                 for closure in &action.closures_here {
-                    if closure.bond_token.is_empty() {
+                    if closure.bond_token == BondTokenCode::Elided {
                         tokens.insert(ring_label_text(closure.label));
                     } else {
-                        tokens.insert(closure.bond_token.clone());
+                        tokens.insert(bond_token_text(closure.bond_token).to_owned());
                     }
                 }
                 if action.opening_count > 0 {
-                    tokens.insert(next_open_label_token(&normalized));
+                    tokens.insert(ring_label_text(next_open_label(&normalized)));
                 }
                 tokens.into_iter().collect()
             } else if let Some(child_idx) = action.linear_child_idx {
@@ -552,9 +635,9 @@ fn successors_by_token(
         Action::EmitToken(token) => {
             let mut successor = normalized;
             successor.action_stack.pop();
-            successor.prefix.push_str(&token);
+            append_emitted_token(&mut successor.prefix, &token);
             normalize_state(&mut successor);
-            BTreeMap::from([(token, vec![successor])])
+            BTreeMap::from([(emitted_token_string(&token), vec![successor])])
         }
         Action::EnterAtom(atom_idx) => {
             let mut successor = normalized;
@@ -584,13 +667,13 @@ fn successors_by_token(
                         let first_token = match ring_action_order[0] {
                             RingAction::Close(closure_idx) => {
                                 let closure = &action.closures_here[closure_idx];
-                                if closure.bond_token.is_empty() {
+                                if closure.bond_token == BondTokenCode::Elided {
                                     ring_label_text(closure.label)
                                 } else {
-                                    closure.bond_token.clone()
+                                    bond_token_text(closure.bond_token).to_owned()
                                 }
                             }
-                            RingAction::Open(_) => next_open_label_token(&normalized),
+                            RingAction::Open(_) => ring_label_text(next_open_label(&normalized)),
                         };
 
                         for_each_permutation_py_order(chosen_children, &mut |child_order| {
@@ -674,9 +757,9 @@ fn for_each_exact_successor_by_token_owned<F>(
 
     match action {
         Action::EmitToken(token) => {
-            state.prefix.push_str(&token);
+            append_emitted_token(&mut state.prefix, &token);
             normalize_state(&mut state);
-            emit(token, state);
+            emit(emitted_token_string(&token), state);
         }
         Action::EnterAtom(atom_idx) => {
             let token = graph.atom_token(atom_idx).to_owned();
@@ -702,13 +785,13 @@ fn for_each_exact_successor_by_token_owned<F>(
                         let first_token = match ring_action_order[0] {
                             RingAction::Close(closure_idx) => {
                                 let closure = &action.closures_here[closure_idx];
-                                if closure.bond_token.is_empty() {
+                                if closure.bond_token == BondTokenCode::Elided {
                                     ring_label_text(closure.label)
                                 } else {
-                                    closure.bond_token.clone()
+                                    bond_token_text(closure.bond_token).to_owned()
                                 }
                             }
-                            RingAction::Open(_) => next_open_label_token(&state),
+                            RingAction::Open(_) => ring_label_text(next_open_label(&state)),
                         };
 
                         for_each_permutation_py_order(chosen_children, &mut |child_order| {
@@ -869,7 +952,8 @@ fn exact_frontier_successors(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
 ) -> Vec<Vec<RootedConnectedNonStereoWalkerStateData>> {
-    let mut transitions = HashMap::<String, Vec<RootedConnectedNonStereoWalkerStateData>>::new();
+    let mut transitions =
+        FxHashMap::<String, Vec<RootedConnectedNonStereoWalkerStateData>>::default();
     for state in frontier {
         for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
             transitions.entry(token).or_default().push(successor);
@@ -888,7 +972,7 @@ fn exact_frontier_successors(
 fn enumerate_support_from_frontier(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-    out: &mut HashSet<String>,
+    out: &mut FxHashSet<String>,
 ) {
     let prefix = frontier_prefix(&frontier);
     let transitions = exact_frontier_successors(graph, frontier);
@@ -937,7 +1021,7 @@ pub(crate) fn enumerate_rooted_connected_nonstereo_smiles_support(
     }
     let root_idx = validate_root_idx(graph, root_idx)?;
     let initial_state = initial_state_for_root(graph, root_idx);
-    let mut results = HashSet::new();
+    let mut results = FxHashSet::default();
     enumerate_support_from_frontier(graph, vec![initial_state], &mut results);
     let mut results = results.into_iter().collect::<Vec<_>>();
     results.sort_unstable();

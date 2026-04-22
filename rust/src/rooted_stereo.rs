@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
@@ -3966,8 +3967,8 @@ impl PyRootedConnectedStereoWalker {
 )]
 #[derive(Clone)]
 pub struct PyRootedConnectedStereoDecoder {
-    graph: PreparedSmilesGraphData,
-    runtime: StereoWalkerRuntimeData,
+    graph: Arc<PreparedSmilesGraphData>,
+    runtime: Arc<StereoWalkerRuntimeData>,
     frontier: Vec<RootedConnectedStereoWalkerStateData>,
     cached_choices: Option<Vec<DecoderChoice<RootedConnectedStereoWalkerStateData>>>,
 }
@@ -3976,12 +3977,16 @@ pub struct PyRootedConnectedStereoDecoder {
 impl PyRootedConnectedStereoDecoder {
     #[new]
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
-        let graph = PreparedSmilesGraphData::from_any(graph)?;
-        check_supported_stereo_writer_surface(&graph)?;
-        let root_idx = validate_root_idx(&graph, root_idx)?;
-        let runtime = build_walker_runtime(&graph, root_idx)?;
+        let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
+        check_supported_stereo_writer_surface(graph.as_ref())?;
+        let root_idx = validate_root_idx(graph.as_ref(), root_idx)?;
+        let runtime = Arc::new(build_walker_runtime(graph.as_ref(), root_idx)?);
         Ok(Self {
-            frontier: vec![initial_stereo_state_for_root(&runtime, &graph, root_idx)],
+            frontier: vec![initial_stereo_state_for_root(
+                runtime.as_ref(),
+                graph.as_ref(),
+                root_idx,
+            )],
             graph,
             runtime,
             cached_choices: None,
@@ -3991,8 +3996,8 @@ impl PyRootedConnectedStereoDecoder {
     fn next_token_support(&mut self) -> PyResult<Vec<String>> {
         if self.cached_choices.is_none() {
             self.cached_choices = Some(frontier_choices_for_stereo(
-                &self.runtime,
-                &self.graph,
+                self.runtime.as_ref(),
+                self.graph.as_ref(),
                 &self.frontier,
             )?);
         }
@@ -4006,7 +4011,11 @@ impl PyRootedConnectedStereoDecoder {
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
         let choices = match self.cached_choices.take() {
             Some(choices) => choices,
-            None => frontier_choices_for_stereo(&self.runtime, &self.graph, &self.frontier)?,
+            None => frontier_choices_for_stereo(
+                self.runtime.as_ref(),
+                self.graph.as_ref(),
+                &self.frontier,
+            )?,
         };
         self.frontier = take_grouped_choices_or_err(choices, chosen_token)?;
         Ok(())
@@ -4015,8 +4024,8 @@ impl PyRootedConnectedStereoDecoder {
     fn next_choice_texts(&mut self) -> PyResult<Vec<String>> {
         if self.cached_choices.is_none() {
             self.cached_choices = Some(frontier_choices_for_stereo(
-                &self.runtime,
-                &self.graph,
+                self.runtime.as_ref(),
+                self.graph.as_ref(),
                 &self.frontier,
             )?);
         }
@@ -4030,7 +4039,11 @@ impl PyRootedConnectedStereoDecoder {
     fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
         let mut choices = match self.cached_choices.take() {
             Some(choices) => choices,
-            None => frontier_choices_for_stereo(&self.runtime, &self.graph, &self.frontier)?,
+            None => frontier_choices_for_stereo(
+                self.runtime.as_ref(),
+                self.graph.as_ref(),
+                &self.frontier,
+            )?,
         };
         self.frontier = take_choice_or_err(&mut choices, chosen_idx)?;
         Ok(())
@@ -4048,7 +4061,7 @@ impl PyRootedConnectedStereoDecoder {
         if let Some(choices) = &self.cached_choices {
             Ok(choices.is_empty())
         } else {
-            stereo_frontier_is_terminal(&self.runtime, &self.graph, &self.frontier)
+            stereo_frontier_is_terminal(self.runtime.as_ref(), self.graph.as_ref(), &self.frontier)
         }
     }
 

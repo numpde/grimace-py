@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
@@ -1436,7 +1437,7 @@ impl PyRootedConnectedNonStereoWalker {
 )]
 #[derive(Clone)]
 pub struct PyRootedConnectedNonStereoDecoder {
-    graph: PreparedSmilesGraphData,
+    graph: Arc<PreparedSmilesGraphData>,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
     cached_choices: Option<Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>>>,
 }
@@ -1445,10 +1446,10 @@ pub struct PyRootedConnectedNonStereoDecoder {
 impl PyRootedConnectedNonStereoDecoder {
     #[new]
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
-        let graph = PreparedSmilesGraphData::from_any(graph)?;
-        let root_idx = validate_root_idx(&graph, root_idx)?;
+        let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
+        let root_idx = validate_root_idx(graph.as_ref(), root_idx)?;
         Ok(Self {
-            frontier: vec![initial_state_for_root(&graph, root_idx)],
+            frontier: vec![initial_state_for_root(graph.as_ref(), root_idx)],
             graph,
             cached_choices: None,
         })
@@ -1456,7 +1457,7 @@ impl PyRootedConnectedNonStereoDecoder {
 
     fn next_token_support(&mut self) -> Vec<String> {
         if self.cached_choices.is_none() {
-            self.cached_choices = Some(frontier_choices(&self.graph, &self.frontier));
+            self.cached_choices = Some(frontier_choices(self.graph.as_ref(), &self.frontier));
         }
         grouped_choice_texts(
             self.cached_choices
@@ -1469,14 +1470,14 @@ impl PyRootedConnectedNonStereoDecoder {
         let choices = self
             .cached_choices
             .take()
-            .unwrap_or_else(|| frontier_choices(&self.graph, &self.frontier));
+            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier));
         self.frontier = take_grouped_choices_or_err(choices, chosen_token)?;
         Ok(())
     }
 
     fn next_choice_texts(&mut self) -> Vec<String> {
         if self.cached_choices.is_none() {
-            self.cached_choices = Some(frontier_choices(&self.graph, &self.frontier));
+            self.cached_choices = Some(frontier_choices(self.graph.as_ref(), &self.frontier));
         }
         choice_texts(
             self.cached_choices
@@ -1489,7 +1490,7 @@ impl PyRootedConnectedNonStereoDecoder {
         let mut choices = self
             .cached_choices
             .take()
-            .unwrap_or_else(|| frontier_choices(&self.graph, &self.frontier));
+            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier));
         self.frontier = take_choice_or_err(&mut choices, chosen_idx)?;
         Ok(())
     }
@@ -1506,7 +1507,7 @@ impl PyRootedConnectedNonStereoDecoder {
         self.cached_choices
             .as_ref()
             .map(|choices| choices.is_empty())
-            .unwrap_or_else(|| frontier_is_terminal(&self.graph, &self.frontier))
+            .unwrap_or_else(|| frontier_is_terminal(self.graph.as_ref(), &self.frontier))
     }
 
     fn copy(&self) -> Self {

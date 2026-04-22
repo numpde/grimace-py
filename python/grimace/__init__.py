@@ -82,8 +82,9 @@ def MolToSmilesTokenInventory(
 
 
 class _PublicDecoderBase:
-    __slots__ = ("_impl",)
+    __slots__ = ("_impl", "_choices_cache")
     _impl_name: str
+    _prefer_choice_cache_for_terminal = False
 
     def __init__(
         self,
@@ -110,19 +111,23 @@ class _PublicDecoderBase:
             do_random=doRandom,
             ignore_atom_map_numbers=ignoreAtomMapNumbers,
         )
+        self._choices_cache = None
 
     @classmethod
     def _from_impl(cls, impl: object) -> "_PublicDecoderBase":
         decoder = cls.__new__(cls)
         decoder._impl = impl
+        decoder._choices_cache = None
         return decoder
 
     @property
     def next_choices(self) -> tuple["MolToSmilesChoice", ...]:
-        return tuple(
-            MolToSmilesChoice._from_impl(choice_impl, decoder_cls=type(self))
-            for choice_impl in self._impl.choices()
-        )
+        if self._choices_cache is None:
+            self._choices_cache = tuple(
+                MolToSmilesChoice._from_impl(choice_impl, decoder_cls=type(self))
+                for choice_impl in self._impl.choices()
+            )
+        return self._choices_cache
 
     @property
     def prefix(self) -> str:
@@ -130,6 +135,10 @@ class _PublicDecoderBase:
 
     @property
     def is_terminal(self) -> bool:
+        if self._choices_cache is not None:
+            return not self._choices_cache
+        if type(self)._prefer_choice_cache_for_terminal:
+            return not self.next_choices
         return self._impl.is_terminal
 
     def copy(self) -> "_PublicDecoderBase":
@@ -138,10 +147,12 @@ class _PublicDecoderBase:
 
 class MolToSmilesDecoder(_PublicDecoderBase):
     _impl_name = "MolToSmilesDecoder"
+    _prefer_choice_cache_for_terminal = True
 
 
 class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
     _impl_name = "MolToSmilesDeterminizedDecoder"
+    _prefer_choice_cache_for_terminal = True
 
 
 class MolToSmilesChoice:

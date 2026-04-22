@@ -1,0 +1,36 @@
+Internal performance history lives in:
+
+- `notes/perf_history.jsonl`
+- optional full perf reports under `notes/perf_reports/`
+
+The JSONL file is append-only and mixes two record kinds:
+
+- `timings_snapshot`
+  - appended by `tests/perf/test_readme_timings.py`
+  - captures the public timing-table rows plus run metadata
+- `perf_hotspots`
+  - appended by `scripts/record_perf_hotspots.py`
+  - captures one focused profiler run plus top symbols and an optional full report path
+
+Useful commands:
+
+```bash
+RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest \
+  tests.perf.test_readme_timings -q
+```
+
+```bash
+PYTHONPATH=python:. .venv/bin/python scripts/record_perf_hotspots.py \
+  --label cid634876_unrooted_nonstereo_exact \
+  --smiles 'CN(C)P(C1=CC=CC=C1)C2=CC=CC=C2C3=CC=C(C=C3)C4=CC=CC=C4P(C5=CC=CC=C5)N(C)C' \
+  --loops 2 \
+  --keep-report
+```
+
+When comparing revisions, look at:
+
+- commit + change label
+- whether the tree was dirty
+- machine / Python / RDKit versions
+- exact per-molecule timing rows
+- top hotspot symbols for the focused profiler case

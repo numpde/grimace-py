@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from rdkit import Chem, rdBase
 
 import grimace
+from tests.perf._history import append_history_record, current_run_metadata
 from tests.helpers.mols import parse_smiles
 
 
@@ -72,6 +73,7 @@ def _format_bold_duration(mean: float, stdev: float) -> str:
 class ReadmeTimingPerfTests(unittest.TestCase):
     OUTPUT_TSV_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.tsv"
     OUTPUT_MD_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.md"
+    HISTORY_KIND = "timings_snapshot"
     CASES = (
         TimingCase(
             smiles="CC(=O)Oc1ccccc1C(=O)O",
@@ -110,6 +112,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
         self._write_tsv(rows)
         document = self._render_document_from_tsv()
         self.OUTPUT_MD_PATH.write_text(document, encoding="utf-8")
+        self._append_history_snapshot(rows)
 
         print()
         print(f"Wrote timing data: {self.OUTPUT_TSV_PATH}")
@@ -215,6 +218,18 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             writer.writeheader()
             for row in rows:
                 writer.writerow(asdict(row))
+
+    def _append_history_snapshot(self, rows: list[TimingRow]) -> None:
+        append_history_record(
+            {
+                "kind": self.HISTORY_KIND,
+                **current_run_metadata(),
+                "benchmark": "tests.perf.test_readme_timings",
+                "timings_tsv": str(self.OUTPUT_TSV_PATH.relative_to(self.OUTPUT_TSV_PATH.parents[1])),
+                "timings_md": str(self.OUTPUT_MD_PATH.relative_to(self.OUTPUT_MD_PATH.parents[1])),
+                "rows": [asdict(row) for row in rows],
+            }
+        )
 
     def _render_document_from_tsv(self) -> str:
         rows: list[str] = []

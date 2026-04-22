@@ -1,0 +1,468 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 1K of event 'cycles:P'
+# Event count (approx.): 1423780107
+#
+# Children      Self  Command  Shared Object                                 Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+# ........  ........  .......  ............................................  .....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    14.33%     5.48%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::exact_frontier_successors
+            |          
+             --9.17%--_core::rooted_nonstereo::exact_frontier_successors
+                       |          
+                        --3.29%--cfree@GLIBC_2.2.5
+                                  |          
+                                   --1.64%--_int_free
+
+    14.13%     8.72%  python   libc.so.6                                     [.] _int_free
+            |          
+             --5.41%--_int_free
+
+    13.89%     4.08%  python   libc.so.6                                     [.] cfree@GLIBC_2.2.5
+            |          
+             --9.81%--cfree@GLIBC_2.2.5
+                       |          
+                        --5.45%--_int_free
+
+    13.56%     5.92%  python   libc.so.6                                     [.] malloc
+            |          
+             --7.64%--malloc
+                       |          
+                        --3.02%--_int_malloc
+
+    13.52%     8.21%  python   libc.so.6                                     [.] _int_malloc
+            |          
+             --5.31%--_int_malloc
+
+    12.41%     1.78%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] alloc::raw_vec::finish_grow
+            |          
+             --10.90%--alloc::raw_vec::finish_grow
+                       |          
+                       |--7.31%--realloc
+                       |          |          
+                       |           --5.93%--_int_realloc
+                       |                     |          
+                       |                      --3.81%--_int_malloc
+                       |          
+                        --2.20%--malloc
+
+     9.29%     4.04%  python   libc.so.6                                     [.] __memmove_avx512_unaligned_erms
+            |          
+             --5.38%--__memmove_avx512_unaligned_erms
+
+     8.28%     1.21%  python   libc.so.6                                     [.] realloc
+            |          
+             --7.07%--realloc
+                       |          
+                        --5.54%--_int_realloc
+                                  |          
+                                   --3.63%--_int_malloc
+
+     7.42%     0.00%  python   ld-linux-x86-64.so.2                          [.] _dl_catch_exception
+            |
+            ---_dl_catch_exception
+               |          
+                --7.36%--dlopen_doit
+                          _dl_open
+                          _dl_catch_exception
+                          dl_open_worker
+                          _dl_catch_exception
+                          |          
+                           --7.29%--dl_open_worker_begin
+                                     |          
+                                     |--4.01%--_dl_relocate_object
+                                     |          |          
+                                     |           --3.76%--_dl_lookup_symbol_x
+                                     |                     |          
+                                     |                      --3.16%--do_lookup_x
+                                     |          
+                                      --2.63%--_dl_map_object_deps
+                                                |          
+                                                 --2.51%--_dl_catch_exception
+                                                           openaux
+                                                           |          
+                                                            --2.14%--_dl_map_object
+
+     7.42%     2.56%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::consume_enter_atom
+            |          
+             --5.58%--_core::rooted_nonstereo::consume_enter_atom
+
+     7.36%     0.00%  python   python3.13                                    [.] _imp_create_dynamic
+            |
+            ---_imp_create_dynamic
+               dlopen@GLIBC_2.2.5
+               _dlerror_run
+               _dl_catch_error
+               _dl_catch_exception
+               dlopen_doit
+               _dl_open
+               _dl_catch_exception
+               dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.36%     0.00%  python   libc.so.6                                     [.] dlopen@GLIBC_2.2.5
+            |
+            ---dlopen@GLIBC_2.2.5
+               _dlerror_run
+               _dl_catch_error
+               _dl_catch_exception
+               dlopen_doit
+               _dl_open
+               _dl_catch_exception
+               dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.36%     0.00%  python   libc.so.6                                     [.] _dlerror_run
+            |
+            ---_dlerror_run
+               _dl_catch_error
+               _dl_catch_exception
+               dlopen_doit
+               _dl_open
+               _dl_catch_exception
+               dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.36%     0.00%  python   ld-linux-x86-64.so.2                          [.] _dl_catch_error
+            |
+            ---_dl_catch_error
+               _dl_catch_exception
+               dlopen_doit
+               _dl_open
+               _dl_catch_exception
+               dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.36%     0.00%  python   libc.so.6                                     [.] dlopen_doit
+            |
+            ---dlopen_doit
+               _dl_open
+               _dl_catch_exception
+               dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.36%     0.00%  python   ld-linux-x86-64.so.2                          [.] _dl_open
+            |
+            ---_dl_open
+               _dl_catch_exception
+               dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.36%     0.00%  python   ld-linux-x86-64.so.2                          [.] dl_open_worker
+            |
+            ---dl_open_worker
+               _dl_catch_exception
+               |          
+                --7.29%--dl_open_worker_begin
+                          |          
+                          |--4.01%--_dl_relocate_object
+                          |          |          
+                          |           --3.76%--_dl_lookup_symbol_x
+                          |                     |          
+                          |                      --3.16%--do_lookup_x
+                          |          
+                           --2.63%--_dl_map_object_deps
+                                     |          
+                                      --2.51%--_dl_catch_exception
+                                                openaux
+                                                |          
+                                                 --2.14%--_dl_map_object
+
+     7.29%     0.00%  python   ld-linux-x86-64.so.2                          [.] dl_open_worker_begin
+            |
+            ---dl_open_worker_begin
+               |          
+               |--4.01%--_dl_relocate_object
+               |          |          
+               |           --3.76%--_dl_lookup_symbol_x
+               |                     |          
+               |                      --3.16%--do_lookup_x
+               |          
+                --2.63%--_dl_map_object_deps
+                          |          
+                           --2.51%--_dl_catch_exception
+                                     openaux
+                                     |          
+                                      --2.14%--_dl_map_object
+
+     6.97%     1.36%  python   libc.so.6                                     [.] _int_realloc
+            |          
+             --5.61%--_int_realloc
+                       |          
+                        --3.74%--_int_malloc
+
+     6.82%     0.00%  python   [unknown]                                     [k] 0000000000000000
+            |
+            ---0
+               |          
+                --1.87%--alloc::raw_vec::finish_grow
+                          |          
+                           --1.73%--realloc
+
+     4.39%     0.70%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::enumerate_support_from_frontier
+            |          
+             --3.69%--_core::rooted_nonstereo::enumerate_support_from_frontier
+                       |          
+                        --2.24%--cfree@GLIBC_2.2.5
+
+     4.23%     1.20%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] <_core::rooted_nonstereo::RootedConnectedNonStereoWalkerStateData as core::clone::Clone>::clone
+            |          
+             --3.36%--<_core::rooted_nonstereo::RootedConnectedNonStereoWalkerStateData as core::clone::Clone>::clone
+
+     4.10%     0.11%  python   ld-linux-x86-64.so.2                          [.] _dl_relocate_object
+            |          
+             --3.98%--_dl_relocate_object
+                       |          
+                        --3.69%--_dl_lookup_symbol_x
+                                  |          
+                                   --3.16%--do_lookup_x
+
+     3.82%     1.60%  python   ld-linux-x86-64.so.2                          [.] _dl_lookup_symbol_x
+            |          
+            |--2.22%--_dl_lookup_symbol_x
+            |          |          
+            |           --1.89%--do_lookup_x
+            |          
+             --1.60%--_imp_create_dynamic
+                       dlopen@GLIBC_2.2.5
+                       _dlerror_run
+                       _dl_catch_error
+                       _dl_catch_exception
+                       dlopen_doit
+                       _dl_open
+                       _dl_catch_exception
+                       dl_open_worker
+                       _dl_catch_exception
+                       dl_open_worker_begin
+                       _dl_relocate_object
+                       |          
+                        --1.54%--_dl_lookup_symbol_x
+
+     3.79%     2.10%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::exact_frontier_successors::{{closure}}
+            |          
+             --1.69%--_core::rooted_nonstereo::exact_frontier_successors::{{closure}}
+
+     3.73%     0.00%  python   [unknown]                                     [.] 0xffffffff9f600bb7
+            |
+            ---0xffffffff9f600bb7
+               |          
+                --3.38%--0xffffffffa0b9acff
+                          |          
+                           --2.90%--0xffffffff9f954212
+                                     |          
+                                      --2.70%--0xffffffff9fd0b840
+                                                |          
+                                                 --2.42%--0xffffffff9fd0b58a
+
+     3.70%     1.06%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] <alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter
+            |          
+             --2.64%--<alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter
+
+     3.59%     1.62%  python   libc.so.6                                     [.] __memcmp_evex_movbe
+            |          
+             --2.29%--__memcmp_evex_movbe
+
+     3.45%     0.07%  python   [unknown]                                     [.] 0xffffffffa0b9acff
+            |          
+             --3.38%--0xffffffffa0b9acff
+                       |          
+                        --2.90%--0xffffffff9f954212
+                                  |          
+                                   --2.70%--0xffffffff9fd0b840
+                                             |          
+                                              --2.42%--0xffffffff9fd0b58a
+
+     3.37%     1.62%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+            |          
+             --1.95%--<alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+
+     3.22%     1.73%  python   ld-linux-x86-64.so.2                          [.] do_lookup_x
+            |          
+             --1.73%--_imp_create_dynamic
+                       dlopen@GLIBC_2.2.5
+                       _dlerror_run
+                       _dl_catch_error
+                       _dl_catch_exception
+                       dlopen_doit
+                       _dl_open
+                       _dl_catch_exception
+                       dl_open_worker
+                       _dl_catch_exception
+                       dl_open_worker_begin
+                       _dl_relocate_object
+                       _dl_lookup_symbol_x
+                       |          
+                        --1.67%--do_lookup_x
+
+     3.11%     2.12%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::for_each_exact_successor_by_token_owned::{{closure}}::{{closure}}::{{closure}}
+     3.01%     0.39%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] core::ptr::drop_in_place<_core::rooted_nonstereo::RootedConnectedNonStereoWalkerStateData>
+            |          
+             --2.76%--core::ptr::drop_in_place<_core::rooted_nonstereo::RootedConnectedNonStereoWalkerStateData>
+                       |          
+                        --2.05%--cfree@GLIBC_2.2.5
+
+     2.90%     0.00%  python   [unknown]                                     [.] 0xffffffff9f954212
+            |
+            ---0xffffffff9f954212
+               |          
+                --2.70%--0xffffffff9fd0b840
+                          |          
+                           --2.42%--0xffffffff9fd0b58a
+
+     2.79%     0.99%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] <alloc::vec::into_iter::IntoIter<T,A> as core::iter::traits::iterator::Iterator>::try_fold
+            |          
+             --1.86%--<alloc::vec::into_iter::IntoIter<T,A> as core::iter::traits::iterator::Iterator>::try_fold
+
+     2.76%     0.00%  python   [unknown]                                     [.] 0xffffffff9fd0b840
+            |
+            ---0xffffffff9fd0b840
+               |          
+                --2.48%--0xffffffff9fd0b58a
+
+     2.75%     0.24%  python   ld-linux-x86-64.so.2                          [.] _dl_map_object
+            |          
+             --2.51%--_dl_map_object
+
+     2.73%     1.96%  python   python3.13                                    [.] _PyEval_EvalFrameDefault
+     2.70%     0.13%  python   ld-linux-x86-64.so.2                          [.] _dl_map_object_deps
+            |          
+             --2.56%--_dl_map_object_deps
+                       |          
+                        --2.50%--_dl_catch_exception
+                                  openaux
+                                  |          
+                                   --2.12%--_dl_map_object
+
+     2.57%     1.45%  python   libc.so.6                                     [.] _int_free_merge_chunk
+     2.57%     0.00%  python   ld-linux-x86-64.so.2                          [.] openaux
+            |
+            ---openaux
+               |          
+                --2.20%--_dl_map_object
+
+     2.48%     0.00%  python   [unknown]                                     [.] 0xffffffff9fd0b58a
+            |
+            ---0xffffffff9fd0b58a
+
+     2.45%     1.12%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+            |          
+             --1.59%--<alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+
+     1.91%     1.18%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] <A as core::slice::cmp::SliceOrd>::compare
+     1.89%     1.24%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::exact_state_structural_cmp
+     1.77%     0.50%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::for_each_exact_successor_by_token_owned::{{closure}}::{{closure}}
+     1.72%     0.00%  python   [unknown]                                     [k] 0xffffffff9f60012b
+            |
+            ---0xffffffff9f60012b
+               |          
+                --1.66%--0xffffffffa0b93640
+
+     1.70%     1.04%  python   ld-linux-x86-64.so.2                          [.] strcmp
+     1.66%     0.00%  python   [unknown]                                     [k] 0xffffffffa0b93640
+            |
+            ---0xffffffffa0b93640
+
+     1.61%     0.46%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] _core::rooted_nonstereo::edge_prefix_or_atom
+     1.53%     0.00%  python   [unknown]                                     [.] 0x0000000000000021
+            |
+            ---0x21
+
+     1.52%     0.80%  python   _core.cpython-313-x86_64-linux-gnu.so         [.] __rdl_dealloc
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -279,13 +279,11 @@ where
         }
     }
 
-    let mut current = Vec::new();
+    let mut current = Vec::with_capacity(groups.len());
     recurse(groups, 0, &mut current, f);
-    if groups.is_empty() {
-        f(&[]);
-    }
 }
 
+#[cfg(test)]
 fn for_each_permutation_py_order<T: Clone, F>(items: &[T], f: &mut F)
 where
     F: FnMut(&[T]),
@@ -313,8 +311,64 @@ where
     let mut used = vec![false; items.len()];
     let mut current = Vec::with_capacity(items.len());
     recurse(items, &mut used, &mut current, f);
-    if items.is_empty() {
-        f(&[]);
+}
+
+fn for_each_permutation_py_order_copy<T: Copy, F>(items: &[T], f: &mut F)
+where
+    F: FnMut(&[T]),
+{
+    match items.len() {
+        0 => f(&[]),
+        1 => f(items),
+        2 => {
+            let order = [items[0], items[1]];
+            f(&order);
+            let order = [items[1], items[0]];
+            f(&order);
+        }
+        3 => {
+            let order = [items[0], items[1], items[2]];
+            f(&order);
+            let order = [items[0], items[2], items[1]];
+            f(&order);
+            let order = [items[1], items[0], items[2]];
+            f(&order);
+            let order = [items[1], items[2], items[0]];
+            f(&order);
+            let order = [items[2], items[0], items[1]];
+            f(&order);
+            let order = [items[2], items[1], items[0]];
+            f(&order);
+        }
+        _ => {
+            fn recurse<T: Copy, F>(
+                items: &[T],
+                used: &mut [bool],
+                current: &mut Vec<T>,
+                f: &mut F,
+            ) where
+                F: FnMut(&[T]),
+            {
+                if current.len() == items.len() {
+                    f(current);
+                    return;
+                }
+                for idx in 0..items.len() {
+                    if used[idx] {
+                        continue;
+                    }
+                    used[idx] = true;
+                    current.push(items[idx]);
+                    recurse(items, used, current, f);
+                    current.pop();
+                    used[idx] = false;
+                }
+            }
+
+            let mut used = vec![false; items.len()];
+            let mut current = Vec::with_capacity(items.len());
+            recurse(items, &mut used, &mut current, f);
+        }
     }
 }
 
@@ -322,6 +376,13 @@ where
 fn permutations_py_order<T: Clone>(items: &[T]) -> Vec<Vec<T>> {
     let mut out = Vec::new();
     for_each_permutation_py_order(items, &mut |perm| out.push(perm.to_vec()));
+    out
+}
+
+#[cfg(test)]
+fn permutations_py_order_copy<T: Copy>(items: &[T]) -> Vec<Vec<T>> {
+    let mut out = Vec::new();
+    for_each_permutation_py_order_copy(items, &mut |perm| out.push(perm.to_vec()));
     out
 }
 
@@ -820,7 +881,7 @@ fn successors_by_token(
                         ring_actions.push(RingAction::Open(target_idx));
                     }
 
-                    for_each_permutation_py_order(&ring_actions, &mut |ring_action_order| {
+                    for_each_permutation_py_order_copy(&ring_actions, &mut |ring_action_order| {
                         let first_token = match ring_action_order[0] {
                             RingAction::Close(closure_idx) => {
                                 let closure = &action.closures_here[closure_idx];
@@ -833,7 +894,7 @@ fn successors_by_token(
                             RingAction::Open(_) => ring_label_text(next_open_label(&normalized)),
                         };
 
-                        for_each_permutation_py_order(chosen_children, &mut |child_order| {
+                        for_each_permutation_py_order_copy(chosen_children, &mut |child_order| {
                             let mut successor = normalized.clone();
                             successor.action_stack.pop();
                             successor.prefix.push_str(&first_token);
@@ -876,7 +937,7 @@ fn successors_by_token(
                     .iter()
                     .map(|group| group[0])
                     .collect::<Vec<_>>();
-                for_each_permutation_py_order(&child_order_seed, &mut |child_order| {
+                for_each_permutation_py_order_copy(&child_order_seed, &mut |child_order| {
                     let mut successor = normalized.clone();
                     successor.action_stack.pop();
                     successor.prefix.push('(');
@@ -938,7 +999,7 @@ fn for_each_exact_successor_by_token_owned<F>(
                         ring_actions.push(RingAction::Open(target_idx));
                     }
 
-                    for_each_permutation_py_order(&ring_actions, &mut |ring_action_order| {
+                    for_each_permutation_py_order_copy(&ring_actions, &mut |ring_action_order| {
                         let first_token = match ring_action_order[0] {
                             RingAction::Close(closure_idx) => {
                                 let closure = &action.closures_here[closure_idx];
@@ -951,7 +1012,7 @@ fn for_each_exact_successor_by_token_owned<F>(
                             RingAction::Open(_) => ring_label_text(next_open_label(&state)),
                         };
 
-                        for_each_permutation_py_order(chosen_children, &mut |child_order| {
+                        for_each_permutation_py_order_copy(chosen_children, &mut |child_order| {
                             let prefix_len = state.prefix.len();
                             state.prefix.push_str(&first_token);
                             let (
@@ -999,7 +1060,7 @@ fn for_each_exact_successor_by_token_owned<F>(
                     .iter()
                     .map(|group| group[0])
                     .collect::<Vec<_>>();
-                for_each_permutation_py_order(&child_order_seed, &mut |child_order| {
+                for_each_permutation_py_order_copy(&child_order_seed, &mut |child_order| {
                     let prefix_len = state.prefix.len();
                     let action_stack_len = state.action_stack.len();
                     state.prefix.push('(');
@@ -1419,8 +1480,9 @@ mod tests {
 
     use super::{
         advance_token_state, enumerate_rooted_connected_nonstereo_smiles_support,
-        enumerate_support_from_state, initial_state_for_root, is_terminal_state,
-        next_token_support_for_state, permutations_py_order, validate_root_idx,
+        enumerate_support_from_state, for_each_cartesian_choice, initial_state_for_root,
+        is_terminal_state, next_token_support_for_state, permutations_py_order,
+        permutations_py_order_copy, validate_root_idx,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -1742,6 +1804,25 @@ mod tests {
             ],
             perms
         );
+    }
+
+    #[test]
+    fn copy_permutation_order_matches_generic_order() {
+        assert_eq!(
+            permutations_py_order_copy(&[1usize, 2usize, 3usize]),
+            permutations_py_order(&[1usize, 2usize, 3usize])
+        );
+        assert_eq!(
+            permutations_py_order_copy::<usize>(&[]),
+            vec![Vec::<usize>::new()]
+        );
+    }
+
+    #[test]
+    fn empty_cartesian_choice_invokes_once() {
+        let mut seen = Vec::new();
+        for_each_cartesian_choice(&[], &mut |choice| seen.push(choice.to_vec()));
+        assert_eq!(seen, vec![Vec::<usize>::new()]);
     }
 
     #[test]

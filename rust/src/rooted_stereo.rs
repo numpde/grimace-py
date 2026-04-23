@@ -284,6 +284,18 @@ fn finalize_structural_transitions(
     transitions
 }
 
+fn finalize_linear_structural_transitions(
+    transitions: Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)>,
+) -> BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>> {
+    let mut out = BTreeMap::new();
+    for (token, mut states) in transitions {
+        states.sort_by(cmp_stereo_state_structure);
+        states.dedup_by(|left, right| cmp_stereo_state_structure(left, right) == Ordering::Equal);
+        out.insert(token, states);
+    }
+    out
+}
+
 fn flip_direction_token(token: &str) -> PyResult<String> {
     match token {
         "/" => Ok("\\".to_owned()),
@@ -3366,7 +3378,7 @@ fn enter_atom_successors_by_token(
         });
     });
     status?;
-    Ok(successors.into_iter().collect())
+    Ok(finalize_linear_structural_transitions(successors))
 }
 
 fn process_children_successors_by_token(
@@ -4267,6 +4279,247 @@ mod tests {
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
 
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct StereoDecoderStats {
+        state_count: usize,
+        terminal_state_count: usize,
+        enter_atom_state_count: usize,
+        chiral_enter_atom_state_count: usize,
+        process_children_state_count: usize,
+        emit_deferred_state_count: usize,
+        emit_literal_state_count: usize,
+        emit_ring_label_state_count: usize,
+        emit_close_paren_state_count: usize,
+        total_action_stack_len: usize,
+        max_action_stack_len: usize,
+        total_pending_sites: usize,
+        max_pending_sites: usize,
+        total_pending_rings: usize,
+        max_pending_rings: usize,
+        total_enter_atom_bucket_count: usize,
+        max_enter_atom_bucket_count: usize,
+        total_enter_atom_successor_count: usize,
+        max_enter_atom_successor_count: usize,
+        total_enter_atom_deduped_successor_count: usize,
+        max_enter_atom_deduped_successor_count: usize,
+        total_enter_atom_added_action_count: usize,
+        max_enter_atom_added_action_count: usize,
+        total_process_children_successor_count: usize,
+        max_process_children_successor_count: usize,
+        total_process_children_deduped_successor_count: usize,
+        max_process_children_deduped_successor_count: usize,
+        total_process_children_added_action_count: usize,
+        max_process_children_added_action_count: usize,
+    }
+
+    impl StereoDecoderStats {
+        fn average_action_stack_len(&self) -> f64 {
+            if self.state_count == 0 {
+                0.0
+            } else {
+                self.total_action_stack_len as f64 / self.state_count as f64
+            }
+        }
+
+        fn average_pending_sites(&self) -> f64 {
+            if self.state_count == 0 {
+                0.0
+            } else {
+                self.total_pending_sites as f64 / self.state_count as f64
+            }
+        }
+
+        fn average_pending_rings(&self) -> f64 {
+            if self.state_count == 0 {
+                0.0
+            } else {
+                self.total_pending_rings as f64 / self.state_count as f64
+            }
+        }
+
+        fn average_enter_atom_successor_count(&self) -> f64 {
+            if self.enter_atom_state_count == 0 {
+                0.0
+            } else {
+                self.total_enter_atom_successor_count as f64 / self.enter_atom_state_count as f64
+            }
+        }
+
+        fn average_enter_atom_added_action_count(&self) -> f64 {
+            if self.total_enter_atom_successor_count == 0 {
+                0.0
+            } else {
+                self.total_enter_atom_added_action_count as f64
+                    / self.total_enter_atom_successor_count as f64
+            }
+        }
+
+        fn average_enter_atom_deduped_successor_count(&self) -> f64 {
+            if self.enter_atom_state_count == 0 {
+                0.0
+            } else {
+                self.total_enter_atom_deduped_successor_count as f64
+                    / self.enter_atom_state_count as f64
+            }
+        }
+
+        fn average_process_children_successor_count(&self) -> f64 {
+            if self.process_children_state_count == 0 {
+                0.0
+            } else {
+                self.total_process_children_successor_count as f64
+                    / self.process_children_state_count as f64
+            }
+        }
+
+        fn average_process_children_added_action_count(&self) -> f64 {
+            if self.total_process_children_successor_count == 0 {
+                0.0
+            } else {
+                self.total_process_children_added_action_count as f64
+                    / self.total_process_children_successor_count as f64
+            }
+        }
+
+        fn average_process_children_deduped_successor_count(&self) -> f64 {
+            if self.process_children_state_count == 0 {
+                0.0
+            } else {
+                self.total_process_children_deduped_successor_count as f64
+                    / self.process_children_state_count as f64
+            }
+        }
+    }
+
+    fn collect_stereo_decoder_stats(
+        runtime: &super::StereoWalkerRuntimeData,
+        graph: &PreparedSmilesGraphData,
+        state: super::RootedConnectedStereoWalkerStateData,
+        completion_cache: &mut super::StereoCompletionCache,
+        stats: &mut StereoDecoderStats,
+    ) -> pyo3::PyResult<()> {
+        stats.state_count += 1;
+        stats.total_action_stack_len += state.action_stack.len();
+        stats.max_action_stack_len = stats.max_action_stack_len.max(state.action_stack.len());
+        stats.total_pending_sites += state.pending.len();
+        stats.max_pending_sites = stats.max_pending_sites.max(state.pending.len());
+        let pending_ring_count = state.pending.iter().map(|(_, rings)| rings.len()).sum::<usize>();
+        stats.total_pending_rings += pending_ring_count;
+        stats.max_pending_rings = stats.max_pending_rings.max(pending_ring_count);
+
+        match state.action_stack.last() {
+            None => {
+                stats.terminal_state_count += 1;
+                return Ok(());
+            }
+            Some(super::WalkerAction::EnterAtom { atom_idx, parent_idx }) => {
+                stats.enter_atom_state_count += 1;
+                if graph.atom_chiral_tags[*atom_idx] != "CHI_UNSPECIFIED" {
+                    stats.chiral_enter_atom_state_count += 1;
+                }
+                let raw_successors = super::enter_atom_successors_by_token(
+                    runtime,
+                    graph,
+                    &state,
+                    *atom_idx,
+                    *parent_idx,
+                )?;
+                stats.total_enter_atom_bucket_count += raw_successors.len();
+                stats.max_enter_atom_bucket_count = stats
+                    .max_enter_atom_bucket_count
+                    .max(raw_successors.len());
+                let raw_successor_count = raw_successors.values().map(Vec::len).sum::<usize>();
+                stats.total_enter_atom_successor_count += raw_successor_count;
+                stats.max_enter_atom_successor_count = stats
+                    .max_enter_atom_successor_count
+                    .max(raw_successor_count);
+                let deduped_successor_count = super::finalize_structural_transitions(raw_successors.clone())
+                    .values()
+                    .map(Vec::len)
+                    .sum::<usize>();
+                stats.total_enter_atom_deduped_successor_count += deduped_successor_count;
+                stats.max_enter_atom_deduped_successor_count = stats
+                    .max_enter_atom_deduped_successor_count
+                    .max(deduped_successor_count);
+                let base_len = state.action_stack.len().saturating_sub(1);
+                for successors in raw_successors.values() {
+                    for successor in successors {
+                        let added = successor.action_stack.len().saturating_sub(base_len);
+                        stats.total_enter_atom_added_action_count += added;
+                        stats.max_enter_atom_added_action_count =
+                            stats.max_enter_atom_added_action_count.max(added);
+                    }
+                }
+            }
+            Some(super::WalkerAction::ProcessChildren {
+                parent_idx,
+                child_order,
+                next_branch_index,
+            }) => {
+                stats.process_children_state_count += 1;
+                let raw_successors = super::process_children_successors_by_token(
+                    runtime,
+                    graph,
+                    &state,
+                    *parent_idx,
+                    child_order.clone(),
+                    *next_branch_index,
+                    true,
+                    completion_cache,
+                )?;
+                let raw_successor_count = raw_successors.values().map(Vec::len).sum::<usize>();
+                stats.total_process_children_successor_count += raw_successor_count;
+                stats.max_process_children_successor_count = stats
+                    .max_process_children_successor_count
+                    .max(raw_successor_count);
+                let deduped_successor_count = super::finalize_structural_transitions(raw_successors.clone())
+                    .values()
+                    .map(Vec::len)
+                    .sum::<usize>();
+                stats.total_process_children_deduped_successor_count += deduped_successor_count;
+                stats.max_process_children_deduped_successor_count = stats
+                    .max_process_children_deduped_successor_count
+                    .max(deduped_successor_count);
+                let base_len = state.action_stack.len().saturating_sub(1);
+                for successors in raw_successors.values() {
+                    for successor in successors {
+                        let added = successor.action_stack.len().saturating_sub(base_len);
+                        stats.total_process_children_added_action_count += added;
+                        stats.max_process_children_added_action_count =
+                            stats.max_process_children_added_action_count.max(added);
+                    }
+                }
+            }
+            Some(super::WalkerAction::EmitDeferred(_)) => {
+                stats.emit_deferred_state_count += 1;
+            }
+            Some(super::WalkerAction::EmitLiteral(_)) => {
+                stats.emit_literal_state_count += 1;
+            }
+            Some(super::WalkerAction::EmitRingLabel(_)) => {
+                stats.emit_ring_label_state_count += 1;
+            }
+            Some(super::WalkerAction::EmitCloseParen) => {
+                stats.emit_close_paren_state_count += 1;
+            }
+        }
+
+        for successors in super::successors_by_token_stereo_impl(
+            runtime,
+            graph,
+            &state,
+            true,
+            completion_cache,
+        )?
+        .into_values()
+        {
+            for successor in successors {
+                collect_stereo_decoder_stats(runtime, graph, successor, completion_cache, stats)?;
+            }
+        }
+        Ok(())
+    }
+
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
         PreparedSmilesGraphData {
             schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -4416,6 +4669,20 @@ mod tests {
     fn prepared_graph_from_smiles(smiles: &str) -> Option<PreparedSmilesGraphData> {
         Python::initialize();
         Python::attach(|py| {
+            let sys = py.import("sys").ok()?;
+            let path = sys.getattr("path").ok()?;
+            let version_info = sys.getattr("version_info").ok()?;
+            let major: usize = version_info.get_item(0).ok()?.extract().ok()?;
+            let minor: usize = version_info.get_item(1).ok()?.extract().ok()?;
+            let repo_python = format!("{}/python", env!("CARGO_MANIFEST_DIR"));
+            let venv_site_packages = format!(
+                "{}/.venv/lib/python{}.{}/site-packages",
+                env!("CARGO_MANIFEST_DIR"),
+                major,
+                minor
+            );
+            let _ = path.call_method1("insert", (0, repo_python));
+            let _ = path.call_method1("insert", (0, venv_site_packages));
             let Ok(chem) = py.import("rdkit.Chem") else {
                 return None;
             };
@@ -4613,6 +4880,59 @@ mod tests {
             .collect::<BTreeSet<_>>();
 
         assert_eq!(expected, observed);
+    }
+
+    #[test]
+    #[ignore = "diagnostic-only stereo decoder shape report for profiler-guided optimization"]
+    fn stereo_decoder_stats_report_large_all_roots_case() {
+        let Some(graph) = prepared_graph_from_smiles("COc1ccc2cc([C@H](C)C(=O)O)ccc2c1") else {
+            return;
+        };
+        let mut stats = StereoDecoderStats::default();
+        for root_idx in 0..graph.atom_count() {
+            let runtime = build_walker_runtime(&graph, root_idx).expect("runtime should build");
+            let initial_state = initial_stereo_state_for_root(&runtime, &graph, root_idx);
+            let mut completion_cache = rustc_hash::FxHashMap::default();
+            collect_stereo_decoder_stats(
+                &runtime,
+                &graph,
+                initial_state,
+                &mut completion_cache,
+                &mut stats,
+            )
+            .expect("stereo decoder stats should collect");
+        }
+
+        println!(
+            "large stereo decoder stats: states={} terminal={} avg_stack={:.2} max_stack={} avg_pending_sites={:.2} max_pending_sites={} avg_pending_rings={:.2} max_pending_rings={} enter_states={} chiral_enter_states={} avg_enter_succ={:.2} avg_enter_deduped={:.2} max_enter_succ={} max_enter_deduped={} avg_enter_added={:.2} max_enter_added={} process_states={} avg_process_succ={:.2} avg_process_deduped={:.2} max_process_succ={} max_process_deduped={} avg_process_added={:.2} max_process_added={} emit_deferred={} emit_literal={} emit_ring={} emit_close={}",
+            stats.state_count,
+            stats.terminal_state_count,
+            stats.average_action_stack_len(),
+            stats.max_action_stack_len,
+            stats.average_pending_sites(),
+            stats.max_pending_sites,
+            stats.average_pending_rings(),
+            stats.max_pending_rings,
+            stats.enter_atom_state_count,
+            stats.chiral_enter_atom_state_count,
+            stats.average_enter_atom_successor_count(),
+            stats.average_enter_atom_deduped_successor_count(),
+            stats.max_enter_atom_successor_count,
+            stats.max_enter_atom_deduped_successor_count,
+            stats.average_enter_atom_added_action_count(),
+            stats.max_enter_atom_added_action_count,
+            stats.process_children_state_count,
+            stats.average_process_children_successor_count(),
+            stats.average_process_children_deduped_successor_count(),
+            stats.max_process_children_successor_count,
+            stats.max_process_children_deduped_successor_count,
+            stats.average_process_children_added_action_count(),
+            stats.max_process_children_added_action_count,
+            stats.emit_deferred_state_count,
+            stats.emit_literal_state_count,
+            stats.emit_ring_label_state_count,
+            stats.emit_close_paren_state_count,
+        );
     }
 
     #[test]

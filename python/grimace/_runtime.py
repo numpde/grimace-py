@@ -304,6 +304,13 @@ class MolToSmilesChoice:
         self.next_state = next_state
 
 
+def _new_public_decoder(decoder_type: type, state_impl: object) -> object:
+    decoder = decoder_type.__new__(decoder_type)
+    decoder._state = state_impl
+    decoder._choices_cache = None
+    return decoder
+
+
 class _CoreStateAdapter:
     __slots__ = ("_decoder",)
 
@@ -311,10 +318,16 @@ class _CoreStateAdapter:
         self._decoder = decoder
 
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
-        successor_states: list[tuple[str, object]] = []
+        successors = self._decoder.choice_successors()
+        if not successors:
+            return ()
         adapter_type = type(self)
-        for text, next_decoder in self._decoder.choice_successors():
-            successor_states.append((text, adapter_type(next_decoder)))
+        adapter_new = adapter_type.__new__
+        successor_states = [None] * len(successors)
+        for idx, (text, next_decoder) in enumerate(successors):
+            next_state = adapter_new(adapter_type)
+            next_state._decoder = next_decoder
+            successor_states[idx] = (text, next_state)
         return tuple(successor_states)
 
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
@@ -336,10 +349,16 @@ class _CoreStateAdapter:
         return repr(("core", self._decoder.cache_key()))
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
-        successor_states: list[tuple[str, object]] = []
+        successors = self._decoder.grouped_successors()
+        if not successors:
+            return ()
         adapter_type = type(self)
-        for text, next_decoder in self._decoder.grouped_successors():
-            successor_states.append((text, adapter_type(next_decoder)))
+        adapter_new = adapter_type.__new__
+        successor_states = [None] * len(successors)
+        for idx, (text, next_decoder) in enumerate(successors):
+            next_state = adapter_new(adapter_type)
+            next_state._decoder = next_decoder
+            successor_states[idx] = (text, next_state)
         return tuple(successor_states)
 
     def _advance_token(self, text: str) -> "_CoreStateAdapter":
@@ -748,10 +767,7 @@ class _PublicDecoderBase:
         cls,
         state_impl: object,
     ) -> "_PublicDecoderBase":
-        decoder = cls.__new__(cls)
-        decoder._state = state_impl
-        decoder._choices_cache = None
-        return decoder
+        return _new_public_decoder(cls, state_impl)
 
     @property
     def prefix(self) -> str:
@@ -777,29 +793,41 @@ class _PublicDecoderBase:
 
 class MolToSmilesDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        choices: list[MolToSmilesChoice] = []
+        successors = self._state.choice_successor_states()
+        if not successors:
+            return ()
         decoder_type = type(self)
-        for text, successor in self._state.choice_successor_states():
-            choices.append(
-                MolToSmilesChoice(
-                    text=text,
-                    next_state=decoder_type._from_parts(successor),
-                )
-            )
+        decoder_new = decoder_type.__new__
+        choice_new = MolToSmilesChoice.__new__
+        choices = [None] * len(successors)
+        for idx, (text, successor) in enumerate(successors):
+            next_state = decoder_new(decoder_type)
+            next_state._state = successor
+            next_state._choices_cache = None
+            choice = choice_new(MolToSmilesChoice)
+            choice.text = text
+            choice.next_state = next_state
+            choices[idx] = choice
         return tuple(choices)
 
 
 class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        choices: list[MolToSmilesChoice] = []
+        successors = _determinized_choice_successors(self._state)
+        if not successors:
+            return ()
         decoder_type = type(self)
-        for text, successor in _determinized_choice_successors(self._state):
-            choices.append(
-                MolToSmilesChoice(
-                    text=text,
-                    next_state=decoder_type._from_parts(successor),
-                )
-            )
+        decoder_new = decoder_type.__new__
+        choice_new = MolToSmilesChoice.__new__
+        choices = [None] * len(successors)
+        for idx, (text, successor) in enumerate(successors):
+            next_state = decoder_new(decoder_type)
+            next_state._state = successor
+            next_state._choices_cache = None
+            choice = choice_new(MolToSmilesChoice)
+            choice.text = text
+            choice.next_state = next_state
+            choices[idx] = choice
         return tuple(choices)
 
 

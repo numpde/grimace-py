@@ -15,6 +15,8 @@ stability guarantee.
   exhaustive traversal of `MolToSmilesDecoder(...)`, unioned across all roots.
 - `Decoder enum (determinized, all roots)`: exact enumeration by exhaustive
   traversal of `MolToSmilesDeterminizedDecoder(...)`, unioned across all roots.
+- The decoder rows benchmark explicit traversal from each root separately,
+  not the merged public decoder state returned by `rootedAtAtom=-1`.
 - `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,
   doRandom=True)` draws across all roots until half of the exact support has
   been seen.
@@ -30,9 +32,9 @@ stability guarantee.
 
 | Molecule | Atoms | Support | Grimace enum (all roots) | Decoder enum (branch-preserving, all roots) | Decoder enum (determinized, all roots) | RDKit to 1/2 support | RDKit to full support |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **6.2** ± 0.9 ms | **11.3** ± 0.6 ms | **11.5** ± 0.4 ms | **4.0** ± 0.3 ms (230.0 ± 18.8 draws) | **53.6** ± 15.9 ms (3086.7 ± 921.8 draws) |
-| `C1CC2(CCO1)CO2` | 8 | 36 | **2.3** ± 0.0 ms | **3.7** ± 0.6 ms | **3.3** ± 0.0 ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.7** ± 0.4 ms (155.6 ± 35.8 draws) |
-| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **8.3** ± 0.1 ms | **10.7** ± 0.1 ms | **10.2** ± 0.2 ms | **1.8** ± 0.2 ms (97.4 ± 8.7 draws) | **17.5** ± 3.0 ms (987.9 ± 169.9 draws) |
-| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **6.1** ± 1.0 ms | **18.1** ± 0.6 ms | **16.9** ± 0.1 ms | **0.5** ± 0.0 ms (44.1 ± 2.5 draws) | **5.8** ± 1.5 ms (483.0 ± 122.3 draws) |
-| `N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O` | 14 | 688 | **14.4** ± 0.2 ms | **27.1** ± 0.7 ms | **23.9** ± 0.2 ms | **9.8** ± 0.2 ms (514.3 ± 12.9 draws) | **151.7** ± 47.4 ms (7946.7 ± 2448.6 draws) |
-| `COc1ccc2cc([C@H](C)C(=O)O)ccc2c1` | 17 | 1504 | **29.6** ± 1.2 ms | **60.0** ± 1.7 ms | **53.3** ± 1.4 ms | **27.3** ± 1.6 ms (1143.0 ± 34.0 draws) | **569.6** ± 116.1 ms (24406.3 ± 4916.2 draws) |
+| `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **5.7** ± 0.2 ms | **11.8** ± 0.8 ms | **11.6** ± 0.5 ms | **3.9** ± 0.3 ms (230.0 ± 18.8 draws) | **52.0** ± 15.5 ms (3086.7 ± 921.8 draws) |
+| `C1CC2(CCO1)CO2` | 8 | 36 | **2.1** ± 0.0 ms | **3.3** ± 0.1 ms | **3.0** ± 0.1 ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **1.9** ± 0.6 ms (155.6 ± 35.8 draws) |
+| `CN1CCC[C@H]1c1cccnc1` | 12 | 136 | **7.8** ± 0.1 ms | **10.5** ± 0.1 ms | **9.8** ± 0.1 ms | **1.7** ± 0.1 ms (97.4 ± 8.7 draws) | **17.6** ± 2.9 ms (987.9 ± 169.9 draws) |
+| `CNC(=O)O/N=C(\C)SC` | 10 | 72 | **5.3** ± 0.1 ms | **17.5** ± 0.1 ms | **17.2** ± 0.7 ms | **0.5** ± 0.0 ms (44.1 ± 2.5 draws) | **5.5** ± 1.4 ms (483.0 ± 122.3 draws) |
+| `N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O` | 14 | 688 | **13.5** ± 0.2 ms | **26.9** ± 0.3 ms | **25.2** ± 1.3 ms | **10.0** ± 1.0 ms (514.3 ± 12.9 draws) | **148.4** ± 46.9 ms (7946.7 ± 2448.6 draws) |
+| `COc1ccc2cc([C@H](C)C(=O)O)ccc2c1` | 17 | 1504 | **27.4** ± 0.1 ms | **60.3** ± 1.1 ms | **58.5** ± 11.2 ms | **26.2** ± 0.8 ms (1143.0 ± 34.0 draws) | **563.1** ± 113.1 ms (24406.3 ± 4916.2 draws) |

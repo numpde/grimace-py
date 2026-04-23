@@ -321,11 +321,9 @@ class _CoreStateAdapter:
         successors = self._decoder.choice_successors()
         if not successors:
             return ()
-        adapter_type = type(self)
-        adapter_new = adapter_type.__new__
         successor_states = [None] * len(successors)
         for idx, (text, next_decoder) in enumerate(successors):
-            next_state = adapter_new(adapter_type)
+            next_state = _CoreStateAdapter.__new__(_CoreStateAdapter)
             next_state._decoder = next_decoder
             successor_states[idx] = (text, next_state)
         return tuple(successor_states)
@@ -352,11 +350,9 @@ class _CoreStateAdapter:
         successors = self._decoder.grouped_successors()
         if not successors:
             return ()
-        adapter_type = type(self)
-        adapter_new = adapter_type.__new__
         successor_states = [None] * len(successors)
         for idx, (text, next_decoder) in enumerate(successors):
-            next_state = adapter_new(adapter_type)
+            next_state = _CoreStateAdapter.__new__(_CoreStateAdapter)
             next_state._decoder = next_decoder
             successor_states[idx] = (text, next_state)
         return tuple(successor_states)
@@ -378,9 +374,9 @@ class _MergedStateAdapter:
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         successor_states: list[tuple[str, object]] = []
         for state in self._states:
-            if state.is_terminal():
+            if _state_is_terminal(state):
                 continue
-            successor_states.extend(state.choice_successor_states())
+            successor_states.extend(_choice_successor_states(state))
         return tuple(successor_states)
 
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
@@ -397,7 +393,7 @@ class _MergedStateAdapter:
         return prefix
 
     def is_terminal(self) -> bool:
-        return all(state.is_terminal() for state in self._states)
+        return all(_state_is_terminal(state) for state in self._states)
 
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
@@ -408,7 +404,7 @@ class _MergedStateAdapter:
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         grouped: dict[str, list[object]] = {}
         for state in self._states:
-            for text, successor in state.grouped_successor_states():
+            for text, successor in _grouped_successor_states(state):
                 grouped.setdefault(text, []).append(successor)
         return tuple(
             (text, _merge_choice_successor_states(tuple(successors)))
@@ -437,10 +433,10 @@ class _DisconnectedStateAdapter:
 
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         active = self._active_state()
-        if not active.is_terminal():
+        if not _state_is_terminal(active):
             successor_states: list[tuple[str, object]] = []
             adapter_type = type(self)
-            for text, successor in active.choice_successor_states():
+            for text, successor in _choice_successor_states(active):
                 successor_states.append(
                     (
                         text,
@@ -478,7 +474,7 @@ class _DisconnectedStateAdapter:
 
     def is_terminal(self) -> bool:
         active = self._active_state()
-        return active.is_terminal() and self._fragment_idx + 1 == len(self._fragment_states)
+        return _state_is_terminal(active) and self._fragment_idx + 1 == len(self._fragment_states)
 
     def copy(self) -> "_DisconnectedStateAdapter":
         return type(self)(
@@ -499,7 +495,7 @@ class _DisconnectedStateAdapter:
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         active = self._active_state()
-        if not active.is_terminal():
+        if not _state_is_terminal(active):
             return tuple(
                 (
                     text,
@@ -511,7 +507,7 @@ class _DisconnectedStateAdapter:
                         completed_prefix=self._completed_prefix,
                     ),
                 )
-                for text, successor in active.grouped_successor_states()
+                for text, successor in _grouped_successor_states(active)
             )
         if self._fragment_idx + 1 < len(self._fragment_states):
             return (
@@ -539,9 +535,31 @@ def _merge_choice_successor_states(states: tuple[object, ...]) -> object:
     return _MergedStateAdapter(tuple(flattened))
 
 
+def _choice_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+    if isinstance(state, (_CoreStateAdapter, _MergedStateAdapter, _DisconnectedStateAdapter)):
+        return state.choice_successor_states()
+    successors = state.choice_successors()
+    if not successors:
+        return ()
+    return tuple(successors)
+
+
+def _grouped_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+    if isinstance(state, (_CoreStateAdapter, _MergedStateAdapter, _DisconnectedStateAdapter)):
+        return state.grouped_successor_states()
+    successors = state.grouped_successors()
+    if not successors:
+        return ()
+    return tuple(successors)
+
+
+def _state_is_terminal(state: object) -> bool:
+    return bool(state.is_terminal())
+
+
 def _determinized_choice_successors(state: object) -> tuple[tuple[str, object], ...]:
     """Return one successor per token text by merging same-text branches."""
-    return state.grouped_successor_states()
+    return _grouped_successor_states(state)
 
 
 def _state_cache_key(state: object) -> str:
@@ -694,7 +712,7 @@ def _make_fragment_state_adapter(
         return _make_connected_state_adapter(prepared_fragment, flags.with_rooted_at_atom(-1))
 
     states = tuple(
-        _make_connected_state_adapter(prepared_fragment, flags.with_rooted_at_atom(local_root_idx))
+        _make_decoder(prepared_fragment, flags.with_rooted_at_atom(local_root_idx))
         for local_root_idx in range(atom_count)
     )
     if len(states) == 1:
@@ -796,7 +814,7 @@ class _PublicDecoderBase:
 
 class MolToSmilesDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        successors = self._state.choice_successor_states()
+        successors = _choice_successor_states(self._state)
         if not successors:
             return ()
         decoder_type = type(self)

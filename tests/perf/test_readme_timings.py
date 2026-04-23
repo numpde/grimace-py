@@ -274,6 +274,8 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "  exhaustive traversal of `MolToSmilesDecoder(...)`, unioned across all roots.",
             "- `Decoder enum (determinized, all roots)`: exact enumeration by exhaustive",
             "  traversal of `MolToSmilesDeterminizedDecoder(...)`, unioned across all roots.",
+            "- The decoder rows benchmark explicit traversal from each root separately,",
+            "  not the merged public decoder state returned by `rootedAtAtom=-1`.",
             "- `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,",
             "  doRandom=True)` draws across all roots until half of the exact support has",
             "  been seen.",

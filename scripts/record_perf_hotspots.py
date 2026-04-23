@@ -23,15 +23,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Record an internal perf-hotspot history entry for Grimace exact enum.",
+        description="Record an internal perf-hotspot history entry for Grimace benchmarks.",
     )
     parser.add_argument("--label", required=True, help="Short internal label for this profile run")
     parser.add_argument("--smiles", required=True, help="SMILES to benchmark")
     parser.add_argument(
+        "--mode",
+        choices=("enum", "decoder", "determinized-decoder"),
+        default="enum",
+        help="Which Grimace API surface to profile",
+    )
+    parser.add_argument(
         "--rooted-at-atom",
         type=int,
         default=-1,
-        help="Root index to use for MolToSmilesEnum (default: -1)",
+        help="Root index to use for the selected API (default: -1)",
     )
     parser.add_argument(
         "--isomeric-smiles",
@@ -39,10 +45,15 @@ def parse_args() -> argparse.Namespace:
         help="Profile isomeric enumeration instead of non-isomeric",
     )
     parser.add_argument(
+        "--all-roots",
+        action="store_true",
+        help="For decoder modes, exhaust all roots explicitly instead of using rootedAtAtom directly",
+    )
+    parser.add_argument(
         "--loops",
         type=int,
         default=2,
-        help="How many exact-enum runs to perform inside the profiled process",
+        help="How many benchmark runs to perform inside the profiled process",
     )
     parser.add_argument(
         "--warmup-loops",
@@ -71,34 +82,78 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_payload_script(args: argparse.Namespace) -> str:
-    return textwrap.dedent(
-        f"""
-        from rdkit import Chem
-        import grimace
+    if args.mode == "enum":
+        run_body = textwrap.dedent(
+            f"""
+            set(
+                grimace.MolToSmilesEnum(
+                    mol,
+                    rootedAtAtom={args.rooted_at_atom},
+                    isomericSmiles={args.isomeric_smiles},
+                    canonical=False,
+                    doRandom=True,
+                )
+            )
+            """
+        ).strip()
+    else:
+        decoder_cls = (
+            "grimace.MolToSmilesDecoder"
+            if args.mode == "decoder"
+            else "grimace.MolToSmilesDeterminizedDecoder"
+        )
+        if args.all_roots:
+            run_body = textwrap.dedent(
+                f"""
+                outputs = set()
+                for root_idx in range(mol.GetNumAtoms()):
+                    stack = [{decoder_cls}(
+                        mol,
+                        rootedAtAtom=root_idx,
+                        isomericSmiles={args.isomeric_smiles},
+                        canonical=False,
+                        doRandom=True,
+                    )]
+                    while stack:
+                        state = stack.pop()
+                        if state.is_terminal:
+                            outputs.add(state.prefix)
+                            continue
+                        stack.extend(choice.next_state for choice in reversed(state.next_choices))
+                """
+            ).strip()
+        else:
+            run_body = textwrap.dedent(
+                f"""
+                outputs = set()
+                stack = [{decoder_cls}(
+                    mol,
+                    rootedAtAtom={args.rooted_at_atom},
+                    isomericSmiles={args.isomeric_smiles},
+                    canonical=False,
+                    doRandom=True,
+                )]
+                while stack:
+                    state = stack.pop()
+                    if state.is_terminal:
+                        outputs.add(state.prefix)
+                        continue
+                    stack.extend(choice.next_state for choice in reversed(state.next_choices))
+                """
+            ).strip()
 
-        mol = Chem.MolFromSmiles({args.smiles!r})
-        for _ in range({args.warmup_loops}):
-            set(
-                grimace.MolToSmilesEnum(
-                    mol,
-                    rootedAtAtom={args.rooted_at_atom},
-                    isomericSmiles={args.isomeric_smiles},
-                    canonical=False,
-                    doRandom=True,
-                )
-            )
-        for _ in range({args.loops}):
-            set(
-                grimace.MolToSmilesEnum(
-                    mol,
-                    rootedAtAtom={args.rooted_at_atom},
-                    isomericSmiles={args.isomeric_smiles},
-                    canonical=False,
-                    doRandom=True,
-                )
-            )
-        """
-    )
+    payload_lines = [
+        "from rdkit import Chem",
+        "import grimace",
+        "",
+        f"mol = Chem.MolFromSmiles({args.smiles!r})",
+        f"for _ in range({args.warmup_loops}):",
+        textwrap.indent(run_body, "    "),
+        f"for _ in range({args.loops}):",
+        textwrap.indent(run_body, "    "),
+        "",
+    ]
+    return "\n".join(payload_lines)
 
 
 def main() -> int:
@@ -164,10 +219,16 @@ def main() -> int:
         {
             "kind": "perf_hotspots",
             **metadata,
-            "benchmark": "MolToSmilesEnum",
+            "benchmark": {
+                "enum": "MolToSmilesEnum",
+                "decoder": "MolToSmilesDecoder",
+                "determinized-decoder": "MolToSmilesDeterminizedDecoder",
+            }[args.mode],
             "label": args.label,
             "smiles": args.smiles,
+            "mode": args.mode,
             "rooted_at_atom": args.rooted_at_atom,
+            "all_roots": args.all_roots,
             "isomeric_smiles": args.isomeric_smiles,
             "warmup_loops": args.warmup_loops,
             "loops": args.loops,

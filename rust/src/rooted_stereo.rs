@@ -104,7 +104,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     prefix: String,
     visited: Vec<bool>,
     visited_count: usize,
-    pending: Vec<Vec<PendingRing>>,
+    pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
     next_label: usize,
     stereo_component_phases: Vec<i8>,
@@ -120,7 +120,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
 struct StereoCompletionKey {
     visited: Vec<bool>,
     visited_count: usize,
-    pending: Vec<Vec<PendingRing>>,
+    pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
     next_label: usize,
     stereo_component_phases: Vec<i8>,
@@ -159,7 +159,7 @@ struct SupportSearchResult {
     parts: Vec<Part>,
     visited: Vec<bool>,
     visited_count: usize,
-    pending: Vec<Vec<PendingRing>>,
+    pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
     next_label: usize,
     stereo_component_phases: Vec<i8>,
@@ -176,7 +176,7 @@ struct SupportSubproblemKey {
     parent_idx: Option<usize>,
     visited: Vec<bool>,
     visited_count: usize,
-    pending: Vec<Vec<PendingRing>>,
+    pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
     next_label: usize,
     stereo_component_phases: Vec<i8>,
@@ -542,14 +542,30 @@ where
     }
 }
 
-fn add_pending(pending: &mut [Vec<PendingRing>], target_atom: usize, ring: PendingRing) {
-    let current = &mut pending[target_atom];
+fn add_pending(pending: &mut Vec<(usize, Vec<PendingRing>)>, target_atom: usize, ring: PendingRing) {
+    let current = match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
+        Ok(offset) => &mut pending[offset].1,
+        Err(offset) => {
+            pending.insert(offset, (target_atom, Vec::new()));
+            &mut pending[offset].1
+        }
+    };
     let insert_at = current
         .binary_search_by(|candidate| {
             (candidate.label, candidate.other_atom_idx).cmp(&(ring.label, ring.other_atom_idx))
         })
         .unwrap_or_else(|offset| offset);
     current.insert(insert_at, ring);
+}
+
+fn take_pending_for_atom(
+    pending: &mut Vec<(usize, Vec<PendingRing>)>,
+    atom_idx: usize,
+) -> Vec<PendingRing> {
+    match pending.binary_search_by_key(&atom_idx, |(candidate_idx, _)| *candidate_idx) {
+        Ok(offset) => pending.remove(offset).1,
+        Err(_) => Vec::new(),
+    }
 }
 
 fn insert_sorted(labels: &mut Vec<usize>, label: usize) {
@@ -1839,7 +1855,7 @@ fn enumerate_rooted_connected_stereo_smiles_support_native(
             parts: Vec::new(),
             visited: vec![false; graph.atom_count()],
             visited_count: 0,
-            pending: vec![Vec::new(); graph.atom_count()],
+            pending: Vec::new(),
             free_labels: Vec::new(),
             next_label: 1,
             stereo_component_phases: vec![UNKNOWN_COMPONENT_PHASE; component_count],
@@ -1853,7 +1869,7 @@ fn enumerate_rooted_connected_stereo_smiles_support_native(
             if result.visited_count != graph.atom_count() {
                 return Ok(());
             }
-            if result.pending.iter().any(|rings| !rings.is_empty()) {
+            if !result.pending.is_empty() {
                 return Ok(());
             }
             support.insert(resolve_support_result_smiles(&runtime, graph, &result)?);
@@ -1899,7 +1915,7 @@ fn enumerate_support_results_from_atom(
     visited_now[atom_idx] = true;
     let visited_count_now = result.visited_count + 1;
     let mut pending_now = result.pending.clone();
-    let closures_here = std::mem::take(&mut pending_now[atom_idx]);
+    let closures_here = take_pending_for_atom(&mut pending_now, atom_idx);
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
     let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
@@ -2326,7 +2342,10 @@ fn validate_stereo_state_shape(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
     if state.visited.len() != graph.atom_count()
-        || state.pending.len() != graph.atom_count()
+        || state
+            .pending
+            .iter()
+            .any(|(atom_idx, _rings)| *atom_idx >= graph.atom_count())
         || state.stereo_component_phases.len() != runtime.isolated_components.len()
         || state.stereo_component_begin_atoms.len() != runtime.isolated_components.len()
         || state.stereo_component_token_flips.len() != runtime.isolated_components.len()
@@ -2357,7 +2376,7 @@ fn initial_stereo_state_for_root(
         prefix: String::new(),
         visited: vec![false; graph.atom_count()],
         visited_count: 0,
-        pending: vec![Vec::new(); graph.atom_count()],
+        pending: Vec::new(),
         free_labels: Vec::new(),
         next_label: 1,
         stereo_component_phases: vec![UNKNOWN_COMPONENT_PHASE; runtime.isolated_components.len()],
@@ -3113,7 +3132,7 @@ fn enter_atom_successors_by_token(
     visited_now[atom_idx] = true;
     let visited_count_now = base_state.visited_count + 1;
     let mut pending_now = base_state.pending.clone();
-    let closures_here = std::mem::take(&mut pending_now[atom_idx]);
+    let closures_here = take_pending_for_atom(&mut pending_now, atom_idx);
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
     let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
@@ -3614,7 +3633,7 @@ fn can_complete_from_stereo_state_memo(
     let result = if successors.is_empty() {
         state.action_stack.is_empty()
             && state.visited_count == graph.atom_count()
-            && state.pending.iter().all(|rings| rings.is_empty())
+            && state.pending.is_empty()
     } else {
         successors.into_values().any(|successor_group| {
             successor_group.into_iter().any(|successor| {
@@ -3921,7 +3940,7 @@ fn enumerate_support_from_stereo_state(
     if successors.is_empty() {
         if state.action_stack.is_empty()
             && state.visited_count == graph.atom_count()
-            && state.pending.iter().all(|rings| rings.is_empty())
+            && state.pending.is_empty()
         {
             out.insert(state.prefix);
         }
@@ -3957,7 +3976,7 @@ impl PyRootedConnectedStereoWalkerState {
             "RootedConnectedStereoWalkerState(prefix={:?}, visited_count={}, pending_sites={}, next_label={}, stack_depth={})",
             self.data.prefix,
             self.data.visited_count,
-            self.data.pending.iter().filter(|rings| !rings.is_empty()).count(),
+            self.data.pending.len(),
             self.data.next_label,
             self.data.action_stack.len(),
         )

@@ -3164,7 +3164,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
                         if nonchiral_prefix.is_none() {
                             push_literal_token(&mut successor.prefix, atom_token.as_ref());
                         }
-                        push_exact_stereo_successor(&mut successors, successor);
+                        successors.push(successor);
                         Ok(())
                     })();
                     if let Err(err) = inner {

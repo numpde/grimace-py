@@ -320,6 +320,18 @@ fn finalize_linear_structural_transitions(
     out
 }
 
+fn finalize_linear_structural_transitions_vec(
+    mut transitions: Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)>,
+) -> Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)> {
+    for (_, states) in transitions.iter_mut() {
+        states.sort_by(cmp_stereo_state_structure);
+        states.dedup_by(|left, right| cmp_stereo_state_structure(left, right) == Ordering::Equal);
+    }
+    transitions.sort_by(|left, right| left.0.cmp(&right.0));
+    transitions
+}
+
+
 fn flip_direction_token(token: &str) -> PyResult<String> {
     match token {
         "/" => Ok("\\".to_owned()),
@@ -4305,6 +4317,21 @@ fn frontier_transitions_for_stereo(
     Ok(finalize_linear_structural_transitions(transitions))
 }
 
+fn frontier_transitions_for_stereo_linear(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedStereoWalkerStateData],
+) -> PyResult<Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)>> {
+    let mut transitions = Vec::<(String, Vec<RootedConnectedStereoWalkerStateData>)>::new();
+    for state in frontier {
+        extend_linear_structural_transitions(
+            &mut transitions,
+            successors_by_token_stereo(runtime, graph, state)?,
+        );
+    }
+    Ok(finalize_linear_structural_transitions_vec(transitions))
+}
+
 fn frontier_choices_for_stereo(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4617,7 +4644,7 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn grouped_successors(&self) -> PyResult<Vec<(String, Self)>> {
-        Ok(frontier_transitions_for_stereo(
+        Ok(frontier_transitions_for_stereo_linear(
             self.runtime.as_ref(),
             self.graph.as_ref(),
             &self.frontier,

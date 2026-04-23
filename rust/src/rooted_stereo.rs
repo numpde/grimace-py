@@ -12,6 +12,7 @@ use crate::frontier::{
     take_grouped_choices_or_err, take_transition_or_err, DecoderChoice,
 };
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
+use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
 
 const HYDROGEN_NEIGHBOR: isize = -1;
 const UNKNOWN_COMPONENT_PHASE: i8 = -1;
@@ -203,16 +204,6 @@ struct StereoWalkerRuntimeData {
     edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
     side_ids_by_component: Vec<Vec<usize>>,
     ambiguous_shared_edge_groups: Vec<AmbiguousSharedEdgeGroup>,
-}
-
-fn ring_label_text(label: usize) -> String {
-    if label < 10 {
-        label.to_string()
-    } else if label < 100 {
-        format!("%{label}")
-    } else {
-        format!("%({label})")
-    }
 }
 
 fn push_literal_token(prefix: &mut String, token: &str) {
@@ -539,32 +530,6 @@ where
     recurse(&mut current, 0, f);
     if items.is_empty() {
         f(&[]);
-    }
-}
-
-fn add_pending(pending: &mut Vec<(usize, Vec<PendingRing>)>, target_atom: usize, ring: PendingRing) {
-    let current = match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
-        Ok(offset) => &mut pending[offset].1,
-        Err(offset) => {
-            pending.insert(offset, (target_atom, Vec::new()));
-            &mut pending[offset].1
-        }
-    };
-    let insert_at = current
-        .binary_search_by(|candidate| {
-            (candidate.label, candidate.other_atom_idx).cmp(&(ring.label, ring.other_atom_idx))
-        })
-        .unwrap_or_else(|offset| offset);
-    current.insert(insert_at, ring);
-}
-
-fn take_pending_for_atom(
-    pending: &mut Vec<(usize, Vec<PendingRing>)>,
-    atom_idx: usize,
-) -> Vec<PendingRing> {
-    match pending.binary_search_by_key(&atom_idx, |(candidate_idx, _)| *candidate_idx) {
-        Ok(offset) => pending.remove(offset).1,
-        Err(_) => Vec::new(),
     }
 }
 
@@ -2396,6 +2361,15 @@ fn is_terminal_stereo_state(state: &RootedConnectedStereoWalkerStateData) -> boo
     state.action_stack.is_empty()
 }
 
+fn is_complete_terminal_stereo_state(
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> bool {
+    is_terminal_stereo_state(state)
+        && state.visited_count == graph.atom_count()
+        && state.pending.is_empty()
+}
+
 fn part_to_action(part: Part) -> Option<WalkerAction> {
     match part {
         Part::Literal(token) => {
@@ -3631,9 +3605,7 @@ fn can_complete_from_stereo_state_memo(
         }
     };
     let result = if successors.is_empty() {
-        state.action_stack.is_empty()
-            && state.visited_count == graph.atom_count()
-            && state.pending.is_empty()
+        is_complete_terminal_stereo_state(graph, state)
     } else {
         successors.into_values().any(|successor_group| {
             successor_group.into_iter().any(|successor| {
@@ -3938,10 +3910,7 @@ fn enumerate_support_from_stereo_state(
 ) -> PyResult<()> {
     let successors = successors_by_token_stereo_raw(runtime, graph, &state)?;
     if successors.is_empty() {
-        if state.action_stack.is_empty()
-            && state.visited_count == graph.atom_count()
-            && state.pending.is_empty()
-        {
+        if is_complete_terminal_stereo_state(graph, &state) {
             out.insert(state.prefix);
         }
         return Ok(());

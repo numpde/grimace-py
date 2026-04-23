@@ -2,6 +2,7 @@ mod frontier;
 mod prepared_graph;
 mod rooted_nonstereo;
 mod rooted_stereo;
+mod smiles_shared;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;

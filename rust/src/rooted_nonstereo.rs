@@ -12,6 +12,7 @@ use crate::frontier::{
     take_grouped_choices_or_err, DecoderChoice,
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
+use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum BondTokenCode {
@@ -77,16 +78,6 @@ enum RingAction {
     Open(usize),
 }
 
-fn ring_label_text(label: usize) -> String {
-    if label < 10 {
-        label.to_string()
-    } else if label < 100 {
-        format!("%{label}")
-    } else {
-        format!("%({label})")
-    }
-}
-
 fn bond_token_code(token: &str) -> BondTokenCode {
     match token {
         "" => BondTokenCode::Elided,
@@ -143,36 +134,6 @@ fn allocate_label(free_labels: &mut Vec<usize>, next_label: &mut usize) -> usize
         let label = *next_label;
         *next_label += 1;
         label
-    }
-}
-
-fn add_pending(
-    pending: &mut Vec<(usize, Vec<PendingRing>)>,
-    target_atom: usize,
-    ring: PendingRing,
-) {
-    let current = match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
-        Ok(offset) => &mut pending[offset].1,
-        Err(offset) => {
-            pending.insert(offset, (target_atom, Vec::new()));
-            &mut pending[offset].1
-        }
-    };
-    let insert_at = current
-        .binary_search_by(|candidate| {
-            (candidate.label, candidate.bond_token).cmp(&(ring.label, ring.bond_token))
-        })
-        .unwrap_or_else(|offset| offset);
-    current.insert(insert_at, ring);
-}
-
-fn take_pending_for_atom(
-    pending: &mut Vec<(usize, Vec<PendingRing>)>,
-    atom_idx: usize,
-) -> Vec<PendingRing> {
-    match pending.binary_search_by_key(&atom_idx, |(candidate_idx, _)| *candidate_idx) {
-        Ok(offset) => pending.remove(offset).1,
-        Err(_) => Vec::new(),
     }
 }
 

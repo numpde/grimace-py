@@ -220,6 +220,12 @@ fn push_successor_bucket(
     successor: RootedConnectedStereoWalkerStateData,
 ) {
     if let Some((_, states)) = buckets.iter_mut().find(|(existing, _)| *existing == token) {
+        if states
+            .iter()
+            .any(|existing| cmp_stereo_state_structure(existing, &successor) == Ordering::Equal)
+        {
+            return;
+        }
         states.push(successor);
     } else {
         buckets.push((token, vec![successor]));
@@ -4300,14 +4306,10 @@ mod tests {
         max_enter_atom_bucket_count: usize,
         total_enter_atom_successor_count: usize,
         max_enter_atom_successor_count: usize,
-        total_enter_atom_deduped_successor_count: usize,
-        max_enter_atom_deduped_successor_count: usize,
         total_enter_atom_added_action_count: usize,
         max_enter_atom_added_action_count: usize,
         total_process_children_successor_count: usize,
         max_process_children_successor_count: usize,
-        total_process_children_deduped_successor_count: usize,
-        max_process_children_deduped_successor_count: usize,
         total_process_children_added_action_count: usize,
         max_process_children_added_action_count: usize,
     }
@@ -4354,15 +4356,6 @@ mod tests {
             }
         }
 
-        fn average_enter_atom_deduped_successor_count(&self) -> f64 {
-            if self.enter_atom_state_count == 0 {
-                0.0
-            } else {
-                self.total_enter_atom_deduped_successor_count as f64
-                    / self.enter_atom_state_count as f64
-            }
-        }
-
         fn average_process_children_successor_count(&self) -> f64 {
             if self.process_children_state_count == 0 {
                 0.0
@@ -4381,14 +4374,6 @@ mod tests {
             }
         }
 
-        fn average_process_children_deduped_successor_count(&self) -> f64 {
-            if self.process_children_state_count == 0 {
-                0.0
-            } else {
-                self.total_process_children_deduped_successor_count as f64
-                    / self.process_children_state_count as f64
-            }
-        }
     }
 
     fn collect_stereo_decoder_stats(
@@ -4433,14 +4418,6 @@ mod tests {
                 stats.max_enter_atom_successor_count = stats
                     .max_enter_atom_successor_count
                     .max(raw_successor_count);
-                let deduped_successor_count = super::finalize_structural_transitions(raw_successors.clone())
-                    .values()
-                    .map(Vec::len)
-                    .sum::<usize>();
-                stats.total_enter_atom_deduped_successor_count += deduped_successor_count;
-                stats.max_enter_atom_deduped_successor_count = stats
-                    .max_enter_atom_deduped_successor_count
-                    .max(deduped_successor_count);
                 let base_len = state.action_stack.len().saturating_sub(1);
                 for successors in raw_successors.values() {
                     for successor in successors {
@@ -4472,14 +4449,6 @@ mod tests {
                 stats.max_process_children_successor_count = stats
                     .max_process_children_successor_count
                     .max(raw_successor_count);
-                let deduped_successor_count = super::finalize_structural_transitions(raw_successors.clone())
-                    .values()
-                    .map(Vec::len)
-                    .sum::<usize>();
-                stats.total_process_children_deduped_successor_count += deduped_successor_count;
-                stats.max_process_children_deduped_successor_count = stats
-                    .max_process_children_deduped_successor_count
-                    .max(deduped_successor_count);
                 let base_len = state.action_stack.len().saturating_sub(1);
                 for successors in raw_successors.values() {
                     for successor in successors {
@@ -4904,7 +4873,7 @@ mod tests {
         }
 
         println!(
-            "large stereo decoder stats: states={} terminal={} avg_stack={:.2} max_stack={} avg_pending_sites={:.2} max_pending_sites={} avg_pending_rings={:.2} max_pending_rings={} enter_states={} chiral_enter_states={} avg_enter_succ={:.2} avg_enter_deduped={:.2} max_enter_succ={} max_enter_deduped={} avg_enter_added={:.2} max_enter_added={} process_states={} avg_process_succ={:.2} avg_process_deduped={:.2} max_process_succ={} max_process_deduped={} avg_process_added={:.2} max_process_added={} emit_deferred={} emit_literal={} emit_ring={} emit_close={}",
+            "large stereo decoder stats: states={} terminal={} avg_stack={:.2} max_stack={} avg_pending_sites={:.2} max_pending_sites={} avg_pending_rings={:.2} max_pending_rings={} enter_states={} chiral_enter_states={} avg_enter_succ={:.2} max_enter_succ={} avg_enter_added={:.2} max_enter_added={} process_states={} avg_process_succ={:.2} max_process_succ={} avg_process_added={:.2} max_process_added={} emit_deferred={} emit_literal={} emit_ring={} emit_close={}",
             stats.state_count,
             stats.terminal_state_count,
             stats.average_action_stack_len(),
@@ -4916,16 +4885,12 @@ mod tests {
             stats.enter_atom_state_count,
             stats.chiral_enter_atom_state_count,
             stats.average_enter_atom_successor_count(),
-            stats.average_enter_atom_deduped_successor_count(),
             stats.max_enter_atom_successor_count,
-            stats.max_enter_atom_deduped_successor_count,
             stats.average_enter_atom_added_action_count(),
             stats.max_enter_atom_added_action_count,
             stats.process_children_state_count,
             stats.average_process_children_successor_count(),
-            stats.average_process_children_deduped_successor_count(),
             stats.max_process_children_successor_count,
-            stats.max_process_children_deduped_successor_count,
             stats.average_process_children_added_action_count(),
             stats.max_process_children_added_action_count,
             stats.emit_deferred_state_count,

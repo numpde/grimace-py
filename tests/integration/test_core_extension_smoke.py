@@ -135,6 +135,26 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         self.assertEqual(["C", "O"], decoder.next_token_support())
         self.assertEqual(["C", "C", "O"], decoder.next_choice_texts())
 
+    def test_stereo_core_decoder_supports_all_roots_frontier(self) -> None:
+        from grimace import _runtime
+
+        mol = parse_smiles("F/C=C\\Cl")
+        prepared = _runtime.prepare_smiles_graph(
+            mol,
+            flags=_runtime.MolToSmilesFlags(
+                isomeric_smiles=True,
+                rooted_at_atom=0,
+                canonical=False,
+                do_random=True,
+            ),
+        )
+
+        decoder = CORE_MODULE.RootedConnectedStereoDecoder(prepared, -1)
+
+        self.assertEqual("", decoder.prefix())
+        self.assertEqual(["F", "C", "Cl"], decoder.next_token_support())
+        self.assertEqual(["F", "C", "C", "C", "C", "Cl"], decoder.next_choice_texts())
+
     def test_runtime_factories_reject_prepared_surface_mismatch(self) -> None:
         from grimace import _runtime
 

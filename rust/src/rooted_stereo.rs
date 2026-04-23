@@ -206,6 +206,12 @@ struct StereoWalkerRuntimeData {
     ambiguous_shared_edge_groups: Vec<AmbiguousSharedEdgeGroup>,
 }
 
+#[derive(Clone)]
+struct StereoDecoderBranch {
+    runtime: Arc<StereoWalkerRuntimeData>,
+    frontier: Vec<RootedConnectedStereoWalkerStateData>,
+}
+
 fn push_literal_token(prefix: &mut Arc<str>, token: &str) {
     if token.is_empty() {
         return;
@@ -4557,9 +4563,131 @@ impl PyRootedConnectedStereoWalker {
 #[derive(Clone)]
 pub struct PyRootedConnectedStereoDecoder {
     graph: Arc<PreparedSmilesGraphData>,
-    runtime: Arc<StereoWalkerRuntimeData>,
+    runtime: Option<Arc<StereoWalkerRuntimeData>>,
     frontier: Vec<RootedConnectedStereoWalkerStateData>,
+    merged_branches: Option<Vec<StereoDecoderBranch>>,
     cached_choices: Option<Vec<DecoderChoice<RootedConnectedStereoWalkerStateData>>>,
+}
+
+impl PyRootedConnectedStereoDecoder {
+    fn from_single(
+        graph: Arc<PreparedSmilesGraphData>,
+        runtime: Arc<StereoWalkerRuntimeData>,
+        frontier: Vec<RootedConnectedStereoWalkerStateData>,
+    ) -> Self {
+        Self {
+            graph,
+            runtime: Some(runtime),
+            frontier,
+            merged_branches: None,
+            cached_choices: None,
+        }
+    }
+
+    fn from_merged(graph: Arc<PreparedSmilesGraphData>, branches: Vec<StereoDecoderBranch>) -> Self {
+        if let [branch] = branches.as_slice() {
+            return Self::from_single(graph, branch.runtime.clone(), branch.frontier.clone());
+        }
+        Self {
+            graph,
+            runtime: None,
+            frontier: Vec::new(),
+            merged_branches: Some(branches),
+            cached_choices: None,
+        }
+    }
+}
+
+fn merged_stereo_prefix(branches: &[StereoDecoderBranch]) -> String {
+    let prefix = branches
+        .first()
+        .map(|branch| stereo_frontier_prefix(&branch.frontier))
+        .unwrap_or_default();
+    debug_assert!(branches
+        .iter()
+        .all(|branch| stereo_frontier_prefix(&branch.frontier) == prefix));
+    prefix
+}
+
+fn merged_stereo_cache_key(branches: &[StereoDecoderBranch]) -> String {
+    let mut keys = branches
+        .iter()
+        .map(|branch| format!("{:?}", branch.frontier))
+        .collect::<Vec<_>>();
+    keys.sort();
+    format!("{:?}", ("merged", keys))
+}
+
+fn merged_stereo_is_terminal(
+    graph: &PreparedSmilesGraphData,
+    branches: &[StereoDecoderBranch],
+) -> PyResult<bool> {
+    for branch in branches {
+        if !stereo_frontier_is_terminal(branch.runtime.as_ref(), graph, &branch.frontier)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn merged_stereo_choice_successors(
+    graph: Arc<PreparedSmilesGraphData>,
+    branches: &[StereoDecoderBranch],
+) -> PyResult<Vec<(String, PyRootedConnectedStereoDecoder)>> {
+    let mut out = Vec::new();
+    for branch in branches {
+        if stereo_frontier_is_terminal(branch.runtime.as_ref(), graph.as_ref(), &branch.frontier)? {
+            continue;
+        }
+        for (token, successor) in frontier_choice_successors_for_stereo(
+            branch.runtime.as_ref(),
+            graph.as_ref(),
+            &branch.frontier,
+        )? {
+            out.push((
+                token,
+                PyRootedConnectedStereoDecoder::from_single(
+                    graph.clone(),
+                    branch.runtime.clone(),
+                    vec![successor],
+                ),
+            ));
+        }
+    }
+    Ok(out)
+}
+
+fn merged_stereo_grouped_successors(
+    graph: Arc<PreparedSmilesGraphData>,
+    branches: &[StereoDecoderBranch],
+) -> PyResult<Vec<(String, PyRootedConnectedStereoDecoder)>> {
+    let mut buckets = Vec::<(String, Vec<StereoDecoderBranch>)>::new();
+    for branch in branches {
+        for (token, frontier) in frontier_transitions_for_stereo_linear(
+            branch.runtime.as_ref(),
+            graph.as_ref(),
+            &branch.frontier,
+        )? {
+            let successor_branch = StereoDecoderBranch {
+                runtime: branch.runtime.clone(),
+                frontier,
+            };
+            if let Some((_, grouped)) = buckets.iter_mut().find(|(existing, _)| *existing == token) {
+                grouped.push(successor_branch);
+            } else {
+                buckets.push((token, vec![successor_branch]));
+            }
+        }
+    }
+    Ok(buckets
+        .into_iter()
+        .map(|(token, grouped)| {
+            (
+                token,
+                PyRootedConnectedStereoDecoder::from_merged(graph.clone(), grouped),
+            )
+        })
+        .collect())
 }
 
 #[pymethods]
@@ -4568,24 +4696,60 @@ impl PyRootedConnectedStereoDecoder {
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
         let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
         check_supported_stereo_writer_surface(graph.as_ref())?;
+        if graph.atom_count() == 0 {
+            let root_idx = validate_root_idx(graph.as_ref(), 0)?;
+            let runtime = Arc::new(build_walker_runtime(graph.as_ref(), root_idx)?);
+            return Ok(Self::from_single(
+                graph.clone(),
+                runtime.clone(),
+                vec![initial_stereo_state_for_root(
+                    runtime.as_ref(),
+                    graph.as_ref(),
+                    root_idx,
+                )],
+            ));
+        }
+        if root_idx < 0 {
+            let mut branches = Vec::with_capacity(graph.atom_count());
+            for atom_idx in 0..graph.atom_count() {
+                let runtime = Arc::new(build_walker_runtime(graph.as_ref(), atom_idx)?);
+                branches.push(StereoDecoderBranch {
+                    runtime: runtime.clone(),
+                    frontier: vec![initial_stereo_state_for_root(
+                        runtime.as_ref(),
+                        graph.as_ref(),
+                        atom_idx,
+                    )],
+                });
+            }
+            return Ok(Self::from_merged(graph, branches));
+        }
         let root_idx = validate_root_idx(graph.as_ref(), root_idx)?;
         let runtime = Arc::new(build_walker_runtime(graph.as_ref(), root_idx)?);
-        Ok(Self {
-            frontier: vec![initial_stereo_state_for_root(
+        Ok(Self::from_single(
+            graph.clone(),
+            runtime.clone(),
+            vec![initial_stereo_state_for_root(
                 runtime.as_ref(),
                 graph.as_ref(),
                 root_idx,
             )],
-            graph,
-            runtime,
-            cached_choices: None,
-        })
+        ))
     }
 
     fn next_token_support(&mut self) -> PyResult<Vec<String>> {
+        if let Some(branches) = &self.merged_branches {
+            return Ok(merged_stereo_grouped_successors(self.graph.clone(), branches)?
+                .into_iter()
+                .map(|(token, _)| token)
+                .collect());
+        }
         if self.cached_choices.is_none() {
             self.cached_choices = Some(frontier_choices_for_stereo(
-                self.runtime.as_ref(),
+                self.runtime
+                    .as_ref()
+                    .expect("single decoder runtime should be present")
+                    .as_ref(),
                 self.graph.as_ref(),
                 &self.frontier,
             )?);
@@ -4598,10 +4762,22 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
+        if let Some(branches) = &self.merged_branches {
+            let successors = merged_stereo_grouped_successors(self.graph.clone(), branches)?;
+            let (_, successor) = successors
+                .into_iter()
+                .find(|(token, _)| token == chosen_token)
+                .ok_or_else(|| PyKeyError::new_err(format!("Token {chosen_token:?} is not available")))?;
+            *self = successor;
+            return Ok(());
+        }
         let choices = match self.cached_choices.take() {
             Some(choices) => choices,
             None => frontier_choices_for_stereo(
-                self.runtime.as_ref(),
+                self.runtime
+                    .as_ref()
+                    .expect("single decoder runtime should be present")
+                    .as_ref(),
                 self.graph.as_ref(),
                 &self.frontier,
             )?,
@@ -4611,9 +4787,18 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn next_choice_texts(&mut self) -> PyResult<Vec<String>> {
+        if let Some(branches) = &self.merged_branches {
+            return Ok(merged_stereo_choice_successors(self.graph.clone(), branches)?
+                .into_iter()
+                .map(|(token, _)| token)
+                .collect());
+        }
         if self.cached_choices.is_none() {
             self.cached_choices = Some(frontier_choices_for_stereo(
-                self.runtime.as_ref(),
+                self.runtime
+                    .as_ref()
+                    .expect("single decoder runtime should be present")
+                    .as_ref(),
                 self.graph.as_ref(),
                 &self.frontier,
             )?);
@@ -4626,10 +4811,24 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
+        if let Some(branches) = &self.merged_branches {
+            let mut successors = merged_stereo_choice_successors(self.graph.clone(), branches)?;
+            if chosen_idx >= successors.len() {
+                return Err(PyKeyError::new_err(format!(
+                    "Choice index {chosen_idx} is not available; choice_count={}",
+                    successors.len()
+                )));
+            }
+            *self = successors.swap_remove(chosen_idx).1;
+            return Ok(());
+        }
         let mut choices = match self.cached_choices.take() {
             Some(choices) => choices,
             None => frontier_choices_for_stereo(
-                self.runtime.as_ref(),
+                self.runtime
+                    .as_ref()
+                    .expect("single decoder runtime should be present")
+                    .as_ref(),
                 self.graph.as_ref(),
                 &self.frontier,
             )?,
@@ -4639,8 +4838,14 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn choice_successors(&self) -> PyResult<Vec<(String, Self)>> {
+        if let Some(branches) = &self.merged_branches {
+            return merged_stereo_choice_successors(self.graph.clone(), branches);
+        }
         Ok(frontier_choice_successors_for_stereo(
-            self.runtime.as_ref(),
+            self.runtime
+                .as_ref()
+                .expect("single decoder runtime should be present")
+                .as_ref(),
             self.graph.as_ref(),
             &self.frontier,
         )?
@@ -4648,20 +4853,28 @@ impl PyRootedConnectedStereoDecoder {
         .map(|(token, successor)| {
             (
                 token,
-                Self {
-                    graph: self.graph.clone(),
-                    runtime: self.runtime.clone(),
-                    frontier: vec![successor],
-                    cached_choices: None,
-                },
+                Self::from_single(
+                    self.graph.clone(),
+                    self.runtime
+                        .as_ref()
+                        .expect("single decoder runtime should be present")
+                        .clone(),
+                    vec![successor],
+                ),
             )
         })
         .collect())
     }
 
     fn grouped_successors(&self) -> PyResult<Vec<(String, Self)>> {
+        if let Some(branches) = &self.merged_branches {
+            return merged_stereo_grouped_successors(self.graph.clone(), branches);
+        }
         Ok(frontier_transitions_for_stereo_linear(
-            self.runtime.as_ref(),
+            self.runtime
+                .as_ref()
+                .expect("single decoder runtime should be present")
+                .as_ref(),
             self.graph.as_ref(),
             &self.frontier,
         )?
@@ -4669,30 +4882,50 @@ impl PyRootedConnectedStereoDecoder {
         .map(|(token, frontier)| {
             (
                 token,
-                Self {
-                    graph: self.graph.clone(),
-                    runtime: self.runtime.clone(),
+                Self::from_single(
+                    self.graph.clone(),
+                    self.runtime
+                        .as_ref()
+                        .expect("single decoder runtime should be present")
+                        .clone(),
                     frontier,
-                    cached_choices: None,
-                },
+                ),
             )
         })
         .collect())
     }
 
     fn prefix(&self) -> String {
-        stereo_frontier_prefix(&self.frontier)
+        if let Some(branches) = &self.merged_branches {
+            merged_stereo_prefix(branches)
+        } else {
+            stereo_frontier_prefix(&self.frontier)
+        }
     }
 
     fn cache_key(&self) -> String {
-        format!("{:?}", self.frontier)
+        if let Some(branches) = &self.merged_branches {
+            merged_stereo_cache_key(branches)
+        } else {
+            format!("{:?}", self.frontier)
+        }
     }
 
     fn is_terminal(&self) -> PyResult<bool> {
+        if let Some(branches) = &self.merged_branches {
+            return merged_stereo_is_terminal(self.graph.as_ref(), branches);
+        }
         if let Some(choices) = &self.cached_choices {
             Ok(choices.is_empty())
         } else {
-            stereo_frontier_is_terminal(self.runtime.as_ref(), self.graph.as_ref(), &self.frontier)
+            stereo_frontier_is_terminal(
+                self.runtime
+                    .as_ref()
+                    .expect("single decoder runtime should be present")
+                    .as_ref(),
+                self.graph.as_ref(),
+                &self.frontier,
+            )
         }
     }
 

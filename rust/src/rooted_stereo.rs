@@ -1852,18 +1852,19 @@ fn enumerate_support_results_from_atom(
             return;
         }
 
-        let opening_targets = ordered_groups
-            .iter()
-            .flat_map(|group| group.iter().copied())
-            .filter(|neighbor_idx| !chosen_children.contains(neighbor_idx))
-            .collect::<Vec<_>>();
-
-        let mut ring_actions = Vec::new();
+        let total_group_members = ordered_groups.iter().map(|group| group.len()).sum::<usize>();
+        let opening_target_count = total_group_members.saturating_sub(chosen_children.len());
+        let mut ring_actions =
+            Vec::with_capacity(closures_here.len() + opening_target_count);
         for closure_idx in 0..closures_here.len() {
             ring_actions.push(RingAction::Close(closure_idx));
         }
-        for &target_idx in &opening_targets {
-            ring_actions.push(RingAction::Open(target_idx));
+        for group in &ordered_groups {
+            for &target_idx in group {
+                if !chosen_children.contains(&target_idx) {
+                    ring_actions.push(RingAction::Open(target_idx));
+                }
+            }
         }
 
         permutations_copy_distinct(&ring_actions, &mut |ring_action_order| {
@@ -1881,8 +1882,9 @@ fn enumerate_support_results_from_atom(
                 let mut current_first_emitted_candidates =
                     result.stereo_first_emitted_candidates.clone();
                 let mut current_component_begin_atoms = result.stereo_component_begin_atoms.clone();
-                let mut current_ring_parts = Vec::<Part>::new();
-                let mut labels_freed_after_atom = Vec::<usize>::new();
+                let mut current_ring_parts =
+                    Vec::<Part>::with_capacity(closures_here.len() * 2 + opening_target_count);
+                let mut labels_freed_after_atom = Vec::<usize>::with_capacity(closures_here.len());
                 let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
 
                 for ring_action in ring_action_order {
@@ -3054,18 +3056,19 @@ fn enter_atom_successors_by_token(
             return;
         }
 
-        let opening_targets = ordered_groups
-            .iter()
-            .flat_map(|group| group.iter().copied())
-            .filter(|neighbor_idx| !chosen_children.contains(neighbor_idx))
-            .collect::<Vec<_>>();
-
-        let mut ring_actions = Vec::new();
+        let total_group_members = ordered_groups.iter().map(|group| group.len()).sum::<usize>();
+        let opening_target_count = total_group_members.saturating_sub(chosen_children.len());
+        let mut ring_actions =
+            Vec::with_capacity(closures_here.len() + opening_target_count);
         for closure_idx in 0..closures_here.len() {
             ring_actions.push(RingAction::Close(closure_idx));
         }
-        for &target_idx in &opening_targets {
-            ring_actions.push(RingAction::Open(target_idx));
+        for group in &ordered_groups {
+            for &target_idx in group {
+                if !chosen_children.contains(&target_idx) {
+                    ring_actions.push(RingAction::Open(target_idx));
+                }
+            }
         }
 
         permutations_copy_distinct(&ring_actions, &mut |ring_action_order| {
@@ -3085,8 +3088,10 @@ fn enter_atom_successors_by_token(
                     base_state.stereo_first_emitted_candidates.clone();
                 let mut current_component_begin_atoms =
                     base_state.stereo_component_begin_atoms.clone();
-                let mut current_ring_actions = Vec::<WalkerAction>::new();
-                let mut labels_freed_after_atom = Vec::<usize>::new();
+                let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
+                    closures_here.len() * 2 + opening_target_count,
+                );
+                let mut labels_freed_after_atom = Vec::<usize>::with_capacity(closures_here.len());
                 let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
 
                 for ring_action in ring_action_order {

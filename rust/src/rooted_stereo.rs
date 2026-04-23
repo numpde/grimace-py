@@ -4351,6 +4351,22 @@ fn frontier_choices_for_stereo(
     Ok(choices)
 }
 
+fn frontier_choice_successors_for_stereo(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedStereoWalkerStateData],
+) -> PyResult<Vec<(String, RootedConnectedStereoWalkerStateData)>> {
+    let mut choices = Vec::new();
+    for state in frontier {
+        for (token, successors) in successors_by_token_stereo(runtime, graph, state)? {
+            for successor in successors {
+                choices.push((token.clone(), successor));
+            }
+        }
+    }
+    Ok(choices)
+}
+
 fn stereo_frontier_prefix(frontier: &[RootedConnectedStereoWalkerStateData]) -> String {
     shared_frontier_prefix(frontier, |state| state.prefix.as_ref())
 }
@@ -4623,19 +4639,19 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn choice_successors(&self) -> PyResult<Vec<(String, Self)>> {
-        Ok(frontier_choices_for_stereo(
+        Ok(frontier_choice_successors_for_stereo(
             self.runtime.as_ref(),
             self.graph.as_ref(),
             &self.frontier,
         )?
         .into_iter()
-        .map(|choice| {
+        .map(|(token, successor)| {
             (
-                choice.text,
+                token,
                 Self {
                     graph: self.graph.clone(),
                     runtime: self.runtime.clone(),
-                    frontier: choice.next_frontier,
+                    frontier: vec![successor],
                     cached_choices: None,
                 },
             )

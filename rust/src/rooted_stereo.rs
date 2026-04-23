@@ -3189,6 +3189,49 @@ fn enter_atom_successors_by_token(
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
     let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
+    if closures_here.is_empty() && ordered_groups.iter().all(|group| group.len() == 1) {
+        let chosen_children = ordered_groups
+            .iter()
+            .map(|group| group[0])
+            .collect::<Vec<_>>();
+        let mut successors = Vec::<(String, Vec<RootedConnectedStereoWalkerStateData>)>::new();
+        let mut status = Ok(());
+        permutations_copy_distinct(&chosen_children, &mut |child_order| {
+            if status.is_err() {
+                return;
+            }
+            let outcome: PyResult<()> = (|| {
+                let atom_token = if !is_chiral_atom {
+                    graph.atom_tokens[atom_idx].clone()
+                } else {
+                    let emitted_neighbor_order =
+                        stereo_neighbor_order(graph, atom_idx, parent_idx, &[], child_order)?;
+                    stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
+                };
+                let mut successor = base_state.clone();
+                successor.visited = visited_now.clone();
+                successor.visited_count = visited_count_now;
+                successor.pending = pending_now.clone();
+                if !child_order.is_empty() {
+                    successor.action_stack.push(WalkerAction::ProcessChildren {
+                        parent_idx: atom_idx,
+                        child_order: Arc::<[usize]>::from(child_order.to_vec()),
+                        next_branch_index: 0,
+                    });
+                }
+                successor.prefix.push_str(&atom_token);
+                normalize_component_token_flips(runtime, graph, &mut successor)?;
+                push_successor_bucket(&mut successors, atom_token, successor);
+                Ok(())
+            })();
+            if let Err(err) = outcome {
+                status = Err(err);
+            }
+        });
+        status?;
+        return Ok(finalize_linear_structural_transitions(successors));
+    }
+
     let mut successors = Vec::<(String, Vec<RootedConnectedStereoWalkerStateData>)>::new();
     let mut status = Ok(());
     for_each_cartesian_choice(&ordered_groups, &mut |chosen_children| {

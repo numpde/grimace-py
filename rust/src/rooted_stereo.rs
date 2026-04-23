@@ -1839,6 +1839,7 @@ fn enumerate_support_results_from_atom(
     let mut pending_now = result.pending.clone();
     let closures_here = std::mem::take(&mut pending_now[atom_idx]);
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
+    let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
     let mut local_results = Vec::new();
     let mut emit_and_cache = |generated: SupportSearchResult| -> PyResult<()> {
@@ -1851,7 +1852,6 @@ fn enumerate_support_results_from_atom(
             return;
         }
 
-        let child_order_seed = chosen_children.to_vec();
         let opening_targets = ordered_groups
             .iter()
             .flat_map(|group| group.iter().copied())
@@ -1883,7 +1883,7 @@ fn enumerate_support_results_from_atom(
                 let mut current_component_begin_atoms = result.stereo_component_begin_atoms.clone();
                 let mut current_ring_parts = Vec::<Part>::new();
                 let mut labels_freed_after_atom = Vec::<usize>::new();
-                let mut ring_neighbor_order = Vec::<usize>::new();
+                let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
 
                 for ring_action in ring_action_order {
                     match *ring_action {
@@ -1914,7 +1914,9 @@ fn enumerate_support_results_from_atom(
                             push_part(&mut current_ring_parts, bond_part);
                             current_ring_parts.push(Part::Literal(ring_label_text(closure.label)));
                             labels_freed_after_atom.push(closure.label);
-                            ring_neighbor_order.push(closure.other_atom_idx);
+                            if let Some(order) = &mut ring_neighbor_order {
+                                order.push(closure.other_atom_idx);
+                            }
                         }
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
@@ -1948,7 +1950,9 @@ fn enumerate_support_results_from_atom(
                                     other_atom_idx: atom_idx,
                                 },
                             );
-                            ring_neighbor_order.push(target_idx);
+                            if let Some(order) = &mut ring_neighbor_order {
+                                order.push(target_idx);
+                            }
                         }
                     }
                 }
@@ -1956,19 +1960,19 @@ fn enumerate_support_results_from_atom(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
-                permutations_copy_distinct(&child_order_seed, &mut |child_order| {
+                permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
                         return;
                     }
                     let inner: PyResult<()> = (|| {
-                        let atom_token = if graph.atom_chiral_tags[atom_idx] == "CHI_UNSPECIFIED" {
+                        let atom_token = if !is_chiral_atom {
                             graph.atom_tokens[atom_idx].clone()
                         } else {
                             let emitted_neighbor_order = stereo_neighbor_order(
                                 graph,
                                 atom_idx,
                                 parent_idx,
-                                &ring_neighbor_order,
+                                ring_neighbor_order.as_deref().unwrap_or(&[]),
                                 child_order,
                             )?;
                             stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
@@ -3041,6 +3045,7 @@ fn enter_atom_successors_by_token(
     let mut pending_now = base_state.pending.clone();
     let closures_here = std::mem::take(&mut pending_now[atom_idx]);
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
+    let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
     let mut successors = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
     let mut status = Ok(());
@@ -3049,7 +3054,6 @@ fn enter_atom_successors_by_token(
             return;
         }
 
-        let child_order_seed = chosen_children.to_vec();
         let opening_targets = ordered_groups
             .iter()
             .flat_map(|group| group.iter().copied())
@@ -3083,7 +3087,7 @@ fn enter_atom_successors_by_token(
                     base_state.stereo_component_begin_atoms.clone();
                 let mut current_ring_actions = Vec::<WalkerAction>::new();
                 let mut labels_freed_after_atom = Vec::<usize>::new();
-                let mut ring_neighbor_order = Vec::<usize>::new();
+                let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
 
                 for ring_action in ring_action_order {
                     match *ring_action {
@@ -3117,7 +3121,9 @@ fn enter_atom_successors_by_token(
                             current_ring_actions
                                 .push(WalkerAction::EmitLiteral(ring_label_text(closure.label)));
                             labels_freed_after_atom.push(closure.label);
-                            ring_neighbor_order.push(closure.other_atom_idx);
+                            if let Some(order) = &mut ring_neighbor_order {
+                                order.push(closure.other_atom_idx);
+                            }
                         }
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
@@ -3162,7 +3168,9 @@ fn enter_atom_successors_by_token(
                                     other_atom_idx: atom_idx,
                                 },
                             );
-                            ring_neighbor_order.push(target_idx);
+                            if let Some(order) = &mut ring_neighbor_order {
+                                order.push(target_idx);
+                            }
                         }
                     }
                 }
@@ -3171,20 +3179,20 @@ fn enter_atom_successors_by_token(
                     insert_sorted(&mut current_free, label);
                 }
 
-                permutations_copy_distinct(&child_order_seed, &mut |child_order| {
+                permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
                         return;
                     }
 
                     let inner: PyResult<()> = (|| {
-                        let atom_token = if graph.atom_chiral_tags[atom_idx] == "CHI_UNSPECIFIED" {
+                        let atom_token = if !is_chiral_atom {
                             graph.atom_tokens[atom_idx].clone()
                         } else {
                             let emitted_neighbor_order = stereo_neighbor_order(
                                 graph,
                                 atom_idx,
                                 parent_idx,
-                                &ring_neighbor_order,
+                                ring_neighbor_order.as_deref().unwrap_or(&[]),
                                 child_order,
                             )?;
                             stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?

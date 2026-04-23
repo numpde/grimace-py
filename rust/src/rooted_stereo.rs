@@ -102,8 +102,8 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     prefix: Arc<str>,
     visited: Arc<[bool]>,
     visited_count: usize,
-    pending: Vec<(usize, Vec<PendingRing>)>,
-    free_labels: Vec<usize>,
+    pending: Arc<Vec<(usize, Vec<PendingRing>)>>,
+    free_labels: Arc<Vec<usize>>,
     next_label: usize,
     stereo_component_phases: Vec<i8>,
     stereo_selected_neighbors: Vec<isize>,
@@ -118,8 +118,8 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
 struct StereoCompletionKey {
     visited: Arc<[bool]>,
     visited_count: usize,
-    pending: Vec<(usize, Vec<PendingRing>)>,
-    free_labels: Vec<usize>,
+    pending: Arc<Vec<(usize, Vec<PendingRing>)>>,
+    free_labels: Arc<Vec<usize>>,
     next_label: usize,
     stereo_component_phases: Vec<i8>,
     stereo_selected_neighbors: Vec<isize>,
@@ -226,9 +226,11 @@ fn cmp_stereo_state_exact(
     left: &RootedConnectedStereoWalkerStateData,
     right: &RootedConnectedStereoWalkerStateData,
 ) -> Ordering {
-    left.prefix
-        .as_ref()
-        .cmp(right.prefix.as_ref())
+    (if Arc::ptr_eq(&left.prefix, &right.prefix) {
+        Ordering::Equal
+    } else {
+        left.prefix.as_ref().cmp(right.prefix.as_ref())
+    })
         .then(cmp_stereo_state_structure(left, right))
 }
 
@@ -254,8 +256,16 @@ fn cmp_stereo_state_structure(
         .cmp(&right.action_stack.len())
         .then(left.action_stack.cmp(&right.action_stack))
         .then(left.pending.len().cmp(&right.pending.len()))
-        .then(left.pending.cmp(&right.pending))
-        .then(left.free_labels.cmp(&right.free_labels))
+        .then(if Arc::ptr_eq(&left.pending, &right.pending) {
+            Ordering::Equal
+        } else {
+            left.pending.cmp(&right.pending)
+        })
+        .then(if Arc::ptr_eq(&left.free_labels, &right.free_labels) {
+            Ordering::Equal
+        } else {
+            left.free_labels.cmp(&right.free_labels)
+        })
         .then(left.next_label.cmp(&right.next_label))
         .then(
             left.stereo_component_phases
@@ -282,7 +292,11 @@ fn cmp_stereo_state_structure(
                 .cmp(&right.stereo_component_token_flips),
         )
         .then(left.visited_count.cmp(&right.visited_count))
-        .then(left.visited.cmp(&right.visited))
+        .then(if Arc::ptr_eq(&left.visited, &right.visited) {
+            Ordering::Equal
+        } else {
+            left.visited.cmp(&right.visited)
+        })
 }
 
 fn extend_linear_structural_transitions(
@@ -679,6 +693,18 @@ where
     recurse(&mut current, 0, f);
     if items.is_empty() {
         f(&[]);
+    }
+}
+
+fn small_permutation_count(len: usize) -> usize {
+    match len {
+        0 | 1 => 1,
+        2 => 2,
+        3 => 6,
+        4 => 24,
+        5 => 120,
+        6 => 720,
+        _ => (2..=len).product(),
     }
 }
 
@@ -2019,8 +2045,8 @@ fn initial_stereo_state_for_root(
         prefix: Arc::<str>::from(""),
         visited: Arc::<[bool]>::from(vec![false; graph.atom_count()]),
         visited_count: 0,
-        pending: Vec::new(),
-        free_labels: Vec::new(),
+        pending: Arc::new(Vec::new()),
+        free_labels: Arc::new(Vec::new()),
         next_label: 1,
         stereo_component_phases: vec![
             UNKNOWN_COMPONENT_PHASE;
@@ -2502,7 +2528,7 @@ fn enter_atom_successors_by_token(
 
     let visited_now = visited_with_marked(&base_state.visited, atom_idx);
     let visited_count_now = base_state.visited_count + 1;
-    let mut pending_now = base_state.pending.clone();
+    let mut pending_now = Arc::unwrap_or_clone(base_state.pending.clone());
     let closures_here = take_pending_for_atom(&mut pending_now, atom_idx);
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, visited_now.as_ref());
     let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
@@ -2529,7 +2555,7 @@ fn enter_atom_successors_by_token(
                 let mut successor = base_state.clone();
                 successor.visited = visited_now.clone();
                 successor.visited_count = visited_count_now;
-                successor.pending = pending_now.clone();
+                successor.pending = Arc::new(pending_now.clone());
                 if !child_order.is_empty() {
                     successor.action_stack.push(WalkerAction::ProcessChildren {
                         parent_idx: atom_idx,
@@ -2594,7 +2620,7 @@ fn enter_atom_successors_by_token(
 
             let outcome: PyResult<()> = (|| {
                 let mut current_pending = pending_now.clone();
-                let mut current_free = base_state.free_labels.clone();
+                let mut current_free = Arc::unwrap_or_clone(base_state.free_labels.clone());
                 let mut current_next = base_state.next_label;
                 let mut current_component_phases = base_state.stereo_component_phases.to_vec();
                 let mut current_selected_neighbors =
@@ -2721,8 +2747,8 @@ fn enter_atom_successors_by_token(
                             prefix: base_state.prefix.clone(),
                             visited: visited_now.clone(),
                             visited_count: visited_count_now,
-                            pending: current_pending.clone(),
-                            free_labels: current_free.clone(),
+                            pending: Arc::new(current_pending.clone()),
+                            free_labels: Arc::new(current_free.clone()),
                             next_label: current_next,
                             stereo_component_phases: current_component_phases.clone(),
                             stereo_selected_neighbors: current_selected_neighbors.clone(),
@@ -2809,7 +2835,7 @@ fn enter_atom_successors_without_bond_stereo(
 
             let outcome: PyResult<()> = (|| {
                 let mut current_pending = pending_now.clone();
-                let mut current_free = base_state.free_labels.clone();
+                let mut current_free = Arc::unwrap_or_clone(base_state.free_labels.clone());
                 let mut current_next = base_state.next_label;
                 let mut current_ring_actions =
                     Vec::<WalkerAction>::with_capacity(closures_here.len() * 2 + opening_target_count);
@@ -2882,8 +2908,8 @@ fn enter_atom_successors_without_bond_stereo(
                             prefix: base_state.prefix.clone(),
                             visited: visited_now.clone(),
                             visited_count: visited_count_now,
-                            pending: current_pending.clone(),
-                            free_labels: current_free.clone(),
+                            pending: Arc::new(current_pending.clone()),
+                            free_labels: Arc::new(current_free.clone()),
                             next_label: current_next,
                             stereo_component_phases: base_state.stereo_component_phases.clone(),
                             stereo_selected_neighbors: base_state.stereo_selected_neighbors.clone(),
@@ -2968,6 +2994,10 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 }
             }
         }
+        successors.reserve(
+            small_permutation_count(ring_actions.len())
+                .saturating_mul(small_permutation_count(chosen_children.len())),
+        );
 
         permutations_copy_distinct(&ring_actions, &mut |ring_action_order| {
             if status.is_err() {
@@ -2976,7 +3006,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
 
             let outcome: PyResult<()> = (|| {
                 let mut current_pending = pending_now.clone();
-                let mut current_free = state.free_labels.clone();
+                let mut current_free = Arc::unwrap_or_clone(state.free_labels.clone());
                 let mut current_next = state.next_label;
                 let mut current_ring_actions =
                     Vec::<WalkerAction>::with_capacity(closures_here.len() * 2 + opening_target_count);
@@ -3049,8 +3079,8 @@ fn enter_atom_successors_without_bond_stereo_exact(
                             prefix: state.prefix.clone(),
                             visited: visited_now.clone(),
                             visited_count: visited_count_now,
-                            pending: current_pending.clone(),
-                            free_labels: current_free.clone(),
+                            pending: Arc::new(current_pending.clone()),
+                            free_labels: Arc::new(current_free.clone()),
                             next_label: current_next,
                             stereo_component_phases: state.stereo_component_phases.clone(),
                             stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
@@ -3867,7 +3897,7 @@ fn exact_successors_from_stereo_state_drained(
             let parent_idx = *parent_idx;
             let visited_now = visited_with_marked(&state.visited, atom_idx);
             let visited_count_now = state.visited_count + 1;
-            let mut pending_now = state.pending.clone();
+            let mut pending_now = Arc::unwrap_or_clone(state.pending.clone());
             let closures_here = take_pending_for_atom(&mut pending_now, atom_idx);
             let ordered_groups = ordered_neighbor_groups(graph, atom_idx, visited_now.as_ref());
             let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
@@ -3877,7 +3907,9 @@ fn exact_successors_from_stereo_state_drained(
                     .iter()
                     .map(|group| group[0])
                     .collect::<Vec<_>>();
-                let mut successors = Vec::<RootedConnectedStereoWalkerStateData>::new();
+                let mut successors = Vec::<RootedConnectedStereoWalkerStateData>::with_capacity(
+                    small_permutation_count(chosen_children.len()),
+                );
                 let mut status = Ok(());
                 permutations_copy_distinct(&chosen_children, &mut |child_order| {
                     if status.is_err() {
@@ -3895,7 +3927,7 @@ fn exact_successors_from_stereo_state_drained(
                             prefix: state.prefix.clone(),
                             visited: visited_now.clone(),
                             visited_count: visited_count_now,
-                            pending: pending_now.clone(),
+                            pending: Arc::new(pending_now.clone()),
                             free_labels: state.free_labels.clone(),
                             next_label: state.next_label,
                             stereo_component_phases: state.stereo_component_phases.clone(),

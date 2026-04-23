@@ -1852,11 +1852,10 @@ fn enumerate_support_results_from_atom(
         }
 
         let child_order_seed = chosen_children.to_vec();
-        let child_set = chosen_children.iter().copied().collect::<BTreeSet<_>>();
         let opening_targets = ordered_groups
             .iter()
             .flat_map(|group| group.iter().copied())
-            .filter(|neighbor_idx| !child_set.contains(neighbor_idx))
+            .filter(|neighbor_idx| !chosen_children.contains(neighbor_idx))
             .collect::<Vec<_>>();
 
         let mut ring_actions = Vec::new();
@@ -1957,7 +1956,6 @@ fn enumerate_support_results_from_atom(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
-
                 permutations_copy_distinct(&child_order_seed, &mut |child_order| {
                     if status.is_err() {
                         return;
@@ -3052,11 +3050,10 @@ fn enter_atom_successors_by_token(
         }
 
         let child_order_seed = chosen_children.to_vec();
-        let child_set = chosen_children.iter().copied().collect::<BTreeSet<_>>();
         let opening_targets = ordered_groups
             .iter()
             .flat_map(|group| group.iter().copied())
-            .filter(|neighbor_idx| !child_set.contains(neighbor_idx))
+            .filter(|neighbor_idx| !chosen_children.contains(neighbor_idx))
             .collect::<Vec<_>>();
 
         let mut ring_actions = Vec::new();

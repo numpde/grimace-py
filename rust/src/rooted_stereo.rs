@@ -3668,6 +3668,18 @@ fn can_complete_from_stereo_state_memo(
     state: &RootedConnectedStereoWalkerStateData,
     cache: &mut StereoCompletionCache,
 ) -> bool {
+    match state.action_stack.last() {
+        None => return is_complete_terminal_stereo_state(graph, state),
+        Some(WalkerAction::EmitLiteral(_))
+        | Some(WalkerAction::EmitRingLabel(_))
+        | Some(WalkerAction::EmitCloseParen) => {
+            let mut successor = state.clone();
+            successor.action_stack.pop();
+            return can_complete_from_stereo_state_memo(runtime, graph, &successor, cache);
+        }
+        _ => {}
+    }
+
     let key = StereoCompletionKey::from(state);
     if let Some(&cached) = cache.get(&key) {
         return cached;

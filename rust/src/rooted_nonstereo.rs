@@ -1538,7 +1538,6 @@ impl PyRootedConnectedNonStereoDecoder {
 mod tests {
     use std::collections::BTreeSet;
 
-    use pyo3::types::{PyAnyMethods, PyDict, PyDictMethods};
     use pyo3::Python;
 
     use super::{
@@ -1561,16 +1560,6 @@ mod tests {
         max_frontier_width: usize,
         max_raw_bucket_size: usize,
         max_deduped_bucket_size: usize,
-    }
-
-    impl ExactFrontierStats {
-        fn duplicate_ratio(&self) -> f64 {
-            if self.raw_successor_count == 0 {
-                0.0
-            } else {
-                1.0 - (self.deduped_successor_count as f64 / self.raw_successor_count as f64)
-            }
-        }
     }
 
     fn collect_exact_frontier_stats(
@@ -1611,55 +1600,6 @@ mod tests {
 
             collect_exact_frontier_stats(graph, states, stats);
         }
-    }
-
-    fn prepared_graph_from_smiles(smiles: &str) -> Option<PreparedSmilesGraphData> {
-        Python::initialize();
-        Python::attach(|py| {
-            let sys = py.import("sys").ok()?;
-            let path = sys.getattr("path").ok()?;
-            let version_info = sys.getattr("version_info").ok()?;
-            let major: usize = version_info.get_item(0).ok()?.extract().ok()?;
-            let minor: usize = version_info.get_item(1).ok()?.extract().ok()?;
-            let repo_python = format!("{}/python", env!("CARGO_MANIFEST_DIR"));
-            let venv_site_packages = format!(
-                "{}/.venv/lib/python{}.{}/site-packages",
-                env!("CARGO_MANIFEST_DIR"),
-                major,
-                minor
-            );
-            let _ = path.call_method1("insert", (0, repo_python));
-            let _ = path.call_method1("insert", (0, venv_site_packages));
-            let Ok(chem) = py.import("rdkit.Chem") else {
-                return None;
-            };
-            let runtime = py
-                .import("grimace._runtime")
-                .expect("grimace._runtime import should succeed");
-            let mol = chem
-                .getattr("MolFromSmiles")
-                .expect("MolFromSmiles should exist")
-                .call1((smiles,))
-                .expect("SMILES should parse");
-            let flags = runtime
-                .getattr("_make_flags")
-                .expect("_make_flags should exist")
-                .call0()
-                .expect("_make_flags should build default flags");
-            let kwargs = PyDict::new(py);
-            kwargs
-                .set_item("flags", flags)
-                .expect("kwargs population should succeed");
-            let prepared = runtime
-                .getattr("prepare_smiles_graph")
-                .expect("prepare_smiles_graph should exist")
-                .call((mol,), Some(&kwargs))
-                .expect("prepare_smiles_graph should succeed");
-            Some(
-                PreparedSmilesGraphData::from_any(&prepared)
-                    .expect("prepared graph extraction should work"),
-            )
-        })
     }
 
     fn linear_ccc_graph() -> PreparedSmilesGraphData {
@@ -2052,43 +1992,8 @@ mod tests {
         let mut stats = ExactFrontierStats::default();
         collect_exact_frontier_stats(&graph, initial_frontier, &mut stats);
 
-        eprintln!(
-            "toluene ring-root exact-frontier stats: frontiers={} terminal={} raw={} deduped={} dup_buckets={} dup_ratio={:.3} max_frontier={} max_raw_bucket={} max_deduped_bucket={}",
-            stats.frontier_count,
-            stats.terminal_frontier_count,
-            stats.raw_successor_count,
-            stats.deduped_successor_count,
-            stats.duplicate_bucket_count,
-            stats.duplicate_ratio(),
-            stats.max_frontier_width,
-            stats.max_raw_bucket_size,
-            stats.max_deduped_bucket_size,
-        );
-
         assert!(stats.raw_successor_count > stats.deduped_successor_count);
         assert!(stats.duplicate_bucket_count > 0);
     }
 
-    #[test]
-    #[ignore = "diagnostic-only exact-frontier shape report for profiler-guided optimization"]
-    fn exact_frontier_stats_report_large_aromatic_case() {
-        let smiles = "CN(C)P(C1=CC=CC=C1)C2=CC=CC=C2C3=CC=C(C=C3)C4=CC=CC=C4P(C5=CC=CC=C5)N(C)C";
-        let graph = prepared_graph_from_smiles(smiles).expect("prepared graph should exist");
-        let initial_frontier = vec![initial_state_for_root(&graph, 0)];
-        let mut stats = ExactFrontierStats::default();
-        collect_exact_frontier_stats(&graph, initial_frontier, &mut stats);
-
-        eprintln!(
-            "large aromatic exact-frontier stats: frontiers={} terminal={} raw={} deduped={} dup_buckets={} dup_ratio={:.3} max_frontier={} max_raw_bucket={} max_deduped_bucket={}",
-            stats.frontier_count,
-            stats.terminal_frontier_count,
-            stats.raw_successor_count,
-            stats.deduped_successor_count,
-            stats.duplicate_bucket_count,
-            stats.duplicate_ratio(),
-            stats.max_frontier_width,
-            stats.max_raw_bucket_size,
-            stats.max_deduped_bucket_size,
-        );
-    }
 }

@@ -8,6 +8,20 @@ Using a different interpreter can silently compare against a different RDKit or
 extension build than the one you intended to validate. These scripts are
 strictly local validation tools; they are not a supported public API surface.
 
+Performance and profiling diagnostics should live here or under `tests/perf/`,
+not as `#[ignore]` probes inside the Rust test binary. `cargo test` is kept for
+bounded correctness checks; heavier profiling runs should be explicit.
+
+## Performance Tooling
+
+- `tests/perf/test_readme_timings.py`
+  - measures the public timing table and writes `docs/timings.tsv` plus
+    `docs/timings.md`
+- `record_perf_hotspots.py`
+  - records focused whole-process `perf` hotspots and appends them to
+    `notes/004_perf_history.jsonl`
+  - optionally saves the full report under `notes/perf_reports/`
+
 ## `mine_rdkit_regressions.py`
 
 Local dataset miner for RDKit-derived writer regressions.

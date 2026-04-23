@@ -227,12 +227,11 @@ fn cmp_stereo_state_exact(
     left: &RootedConnectedStereoWalkerStateData,
     right: &RootedConnectedStereoWalkerStateData,
 ) -> Ordering {
-    (if Arc::ptr_eq(&left.prefix, &right.prefix) {
+    cmp_stereo_state_structure(left, right).then(if Arc::ptr_eq(&left.prefix, &right.prefix) {
         Ordering::Equal
     } else {
         left.prefix.as_ref().cmp(right.prefix.as_ref())
     })
-        .then(cmp_stereo_state_structure(left, right))
 }
 
 fn push_exact_stereo_successor(

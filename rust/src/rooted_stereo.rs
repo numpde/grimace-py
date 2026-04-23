@@ -1910,6 +1910,20 @@ pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
 }
 
 #[cfg(test)]
+fn ensure_native_exact_support_test_case_is_safe(
+    graph: &PreparedSmilesGraphData,
+    runtime: &StereoWalkerRuntimeData,
+) -> PyResult<()> {
+    let has_coupled_component = runtime.isolated_components.iter().any(|&isolated| !isolated);
+    if graph.atom_count() > 12 || runtime.side_infos.len() > 4 || has_coupled_component {
+        return Err(PyValueError::new_err(
+            "native exact stereo support helper materializes full suffix-result caches and is restricted to small isolated cases",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn enumerate_rooted_connected_stereo_smiles_support_native(
     graph: &PreparedSmilesGraphData,
     root_idx: isize,
@@ -1920,6 +1934,7 @@ fn enumerate_rooted_connected_stereo_smiles_support_native(
     }
 
     let runtime = build_walker_runtime(graph, root_idx)?;
+    ensure_native_exact_support_test_case_is_safe(graph, &runtime)?;
     let component_count = runtime.isolated_components.len();
     let mut support = BTreeSet::new();
     let mut cache = FxHashMap::default();
@@ -5966,20 +5981,16 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "medium native exact-support parity probe"]
-    fn native_exact_support_matches_reference_for_coupled_diene_root_5() {
+    fn native_exact_support_rejects_coupled_diene_root_5() {
         let Some(graph) = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1") else {
             return;
         };
-        let native = enumerate_rooted_connected_stereo_smiles_support_native(&graph, 5)
-            .expect("native exact support should enumerate")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let reference = enumerate_rooted_connected_stereo_smiles_support(&graph, 5)
-            .expect("reference-backed exact support should enumerate")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        assert_eq!(reference, native);
+        let err = enumerate_rooted_connected_stereo_smiles_support_native(&graph, 5)
+            .expect_err("native exact support helper should reject explosive medium coupled cases");
+        assert!(
+            err.to_string().contains("restricted to small isolated cases"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

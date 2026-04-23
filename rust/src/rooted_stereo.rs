@@ -116,6 +116,43 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     action_stack: Vec<WalkerAction>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct StereoCompletionKey {
+    visited: Vec<bool>,
+    visited_count: usize,
+    pending: Vec<Vec<PendingRing>>,
+    free_labels: Vec<usize>,
+    next_label: usize,
+    stereo_component_phases: Vec<i8>,
+    stereo_selected_neighbors: Vec<isize>,
+    stereo_selected_orientations: Vec<i8>,
+    stereo_first_emitted_candidates: Vec<isize>,
+    stereo_component_begin_atoms: Vec<isize>,
+    stereo_component_token_flips: Vec<i8>,
+    action_stack: Vec<WalkerAction>,
+}
+
+impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
+    fn from(state: &RootedConnectedStereoWalkerStateData) -> Self {
+        Self {
+            visited: state.visited.clone(),
+            visited_count: state.visited_count,
+            pending: state.pending.clone(),
+            free_labels: state.free_labels.clone(),
+            next_label: state.next_label,
+            stereo_component_phases: state.stereo_component_phases.clone(),
+            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
+            stereo_selected_orientations: state.stereo_selected_orientations.clone(),
+            stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
+            stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
+            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            action_stack: state.action_stack.clone(),
+        }
+    }
+}
+
+type StereoCompletionCache = FxHashMap<StereoCompletionKey, bool>;
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 struct SupportSearchResult {
@@ -3289,7 +3326,7 @@ fn process_children_successors_by_token(
     child_order: Arc<[usize]>,
     next_branch_index: usize,
     require_completable: bool,
-    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     if child_order.is_empty() {
         return Ok(BTreeMap::new());
@@ -3560,16 +3597,17 @@ fn can_complete_from_stereo_state_memo(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-    cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
+    cache: &mut StereoCompletionCache,
 ) -> bool {
-    if let Some(&cached) = cache.get(state) {
+    let key = StereoCompletionKey::from(state);
+    if let Some(&cached) = cache.get(&key) {
         return cached;
     }
 
     let successors = match successors_by_token_stereo_impl(runtime, graph, state, false, cache) {
         Ok(successors) => successors,
         Err(_) => {
-            cache.insert(state.clone(), false);
+            cache.insert(key, false);
             return false;
         }
     };
@@ -3584,7 +3622,7 @@ fn can_complete_from_stereo_state_memo(
             })
         })
     };
-    cache.insert(state.clone(), result);
+    cache.insert(key, result);
     result
 }
 
@@ -3592,7 +3630,7 @@ fn filter_complete_successors(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     successors: BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
-    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut StereoCompletionCache,
 ) -> BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>> {
     let mut filtered = BTreeMap::new();
     for (token, successor_group) in successors {
@@ -3614,7 +3652,7 @@ fn next_token_support_for_stereo_state_impl(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<Vec<String>> {
     Ok(
         successors_by_token_stereo_impl(runtime, graph, state, true, completion_cache)?
@@ -3638,7 +3676,7 @@ fn successors_by_token_stereo_impl(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     require_completable: bool,
-    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     let action = match state.action_stack.last() {
         Some(action) => action.clone(),

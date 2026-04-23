@@ -186,6 +186,18 @@ fn push_ring_label(prefix: &mut String, label: usize) {
     prefix.push_str(&ring_label_text(label));
 }
 
+fn push_successor_bucket(
+    buckets: &mut Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)>,
+    token: String,
+    successor: RootedConnectedStereoWalkerStateData,
+) {
+    if let Some((_, states)) = buckets.iter_mut().find(|(existing, _)| *existing == token) {
+        states.push(successor);
+    } else {
+        buckets.push((token, vec![successor]));
+    }
+}
+
 fn flip_direction_token(token: &str) -> PyResult<String> {
     match token {
         "/" => Ok("\\".to_owned()),
@@ -3068,7 +3080,7 @@ fn enter_atom_successors_by_token(
     let ordered_groups = ordered_neighbor_groups(graph, atom_idx, &visited_now);
     let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
-    let mut successors = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
+    let mut successors = Vec::<(String, Vec<RootedConnectedStereoWalkerStateData>)>::new();
     let mut status = Ok(());
     for_each_cartesian_choice(&ordered_groups, &mut |chosen_children| {
         if status.is_err() {
@@ -3249,7 +3261,7 @@ fn enter_atom_successors_by_token(
                         }
                         successor.prefix.push_str(&atom_token);
                         normalize_component_token_flips(runtime, graph, &mut successor)?;
-                        successors.entry(atom_token).or_default().push(successor);
+                        push_successor_bucket(&mut successors, atom_token, successor);
                         Ok(())
                     })();
                     if let Err(err) = inner {
@@ -3266,7 +3278,7 @@ fn enter_atom_successors_by_token(
         });
     });
     status?;
-    Ok(successors)
+    Ok(successors.into_iter().collect())
 }
 
 fn process_children_successors_by_token(

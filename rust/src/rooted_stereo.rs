@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
@@ -7,9 +8,8 @@ use pyo3::types::PyAny;
 use rustc_hash::FxHashMap;
 
 use crate::frontier::{
-    choice_texts, extend_transitions, finalize_transitions,
-    frontier_prefix as shared_frontier_prefix, grouped_choice_texts, take_choice_or_err,
-    take_grouped_choices_or_err, take_transition_or_err, DecoderChoice,
+    choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
+    take_choice_or_err, take_grouped_choices_or_err, take_transition_or_err, DecoderChoice,
 };
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -224,6 +224,64 @@ fn push_successor_bucket(
     } else {
         buckets.push((token, vec![successor]));
     }
+}
+
+fn cmp_stereo_state_structure(
+    left: &RootedConnectedStereoWalkerStateData,
+    right: &RootedConnectedStereoWalkerStateData,
+) -> Ordering {
+    left.visited
+        .cmp(&right.visited)
+        .then(left.visited_count.cmp(&right.visited_count))
+        .then(left.pending.cmp(&right.pending))
+        .then(left.free_labels.cmp(&right.free_labels))
+        .then(left.next_label.cmp(&right.next_label))
+        .then(
+            left.stereo_component_phases
+                .cmp(&right.stereo_component_phases),
+        )
+        .then(
+            left.stereo_selected_neighbors
+                .cmp(&right.stereo_selected_neighbors),
+        )
+        .then(
+            left.stereo_selected_orientations
+                .cmp(&right.stereo_selected_orientations),
+        )
+        .then(
+            left.stereo_first_emitted_candidates
+                .cmp(&right.stereo_first_emitted_candidates),
+        )
+        .then(
+            left.stereo_component_begin_atoms
+                .cmp(&right.stereo_component_begin_atoms),
+        )
+        .then(
+            left.stereo_component_token_flips
+                .cmp(&right.stereo_component_token_flips),
+        )
+        .then(left.action_stack.cmp(&right.action_stack))
+}
+
+fn extend_structural_transitions(
+    transitions: &mut BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
+    successors: BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
+) {
+    for (token, states) in successors {
+        transitions.entry(token).or_default().extend(states);
+    }
+}
+
+fn finalize_structural_transitions(
+    mut transitions: BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
+) -> BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>> {
+    for states in transitions.values_mut() {
+        states.sort_by(cmp_stereo_state_structure);
+        states.dedup_by(|left, right| {
+            cmp_stereo_state_structure(left, right) == Ordering::Equal
+        });
+    }
+    transitions
 }
 
 fn flip_direction_token(token: &str) -> PyResult<String> {
@@ -3738,7 +3796,7 @@ fn successors_by_token_stereo_impl(
             return Ok(BTreeMap::new());
         }
     };
-    let mut expanded = BTreeMap::<String, BTreeSet<RootedConnectedStereoWalkerStateData>>::new();
+    let mut expanded = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
     for (token, successor_group) in raw_successors {
         if token.is_empty() {
             for successor in successor_group {
@@ -3750,7 +3808,7 @@ fn successors_by_token_stereo_impl(
                     completion_cache,
                 );
                 match nested {
-                    Ok(successors) => extend_transitions(&mut expanded, successors),
+                    Ok(successors) => extend_structural_transitions(&mut expanded, successors),
                     Err(err) => {
                         if require_completable {
                             return Err(err);
@@ -3762,7 +3820,7 @@ fn successors_by_token_stereo_impl(
         }
         expanded.entry(token).or_default().extend(successor_group);
     }
-    let successors = finalize_transitions(expanded);
+    let successors = finalize_structural_transitions(expanded);
     if require_completable {
         Ok(filter_complete_successors(
             runtime,
@@ -3860,14 +3918,14 @@ fn frontier_transitions_for_stereo(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedStereoWalkerStateData],
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
-    let mut transitions = BTreeMap::<String, BTreeSet<RootedConnectedStereoWalkerStateData>>::new();
+    let mut transitions = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
     for state in frontier {
-        extend_transitions(
+        extend_structural_transitions(
             &mut transitions,
             successors_by_token_stereo(runtime, graph, state)?,
         );
     }
-    Ok(finalize_transitions(transitions))
+    Ok(finalize_structural_transitions(transitions))
 }
 
 fn frontier_choices_for_stereo(

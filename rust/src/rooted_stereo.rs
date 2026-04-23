@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
+use rustc_hash::FxHashMap;
 
 use crate::frontier::{
     choice_texts, extend_transitions, finalize_transitions,
@@ -72,7 +73,7 @@ struct StereoSideInfo {
     candidate_base_tokens: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum RingAction {
     Close(usize),
     Open(usize),
@@ -451,38 +452,29 @@ where
     }
 }
 
-fn unique_permutations<T, F>(items: &[T], f: &mut F)
+fn permutations_copy_distinct<T, F>(items: &[T], f: &mut F)
 where
-    T: Clone + Eq,
+    T: Copy,
     F: FnMut(&[T]),
 {
-    fn recurse<T, F>(items: &[T], used: &mut [bool], current: &mut Vec<T>, f: &mut F)
+    fn recurse<T, F>(items: &mut [T], start: usize, f: &mut F)
     where
-        T: Clone + Eq,
+        T: Copy,
         F: FnMut(&[T]),
     {
-        if current.len() == items.len() {
-            f(current);
+        if start == items.len() {
+            f(items);
             return;
         }
-
-        let mut seen_at_depth = Vec::<T>::new();
-        for (index, value) in items.iter().enumerate() {
-            if used[index] || seen_at_depth.iter().any(|seen| seen == value) {
-                continue;
-            }
-            seen_at_depth.push(value.clone());
-            used[index] = true;
-            current.push(value.clone());
-            recurse(items, used, current, f);
-            current.pop();
-            used[index] = false;
+        for idx in start..items.len() {
+            items.swap(start, idx);
+            recurse(items, start + 1, f);
+            items.swap(start, idx);
         }
     }
 
-    let mut used = vec![false; items.len()];
-    let mut current = Vec::with_capacity(items.len());
-    recurse(items, &mut used, &mut current, f);
+    let mut current = items.to_vec();
+    recurse(&mut current, 0, f);
     if items.is_empty() {
         f(&[]);
     }
@@ -1775,7 +1767,7 @@ fn enumerate_rooted_connected_stereo_smiles_support_native(
     let runtime = build_walker_runtime(graph, root_idx)?;
     let component_count = runtime.isolated_components.len();
     let mut support = BTreeSet::new();
-    let mut cache = HashMap::new();
+    let mut cache = FxHashMap::default();
     enumerate_support_results_from_atom(
         &runtime,
         graph,
@@ -1816,7 +1808,7 @@ fn enumerate_support_results_from_atom(
     atom_idx: usize,
     parent_idx: Option<usize>,
     result: SupportSearchResult,
-    cache: &mut HashMap<SupportSubproblemKey, Vec<SupportSearchResult>>,
+    cache: &mut FxHashMap<SupportSubproblemKey, Vec<SupportSearchResult>>,
     emit: &mut dyn FnMut(SupportSearchResult) -> PyResult<()>,
 ) -> PyResult<()> {
     let cache_key = SupportSubproblemKey {
@@ -1875,7 +1867,7 @@ fn enumerate_support_results_from_atom(
             ring_actions.push(RingAction::Open(target_idx));
         }
 
-        unique_permutations(&ring_actions, &mut |ring_action_order| {
+        permutations_copy_distinct(&ring_actions, &mut |ring_action_order| {
             if status.is_err() {
                 return;
             }
@@ -1966,7 +1958,7 @@ fn enumerate_support_results_from_atom(
                     insert_sorted(&mut current_free, label);
                 }
 
-                unique_permutations(&child_order_seed, &mut |child_order| {
+                permutations_copy_distinct(&child_order_seed, &mut |child_order| {
                     if status.is_err() {
                         return;
                     }
@@ -2038,7 +2030,7 @@ fn expand_support_children(
     parent_idx: usize,
     child_order: &[usize],
     partial: SupportSearchResult,
-    cache: &mut HashMap<SupportSubproblemKey, Vec<SupportSearchResult>>,
+    cache: &mut FxHashMap<SupportSubproblemKey, Vec<SupportSearchResult>>,
     emit: &mut dyn FnMut(SupportSearchResult) -> PyResult<()>,
 ) -> PyResult<()> {
     if child_order.is_empty() {
@@ -3075,7 +3067,7 @@ fn enter_atom_successors_by_token(
             ring_actions.push(RingAction::Open(target_idx));
         }
 
-        unique_permutations(&ring_actions, &mut |ring_action_order| {
+        permutations_copy_distinct(&ring_actions, &mut |ring_action_order| {
             if status.is_err() {
                 return;
             }
@@ -3182,7 +3174,7 @@ fn enter_atom_successors_by_token(
                     insert_sorted(&mut current_free, label);
                 }
 
-                unique_permutations(&child_order_seed, &mut |child_order| {
+                permutations_copy_distinct(&child_order_seed, &mut |child_order| {
                     if status.is_err() {
                         return;
                     }
@@ -3258,7 +3250,7 @@ fn process_children_successors_by_token(
     child_order: Arc<[usize]>,
     next_branch_index: usize,
     require_completable: bool,
-    completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     if child_order.is_empty() {
         return Ok(BTreeMap::new());
@@ -3506,7 +3498,7 @@ fn can_complete_from_stereo_state_memo(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-    cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
+    cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
 ) -> bool {
     if let Some(&cached) = cache.get(state) {
         return cached;
@@ -3538,7 +3530,7 @@ fn filter_complete_successors(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     successors: BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
-    completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
 ) -> BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>> {
     let mut filtered = BTreeMap::new();
     for (token, successor_group) in successors {
@@ -3560,7 +3552,7 @@ fn next_token_support_for_stereo_state_impl(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-    completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
 ) -> PyResult<Vec<String>> {
     Ok(
         successors_by_token_stereo_impl(runtime, graph, state, true, completion_cache)?
@@ -3575,7 +3567,7 @@ fn next_token_support_for_stereo_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<String>> {
-    let mut completion_cache = HashMap::new();
+    let mut completion_cache = FxHashMap::default();
     next_token_support_for_stereo_state_impl(runtime, graph, state, &mut completion_cache)
 }
 
@@ -3584,7 +3576,7 @@ fn successors_by_token_stereo_impl(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     require_completable: bool,
-    completion_cache: &mut HashMap<RootedConnectedStereoWalkerStateData, bool>,
+    completion_cache: &mut FxHashMap<RootedConnectedStereoWalkerStateData, bool>,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     let action = match state.action_stack.last() {
         Some(action) => action.clone(),
@@ -3684,7 +3676,7 @@ fn successors_by_token_stereo(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
-    let mut completion_cache = HashMap::new();
+    let mut completion_cache = FxHashMap::default();
     successors_by_token_stereo_impl(runtime, graph, state, true, &mut completion_cache)
 }
 
@@ -3693,7 +3685,7 @@ fn successors_by_token_stereo_raw(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
-    let mut completion_cache = HashMap::new();
+    let mut completion_cache = FxHashMap::default();
     successors_by_token_stereo_impl(runtime, graph, state, false, &mut completion_cache)
 }
 
@@ -4109,8 +4101,8 @@ mod tests {
         check_supported_stereo_writer_surface, choices_for_stereo_state,
         enumerate_rooted_connected_stereo_smiles_support,
         enumerate_rooted_connected_stereo_smiles_support_native, enumerate_support_from_stereo_state,
-        initial_stereo_state_for_root, is_terminal_stereo_state,
-        next_token_support_for_stereo_state, validate_root_idx,
+        initial_stereo_state_for_root, is_terminal_stereo_state, next_token_support_for_stereo_state,
+        validate_root_idx,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,

@@ -30,10 +30,14 @@ class TimingRow:
     support: int
     enum_mean_s: float
     enum_std_s: float
-    decoder_mean_s: float
-    decoder_std_s: float
-    determinized_decoder_mean_s: float
-    determinized_decoder_std_s: float
+    decoder_per_root_mean_s: float
+    decoder_per_root_std_s: float
+    determinized_decoder_per_root_mean_s: float
+    determinized_decoder_per_root_std_s: float
+    decoder_merged_mean_s: float
+    decoder_merged_std_s: float
+    determinized_decoder_merged_mean_s: float
+    determinized_decoder_merged_std_s: float
     rdkit_half_mean_s: float
     rdkit_half_std_s: float
     rdkit_half_draw_mean: float
@@ -151,6 +155,20 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                         decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
                     )
                 )
+                merged_decoder_times = _runtime_trials(
+                    lambda: self._enumerate_all_roots_with_merged_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDecoder,
+                    )
+                )
+                merged_determinized_decoder_times = _runtime_trials(
+                    lambda: self._enumerate_all_roots_with_merged_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    )
+                )
                 self.assertEqual(
                     support,
                     self._enumerate_all_roots_with_decoder(
@@ -162,6 +180,22 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 self.assertEqual(
                     support,
                     self._enumerate_all_roots_with_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
+                    ),
+                )
+                self.assertEqual(
+                    support,
+                    self._enumerate_all_roots_with_merged_decoder(
+                        mol,
+                        case,
+                        decoder_cls=grimace.MolToSmilesDecoder,
+                    ),
+                )
+                self.assertEqual(
+                    support,
+                    self._enumerate_all_roots_with_merged_decoder(
                         mol,
                         case,
                         decoder_cls=grimace.MolToSmilesDeterminizedDecoder,
@@ -192,10 +226,22 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                         support=support_size,
                         enum_mean_s=statistics.mean(enum_times),
                         enum_std_s=statistics.stdev(enum_times),
-                        decoder_mean_s=statistics.mean(decoder_times),
-                        decoder_std_s=statistics.stdev(decoder_times),
-                        determinized_decoder_mean_s=statistics.mean(determinized_decoder_times),
-                        determinized_decoder_std_s=statistics.stdev(determinized_decoder_times),
+                        decoder_per_root_mean_s=statistics.mean(decoder_times),
+                        decoder_per_root_std_s=statistics.stdev(decoder_times),
+                        determinized_decoder_per_root_mean_s=statistics.mean(
+                            determinized_decoder_times
+                        ),
+                        determinized_decoder_per_root_std_s=statistics.stdev(
+                            determinized_decoder_times
+                        ),
+                        decoder_merged_mean_s=statistics.mean(merged_decoder_times),
+                        decoder_merged_std_s=statistics.stdev(merged_decoder_times),
+                        determinized_decoder_merged_mean_s=statistics.mean(
+                            merged_determinized_decoder_times
+                        ),
+                        determinized_decoder_merged_std_s=statistics.stdev(
+                            merged_determinized_decoder_times
+                        ),
                         rdkit_half_mean_s=statistics.mean(half_times),
                         rdkit_half_std_s=statistics.stdev(half_times),
                         rdkit_half_draw_mean=statistics.mean(half_draws),
@@ -235,11 +281,13 @@ class ReadmeTimingPerfTests(unittest.TestCase):
         rows: list[str] = []
         rows.append(
             "| Molecule | Atoms | Support | Grimace enum (all roots) | "
-            "Decoder enum (branch-preserving, all roots) | "
-            "Decoder enum (determinized, all roots) | RDKit to 1/2 support | "
+            "Decoder enum (branch-preserving, per-root) | "
+            "Decoder enum (determinized, per-root) | "
+            "Decoder enum (branch-preserving, merged) | "
+            "Decoder enum (determinized, merged) | RDKit to 1/2 support | "
             "RDKit to full support |"
         )
-        rows.append("| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |")
+        rows.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |")
 
         with self.OUTPUT_TSV_PATH.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle, dialect="excel-tab")
@@ -248,8 +296,10 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                     "| "
                     f"`{row['molecule']}` | {row['atoms']} | {row['support']} | "
                     f"{_format_bold_duration(float(row['enum_mean_s']), float(row['enum_std_s']))} | "
-                    f"{_format_bold_duration(float(row['decoder_mean_s']), float(row['decoder_std_s']))} | "
-                    f"{_format_bold_duration(float(row['determinized_decoder_mean_s']), float(row['determinized_decoder_std_s']))} | "
+                    f"{_format_bold_duration(float(row['decoder_per_root_mean_s']), float(row['decoder_per_root_std_s']))} | "
+                    f"{_format_bold_duration(float(row['determinized_decoder_per_root_mean_s']), float(row['determinized_decoder_per_root_std_s']))} | "
+                    f"{_format_bold_duration(float(row['decoder_merged_mean_s']), float(row['decoder_merged_std_s']))} | "
+                    f"{_format_bold_duration(float(row['determinized_decoder_merged_mean_s']), float(row['determinized_decoder_merged_std_s']))} | "
                     f"{_format_bold_duration(float(row['rdkit_half_mean_s']), float(row['rdkit_half_std_s']))} "
                     f"({_format_draws(float(row['rdkit_half_draw_mean']), float(row['rdkit_half_draw_std']))} draws) | "
                     f"{_format_bold_duration(float(row['rdkit_full_mean_s']), float(row['rdkit_full_std_s']))} "
@@ -270,12 +320,16 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "- `Support`: the size of the exact rooted SMILES support across all root atoms.",
             "- `Grimace enum (all roots)`: direct exact enumeration with `MolToSmilesEnum(...)`,",
             "  unioned across all roots.",
-            "- `Decoder enum (branch-preserving, all roots)`: exact enumeration by",
-            "  exhaustive traversal of `MolToSmilesDecoder(...)`, unioned across all roots.",
-            "- `Decoder enum (determinized, all roots)`: exact enumeration by exhaustive",
-            "  traversal of `MolToSmilesDeterminizedDecoder(...)`, unioned across all roots.",
-            "- The decoder rows benchmark explicit traversal from each root separately,",
-            "  not the merged public decoder state returned by `rootedAtAtom=-1`.",
+            "- `Decoder enum (branch-preserving, per-root)`: exact enumeration by",
+            "  exhaustive traversal of `MolToSmilesDecoder(...)` from each root",
+            "  separately, then unioned across all roots.",
+            "- `Decoder enum (determinized, per-root)`: the same per-root traversal,",
+            "  using `MolToSmilesDeterminizedDecoder(...)`.",
+            "- `Decoder enum (branch-preserving, merged)`: exact enumeration by",
+            "  exhaustive traversal of the merged public `MolToSmilesDecoder(...)`",
+            "  state returned by `rootedAtAtom=-1`.",
+            "- `Decoder enum (determinized, merged)`: the same merged-root traversal,",
+            "  using `MolToSmilesDeterminizedDecoder(...)`.",
             "- `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,",
             "  doRandom=True)` draws across all roots until half of the exact support has",
             "  been seen.",
@@ -286,8 +340,10 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "  trials.",
             "- In the current table, direct `MolToSmilesEnum(...)` remains the fastest",
             "  exact route on every listed case.",
+            "- The merged decoder rows expose the public all-roots decoder path directly,",
+            "  so they can diverge substantially from the explicit per-root rows.",
             "- The determinized decoder can reduce exhaustive decoder cost on some",
-            "  molecules, but it is still slower than direct exact enumeration here.",
+            "  molecules, but direct exact enumeration is still faster on these cases.",
             "",
             *rows,
             "",
@@ -391,6 +447,34 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                     continue
                 for choice in reversed(decoder.next_choices):
                     stack.append(choice.next_state)
+
+        return outputs
+
+    def _enumerate_all_roots_with_merged_decoder(
+        self,
+        mol: Chem.Mol,
+        case: TimingCase,
+        *,
+        decoder_cls,
+    ) -> set[str]:
+        outputs: set[str] = set()
+        stack = [
+            decoder_cls(
+                mol,
+                rootedAtAtom=-1,
+                isomericSmiles=case.isomeric_smiles,
+                canonical=False,
+                doRandom=True,
+            )
+        ]
+
+        while stack:
+            decoder = stack.pop()
+            if decoder.is_terminal:
+                outputs.add(decoder.prefix)
+                continue
+            for choice in reversed(decoder.next_choices):
+                stack.append(choice.next_state)
 
         return outputs
 

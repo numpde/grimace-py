@@ -61,6 +61,9 @@ struct DeferredDirectionalToken {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Part {
     Literal(String),
+    RingLabel(usize),
+    OpenParen,
+    CloseParen,
     Deferred(DeferredDirectionalToken),
 }
 
@@ -82,6 +85,8 @@ enum RingAction {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum WalkerAction {
     EmitLiteral(String),
+    EmitRingLabel(usize),
+    EmitCloseParen,
     EmitDeferred(DeferredDirectionalToken),
     EnterAtom {
         atom_idx: usize,
@@ -171,6 +176,14 @@ fn ring_label_text(label: usize) -> String {
     } else {
         format!("%({label})")
     }
+}
+
+fn push_literal_token(prefix: &mut String, token: &str) {
+    prefix.push_str(token);
+}
+
+fn push_ring_label(prefix: &mut String, label: usize) {
+    prefix.push_str(&ring_label_text(label));
 }
 
 fn flip_direction_token(token: &str) -> PyResult<String> {
@@ -1914,7 +1927,7 @@ fn enumerate_support_results_from_atom(
                             current_selected_orientations = updated_orientations;
                             current_first_emitted_candidates = updated_first_candidates;
                             push_part(&mut current_ring_parts, bond_part);
-                            current_ring_parts.push(Part::Literal(ring_label_text(closure.label)));
+                            current_ring_parts.push(Part::RingLabel(closure.label));
                             labels_freed_after_atom.push(closure.label);
                             if let Some(order) = &mut ring_neighbor_order {
                                 order.push(closure.other_atom_idx);
@@ -1922,7 +1935,7 @@ fn enumerate_support_results_from_atom(
                         }
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
-                            current_ring_parts.push(Part::Literal(ring_label_text(label)));
+                            current_ring_parts.push(Part::RingLabel(label));
                             let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
                                 graph,
                                 &runtime.stereo_component_ids,
@@ -2204,10 +2217,10 @@ fn expand_support_children(
         )?;
         for mut branch_result in branch_results {
             let mut parts = partial.parts.clone();
-            parts.push(Part::Literal("(".to_owned()));
+            parts.push(Part::OpenParen);
             push_part(&mut parts, branch_part.clone());
             parts.extend(branch_result.parts);
-            parts.push(Part::Literal(")".to_owned()));
+            parts.push(Part::CloseParen);
             branch_result.parts = parts;
             expand_support_children(
                 runtime,
@@ -2324,6 +2337,9 @@ fn part_to_action(part: Part) -> Option<WalkerAction> {
                 Some(WalkerAction::EmitLiteral(token))
             }
         }
+        Part::RingLabel(label) => Some(WalkerAction::EmitRingLabel(label)),
+        Part::OpenParen => Some(WalkerAction::EmitLiteral("(".to_owned())),
+        Part::CloseParen => Some(WalkerAction::EmitCloseParen),
         Part::Deferred(token) => Some(WalkerAction::EmitDeferred(token)),
     }
 }
@@ -2880,6 +2896,9 @@ fn resolve_support_result_smiles(
                 )?);
             }
             Part::Literal(token) => resolved_parts.push(token.clone()),
+            Part::RingLabel(label) => resolved_parts.push(ring_label_text(*label)),
+            Part::OpenParen => resolved_parts.push("(".to_owned()),
+            Part::CloseParen => resolved_parts.push(")".to_owned()),
         }
     }
     Ok(resolved_parts.concat())
@@ -3123,8 +3142,7 @@ fn enter_atom_successors_by_token(
                             if let Some(action) = part_to_action(bond_part) {
                                 current_ring_actions.push(action);
                             }
-                            current_ring_actions
-                                .push(WalkerAction::EmitLiteral(ring_label_text(closure.label)));
+                            current_ring_actions.push(WalkerAction::EmitRingLabel(closure.label));
                             labels_freed_after_atom.push(closure.label);
                             if let Some(order) = &mut ring_neighbor_order {
                                 order.push(closure.other_atom_idx);
@@ -3132,8 +3150,7 @@ fn enter_atom_successors_by_token(
                         }
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
-                            current_ring_actions
-                                .push(WalkerAction::EmitLiteral(ring_label_text(label)));
+                            current_ring_actions.push(WalkerAction::EmitRingLabel(label));
                             let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
                                 graph,
                                 &runtime.stereo_component_ids,
@@ -3354,9 +3371,7 @@ fn process_children_successors_by_token(
                     next_branch_index: next_branch_index + 1,
                 });
             }
-        successor
-            .action_stack
-            .push(WalkerAction::EmitLiteral(")".to_owned()));
+        successor.action_stack.push(WalkerAction::EmitCloseParen);
         successor.action_stack.push(WalkerAction::EnterAtom {
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
@@ -3464,12 +3479,37 @@ fn process_children_successors_by_token(
             )
         }
         Part::Literal(token) => {
-            base_state.prefix.push_str(&token);
+            push_literal_token(&mut base_state.prefix, &token);
             base_state.action_stack.push(WalkerAction::EnterAtom {
                 atom_idx: child_idx,
                 parent_idx: Some(parent_idx),
             });
             Ok(BTreeMap::from([(token, vec![base_state])]))
+        }
+        Part::RingLabel(label) => {
+            push_ring_label(&mut base_state.prefix, label);
+            base_state.action_stack.push(WalkerAction::EnterAtom {
+                atom_idx: child_idx,
+                parent_idx: Some(parent_idx),
+            });
+            let token = ring_label_text(label);
+            Ok(BTreeMap::from([(token, vec![base_state])]))
+        }
+        Part::OpenParen => {
+            base_state.prefix.push('(');
+            base_state.action_stack.push(WalkerAction::EnterAtom {
+                atom_idx: child_idx,
+                parent_idx: Some(parent_idx),
+            });
+            Ok(BTreeMap::from([("(".to_owned(), vec![base_state])]))
+        }
+        Part::CloseParen => {
+            base_state.prefix.push(')');
+            base_state.action_stack.push(WalkerAction::EnterAtom {
+                atom_idx: child_idx,
+                parent_idx: Some(parent_idx),
+            });
+            Ok(BTreeMap::from([(")".to_owned(), vec![base_state])]))
         }
         Part::Deferred(deferred) => {
             let mut out = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
@@ -3483,7 +3523,7 @@ fn process_children_successors_by_token(
                     }
                     continue;
                 }
-                successor.prefix.push_str(&token);
+                push_literal_token(&mut successor.prefix, &token);
                 successor.action_stack.push(WalkerAction::EnterAtom {
                     atom_idx: child_idx,
                     parent_idx: Some(parent_idx),
@@ -3596,8 +3636,21 @@ fn successors_by_token_stereo_impl(
         WalkerAction::EmitLiteral(token) => {
             let mut successor = state.clone();
             successor.action_stack.pop();
-            successor.prefix.push_str(&token);
+            push_literal_token(&mut successor.prefix, &token);
             Ok(BTreeMap::from([(token, vec![successor])]))
+        }
+        WalkerAction::EmitRingLabel(label) => {
+            let mut successor = state.clone();
+            successor.action_stack.pop();
+            push_ring_label(&mut successor.prefix, label);
+            let token = ring_label_text(label);
+            Ok(BTreeMap::from([(token, vec![successor])]))
+        }
+        WalkerAction::EmitCloseParen => {
+            let mut successor = state.clone();
+            successor.action_stack.pop();
+            successor.prefix.push(')');
+            Ok(BTreeMap::from([(")".to_owned(), vec![successor])]))
         }
         WalkerAction::EmitDeferred(deferred) => {
             let mut out = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
@@ -3612,7 +3665,7 @@ fn successors_by_token_stereo_impl(
                     }
                     continue;
                 }
-                successor.prefix.push_str(&token);
+                push_literal_token(&mut successor.prefix, &token);
                 out.entry(token).or_default().push(successor);
             }
             Ok(out)

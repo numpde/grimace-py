@@ -236,9 +236,11 @@ fn cmp_stereo_state_structure(
     left: &RootedConnectedStereoWalkerStateData,
     right: &RootedConnectedStereoWalkerStateData,
 ) -> Ordering {
-    left.visited
-        .cmp(&right.visited)
-        .then(left.visited_count.cmp(&right.visited_count))
+    left.action_stack
+        .len()
+        .cmp(&right.action_stack.len())
+        .then(left.action_stack.cmp(&right.action_stack))
+        .then(left.pending.len().cmp(&right.pending.len()))
         .then(left.pending.cmp(&right.pending))
         .then(left.free_labels.cmp(&right.free_labels))
         .then(left.next_label.cmp(&right.next_label))
@@ -266,7 +268,8 @@ fn cmp_stereo_state_structure(
             left.stereo_component_token_flips
                 .cmp(&right.stereo_component_token_flips),
         )
-        .then(left.action_stack.cmp(&right.action_stack))
+        .then(left.visited_count.cmp(&right.visited_count))
+        .then(left.visited.cmp(&right.visited))
 }
 
 fn extend_structural_transitions(
@@ -4326,6 +4329,106 @@ mod tests {
         max_process_children_added_action_count: usize,
     }
 
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    struct StereoFieldDiffStats {
+        equal_pairs: usize,
+        visited: usize,
+        visited_count: usize,
+        pending: usize,
+        free_labels: usize,
+        next_label: usize,
+        component_phases: usize,
+        selected_neighbors: usize,
+        selected_orientations: usize,
+        first_emitted_candidates: usize,
+        component_begin_atoms: usize,
+        component_token_flips: usize,
+        action_stack: usize,
+    }
+
+    fn first_stereo_structure_difference(
+        left: &super::RootedConnectedStereoWalkerStateData,
+        right: &super::RootedConnectedStereoWalkerStateData,
+    ) -> &'static str {
+        if left.visited != right.visited {
+            return "visited";
+        }
+        if left.visited_count != right.visited_count {
+            return "visited_count";
+        }
+        if left.pending != right.pending {
+            return "pending";
+        }
+        if left.free_labels != right.free_labels {
+            return "free_labels";
+        }
+        if left.next_label != right.next_label {
+            return "next_label";
+        }
+        if left.stereo_component_phases != right.stereo_component_phases {
+            return "component_phases";
+        }
+        if left.stereo_selected_neighbors != right.stereo_selected_neighbors {
+            return "selected_neighbors";
+        }
+        if left.stereo_selected_orientations != right.stereo_selected_orientations {
+            return "selected_orientations";
+        }
+        if left.stereo_first_emitted_candidates != right.stereo_first_emitted_candidates {
+            return "first_emitted_candidates";
+        }
+        if left.stereo_component_begin_atoms != right.stereo_component_begin_atoms {
+            return "component_begin_atoms";
+        }
+        if left.stereo_component_token_flips != right.stereo_component_token_flips {
+            return "component_token_flips";
+        }
+        if left.action_stack != right.action_stack {
+            return "action_stack";
+        }
+        "equal"
+    }
+
+    fn collect_enter_atom_field_diff_stats(
+        runtime: &super::StereoWalkerRuntimeData,
+        graph: &PreparedSmilesGraphData,
+        state: &super::RootedConnectedStereoWalkerStateData,
+        stats: &mut StereoFieldDiffStats,
+    ) -> pyo3::PyResult<()> {
+        let Some(super::WalkerAction::EnterAtom { atom_idx, parent_idx }) = state.action_stack.last()
+        else {
+            return Ok(());
+        };
+        let raw_successors =
+            super::enter_atom_successors_by_token(runtime, graph, state, *atom_idx, *parent_idx)?;
+        for successors in raw_successors.into_values() {
+            for left_idx in 0..successors.len() {
+                for right_idx in left_idx + 1..successors.len() {
+                    match first_stereo_structure_difference(
+                        &successors[left_idx],
+                        &successors[right_idx],
+                    ) {
+                        "visited" => stats.visited += 1,
+                        "visited_count" => stats.visited_count += 1,
+                        "pending" => stats.pending += 1,
+                        "free_labels" => stats.free_labels += 1,
+                        "next_label" => stats.next_label += 1,
+                        "component_phases" => stats.component_phases += 1,
+                        "selected_neighbors" => stats.selected_neighbors += 1,
+                        "selected_orientations" => stats.selected_orientations += 1,
+                        "first_emitted_candidates" => stats.first_emitted_candidates += 1,
+                        "component_begin_atoms" => stats.component_begin_atoms += 1,
+                        "component_token_flips" => stats.component_token_flips += 1,
+                        "action_stack" => stats.action_stack += 1,
+                        "equal" => stats.equal_pairs += 1,
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     impl StereoDecoderStats {
         fn average_action_stack_len(&self) -> f64 {
             if self.state_count == 0 {
@@ -4909,6 +5012,54 @@ mod tests {
             stats.emit_literal_state_count,
             stats.emit_ring_label_state_count,
             stats.emit_close_paren_state_count,
+        );
+    }
+
+    #[test]
+    #[ignore = "diagnostic-only stereo enter-atom field-diff report"]
+    fn stereo_enter_atom_field_diff_report_large_all_roots_case() {
+        let Some(graph) = prepared_graph_from_smiles("COc1ccc2cc([C@H](C)C(=O)O)ccc2c1") else {
+            return;
+        };
+        let mut stats = StereoFieldDiffStats::default();
+        for root_idx in 0..graph.atom_count() {
+            let runtime = build_walker_runtime(&graph, root_idx).expect("runtime should build");
+            let initial_state = initial_stereo_state_for_root(&runtime, &graph, root_idx);
+            let mut stack = vec![initial_state];
+            let mut completion_cache = rustc_hash::FxHashMap::default();
+            while let Some(state) = stack.pop() {
+                collect_enter_atom_field_diff_stats(&runtime, &graph, &state, &mut stats)
+                    .expect("field diff stats should collect");
+                for successors in super::successors_by_token_stereo_impl(
+                    &runtime,
+                    &graph,
+                    &state,
+                    true,
+                    &mut completion_cache,
+                )
+                .expect("successors should enumerate")
+                .into_values()
+                {
+                    stack.extend(successors);
+                }
+            }
+        }
+
+        println!(
+            "large stereo enter-atom field diffs: equal={} visited={} visited_count={} pending={} free_labels={} next_label={} phases={} neighbors={} orientations={} first_candidates={} begin_atoms={} token_flips={} action_stack={}",
+            stats.equal_pairs,
+            stats.visited,
+            stats.visited_count,
+            stats.pending,
+            stats.free_labels,
+            stats.next_label,
+            stats.component_phases,
+            stats.selected_neighbors,
+            stats.selected_orientations,
+            stats.first_emitted_candidates,
+            stats.component_begin_atoms,
+            stats.component_token_flips,
+            stats.action_stack,
         );
     }
 

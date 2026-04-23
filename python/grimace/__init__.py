@@ -81,102 +81,70 @@ def MolToSmilesTokenInventory(
     )
 
 
-class _PublicDecoderBase:
-    __slots__ = ("_impl", "_choices_cache")
-    _impl_name: str
-    _prefer_choice_cache_for_terminal = False
+if _RUNTIME is not None:
+    MolToSmilesChoice = _RUNTIME.MolToSmilesChoice
 
-    def __init__(
-        self,
-        mol: object,
-        *,
-        isomericSmiles: bool = True,
-        kekuleSmiles: bool = False,
-        rootedAtAtom: int = -1,
-        canonical: bool = True,
-        allBondsExplicit: bool = False,
-        allHsExplicit: bool = False,
-        doRandom: bool = False,
-        ignoreAtomMapNumbers: bool = False,
-    ) -> None:
-        runtime = _require_runtime()
-        self._impl = getattr(runtime, type(self)._impl_name)(
-            mol,
-            isomeric_smiles=isomericSmiles,
-            kekule_smiles=kekuleSmiles,
-            rooted_at_atom=rootedAtAtom,
-            canonical=canonical,
-            all_bonds_explicit=allBondsExplicit,
-            all_hs_explicit=allHsExplicit,
-            do_random=doRandom,
-            ignore_atom_map_numbers=ignoreAtomMapNumbers,
-        )
-        self._choices_cache = None
+    class _PublicDecoderBase(_RUNTIME._PublicDecoderBase):
+        __slots__ = ()
 
-    @classmethod
-    def _from_impl(cls, impl: object) -> "_PublicDecoderBase":
-        decoder = cls.__new__(cls)
-        decoder._impl = impl
-        decoder._choices_cache = None
-        return decoder
-
-    @property
-    def next_choices(self) -> tuple["MolToSmilesChoice", ...]:
-        if self._choices_cache is None:
-            self._choices_cache = tuple(
-                MolToSmilesChoice._from_impl(choice_impl, decoder_cls=type(self))
-                for choice_impl in self._impl.choices()
+        def __init__(
+            self,
+            mol: object,
+            *,
+            isomericSmiles: bool = True,
+            kekuleSmiles: bool = False,
+            rootedAtAtom: int = -1,
+            canonical: bool = True,
+            allBondsExplicit: bool = False,
+            allHsExplicit: bool = False,
+            doRandom: bool = False,
+            ignoreAtomMapNumbers: bool = False,
+        ) -> None:
+            super().__init__(
+                mol,
+                isomeric_smiles=isomericSmiles,
+                kekule_smiles=kekuleSmiles,
+                rooted_at_atom=rootedAtAtom,
+                canonical=canonical,
+                all_bonds_explicit=allBondsExplicit,
+                all_hs_explicit=allHsExplicit,
+                do_random=doRandom,
+                ignore_atom_map_numbers=ignoreAtomMapNumbers,
             )
-        return self._choices_cache
 
-    @property
-    def prefix(self) -> str:
-        return self._impl.prefix
-
-    @property
-    def is_terminal(self) -> bool:
-        if self._choices_cache is not None:
-            return not self._choices_cache
-        if type(self)._prefer_choice_cache_for_terminal:
-            return not self.next_choices
-        return self._impl.is_terminal
-
-    def copy(self) -> "_PublicDecoderBase":
-        return type(self)._from_impl(self._impl.copy())
+        @property
+        def _impl(self) -> "_PublicDecoderBase":
+            return self
 
 
-class MolToSmilesDecoder(_PublicDecoderBase):
-    _impl_name = "MolToSmilesDecoder"
-    _prefer_choice_cache_for_terminal = True
+    class MolToSmilesDecoder(_RUNTIME.MolToSmilesDecoder, _PublicDecoderBase):
+        __slots__ = ()
 
 
-class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
-    _impl_name = "MolToSmilesDeterminizedDecoder"
-    _prefer_choice_cache_for_terminal = True
+    class MolToSmilesDeterminizedDecoder(_RUNTIME.MolToSmilesDeterminizedDecoder, _PublicDecoderBase):
+        __slots__ = ()
+
+else:
+    class _ImportErrorRuntimeBase:
+        __slots__ = ()
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _require_runtime()
 
 
-class MolToSmilesChoice:
-    __slots__ = ("_decoder_cls", "_impl")
+    class MolToSmilesChoice:  # pragma: no cover - exercised only in broken installs
+        __slots__ = ()
 
-    @classmethod
-    def _from_impl(
-        cls,
-        impl: object,
-        *,
-        decoder_cls: type[_PublicDecoderBase],
-    ) -> "MolToSmilesChoice":
-        choice = cls.__new__(cls)
-        choice._impl = impl
-        choice._decoder_cls = decoder_cls
-        return choice
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _require_runtime()
 
-    @property
-    def text(self) -> str:
-        return self._impl.text
 
-    @property
-    def next_state(self) -> _PublicDecoderBase:
-        return self._decoder_cls._from_impl(self._impl.next_state)
+    class MolToSmilesDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
+        pass
+
+
+    class MolToSmilesDeterminizedDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
+        pass
 
 
 __all__ = [

@@ -297,7 +297,7 @@ def _fragmented_mol_to_smiles_token_inventory(
 
 
 @dataclass(frozen=True, slots=True)
-class _ChoiceImpl:
+class MolToSmilesChoice:
     text: str
     next_state: object
 
@@ -308,16 +308,16 @@ class _CoreStateAdapter:
     def __init__(self, decoder: object) -> None:
         self._decoder = decoder
 
-    def _choice_with_advanced_decoder(self, choice_idx: int, text: str) -> _ChoiceImpl:
-        next_decoder = self._decoder.copy()
-        next_decoder.advance_choice(choice_idx)
-        return _ChoiceImpl(text=text, next_state=type(self)(next_decoder))
-
-    def choices(self) -> tuple[_ChoiceImpl, ...]:
-        choice_texts = tuple(self._decoder.next_choice_texts())
+    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         return tuple(
-            self._choice_with_advanced_decoder(choice_idx, text)
-            for choice_idx, text in enumerate(choice_texts)
+            (text, type(self)(next_decoder))
+            for text, next_decoder in self._decoder.choice_successors()
+        )
+
+    def choices(self) -> tuple[MolToSmilesChoice, ...]:
+        return tuple(
+            MolToSmilesChoice(text=text, next_state=next_state)
+            for text, next_state in self.choice_successor_states()
         )
 
     def prefix(self) -> str:
@@ -334,8 +334,8 @@ class _CoreStateAdapter:
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         return tuple(
-            (text, self._advance_token(text))
-            for text in self._decoder.next_token_support()
+            (text, type(self)(next_decoder))
+            for text, next_decoder in self._decoder.grouped_successors()
         )
 
     def _advance_token(self, text: str) -> "_CoreStateAdapter":
@@ -352,12 +352,18 @@ class _MergedStateAdapter:
             raise ValueError("Merged decoder state requires at least one branch")
         self._states = states
 
-    def choices(self) -> tuple[_ChoiceImpl, ...]:
+    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         return tuple(
-            choice
+            (text, next_state)
             for state in self._states
             if not state.is_terminal()
-            for choice in state.choices()
+            for text, next_state in state.choice_successor_states()
+        )
+
+    def choices(self) -> tuple[MolToSmilesChoice, ...]:
+        return tuple(
+            MolToSmilesChoice(text=text, next_state=next_state)
+            for text, next_state in self.choice_successor_states()
         )
 
     def prefix(self) -> str:
@@ -406,28 +412,27 @@ class _DisconnectedStateAdapter:
     def _active_state(self) -> object:
         return self._fragment_states[self._fragment_idx]
 
-    def choices(self) -> tuple[_ChoiceImpl, ...]:
+    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         active = self._active_state()
         if not active.is_terminal():
             return tuple(
-                _ChoiceImpl(
-                    text=choice.text,
-                    next_state=type(self)(
+                (
+                    text,
+                    type(self)(
                         self._fragment_states[: self._fragment_idx]
-                        + (choice.next_state,)
+                        + (successor,)
                         + self._fragment_states[self._fragment_idx + 1 :],
                         fragment_idx=self._fragment_idx,
                         completed_prefix=self._completed_prefix,
                     ),
                 )
-                for choice in active.choices()
+                for text, successor in active.choice_successor_states()
             )
         if self._fragment_idx + 1 < len(self._fragment_states):
-            next_active = self._fragment_states[self._fragment_idx + 1]
             return (
-                _ChoiceImpl(
-                    text=".",
-                    next_state=type(self)(
+                (
+                    ".",
+                    type(self)(
                         self._fragment_states,
                         fragment_idx=self._fragment_idx + 1,
                         completed_prefix=f"{self._completed_prefix}{active.prefix()}.",
@@ -435,6 +440,12 @@ class _DisconnectedStateAdapter:
                 ),
             )
         return ()
+
+    def choices(self) -> tuple[MolToSmilesChoice, ...]:
+        return tuple(
+            MolToSmilesChoice(text=text, next_state=next_state)
+            for text, next_state in self.choice_successor_states()
+        )
 
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"
@@ -531,8 +542,8 @@ def _reachable_terminal_prefixes(
         return terminal
 
     outputs: set[str] = set()
-    for choice in state.choices():
-        outputs.update(_reachable_terminal_prefixes(choice.next_state, memo=memo))
+    for _, successor in state.choice_successor_states():
+        outputs.update(_reachable_terminal_prefixes(successor, memo=memo))
     resolved = frozenset(outputs)
     memo[key] = resolved
     return resolved
@@ -691,7 +702,8 @@ def _make_decoder_state_impl(
 
 
 class _PublicDecoderBase:
-    __slots__ = ("_state",)
+    __slots__ = ("_state", "_choices_cache")
+    _prefer_choice_cache_for_terminal = True
 
     def __init__(
         self,
@@ -718,6 +730,7 @@ class _PublicDecoderBase:
         )
         _validate_supported_flags(flags)
         self._state = _make_decoder_state_impl(mol_or_prepared, flags=flags)
+        self._choices_cache = None
 
     @classmethod
     def _from_parts(
@@ -726,6 +739,7 @@ class _PublicDecoderBase:
     ) -> "_PublicDecoderBase":
         decoder = cls.__new__(cls)
         decoder._state = state_impl
+        decoder._choices_cache = None
         return decoder
 
     @property
@@ -734,27 +748,37 @@ class _PublicDecoderBase:
 
     @property
     def is_terminal(self) -> bool:
+        if self._choices_cache is not None:
+            return not self._choices_cache
+        if type(self)._prefer_choice_cache_for_terminal:
+            return not self.next_choices
         return self._state.is_terminal()
 
     def copy(self) -> "_PublicDecoderBase":
         return type(self)._from_parts(self._state.copy())
 
+    @property
+    def next_choices(self) -> tuple[MolToSmilesChoice, ...]:
+        if self._choices_cache is None:
+            self._choices_cache = self.choices()
+        return self._choices_cache
+
 
 class MolToSmilesDecoder(_PublicDecoderBase):
-    def choices(self) -> tuple[_ChoiceImpl, ...]:
+    def choices(self) -> tuple[MolToSmilesChoice, ...]:
         return tuple(
-            _ChoiceImpl(
-                text=choice.text,
-                next_state=type(self)._from_parts(choice.next_state),
+            MolToSmilesChoice(
+                text=text,
+                next_state=type(self)._from_parts(successor),
             )
-            for choice in self._state.choices()
+            for text, successor in self._state.choice_successor_states()
         )
 
 
 class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
-    def choices(self) -> tuple[_ChoiceImpl, ...]:
+    def choices(self) -> tuple[MolToSmilesChoice, ...]:
         return tuple(
-            _ChoiceImpl(
+            MolToSmilesChoice(
                 text=text,
                 next_state=type(self)._from_parts(successor),
             )

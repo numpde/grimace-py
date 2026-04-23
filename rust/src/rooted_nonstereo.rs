@@ -1456,6 +1456,38 @@ impl PyRootedConnectedNonStereoDecoder {
         Ok(())
     }
 
+    fn choice_successors(&self) -> Vec<(String, Self)> {
+        frontier_choices(self.graph.as_ref(), &self.frontier)
+            .into_iter()
+            .map(|choice| {
+                (
+                    choice.text,
+                    Self {
+                        graph: self.graph.clone(),
+                        frontier: choice.next_frontier,
+                        cached_choices: None,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn grouped_successors(&self) -> Vec<(String, Self)> {
+        frontier_transitions(self.graph.as_ref(), &self.frontier)
+            .into_iter()
+            .map(|(token, frontier)| {
+                (
+                    token,
+                    Self {
+                        graph: self.graph.clone(),
+                        frontier,
+                        cached_choices: None,
+                    },
+                )
+            })
+            .collect()
+    }
+
     fn prefix(&self) -> String {
         frontier_prefix(&self.frontier)
     }

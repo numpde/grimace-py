@@ -3095,7 +3095,6 @@ fn enter_atom_successors_without_bond_stereo_exact(
                     push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
                     prefix
                 });
-
                 permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
                         return;
@@ -3948,9 +3947,9 @@ fn exact_successors_from_stereo_state_drained(
                     continue;
                 }
                 push_literal_token(&mut successor.prefix, &token);
-                push_exact_stereo_successor(&mut successors, successor);
+                successors.push(successor);
             }
-            Ok(finalize_exact_stereo_successors(successors))
+            Ok(successors)
         }
         WalkerAction::EnterAtom {
             atom_idx,

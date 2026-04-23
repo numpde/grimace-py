@@ -3066,7 +3066,15 @@ fn enter_atom_successors_without_bond_stereo_exact(
                             stereo_component_token_flips: state
                                 .stereo_component_token_flips
                                 .clone(),
-                            action_stack: base_action_stack.to_vec(),
+                            action_stack: {
+                                let mut stack = Vec::with_capacity(
+                                    base_action_stack.len()
+                                        + current_ring_actions.len()
+                                        + usize::from(!child_order.is_empty()),
+                                );
+                                stack.extend_from_slice(base_action_stack);
+                                stack
+                            },
                         };
                         if !child_order.is_empty() {
                             successor.action_stack.push(WalkerAction::ProcessChildren {
@@ -3375,8 +3383,38 @@ fn process_children_successors_without_bond_stereo(
 
     if next_branch_index < branch_count {
         let child_idx = child_order[next_branch_index];
-        let mut successor = state.clone();
-        successor.action_stack.pop();
+        let bond_token = graph
+            .bond_token(parent_idx, child_idx)
+            .ok_or_else(|| {
+                PyKeyError::new_err(format!(
+                    "No bond between atoms {parent_idx} and {child_idx}"
+                ))
+            })?
+            .to_owned();
+        let mut base_action_stack = state.action_stack.clone();
+        base_action_stack.pop();
+        let mut successor = RootedConnectedStereoWalkerStateData {
+            prefix: state.prefix.clone(),
+            visited: state.visited.clone(),
+            visited_count: state.visited_count,
+            pending: state.pending.clone(),
+            free_labels: state.free_labels.clone(),
+            next_label: state.next_label,
+            stereo_component_phases: state.stereo_component_phases.clone(),
+            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
+            stereo_selected_orientations: state.stereo_selected_orientations.clone(),
+            stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
+            stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
+            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            action_stack: {
+                let extra = 2
+                    + usize::from(next_branch_index + 1 < child_order.len())
+                    + usize::from(!bond_token.is_empty());
+                let mut stack = Vec::with_capacity(base_action_stack.len() + extra);
+                stack.extend_from_slice(&base_action_stack);
+                stack
+            },
+        };
         push_char_token(&mut successor.prefix, '(');
         if next_branch_index + 1 < child_order.len() {
             successor.action_stack.push(WalkerAction::ProcessChildren {
@@ -3390,14 +3428,6 @@ fn process_children_successors_without_bond_stereo(
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
         });
-        let bond_token = graph
-            .bond_token(parent_idx, child_idx)
-            .ok_or_else(|| {
-                PyKeyError::new_err(format!(
-                    "No bond between atoms {parent_idx} and {child_idx}"
-                ))
-            })?
-            .to_owned();
         if !bond_token.is_empty() {
             successor
                 .action_stack
@@ -3449,11 +3479,40 @@ fn process_children_successors_without_bond_stereo_exact(
     next_branch_index: usize,
 ) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
     let branch_count = child_order.len().saturating_sub(1);
+    let base_action_stack = &state.action_stack[..state.action_stack.len() - 1];
 
     if next_branch_index < branch_count {
         let child_idx = child_order[next_branch_index];
-        let mut successor = state.clone();
-        successor.action_stack.pop();
+        let bond_token = graph
+            .bond_token(parent_idx, child_idx)
+            .ok_or_else(|| {
+                PyKeyError::new_err(format!(
+                    "No bond between atoms {parent_idx} and {child_idx}"
+                ))
+            })?
+            .to_owned();
+        let mut successor = RootedConnectedStereoWalkerStateData {
+            prefix: state.prefix.clone(),
+            visited: state.visited.clone(),
+            visited_count: state.visited_count,
+            pending: state.pending.clone(),
+            free_labels: state.free_labels.clone(),
+            next_label: state.next_label,
+            stereo_component_phases: state.stereo_component_phases.clone(),
+            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
+            stereo_selected_orientations: state.stereo_selected_orientations.clone(),
+            stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
+            stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
+            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            action_stack: {
+                let extra = 2
+                    + usize::from(next_branch_index + 1 < child_order.len())
+                    + usize::from(!bond_token.is_empty());
+                let mut stack = Vec::with_capacity(base_action_stack.len() + extra);
+                stack.extend_from_slice(base_action_stack);
+                stack
+            },
+        };
         push_char_token(&mut successor.prefix, '(');
         if next_branch_index + 1 < child_order.len() {
             successor.action_stack.push(WalkerAction::ProcessChildren {
@@ -3467,14 +3526,6 @@ fn process_children_successors_without_bond_stereo_exact(
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
         });
-        let bond_token = graph
-            .bond_token(parent_idx, child_idx)
-            .ok_or_else(|| {
-                PyKeyError::new_err(format!(
-                    "No bond between atoms {parent_idx} and {child_idx}"
-                ))
-            })?
-            .to_owned();
         if !bond_token.is_empty() {
             successor
                 .action_stack
@@ -3492,10 +3543,27 @@ fn process_children_successors_without_bond_stereo_exact(
             ))
         })?
         .to_owned();
-    let mut base_state = state.clone();
-    base_state.action_stack.pop();
 
     if bond_token.is_empty() {
+        let mut base_state = RootedConnectedStereoWalkerStateData {
+            prefix: state.prefix.clone(),
+            visited: state.visited.clone(),
+            visited_count: state.visited_count,
+            pending: state.pending.clone(),
+            free_labels: state.free_labels.clone(),
+            next_label: state.next_label,
+            stereo_component_phases: state.stereo_component_phases.clone(),
+            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
+            stereo_selected_orientations: state.stereo_selected_orientations.clone(),
+            stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
+            stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
+            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            action_stack: {
+                let mut stack = Vec::with_capacity(base_action_stack.len() + 1);
+                stack.extend_from_slice(base_action_stack);
+                stack
+            },
+        };
         base_state.action_stack.push(WalkerAction::EnterAtom {
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
@@ -3503,6 +3571,25 @@ fn process_children_successors_without_bond_stereo_exact(
         return exact_successors_from_stereo_state(runtime, graph, base_state);
     }
 
+    let mut base_state = RootedConnectedStereoWalkerStateData {
+        prefix: state.prefix.clone(),
+        visited: state.visited.clone(),
+        visited_count: state.visited_count,
+        pending: state.pending.clone(),
+        free_labels: state.free_labels.clone(),
+        next_label: state.next_label,
+        stereo_component_phases: state.stereo_component_phases.clone(),
+        stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
+        stereo_selected_orientations: state.stereo_selected_orientations.clone(),
+        stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
+        stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
+        stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+        action_stack: {
+            let mut stack = Vec::with_capacity(base_action_stack.len() + 1);
+            stack.extend_from_slice(base_action_stack);
+            stack
+        },
+    };
     push_literal_token(&mut base_state.prefix, &bond_token);
     base_state.action_stack.push(WalkerAction::EnterAtom {
         atom_idx: child_idx,
@@ -3775,8 +3862,7 @@ fn exact_successors_from_stereo_state_drained(
             atom_idx,
             parent_idx,
         } => {
-            let mut base_action_stack = state.action_stack.clone();
-            base_action_stack.pop();
+            let base_action_stack = &state.action_stack[..state.action_stack.len() - 1];
             let atom_idx = *atom_idx;
             let parent_idx = *parent_idx;
             let visited_now = visited_with_marked(&state.visited, atom_idx);
@@ -3826,7 +3912,13 @@ fn exact_successors_from_stereo_state_drained(
                             stereo_component_token_flips: state
                                 .stereo_component_token_flips
                                 .clone(),
-                            action_stack: base_action_stack.clone(),
+                            action_stack: {
+                                let mut stack = Vec::with_capacity(
+                                    base_action_stack.len() + usize::from(!child_order.is_empty()),
+                                );
+                                stack.extend_from_slice(base_action_stack);
+                                stack
+                            },
                         };
                         if !child_order.is_empty() {
                             successor.action_stack.push(WalkerAction::ProcessChildren {

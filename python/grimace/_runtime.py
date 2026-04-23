@@ -690,6 +690,9 @@ def _make_fragment_state_adapter(
         fragment_mol,
         flags=flags.with_rooted_at_atom(0),
     )
+    if prepared_fragment.surface_kind == CONNECTED_NONSTEREO_SURFACE:
+        return _make_connected_state_adapter(prepared_fragment, flags.with_rooted_at_atom(-1))
+
     states = tuple(
         _make_connected_state_adapter(prepared_fragment, flags.with_rooted_at_atom(local_root_idx))
         for local_root_idx in range(atom_count)

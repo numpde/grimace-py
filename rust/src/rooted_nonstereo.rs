@@ -147,6 +147,24 @@ fn validate_root_idx(graph: &PreparedSmilesGraphData, root_idx: isize) -> PyResu
     Ok(root_idx as usize)
 }
 
+fn initial_frontier_for_root_spec(
+    graph: &PreparedSmilesGraphData,
+    root_idx: isize,
+) -> PyResult<Vec<RootedConnectedNonStereoWalkerStateData>> {
+    if graph.atom_count() == 0 {
+        return Ok(vec![initial_state_for_root(graph, 0)]);
+    }
+    if root_idx < 0 {
+        return Ok((0..graph.atom_count())
+            .map(|atom_idx| initial_state_for_root(graph, atom_idx))
+            .collect());
+    }
+    Ok(vec![initial_state_for_root(
+        graph,
+        validate_root_idx(graph, root_idx)?,
+    )])
+}
+
 fn validate_state_shape(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
@@ -1408,9 +1426,8 @@ impl PyRootedConnectedNonStereoDecoder {
     #[new]
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
         let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
-        let root_idx = validate_root_idx(graph.as_ref(), root_idx)?;
         Ok(Self {
-            frontier: vec![initial_state_for_root(graph.as_ref(), root_idx)],
+            frontier: initial_frontier_for_root_spec(graph.as_ref(), root_idx)?,
             graph,
             cached_choices: None,
         })

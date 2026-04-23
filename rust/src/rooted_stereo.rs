@@ -574,26 +574,33 @@ fn ordered_neighbor_groups(
     atom_idx: usize,
     visited: &[bool],
 ) -> Vec<Vec<usize>> {
-    let mut remaining_neighbors = BTreeSet::new();
-    for &neighbor_idx in graph.neighbors_of(atom_idx) {
-        if !visited[neighbor_idx] {
-            remaining_neighbors.insert(neighbor_idx);
-        }
-    }
-    if remaining_neighbors.is_empty() {
+    let mut seeds = graph
+        .neighbors_of(atom_idx)
+        .iter()
+        .copied()
+        .filter(|&neighbor_idx| !visited[neighbor_idx])
+        .collect::<Vec<_>>();
+    if seeds.is_empty() {
         return Vec::new();
+    }
+    seeds.sort_unstable();
+    if seeds.len() == 1 {
+        return vec![seeds];
     }
 
     let mut groups_with_mins = Vec::<(usize, Vec<usize>)>::new();
-    while let Some(&seed) = remaining_neighbors.iter().next() {
-        remaining_neighbors.remove(&seed);
-        let mut queue = VecDeque::from([seed]);
-        let mut seen = vec![false; graph.atom_count()];
+    let mut seen = vec![false; graph.atom_count()];
+    let mut stack = Vec::new();
+    for &seed in &seeds {
+        if seen[seed] {
+            continue;
+        }
         seen[seed] = true;
+        stack.push(seed);
         let mut component_min = seed;
         let mut group = vec![seed];
 
-        while let Some(current) = queue.pop_front() {
+        while let Some(current) = stack.pop() {
             if current < component_min {
                 component_min = current;
             }
@@ -602,10 +609,10 @@ fn ordered_neighbor_groups(
                     continue;
                 }
                 seen[neighbor_idx] = true;
-                if remaining_neighbors.remove(&neighbor_idx) {
+                if seeds.binary_search(&neighbor_idx).is_ok() {
                     group.push(neighbor_idx);
                 }
-                queue.push_back(neighbor_idx);
+                stack.push(neighbor_idx);
             }
         }
 
@@ -640,7 +647,7 @@ where
         }
     }
 
-    let mut current = Vec::new();
+    let mut current = Vec::with_capacity(groups.len());
     recurse(groups, 0, &mut current, f);
     if groups.is_empty() {
         f(&[]);

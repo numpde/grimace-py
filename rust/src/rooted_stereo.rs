@@ -2753,7 +2753,6 @@ fn enter_atom_successors_by_token(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
-
                 permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
                         return;
@@ -2919,7 +2918,6 @@ fn enter_atom_successors_without_bond_stereo(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
-
                 permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
                         return;
@@ -3090,6 +3088,13 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
+                let pending_shared = Arc::new(current_pending.clone());
+                let free_labels_shared = Arc::new(current_free.clone());
+                let nonchiral_prefix = (!is_chiral_atom).then(|| {
+                    let mut prefix = state.prefix.clone();
+                    push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
+                    prefix
+                });
 
                 permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
@@ -3098,7 +3103,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
 
                     let inner: PyResult<()> = (|| {
                         let atom_token = if !is_chiral_atom {
-                            graph.atom_tokens[atom_idx].clone()
+                            Cow::Borrowed(graph.atom_tokens[atom_idx].as_str())
                         } else {
                             let emitted_neighbor_order = stereo_neighbor_order(
                                 graph,
@@ -3107,14 +3112,21 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                 ring_neighbor_order.as_deref().unwrap_or(&[]),
                                 child_order,
                             )?;
-                            stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
+                            Cow::Owned(stereo_atom_token(
+                                graph,
+                                atom_idx,
+                                &emitted_neighbor_order,
+                            )?)
                         };
                         let mut successor = RootedConnectedStereoWalkerStateData {
-                            prefix: state.prefix.clone(),
+                            prefix: nonchiral_prefix
+                                .as_ref()
+                                .cloned()
+                                .unwrap_or_else(|| state.prefix.clone()),
                             visited: visited_now.clone(),
                             visited_count: visited_count_now,
-                            pending: Arc::new(current_pending.clone()),
-                            free_labels: Arc::new(current_free.clone()),
+                            pending: pending_shared.clone(),
+                            free_labels: free_labels_shared.clone(),
                             next_label: current_next,
                             stereo_component_phases: state.stereo_component_phases.clone(),
                             stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
@@ -3150,7 +3162,9 @@ fn enter_atom_successors_without_bond_stereo_exact(
                         for action in current_ring_actions.iter().rev() {
                             successor.action_stack.push(action.clone());
                         }
-                        push_literal_token(&mut successor.prefix, &atom_token);
+                        if nonchiral_prefix.is_none() {
+                            push_literal_token(&mut successor.prefix, atom_token.as_ref());
+                        }
                         push_exact_stereo_successor(&mut successors, successor);
                         Ok(())
                     })();
@@ -3908,11 +3922,27 @@ fn exact_successors_from_stereo_state_drained(
 
     match action {
         WalkerAction::EmitDeferred(deferred) => {
-            let mut successors = Vec::new();
-            for token in deferred_token_support(runtime, graph, &state, deferred)? {
-                let mut successor = state.clone();
+            let deferred = deferred.clone();
+            let tokens = deferred_token_support(runtime, graph, &state, &deferred)?;
+            if tokens.len() == 1 {
+                let mut successor = state;
                 successor.action_stack.pop();
-                if commit_deferred_token_choice(runtime, graph, &mut successor, deferred, &token)
+                let token = &tokens[0];
+                if commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, token)
+                    .is_ok()
+                {
+                    push_literal_token(&mut successor.prefix, token);
+                    return Ok(vec![successor]);
+                }
+                return Ok(Vec::new());
+            }
+
+            let mut base_state = state;
+            base_state.action_stack.pop();
+            let mut successors = Vec::with_capacity(tokens.len());
+            for token in tokens {
+                let mut successor = base_state.clone();
+                if commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, &token)
                     .is_err()
                 {
                     continue;
@@ -3944,6 +3974,12 @@ fn exact_successors_from_stereo_state_drained(
                 let mut successors = Vec::<RootedConnectedStereoWalkerStateData>::with_capacity(
                     small_permutation_count(chosen_children.len()),
                 );
+                let pending_shared = Arc::new(pending_now.clone());
+                let nonchiral_prefix = (!is_chiral_atom).then(|| {
+                    let mut prefix = state.prefix.clone();
+                    push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
+                    prefix
+                });
                 let mut status = Ok(());
                 permutations_copy_distinct(&chosen_children, &mut |child_order| {
                     if status.is_err() {
@@ -3962,10 +3998,13 @@ fn exact_successors_from_stereo_state_drained(
                             )?)
                         };
                         let mut successor = RootedConnectedStereoWalkerStateData {
-                            prefix: state.prefix.clone(),
+                            prefix: nonchiral_prefix
+                                .as_ref()
+                                .cloned()
+                                .unwrap_or_else(|| state.prefix.clone()),
                             visited: visited_now.clone(),
                             visited_count: visited_count_now,
-                            pending: Arc::new(pending_now.clone()),
+                            pending: pending_shared.clone(),
                             free_labels: state.free_labels.clone(),
                             next_label: state.next_label,
                             stereo_component_phases: state.stereo_component_phases.clone(),
@@ -3997,7 +4036,9 @@ fn exact_successors_from_stereo_state_drained(
                                 next_branch_index: 0,
                             });
                         }
-                        push_literal_token(&mut successor.prefix, atom_token.as_ref());
+                        if nonchiral_prefix.is_none() {
+                            push_literal_token(&mut successor.prefix, atom_token.as_ref());
+                        }
                         push_exact_stereo_successor(&mut successors, successor);
                         Ok(())
                     })();

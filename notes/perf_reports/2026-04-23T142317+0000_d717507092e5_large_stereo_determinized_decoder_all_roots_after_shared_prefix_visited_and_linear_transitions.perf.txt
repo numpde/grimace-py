@@ -1,0 +1,260 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 4K of event 'cycles:P'
+# Event count (approx.): 4509132416
+#
+# Children      Self  Command  Shared Object                          Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
+# ........  ........  .......  .....................................  ........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    14.79%     4.97%  python   libc.so.6                              [.] malloc
+            |          
+             --9.85%--malloc
+                       |          
+                        --5.28%--_int_malloc
+                                  |          
+                                   --1.54%--malloc_consolidate
+
+    11.35%     5.81%  python   libc.so.6                              [.] _int_malloc
+            |          
+             --5.54%--_int_malloc
+                       |          
+                        --1.76%--malloc_consolidate
+
+    10.71%     6.45%  python   python3.13                             [.] _PyEval_EvalFrameDefault
+            |          
+             --4.28%--_PyEval_EvalFrameDefault
+
+     9.87%     3.98%  python   libc.so.6                              [.] __memmove_avx512_unaligned_erms
+            |          
+             --6.04%--__memmove_avx512_unaligned_erms
+
+     9.45%     6.13%  python   libc.so.6                              [.] _int_free
+            |          
+             --3.32%--_int_free
+
+     8.82%     2.40%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+            |          
+             --7.49%--<alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+                       |          
+                        --1.74%--malloc
+
+     8.80%     3.01%  python   libc.so.6                              [.] cfree@GLIBC_2.2.5
+            |          
+             --5.79%--cfree@GLIBC_2.2.5
+                       |          
+                        --3.63%--_int_free
+
+     6.32%     0.00%  python   [unknown]                              [.] 0x0000000000000001
+            |
+            ---0x1
+               |          
+                --2.71%--0x11
+                          |          
+                           --1.53%--_core::rooted_stereo::enter_atom_successors_by_token::{{closure}}
+
+     5.50%     3.05%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] <_core::rooted_stereo::RootedConnectedStereoWalkerStateData as core::clone::Clone>::clone
+            |          
+             --2.45%--<_core::rooted_stereo::RootedConnectedStereoWalkerStateData as core::clone::Clone>::clone
+
+     5.10%     2.28%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::enter_atom_successors_by_token
+            |          
+             --3.55%--_core::rooted_stereo::enter_atom_successors_by_token
+
+     4.85%     0.50%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] alloc::raw_vec::finish_grow
+            |          
+             --4.39%--alloc::raw_vec::finish_grow
+                       |          
+                       |--2.32%--realloc
+                       |          |          
+                       |           --1.96%--_int_realloc
+                       |                     |          
+                       |                      --1.58%--_int_malloc
+                       |          
+                        --1.51%--malloc
+
+     4.35%     0.00%  python   [unknown]                              [k] 0000000000000000
+            |
+            ---0
+
+     4.04%     2.05%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+            |          
+             --2.01%--<alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+
+     3.97%     0.00%  python   [unknown]                              [.] 0x0000000000000008
+            |
+            ---0x8
+
+     3.69%     2.32%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] core::hash::BuildHasher::hash_one
+            |          
+             --1.98%--core::hash::BuildHasher::hash_one
+
+     3.50%     2.59%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::can_complete_from_stereo_state_memo
+     3.35%     2.21%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::process_children_successors_by_token
+            |          
+             --1.57%--_core::rooted_stereo::process_children_successors_by_token
+
+     2.99%     1.32%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] <alloc::vec::Vec<T,A> as core::ops::drop::Drop>::drop
+            |          
+             --1.76%--<alloc::vec::Vec<T,A> as core::ops::drop::Drop>::drop
+
+     2.84%     0.00%  python   [unknown]                              [.] 0x0000580a3cedf5e0
+            |
+            ---0x580a3cedf5e0
+
+     2.73%     0.00%  python   [unknown]                              [.] 0x0000000000000011
+            |
+            ---0x11
+               |          
+                --1.53%--_core::rooted_stereo::enter_atom_successors_by_token::{{closure}}
+
+     2.68%     0.53%  python   libc.so.6                              [.] realloc
+            |          
+             --2.15%--realloc
+                       |          
+                        --1.77%--_int_realloc
+
+     2.59%     0.62%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::enter_atom_successors_by_token::{{closure}}
+            |          
+             --1.97%--_core::rooted_stereo::enter_atom_successors_by_token::{{closure}}
+
+     2.54%     1.32%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::successors_by_token_stereo_impl
+     2.42%     0.00%  python   ld-linux-x86-64.so.2                   [.] _dl_catch_exception
+            |
+            ---_dl_catch_exception
+               |          
+                --2.39%--dlopen_doit
+                          _dl_open
+                          |          
+                           --2.37%--_dl_catch_exception
+                                     dl_open_worker
+                                     _dl_catch_exception
+                                     dl_open_worker_begin
+
+     2.40%     0.00%  python   python3.13                             [.] _imp_create_dynamic
+            |
+            ---_imp_create_dynamic
+               |          
+                --2.39%--dlopen@GLIBC_2.2.5
+                          _dlerror_run
+                          _dl_catch_error
+                          _dl_catch_exception
+                          dlopen_doit
+                          _dl_open
+                          |          
+                           --2.37%--_dl_catch_exception
+                                     dl_open_worker
+                                     _dl_catch_exception
+                                     dl_open_worker_begin
+
+     2.40%     0.00%  python   libc.so.6                              [.] _dlerror_run
+            |
+            ---_dlerror_run
+               _dl_catch_error
+               _dl_catch_exception
+               |          
+                --2.39%--dlopen_doit
+                          _dl_open
+                          |          
+                           --2.37%--_dl_catch_exception
+                                     dl_open_worker
+                                     _dl_catch_exception
+                                     dl_open_worker_begin
+
+     2.40%     0.00%  python   ld-linux-x86-64.so.2                   [.] _dl_catch_error
+            |
+            ---_dl_catch_error
+               _dl_catch_exception
+               |          
+                --2.39%--dlopen_doit
+                          _dl_open
+                          |          
+                           --2.37%--_dl_catch_exception
+                                     dl_open_worker
+                                     _dl_catch_exception
+                                     dl_open_worker_begin
+
+     2.39%     0.00%  python   libc.so.6                              [.] dlopen@GLIBC_2.2.5
+            |
+            ---dlopen@GLIBC_2.2.5
+               _dlerror_run
+               _dl_catch_error
+               _dl_catch_exception
+               dlopen_doit
+               _dl_open
+               |          
+                --2.37%--_dl_catch_exception
+                          dl_open_worker
+                          _dl_catch_exception
+                          dl_open_worker_begin
+
+     2.39%     0.00%  python   libc.so.6                              [.] dlopen_doit
+            |
+            ---dlopen_doit
+               _dl_open
+               |          
+                --2.37%--_dl_catch_exception
+                          dl_open_worker
+                          _dl_catch_exception
+                          dl_open_worker_begin
+
+     2.39%     0.00%  python   ld-linux-x86-64.so.2                   [.] _dl_open
+            |
+            ---_dl_open
+               |          
+                --2.37%--_dl_catch_exception
+                          dl_open_worker
+                          _dl_catch_exception
+                          dl_open_worker_begin
+
+     2.39%     0.02%  python   ld-linux-x86-64.so.2                   [.] dl_open_worker
+            |          
+             --2.37%--dl_open_worker
+                       _dl_catch_exception
+                       dl_open_worker_begin
+
+     2.37%     0.02%  python   ld-linux-x86-64.so.2                   [.] dl_open_worker_begin
+            |          
+             --2.35%--dl_open_worker_begin
+
+     2.31%     1.69%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::cmp_stereo_state_structure
+     2.30%     0.26%  python   libc.so.6                              [.] _int_realloc
+            |          
+             --2.04%--_int_realloc
+                       |          
+                        --1.64%--_int_malloc
+
+     2.23%     0.74%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::finalize_linear_structural_transitions
+            |          
+             --1.55%--_core::rooted_stereo::finalize_linear_structural_transitions
+
+     2.21%     0.61%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] core::ptr::drop_in_place<_core::rooted_stereo::RootedConnectedStereoWalkerStateData>
+            |          
+             --1.67%--core::ptr::drop_in_place<_core::rooted_stereo::RootedConnectedStereoWalkerStateData>
+
+     2.04%     0.97%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::enter_atom_successors_by_token::{{closure}}::{{closure}}::{{closure}}::{{closure}}
+     2.04%     1.26%  python   libc.so.6                              [.] malloc_consolidate
+     2.03%     1.23%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] alloc::collections::btree::map::IntoIter<K,V,A>::dying_next
+     1.92%     0.20%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] hashbrown::raw::RawTable<T,A>::reserve_rehash
+            |          
+             --1.76%--hashbrown::raw::RawTable<T,A>::reserve_rehash
+                       |          
+                        --1.53%--malloc
+
+     1.87%     1.03%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::enter_atom_successors_by_token::{{closure}}::{{closure}}
+     1.78%     0.91%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] core::hash::Hash::hash_slice
+     1.76%     0.90%  python   python3.13                             [.] PyObject_GC_Del
+     1.72%     0.00%  python   [unknown]                              [.] 0x0000580a3cec82a0
+            |
+            ---0x580a3cec82a0
+
+     1.70%     0.24%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] alloc::collections::btree::map::entry::VacantEntry<K,V,A>::insert
+     1.65%     0.78%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::push_literal_token
+     1.64%     0.51%  python   _core.cpython-313-x86_64-linux-gnu.so  [.] _core::rooted_stereo::emitted_edge_part
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

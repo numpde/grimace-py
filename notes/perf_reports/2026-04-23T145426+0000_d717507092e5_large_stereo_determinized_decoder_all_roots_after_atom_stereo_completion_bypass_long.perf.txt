@@ -1,0 +1,131 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 8K of event 'cycles:P'
+# Event count (approx.): 8727284962
+#
+# Children      Self  Command  Shared Object                                Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+# ........  ........  .......  ...........................................  ..........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    29.79%    16.81%  python   python3.13                                   [.] _PyEval_EvalFrameDefault
+            |          
+            |--13.04%--_PyEval_EvalFrameDefault
+            |          
+             --3.22%--0x570df3e9c5e0
+
+     8.37%     0.00%  python   [unknown]                                    [.] 0x0000570df3e9c5e0
+            |
+            ---0x570df3e9c5e0
+               |          
+               |--1.79%--0x7ffd9a61fb80
+               |          
+                --1.58%--PyFunction_NewWithQualName
+
+     7.80%     2.41%  python   libc.so.6                                    [.] malloc
+            |          
+             --5.39%--malloc
+                       |          
+                        --2.66%--_int_malloc
+
+     6.62%     2.81%  python   libc.so.6                                    [.] __memmove_avx512_unaligned_erms
+            |          
+             --3.89%--__memmove_avx512_unaligned_erms
+
+     5.65%     2.81%  python   python3.13                                   [.] PyObject_GC_Del
+            |          
+             --3.07%--PyObject_GC_Del
+
+     5.62%     1.88%  python   libc.so.6                                    [.] cfree@GLIBC_2.2.5
+            |          
+             --3.74%--cfree@GLIBC_2.2.5
+                       |          
+                        --1.82%--_int_free
+
+     5.29%     0.00%  python   [unknown]                                    [k] 0000000000000000
+            |
+            ---0
+               |          
+                --1.89%--_PyEval_EvalFrameDefault
+
+     5.27%     2.96%  python   libc.so.6                                    [.] _int_malloc
+            |          
+             --2.32%--_int_malloc
+
+     4.90%     3.16%  python   libc.so.6                                    [.] _int_free
+            |          
+             --1.75%--_int_free
+
+     4.83%     0.00%  python   [unknown]                                    [.] 0x0000570df3e852a0
+            |
+            ---0x570df3e852a0
+
+     4.09%     1.17%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+            |          
+             --3.52%--<alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+
+     3.73%     2.22%  python   python3.13                                   [.] tupledealloc
+            |          
+             --1.64%--tupledealloc
+
+     3.22%     1.32%  python   python3.13                                   [.] _Py_type_getattro
+            |          
+             --1.94%--_Py_type_getattro
+
+     2.93%     0.00%  python   [unknown]                                    [.] 0x0000570df3e9b460
+            |
+            ---0x570df3e9b460
+
+     2.76%     1.56%  python   python3.13                                   [.] PyFunction_NewWithQualName
+     2.64%     1.62%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+            |          
+             --1.50%--<alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+
+     2.59%     0.00%  python   [unknown]                                    [.] 0x0000570df3e85a60
+            |
+            ---0x570df3e85a60
+
+     2.58%     1.77%  python   python3.13                                   [.] _Py_dict_lookup
+     2.38%     1.51%  python   python3.13                                   [.] _PyEval_FrameClearAndPop
+     2.36%     1.03%  python   python3.13                                   [.] _PyType_AllocNoTrack
+     2.29%     0.36%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] alloc::raw_vec::finish_grow
+            |          
+             --1.94%--alloc::raw_vec::finish_grow
+
+     2.23%     0.00%  python   [unknown]                                    [.] 0x0000000000000001
+            |
+            ---0x1
+
+     2.13%     0.00%  python   [unknown]                                    [.] 0x0000570df3e8e200
+            |
+            ---0x570df3e8e200
+
+     2.09%     0.59%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] core::ptr::drop_in_place<_core::rooted_stereo::RootedConnectedStereoWalkerStateData>
+            |          
+             --1.58%--core::ptr::drop_in_place<_core::rooted_stereo::RootedConnectedStereoWalkerStateData>
+
+     2.02%     0.00%  python   [unknown]                                    [.] 0x0000570df3e89460
+            |
+            ---0x570df3e89460
+
+     1.99%     1.14%  python   python3.13                                   [.] subtype_dealloc
+     1.98%     1.03%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] _core::rooted_stereo::enter_atom_successors_by_token
+     1.87%     1.21%  python   python3.13                                   [.] _PyObject_MakeTpCall
+     1.84%     1.06%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] <alloc::vec::Vec<T,A> as core::clone::Clone>::clone
+     1.79%     0.00%  python   [unknown]                                    [.] 0x00007ffd9a61fb80
+            |
+            ---0x7ffd9a61fb80
+
+     1.79%     1.20%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] _core::rooted_stereo::successors_by_token_stereo_impl
+     1.74%     0.89%  python   _core.cpython-313-x86_64-linux-gnu.so        [.] <_core::rooted_stereo::RootedConnectedStereoWalkerStateData as core::clone::Clone>::clone
+     1.70%     0.00%  python   [unknown]                                    [.] 0x0000570e23c18350
+            |
+            ---0x570e23c18350
+
+     1.56%     0.97%  python   python3.13                                   [.] _PyObject_GetMethod
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

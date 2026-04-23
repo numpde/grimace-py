@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -105,12 +106,12 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     pending: Arc<Vec<(usize, Vec<PendingRing>)>>,
     free_labels: Arc<Vec<usize>>,
     next_label: usize,
-    stereo_component_phases: Vec<i8>,
-    stereo_selected_neighbors: Vec<isize>,
-    stereo_selected_orientations: Vec<i8>,
-    stereo_first_emitted_candidates: Vec<isize>,
-    stereo_component_begin_atoms: Vec<isize>,
-    stereo_component_token_flips: Vec<i8>,
+    stereo_component_phases: Arc<Vec<i8>>,
+    stereo_selected_neighbors: Arc<Vec<isize>>,
+    stereo_selected_orientations: Arc<Vec<i8>>,
+    stereo_first_emitted_candidates: Arc<Vec<isize>>,
+    stereo_component_begin_atoms: Arc<Vec<isize>>,
+    stereo_component_token_flips: Arc<Vec<i8>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -121,12 +122,12 @@ struct StereoCompletionKey {
     pending: Arc<Vec<(usize, Vec<PendingRing>)>>,
     free_labels: Arc<Vec<usize>>,
     next_label: usize,
-    stereo_component_phases: Vec<i8>,
-    stereo_selected_neighbors: Vec<isize>,
-    stereo_selected_orientations: Vec<i8>,
-    stereo_first_emitted_candidates: Vec<isize>,
-    stereo_component_begin_atoms: Vec<isize>,
-    stereo_component_token_flips: Vec<i8>,
+    stereo_component_phases: Arc<Vec<i8>>,
+    stereo_selected_neighbors: Arc<Vec<isize>>,
+    stereo_selected_orientations: Arc<Vec<i8>>,
+    stereo_first_emitted_candidates: Arc<Vec<isize>>,
+    stereo_component_begin_atoms: Arc<Vec<isize>>,
+    stereo_component_token_flips: Arc<Vec<i8>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -267,30 +268,56 @@ fn cmp_stereo_state_structure(
             left.free_labels.cmp(&right.free_labels)
         })
         .then(left.next_label.cmp(&right.next_label))
-        .then(
-            left.stereo_component_phases
-                .cmp(&right.stereo_component_phases),
-        )
-        .then(
+        .then(if Arc::ptr_eq(&left.stereo_component_phases, &right.stereo_component_phases) {
+            Ordering::Equal
+        } else {
+            left.stereo_component_phases.cmp(&right.stereo_component_phases)
+        })
+        .then(if Arc::ptr_eq(
+            &left.stereo_selected_neighbors,
+            &right.stereo_selected_neighbors,
+        ) {
+            Ordering::Equal
+        } else {
             left.stereo_selected_neighbors
-                .cmp(&right.stereo_selected_neighbors),
-        )
-        .then(
+                .cmp(&right.stereo_selected_neighbors)
+        })
+        .then(if Arc::ptr_eq(
+            &left.stereo_selected_orientations,
+            &right.stereo_selected_orientations,
+        ) {
+            Ordering::Equal
+        } else {
             left.stereo_selected_orientations
-                .cmp(&right.stereo_selected_orientations),
-        )
-        .then(
+                .cmp(&right.stereo_selected_orientations)
+        })
+        .then(if Arc::ptr_eq(
+            &left.stereo_first_emitted_candidates,
+            &right.stereo_first_emitted_candidates,
+        ) {
+            Ordering::Equal
+        } else {
             left.stereo_first_emitted_candidates
-                .cmp(&right.stereo_first_emitted_candidates),
-        )
-        .then(
+                .cmp(&right.stereo_first_emitted_candidates)
+        })
+        .then(if Arc::ptr_eq(
+            &left.stereo_component_begin_atoms,
+            &right.stereo_component_begin_atoms,
+        ) {
+            Ordering::Equal
+        } else {
             left.stereo_component_begin_atoms
-                .cmp(&right.stereo_component_begin_atoms),
-        )
-        .then(
+                .cmp(&right.stereo_component_begin_atoms)
+        })
+        .then(if Arc::ptr_eq(
+            &left.stereo_component_token_flips,
+            &right.stereo_component_token_flips,
+        ) {
+            Ordering::Equal
+        } else {
             left.stereo_component_token_flips
-                .cmp(&right.stereo_component_token_flips),
-        )
+                .cmp(&right.stereo_component_token_flips)
+        })
         .then(left.visited_count.cmp(&right.visited_count))
         .then(if Arc::ptr_eq(&left.visited, &right.visited) {
             Ordering::Equal
@@ -2048,24 +2075,24 @@ fn initial_stereo_state_for_root(
         pending: Arc::new(Vec::new()),
         free_labels: Arc::new(Vec::new()),
         next_label: 1,
-        stereo_component_phases: vec![
+        stereo_component_phases: Arc::new(vec![
             UNKNOWN_COMPONENT_PHASE;
             runtime.isolated_components.len()
-        ],
-        stereo_selected_neighbors: vec![-1; runtime.side_infos.len()],
-        stereo_selected_orientations: vec![
+        ]),
+        stereo_selected_neighbors: Arc::new(vec![-1; runtime.side_infos.len()]),
+        stereo_selected_orientations: Arc::new(vec![
             UNKNOWN_EDGE_ORIENTATION;
             runtime.side_infos.len()
-        ],
-        stereo_first_emitted_candidates: vec![-1; runtime.side_infos.len()],
-        stereo_component_begin_atoms: vec![
+        ]),
+        stereo_first_emitted_candidates: Arc::new(vec![-1; runtime.side_infos.len()]),
+        stereo_component_begin_atoms: Arc::new(vec![
             -1;
             runtime.isolated_components.len()
-        ],
-        stereo_component_token_flips: vec![
+        ]),
+        stereo_component_token_flips: Arc::new(vec![
             UNKNOWN_COMPONENT_TOKEN_FLIP;
             runtime.isolated_components.len()
-        ],
+        ]),
         action_stack,
     }
 }
@@ -2507,7 +2534,8 @@ fn commit_deferred_token_choice(
     };
     let existing = state.stereo_component_token_flips[deferred.component_idx];
     if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
-        state.stereo_component_token_flips[deferred.component_idx] = chosen_flip;
+        Arc::make_mut(&mut state.stereo_component_token_flips)[deferred.component_idx] =
+            chosen_flip;
     } else if existing != chosen_flip {
         return Err(PyValueError::new_err(
             "Stereo deferred token was committed inconsistently",
@@ -2622,15 +2650,16 @@ fn enter_atom_successors_by_token(
                 let mut current_pending = pending_now.clone();
                 let mut current_free = Arc::unwrap_or_clone(base_state.free_labels.clone());
                 let mut current_next = base_state.next_label;
-                let mut current_component_phases = base_state.stereo_component_phases.to_vec();
+                let mut current_component_phases =
+                    Arc::unwrap_or_clone(base_state.stereo_component_phases.clone());
                 let mut current_selected_neighbors =
-                    base_state.stereo_selected_neighbors.to_vec();
+                    Arc::unwrap_or_clone(base_state.stereo_selected_neighbors.clone());
                 let mut current_selected_orientations =
-                    base_state.stereo_selected_orientations.to_vec();
+                    Arc::unwrap_or_clone(base_state.stereo_selected_orientations.clone());
                 let mut current_first_emitted_candidates =
-                    base_state.stereo_first_emitted_candidates.to_vec();
+                    Arc::unwrap_or_clone(base_state.stereo_first_emitted_candidates.clone());
                 let mut current_component_begin_atoms =
-                    base_state.stereo_component_begin_atoms.to_vec();
+                    Arc::unwrap_or_clone(base_state.stereo_component_begin_atoms.clone());
                 let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
                     closures_here.len() * 2 + opening_target_count,
                 );
@@ -2750,12 +2779,17 @@ fn enter_atom_successors_by_token(
                             pending: Arc::new(current_pending.clone()),
                             free_labels: Arc::new(current_free.clone()),
                             next_label: current_next,
-                            stereo_component_phases: current_component_phases.clone(),
-                            stereo_selected_neighbors: current_selected_neighbors.clone(),
-                            stereo_selected_orientations: current_selected_orientations.clone(),
-                            stereo_first_emitted_candidates: current_first_emitted_candidates
-                                .clone(),
-                            stereo_component_begin_atoms: current_component_begin_atoms.clone(),
+                            stereo_component_phases: Arc::new(current_component_phases.clone()),
+                            stereo_selected_neighbors: Arc::new(current_selected_neighbors.clone()),
+                            stereo_selected_orientations: Arc::new(
+                                current_selected_orientations.clone(),
+                            ),
+                            stereo_first_emitted_candidates: Arc::new(
+                                current_first_emitted_candidates.clone(),
+                            ),
+                            stereo_component_begin_atoms: Arc::new(
+                                current_component_begin_atoms.clone(),
+                            ),
                             stereo_component_token_flips: base_state
                                 .stereo_component_token_flips
                                 .clone(),
@@ -3240,11 +3274,11 @@ fn process_children_successors_by_token(
             parent_idx,
             &edge_part,
         )?;
-        successor.stereo_selected_neighbors = updated_neighbors;
-        successor.stereo_selected_orientations = updated_orientations;
-        successor.stereo_first_emitted_candidates = updated_first_candidates;
-        successor.stereo_component_phases = updated_phases;
-        successor.stereo_component_begin_atoms = updated_begin_atoms;
+        successor.stereo_selected_neighbors = Arc::new(updated_neighbors);
+        successor.stereo_selected_orientations = Arc::new(updated_orientations);
+        successor.stereo_first_emitted_candidates = Arc::new(updated_first_candidates);
+        successor.stereo_component_phases = Arc::new(updated_phases);
+        successor.stereo_component_begin_atoms = Arc::new(updated_begin_atoms);
         if next_branch_index + 1 < child_order.len() {
             successor.action_stack.push(WalkerAction::ProcessChildren {
                 parent_idx,
@@ -3337,11 +3371,11 @@ fn process_children_successors_by_token(
     )?;
     let mut base_state = state.clone();
     base_state.action_stack.pop();
-    base_state.stereo_selected_neighbors = updated_neighbors;
-    base_state.stereo_selected_orientations = updated_orientations;
-    base_state.stereo_first_emitted_candidates = updated_first_candidates;
-    base_state.stereo_component_phases = updated_phases;
-    base_state.stereo_component_begin_atoms = updated_begin_atoms;
+    base_state.stereo_selected_neighbors = Arc::new(updated_neighbors);
+    base_state.stereo_selected_orientations = Arc::new(updated_orientations);
+    base_state.stereo_first_emitted_candidates = Arc::new(updated_first_candidates);
+    base_state.stereo_component_phases = Arc::new(updated_phases);
+    base_state.stereo_component_begin_atoms = Arc::new(updated_begin_atoms);
     normalize_component_token_flips(runtime, graph, &mut base_state)?;
 
     match edge_part {
@@ -3917,11 +3951,15 @@ fn exact_successors_from_stereo_state_drained(
                     }
                     let outcome: PyResult<()> = (|| {
                         let atom_token = if !is_chiral_atom {
-                            graph.atom_tokens[atom_idx].clone()
+                            Cow::Borrowed(graph.atom_tokens[atom_idx].as_str())
                         } else {
                             let emitted_neighbor_order =
                                 stereo_neighbor_order(graph, atom_idx, parent_idx, &[], child_order)?;
-                            stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?
+                            Cow::Owned(stereo_atom_token(
+                                graph,
+                                atom_idx,
+                                &emitted_neighbor_order,
+                            )?)
                         };
                         let mut successor = RootedConnectedStereoWalkerStateData {
                             prefix: state.prefix.clone(),
@@ -3959,7 +3997,7 @@ fn exact_successors_from_stereo_state_drained(
                                 next_branch_index: 0,
                             });
                         }
-                        push_literal_token(&mut successor.prefix, &atom_token);
+                        push_literal_token(&mut successor.prefix, atom_token.as_ref());
                         push_exact_stereo_successor(&mut successors, successor);
                         Ok(())
                     })();

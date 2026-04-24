@@ -71,8 +71,10 @@ Supported writer flags:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-Unsupported combinations fail fast with `NotImplementedError`. Molecules with
-multiple disconnected fragments are supported here, in
+Unsupported flag combinations fail fast with `NotImplementedError`. Other
+invalid public inputs can still raise more specific exceptions such as
+`IndexError` or `ValueError`. Molecules with multiple disconnected fragments
+are supported here, in
 `MolToSmilesDecoder(...)`, in `MolToSmilesDeterminizedDecoder(...)`, and in
 `MolToSmilesTokenInventory(...)`.
 
@@ -217,15 +219,18 @@ This returns the exact sorted tuple of reachable decoder tokens for one
 molecule under the same public writer flags.
 
 When `rootedAtAtom=None`, it unions the exact reachable token inventories
-across all roots. For disconnected molecules it includes the `"."` separator
-token when fragment transitions are reachable under the requested root mode.
+across all roots. When `rootedAtAtom >= 0`, it reports the inventory for that
+rooted public runtime. For disconnected molecules it includes the `"."`
+separator token when fragment transitions are reachable under the requested
+root mode.
 
 This is an exact runtime inventory, not a probabilistic distribution and not a
 general-purpose tokenizer vocabulary.
 
 Unlike the decoders, `MolToSmilesTokenInventory(...)` uses `rootedAtAtom=None`
-to mean "union across all roots". `rootedAtAtom=-1` is the unrooted decoder
-mode used by `MolToSmilesEnum(...)` and the decoder classes.
+to mean "union across all roots". `rootedAtAtom=-1` is the all-roots enum /
+merged-decoder mode used by `MolToSmilesEnum(...)` and the decoder classes,
+not the token-inventory spelling.
 
 ## Correctness
 

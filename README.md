@@ -70,9 +70,14 @@ Today, pass:
 
 - `canonical=False`
 - `doRandom=True`
-- `rootedAtAtom=-1` or `rootedAtAtom >= 0`
+- `rootedAtAtom=-1` or `rootedAtAtom >= 0` for `MolToSmilesEnum(...)` and
+  the decoder classes
+- `rootedAtAtom=None` or `rootedAtAtom >= 0` for
+  `MolToSmilesTokenInventory(...)`
 
-Unsupported combinations fail fast with `NotImplementedError`.
+Unsupported flag combinations fail fast with `NotImplementedError`. Other
+invalid public inputs can still raise more specific exceptions such as
+`IndexError` or `ValueError`.
 
 The most important `rootedAtAtom` semantics are:
 
@@ -298,7 +303,10 @@ is implemented today.
 
 Required runtime values today:
 
-- `rootedAtAtom == -1` or `rootedAtAtom >= 0`
+- `rootedAtAtom == -1` or `rootedAtAtom >= 0` for `MolToSmilesEnum(...)` and
+  the decoder classes
+- `rootedAtAtom is None` or `rootedAtAtom >= 0` for
+  `MolToSmilesTokenInventory(...)`
 - `canonical=False`
 - `doRandom=True`
 
@@ -310,7 +318,9 @@ Supported writer flags:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-Unsupported combinations fail fast with `NotImplementedError`.
+Unsupported flag combinations fail fast with `NotImplementedError`. Other
+invalid public inputs can still raise more specific exceptions such as
+`IndexError` or `ValueError`.
 
 Disconnected molecules are supported by the public APIs.
 

@@ -3315,7 +3315,14 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                 stack
                             },
                         };
-                        if !child_order.is_empty() {
+                        if child_order.len() == 1 {
+                            push_single_exact_child_action(
+                                graph,
+                                &mut successor.action_stack,
+                                atom_idx,
+                                child_order[0],
+                            )?;
+                        } else if !child_order.is_empty() {
                             successor.action_stack.push(WalkerAction::ProcessChildren {
                                 parent_idx: atom_idx,
                                 child_order: Arc::<[usize]>::from(child_order.to_vec()),
@@ -3803,6 +3810,30 @@ fn process_children_successors_without_bond_stereo_exact(
     Ok(vec![base_state])
 }
 
+fn push_single_exact_child_action(
+    graph: &PreparedSmilesGraphData,
+    stack: &mut Vec<WalkerAction>,
+    parent_idx: usize,
+    child_idx: usize,
+) -> PyResult<()> {
+    let bond_token = graph
+        .bond_token(parent_idx, child_idx)
+        .ok_or_else(|| {
+            PyKeyError::new_err(format!(
+                "No bond between atoms {parent_idx} and {child_idx}"
+            ))
+        })?
+        .to_owned();
+    stack.push(WalkerAction::EnterAtom {
+        atom_idx: child_idx,
+        parent_idx: Some(parent_idx),
+    });
+    if !bond_token.is_empty() {
+        stack.push(WalkerAction::EmitLiteral(bond_token));
+    }
+    Ok(())
+}
+
 fn can_complete_from_stereo_state_memo(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4112,7 +4143,14 @@ fn exact_successors_from_atom_stereo_state_drained(
                                 stack
                             },
                         };
-                        if !child_order.is_empty() {
+                        if child_order.len() == 1 {
+                            push_single_exact_child_action(
+                                graph,
+                                &mut successor.action_stack,
+                                atom_idx,
+                                child_order[0],
+                            )?;
+                        } else if !child_order.is_empty() {
                             successor.action_stack.push(WalkerAction::ProcessChildren {
                                 parent_idx: atom_idx,
                                 child_order: Arc::<[usize]>::from(child_order.to_vec()),

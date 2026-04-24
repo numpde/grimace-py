@@ -3200,6 +3200,118 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 }
             }
         }
+        if ring_actions.len() <= 1 && chosen_children.len() <= 1 {
+            let direct: PyResult<()> = (|| {
+                let mut current_pending = Arc::unwrap_or_clone(pending_base.clone());
+                let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
+                let mut current_next = state.dynamic.next_label;
+                let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
+                    closures_here.len() * 2 + opening_target_count,
+                );
+                let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
+                if let Some(ring_action) = ring_actions.first() {
+                    match *ring_action {
+                        RingAction::Close(closure_idx) => {
+                            let closure = &closures_here[closure_idx];
+                            let bond_token = graph
+                                .bond_token(atom_idx, closure.other_atom_idx)
+                                .ok_or_else(|| {
+                                    PyKeyError::new_err(format!(
+                                        "No bond between atoms {atom_idx} and {}",
+                                        closure.other_atom_idx
+                                    ))
+                                })?
+                                .to_owned();
+                            if !bond_token.is_empty() {
+                                current_ring_actions.push(WalkerAction::EmitLiteral(bond_token));
+                            }
+                            current_ring_actions.push(WalkerAction::EmitRingLabel(closure.label));
+                            insert_sorted(&mut current_free, closure.label);
+                            if let Some(order) = &mut ring_neighbor_order {
+                                order.push(closure.other_atom_idx);
+                            }
+                        }
+                        RingAction::Open(target_idx) => {
+                            let label = allocate_label(&mut current_free, &mut current_next);
+                            current_ring_actions.push(WalkerAction::EmitRingLabel(label));
+                            add_pending(
+                                &mut current_pending,
+                                target_idx,
+                                PendingRing {
+                                    label,
+                                    other_atom_idx: atom_idx,
+                                },
+                            );
+                            if let Some(order) = &mut ring_neighbor_order {
+                                order.push(target_idx);
+                            }
+                        }
+                    }
+                }
+                let child_order = chosen_children;
+                let atom_token = if !is_chiral_atom {
+                    Cow::Borrowed(graph.atom_tokens[atom_idx].as_str())
+                } else {
+                    let emitted_neighbor_order = stereo_neighbor_order(
+                        graph,
+                        atom_idx,
+                        parent_idx,
+                        ring_neighbor_order.as_deref().unwrap_or(&[]),
+                        child_order,
+                    )?;
+                    Cow::Owned(stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?)
+                };
+                let mut successor = RootedConnectedStereoExactStateData {
+                    prefix: if !is_chiral_atom {
+                        let mut prefix = state.prefix.clone();
+                        push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
+                        prefix
+                    } else {
+                        state.prefix.clone()
+                    },
+                    dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
+                        visited: visited_now.clone(),
+                        visited_count: visited_count_now,
+                        pending: if opening_target_count == 0 {
+                            pending_base.clone()
+                        } else {
+                            Arc::new(current_pending)
+                        },
+                        free_labels: Arc::new(current_free),
+                        next_label: current_next,
+                    }),
+                    action_stack: {
+                        let mut stack = Vec::with_capacity(
+                            base_action_stack.len()
+                                + current_ring_actions.len()
+                                + usize::from(!child_order.is_empty()),
+                        );
+                        stack.extend_from_slice(base_action_stack);
+                        stack
+                    },
+                };
+                if let Some(&child_idx) = child_order.first() {
+                    push_single_exact_child_action(
+                        graph,
+                        &mut successor.action_stack,
+                        atom_idx,
+                        child_idx,
+                    )?;
+                }
+                for action in current_ring_actions.iter().rev() {
+                    successor.action_stack.push(action.clone());
+                }
+                if is_chiral_atom {
+                    push_literal_token(&mut successor.prefix, atom_token.as_ref());
+                }
+                successors.push(successor);
+                Ok(())
+            })();
+            if let Err(err) = direct {
+                status = Err(err);
+            }
+            return;
+        }
         successors.reserve(
             small_permutation_count(ring_actions.len())
                 .saturating_mul(small_permutation_count(chosen_children.len())),

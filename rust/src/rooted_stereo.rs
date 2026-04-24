@@ -66,6 +66,22 @@ enum Part {
     Deferred(DeferredDirectionalToken),
 }
 
+struct EmittedEdgePartResult {
+    part: Part,
+    selected_neighbors: Vec<isize>,
+    selected_orientations: Vec<i8>,
+    first_emitted_candidates: Vec<isize>,
+}
+
+struct ProcessChildrenEdgeUpdate {
+    edge_part: Part,
+    selected_neighbors: Vec<isize>,
+    selected_orientations: Vec<i8>,
+    first_emitted_candidates: Vec<isize>,
+    component_phases: Vec<i8>,
+    component_begin_atoms: Vec<isize>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct StereoSideInfo {
     component_idx: usize,
@@ -1848,6 +1864,79 @@ fn forced_shared_candidate_neighbor(
     Some(shared_neighbor)
 }
 
+fn literal_bond_part(
+    graph: &PreparedSmilesGraphData,
+    begin_idx: usize,
+    end_idx: usize,
+) -> PyResult<Part> {
+    Ok(Part::Literal(
+        graph
+            .bond_token(begin_idx, end_idx)
+            .ok_or_else(|| {
+                PyKeyError::new_err(format!("No bond between atoms {begin_idx} and {end_idx}"))
+            })?
+            .to_owned(),
+    ))
+}
+
+fn literal_edge_result(
+    graph: &PreparedSmilesGraphData,
+    begin_idx: usize,
+    end_idx: usize,
+    selected_neighbors: &[isize],
+    selected_orientations: &[i8],
+    first_emitted_candidates: &[isize],
+) -> PyResult<EmittedEdgePartResult> {
+    Ok(EmittedEdgePartResult {
+        part: literal_bond_part(graph, begin_idx, end_idx)?,
+        selected_neighbors: selected_neighbors.to_vec(),
+        selected_orientations: selected_orientations.to_vec(),
+        first_emitted_candidates: first_emitted_candidates.to_vec(),
+    })
+}
+
+fn edge_result_with_part(
+    part: Part,
+    selected_neighbors: Vec<isize>,
+    selected_orientations: Vec<i8>,
+    first_emitted_candidates: Vec<isize>,
+) -> EmittedEdgePartResult {
+    EmittedEdgePartResult {
+        part,
+        selected_neighbors,
+        selected_orientations,
+        first_emitted_candidates,
+    }
+}
+
+fn deferred_edge_part(
+    stored_tokens: &[(usize, String)],
+    begin_idx: usize,
+    end_idx: usize,
+) -> PyResult<Part> {
+    let component_idx = stored_tokens[0].0;
+    let stored_token = stored_tokens[0].1.clone();
+    for (other_component_idx, other_stored_token) in &stored_tokens[1..] {
+        if *other_component_idx != component_idx {
+            return Err(PyValueError::new_err(
+                "Carrier edge unexpectedly spans multiple stereo components",
+            ));
+        }
+        if *other_stored_token != stored_token {
+            return Err(PyValueError::new_err(
+                "Carrier edge received conflicting stereo token assignments",
+            ));
+        }
+    }
+
+    Ok(Part::Deferred(DeferredDirectionalToken {
+        component_idx,
+        stored_token,
+        begin_idx: begin_idx as isize,
+        end_idx: end_idx as isize,
+    }))
+}
+
 fn emitted_edge_part_generic(
     graph: &PreparedSmilesGraphData,
     side_infos: &[StereoSideInfo],
@@ -1858,23 +1947,16 @@ fn emitted_edge_part_generic(
     first_emitted_candidates: &[isize],
     begin_idx: usize,
     end_idx: usize,
-) -> PyResult<(Part, Vec<isize>, Vec<i8>, Vec<isize>)> {
+) -> PyResult<EmittedEdgePartResult> {
     let Some(side_ids) = edge_to_side_ids.get(&canonical_edge(begin_idx, end_idx)) else {
-        return Ok((
-            Part::Literal(
-                graph
-                    .bond_token(begin_idx, end_idx)
-                    .ok_or_else(|| {
-                        PyKeyError::new_err(format!(
-                            "No bond between atoms {begin_idx} and {end_idx}"
-                        ))
-                    })?
-                    .to_owned(),
-            ),
-            selected_neighbors.to_vec(),
-            selected_orientations.to_vec(),
-            first_emitted_candidates.to_vec(),
-        ));
+        return literal_edge_result(
+            graph,
+            begin_idx,
+            end_idx,
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+        );
     };
 
     let mut updated_neighbors = selected_neighbors.to_vec();
@@ -1935,45 +2017,16 @@ fn emitted_edge_part_generic(
     }
 
     if stored_tokens.is_empty() {
-        return Ok((
-            Part::Literal(
-                graph
-                    .bond_token(begin_idx, end_idx)
-                    .ok_or_else(|| {
-                        PyKeyError::new_err(format!(
-                            "No bond between atoms {begin_idx} and {end_idx}"
-                        ))
-                    })?
-                    .to_owned(),
-            ),
+        return Ok(edge_result_with_part(
+            literal_bond_part(graph, begin_idx, end_idx)?,
             updated_neighbors,
             updated_orientations,
             updated_first_candidates,
         ));
     }
 
-    let component_idx = stored_tokens[0].0;
-    let stored_token = stored_tokens[0].1.clone();
-    for (other_component_idx, other_stored_token) in &stored_tokens[1..] {
-        if *other_component_idx != component_idx {
-            return Err(PyValueError::new_err(
-                "Carrier edge unexpectedly spans multiple stereo components",
-            ));
-        }
-        if *other_stored_token != stored_token {
-            return Err(PyValueError::new_err(
-                "Carrier edge received conflicting stereo token assignments",
-            ));
-        }
-    }
-
-    Ok((
-        Part::Deferred(DeferredDirectionalToken {
-            component_idx,
-            stored_token,
-            begin_idx: begin_idx as isize,
-            end_idx: end_idx as isize,
-        }),
+    Ok(edge_result_with_part(
+        deferred_edge_part(&stored_tokens, begin_idx, end_idx)?,
         updated_neighbors,
         updated_orientations,
         updated_first_candidates,
@@ -1991,23 +2044,16 @@ fn emitted_isolated_edge_part(
     component_begin_atoms: &[isize],
     begin_idx: usize,
     end_idx: usize,
-) -> PyResult<(Part, Vec<isize>, Vec<i8>, Vec<isize>)> {
+) -> PyResult<EmittedEdgePartResult> {
     let Some(side_ids) = edge_to_side_ids.get(&canonical_edge(begin_idx, end_idx)) else {
-        return Ok((
-            Part::Literal(
-                graph
-                    .bond_token(begin_idx, end_idx)
-                    .ok_or_else(|| {
-                        PyKeyError::new_err(format!(
-                            "No bond between atoms {begin_idx} and {end_idx}"
-                        ))
-                    })?
-                    .to_owned(),
-            ),
-            selected_neighbors.to_vec(),
-            selected_orientations.to_vec(),
-            first_emitted_candidates.to_vec(),
-        ));
+        return literal_edge_result(
+            graph,
+            begin_idx,
+            end_idx,
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+        );
     };
 
     let mut updated_neighbors = selected_neighbors.to_vec();
@@ -2086,45 +2132,16 @@ fn emitted_isolated_edge_part(
     }
 
     if stored_tokens.is_empty() {
-        return Ok((
-            Part::Literal(
-                graph
-                    .bond_token(begin_idx, end_idx)
-                    .ok_or_else(|| {
-                        PyKeyError::new_err(format!(
-                            "No bond between atoms {begin_idx} and {end_idx}"
-                        ))
-                    })?
-                    .to_owned(),
-            ),
+        return Ok(edge_result_with_part(
+            literal_bond_part(graph, begin_idx, end_idx)?,
             updated_neighbors,
             updated_orientations,
             updated_first_candidates,
         ));
     }
 
-    let component_idx = stored_tokens[0].0;
-    let stored_token = stored_tokens[0].1.clone();
-    for (other_component_idx, other_stored_token) in &stored_tokens[1..] {
-        if *other_component_idx != component_idx {
-            return Err(PyValueError::new_err(
-                "Carrier edge unexpectedly spans multiple stereo components",
-            ));
-        }
-        if *other_stored_token != stored_token {
-            return Err(PyValueError::new_err(
-                "Carrier edge received conflicting stereo token assignments",
-            ));
-        }
-    }
-
-    Ok((
-        Part::Deferred(DeferredDirectionalToken {
-            component_idx,
-            stored_token,
-            begin_idx: begin_idx as isize,
-            end_idx: end_idx as isize,
-        }),
+    Ok(edge_result_with_part(
+        deferred_edge_part(&stored_tokens, begin_idx, end_idx)?,
         updated_neighbors,
         updated_orientations,
         updated_first_candidates,
@@ -2144,24 +2161,17 @@ fn emitted_edge_part(
     isolated_components: &[bool],
     begin_idx: usize,
     end_idx: usize,
-) -> PyResult<(Part, Vec<isize>, Vec<i8>, Vec<isize>)> {
+) -> PyResult<EmittedEdgePartResult> {
     let edge = canonical_edge(begin_idx, end_idx);
     let Some(side_ids) = edge_to_side_ids.get(&edge) else {
-        return Ok((
-            Part::Literal(
-                graph
-                    .bond_token(begin_idx, end_idx)
-                    .ok_or_else(|| {
-                        PyKeyError::new_err(format!(
-                            "No bond between atoms {begin_idx} and {end_idx}"
-                        ))
-                    })?
-                    .to_owned(),
-            ),
-            selected_neighbors.to_vec(),
-            selected_orientations.to_vec(),
-            first_emitted_candidates.to_vec(),
-        ));
+        return literal_edge_result(
+            graph,
+            begin_idx,
+            end_idx,
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+        );
     };
 
     let uses_isolated_component = side_ids.iter().any(|&side_idx| {
@@ -2185,21 +2195,25 @@ fn emitted_edge_part(
             end_idx,
         )
     } else {
-        let (part, updated_neighbors, updated_orientations, updated_first_candidates) =
-            emitted_edge_part_generic(
-                graph,
-                side_infos,
-                edge_to_side_ids,
-                component_phases,
-                selected_neighbors,
-                selected_orientations,
-                first_emitted_candidates,
-                begin_idx,
-                end_idx,
-            )?;
+        let EmittedEdgePartResult {
+            selected_neighbors: updated_neighbors,
+            selected_orientations: updated_orientations,
+            first_emitted_candidates: updated_first_candidates,
+            ..
+        } = emitted_edge_part_generic(
+            graph,
+            side_infos,
+            edge_to_side_ids,
+            component_phases,
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+            begin_idx,
+            end_idx,
+        )?;
         if side_ids.is_empty() {
-            return Ok((
-                part,
+            return Ok(edge_result_with_part(
+                literal_bond_part(graph, begin_idx, end_idx)?,
                 updated_neighbors,
                 updated_orientations,
                 updated_first_candidates,
@@ -2221,7 +2235,7 @@ fn emitted_edge_part(
                 ));
             }
         }
-        Ok((
+        Ok(edge_result_with_part(
             Part::Deferred(DeferredDirectionalToken {
                 component_idx,
                 stored_token,
@@ -2233,6 +2247,95 @@ fn emitted_edge_part(
             updated_first_candidates,
         ))
     }
+}
+
+fn process_children_edge_update(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    parent_idx: usize,
+    child_order: &[usize],
+    child_idx: usize,
+) -> PyResult<ProcessChildrenEdgeUpdate> {
+    let (current_phases, current_begin_atoms) = eager_component_phases_for_child_order(
+        runtime,
+        graph,
+        &state.stereo_component_phases,
+        &state.stereo_component_begin_atoms,
+        &state.stereo_selected_neighbors,
+        parent_idx,
+        child_order,
+    )?;
+    let (current_selected_neighbors, current_selected_orientations, current_first_candidates) =
+        eager_begin_side_child_order_state(
+            runtime,
+            &current_begin_atoms,
+            &state.stereo_selected_neighbors,
+            &state.stereo_selected_orientations,
+            &state.stereo_first_emitted_candidates,
+            parent_idx,
+            child_order,
+        );
+    let EmittedEdgePartResult {
+        part: edge_part,
+        selected_neighbors: updated_neighbors,
+        selected_orientations: updated_orientations,
+        first_emitted_candidates: updated_first_candidates,
+    } = emitted_edge_part(
+        graph,
+        &runtime.side_infos,
+        &runtime.side_ids_by_component,
+        &runtime.edge_to_side_ids,
+        &current_phases,
+        &current_selected_neighbors,
+        &current_selected_orientations,
+        &current_first_candidates,
+        &current_begin_atoms,
+        &runtime.isolated_components,
+        parent_idx,
+        child_idx,
+    )?;
+    let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
+        graph,
+        &runtime.stereo_component_ids,
+        &runtime.isolated_components,
+        &current_phases,
+        &current_begin_atoms,
+        parent_idx,
+        child_idx,
+    )?;
+    let (updated_neighbors, updated_orientations) = force_known_begin_side_selection(
+        runtime,
+        &updated_phases,
+        &updated_begin_atoms,
+        &updated_neighbors,
+        &updated_orientations,
+    );
+    let (updated_phases, updated_begin_atoms) =
+        defer_coupled_component_phase_if_begin_side_is_unresolved(
+            runtime,
+            graph,
+            &updated_phases,
+            &updated_begin_atoms,
+            &updated_neighbors,
+            parent_idx,
+            child_idx,
+        )?;
+    let updated_phases = commit_coupled_component_phase_from_deferred_part(
+        runtime,
+        &updated_phases,
+        &updated_begin_atoms,
+        parent_idx,
+        &edge_part,
+    )?;
+    Ok(ProcessChildrenEdgeUpdate {
+        edge_part,
+        selected_neighbors: updated_neighbors,
+        selected_orientations: updated_orientations,
+        first_emitted_candidates: updated_first_candidates,
+        component_phases: updated_phases,
+        component_begin_atoms: updated_begin_atoms,
+    })
 }
 
 fn resolved_selected_neighbors_from_fields(
@@ -2931,12 +3034,12 @@ fn enter_atom_successors_by_token(
                     match *ring_action {
                         RingAction::Close(closure_idx) => {
                             let closure = &closures_here[closure_idx];
-                            let (
-                                bond_part,
-                                updated_neighbors,
-                                updated_orientations,
-                                updated_first_candidates,
-                            ) = emitted_edge_part(
+                            let EmittedEdgePartResult {
+                                part: bond_part,
+                                selected_neighbors: updated_neighbors,
+                                selected_orientations: updated_orientations,
+                                first_emitted_candidates: updated_first_candidates,
+                            } = emitted_edge_part(
                                 graph,
                                 &runtime.side_infos,
                                 &runtime.side_ids_by_component,
@@ -3636,78 +3739,26 @@ fn process_children_successors_by_token(
         let mut successor = state.clone();
         successor.action_stack.pop();
         push_char_token(&mut successor.prefix, '(');
-        let (current_phases, current_begin_atoms) = eager_component_phases_for_child_order(
+        let ProcessChildrenEdgeUpdate {
+            edge_part,
+            selected_neighbors,
+            selected_orientations,
+            first_emitted_candidates,
+            component_phases,
+            component_begin_atoms,
+        } = process_children_edge_update(
             runtime,
             graph,
-            &successor.stereo_component_phases,
-            &successor.stereo_component_begin_atoms,
-            &successor.stereo_selected_neighbors,
+            state,
             parent_idx,
             child_order.as_ref(),
-        )?;
-        let (current_selected_neighbors, current_selected_orientations, current_first_candidates) =
-            eager_begin_side_child_order_state(
-                runtime,
-                &current_begin_atoms,
-                &successor.stereo_selected_neighbors,
-                &successor.stereo_selected_orientations,
-                &successor.stereo_first_emitted_candidates,
-                parent_idx,
-                child_order.as_ref(),
-            );
-        let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
-            emitted_edge_part(
-                graph,
-                &runtime.side_infos,
-                &runtime.side_ids_by_component,
-                &runtime.edge_to_side_ids,
-                &current_phases,
-                &current_selected_neighbors,
-                &current_selected_orientations,
-                &current_first_candidates,
-                &current_begin_atoms,
-                &runtime.isolated_components,
-                parent_idx,
-                child_idx,
-            )?;
-        let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-            graph,
-            &runtime.stereo_component_ids,
-            &runtime.isolated_components,
-            &current_phases,
-            &current_begin_atoms,
-            parent_idx,
             child_idx,
         )?;
-        let (updated_neighbors, updated_orientations) = force_known_begin_side_selection(
-            runtime,
-            &updated_phases,
-            &updated_begin_atoms,
-            &updated_neighbors,
-            &updated_orientations,
-        );
-        let (updated_phases, updated_begin_atoms) =
-            defer_coupled_component_phase_if_begin_side_is_unresolved(
-                runtime,
-                graph,
-                &updated_phases,
-                &updated_begin_atoms,
-                &updated_neighbors,
-                parent_idx,
-                child_idx,
-            )?;
-        let updated_phases = commit_coupled_component_phase_from_deferred_part(
-            runtime,
-            &updated_phases,
-            &updated_begin_atoms,
-            parent_idx,
-            &edge_part,
-        )?;
-        successor.stereo_selected_neighbors = Arc::new(updated_neighbors);
-        successor.stereo_selected_orientations = Arc::new(updated_orientations);
-        successor.stereo_first_emitted_candidates = Arc::new(updated_first_candidates);
-        successor.stereo_component_phases = Arc::new(updated_phases);
-        successor.stereo_component_begin_atoms = Arc::new(updated_begin_atoms);
+        successor.stereo_selected_neighbors = Arc::new(selected_neighbors);
+        successor.stereo_selected_orientations = Arc::new(selected_orientations);
+        successor.stereo_first_emitted_candidates = Arc::new(first_emitted_candidates);
+        successor.stereo_component_phases = Arc::new(component_phases);
+        successor.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
         if next_branch_index + 1 < child_order.len() {
             successor.action_stack.push(WalkerAction::ProcessChildren {
                 parent_idx,
@@ -3728,80 +3779,28 @@ fn process_children_successors_by_token(
     }
 
     let child_idx = child_order[child_order.len() - 1];
-    let (current_phases, current_begin_atoms) = eager_component_phases_for_child_order(
+    let ProcessChildrenEdgeUpdate {
+        edge_part,
+        selected_neighbors,
+        selected_orientations,
+        first_emitted_candidates,
+        component_phases,
+        component_begin_atoms,
+    } = process_children_edge_update(
         runtime,
         graph,
-        &state.stereo_component_phases,
-        &state.stereo_component_begin_atoms,
-        &state.stereo_selected_neighbors,
+        state,
         parent_idx,
         child_order.as_ref(),
-    )?;
-    let (current_selected_neighbors, current_selected_orientations, current_first_candidates) =
-        eager_begin_side_child_order_state(
-            runtime,
-            &current_begin_atoms,
-            &state.stereo_selected_neighbors,
-            &state.stereo_selected_orientations,
-            &state.stereo_first_emitted_candidates,
-            parent_idx,
-            child_order.as_ref(),
-        );
-    let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
-        emitted_edge_part(
-            graph,
-            &runtime.side_infos,
-            &runtime.side_ids_by_component,
-            &runtime.edge_to_side_ids,
-            &current_phases,
-            &current_selected_neighbors,
-            &current_selected_orientations,
-            &current_first_candidates,
-            &current_begin_atoms,
-            &runtime.isolated_components,
-            parent_idx,
-            child_idx,
-        )?;
-    let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-        graph,
-        &runtime.stereo_component_ids,
-        &runtime.isolated_components,
-        &current_phases,
-        &current_begin_atoms,
-        parent_idx,
         child_idx,
-    )?;
-    let (updated_neighbors, updated_orientations) = force_known_begin_side_selection(
-        runtime,
-        &updated_phases,
-        &updated_begin_atoms,
-        &updated_neighbors,
-        &updated_orientations,
-    );
-    let (updated_phases, updated_begin_atoms) =
-        defer_coupled_component_phase_if_begin_side_is_unresolved(
-            runtime,
-            graph,
-            &updated_phases,
-            &updated_begin_atoms,
-            &updated_neighbors,
-            parent_idx,
-            child_idx,
-        )?;
-    let updated_phases = commit_coupled_component_phase_from_deferred_part(
-        runtime,
-        &updated_phases,
-        &updated_begin_atoms,
-        parent_idx,
-        &edge_part,
     )?;
     let mut base_state = state.clone();
     base_state.action_stack.pop();
-    base_state.stereo_selected_neighbors = Arc::new(updated_neighbors);
-    base_state.stereo_selected_orientations = Arc::new(updated_orientations);
-    base_state.stereo_first_emitted_candidates = Arc::new(updated_first_candidates);
-    base_state.stereo_component_phases = Arc::new(updated_phases);
-    base_state.stereo_component_begin_atoms = Arc::new(updated_begin_atoms);
+    base_state.stereo_selected_neighbors = Arc::new(selected_neighbors);
+    base_state.stereo_selected_orientations = Arc::new(selected_orientations);
+    base_state.stereo_first_emitted_candidates = Arc::new(first_emitted_candidates);
+    base_state.stereo_component_phases = Arc::new(component_phases);
+    base_state.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
     normalize_component_token_flips(runtime, graph, &mut base_state)?;
 
     match edge_part {

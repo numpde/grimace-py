@@ -2,17 +2,27 @@
 
 SMILES enumeration with exact next-token decoding.
 
-`grimace` is a Rust-first cheminformatics library for exact rooted SMILES
-enumeration, exact token inventory extraction, and online next-token decoding
-from RDKit molecules. It computes the full rooted SMILES support of a molecule
-under an RDKit-style writing regime, and it can also step through that support
-one token at a time: at each prefix it exposes the legal next choices, then
-advances when you choose one. By "support" we mean the full set of reachable
-rooted SMILES strings for the given molecule and writer flags.
+`grimace` is a Rust-first cheminformatics library for RDKit molecules. It
+answers two questions that RDKit does not expose directly:
 
-The reason this library exists is that RDKit does not provide a deterministic
-SMILES enumeration routine, and it does not expose the legal continuations of a
-SMILES prefix as an online decoding API.
+- What is the exact rooted SMILES support of this molecule under a given
+  RDKit-style writer regime?
+- Given the prefix emitted so far, what tokens are legal next continuations?
+
+By "support" we mean the full set of reachable rooted SMILES strings for the
+chosen writer flags. A "rooted SMILES" here is a SMILES string generated with a
+fixed starting atom.
+
+`grimace` can:
+
+- enumerate that exact support
+- expose the exact token inventory implied by that support
+- decode online, one token at a time, from a current prefix
+
+The reason this library exists is that RDKit does not provide either:
+
+- an exact rooted SMILES enumeration routine
+- an online next-token decoding API for SMILES prefixes
 
 `grimace` targets the current stable RDKit writer convention, currently
 `RDKit 2026.03.1`. Older slash/backslash serialization conventions are out of
@@ -28,24 +38,67 @@ with language transformers ([link](https://numpde.github.io/shared/msc/)).
 > This library is work in progress. Expect API changes, incomplete feature
 > coverage, and rough edges between releases.
 
-## Public API
+## Choose The API
 
 The only supported public Python package is `grimace`.
 
-Current entrypoints:
+Main entrypoints:
 
 - `MolToSmilesEnum(...)`
+  Returns the exact SMILES support as an iterator of finished strings.
 - `MolToSmilesDecoder(...)`
+  Returns an online branch-preserving decoder state.
 - `MolToSmilesDeterminizedDecoder(...)`
+  Returns an online decoder that merges same-text next choices.
 - `MolToSmilesTokenInventory(...)`
+  Returns the exact set of tokens that can appear in one decoder step.
 
-Supporting public result type:
+Supporting public type:
 
 - `MolToSmilesChoice`
+  Each choice has `.text` for the emitted token and `.next_state` for the
+  decoder state after taking that token.
 
 The public API uses the compiled Rust extension end to end.
 
+## Important Runtime Requirements Today
+
+The public signatures mirror RDKit flag names and defaults, but the current
+runtime intentionally supports only a strict subset.
+
+Today, pass:
+
+- `canonical=False`
+- `doRandom=True`
+- `rootedAtAtom=-1` or `rootedAtAtom >= 0`
+
+Unsupported combinations fail fast with `NotImplementedError`.
+
+The most important `rootedAtAtom` semantics are:
+
+- `rootedAtAtom=<idx>` uses one explicit starting atom.
+- `rootedAtAtom=-1` for `MolToSmilesEnum(...)` returns the exact support
+  unioned across all root atoms.
+- `rootedAtAtom=-1` for the decoder classes starts from one merged all-roots
+  decoder state.
+- `rootedAtAtom=None` for `MolToSmilesTokenInventory(...)` returns the token
+  inventory unioned across all root atoms.
+
 ## Quickstart
+
+All examples below use the current supported runtime subset:
+
+```python
+FLAGS = dict(
+    canonical=False,
+    doRandom=True,
+)
+```
+
+### 1. Enumerate The Exact Support
+
+If you want the exact support across all possible roots, `rootedAtAtom=-1` is
+the simplest public entrypoint:
 
 ```python
 from rdkit import Chem
@@ -53,38 +106,52 @@ import grimace
 
 mol = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
 
-all_smiles = {
-    smiles
-    for root_atom in range(mol.GetNumAtoms())
-    for smiles in grimace.MolToSmilesEnum(
+all_smiles = tuple(
+    grimace.MolToSmilesEnum(
         mol,
-        rootedAtAtom=root_atom,
+        rootedAtAtom=-1,
         isomericSmiles=False,
-        canonical=False,
-        doRandom=True,
+        **FLAGS,
     )
-}
+)
+
+assert len(all_smiles) == 304
 ```
 
-Then `len(all_smiles) == 304`.
+If instead you want the exact support from one specific root atom, pass that
+root explicitly:
 
+```python
+root_0_smiles = tuple(
+    grimace.MolToSmilesEnum(
+        mol,
+        rootedAtAtom=0,
+        isomericSmiles=False,
+        **FLAGS,
+    )
+)
+```
+
+### 2. Decode Online, One Token At A Time
+
+`MolToSmilesDecoder(...)` is branch-preserving. It exposes the exact legal next
+choices for the current prefix, and each choice points to a successor state.
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
     mol,
     rootedAtAtom=0,
     isomericSmiles=False,
-    canonical=False,
-    doRandom=True,
+    **FLAGS,
 )
 
-while not decoder.is_terminal:
+for _ in range(7):
     prefix = decoder.prefix if decoder.prefix else '""'
     print(f"{prefix} -> {[choice.text for choice in decoder.next_choices]}")
     decoder = decoder.next_choices[0].next_state
 ```
 
-Expected output from that exact snippet:
+Early output on aspirin looks like:
 
 ```text
 "" -> ['C']
@@ -94,47 +161,18 @@ CC( -> ['=']
 CC(= -> ['O']
 CC(=O -> [')']
 CC(=O) -> ['O']
-CC(=O)O -> ['c']
-CC(=O)Oc -> ['1', '1']
-CC(=O)Oc1 -> ['c']
-CC(=O)Oc1c -> ['c']
-CC(=O)Oc1cc -> ['c']
-CC(=O)Oc1ccc -> ['c']
-CC(=O)Oc1cccc -> ['c']
-CC(=O)Oc1ccccc -> ['1']
-CC(=O)Oc1ccccc1 -> ['C']
-CC(=O)Oc1ccccc1C -> ['(', '(']
-CC(=O)Oc1ccccc1C( -> ['=']
-CC(=O)Oc1ccccc1C(= -> ['O']
-CC(=O)Oc1ccccc1C(=O -> [')']
-CC(=O)Oc1ccccc1C(=O) -> ['O']
 ```
 
-This transcript follows `next_choices[0]` at each step. The decoder is online.
-It does not precompute one fixed trajectory. At each step it exposes the legal
-next choices for the current emitted prefix.
+Notice the duplicate `"("` at `CC`. Those are different branches with the same
+emitted token text. That is deliberate: `MolToSmilesDecoder(...)` preserves
+branch identity instead of merging it away.
 
-The decoder is branch-preserving, not a determinized frontier decoder. Here
-"branch-preserving" means `next_choices` may contain multiple choices with the
-same `choice.text` when they correspond to different underlying continuations.
-Those are semantically different choices because they carry different successor
-states. By contrast, a "determinized frontier" decoder would merge all
-same-text continuations into one combined successor state for that token.
+### 3. Merge Same-Text Choices When You Only Care About Token Text
 
-GRIMACE intentionally preserves branch identity in the public decoder. Apparent
-duplicates are therefore meaningful. This avoids hiding distinct continuations
-behind one merged token choice and avoids pushing the cost of that implicit
-determinization into the runtime.
+`MolToSmilesDeterminizedDecoder(...)` exposes at most one choice per token text
+by merging same-text continuations into one combined state.
 
-As a consequence, two decoder states may share the same `prefix` but expose
-different `next_choices`, depending on which earlier branch led there.
-
-`MolToSmilesDeterminizedDecoder(...)` is the merged alternative. It exposes at
-most one choice per token text by merging same-text continuations into one
-combined successor state. Use it when you want prefix-level next-token choices
-without preserving branch identity.
-
-For example, the unrooted determinized decoder can trace one exact route to
+For example, the merged all-roots decoder can trace one exact route to
 `c1(ccccc1OC(=O)C)C(O)=O` for aspirin:
 
 ```python
@@ -148,8 +186,7 @@ decoder = grimace.MolToSmilesDeterminizedDecoder(
     mol,
     rootedAtAtom=-1,
     isomericSmiles=False,
-    canonical=False,
-    doRandom=True,
+    **FLAGS,
 )
 
 for token in route:
@@ -160,16 +197,38 @@ assert decoder.is_terminal
 assert decoder.prefix == "".join(route)
 ```
 
-The merged early decisions on that route are:
+The first few merged decisions on that route are:
 
 - `""`: choose `"c"` from `["C", "O", "c"]`
 - `"c1"`: choose `"("` from `["(", "c"]`
 - `"c1("`: choose `"c"` from `["O", "c", "C"]`
 - `"c1(ccccc1"`: choose `"O"` from `["C", "O"]`
 
-Here a "token" means one string emitted by one decoder transition. Tokens are
-defined by the walker itself, not by splitting a finished SMILES into
-characters and not by integer token IDs. They come from two places:
+### 4. Ask For The Exact Token Inventory
+
+`MolToSmilesTokenInventory(...)` answers a different question: not "what full
+strings are possible?" but "what one-step tokens can ever appear?"
+
+```python
+inventory = grimace.MolToSmilesTokenInventory(
+    mol,
+    rootedAtAtom=None,
+    isomericSmiles=False,
+    **FLAGS,
+)
+
+assert "C" in inventory
+assert "(" in inventory
+assert "c" in inventory
+```
+
+The result is a sorted tuple of distinct tokens.
+
+### What Counts As A Token?
+
+A token is one string emitted by one decoder transition. Tokens are defined by
+the walker itself, not by splitting a finished SMILES into characters and not
+by integer token IDs. They come from two places:
 
 - the prepared graph's RDKit-style atom and bond tokens, such as `C`, `c`,
   `Cl`, `[C@H]`, `=`, `/`, or `\\`
@@ -179,7 +238,7 @@ characters and not by integer token IDs. They come from two places:
 So a token is exactly one appendable SMILES fragment for the current state. It
 may be one character or several.
 
-## pip install ...
+## Installation
 
 `grimace` currently publishes Linux `x86_64` wheels for CPython `3.12` and
 `3.13`. Other supported Python versions and platforms currently require a
@@ -204,12 +263,12 @@ maturin develop --release
 
 ## Timings
 
-The opt-in timing benchmark now generates two artifacts:
+The opt-in timing benchmark generates two artifacts:
 
 - [docs/timings.tsv](docs/timings.tsv): raw measured summary data
 - [docs/timings.md](docs/timings.md): rendered table and column descriptions
 
-The table currently reports both decoder variants:
+The table reports both decoder variants:
 
 - branch-preserving exhaustive traversal via `MolToSmilesDecoder(...)`
 - determinized exhaustive traversal via `MolToSmilesDeterminizedDecoder(...)`
@@ -226,19 +285,12 @@ Regenerate it with:
 RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest tests.perf.test_readme_timings -q
 ```
 
-## License
-
-`grimace` is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
-Third-party components remain under their own licenses; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-Commercial use requires a separate commercial license from the author.
-The software is provided as is, without warranty or liability, to the extent
-allowed by law.
-
-## Current limits
+## Current Limits
 
 The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset
-is implemented today:
+is implemented today.
+
+Required runtime values today:
 
 - `rootedAtAtom == -1` or `rootedAtAtom >= 0`
 - `canonical=False`
@@ -266,3 +318,12 @@ Disconnected molecules are supported by the public APIs.
 
 - [Docs index](docs/README.md)
 - [Python API](docs/api/python.md)
+
+## License
+
+`grimace` is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
+Third-party components remain under their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Commercial use requires a separate commercial license from the author.
+The software is provided as is, without warranty or liability, to the extent
+allowed by law.

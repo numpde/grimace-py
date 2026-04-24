@@ -3202,7 +3202,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
         }
         if ring_actions.len() <= 1 && chosen_children.len() <= 1 {
             let direct: PyResult<()> = (|| {
-                let mut current_pending = Arc::unwrap_or_clone(pending_base.clone());
+                let mut current_pending: Option<Vec<(usize, Vec<PendingRing>)>> = None;
                 let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
                 let mut current_next = state.dynamic.next_label;
                 let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
@@ -3235,7 +3235,8 @@ fn enter_atom_successors_without_bond_stereo_exact(
                             let label = allocate_label(&mut current_free, &mut current_next);
                             current_ring_actions.push(WalkerAction::EmitRingLabel(label));
                             add_pending(
-                                &mut current_pending,
+                                current_pending
+                                    .get_or_insert_with(|| Arc::unwrap_or_clone(pending_base.clone())),
                                 target_idx,
                                 PendingRing {
                                     label,
@@ -3272,11 +3273,9 @@ fn enter_atom_successors_without_bond_stereo_exact(
                     dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
                         visited: visited_now.clone(),
                         visited_count: visited_count_now,
-                        pending: if opening_target_count == 0 {
-                            pending_base.clone()
-                        } else {
-                            Arc::new(current_pending)
-                        },
+                        pending: current_pending
+                            .map(Arc::new)
+                            .unwrap_or_else(|| pending_base.clone()),
                         free_labels: Arc::new(current_free),
                         next_label: current_next,
                     }),
@@ -3323,7 +3322,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
             }
 
             let outcome: PyResult<()> = (|| {
-                let mut current_pending = Arc::unwrap_or_clone(pending_base.clone());
+                let mut current_pending: Option<Vec<(usize, Vec<PendingRing>)>> = None;
                 let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
                 let mut current_next = state.dynamic.next_label;
                 let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
@@ -3358,7 +3357,8 @@ fn enter_atom_successors_without_bond_stereo_exact(
                             let label = allocate_label(&mut current_free, &mut current_next);
                             current_ring_actions.push(WalkerAction::EmitRingLabel(label));
                             add_pending(
-                                &mut current_pending,
+                                current_pending
+                                    .get_or_insert_with(|| Arc::unwrap_or_clone(pending_base.clone())),
                                 target_idx,
                                 PendingRing {
                                     label,
@@ -3375,16 +3375,14 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
-                let pending_shared = if opening_target_count == 0 {
-                    pending_base.clone()
-                } else {
-                    Arc::new(current_pending.clone())
-                };
                 let free_labels_shared = Arc::new(current_free.clone());
                 let dynamic_shared = Arc::new(RootedConnectedStereoExactDynamicData {
                     visited: visited_now.clone(),
                     visited_count: visited_count_now,
-                    pending: pending_shared.clone(),
+                    pending: current_pending
+                        .as_ref()
+                        .map(|pending| Arc::new(pending.clone()))
+                        .unwrap_or_else(|| pending_base.clone()),
                     free_labels: free_labels_shared.clone(),
                     next_label: current_next,
                 });

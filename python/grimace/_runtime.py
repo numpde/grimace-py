@@ -880,13 +880,13 @@ class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
 def _token_inventory_root_indices(
     mol_or_prepared: object,
     *,
-    rooted_at_atom: int | None,
+    rooted_at_atom: int,
 ) -> tuple[int, ...]:
     atom_count = _atom_count(mol_or_prepared)
     if atom_count == 0:
         return (0,)
-    if rooted_at_atom is None:
-        return tuple(range(atom_count))
+    if rooted_at_atom < 0:
+        return (-1,)
     return (rooted_at_atom,)
 
 
@@ -895,7 +895,7 @@ def _exact_token_inventory_from_decoder(
     *,
     isomeric_smiles: bool,
     kekule_smiles: bool,
-    rooted_at_atom: int | None,
+    rooted_at_atom: int,
     canonical: bool,
     all_bonds_explicit: bool,
     all_hs_explicit: bool,
@@ -1022,7 +1022,7 @@ def mol_to_smiles_token_inventory(
     *,
     isomeric_smiles: bool = True,
     kekule_smiles: bool = False,
-    rooted_at_atom: int | None = None,
+    rooted_at_atom: int | None = -1,
     canonical: bool = True,
     all_bonds_explicit: bool = False,
     all_hs_explicit: bool = False,
@@ -1031,7 +1031,7 @@ def mol_to_smiles_token_inventory(
 ) -> tuple[str, ...]:
     """Return the exact decoder token inventory under the public runtime flags."""
 
-    effective_root = 0 if rooted_at_atom is None else rooted_at_atom
+    effective_root = -1 if rooted_at_atom is None else rooted_at_atom
     flags = _make_flags(
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
@@ -1047,7 +1047,7 @@ def mol_to_smiles_token_inventory(
         mol_or_prepared,
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
-        rooted_at_atom=rooted_at_atom,
+        rooted_at_atom=effective_root,
         canonical=canonical,
         all_bonds_explicit=all_bonds_explicit,
         all_hs_explicit=all_hs_explicit,

@@ -72,8 +72,9 @@ Today, pass:
 - `doRandom=True`
 - `rootedAtAtom=-1` or `rootedAtAtom >= 0` for `MolToSmilesEnum(...)` and
   the decoder classes
-- `rootedAtAtom=None` or `rootedAtAtom >= 0` for
+- `rootedAtAtom=-1` or `rootedAtAtom >= 0` for
   `MolToSmilesTokenInventory(...)`
+- omitting `rootedAtAtom` is equivalent to `-1`
 
 Unsupported flag combinations fail fast with `NotImplementedError`. Other
 invalid public inputs can still raise more specific exceptions such as
@@ -86,8 +87,11 @@ The most important `rootedAtAtom` semantics are:
   unioned across all root atoms.
 - `rootedAtAtom=-1` for the decoder classes starts from one merged all-roots
   decoder state.
-- `rootedAtAtom=None` for `MolToSmilesTokenInventory(...)` returns the token
+- `rootedAtAtom=-1` for `MolToSmilesTokenInventory(...)` returns the token
   inventory unioned across all root atoms.
+- omitting `rootedAtAtom` means the same thing as passing `-1`.
+- `rootedAtAtom=None` is still accepted by `MolToSmilesTokenInventory(...)`
+  as a compatibility alias for `-1`.
 
 ## Quickstart
 
@@ -217,7 +221,7 @@ strings are possible?" but "what one-step tokens can ever appear?"
 ```python
 inventory = grimace.MolToSmilesTokenInventory(
     mol,
-    rootedAtAtom=None,
+    rootedAtAtom=-1,
     isomericSmiles=False,
     **FLAGS,
 )
@@ -305,7 +309,7 @@ Required runtime values today:
 
 - `rootedAtAtom == -1` or `rootedAtAtom >= 0` for `MolToSmilesEnum(...)` and
   the decoder classes
-- `rootedAtAtom is None` or `rootedAtAtom >= 0` for
+- `rootedAtAtom == -1` or `rootedAtAtom >= 0` for
   `MolToSmilesTokenInventory(...)`
 - `canonical=False`
 - `doRandom=True`
@@ -321,6 +325,10 @@ Supported writer flags:
 Unsupported flag combinations fail fast with `NotImplementedError`. Other
 invalid public inputs can still raise more specific exceptions such as
 `IndexError` or `ValueError`.
+
+For `MolToSmilesTokenInventory(...)`, `rootedAtAtom=None` is still accepted as
+a backward-compatible alias for `-1`, but `-1` is the preferred public
+spelling.
 
 Disconnected molecules are supported by the public APIs.
 

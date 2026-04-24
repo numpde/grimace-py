@@ -213,24 +213,23 @@ So:
 
 ## MolToSmilesTokenInventory
 
-`MolToSmilesTokenInventory(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=None, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+`MolToSmilesTokenInventory(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This returns the exact sorted tuple of reachable decoder tokens for one
 molecule under the same public writer flags.
 
-When `rootedAtAtom=None`, it unions the exact reachable token inventories
+When `rootedAtAtom == -1`, it unions the exact reachable token inventories
 across all roots. When `rootedAtAtom >= 0`, it reports the inventory for that
-rooted public runtime. For disconnected molecules it includes the `"."`
-separator token when fragment transitions are reachable under the requested
-root mode.
+rooted public runtime. Omitting `rootedAtAtom` means the same thing as passing
+`-1`. For disconnected molecules it includes the `"."` separator token when
+fragment transitions are reachable under the requested root mode.
 
 This is an exact runtime inventory, not a probabilistic distribution and not a
 general-purpose tokenizer vocabulary.
 
-Unlike the decoders, `MolToSmilesTokenInventory(...)` uses `rootedAtAtom=None`
-to mean "union across all roots". `rootedAtAtom=-1` is the all-roots enum /
-merged-decoder mode used by `MolToSmilesEnum(...)` and the decoder classes,
-not the token-inventory spelling.
+`MolToSmilesTokenInventory(...)` now uses the same all-roots spelling as the
+other public APIs: `rootedAtAtom=-1`. For backward compatibility,
+`rootedAtAtom=None` is still accepted as an alias for the same mode.
 
 ## Correctness
 

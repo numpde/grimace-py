@@ -43,7 +43,11 @@ pub(crate) fn dedup_frontier<S>(states: Vec<S>) -> Vec<S>
 where
     S: Ord,
 {
-    states.into_iter().collect::<BTreeSet<_>>().into_iter().collect()
+    states
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 pub(crate) fn grouped_choice_texts<S>(choices: &[DecoderChoice<S>]) -> Vec<String> {

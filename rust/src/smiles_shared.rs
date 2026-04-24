@@ -20,7 +20,9 @@ pub(crate) fn add_pending<T: Ord>(
             &mut pending[offset].1
         }
     };
-    let insert_at = current.binary_search(&entry).unwrap_or_else(|offset| offset);
+    let insert_at = current
+        .binary_search(&entry)
+        .unwrap_or_else(|offset| offset);
     current.insert(insert_at, entry);
 }
 

@@ -239,7 +239,6 @@ fn ordered_neighbor_groups(
         .collect()
 }
 
-
 fn for_each_cartesian_choice<F>(groups: &[Vec<usize>], f: &mut F)
 where
     F: FnMut(&[usize]),
@@ -322,12 +321,8 @@ where
             f(&order);
         }
         _ => {
-            fn recurse<T: Copy, F>(
-                items: &[T],
-                used: &mut [bool],
-                current: &mut Vec<T>,
-                f: &mut F,
-            ) where
+            fn recurse<T: Copy, F>(items: &[T], used: &mut [bool], current: &mut Vec<T>, f: &mut F)
+            where
                 F: FnMut(&[T]),
             {
                 if current.len() == items.len() {
@@ -777,7 +772,11 @@ fn undo_exact_ring_plan_in_place(
     for (target_idx, ring) in pending_opened.iter().rev() {
         remove_pending(&mut state.pending, *target_idx, ring);
     }
-    undo_label_allocations(&mut state.free_labels, &mut state.next_label, allocation_undos);
+    undo_label_allocations(
+        &mut state.free_labels,
+        &mut state.next_label,
+        allocation_undos,
+    );
 }
 
 fn next_token_support_for_state(
@@ -996,18 +995,14 @@ fn for_each_exact_successor_by_token_owned<F>(
                         for_each_permutation_py_order_copy(chosen_children, &mut |child_order| {
                             let prefix_len = state.prefix.len();
                             state.prefix.push_str(&first_token);
-                            let (
-                                pending_opened,
-                                freed_labels,
-                                allocation_undos,
-                                action_stack_len,
-                            ) = apply_exact_ring_plan_in_place(
-                                graph,
-                                &mut state,
-                                &action,
-                                &ring_action_order,
-                                &child_order,
-                            );
+                            let (pending_opened, freed_labels, allocation_undos, action_stack_len) =
+                                apply_exact_ring_plan_in_place(
+                                    graph,
+                                    &mut state,
+                                    &action,
+                                    &ring_action_order,
+                                    &child_order,
+                                );
                             normalize_state(&mut state);
                             emit(first_token.clone(), state.clone());
                             undo_exact_ring_plan_in_place(
@@ -1201,10 +1196,7 @@ fn exact_frontier_successors(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
 ) -> Vec<(String, Vec<RootedConnectedNonStereoWalkerStateData>)> {
-    let mut transitions = Vec::<(
-        String,
-        Vec<RootedConnectedNonStereoWalkerStateData>,
-    )>::new();
+    let mut transitions = Vec::<(String, Vec<RootedConnectedNonStereoWalkerStateData>)>::new();
     for state in frontier {
         for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
             if let Some((_, states)) = transitions
@@ -1570,8 +1562,10 @@ mod tests {
         stats.frontier_count += 1;
         stats.max_frontier_width = stats.max_frontier_width.max(frontier.len());
 
-        let mut transitions =
-            rustc_hash::FxHashMap::<String, Vec<super::RootedConnectedNonStereoWalkerStateData>>::default();
+        let mut transitions = rustc_hash::FxHashMap::<
+            String,
+            Vec<super::RootedConnectedNonStereoWalkerStateData>,
+        >::default();
         for state in frontier {
             super::for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
                 transitions.entry(token).or_default().push(successor);
@@ -1995,5 +1989,4 @@ mod tests {
         assert!(stats.raw_successor_count > stats.deduped_successor_count);
         assert!(stats.duplicate_bucket_count > 0);
     }
-
 }

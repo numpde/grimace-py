@@ -1,4 +1,4 @@
-# Grimace
+# GRIMACE
 
 SMILES enumeration with exact next-token decoding.
 

@@ -1,4 +1,4 @@
-# Rust-First Layout
+# Rust-first layout
 
 ## Goal
 
@@ -28,14 +28,14 @@ RDKit-based bridge and oracle code.
 - RDKit-backed checks remain valuable, but as oracle coverage rather than as
   the main implementation path.
 
-## Public And Internal Boundaries
+## Public and internal boundaries
 
 - `grimace` is the only supported public Python API.
 - `grimace._core` is required and remains hidden implementation detail.
 - `grimace._runtime` is internal bridge code.
 - `grimace._reference` is internal oracle/reference code.
 
-## Test Authority
+## Test authority
 
 The intended order of authority is:
 
@@ -50,7 +50,7 @@ The intended order of authority is:
 When coverage overlaps, prefer strengthening items earlier in this list instead
 of expanding later ones.
 
-## Change Rules
+## Change rules
 
 - New runtime behavior should land in Rust first.
 - Avoid adding dual implementations unless there is a concrete oracle or test

@@ -245,7 +245,7 @@ The test suite is layered:
 3. Python parity tests for cross-language regression checks
 4. RDKit-backed reference checks
 
-## Internal Modules
+## Internal modules
 
 The package also contains internal support code:
 

@@ -1,4 +1,4 @@
-# GRIMACE
+# Grimace
 
 SMILES enumeration with exact next-token decoding.
 
@@ -39,7 +39,7 @@ with language transformers ([link](https://numpde.github.io/shared/msc/)).
 > documented runtime subset, but feature coverage is still limited and some
 > public details may continue to change between releases.
 
-## Choose The API
+## Choose the API
 
 The only supported public Python package is `grimace`.
 
@@ -62,7 +62,7 @@ Supporting public type:
 
 The public API uses the compiled Rust extension end to end.
 
-## Important Runtime Requirements Today
+## Important runtime requirements today
 
 The public signatures mirror RDKit flag names and defaults, but the current
 runtime intentionally supports only a strict subset.
@@ -105,7 +105,7 @@ FLAGS = dict(
 )
 ```
 
-### 1. Enumerate The Exact Support
+### 1. Enumerate the exact support
 
 If you want the exact support across all possible roots, `rootedAtAtom=-1` is
 the simplest public entrypoint:
@@ -142,7 +142,7 @@ root_0_smiles = tuple(
 )
 ```
 
-### 2. Decode Online, One Token At A Time
+### 2. Decode online, one token at a time
 
 `MolToSmilesDecoder(...)` is branch-preserving. It exposes the exact legal next
 choices for the current prefix, and each choice points to a successor state.
@@ -177,7 +177,7 @@ Notice the duplicate `"("` at `CC`. Those are different branches with the same
 emitted token text. That is deliberate: `MolToSmilesDecoder(...)` preserves
 branch identity instead of merging it away.
 
-### 3. Merge Same-Text Choices When You Only Care About Token Text
+### 3. Merge same-text choices when you only care about token text
 
 `MolToSmilesDeterminizedDecoder(...)` exposes at most one choice per token text
 by merging same-text continuations into one combined state.
@@ -214,7 +214,7 @@ The first few merged decisions on that route are:
 - `"c1("`: choose `"c"` from `["O", "c", "C"]`
 - `"c1(ccccc1"`: choose `"O"` from `["C", "O"]`
 
-### 4. Ask For The Exact Token Inventory
+### 4. Ask for the exact token inventory
 
 `MolToSmilesTokenInventory(...)` answers a different question: not "what full
 strings are possible?" but "what one-step tokens can ever appear?"
@@ -234,7 +234,7 @@ assert "c" in inventory
 
 The result is a sorted tuple of distinct tokens.
 
-### What Counts As A Token?
+### What counts as a token?
 
 A token is one string emitted by one decoder transition. Tokens are defined by
 the walker itself, not by splitting a finished SMILES into characters and not
@@ -301,7 +301,7 @@ Regenerate it with:
 RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest tests.perf.test_readme_timings -q
 ```
 
-## Current Limits
+## Current limits
 
 The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset
 is implemented today.

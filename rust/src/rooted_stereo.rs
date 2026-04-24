@@ -116,16 +116,6 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
 }
 
 #[derive(Clone, Debug)]
-struct RootedConnectedStereoExactStaticData {
-    stereo_component_phases: Arc<Vec<i8>>,
-    stereo_selected_neighbors: Arc<Vec<isize>>,
-    stereo_selected_orientations: Arc<Vec<i8>>,
-    stereo_first_emitted_candidates: Arc<Vec<isize>>,
-    stereo_component_begin_atoms: Arc<Vec<isize>>,
-    stereo_component_token_flips: Arc<Vec<i8>>,
-}
-
-#[derive(Clone, Debug)]
 struct RootedConnectedStereoExactDynamicData {
     visited: Arc<[bool]>,
     visited_count: usize,
@@ -137,7 +127,6 @@ struct RootedConnectedStereoExactDynamicData {
 #[derive(Clone, Debug)]
 struct RootedConnectedStereoExactStateData {
     prefix: Arc<str>,
-    static_data: Arc<RootedConnectedStereoExactStaticData>,
     dynamic: Arc<RootedConnectedStereoExactDynamicData>,
     action_stack: Vec<WalkerAction>,
 }
@@ -222,16 +211,14 @@ fn stereo_exact_state_from_full(
         stereo_component_token_flips,
         action_stack,
     } = state;
+    debug_assert!(stereo_component_phases.is_empty());
+    debug_assert!(stereo_selected_neighbors.is_empty());
+    debug_assert!(stereo_selected_orientations.is_empty());
+    debug_assert!(stereo_first_emitted_candidates.is_empty());
+    debug_assert!(stereo_component_begin_atoms.is_empty());
+    debug_assert!(stereo_component_token_flips.is_empty());
     RootedConnectedStereoExactStateData {
         prefix,
-        static_data: Arc::new(RootedConnectedStereoExactStaticData {
-            stereo_component_phases,
-            stereo_selected_neighbors,
-            stereo_selected_orientations,
-            stereo_first_emitted_candidates,
-            stereo_component_begin_atoms,
-            stereo_component_token_flips,
-        }),
         dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
             visited,
             visited_count,
@@ -240,26 +227,6 @@ fn stereo_exact_state_from_full(
             next_label,
         }),
         action_stack,
-    }
-}
-
-fn stereo_full_state_from_exact(
-    state: &RootedConnectedStereoExactStateData,
-) -> RootedConnectedStereoWalkerStateData {
-    RootedConnectedStereoWalkerStateData {
-        prefix: state.prefix.clone(),
-        visited: state.dynamic.visited.clone(),
-        visited_count: state.dynamic.visited_count,
-        pending: state.dynamic.pending.clone(),
-        free_labels: state.dynamic.free_labels.clone(),
-        next_label: state.dynamic.next_label,
-        stereo_component_phases: state.static_data.stereo_component_phases.clone(),
-        stereo_selected_neighbors: state.static_data.stereo_selected_neighbors.clone(),
-        stereo_selected_orientations: state.static_data.stereo_selected_orientations.clone(),
-        stereo_first_emitted_candidates: state.static_data.stereo_first_emitted_candidates.clone(),
-        stereo_component_begin_atoms: state.static_data.stereo_component_begin_atoms.clone(),
-        stereo_component_token_flips: state.static_data.stereo_component_token_flips.clone(),
-        action_stack: state.action_stack.clone(),
     }
 }
 
@@ -3337,7 +3304,6 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                 .as_ref()
                                 .cloned()
                                 .unwrap_or_else(|| state.prefix.clone()),
-                            static_data: state.static_data.clone(),
                             dynamic: dynamic_shared.clone(),
                             action_stack: {
                                 let mut stack = Vec::with_capacity(
@@ -3762,7 +3728,6 @@ fn process_children_successors_without_bond_stereo_exact(
             .to_owned();
         let mut successor = RootedConnectedStereoExactStateData {
             prefix: state.prefix.clone(),
-            static_data: state.static_data.clone(),
             dynamic: state.dynamic.clone(),
             action_stack: {
                 let extra = 2
@@ -3807,7 +3772,6 @@ fn process_children_successors_without_bond_stereo_exact(
     if bond_token.is_empty() {
         let mut base_state = RootedConnectedStereoExactStateData {
             prefix: state.prefix.clone(),
-            static_data: state.static_data.clone(),
             dynamic: state.dynamic.clone(),
             action_stack: {
                 let mut stack = Vec::with_capacity(base_action_stack.len() + 1);
@@ -3824,7 +3788,6 @@ fn process_children_successors_without_bond_stereo_exact(
 
     let mut base_state = RootedConnectedStereoExactStateData {
         prefix: state.prefix.clone(),
-        static_data: state.static_data.clone(),
         dynamic: state.dynamic.clone(),
         action_stack: {
             let mut stack = Vec::with_capacity(base_action_stack.len() + 1);
@@ -4082,38 +4045,7 @@ fn exact_successors_from_atom_stereo_state_drained(
     };
 
     match action {
-        WalkerAction::EmitDeferred(deferred) => {
-            let full_state = stereo_full_state_from_exact(&state);
-            let deferred = deferred.clone();
-            let tokens = deferred_token_support(runtime, graph, &full_state, &deferred)?;
-            if tokens.len() == 1 {
-                let mut successor = full_state;
-                successor.action_stack.pop();
-                let token = &tokens[0];
-                if commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, token)
-                    .is_ok()
-                {
-                    push_literal_token(&mut successor.prefix, token);
-                    return Ok(vec![stereo_exact_state_from_full(successor)]);
-                }
-                return Ok(Vec::new());
-            }
-
-            let mut base_state = full_state;
-            base_state.action_stack.pop();
-            let mut successors = Vec::with_capacity(tokens.len());
-            for token in tokens {
-                let mut successor = base_state.clone();
-                if commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, &token)
-                    .is_err()
-                {
-                    continue;
-                }
-                push_literal_token(&mut successor.prefix, &token);
-                successors.push(stereo_exact_state_from_full(successor));
-            }
-            Ok(successors)
-        }
+        WalkerAction::EmitDeferred(_) => unreachable!("atom-stereo exact path never defers tokens"),
         WalkerAction::EnterAtom {
             atom_idx,
             parent_idx,
@@ -4171,7 +4103,6 @@ fn exact_successors_from_atom_stereo_state_drained(
                                 .as_ref()
                                 .cloned()
                                 .unwrap_or_else(|| state.prefix.clone()),
-                            static_data: state.static_data.clone(),
                             dynamic: dynamic_shared.clone(),
                             action_stack: {
                                 let mut stack = Vec::with_capacity(
@@ -4232,26 +4163,6 @@ fn exact_successors_from_atom_stereo_state_drained(
         | WalkerAction::EmitRingLabel(_)
         | WalkerAction::EmitCloseParen => unreachable!(),
     }
-}
-
-fn exact_successors_from_stereo_state(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    mut state: RootedConnectedStereoWalkerStateData,
-) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
-    drain_exact_linear_stereo_actions(&mut state);
-    if !runtime.side_infos.is_empty() {
-        return Ok(flatten_exact_stereo_successor_groups(
-            successors_by_token_stereo_raw(runtime, graph, &state)?,
-        ));
-    }
-    let exact_state = stereo_exact_state_from_full(state);
-    Ok(
-        exact_successors_from_atom_stereo_state(runtime, graph, exact_state)?
-            .into_iter()
-            .map(|successor| stereo_full_state_from_exact(&successor))
-            .collect(),
-    )
 }
 
 fn exact_successors_from_atom_stereo_state(
@@ -4409,6 +4320,14 @@ fn enumerate_support_from_stereo_state(
     mut state: RootedConnectedStereoWalkerStateData,
     out: &mut BTreeSet<String>,
 ) -> PyResult<()> {
+    if runtime.side_infos.is_empty() {
+        return enumerate_support_from_atom_stereo_exact_state(
+            runtime,
+            graph,
+            stereo_exact_state_from_full(state),
+            out,
+        );
+    }
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
         if is_complete_terminal_stereo_state(graph, &state) {
@@ -4416,7 +4335,9 @@ fn enumerate_support_from_stereo_state(
         }
         return Ok(());
     }
-    let successors = exact_successors_from_stereo_state(runtime, graph, state)?;
+    let successors = flatten_exact_stereo_successor_groups(successors_by_token_stereo_raw(
+        runtime, graph, &state,
+    )?);
 
     for successor in successors {
         enumerate_support_from_stereo_state(runtime, graph, successor, out)?;

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
@@ -115,6 +115,33 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     action_stack: Vec<WalkerAction>,
 }
 
+#[derive(Clone, Debug)]
+struct RootedConnectedStereoExactStaticData {
+    stereo_component_phases: Arc<Vec<i8>>,
+    stereo_selected_neighbors: Arc<Vec<isize>>,
+    stereo_selected_orientations: Arc<Vec<i8>>,
+    stereo_first_emitted_candidates: Arc<Vec<isize>>,
+    stereo_component_begin_atoms: Arc<Vec<isize>>,
+    stereo_component_token_flips: Arc<Vec<i8>>,
+}
+
+#[derive(Clone, Debug)]
+struct RootedConnectedStereoExactDynamicData {
+    visited: Arc<[bool]>,
+    visited_count: usize,
+    pending: Arc<Vec<(usize, Vec<PendingRing>)>>,
+    free_labels: Arc<Vec<usize>>,
+    next_label: usize,
+}
+
+#[derive(Clone, Debug)]
+struct RootedConnectedStereoExactStateData {
+    prefix: Arc<str>,
+    static_data: Arc<RootedConnectedStereoExactStaticData>,
+    dynamic: Arc<RootedConnectedStereoExactDynamicData>,
+    action_stack: Vec<WalkerAction>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct StereoCompletionKey {
     visited: Arc<[bool]>,
@@ -177,6 +204,65 @@ struct StereoDecoderBranch {
     frontier: Vec<RootedConnectedStereoWalkerStateData>,
 }
 
+fn stereo_exact_state_from_full(
+    state: RootedConnectedStereoWalkerStateData,
+) -> RootedConnectedStereoExactStateData {
+    let RootedConnectedStereoWalkerStateData {
+        prefix,
+        visited,
+        visited_count,
+        pending,
+        free_labels,
+        next_label,
+        stereo_component_phases,
+        stereo_selected_neighbors,
+        stereo_selected_orientations,
+        stereo_first_emitted_candidates,
+        stereo_component_begin_atoms,
+        stereo_component_token_flips,
+        action_stack,
+    } = state;
+    RootedConnectedStereoExactStateData {
+        prefix,
+        static_data: Arc::new(RootedConnectedStereoExactStaticData {
+            stereo_component_phases,
+            stereo_selected_neighbors,
+            stereo_selected_orientations,
+            stereo_first_emitted_candidates,
+            stereo_component_begin_atoms,
+            stereo_component_token_flips,
+        }),
+        dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
+            visited,
+            visited_count,
+            pending,
+            free_labels,
+            next_label,
+        }),
+        action_stack,
+    }
+}
+
+fn stereo_full_state_from_exact(
+    state: &RootedConnectedStereoExactStateData,
+) -> RootedConnectedStereoWalkerStateData {
+    RootedConnectedStereoWalkerStateData {
+        prefix: state.prefix.clone(),
+        visited: state.dynamic.visited.clone(),
+        visited_count: state.dynamic.visited_count,
+        pending: state.dynamic.pending.clone(),
+        free_labels: state.dynamic.free_labels.clone(),
+        next_label: state.dynamic.next_label,
+        stereo_component_phases: state.static_data.stereo_component_phases.clone(),
+        stereo_selected_neighbors: state.static_data.stereo_selected_neighbors.clone(),
+        stereo_selected_orientations: state.static_data.stereo_selected_orientations.clone(),
+        stereo_first_emitted_candidates: state.static_data.stereo_first_emitted_candidates.clone(),
+        stereo_component_begin_atoms: state.static_data.stereo_component_begin_atoms.clone(),
+        stereo_component_token_flips: state.static_data.stereo_component_token_flips.clone(),
+        action_stack: state.action_stack.clone(),
+    }
+}
+
 fn push_literal_token(prefix: &mut Arc<str>, token: &str) {
     if token.is_empty() {
         return;
@@ -234,13 +320,59 @@ fn cmp_stereo_state_exact(
     })
 }
 
-fn push_exact_stereo_successor(
-    successors: &mut Vec<RootedConnectedStereoWalkerStateData>,
-    successor: RootedConnectedStereoWalkerStateData,
+fn cmp_stereo_exact_dynamic(
+    left: &RootedConnectedStereoExactDynamicData,
+    right: &RootedConnectedStereoExactDynamicData,
+) -> Ordering {
+    left.pending
+        .len()
+        .cmp(&right.pending.len())
+        .then(if Arc::ptr_eq(&left.pending, &right.pending) {
+            Ordering::Equal
+        } else {
+            left.pending.cmp(&right.pending)
+        })
+        .then(if Arc::ptr_eq(&left.free_labels, &right.free_labels) {
+            Ordering::Equal
+        } else {
+            left.free_labels.cmp(&right.free_labels)
+        })
+        .then(left.next_label.cmp(&right.next_label))
+        .then(left.visited_count.cmp(&right.visited_count))
+        .then(if Arc::ptr_eq(&left.visited, &right.visited) {
+            Ordering::Equal
+        } else {
+            left.visited.cmp(&right.visited)
+        })
+}
+
+fn cmp_stereo_exact_state(
+    left: &RootedConnectedStereoExactStateData,
+    right: &RootedConnectedStereoExactStateData,
+) -> Ordering {
+    left.action_stack
+        .len()
+        .cmp(&right.action_stack.len())
+        .then(left.action_stack.cmp(&right.action_stack))
+        .then(if Arc::ptr_eq(&left.dynamic, &right.dynamic) {
+            Ordering::Equal
+        } else {
+            cmp_stereo_exact_dynamic(&left.dynamic, &right.dynamic)
+        })
+        .then(if Arc::ptr_eq(&left.prefix, &right.prefix) {
+            Ordering::Equal
+        } else {
+            left.prefix.as_ref().cmp(right.prefix.as_ref())
+        })
+}
+
+fn push_exact_atom_stereo_successor(
+    successors: &mut Vec<RootedConnectedStereoExactStateData>,
+    successor: RootedConnectedStereoExactStateData,
 ) {
     if successors
         .iter()
-        .any(|existing| cmp_stereo_state_exact(existing, &successor) == Ordering::Equal)
+        .any(|existing| cmp_stereo_exact_state(existing, &successor) == Ordering::Equal)
     {
         return;
     }
@@ -267,56 +399,72 @@ fn cmp_stereo_state_structure(
             left.free_labels.cmp(&right.free_labels)
         })
         .then(left.next_label.cmp(&right.next_label))
-        .then(if Arc::ptr_eq(&left.stereo_component_phases, &right.stereo_component_phases) {
-            Ordering::Equal
-        } else {
-            left.stereo_component_phases.cmp(&right.stereo_component_phases)
-        })
-        .then(if Arc::ptr_eq(
-            &left.stereo_selected_neighbors,
-            &right.stereo_selected_neighbors,
-        ) {
-            Ordering::Equal
-        } else {
-            left.stereo_selected_neighbors
-                .cmp(&right.stereo_selected_neighbors)
-        })
-        .then(if Arc::ptr_eq(
-            &left.stereo_selected_orientations,
-            &right.stereo_selected_orientations,
-        ) {
-            Ordering::Equal
-        } else {
-            left.stereo_selected_orientations
-                .cmp(&right.stereo_selected_orientations)
-        })
-        .then(if Arc::ptr_eq(
-            &left.stereo_first_emitted_candidates,
-            &right.stereo_first_emitted_candidates,
-        ) {
-            Ordering::Equal
-        } else {
-            left.stereo_first_emitted_candidates
-                .cmp(&right.stereo_first_emitted_candidates)
-        })
-        .then(if Arc::ptr_eq(
-            &left.stereo_component_begin_atoms,
-            &right.stereo_component_begin_atoms,
-        ) {
-            Ordering::Equal
-        } else {
-            left.stereo_component_begin_atoms
-                .cmp(&right.stereo_component_begin_atoms)
-        })
-        .then(if Arc::ptr_eq(
-            &left.stereo_component_token_flips,
-            &right.stereo_component_token_flips,
-        ) {
-            Ordering::Equal
-        } else {
-            left.stereo_component_token_flips
-                .cmp(&right.stereo_component_token_flips)
-        })
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_component_phases,
+                &right.stereo_component_phases,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_component_phases
+                    .cmp(&right.stereo_component_phases)
+            },
+        )
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_selected_neighbors,
+                &right.stereo_selected_neighbors,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_selected_neighbors
+                    .cmp(&right.stereo_selected_neighbors)
+            },
+        )
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_selected_orientations,
+                &right.stereo_selected_orientations,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_selected_orientations
+                    .cmp(&right.stereo_selected_orientations)
+            },
+        )
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_first_emitted_candidates,
+                &right.stereo_first_emitted_candidates,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_first_emitted_candidates
+                    .cmp(&right.stereo_first_emitted_candidates)
+            },
+        )
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_component_begin_atoms,
+                &right.stereo_component_begin_atoms,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_component_begin_atoms
+                    .cmp(&right.stereo_component_begin_atoms)
+            },
+        )
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_component_token_flips,
+                &right.stereo_component_token_flips,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_component_token_flips
+                    .cmp(&right.stereo_component_token_flips)
+            },
+        )
         .then(left.visited_count.cmp(&right.visited_count))
         .then(if Arc::ptr_eq(&left.visited, &right.visited) {
             Ordering::Equal
@@ -372,6 +520,14 @@ fn finalize_exact_stereo_successors(
     successors
 }
 
+fn finalize_exact_atom_stereo_successors(
+    mut successors: Vec<RootedConnectedStereoExactStateData>,
+) -> Vec<RootedConnectedStereoExactStateData> {
+    successors.sort_by(cmp_stereo_exact_state);
+    successors.dedup_by(|left, right| cmp_stereo_exact_state(left, right) == Ordering::Equal);
+    successors
+}
+
 fn flatten_exact_stereo_successor_groups(
     successors: BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
 ) -> Vec<RootedConnectedStereoWalkerStateData> {
@@ -407,6 +563,30 @@ fn drain_exact_linear_stereo_actions(state: &mut RootedConnectedStereoWalkerStat
     }
 }
 
+fn drain_exact_linear_atom_stereo_actions(state: &mut RootedConnectedStereoExactStateData) {
+    loop {
+        let Some(action) = state.action_stack.last() else {
+            return;
+        };
+        match action {
+            WalkerAction::EmitLiteral(token) => {
+                let token = token.clone();
+                state.action_stack.pop();
+                push_literal_token(&mut state.prefix, &token);
+            }
+            WalkerAction::EmitRingLabel(label) => {
+                let label = *label;
+                state.action_stack.pop();
+                push_ring_label(&mut state.prefix, label);
+            }
+            WalkerAction::EmitCloseParen => {
+                state.action_stack.pop();
+                push_char_token(&mut state.prefix, ')');
+            }
+            _ => return,
+        }
+    }
+}
 
 fn flip_direction_token(token: &str) -> PyResult<String> {
     match token {
@@ -967,7 +1147,9 @@ fn force_known_begin_side_selection(
         let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
             .iter()
             .copied()
-            .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx as usize)
+            .find(|&side_idx| {
+                runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx as usize
+            })
         else {
             continue;
         };
@@ -1442,7 +1624,8 @@ fn ambiguous_shared_edge_groups(
     let mut groups = Vec::new();
 
     for side_info in side_infos {
-        if isolated_components[side_info.component_idx] || side_info.candidate_neighbors.len() != 2 {
+        if isolated_components[side_info.component_idx] || side_info.candidate_neighbors.len() != 2
+        {
             continue;
         }
         for &neighbor_idx in &side_info.candidate_neighbors {
@@ -1989,12 +2172,17 @@ pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
 
     let runtime = build_walker_runtime(graph, root_idx)?;
     let mut support = BTreeSet::new();
-    enumerate_support_from_stereo_state(
-        &runtime,
-        graph,
-        initial_stereo_state_for_root(&runtime, graph, root_idx),
-        &mut support,
-    )?;
+    let initial_state = initial_stereo_state_for_root(&runtime, graph, root_idx);
+    if runtime.side_infos.is_empty() {
+        enumerate_support_from_atom_stereo_exact_state(
+            &runtime,
+            graph,
+            stereo_exact_state_from_full(initial_state),
+            &mut support,
+        )?;
+    } else {
+        enumerate_support_from_stereo_state(&runtime, graph, initial_state, &mut support)?;
+    }
     Ok(support.into_iter().collect())
 }
 
@@ -2084,10 +2272,7 @@ fn initial_stereo_state_for_root(
             runtime.side_infos.len()
         ]),
         stereo_first_emitted_candidates: Arc::new(vec![-1; runtime.side_infos.len()]),
-        stereo_component_begin_atoms: Arc::new(vec![
-            -1;
-            runtime.isolated_components.len()
-        ]),
+        stereo_component_begin_atoms: Arc::new(vec![-1; runtime.isolated_components.len()]),
         stereo_component_token_flips: Arc::new(vec![
             UNKNOWN_COMPONENT_TOKEN_FLIP;
             runtime.isolated_components.len()
@@ -2192,8 +2377,10 @@ fn provisional_phase_from_selected_side(
     graph: &PreparedSmilesGraphData,
     side_info: &StereoSideInfo,
 ) -> PyResult<i8> {
-    let Some(bond_idx) = graph.bond_index(side_info.endpoint_atom_idx, side_info.other_endpoint_atom_idx)
-    else {
+    let Some(bond_idx) = graph.bond_index(
+        side_info.endpoint_atom_idx,
+        side_info.other_endpoint_atom_idx,
+    ) else {
         return Err(PyKeyError::new_err(format!(
             "No bond between atoms {} and {}",
             side_info.endpoint_atom_idx, side_info.other_endpoint_atom_idx
@@ -2202,8 +2389,10 @@ fn provisional_phase_from_selected_side(
     let stored_begin_idx = graph.bond_begin_atom_indices[bond_idx];
     let stored_end_idx = graph.bond_end_atom_indices[bond_idx];
     let stereo_kind = graph.bond_stereo_kinds[bond_idx].as_str();
-    if (side_info.endpoint_atom_idx, side_info.other_endpoint_atom_idx)
-        == (stored_begin_idx, stored_end_idx)
+    if (
+        side_info.endpoint_atom_idx,
+        side_info.other_endpoint_atom_idx,
+    ) == (stored_begin_idx, stored_end_idx)
     {
         return Ok(STORED_COMPONENT_PHASE);
     }
@@ -2412,12 +2601,7 @@ fn raw_token_for_deferred_edge(
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let mut active_tokens = Vec::<String>::new();
 
-    for &side_idx in runtime
-        .edge_to_side_ids
-        .get(&edge)
-        .into_iter()
-        .flatten()
-    {
+    for &side_idx in runtime.edge_to_side_ids.get(&edge).into_iter().flatten() {
         let side_info = &runtime.side_infos[side_idx];
         let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
             end_idx
@@ -2625,10 +2809,12 @@ fn enter_atom_successors_by_token(
             return;
         }
 
-        let total_group_members = ordered_groups.iter().map(|group| group.len()).sum::<usize>();
+        let total_group_members = ordered_groups
+            .iter()
+            .map(|group| group.len())
+            .sum::<usize>();
         let opening_target_count = total_group_members.saturating_sub(chosen_children.len());
-        let mut ring_actions =
-            Vec::with_capacity(closures_here.len() + opening_target_count);
+        let mut ring_actions = Vec::with_capacity(closures_here.len() + opening_target_count);
         for closure_idx in 0..closures_here.len() {
             ring_actions.push(RingAction::Close(closure_idx));
         }
@@ -2703,15 +2889,16 @@ fn enter_atom_successors_by_token(
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
                             current_ring_actions.push(WalkerAction::EmitRingLabel(label));
-                            let (updated_phases, updated_begin_atoms) = component_phases_after_edge(
-                                graph,
-                                &runtime.stereo_component_ids,
-                                &runtime.isolated_components,
-                                &current_component_phases,
-                                &current_component_begin_atoms,
-                                atom_idx,
-                                target_idx,
-                            )?;
+                            let (updated_phases, updated_begin_atoms) =
+                                component_phases_after_edge(
+                                    graph,
+                                    &runtime.stereo_component_ids,
+                                    &runtime.isolated_components,
+                                    &current_component_phases,
+                                    &current_component_begin_atoms,
+                                    atom_idx,
+                                    target_idx,
+                                )?;
                             let (updated_neighbors, updated_orientations) =
                                 force_known_begin_side_selection(
                                     runtime,
@@ -2846,7 +3033,10 @@ fn enter_atom_successors_without_bond_stereo(
             return;
         }
 
-        let total_group_members = ordered_groups.iter().map(|group| group.len()).sum::<usize>();
+        let total_group_members = ordered_groups
+            .iter()
+            .map(|group| group.len())
+            .sum::<usize>();
         let opening_target_count = total_group_members.saturating_sub(chosen_children.len());
         let mut ring_actions = Vec::with_capacity(closures_here.len() + opening_target_count);
         for closure_idx in 0..closures_here.len() {
@@ -2869,8 +3059,9 @@ fn enter_atom_successors_without_bond_stereo(
                 let mut current_pending = pending_now.clone();
                 let mut current_free = Arc::unwrap_or_clone(base_state.free_labels.clone());
                 let mut current_next = base_state.next_label;
-                let mut current_ring_actions =
-                    Vec::<WalkerAction>::with_capacity(closures_here.len() * 2 + opening_target_count);
+                let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
+                    closures_here.len() * 2 + opening_target_count,
+                );
                 let mut labels_freed_after_atom = Vec::<usize>::with_capacity(closures_here.len());
                 let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
 
@@ -2993,7 +3184,7 @@ fn enter_atom_successors_without_bond_stereo(
 #[allow(clippy::too_many_arguments)]
 fn enter_atom_successors_without_bond_stereo_exact(
     graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoWalkerStateData,
+    state: &RootedConnectedStereoExactStateData,
     base_action_stack: &[WalkerAction],
     atom_idx: usize,
     parent_idx: Option<usize>,
@@ -3003,8 +3194,8 @@ fn enter_atom_successors_without_bond_stereo_exact(
     closures_here: Vec<PendingRing>,
     ordered_groups: Vec<Vec<usize>>,
     is_chiral_atom: bool,
-) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
-    let mut successors = Vec::<RootedConnectedStereoWalkerStateData>::new();
+) -> PyResult<Vec<RootedConnectedStereoExactStateData>> {
+    let mut successors = Vec::<RootedConnectedStereoExactStateData>::new();
     let mut status = Ok(());
 
     for_each_cartesian_choice(&ordered_groups, &mut |chosen_children| {
@@ -3012,7 +3203,10 @@ fn enter_atom_successors_without_bond_stereo_exact(
             return;
         }
 
-        let total_group_members = ordered_groups.iter().map(|group| group.len()).sum::<usize>();
+        let total_group_members = ordered_groups
+            .iter()
+            .map(|group| group.len())
+            .sum::<usize>();
         let opening_target_count = total_group_members.saturating_sub(chosen_children.len());
         let mut ring_actions = Vec::with_capacity(closures_here.len() + opening_target_count);
         for closure_idx in 0..closures_here.len() {
@@ -3037,10 +3231,11 @@ fn enter_atom_successors_without_bond_stereo_exact(
 
             let outcome: PyResult<()> = (|| {
                 let mut current_pending = pending_now.clone();
-                let mut current_free = Arc::unwrap_or_clone(state.free_labels.clone());
-                let mut current_next = state.next_label;
-                let mut current_ring_actions =
-                    Vec::<WalkerAction>::with_capacity(closures_here.len() * 2 + opening_target_count);
+                let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
+                let mut current_next = state.dynamic.next_label;
+                let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
+                    closures_here.len() * 2 + opening_target_count,
+                );
                 let mut labels_freed_after_atom = Vec::<usize>::with_capacity(closures_here.len());
                 let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
 
@@ -3089,6 +3284,13 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 }
                 let pending_shared = Arc::new(current_pending.clone());
                 let free_labels_shared = Arc::new(current_free.clone());
+                let dynamic_shared = Arc::new(RootedConnectedStereoExactDynamicData {
+                    visited: visited_now.clone(),
+                    visited_count: visited_count_now,
+                    pending: pending_shared.clone(),
+                    free_labels: free_labels_shared.clone(),
+                    next_label: current_next,
+                });
                 let nonchiral_prefix = (!is_chiral_atom).then(|| {
                     let mut prefix = state.prefix.clone();
                     push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
@@ -3110,36 +3312,15 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                 ring_neighbor_order.as_deref().unwrap_or(&[]),
                                 child_order,
                             )?;
-                            Cow::Owned(stereo_atom_token(
-                                graph,
-                                atom_idx,
-                                &emitted_neighbor_order,
-                            )?)
+                            Cow::Owned(stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?)
                         };
-                        let mut successor = RootedConnectedStereoWalkerStateData {
+                        let mut successor = RootedConnectedStereoExactStateData {
                             prefix: nonchiral_prefix
                                 .as_ref()
                                 .cloned()
                                 .unwrap_or_else(|| state.prefix.clone()),
-                            visited: visited_now.clone(),
-                            visited_count: visited_count_now,
-                            pending: pending_shared.clone(),
-                            free_labels: free_labels_shared.clone(),
-                            next_label: current_next,
-                            stereo_component_phases: state.stereo_component_phases.clone(),
-                            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
-                            stereo_selected_orientations: state
-                                .stereo_selected_orientations
-                                .clone(),
-                            stereo_first_emitted_candidates: state
-                                .stereo_first_emitted_candidates
-                                .clone(),
-                            stereo_component_begin_atoms: state
-                                .stereo_component_begin_atoms
-                                .clone(),
-                            stereo_component_token_flips: state
-                                .stereo_component_token_flips
-                                .clone(),
+                            static_data: state.static_data.clone(),
+                            dynamic: dynamic_shared.clone(),
                             action_stack: {
                                 let mut stack = Vec::with_capacity(
                                     base_action_stack.len()
@@ -3181,7 +3362,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
     });
 
     status?;
-    Ok(finalize_exact_stereo_successors(successors))
+    Ok(finalize_exact_atom_stereo_successors(successors))
 }
 
 fn process_children_successors_by_token(
@@ -3225,19 +3406,16 @@ fn process_children_successors_by_token(
             parent_idx,
             child_order.as_ref(),
         )?;
-        let (
-            current_selected_neighbors,
-            current_selected_orientations,
-            current_first_candidates,
-        ) = eager_begin_side_child_order_state(
-            runtime,
-            &current_begin_atoms,
-            &successor.stereo_selected_neighbors,
-            &successor.stereo_selected_orientations,
-            &successor.stereo_first_emitted_candidates,
-            parent_idx,
-            child_order.as_ref(),
-        );
+        let (current_selected_neighbors, current_selected_orientations, current_first_candidates) =
+            eager_begin_side_child_order_state(
+                runtime,
+                &current_begin_atoms,
+                &successor.stereo_selected_neighbors,
+                &successor.stereo_selected_orientations,
+                &successor.stereo_first_emitted_candidates,
+                parent_idx,
+                child_order.as_ref(),
+            );
         let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
             emitted_edge_part(
                 graph,
@@ -3320,19 +3498,16 @@ fn process_children_successors_by_token(
         parent_idx,
         child_order.as_ref(),
     )?;
-    let (
-        current_selected_neighbors,
-        current_selected_orientations,
-        current_first_candidates,
-    ) = eager_begin_side_child_order_state(
-        runtime,
-        &current_begin_atoms,
-        &state.stereo_selected_neighbors,
-        &state.stereo_selected_orientations,
-        &state.stereo_first_emitted_candidates,
-        parent_idx,
-        child_order.as_ref(),
-    );
+    let (current_selected_neighbors, current_selected_orientations, current_first_candidates) =
+        eager_begin_side_child_order_state(
+            runtime,
+            &current_begin_atoms,
+            &state.stereo_selected_neighbors,
+            &state.stereo_selected_orientations,
+            &state.stereo_first_emitted_candidates,
+            parent_idx,
+            child_order.as_ref(),
+        );
     let (edge_part, updated_neighbors, updated_orientations, updated_first_candidates) =
         emitted_edge_part(
             graph,
@@ -3549,11 +3724,11 @@ fn process_children_successors_without_bond_stereo(
 fn process_children_successors_without_bond_stereo_exact(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoWalkerStateData,
+    state: &RootedConnectedStereoExactStateData,
     parent_idx: usize,
     child_order: Arc<[usize]>,
     next_branch_index: usize,
-) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
+) -> PyResult<Vec<RootedConnectedStereoExactStateData>> {
     let branch_count = child_order.len().saturating_sub(1);
     let base_action_stack = &state.action_stack[..state.action_stack.len() - 1];
 
@@ -3567,19 +3742,10 @@ fn process_children_successors_without_bond_stereo_exact(
                 ))
             })?
             .to_owned();
-        let mut successor = RootedConnectedStereoWalkerStateData {
+        let mut successor = RootedConnectedStereoExactStateData {
             prefix: state.prefix.clone(),
-            visited: state.visited.clone(),
-            visited_count: state.visited_count,
-            pending: state.pending.clone(),
-            free_labels: state.free_labels.clone(),
-            next_label: state.next_label,
-            stereo_component_phases: state.stereo_component_phases.clone(),
-            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
-            stereo_selected_orientations: state.stereo_selected_orientations.clone(),
-            stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
-            stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
-            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            static_data: state.static_data.clone(),
+            dynamic: state.dynamic.clone(),
             action_stack: {
                 let extra = 2
                     + usize::from(next_branch_index + 1 < child_order.len())
@@ -3621,19 +3787,10 @@ fn process_children_successors_without_bond_stereo_exact(
         .to_owned();
 
     if bond_token.is_empty() {
-        let mut base_state = RootedConnectedStereoWalkerStateData {
+        let mut base_state = RootedConnectedStereoExactStateData {
             prefix: state.prefix.clone(),
-            visited: state.visited.clone(),
-            visited_count: state.visited_count,
-            pending: state.pending.clone(),
-            free_labels: state.free_labels.clone(),
-            next_label: state.next_label,
-            stereo_component_phases: state.stereo_component_phases.clone(),
-            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
-            stereo_selected_orientations: state.stereo_selected_orientations.clone(),
-            stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
-            stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
-            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            static_data: state.static_data.clone(),
+            dynamic: state.dynamic.clone(),
             action_stack: {
                 let mut stack = Vec::with_capacity(base_action_stack.len() + 1);
                 stack.extend_from_slice(base_action_stack);
@@ -3644,22 +3801,13 @@ fn process_children_successors_without_bond_stereo_exact(
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
         });
-        return exact_successors_from_stereo_state(runtime, graph, base_state);
+        return exact_successors_from_atom_stereo_state(runtime, graph, base_state);
     }
 
-    let mut base_state = RootedConnectedStereoWalkerStateData {
+    let mut base_state = RootedConnectedStereoExactStateData {
         prefix: state.prefix.clone(),
-        visited: state.visited.clone(),
-        visited_count: state.visited_count,
-        pending: state.pending.clone(),
-        free_labels: state.free_labels.clone(),
-        next_label: state.next_label,
-        stereo_component_phases: state.stereo_component_phases.clone(),
-        stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
-        stereo_selected_orientations: state.stereo_selected_orientations.clone(),
-        stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
-        stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
-        stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+        static_data: state.static_data.clone(),
+        dynamic: state.dynamic.clone(),
         action_stack: {
             let mut stack = Vec::with_capacity(base_action_stack.len() + 1);
             stack.extend_from_slice(base_action_stack);
@@ -3850,7 +3998,9 @@ fn successors_by_token_stereo_impl(
                     completion_cache,
                 );
                 match nested {
-                    Ok(successors) => extend_linear_structural_transitions(&mut expanded, successors),
+                    Ok(successors) => {
+                        extend_linear_structural_transitions(&mut expanded, successors)
+                    }
                     Err(err) => {
                         if require_completable {
                             return Err(err);
@@ -3902,17 +4052,12 @@ fn successors_by_token_stereo_raw(
     successors_by_token_stereo_impl(runtime, graph, state, false, &mut completion_cache)
 }
 
-fn exact_successors_from_stereo_state_drained(
+fn exact_successors_from_atom_stereo_state_drained(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
-    state: RootedConnectedStereoWalkerStateData,
-) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
-    if !runtime.side_infos.is_empty() {
-        return Ok(flatten_exact_stereo_successor_groups(
-            successors_by_token_stereo_raw(runtime, graph, &state)?,
-        ));
-    }
-
+    state: RootedConnectedStereoExactStateData,
+) -> PyResult<Vec<RootedConnectedStereoExactStateData>> {
+    debug_assert!(runtime.side_infos.is_empty());
     let action = match state.action_stack.last() {
         Some(action) => action,
         None => return Ok(Vec::new()),
@@ -3920,22 +4065,23 @@ fn exact_successors_from_stereo_state_drained(
 
     match action {
         WalkerAction::EmitDeferred(deferred) => {
+            let full_state = stereo_full_state_from_exact(&state);
             let deferred = deferred.clone();
-            let tokens = deferred_token_support(runtime, graph, &state, &deferred)?;
+            let tokens = deferred_token_support(runtime, graph, &full_state, &deferred)?;
             if tokens.len() == 1 {
-                let mut successor = state;
+                let mut successor = full_state;
                 successor.action_stack.pop();
                 let token = &tokens[0];
                 if commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, token)
                     .is_ok()
                 {
                     push_literal_token(&mut successor.prefix, token);
-                    return Ok(vec![successor]);
+                    return Ok(vec![stereo_exact_state_from_full(successor)]);
                 }
                 return Ok(Vec::new());
             }
 
-            let mut base_state = state;
+            let mut base_state = full_state;
             base_state.action_stack.pop();
             let mut successors = Vec::with_capacity(tokens.len());
             for token in tokens {
@@ -3946,7 +4092,7 @@ fn exact_successors_from_stereo_state_drained(
                     continue;
                 }
                 push_literal_token(&mut successor.prefix, &token);
-                successors.push(successor);
+                successors.push(stereo_exact_state_from_full(successor));
             }
             Ok(successors)
         }
@@ -3957,9 +4103,9 @@ fn exact_successors_from_stereo_state_drained(
             let base_action_stack = &state.action_stack[..state.action_stack.len() - 1];
             let atom_idx = *atom_idx;
             let parent_idx = *parent_idx;
-            let visited_now = visited_with_marked(&state.visited, atom_idx);
-            let visited_count_now = state.visited_count + 1;
-            let mut pending_now = Arc::unwrap_or_clone(state.pending.clone());
+            let visited_now = visited_with_marked(&state.dynamic.visited, atom_idx);
+            let visited_count_now = state.dynamic.visited_count + 1;
+            let mut pending_now = Arc::unwrap_or_clone(state.dynamic.pending.clone());
             let closures_here = take_pending_for_atom(&mut pending_now, atom_idx);
             let ordered_groups = ordered_neighbor_groups(graph, atom_idx, visited_now.as_ref());
             let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
@@ -3969,10 +4115,17 @@ fn exact_successors_from_stereo_state_drained(
                     .iter()
                     .map(|group| group[0])
                     .collect::<Vec<_>>();
-                let mut successors = Vec::<RootedConnectedStereoWalkerStateData>::with_capacity(
+                let mut successors = Vec::<RootedConnectedStereoExactStateData>::with_capacity(
                     small_permutation_count(chosen_children.len()),
                 );
                 let pending_shared = Arc::new(pending_now.clone());
+                let dynamic_shared = Arc::new(RootedConnectedStereoExactDynamicData {
+                    visited: visited_now.clone(),
+                    visited_count: visited_count_now,
+                    pending: pending_shared.clone(),
+                    free_labels: state.dynamic.free_labels.clone(),
+                    next_label: state.dynamic.next_label,
+                });
                 let nonchiral_prefix = (!is_chiral_atom).then(|| {
                     let mut prefix = state.prefix.clone();
                     push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
@@ -3987,38 +4140,22 @@ fn exact_successors_from_stereo_state_drained(
                         let atom_token = if !is_chiral_atom {
                             Cow::Borrowed(graph.atom_tokens[atom_idx].as_str())
                         } else {
-                            let emitted_neighbor_order =
-                                stereo_neighbor_order(graph, atom_idx, parent_idx, &[], child_order)?;
-                            Cow::Owned(stereo_atom_token(
+                            let emitted_neighbor_order = stereo_neighbor_order(
                                 graph,
                                 atom_idx,
-                                &emitted_neighbor_order,
-                            )?)
+                                parent_idx,
+                                &[],
+                                child_order,
+                            )?;
+                            Cow::Owned(stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?)
                         };
-                        let mut successor = RootedConnectedStereoWalkerStateData {
+                        let mut successor = RootedConnectedStereoExactStateData {
                             prefix: nonchiral_prefix
                                 .as_ref()
                                 .cloned()
                                 .unwrap_or_else(|| state.prefix.clone()),
-                            visited: visited_now.clone(),
-                            visited_count: visited_count_now,
-                            pending: pending_shared.clone(),
-                            free_labels: state.free_labels.clone(),
-                            next_label: state.next_label,
-                            stereo_component_phases: state.stereo_component_phases.clone(),
-                            stereo_selected_neighbors: state.stereo_selected_neighbors.clone(),
-                            stereo_selected_orientations: state
-                                .stereo_selected_orientations
-                                .clone(),
-                            stereo_first_emitted_candidates: state
-                                .stereo_first_emitted_candidates
-                                .clone(),
-                            stereo_component_begin_atoms: state
-                                .stereo_component_begin_atoms
-                                .clone(),
-                            stereo_component_token_flips: state
-                                .stereo_component_token_flips
-                                .clone(),
+                            static_data: state.static_data.clone(),
+                            dynamic: dynamic_shared.clone(),
                             action_stack: {
                                 let mut stack = Vec::with_capacity(
                                     base_action_stack.len() + usize::from(!child_order.is_empty()),
@@ -4037,7 +4174,7 @@ fn exact_successors_from_stereo_state_drained(
                         if nonchiral_prefix.is_none() {
                             push_literal_token(&mut successor.prefix, atom_token.as_ref());
                         }
-                        push_exact_stereo_successor(&mut successors, successor);
+                        push_exact_atom_stereo_successor(&mut successors, successor);
                         Ok(())
                     })();
                     if let Err(err) = outcome {
@@ -4045,7 +4182,7 @@ fn exact_successors_from_stereo_state_drained(
                     }
                 });
                 status?;
-                return Ok(finalize_exact_stereo_successors(successors));
+                return Ok(finalize_exact_atom_stereo_successors(successors));
             }
 
             enter_atom_successors_without_bond_stereo_exact(
@@ -4086,7 +4223,27 @@ fn exact_successors_from_stereo_state(
     mut state: RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<RootedConnectedStereoWalkerStateData>> {
     drain_exact_linear_stereo_actions(&mut state);
-    exact_successors_from_stereo_state_drained(runtime, graph, state)
+    if !runtime.side_infos.is_empty() {
+        return Ok(flatten_exact_stereo_successor_groups(
+            successors_by_token_stereo_raw(runtime, graph, &state)?,
+        ));
+    }
+    let exact_state = stereo_exact_state_from_full(state);
+    Ok(
+        exact_successors_from_atom_stereo_state(runtime, graph, exact_state)?
+            .into_iter()
+            .map(|successor| stereo_full_state_from_exact(&successor))
+            .collect(),
+    )
+}
+
+fn exact_successors_from_atom_stereo_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    mut state: RootedConnectedStereoExactStateData,
+) -> PyResult<Vec<RootedConnectedStereoExactStateData>> {
+    drain_exact_linear_atom_stereo_actions(&mut state);
+    exact_successors_from_atom_stereo_state_drained(runtime, graph, state)
 }
 
 #[cfg(test)]
@@ -4242,10 +4399,32 @@ fn enumerate_support_from_stereo_state(
         }
         return Ok(());
     }
-    let successors = exact_successors_from_stereo_state_drained(runtime, graph, state)?;
+    let successors = exact_successors_from_stereo_state(runtime, graph, state)?;
 
     for successor in successors {
         enumerate_support_from_stereo_state(runtime, graph, successor, out)?;
+    }
+    Ok(())
+}
+
+fn enumerate_support_from_atom_stereo_exact_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    mut state: RootedConnectedStereoExactStateData,
+    out: &mut BTreeSet<String>,
+) -> PyResult<()> {
+    debug_assert!(runtime.side_infos.is_empty());
+    drain_exact_linear_atom_stereo_actions(&mut state);
+    if state.action_stack.is_empty() {
+        if state.dynamic.visited_count == graph.atom_count() && state.dynamic.pending.is_empty() {
+            out.insert(state.prefix.to_string());
+        }
+        return Ok(());
+    }
+    let successors = exact_successors_from_atom_stereo_state_drained(runtime, graph, state)?;
+
+    for successor in successors {
+        enumerate_support_from_atom_stereo_exact_state(runtime, graph, successor, out)?;
     }
     Ok(())
 }
@@ -4316,9 +4495,11 @@ impl PyRootedConnectedStereoWalker {
         state: &PyRootedConnectedStereoWalkerState,
     ) -> PyResult<Vec<String>> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
-        Ok(successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
-            .into_keys()
-            .collect())
+        Ok(
+            successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
+                .into_keys()
+                .collect(),
+        )
     }
 
     fn next_choice_texts(
@@ -4327,7 +4508,8 @@ impl PyRootedConnectedStereoWalker {
     ) -> PyResult<Vec<String>> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
         let mut choices = Vec::new();
-        for (token, successors) in successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
+        for (token, successors) in
+            successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
         {
             for successor in successors {
                 choices.push(DecoderChoice {
@@ -4360,7 +4542,8 @@ impl PyRootedConnectedStereoWalker {
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
         let mut choices = Vec::new();
-        for (token, successors) in successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
+        for (token, successors) in
+            successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
         {
             for successor in successors {
                 choices.push(DecoderChoice {
@@ -4426,7 +4609,10 @@ impl PyRootedConnectedStereoDecoder {
         }
     }
 
-    fn from_merged(graph: Arc<PreparedSmilesGraphData>, branches: Vec<StereoDecoderBranch>) -> Self {
+    fn from_merged(
+        graph: Arc<PreparedSmilesGraphData>,
+        branches: Vec<StereoDecoderBranch>,
+    ) -> Self {
         if let [branch] = branches.as_slice() {
             return Self::from_single(graph, branch.runtime.clone(), branch.frontier.clone());
         }
@@ -4514,7 +4700,8 @@ fn merged_stereo_grouped_successors(
                 runtime: branch.runtime.clone(),
                 frontier,
             };
-            if let Some((_, grouped)) = buckets.iter_mut().find(|(existing, _)| *existing == token) {
+            if let Some((_, grouped)) = buckets.iter_mut().find(|(existing, _)| *existing == token)
+            {
                 grouped.push(successor_branch);
             } else {
                 buckets.push((token, vec![successor_branch]));
@@ -4581,10 +4768,12 @@ impl PyRootedConnectedStereoDecoder {
 
     fn next_token_support(&mut self) -> PyResult<Vec<String>> {
         if let Some(branches) = &self.merged_branches {
-            return Ok(merged_stereo_grouped_successors(self.graph.clone(), branches)?
-                .into_iter()
-                .map(|(token, _)| token)
-                .collect());
+            return Ok(
+                merged_stereo_grouped_successors(self.graph.clone(), branches)?
+                    .into_iter()
+                    .map(|(token, _)| token)
+                    .collect(),
+            );
         }
         if self.cached_choices.is_none() {
             self.cached_choices = Some(frontier_choices_for_stereo(
@@ -4609,7 +4798,9 @@ impl PyRootedConnectedStereoDecoder {
             let (_, successor) = successors
                 .into_iter()
                 .find(|(token, _)| token == chosen_token)
-                .ok_or_else(|| PyKeyError::new_err(format!("Token {chosen_token:?} is not available")))?;
+                .ok_or_else(|| {
+                    PyKeyError::new_err(format!("Token {chosen_token:?} is not available"))
+                })?;
             *self = successor;
             return Ok(());
         }
@@ -4630,10 +4821,12 @@ impl PyRootedConnectedStereoDecoder {
 
     fn next_choice_texts(&mut self) -> PyResult<Vec<String>> {
         if let Some(branches) = &self.merged_branches {
-            return Ok(merged_stereo_choice_successors(self.graph.clone(), branches)?
-                .into_iter()
-                .map(|(token, _)| token)
-                .collect());
+            return Ok(
+                merged_stereo_choice_successors(self.graph.clone(), branches)?
+                    .into_iter()
+                    .map(|(token, _)| token)
+                    .collect(),
+            );
         }
         if self.cached_choices.is_none() {
             self.cached_choices = Some(frontier_choices_for_stereo(
@@ -5085,8 +5278,8 @@ mod tests {
                 observed.insert(state.prefix.to_string());
                 continue;
             }
-            let mut choices =
-                choices_for_stereo_state(&runtime, &graph, &state).expect("choices should enumerate");
+            let mut choices = choices_for_stereo_state(&runtime, &graph, &state)
+                .expect("choices should enumerate");
             while let Some(choice) = choices.pop() {
                 stack.extend(choice.next_frontier);
             }
@@ -5116,8 +5309,8 @@ mod tests {
                 observed.insert(state.prefix.to_string());
                 continue;
             }
-            let mut choices =
-                choices_for_stereo_state(&runtime, &graph, &state).expect("choices should enumerate");
+            let mut choices = choices_for_stereo_state(&runtime, &graph, &state)
+                .expect("choices should enumerate");
             while let Some(choice) = choices.pop() {
                 stack.extend(choice.next_frontier);
             }
@@ -5253,5 +5446,4 @@ mod tests {
                 .expect("forward token support should be available"),
         );
     }
-
 }

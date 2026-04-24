@@ -622,6 +622,13 @@ enum LabelAllocUndo {
     New(usize),
 }
 
+struct ExactRingPlanUndo {
+    pending_opened: Vec<(usize, PendingRing)>,
+    freed_labels: Vec<usize>,
+    allocation_undos: Vec<LabelAllocUndo>,
+    action_stack_len: usize,
+}
+
 fn remove_pending(
     pending: &mut Vec<(usize, Vec<PendingRing>)>,
     target_atom: usize,
@@ -685,12 +692,7 @@ fn apply_exact_ring_plan_in_place(
     action: &AfterAtomAction,
     ring_action_order: &[RingAction],
     child_order: &[usize],
-) -> (
-    Vec<(usize, PendingRing)>,
-    Vec<usize>,
-    Vec<LabelAllocUndo>,
-    usize,
-) {
+) -> ExactRingPlanUndo {
     let action_stack_len = state.action_stack.len();
     let mut pending_opened = Vec::<(usize, PendingRing)>::new();
     let mut freed_labels = Vec::<usize>::new();
@@ -750,32 +752,29 @@ fn apply_exact_ring_plan_in_place(
         state.action_stack.push(Action::EmitToken(token));
     }
 
-    (
+    ExactRingPlanUndo {
         pending_opened,
         freed_labels,
         allocation_undos,
         action_stack_len,
-    )
+    }
 }
 
 fn undo_exact_ring_plan_in_place(
     state: &mut RootedConnectedNonStereoWalkerStateData,
-    pending_opened: &[(usize, PendingRing)],
-    freed_labels: &[usize],
-    allocation_undos: &[LabelAllocUndo],
-    action_stack_len: usize,
+    undo: &ExactRingPlanUndo,
 ) {
-    state.action_stack.truncate(action_stack_len);
-    for &label in freed_labels.iter().rev() {
+    state.action_stack.truncate(undo.action_stack_len);
+    for &label in undo.freed_labels.iter().rev() {
         remove_sorted_label(&mut state.free_labels, label);
     }
-    for (target_idx, ring) in pending_opened.iter().rev() {
+    for (target_idx, ring) in undo.pending_opened.iter().rev() {
         remove_pending(&mut state.pending, *target_idx, ring);
     }
     undo_label_allocations(
         &mut state.free_labels,
         &mut state.next_label,
-        allocation_undos,
+        &undo.allocation_undos,
     );
 }
 
@@ -882,8 +881,8 @@ fn successors_by_token(
                                 graph,
                                 &mut successor,
                                 &action,
-                                &ring_action_order,
-                                &child_order,
+                                ring_action_order,
+                                child_order,
                             );
                             normalize_state(&mut successor);
                             successors
@@ -925,7 +924,7 @@ fn successors_by_token(
                         graph,
                         &mut successor.action_stack,
                         action.atom_idx,
-                        &child_order,
+                        child_order,
                         true,
                     );
                     normalize_state(&mut successor);
@@ -995,23 +994,16 @@ fn for_each_exact_successor_by_token_owned<F>(
                         for_each_permutation_py_order_copy(chosen_children, &mut |child_order| {
                             let prefix_len = state.prefix.len();
                             state.prefix.push_str(&first_token);
-                            let (pending_opened, freed_labels, allocation_undos, action_stack_len) =
-                                apply_exact_ring_plan_in_place(
-                                    graph,
-                                    &mut state,
-                                    &action,
-                                    &ring_action_order,
-                                    &child_order,
-                                );
+                            let undo = apply_exact_ring_plan_in_place(
+                                graph,
+                                &mut state,
+                                &action,
+                                ring_action_order,
+                                child_order,
+                            );
                             normalize_state(&mut state);
                             emit(first_token.clone(), state.clone());
-                            undo_exact_ring_plan_in_place(
-                                &mut state,
-                                &pending_opened,
-                                &freed_labels,
-                                &allocation_undos,
-                                action_stack_len,
-                            );
+                            undo_exact_ring_plan_in_place(&mut state, &undo);
                             state.prefix.truncate(prefix_len);
                         });
                     });
@@ -1044,7 +1036,7 @@ fn for_each_exact_successor_by_token_owned<F>(
                         graph,
                         &mut state.action_stack,
                         action.atom_idx,
-                        &child_order,
+                        child_order,
                         true,
                     );
                     normalize_state(&mut state);

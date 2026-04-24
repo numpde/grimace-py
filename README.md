@@ -278,6 +278,12 @@ Current takeaway from the generated table:
 - `MolToSmilesEnum(...)` is still the fastest exact route in every listed case
 - `MolToSmilesDeterminizedDecoder(...)` can reduce exhaustive decoder cost on
   some molecules, but it is still slower than direct exact enumeration here
+- the RDKit columns are not exact enumeration; they are random sampling until
+  RDKit happens to reach `1/2` or full support
+- because of that, RDKit can be cheaper when you only want a few random
+  strings, especially on small cases
+- but when you want guaranteed full support, Grimace is usually much faster on
+  the larger cases in the table, while also being exact instead of sample-based
 
 Regenerate it with:
 

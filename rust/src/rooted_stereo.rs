@@ -99,6 +99,65 @@ enum WalkerAction {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum ExactBondToken {
+    Dash,
+    Eq,
+    Hash,
+    Dollar,
+    Colon,
+    Slash,
+    Backslash,
+    Other(String),
+}
+
+impl ExactBondToken {
+    fn from_owned(token: String) -> Option<Self> {
+        if token.is_empty() {
+            return None;
+        }
+        Some(match token.as_str() {
+            "-" => Self::Dash,
+            "=" => Self::Eq,
+            "#" => Self::Hash,
+            "$" => Self::Dollar,
+            ":" => Self::Colon,
+            "/" => Self::Slash,
+            "\\" => Self::Backslash,
+            _ => Self::Other(token),
+        })
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Dash => "-",
+            Self::Eq => "=",
+            Self::Hash => "#",
+            Self::Dollar => "$",
+            Self::Colon => ":",
+            Self::Slash => "/",
+            Self::Backslash => "\\",
+            Self::Other(token) => token.as_str(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum ExactWalkerAction {
+    EmitBondToken(ExactBondToken),
+    EmitRingLabel(usize),
+    EmitCloseParen,
+    EnterAtom {
+        atom_idx: usize,
+        parent_idx: Option<usize>,
+    },
+    ProcessChildren {
+        parent_idx: usize,
+        child_order: Arc<[usize]>,
+        next_branch_index: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct RootedConnectedStereoWalkerStateData {
     prefix: Arc<str>,
     visited: Arc<[bool]>,
@@ -128,7 +187,7 @@ struct RootedConnectedStereoExactDynamicData {
 struct RootedConnectedStereoExactStateData {
     prefix: Arc<str>,
     dynamic: Arc<RootedConnectedStereoExactDynamicData>,
-    action_stack: Vec<WalkerAction>,
+    action_stack: Vec<ExactWalkerAction>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -226,7 +285,40 @@ fn stereo_exact_state_from_full(
             free_labels,
             next_label,
         }),
-        action_stack,
+        action_stack: action_stack
+            .into_iter()
+            .map(exact_action_from_full)
+            .collect(),
+    }
+}
+
+fn exact_action_from_full(action: WalkerAction) -> ExactWalkerAction {
+    match action {
+        WalkerAction::EmitLiteral(token) => ExactWalkerAction::EmitBondToken(
+            ExactBondToken::from_owned(token)
+                .expect("empty literal token should not reach stereo exact state"),
+        ),
+        WalkerAction::EmitRingLabel(label) => ExactWalkerAction::EmitRingLabel(label),
+        WalkerAction::EmitCloseParen => ExactWalkerAction::EmitCloseParen,
+        WalkerAction::EnterAtom {
+            atom_idx,
+            parent_idx,
+        } => ExactWalkerAction::EnterAtom {
+            atom_idx,
+            parent_idx,
+        },
+        WalkerAction::ProcessChildren {
+            parent_idx,
+            child_order,
+            next_branch_index,
+        } => ExactWalkerAction::ProcessChildren {
+            parent_idx,
+            child_order,
+            next_branch_index,
+        },
+        WalkerAction::EmitDeferred(_) => {
+            unreachable!("atom-stereo exact path never defers tokens")
+        }
     }
 }
 
@@ -550,17 +642,17 @@ fn drain_exact_linear_atom_stereo_actions(state: &mut RootedConnectedStereoExact
             return;
         };
         match action {
-            WalkerAction::EmitLiteral(token) => {
+            ExactWalkerAction::EmitBondToken(token) => {
                 let token = token.clone();
                 state.action_stack.pop();
-                push_literal_token(&mut state.prefix, &token);
+                push_literal_token(&mut state.prefix, token.as_str());
             }
-            WalkerAction::EmitRingLabel(label) => {
+            ExactWalkerAction::EmitRingLabel(label) => {
                 let label = *label;
                 state.action_stack.pop();
                 push_ring_label(&mut state.prefix, label);
             }
-            WalkerAction::EmitCloseParen => {
+            ExactWalkerAction::EmitCloseParen => {
                 state.action_stack.pop();
                 push_char_token(&mut state.prefix, ')');
             }
@@ -3166,7 +3258,7 @@ fn enter_atom_successors_without_bond_stereo(
 fn enter_atom_successors_without_bond_stereo_exact(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoExactStateData,
-    base_action_stack: &[WalkerAction],
+    base_action_stack: &[ExactWalkerAction],
     atom_idx: usize,
     parent_idx: Option<usize>,
     visited_now: Arc<[bool]>,
@@ -3205,7 +3297,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 let mut current_pending: Option<Vec<(usize, Vec<PendingRing>)>> = None;
                 let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
                 let mut current_next = state.dynamic.next_label;
-                let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
+                let mut current_ring_actions = Vec::<ExactWalkerAction>::with_capacity(
                     closures_here.len() * 2 + opening_target_count,
                 );
                 let mut ring_neighbor_order = is_chiral_atom.then(Vec::<usize>::new);
@@ -3222,10 +3314,11 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                     ))
                                 })?
                                 .to_owned();
-                            if !bond_token.is_empty() {
-                                current_ring_actions.push(WalkerAction::EmitLiteral(bond_token));
+                            if let Some(token) = ExactBondToken::from_owned(bond_token) {
+                                current_ring_actions.push(ExactWalkerAction::EmitBondToken(token));
                             }
-                            current_ring_actions.push(WalkerAction::EmitRingLabel(closure.label));
+                            current_ring_actions
+                                .push(ExactWalkerAction::EmitRingLabel(closure.label));
                             insert_sorted(&mut current_free, closure.label);
                             if let Some(order) = &mut ring_neighbor_order {
                                 order.push(closure.other_atom_idx);
@@ -3233,10 +3326,11 @@ fn enter_atom_successors_without_bond_stereo_exact(
                         }
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
-                            current_ring_actions.push(WalkerAction::EmitRingLabel(label));
+                            current_ring_actions.push(ExactWalkerAction::EmitRingLabel(label));
                             add_pending(
-                                current_pending
-                                    .get_or_insert_with(|| Arc::unwrap_or_clone(pending_base.clone())),
+                                current_pending.get_or_insert_with(|| {
+                                    Arc::unwrap_or_clone(pending_base.clone())
+                                }),
                                 target_idx,
                                 PendingRing {
                                     label,
@@ -3325,7 +3419,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 let mut current_pending: Option<Vec<(usize, Vec<PendingRing>)>> = None;
                 let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
                 let mut current_next = state.dynamic.next_label;
-                let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
+                let mut current_ring_actions = Vec::<ExactWalkerAction>::with_capacity(
                     closures_here.len() * 2 + opening_target_count,
                 );
                 let mut labels_freed_after_atom = Vec::<usize>::with_capacity(closures_here.len());
@@ -3344,10 +3438,11 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                     ))
                                 })?
                                 .to_owned();
-                            if !bond_token.is_empty() {
-                                current_ring_actions.push(WalkerAction::EmitLiteral(bond_token));
+                            if let Some(token) = ExactBondToken::from_owned(bond_token) {
+                                current_ring_actions.push(ExactWalkerAction::EmitBondToken(token));
                             }
-                            current_ring_actions.push(WalkerAction::EmitRingLabel(closure.label));
+                            current_ring_actions
+                                .push(ExactWalkerAction::EmitRingLabel(closure.label));
                             labels_freed_after_atom.push(closure.label);
                             if let Some(order) = &mut ring_neighbor_order {
                                 order.push(closure.other_atom_idx);
@@ -3355,10 +3450,11 @@ fn enter_atom_successors_without_bond_stereo_exact(
                         }
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
-                            current_ring_actions.push(WalkerAction::EmitRingLabel(label));
+                            current_ring_actions.push(ExactWalkerAction::EmitRingLabel(label));
                             add_pending(
-                                current_pending
-                                    .get_or_insert_with(|| Arc::unwrap_or_clone(pending_base.clone())),
+                                current_pending.get_or_insert_with(|| {
+                                    Arc::unwrap_or_clone(pending_base.clone())
+                                }),
                                 target_idx,
                                 PendingRing {
                                     label,
@@ -3480,11 +3576,13 @@ fn enter_atom_successors_without_bond_stereo_exact(
                                 child_order[0],
                             )?;
                         } else if !child_order.is_empty() {
-                            successor.action_stack.push(WalkerAction::ProcessChildren {
-                                parent_idx: atom_idx,
-                                child_order: Arc::<[usize]>::from(child_order.to_vec()),
-                                next_branch_index: 0,
-                            });
+                            successor
+                                .action_stack
+                                .push(ExactWalkerAction::ProcessChildren {
+                                    parent_idx: atom_idx,
+                                    child_order: Arc::<[usize]>::from(child_order.to_vec()),
+                                    next_branch_index: 0,
+                                });
                         }
                         for action in current_ring_actions.iter().rev() {
                             successor.action_stack.push(action.clone());
@@ -3904,21 +4002,25 @@ fn process_children_successors_without_bond_stereo_exact(
         };
         push_char_token(&mut successor.prefix, '(');
         if next_branch_index + 1 < child_order.len() {
-            successor.action_stack.push(WalkerAction::ProcessChildren {
-                parent_idx,
-                child_order: child_order.clone(),
-                next_branch_index: next_branch_index + 1,
-            });
+            successor
+                .action_stack
+                .push(ExactWalkerAction::ProcessChildren {
+                    parent_idx,
+                    child_order: child_order.clone(),
+                    next_branch_index: next_branch_index + 1,
+                });
         }
-        successor.action_stack.push(WalkerAction::EmitCloseParen);
-        successor.action_stack.push(WalkerAction::EnterAtom {
+        successor
+            .action_stack
+            .push(ExactWalkerAction::EmitCloseParen);
+        successor.action_stack.push(ExactWalkerAction::EnterAtom {
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
         });
-        if !bond_token.is_empty() {
+        if let Some(token) = ExactBondToken::from_owned(bond_token) {
             successor
                 .action_stack
-                .push(WalkerAction::EmitLiteral(bond_token));
+                .push(ExactWalkerAction::EmitBondToken(token));
         }
         return Ok(vec![successor]);
     }
@@ -3943,7 +4045,7 @@ fn process_children_successors_without_bond_stereo_exact(
                 stack
             },
         };
-        base_state.action_stack.push(WalkerAction::EnterAtom {
+        base_state.action_stack.push(ExactWalkerAction::EnterAtom {
             atom_idx: child_idx,
             parent_idx: Some(parent_idx),
         });
@@ -3960,7 +4062,7 @@ fn process_children_successors_without_bond_stereo_exact(
         },
     };
     push_literal_token(&mut base_state.prefix, &bond_token);
-    base_state.action_stack.push(WalkerAction::EnterAtom {
+    base_state.action_stack.push(ExactWalkerAction::EnterAtom {
         atom_idx: child_idx,
         parent_idx: Some(parent_idx),
     });
@@ -3969,7 +4071,7 @@ fn process_children_successors_without_bond_stereo_exact(
 
 fn push_single_exact_child_action(
     graph: &PreparedSmilesGraphData,
-    stack: &mut Vec<WalkerAction>,
+    stack: &mut Vec<ExactWalkerAction>,
     parent_idx: usize,
     child_idx: usize,
 ) -> PyResult<()> {
@@ -3981,12 +4083,12 @@ fn push_single_exact_child_action(
             ))
         })?
         .to_owned();
-    stack.push(WalkerAction::EnterAtom {
+    stack.push(ExactWalkerAction::EnterAtom {
         atom_idx: child_idx,
         parent_idx: Some(parent_idx),
     });
-    if !bond_token.is_empty() {
-        stack.push(WalkerAction::EmitLiteral(bond_token));
+    if let Some(token) = ExactBondToken::from_owned(bond_token) {
+        stack.push(ExactWalkerAction::EmitBondToken(token));
     }
     Ok(())
 }
@@ -4233,8 +4335,7 @@ fn exact_successors_from_atom_stereo_state_drained(
     };
 
     match action {
-        WalkerAction::EmitDeferred(_) => unreachable!("atom-stereo exact path never defers tokens"),
-        WalkerAction::EnterAtom {
+        ExactWalkerAction::EnterAtom {
             atom_idx,
             parent_idx,
         } => {
@@ -4344,11 +4445,13 @@ fn exact_successors_from_atom_stereo_state_drained(
                                 child_order[0],
                             )?;
                         } else if !child_order.is_empty() {
-                            successor.action_stack.push(WalkerAction::ProcessChildren {
-                                parent_idx: atom_idx,
-                                child_order: Arc::<[usize]>::from(child_order.to_vec()),
-                                next_branch_index: 0,
-                            });
+                            successor
+                                .action_stack
+                                .push(ExactWalkerAction::ProcessChildren {
+                                    parent_idx: atom_idx,
+                                    child_order: Arc::<[usize]>::from(child_order.to_vec()),
+                                    next_branch_index: 0,
+                                });
                         }
                         if nonchiral_prefix.is_none() {
                             push_literal_token(&mut successor.prefix, atom_token.as_ref());
@@ -4378,7 +4481,7 @@ fn exact_successors_from_atom_stereo_state_drained(
                 is_chiral_atom,
             )
         }
-        WalkerAction::ProcessChildren {
+        ExactWalkerAction::ProcessChildren {
             parent_idx,
             child_order,
             next_branch_index,
@@ -4390,9 +4493,9 @@ fn exact_successors_from_atom_stereo_state_drained(
             child_order.clone(),
             *next_branch_index,
         ),
-        WalkerAction::EmitLiteral(_)
-        | WalkerAction::EmitRingLabel(_)
-        | WalkerAction::EmitCloseParen => unreachable!(),
+        ExactWalkerAction::EmitBondToken(_)
+        | ExactWalkerAction::EmitRingLabel(_)
+        | ExactWalkerAction::EmitCloseParen => unreachable!(),
     }
 }
 

@@ -189,7 +189,7 @@ Install with `pip install <wheel>` using one of these release assets:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
-| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.3/grimace-0.1.3-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.3/grimace-0.1.3-cp313-cp313-manylinux_2_28_x86_64.whl) |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.4/grimace-0.1.4-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.4/grimace-0.1.4-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 The built package depends on `rdkit>=2026.3`.
 

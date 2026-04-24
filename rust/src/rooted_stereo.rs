@@ -3281,6 +3281,53 @@ fn enter_atom_successors_without_bond_stereo_exact(
                     push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
                     prefix
                 });
+                if chosen_children.len() <= 1 {
+                    let child_order = chosen_children;
+                    let atom_token = if !is_chiral_atom {
+                        Cow::Borrowed(graph.atom_tokens[atom_idx].as_str())
+                    } else {
+                        let emitted_neighbor_order = stereo_neighbor_order(
+                            graph,
+                            atom_idx,
+                            parent_idx,
+                            ring_neighbor_order.as_deref().unwrap_or(&[]),
+                            child_order,
+                        )?;
+                        Cow::Owned(stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?)
+                    };
+                    let mut successor = RootedConnectedStereoExactStateData {
+                        prefix: nonchiral_prefix
+                            .as_ref()
+                            .cloned()
+                            .unwrap_or_else(|| state.prefix.clone()),
+                        dynamic: dynamic_shared,
+                        action_stack: {
+                            let mut stack = Vec::with_capacity(
+                                base_action_stack.len()
+                                    + current_ring_actions.len()
+                                    + usize::from(!child_order.is_empty()),
+                            );
+                            stack.extend_from_slice(base_action_stack);
+                            stack
+                        },
+                    };
+                    if let Some(&child_idx) = child_order.first() {
+                        push_single_exact_child_action(
+                            graph,
+                            &mut successor.action_stack,
+                            atom_idx,
+                            child_idx,
+                        )?;
+                    }
+                    for action in current_ring_actions.iter().rev() {
+                        successor.action_stack.push(action.clone());
+                    }
+                    if nonchiral_prefix.is_none() {
+                        push_literal_token(&mut successor.prefix, atom_token.as_ref());
+                    }
+                    successors.push(successor);
+                    return Ok(());
+                }
                 permutations_copy_distinct(chosen_children, &mut |child_order| {
                     if status.is_err() {
                         return;
@@ -4096,9 +4143,6 @@ fn exact_successors_from_atom_stereo_state_drained(
                     .iter()
                     .map(|group| group[0])
                     .collect::<Vec<_>>();
-                let mut successors = Vec::<RootedConnectedStereoExactStateData>::with_capacity(
-                    small_permutation_count(chosen_children.len()),
-                );
                 let dynamic_shared = Arc::new(RootedConnectedStereoExactDynamicData {
                     visited: visited_now.clone(),
                     visited_count: visited_count_now,
@@ -4111,6 +4155,45 @@ fn exact_successors_from_atom_stereo_state_drained(
                     push_literal_token(&mut prefix, graph.atom_tokens[atom_idx].as_str());
                     prefix
                 });
+                if chosen_children.len() <= 1 {
+                    let child_order = chosen_children.as_slice();
+                    let atom_token = if !is_chiral_atom {
+                        Cow::Borrowed(graph.atom_tokens[atom_idx].as_str())
+                    } else {
+                        let emitted_neighbor_order =
+                            stereo_neighbor_order(graph, atom_idx, parent_idx, &[], child_order)?;
+                        Cow::Owned(stereo_atom_token(graph, atom_idx, &emitted_neighbor_order)?)
+                    };
+                    let mut successor = RootedConnectedStereoExactStateData {
+                        prefix: nonchiral_prefix
+                            .as_ref()
+                            .cloned()
+                            .unwrap_or_else(|| state.prefix.clone()),
+                        dynamic: dynamic_shared,
+                        action_stack: {
+                            let mut stack = Vec::with_capacity(
+                                base_action_stack.len() + usize::from(!child_order.is_empty()),
+                            );
+                            stack.extend_from_slice(base_action_stack);
+                            stack
+                        },
+                    };
+                    if let Some(&child_idx) = child_order.first() {
+                        push_single_exact_child_action(
+                            graph,
+                            &mut successor.action_stack,
+                            atom_idx,
+                            child_idx,
+                        )?;
+                    }
+                    if nonchiral_prefix.is_none() {
+                        push_literal_token(&mut successor.prefix, atom_token.as_ref());
+                    }
+                    return Ok(vec![successor]);
+                }
+                let mut successors = Vec::<RootedConnectedStereoExactStateData>::with_capacity(
+                    small_permutation_count(chosen_children.len()),
+                );
                 let mut status = Ok(());
                 permutations_copy_distinct(&chosen_children, &mut |child_order| {
                     if status.is_err() {

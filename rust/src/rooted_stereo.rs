@@ -291,6 +291,20 @@ fn visited_with_marked(visited: &Arc<[bool]>, atom_idx: usize) -> Arc<[bool]> {
     Arc::<[bool]>::from(next)
 }
 
+fn take_pending_for_atom_arc(
+    pending: &Arc<Vec<(usize, Vec<PendingRing>)>>,
+    target_atom: usize,
+) -> (Arc<Vec<(usize, Vec<PendingRing>)>>, Vec<PendingRing>) {
+    match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
+        Ok(offset) => {
+            let mut next = Arc::unwrap_or_clone(pending.clone());
+            let removed = next.remove(offset).1;
+            (Arc::new(next), removed)
+        }
+        Err(_) => (pending.clone(), Vec::new()),
+    }
+}
+
 fn push_successor_bucket(
     buckets: &mut Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)>,
     token: String,
@@ -3190,7 +3204,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
     parent_idx: Option<usize>,
     visited_now: Arc<[bool]>,
     visited_count_now: usize,
-    pending_now: Vec<(usize, Vec<PendingRing>)>,
+    pending_base: Arc<Vec<(usize, Vec<PendingRing>)>>,
     closures_here: Vec<PendingRing>,
     ordered_groups: Vec<Vec<usize>>,
     is_chiral_atom: bool,
@@ -3230,7 +3244,7 @@ fn enter_atom_successors_without_bond_stereo_exact(
             }
 
             let outcome: PyResult<()> = (|| {
-                let mut current_pending = pending_now.clone();
+                let mut current_pending = Arc::unwrap_or_clone(pending_base.clone());
                 let mut current_free = Arc::unwrap_or_clone(state.dynamic.free_labels.clone());
                 let mut current_next = state.dynamic.next_label;
                 let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
@@ -3282,7 +3296,11 @@ fn enter_atom_successors_without_bond_stereo_exact(
                 for label in labels_freed_after_atom {
                     insert_sorted(&mut current_free, label);
                 }
-                let pending_shared = Arc::new(current_pending.clone());
+                let pending_shared = if opening_target_count == 0 {
+                    pending_base.clone()
+                } else {
+                    Arc::new(current_pending.clone())
+                };
                 let free_labels_shared = Arc::new(current_free.clone());
                 let dynamic_shared = Arc::new(RootedConnectedStereoExactDynamicData {
                     visited: visited_now.clone(),
@@ -4105,8 +4123,8 @@ fn exact_successors_from_atom_stereo_state_drained(
             let parent_idx = *parent_idx;
             let visited_now = visited_with_marked(&state.dynamic.visited, atom_idx);
             let visited_count_now = state.dynamic.visited_count + 1;
-            let mut pending_now = Arc::unwrap_or_clone(state.dynamic.pending.clone());
-            let closures_here = take_pending_for_atom(&mut pending_now, atom_idx);
+            let (pending_after_closures, closures_here) =
+                take_pending_for_atom_arc(&state.dynamic.pending, atom_idx);
             let ordered_groups = ordered_neighbor_groups(graph, atom_idx, visited_now.as_ref());
             let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 
@@ -4118,11 +4136,10 @@ fn exact_successors_from_atom_stereo_state_drained(
                 let mut successors = Vec::<RootedConnectedStereoExactStateData>::with_capacity(
                     small_permutation_count(chosen_children.len()),
                 );
-                let pending_shared = Arc::new(pending_now.clone());
                 let dynamic_shared = Arc::new(RootedConnectedStereoExactDynamicData {
                     visited: visited_now.clone(),
                     visited_count: visited_count_now,
-                    pending: pending_shared.clone(),
+                    pending: pending_after_closures.clone(),
                     free_labels: state.dynamic.free_labels.clone(),
                     next_label: state.dynamic.next_label,
                 });
@@ -4193,7 +4210,7 @@ fn exact_successors_from_atom_stereo_state_drained(
                 parent_idx,
                 visited_now,
                 visited_count_now,
-                pending_now,
+                pending_after_closures,
                 closures_here,
                 ordered_groups,
                 is_chiral_atom,

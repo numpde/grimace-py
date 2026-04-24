@@ -35,8 +35,9 @@ chemical equivalents", motivated by research on NMR spectroscopy
 with language transformers ([link](https://numpde.github.io/shared/msc/)).
 
 > [!WARNING]
-> This library is work in progress. Expect API changes, incomplete feature
-> coverage, and rough edges between releases.
+> `grimace` is still evolving. The supported public API is usable for the
+> documented runtime subset, but feature coverage is still limited and some
+> public details may continue to change between releases.
 
 ## Choose The API
 

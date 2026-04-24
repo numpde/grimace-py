@@ -161,12 +161,12 @@ fn extract_optional_int_pairs(
 impl PreparedSmilesGraphData {
     pub(crate) fn from_any(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
         if let Ok(dict) = obj.cast::<PyDict>() {
-            return Self::from_dict(&dict);
+            return Self::from_dict(dict);
         }
 
         let dict_any = obj.call_method0("to_dict")?;
         let dict = dict_any.cast::<PyDict>()?;
-        Self::from_dict(&dict)
+        Self::from_dict(dict)
     }
 
     fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {

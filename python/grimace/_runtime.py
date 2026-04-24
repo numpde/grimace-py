@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Iterator
+from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from itertools import product
-from typing import cast
+from typing import Protocol, TypeAlias, cast
 
 from rdkit import Chem
 
@@ -18,6 +18,25 @@ from grimace._reference.prepared_graph import (
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
+
+DecoderCacheKey: TypeAlias = tuple[object, ...]
+
+
+class _BaseDecoderState(Protocol):
+    def prefix(self) -> str: ...
+    def is_terminal(self) -> bool: ...
+    def copy(self) -> object: ...
+    def cache_key(self) -> Hashable: ...
+
+
+class _CoreDecoderState(_BaseDecoderState, Protocol):
+    def choice_successors(self) -> Sequence[tuple[str, object]]: ...
+    def grouped_successors(self) -> Sequence[tuple[str, object]]: ...
+
+
+class _AdapterDecoderState(_BaseDecoderState, Protocol):
+    def choice_successor_states(self) -> tuple[tuple[str, object], ...]: ...
+    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]: ...
 
 @dataclass(frozen=True, slots=True)
 class MolToSmilesFlags:
@@ -343,8 +362,8 @@ class _CoreStateAdapter:
     def copy(self) -> "_CoreStateAdapter":
         return type(self)(self._decoder.copy())
 
-    def cache_key(self) -> str:
-        return repr(("core", self._decoder.cache_key()))
+    def cache_key(self) -> DecoderCacheKey:
+        return ("core", self._decoder.cache_key())
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         successors = self._decoder.grouped_successors()
@@ -398,8 +417,11 @@ class _MergedStateAdapter:
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
 
-    def cache_key(self) -> str:
-        return repr(("merged", tuple(sorted(state.cache_key() for state in self._states))))
+    def cache_key(self) -> DecoderCacheKey:
+        return (
+            "merged",
+            tuple(sorted((_state_cache_key(state) for state in self._states), key=repr)),
+        )
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         grouped: dict[str, list[object]] = {}
@@ -483,14 +505,12 @@ class _DisconnectedStateAdapter:
             completed_prefix=self._completed_prefix,
         )
 
-    def cache_key(self) -> str:
-        return repr(
-            (
-                "disconnected",
-                self._fragment_idx,
-                self._completed_prefix,
-                tuple(state.cache_key() for state in self._fragment_states),
-            )
+    def cache_key(self) -> DecoderCacheKey:
+        return (
+            "disconnected",
+            self._fragment_idx,
+            self._completed_prefix,
+            tuple(_state_cache_key(state) for state in self._fragment_states),
         )
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
@@ -535,7 +555,7 @@ def _merge_choice_successor_states(states: tuple[object, ...]) -> object:
     return _MergedStateAdapter(tuple(flattened))
 
 
-def _choice_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+def _choice_successor_states(state: _AdapterDecoderState | _CoreDecoderState) -> tuple[tuple[str, object], ...]:
     if isinstance(state, (_CoreStateAdapter, _MergedStateAdapter, _DisconnectedStateAdapter)):
         return state.choice_successor_states()
     successors = state.choice_successors()
@@ -544,7 +564,7 @@ def _choice_successor_states(state: object) -> tuple[tuple[str, object], ...]:
     return tuple(successors)
 
 
-def _grouped_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+def _grouped_successor_states(state: _AdapterDecoderState | _CoreDecoderState) -> tuple[tuple[str, object], ...]:
     if isinstance(state, (_CoreStateAdapter, _MergedStateAdapter, _DisconnectedStateAdapter)):
         return state.grouped_successor_states()
     successors = state.grouped_successors()
@@ -553,23 +573,28 @@ def _grouped_successor_states(state: object) -> tuple[tuple[str, object], ...]:
     return tuple(successors)
 
 
-def _state_is_terminal(state: object) -> bool:
+def _state_is_terminal(state: _BaseDecoderState) -> bool:
     return bool(state.is_terminal())
 
 
-def _determinized_choice_successors(state: object) -> tuple[tuple[str, object], ...]:
+def _determinized_choice_successors(
+    state: _AdapterDecoderState | _CoreDecoderState,
+) -> tuple[tuple[str, object], ...]:
     """Return one successor per token text by merging same-text branches."""
     return _grouped_successor_states(state)
 
 
-def _state_cache_key(state: object) -> str:
-    return cast(str, state.cache_key())
+def _state_cache_key(state: _BaseDecoderState) -> DecoderCacheKey:
+    key = state.cache_key()
+    if isinstance(key, tuple):
+        return cast(DecoderCacheKey, key)
+    return ("raw", key)
 
 
 def _reachable_terminal_prefixes(
-    state: object,
+    state: _AdapterDecoderState | _CoreDecoderState,
     *,
-    memo: dict[str, frozenset[str]] | None = None,
+    memo: dict[DecoderCacheKey, frozenset[str]] | None = None,
 ) -> frozenset[str]:
     """Return every terminal prefix reachable from one internal decoder state."""
     if memo is None:
@@ -586,7 +611,7 @@ def _reachable_terminal_prefixes(
         return terminal
 
     outputs: set[str] = set()
-    for _, successor in state.choice_successor_states():
+    for _, successor in _choice_successor_states(state):
         outputs.update(_reachable_terminal_prefixes(successor, memo=memo))
     resolved = frozenset(outputs)
     memo[key] = resolved
@@ -878,7 +903,7 @@ def _exact_token_inventory_from_decoder(
     ignore_atom_map_numbers: bool,
 ) -> tuple[str, ...]:
     inventory: set[str] = set()
-    visited_state_keys: set[str] = set()
+    visited_state_keys: set[DecoderCacheKey] = set()
 
     for root_idx in _token_inventory_root_indices(
         mol_or_prepared,

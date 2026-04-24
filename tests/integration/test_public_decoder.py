@@ -500,8 +500,8 @@ class PublicDecoderTests(unittest.TestCase):
                 kwargs["rootedAtAtom"] = case.rooted_at_atom
             outputs = frozenset(grimace.MolToSmilesEnum(mol, **kwargs))
             decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)
-            memo: dict[str, frozenset[str]] = {}
-            seen_state_keys: set[str] = set()
+            memo: dict[object, frozenset[str]] = {}
+            seen_state_keys: set[object] = set()
             stack = [decoder._impl._state]
             audited_state_count = 0
 
@@ -628,8 +628,8 @@ class PublicDecoderTests(unittest.TestCase):
                 kwargs["rootedAtAtom"] = case.rooted_at_atom
             outputs = frozenset(grimace.MolToSmilesEnum(mol, **kwargs))
             decoder = grimace.MolToSmilesDecoder(mol, **kwargs)
-            memo: dict[str, frozenset[str]] = {}
-            seen_state_keys: set[str] = set()
+            memo: dict[object, frozenset[str]] = {}
+            seen_state_keys: set[object] = set()
             stack = [decoder._impl._state]
             audited_state_count = 0
 

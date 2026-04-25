@@ -87,7 +87,9 @@ fn bond_token_code(token: &str) -> BondTokenCode {
         "#" => BondTokenCode::Triple,
         "->" => BondTokenCode::DativeForward,
         "<-" => BondTokenCode::DativeBackward,
-        _ => panic!("unsupported nonstereo bond token: {token:?}"),
+        _ => unreachable!(
+            "PreparedSmilesGraph connected_nonstereo validation should reject unsupported bond token: {token:?}"
+        ),
     }
 }
 

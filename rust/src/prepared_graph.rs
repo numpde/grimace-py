@@ -6,6 +6,10 @@ pub const PREPARED_SMILES_GRAPH_SCHEMA_VERSION: usize = 1;
 pub const CONNECTED_NONSTEREO_SURFACE: &str = "connected_nonstereo";
 pub const CONNECTED_STEREO_SURFACE: &str = "connected_stereo";
 
+fn is_supported_nonstereo_bond_token(token: &str) -> bool {
+    matches!(token, "" | ":" | "-" | "=" | "#" | "->" | "<-")
+}
+
 pub(crate) fn mol_to_smiles_support_data(
     graph: &PreparedSmilesGraphData,
     root_idx: isize,
@@ -317,6 +321,16 @@ impl PreparedSmilesGraphData {
                 return Err(PyValueError::new_err(
                     "PreparedSmilesGraph neighbor token row length mismatch",
                 ));
+            }
+
+            if self.surface_kind == CONNECTED_NONSTEREO_SURFACE {
+                for token in bond_tokens {
+                    if !is_supported_nonstereo_bond_token(token) {
+                        return Err(PyValueError::new_err(format!(
+                            "PreparedSmilesGraph connected_nonstereo surface does not support bond token {token:?}"
+                        )));
+                    }
+                }
             }
 
             let mut sorted_neighbors = neighbors.clone();
@@ -989,6 +1003,17 @@ mod tests {
         broken.neighbor_bond_tokens[1][0] = "=".to_owned();
 
         assert_validation_error(broken, "bond tokens must be symmetric");
+    }
+
+    #[test]
+    fn validate_rejects_unsupported_nonstereo_bond_token() {
+        let mut broken = sample_graph();
+        broken.neighbor_bond_tokens = vec![vec!["/".to_owned()], vec!["/".to_owned()]];
+
+        assert_validation_error(
+            broken,
+            "connected_nonstereo surface does not support bond token",
+        );
     }
 
     #[test]

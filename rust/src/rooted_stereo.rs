@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
-use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyKeyError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use rustc_hash::FxHashMap;
@@ -4601,10 +4601,7 @@ fn advance_stereo_token_state(
             "Token {chosen_token:?} is not available; choices={available:?}"
         ))
     })?;
-    Ok(candidates
-        .into_iter()
-        .next()
-        .expect("chosen token should have at least one successor"))
+    take_only_stereo_successor_state(candidates, "token advance")
 }
 
 #[cfg(test)]
@@ -4633,10 +4630,28 @@ fn advance_stereo_choice_state(
     chosen_idx: usize,
 ) -> PyResult<RootedConnectedStereoWalkerStateData> {
     let mut choices = choices_for_stereo_state(runtime, graph, state)?;
-    Ok(take_choice_or_err(&mut choices, chosen_idx)?
-        .into_iter()
-        .next()
-        .expect("choice should advance to exactly one successor state"))
+    take_only_stereo_successor_state(
+        take_choice_or_err(&mut choices, chosen_idx)?,
+        "choice advance",
+    )
+}
+
+fn take_only_stereo_successor_state(
+    mut successors: Vec<RootedConnectedStereoWalkerStateData>,
+    context: &str,
+) -> PyResult<RootedConnectedStereoWalkerStateData> {
+    if successors.len() != 1 {
+        return Err(PyValueError::new_err(format!(
+            "Expected exactly one stereo successor state for {context}, got {}",
+            successors.len()
+        )));
+    }
+    match successors.pop() {
+        Some(successor) => Ok(successor),
+        None => Err(PyValueError::new_err(format!(
+            "Expected exactly one stereo successor state for {context}, got 0"
+        ))),
+    }
 }
 
 fn frontier_next_token_support_for_stereo(
@@ -4878,10 +4893,10 @@ impl PyRootedConnectedStereoWalker {
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
         let mut choices = successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?;
-        let successors = take_transition_or_err(&mut choices, chosen_token)?
-            .into_iter()
-            .next()
-            .expect("chosen token should have at least one successor state");
+        let successors = take_only_stereo_successor_state(
+            take_transition_or_err(&mut choices, chosen_token)?,
+            "walker token advance",
+        )?;
         Ok(PyRootedConnectedStereoWalkerState { data: successors })
     }
 
@@ -4903,10 +4918,10 @@ impl PyRootedConnectedStereoWalker {
             }
         }
         Ok(PyRootedConnectedStereoWalkerState {
-            data: take_choice_or_err(&mut choices, chosen_idx)?
-                .into_iter()
-                .next()
-                .expect("choice should advance to exactly one successor state"),
+            data: take_only_stereo_successor_state(
+                take_choice_or_err(&mut choices, chosen_idx)?,
+                "walker choice advance",
+            )?,
         })
     }
 
@@ -5132,11 +5147,12 @@ impl PyRootedConnectedStereoDecoder {
                         frontier,
                     )?);
                 }
-                Ok(grouped_choice_texts(
-                    cached_choices
-                        .as_ref()
-                        .expect("single decoder choice cache should be populated"),
-                ))
+                cached_choices
+                    .as_ref()
+                    .map(|choices| grouped_choice_texts(choices))
+                    .ok_or_else(|| {
+                        PyRuntimeError::new_err("single decoder choice cache should be populated")
+                    })
             }
         }
     }
@@ -5194,11 +5210,12 @@ impl PyRootedConnectedStereoDecoder {
                         frontier,
                     )?);
                 }
-                Ok(choice_texts(
-                    cached_choices
-                        .as_ref()
-                        .expect("single decoder choice cache should be populated"),
-                ))
+                cached_choices
+                    .as_ref()
+                    .map(|choices| choice_texts(choices))
+                    .ok_or_else(|| {
+                        PyRuntimeError::new_err("single decoder choice cache should be populated")
+                    })
             }
         }
     }

@@ -1063,10 +1063,7 @@ fn advance_token_state(
             "Token {chosen_token:?} is not available; choices={available:?}"
         ))
     })?;
-    Ok(candidates
-        .into_iter()
-        .next()
-        .expect("chosen token should have at least one successor"))
+    take_only_successor_state(candidates, "token advance")
 }
 
 fn choices_for_state(
@@ -1098,10 +1095,28 @@ fn advance_choice_state(
     chosen_idx: usize,
 ) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
     let mut choices = choices_for_state(graph, state);
-    Ok(take_choice_or_err(&mut choices, chosen_idx)?
-        .into_iter()
-        .next()
-        .expect("choice should advance to exactly one successor state"))
+    take_only_successor_state(
+        take_choice_or_err(&mut choices, chosen_idx)?,
+        "choice advance",
+    )
+}
+
+fn take_only_successor_state(
+    mut successors: Vec<RootedConnectedNonStereoWalkerStateData>,
+    context: &str,
+) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
+    if successors.len() != 1 {
+        return Err(PyValueError::new_err(format!(
+            "Expected exactly one successor state for {context}, got {}",
+            successors.len()
+        )));
+    }
+    match successors.pop() {
+        Some(successor) => Ok(successor),
+        None => Err(PyValueError::new_err(format!(
+            "Expected exactly one successor state for {context}, got 0"
+        ))),
+    }
 }
 
 fn frontier_next_token_support(
@@ -1420,13 +1435,9 @@ impl PyRootedConnectedNonStereoDecoder {
     }
 
     fn next_token_support(&mut self) -> Vec<String> {
-        if self.cached_choices.is_none() {
-            self.cached_choices = Some(frontier_choices(self.graph.as_ref(), &self.frontier));
-        }
         grouped_choice_texts(
             self.cached_choices
-                .as_ref()
-                .expect("cache should be populated"),
+                .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier)),
         )
     }
 
@@ -1440,13 +1451,9 @@ impl PyRootedConnectedNonStereoDecoder {
     }
 
     fn next_choice_texts(&mut self) -> Vec<String> {
-        if self.cached_choices.is_none() {
-            self.cached_choices = Some(frontier_choices(self.graph.as_ref(), &self.frontier));
-        }
         choice_texts(
             self.cached_choices
-                .as_ref()
-                .expect("cache should be populated"),
+                .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier)),
         )
     }
 

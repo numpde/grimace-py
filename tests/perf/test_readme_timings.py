@@ -25,6 +25,7 @@ class TimingCase:
 
 @dataclass(frozen=True, slots=True)
 class TimingRow:
+    surface: str
     molecule: str
     atoms: int
     support: int
@@ -226,6 +227,9 @@ class ReadmeTimingPerfTests(unittest.TestCase):
 
                 rows.append(
                     TimingRow(
+                        surface=(
+                            "stereo" if case.isomeric_smiles else "non-stereo"
+                        ),
                         molecule=canonical_smiles,
                         atoms=mol.GetNumAtoms(),
                         support=support_size,
@@ -283,8 +287,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
         )
 
     def _render_document_from_tsv(self) -> str:
-        rows: list[str] = []
-        rows.append(
+        header = (
             "| Molecule | Atoms | Support | Grimace enum (all roots) | "
             "Decoder enum (branch-preserving, per-root) | "
             "Decoder enum (determinized, per-root) | "
@@ -292,12 +295,14 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "Decoder enum (determinized, merged) | RDKit to 1/2 support | "
             "RDKit to full support |"
         )
-        rows.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |")
+        separator = "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |"
+
+        rendered_rows = {"non-stereo": [], "stereo": []}
 
         with self.OUTPUT_TSV_PATH.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle, dialect="excel-tab")
             for row in reader:
-                rows.append(
+                rendered_rows[row["surface"]].append(
                     "| "
                     f"`{row['molecule']}` | {row['atoms']} | {row['support']} | "
                     f"{_format_bold_duration(float(row['enum_mean_s']), float(row['enum_std_s']))} | "
@@ -323,23 +328,25 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "stability guarantee.",
             "",
             "- `Support`: the size of the exact rooted SMILES support across all root atoms.",
-            "- `Grimace enum (all roots)`: direct exact enumeration with `MolToSmilesEnum(...)`,",
-            "  unioned across all roots.",
-            "- `Decoder enum (branch-preserving, per-root)`: exact enumeration by",
-            "  exhaustive traversal of `MolToSmilesDecoder(...)` from each root",
-            "  separately, then unioned across all roots.",
+            "- `Grimace enum (all roots)`: union of",
+            "  `MolToSmilesEnum(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>)`",
+            "  over every root atom.",
+            "- `Decoder enum (branch-preserving, per-root)`: exhaustive traversal of",
+            "  `MolToSmilesDecoder(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>).next_choices`",
+            "  over every root atom, then unioned.",
             "- `Decoder enum (determinized, per-root)`: the same per-root traversal,",
             "  using `MolToSmilesDeterminizedDecoder(...)`.",
-            "- `Decoder enum (branch-preserving, merged)`: exact enumeration by",
-            "  exhaustive traversal of the merged public `MolToSmilesDecoder(...)`",
-            "  state returned by `rootedAtAtom=-1`.",
-            "- `Decoder enum (determinized, merged)`: the same merged-root traversal,",
+            "- `Decoder enum (branch-preserving, merged)`: exhaustive traversal of",
+            "  `MolToSmilesDecoder(..., rootedAtAtom=-1, canonical=False, doRandom=True, isomericSmiles=<table mode>).next_choices`.",
+            "- `Decoder enum (determinized, merged)`: the same merged traversal,",
             "  using `MolToSmilesDeterminizedDecoder(...)`.",
             "- `RDKit to 1/2 support`: repeated RDKit `MolToSmiles(..., canonical=False,",
-            "  doRandom=True)` draws across all roots until half of the exact support has",
-            "  been seen.",
+            "  doRandom=True, rootedAtAtom=root_idx, isomericSmiles=<table mode>)` draws",
+            "  across all roots until half of the exact support has been seen.",
             "- `RDKit to full support`: the same sampling process until the full exact",
             "  support has been seen.",
+            "- `Non-stereo` means `isomericSmiles=False`.",
+            "- `Stereo` means `isomericSmiles=True`.",
             "- All timing columns are shown as `time mean ± std`.",
             "- The two RDKit columns also show `(draw mean ± std)` over repeated seeded",
             "  trials.",
@@ -350,7 +357,17 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "- The determinized decoder can reduce exhaustive decoder cost on some",
             "  molecules, but direct exact enumeration is still faster on these cases.",
             "",
-            *rows,
+            "## Non-stereo (`isomericSmiles=False`)",
+            "",
+            header,
+            separator,
+            *rendered_rows["non-stereo"],
+            "",
+            "## Stereo (`isomericSmiles=True`)",
+            "",
+            header,
+            separator,
+            *rendered_rows["stereo"],
             "",
         ]
         return "\n".join(lines)

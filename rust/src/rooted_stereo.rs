@@ -416,10 +416,10 @@ fn stereo_exact_state_from_full(
 
 fn exact_action_from_full(action: WalkerAction) -> ExactWalkerAction {
     match action {
-        WalkerAction::EmitLiteral(token) => ExactWalkerAction::EmitBondToken(
-            ExactBondToken::from_owned(token)
-                .expect("empty literal token should not reach stereo exact state"),
-        ),
+        WalkerAction::EmitLiteral(token) => match ExactBondToken::from_owned(token) {
+            Some(token) => ExactWalkerAction::EmitBondToken(token),
+            None => unreachable!("empty literal token should not reach stereo exact state"),
+        },
         WalkerAction::EmitRingLabel(label) => ExactWalkerAction::EmitRingLabel(label),
         WalkerAction::EmitCloseParen => ExactWalkerAction::EmitCloseParen,
         WalkerAction::EnterAtom {

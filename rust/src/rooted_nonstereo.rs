@@ -437,13 +437,25 @@ fn edge_prefix_or_atom(
     parent_idx: usize,
     child_idx: usize,
 ) -> String {
-    let token = graph
-        .bond_token(parent_idx, child_idx)
-        .expect("child should be adjacent");
+    let token = adjacent_bond_token(graph, parent_idx, child_idx, "edge prefix or atom");
     if token.is_empty() {
         graph.atom_token(child_idx).to_owned()
     } else {
         token.to_owned()
+    }
+}
+
+fn adjacent_bond_token<'a>(
+    graph: &'a PreparedSmilesGraphData,
+    parent_idx: usize,
+    child_idx: usize,
+    context: &str,
+) -> &'a str {
+    match graph.bond_token(parent_idx, child_idx) {
+        Some(token) => token,
+        None => unreachable!(
+            "nonstereo walker expected adjacent atoms in {context}: {parent_idx}, {child_idx}"
+        ),
     }
 }
 
@@ -477,9 +489,7 @@ fn push_child_actions(
     let branch_children = &child_order[..child_order.len() - 1];
     let main_child = child_order[child_order.len() - 1];
 
-    let main_prefix = graph
-        .bond_token(parent_idx, main_child)
-        .expect("main child should be adjacent");
+    let main_prefix = adjacent_bond_token(graph, parent_idx, main_child, "main child action");
     action_stack.push(Action::EnterAtom(main_child));
     if !main_prefix.is_empty() {
         action_stack.push(Action::EmitToken(EmittedToken::Literal(
@@ -496,9 +506,8 @@ fn push_child_actions(
             LiteralToken::BranchClose,
         )));
         action_stack.push(Action::EnterAtom(child_idx));
-        let edge_prefix = graph
-            .bond_token(parent_idx, child_idx)
-            .expect("branch child should be adjacent");
+        let edge_prefix =
+            adjacent_bond_token(graph, parent_idx, child_idx, "branch child action");
         if !edge_prefix.is_empty() {
             action_stack.push(Action::EmitToken(EmittedToken::Literal(
                 LiteralToken::Bond(bond_token_code(edge_prefix)),
@@ -514,9 +523,12 @@ fn push_child_actions(
         LiteralToken::BranchClose,
     )));
     action_stack.push(Action::EnterAtom(first_branch_child));
-    let first_edge_prefix = graph
-        .bond_token(parent_idx, first_branch_child)
-        .expect("first branch child should be adjacent");
+    let first_edge_prefix = adjacent_bond_token(
+        graph,
+        parent_idx,
+        first_branch_child,
+        "first branch child action",
+    );
     if !first_edge_prefix.is_empty() {
         action_stack.push(Action::EmitToken(EmittedToken::Literal(
             LiteralToken::Bond(bond_token_code(first_edge_prefix)),
@@ -585,11 +597,12 @@ fn apply_exact_ring_plan(
                     target_idx,
                     PendingRing {
                         label,
-                        bond_token: bond_token_code(
-                            graph
-                                .bond_token(action.atom_idx, target_idx)
-                                .expect("opening target should be adjacent"),
-                        ),
+                        bond_token: bond_token_code(adjacent_bond_token(
+                            graph,
+                            action.atom_idx,
+                            target_idx,
+                            "exact ring opening",
+                        )),
                     },
                 );
                 if !is_first {
@@ -636,15 +649,20 @@ fn remove_pending(
     target_atom: usize,
     ring: &PendingRing,
 ) {
-    let offset = pending
-        .binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx)
-        .expect("pending target should exist");
+    let offset = match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
+        Ok(offset) => offset,
+        Err(_) => unreachable!("pending target should exist: {target_atom}"),
+    };
     let rings = &mut pending[offset].1;
-    let ring_offset = rings
-        .binary_search_by(|candidate| {
-            (candidate.label, candidate.bond_token).cmp(&(ring.label, ring.bond_token))
-        })
-        .expect("pending ring should exist");
+    let ring_offset = match rings.binary_search_by(|candidate| {
+        (candidate.label, candidate.bond_token).cmp(&(ring.label, ring.bond_token))
+    }) {
+        Ok(offset) => offset,
+        Err(_) => unreachable!(
+            "pending ring should exist: target_atom={target_atom}, label={}",
+            ring.label
+        ),
+    };
     rings.remove(ring_offset);
     if rings.is_empty() {
         pending.remove(offset);
@@ -652,9 +670,10 @@ fn remove_pending(
 }
 
 fn remove_sorted_label(labels: &mut Vec<usize>, label: usize) {
-    let offset = labels
-        .binary_search(&label)
-        .expect("label should exist in sorted free label pool");
+    let offset = match labels.binary_search(&label) {
+        Ok(offset) => offset,
+        Err(_) => unreachable!("label should exist in sorted free label pool: {label}"),
+    };
     labels.remove(offset);
 }
 
@@ -724,11 +743,12 @@ fn apply_exact_ring_plan_in_place(
                 allocation_undos.push(undo);
                 let ring = PendingRing {
                     label,
-                    bond_token: bond_token_code(
-                        graph
-                            .bond_token(action.atom_idx, target_idx)
-                            .expect("opening target should be adjacent"),
-                    ),
+                    bond_token: bond_token_code(adjacent_bond_token(
+                        graph,
+                        action.atom_idx,
+                        target_idx,
+                        "in-place exact ring opening",
+                    )),
                 };
                 add_pending(&mut state.pending, target_idx, ring);
                 pending_opened.push((target_idx, ring));
@@ -900,9 +920,8 @@ fn successors_by_token(
                 let mut successor = normalized;
                 successor.action_stack.pop();
                 successor.prefix.push_str(&token);
-                let edge_prefix = graph
-                    .bond_token(action.atom_idx, child_idx)
-                    .expect("linear child should be adjacent");
+                let edge_prefix =
+                    adjacent_bond_token(graph, action.atom_idx, child_idx, "linear successor");
                 if edge_prefix.is_empty() {
                     consume_enter_atom(graph, &mut successor, child_idx);
                 } else {
@@ -1013,9 +1032,8 @@ fn for_each_exact_successor_by_token_owned<F>(
             } else if let Some(child_idx) = action.linear_child_idx {
                 let token = edge_prefix_or_atom(graph, action.atom_idx, child_idx);
                 state.prefix.push_str(&token);
-                let edge_prefix = graph
-                    .bond_token(action.atom_idx, child_idx)
-                    .expect("linear child should be adjacent");
+                let edge_prefix =
+                    adjacent_bond_token(graph, action.atom_idx, child_idx, "exact linear successor");
                 if edge_prefix.is_empty() {
                     consume_enter_atom(graph, &mut state, child_idx);
                 } else {

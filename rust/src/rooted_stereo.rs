@@ -123,6 +123,33 @@ struct ProcessChildrenTerminalStep {
     edge_part: Part,
 }
 
+struct AtomStereoExpansionInput<'a> {
+    graph: &'a PreparedSmilesGraphData,
+    base_state: &'a RootedConnectedStereoWalkerStateData,
+    atom_idx: usize,
+    parent_idx: Option<usize>,
+    visited_now: Arc<[bool]>,
+    visited_count_now: usize,
+    pending_now: Vec<(usize, Vec<PendingRing>)>,
+    closures_here: Vec<PendingRing>,
+    ordered_groups: Vec<Vec<usize>>,
+    is_chiral_atom: bool,
+}
+
+struct ExactAtomStereoExpansionInput<'a> {
+    graph: &'a PreparedSmilesGraphData,
+    state: &'a RootedConnectedStereoExactStateData,
+    base_action_stack: &'a [ExactWalkerAction],
+    atom_idx: usize,
+    parent_idx: Option<usize>,
+    visited_now: Arc<[bool]>,
+    visited_count_now: usize,
+    pending_base: Arc<Vec<(usize, Vec<PendingRing>)>>,
+    closures_here: Vec<PendingRing>,
+    ordered_groups: Vec<Vec<usize>>,
+    is_chiral_atom: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct StereoSideInfo {
     component_idx: usize,
@@ -3104,9 +3131,9 @@ fn enter_atom_successors_by_token(
     }
 
     if runtime.side_infos.is_empty() {
-        return enter_atom_successors_without_bond_stereo(
+        return enter_atom_successors_without_bond_stereo(AtomStereoExpansionInput {
             graph,
-            &base_state,
+            base_state: &base_state,
             atom_idx,
             parent_idx,
             visited_now,
@@ -3115,7 +3142,7 @@ fn enter_atom_successors_by_token(
             closures_here,
             ordered_groups,
             is_chiral_atom,
-        );
+        });
     }
 
     let edge_context = StereoEdgeEmissionContext {
@@ -3323,19 +3350,21 @@ fn enter_atom_successors_by_token(
     Ok(finalize_linear_structural_transitions(successors))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn enter_atom_successors_without_bond_stereo(
-    graph: &PreparedSmilesGraphData,
-    base_state: &RootedConnectedStereoWalkerStateData,
-    atom_idx: usize,
-    parent_idx: Option<usize>,
-    visited_now: Arc<[bool]>,
-    visited_count_now: usize,
-    pending_now: Vec<(usize, Vec<PendingRing>)>,
-    closures_here: Vec<PendingRing>,
-    ordered_groups: Vec<Vec<usize>>,
-    is_chiral_atom: bool,
+    input: AtomStereoExpansionInput<'_>,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
+    let AtomStereoExpansionInput {
+        graph,
+        base_state,
+        atom_idx,
+        parent_idx,
+        visited_now,
+        visited_count_now,
+        pending_now,
+        closures_here,
+        ordered_groups,
+        is_chiral_atom,
+    } = input;
     let mut successors = Vec::<(String, Vec<RootedConnectedStereoWalkerStateData>)>::new();
     let mut status = Ok(());
 
@@ -3482,20 +3511,22 @@ fn enter_atom_successors_without_bond_stereo(
     Ok(finalize_linear_structural_transitions(successors))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn enter_atom_successors_without_bond_stereo_exact(
-    graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoExactStateData,
-    base_action_stack: &[ExactWalkerAction],
-    atom_idx: usize,
-    parent_idx: Option<usize>,
-    visited_now: Arc<[bool]>,
-    visited_count_now: usize,
-    pending_base: Arc<Vec<(usize, Vec<PendingRing>)>>,
-    closures_here: Vec<PendingRing>,
-    ordered_groups: Vec<Vec<usize>>,
-    is_chiral_atom: bool,
+    input: ExactAtomStereoExpansionInput<'_>,
 ) -> PyResult<Vec<RootedConnectedStereoExactStateData>> {
+    let ExactAtomStereoExpansionInput {
+        graph,
+        state,
+        base_action_stack,
+        atom_idx,
+        parent_idx,
+        visited_now,
+        visited_count_now,
+        pending_base,
+        closures_here,
+        ordered_groups,
+        is_chiral_atom,
+    } = input;
     let mut successors = Vec::<RootedConnectedStereoExactStateData>::new();
     let mut status = Ok(());
 
@@ -4515,19 +4546,19 @@ fn exact_successors_from_atom_stereo_state_drained(
                 return Ok(finalize_exact_atom_stereo_successors(successors));
             }
 
-            enter_atom_successors_without_bond_stereo_exact(
+            enter_atom_successors_without_bond_stereo_exact(ExactAtomStereoExpansionInput {
                 graph,
-                &state,
+                state: &state,
                 base_action_stack,
                 atom_idx,
                 parent_idx,
                 visited_now,
                 visited_count_now,
-                pending_after_closures,
+                pending_base: pending_after_closures,
                 closures_here,
                 ordered_groups,
                 is_chiral_atom,
-            )
+            })
         }
         ExactWalkerAction::ProcessChildren {
             parent_idx,

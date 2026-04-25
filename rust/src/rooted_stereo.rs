@@ -409,12 +409,17 @@ impl StereoDecoderMode {
         Self::Merged { branches }
     }
 
-    fn next_token_support(&mut self, graph: &Arc<PreparedSmilesGraphData>) -> PyResult<Vec<String>> {
+    fn next_token_support(
+        &mut self,
+        graph: &Arc<PreparedSmilesGraphData>,
+    ) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_grouped_successors(graph.clone(), branches)?
-                .into_iter()
-                .map(|(token, _)| token)
-                .collect()),
+            Self::Merged { branches } => {
+                Ok(merged_stereo_grouped_successors(graph.clone(), branches)?
+                    .into_iter()
+                    .map(|(token, _)| token)
+                    .collect())
+            }
             Self::Single {
                 runtime,
                 frontier,
@@ -452,7 +457,9 @@ impl StereoDecoderMode {
             } => {
                 let choices = match cached_choices.take() {
                     Some(choices) => choices,
-                    None => frontier_choices_for_stereo(runtime.as_ref(), graph.as_ref(), frontier)?,
+                    None => {
+                        frontier_choices_for_stereo(runtime.as_ref(), graph.as_ref(), frontier)?
+                    }
                 };
                 *frontier = take_grouped_choices_or_err(choices, chosen_token)?;
                 Ok(())
@@ -462,10 +469,12 @@ impl StereoDecoderMode {
 
     fn next_choice_texts(&mut self, graph: &Arc<PreparedSmilesGraphData>) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_choice_successors(graph.clone(), branches)?
-                .into_iter()
-                .map(|(token, _)| token)
-                .collect()),
+            Self::Merged { branches } => {
+                Ok(merged_stereo_choice_successors(graph.clone(), branches)?
+                    .into_iter()
+                    .map(|(token, _)| token)
+                    .collect())
+            }
             Self::Single {
                 runtime,
                 frontier,
@@ -503,7 +512,9 @@ impl StereoDecoderMode {
             } => {
                 let mut choices = match cached_choices.take() {
                     Some(choices) => choices,
-                    None => frontier_choices_for_stereo(runtime.as_ref(), graph.as_ref(), frontier)?,
+                    None => {
+                        frontier_choices_for_stereo(runtime.as_ref(), graph.as_ref(), frontier)?
+                    }
                 };
                 *frontier = take_choice_or_err(&mut choices, chosen_idx)?;
                 Ok(())
@@ -516,10 +527,12 @@ impl StereoDecoderMode {
         graph: &Arc<PreparedSmilesGraphData>,
     ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_choice_successors(graph.clone(), branches)?
-                .into_iter()
-                .map(|(token, successor)| (token, successor.mode))
-                .collect()),
+            Self::Merged { branches } => {
+                Ok(merged_stereo_choice_successors(graph.clone(), branches)?
+                    .into_iter()
+                    .map(|(token, successor)| (token, successor.mode))
+                    .collect())
+            }
             Self::Single {
                 runtime, frontier, ..
             } => Ok(frontier_choice_successors_for_stereo(
@@ -538,10 +551,12 @@ impl StereoDecoderMode {
         graph: &Arc<PreparedSmilesGraphData>,
     ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_grouped_successors(graph.clone(), branches)?
-                .into_iter()
-                .map(|(token, successor)| (token, successor.mode))
-                .collect()),
+            Self::Merged { branches } => {
+                Ok(merged_stereo_grouped_successors(graph.clone(), branches)?
+                    .into_iter()
+                    .map(|(token, successor)| (token, successor.mode))
+                    .collect())
+            }
             Self::Single {
                 runtime, frontier, ..
             } => Ok(frontier_transitions_for_stereo_linear(
@@ -5418,6 +5433,46 @@ mod tests {
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
 
+    fn stereo_support_set(graph: &PreparedSmilesGraphData, root_idx: isize) -> BTreeSet<String> {
+        enumerate_rooted_connected_stereo_smiles_support(graph, root_idx)
+            .expect("stereo enumeration should succeed")
+            .into_iter()
+            .collect()
+    }
+
+    fn stereo_runtime_and_state(
+        graph: &PreparedSmilesGraphData,
+        root_idx: usize,
+    ) -> (
+        super::StereoWalkerRuntimeData,
+        super::RootedConnectedStereoWalkerStateData,
+    ) {
+        let runtime = build_walker_runtime(graph, root_idx).expect("stereo runtime should build");
+        let state = initial_stereo_state_for_root(&runtime, graph, root_idx);
+        (runtime, state)
+    }
+
+    fn observed_choice_support(
+        graph: &PreparedSmilesGraphData,
+        root_idx: usize,
+    ) -> BTreeSet<String> {
+        let (runtime, initial_state) = stereo_runtime_and_state(graph, root_idx);
+        let mut stack = vec![initial_state];
+        let mut observed = BTreeSet::new();
+        while let Some(state) = stack.pop() {
+            if is_terminal_stereo_state(&state) {
+                observed.insert(state.prefix.to_string());
+                continue;
+            }
+            let mut choices = choices_for_stereo_state(&runtime, graph, &state)
+                .expect("stereo choices should enumerate");
+            while let Some(choice) = choices.pop() {
+                stack.extend(choice.next_frontier);
+            }
+        }
+        observed
+    }
+
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
         PreparedSmilesGraphData {
             schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -5623,24 +5678,15 @@ mod tests {
     #[test]
     fn stereo_surface_support_matches_expected() {
         let graph = sample_stereo_graph();
-        let support = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
-            .expect("stereo enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let support = stereo_support_set(&graph, 0);
         assert_eq!(BTreeSet::from(["F/[CH]=[CH]\\Cl".to_owned()]), support);
     }
 
     #[test]
     fn atom_stereo_support_matches_expected_curated_outputs() {
         let graph = atom_stereo_graph();
-        let root_0 = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
-            .expect("stereo enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let root_1 = enumerate_rooted_connected_stereo_smiles_support(&graph, 1)
-            .expect("stereo enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let root_0 = stereo_support_set(&graph, 0);
+        let root_1 = stereo_support_set(&graph, 1);
 
         assert_eq!(
             BTreeSet::from(["F[C@H](Cl)Br".to_owned(), "F[C@@H](Br)Cl".to_owned(),]),
@@ -5665,8 +5711,7 @@ mod tests {
             (sample_stereo_graph(), 0usize),
             (atom_stereo_graph(), 1usize),
         ] {
-            let runtime = build_walker_runtime(&graph, root_idx).expect("runtime should build");
-            let initial_state = initial_stereo_state_for_root(&runtime, &graph, root_idx);
+            let (runtime, initial_state) = stereo_runtime_and_state(&graph, root_idx);
             let mut walker_support = BTreeSet::new();
             enumerate_support_from_stereo_state(
                 &runtime,
@@ -5676,11 +5721,7 @@ mod tests {
             )
             .expect("walker state-machine support should enumerate");
 
-            let direct_support =
-                enumerate_rooted_connected_stereo_smiles_support(&graph, root_idx as isize)
-                    .expect("direct stereo enumeration should succeed")
-                    .into_iter()
-                    .collect::<BTreeSet<_>>();
+            let direct_support = stereo_support_set(&graph, root_idx as isize);
 
             assert_eq!(direct_support, walker_support);
         }
@@ -5691,26 +5732,8 @@ mod tests {
         let Some(graph) = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1") else {
             return;
         };
-        let runtime = build_walker_runtime(&graph, 5).expect("runtime should build");
-        let initial_state = initial_stereo_state_for_root(&runtime, &graph, 5);
-        let mut stack = vec![initial_state];
-        let mut observed = BTreeSet::new();
-        while let Some(state) = stack.pop() {
-            if is_terminal_stereo_state(&state) {
-                observed.insert(state.prefix.to_string());
-                continue;
-            }
-            let mut choices = choices_for_stereo_state(&runtime, &graph, &state)
-                .expect("choices should enumerate");
-            while let Some(choice) = choices.pop() {
-                stack.extend(choice.next_frontier);
-            }
-        }
-
-        let expected = enumerate_rooted_connected_stereo_smiles_support(&graph, 5)
-            .expect("reference-backed exact support should enumerate")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let observed = observed_choice_support(&graph, 5);
+        let expected = stereo_support_set(&graph, 5);
 
         assert_eq!(expected, observed);
     }
@@ -5722,26 +5745,8 @@ mod tests {
         else {
             return;
         };
-        let runtime = build_walker_runtime(&graph, 11).expect("runtime should build");
-        let initial_state = initial_stereo_state_for_root(&runtime, &graph, 11);
-        let mut stack = vec![initial_state];
-        let mut observed = BTreeSet::new();
-        while let Some(state) = stack.pop() {
-            if is_terminal_stereo_state(&state) {
-                observed.insert(state.prefix.to_string());
-                continue;
-            }
-            let mut choices = choices_for_stereo_state(&runtime, &graph, &state)
-                .expect("choices should enumerate");
-            while let Some(choice) = choices.pop() {
-                stack.extend(choice.next_frontier);
-            }
-        }
-
-        let expected = enumerate_rooted_connected_stereo_smiles_support(&graph, 11)
-            .expect("reference-backed exact support should enumerate")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let observed = observed_choice_support(&graph, 11);
+        let expected = stereo_support_set(&graph, 11);
 
         assert_eq!(expected, observed);
     }
@@ -5782,8 +5787,7 @@ mod tests {
     #[test]
     fn stereo_initial_state_support_is_root_atom_token() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph, 0).expect("runtime should build");
-        let state = initial_stereo_state_for_root(&runtime, &graph, 0);
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
         assert_eq!(
             vec!["F".to_owned()],
             next_token_support_for_stereo_state(&runtime, &graph, &state)
@@ -5794,12 +5798,8 @@ mod tests {
     #[test]
     fn stereo_walker_can_reach_expected_terminal_prefix() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph, 0).expect("runtime should build");
-        let support = enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
-            .expect("stereo enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let mut state = initial_stereo_state_for_root(&runtime, &graph, 0);
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        let support = stereo_support_set(&graph, 0);
 
         while !is_terminal_stereo_state(&state) {
             let options = next_token_support_for_stereo_state(&runtime, &graph, &state)
@@ -5823,8 +5823,7 @@ mod tests {
     #[test]
     fn stereo_walker_rejects_invalid_token_with_choices() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph, 0).expect("runtime should build");
-        let state = initial_stereo_state_for_root(&runtime, &graph, 0);
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
         Python::initialize();
         let err = advance_stereo_token_state(&runtime, &graph, &state, "(")
             .expect_err("invalid token should be rejected");
@@ -5852,8 +5851,7 @@ mod tests {
     #[test]
     fn internal_root_branch_first_state_uses_forward_direction_token() {
         let graph = sample_stereo_graph();
-        let runtime = build_walker_runtime(&graph, 1).expect("runtime should build");
-        let mut state = initial_stereo_state_for_root(&runtime, &graph, 1);
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 1);
         state = advance_stereo_choice_state(&runtime, &graph, &state, 1)
             .expect("second initial choice should be available");
         state = advance_stereo_token_state(&runtime, &graph, &state, "(")

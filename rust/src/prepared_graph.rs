@@ -805,6 +805,10 @@ mod tests {
     };
     use pyo3::Python;
 
+    fn assert_validates(graph: &PreparedSmilesGraphData) {
+        graph.validate().expect("prepared graph should validate");
+    }
+
     fn assert_validation_error(graph: PreparedSmilesGraphData, expected: &str) {
         Python::initialize();
         let err = graph.validate().expect_err("graph should be rejected");
@@ -813,6 +817,15 @@ mod tests {
             message.contains(expected),
             "expected error containing {expected:?}, got {message:?}",
         );
+    }
+
+    fn dispatched_support(
+        graph: &PreparedSmilesGraphData,
+        root_idx: isize,
+        isomeric_smiles: bool,
+    ) -> Vec<String> {
+        mol_to_smiles_support_data(graph, root_idx, isomeric_smiles)
+            .expect("dispatched support should succeed")
     }
 
     fn sample_graph() -> PreparedSmilesGraphData {
@@ -940,9 +953,7 @@ mod tests {
 
     #[test]
     fn validate_accepts_consistent_graph() {
-        sample_graph()
-            .validate()
-            .expect("sample graph should validate");
+        assert_validates(&sample_graph());
     }
 
     #[test]
@@ -1018,9 +1029,7 @@ mod tests {
 
     #[test]
     fn validate_accepts_consistent_stereo_graph() {
-        sample_stereo_graph()
-            .validate()
-            .expect("sample stereo graph should validate");
+        assert_validates(&sample_stereo_graph());
     }
 
     #[test]
@@ -1052,20 +1061,20 @@ mod tests {
     #[test]
     fn mol_to_smiles_support_dispatches_nonstereo() {
         let graph = sample_graph();
-        let support = mol_to_smiles_support_data(&graph, 0, false).expect("nonstereo support");
+        let support = dispatched_support(&graph, 0, false);
         let expected =
             crate::rooted_nonstereo::enumerate_rooted_connected_nonstereo_smiles_support(&graph, 0)
-                .expect("direct nonstereo support");
+                .expect("direct nonstereo support should succeed");
         assert_eq!(expected, support);
     }
 
     #[test]
     fn mol_to_smiles_support_dispatches_stereo() {
         let graph = sample_stereo_graph();
-        let support = mol_to_smiles_support_data(&graph, 0, true).expect("stereo support");
+        let support = dispatched_support(&graph, 0, true);
         let expected =
             crate::rooted_stereo::enumerate_rooted_connected_stereo_smiles_support(&graph, 0)
-                .expect("direct stereo support");
+                .expect("direct stereo support should succeed");
         assert_eq!(expected, support);
     }
 

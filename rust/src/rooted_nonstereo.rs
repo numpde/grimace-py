@@ -506,8 +506,7 @@ fn push_child_actions(
             LiteralToken::BranchClose,
         )));
         action_stack.push(Action::EnterAtom(child_idx));
-        let edge_prefix =
-            adjacent_bond_token(graph, parent_idx, child_idx, "branch child action");
+        let edge_prefix = adjacent_bond_token(graph, parent_idx, child_idx, "branch child action");
         if !edge_prefix.is_empty() {
             action_stack.push(Action::EmitToken(EmittedToken::Literal(
                 LiteralToken::Bond(bond_token_code(edge_prefix)),
@@ -1032,8 +1031,12 @@ fn for_each_exact_successor_by_token_owned<F>(
             } else if let Some(child_idx) = action.linear_child_idx {
                 let token = edge_prefix_or_atom(graph, action.atom_idx, child_idx);
                 state.prefix.push_str(&token);
-                let edge_prefix =
-                    adjacent_bond_token(graph, action.atom_idx, child_idx, "exact linear successor");
+                let edge_prefix = adjacent_bond_token(
+                    graph,
+                    action.atom_idx,
+                    child_idx,
+                    "exact linear successor",
+                );
                 if edge_prefix.is_empty() {
                     consume_enter_atom(graph, &mut state, child_idx);
                 } else {
@@ -1573,6 +1576,13 @@ mod tests {
         max_deduped_bucket_size: usize,
     }
 
+    fn nonstereo_support_set(graph: &PreparedSmilesGraphData, root_idx: isize) -> BTreeSet<String> {
+        enumerate_rooted_connected_nonstereo_smiles_support(graph, root_idx)
+            .expect("nonstereo enumeration should succeed")
+            .into_iter()
+            .collect()
+    }
+
     fn collect_exact_frontier_stats(
         graph: &PreparedSmilesGraphData,
         frontier: Vec<super::RootedConnectedNonStereoWalkerStateData>,
@@ -1900,34 +1910,22 @@ mod tests {
     #[test]
     fn linear_chain_support_matches_expected() {
         let graph = linear_ccc_graph();
-        let support = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 1)
-            .expect("enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let support = nonstereo_support_set(&graph, 1);
         assert_eq!(BTreeSet::from(["C(C)C".to_owned()]), support);
     }
 
     #[test]
     fn simple_ring_support_matches_expected() {
         let graph = cyclopropane_graph();
-        let support = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 0)
-            .expect("enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let support = nonstereo_support_set(&graph, 0);
         assert_eq!(BTreeSet::from(["C1CC1".to_owned()]), support);
     }
 
     #[test]
     fn awkward_metal_case_support_matches_expected() {
         let graph = titanium_dioxide_graph();
-        let support_root_0 = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 0)
-            .expect("enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let support_root_1 = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 1)
-            .expect("enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let support_root_0 = nonstereo_support_set(&graph, 0);
+        let support_root_1 = nonstereo_support_set(&graph, 1);
 
         assert_eq!(BTreeSet::from(["[O]=[Ti]=[O]".to_owned()]), support_root_0);
         assert_eq!(
@@ -1944,10 +1942,7 @@ mod tests {
         let mut direct = BTreeSet::new();
         enumerate_support_from_state(&graph, initial_state, &mut direct);
 
-        let frontier = enumerate_rooted_connected_nonstereo_smiles_support(&graph, 1)
-            .expect("frontier enumeration should succeed")
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+        let frontier = nonstereo_support_set(&graph, 1);
 
         assert_eq!(direct, frontier);
     }
@@ -1978,7 +1973,7 @@ mod tests {
             let chosen = options[0].clone();
             prefix.push_str(&chosen);
             state = advance_token_state(&graph, &state, &chosen)
-                .expect("advancing along the only path should succeed");
+                .expect("single-path advancement should succeed");
         }
 
         assert_eq!("CCC", prefix);

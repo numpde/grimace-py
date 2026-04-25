@@ -98,6 +98,31 @@ struct StereoEdgeEmissionState<'a> {
     component_begin_atoms: &'a [isize],
 }
 
+type PendingRingBuckets = Vec<(usize, Vec<PendingRing>)>;
+
+struct TakenPendingRings {
+    pending: Arc<PendingRingBuckets>,
+    rings: Vec<PendingRing>,
+}
+
+struct StereoSideInfoBuild {
+    side_infos: Vec<StereoSideInfo>,
+    edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
+}
+
+struct StereoProcessChildrenContext<'a> {
+    runtime: &'a StereoWalkerRuntimeData,
+    graph: &'a PreparedSmilesGraphData,
+    require_completable: bool,
+    completion_cache: &'a mut StereoCompletionCache,
+}
+
+struct ProcessChildrenTerminalStep {
+    parent_idx: usize,
+    child_idx: usize,
+    edge_part: Part,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct StereoSideInfo {
     component_idx: usize,
@@ -421,16 +446,22 @@ fn visited_with_marked(visited: &Arc<[bool]>, atom_idx: usize) -> Arc<[bool]> {
 }
 
 fn take_pending_for_atom_arc(
-    pending: &Arc<Vec<(usize, Vec<PendingRing>)>>,
+    pending: &Arc<PendingRingBuckets>,
     target_atom: usize,
-) -> (Arc<Vec<(usize, Vec<PendingRing>)>>, Vec<PendingRing>) {
+) -> TakenPendingRings {
     match pending.binary_search_by_key(&target_atom, |(atom_idx, _)| *atom_idx) {
         Ok(offset) => {
             let mut next = Arc::unwrap_or_clone(pending.clone());
             let removed = next.remove(offset).1;
-            (Arc::new(next), removed)
+            TakenPendingRings {
+                pending: Arc::new(next),
+                rings: removed,
+            }
         }
-        Err(_) => (pending.clone(), Vec::new()),
+        Err(_) => TakenPendingRings {
+            pending: pending.clone(),
+            rings: Vec::new(),
+        },
     }
 }
 
@@ -1371,11 +1402,15 @@ fn eager_begin_side_child_order_state(
     let mut updated_orientations = selected_orientations.to_vec();
     let mut updated_first_candidates = first_emitted_candidates.to_vec();
 
-    for component_idx in 0..runtime.isolated_components.len() {
+    for (component_idx, &begin_atom_idx) in component_begin_atoms
+        .iter()
+        .enumerate()
+        .take(runtime.isolated_components.len())
+    {
         if !runtime.isolated_components[component_idx] {
             continue;
         }
-        if component_begin_atoms[component_idx] != parent_idx as isize {
+        if begin_atom_idx != parent_idx as isize {
             continue;
         }
         let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
@@ -1492,14 +1527,17 @@ fn commit_coupled_component_phase_from_deferred_part(
 fn stereo_side_infos(
     graph: &PreparedSmilesGraphData,
     stereo_component_ids: &[isize],
-) -> PyResult<(Vec<StereoSideInfo>, BTreeMap<(usize, usize), Vec<usize>>)> {
+) -> PyResult<StereoSideInfoBuild> {
     let mut side_candidates = Vec::<(usize, usize, usize, Vec<usize>)>::new();
     let mut oriented_nodes = BTreeSet::<(usize, usize)>::new();
     let mut parity_edges = BTreeMap::<(usize, usize), Vec<((usize, usize), bool)>>::new();
     let mut seed_tokens = BTreeMap::<(usize, usize), String>::new();
 
-    for bond_idx in 0..graph.bond_count {
-        let component_idx = stereo_component_ids[bond_idx];
+    for (bond_idx, &component_idx) in stereo_component_ids
+        .iter()
+        .enumerate()
+        .take(graph.bond_count)
+    {
         if component_idx < 0 || !is_stereo_double_bond(graph, bond_idx) {
             continue;
         }
@@ -1727,7 +1765,10 @@ fn stereo_side_infos(
         }
     }
 
-    Ok((side_infos, edge_to_side_ids))
+    Ok(StereoSideInfoBuild {
+        side_infos,
+        edge_to_side_ids,
+    })
 }
 
 fn candidate_base_token(side_info: &StereoSideInfo, neighbor_idx: usize) -> PyResult<String> {
@@ -2356,60 +2397,61 @@ fn push_process_children_branch_actions(
 }
 
 fn process_children_terminal_successors(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
+    context: &mut StereoProcessChildrenContext<'_>,
     mut base_state: RootedConnectedStereoWalkerStateData,
-    parent_idx: usize,
-    child_idx: usize,
-    edge_part: Part,
-    require_completable: bool,
-    completion_cache: &mut StereoCompletionCache,
+    step: ProcessChildrenTerminalStep,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
-    match edge_part {
+    match step.edge_part {
         Part::Literal(token) if token.is_empty() => {
             base_state.action_stack.push(WalkerAction::EnterAtom {
-                atom_idx: child_idx,
-                parent_idx: Some(parent_idx),
+                atom_idx: step.child_idx,
+                parent_idx: Some(step.parent_idx),
             });
             successors_by_token_stereo_impl(
-                runtime,
-                graph,
+                context.runtime,
+                context.graph,
                 &base_state,
-                require_completable,
-                completion_cache,
+                context.require_completable,
+                context.completion_cache,
             )
         }
         Part::Literal(token) => {
             push_literal_token(&mut base_state.prefix, &token);
             base_state.action_stack.push(WalkerAction::EnterAtom {
-                atom_idx: child_idx,
-                parent_idx: Some(parent_idx),
+                atom_idx: step.child_idx,
+                parent_idx: Some(step.parent_idx),
             });
             Ok(BTreeMap::from([(token, vec![base_state])]))
         }
         Part::Deferred(deferred) => {
             let mut out = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
-            for token in deferred_token_support(runtime, graph, &base_state, &deferred)? {
+            for token in
+                deferred_token_support(context.runtime, context.graph, &base_state, &deferred)?
+            {
                 let mut successor = base_state.clone();
-                if let Err(err) =
-                    commit_deferred_token_choice(runtime, graph, &mut successor, &deferred, &token)
-                {
-                    if require_completable {
+                if let Err(err) = commit_deferred_token_choice(
+                    context.runtime,
+                    context.graph,
+                    &mut successor,
+                    &deferred,
+                    &token,
+                ) {
+                    if context.require_completable {
                         return Err(err);
                     }
                     continue;
                 }
                 push_literal_token(&mut successor.prefix, &token);
                 successor.action_stack.push(WalkerAction::EnterAtom {
-                    atom_idx: child_idx,
-                    parent_idx: Some(parent_idx),
+                    atom_idx: step.child_idx,
+                    parent_idx: Some(step.parent_idx),
                 });
-                if !require_completable
+                if !context.require_completable
                     || can_complete_from_stereo_state_memo(
-                        runtime,
-                        graph,
+                        context.runtime,
+                        context.graph,
                         &successor,
-                        completion_cache,
+                        context.completion_cache,
                     )
                 {
                     out.entry(token).or_default().push(successor);
@@ -2492,7 +2534,10 @@ fn build_walker_runtime(
         .into_iter()
         .map(|size| size == 1)
         .collect::<Vec<_>>();
-    let (side_infos, edge_to_side_ids) = stereo_side_infos(graph, &stereo_component_ids)?;
+    let StereoSideInfoBuild {
+        side_infos,
+        edge_to_side_ids,
+    } = stereo_side_infos(graph, &stereo_component_ids)?;
     let mut side_ids_by_component = vec![Vec::new(); component_count as usize];
     for (side_idx, side_info) in side_infos.iter().enumerate() {
         if side_info.component_idx >= side_ids_by_component.len() {
@@ -3795,28 +3840,22 @@ fn enter_atom_successors_without_bond_stereo_exact(
 }
 
 fn process_children_successors_by_token(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
+    context: &mut StereoProcessChildrenContext<'_>,
     state: &RootedConnectedStereoWalkerStateData,
     parent_idx: usize,
     child_order: Arc<[usize]>,
     next_branch_index: usize,
-    require_completable: bool,
-    completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     if child_order.is_empty() {
         return Ok(BTreeMap::new());
     }
-    if runtime.side_infos.is_empty() {
+    if context.runtime.side_infos.is_empty() {
         return process_children_successors_without_bond_stereo(
-            runtime,
-            graph,
+            context,
             state,
             parent_idx,
             child_order,
             next_branch_index,
-            require_completable,
-            completion_cache,
         );
     }
     let branch_count = child_order.len().saturating_sub(1);
@@ -3834,8 +3873,8 @@ fn process_children_successors_by_token(
             component_phases,
             component_begin_atoms,
         } = process_children_edge_update(
-            runtime,
-            graph,
+            context.runtime,
+            context.graph,
             state,
             parent_idx,
             child_order.as_ref(),
@@ -3854,7 +3893,7 @@ fn process_children_successors_by_token(
             child_idx,
             part_to_action(edge_part),
         );
-        normalize_component_token_flips(runtime, graph, &mut successor)?;
+        normalize_component_token_flips(context.runtime, context.graph, &mut successor)?;
         return Ok(BTreeMap::from([("(".to_owned(), vec![successor])]));
     }
 
@@ -3867,8 +3906,8 @@ fn process_children_successors_by_token(
         component_phases,
         component_begin_atoms,
     } = process_children_edge_update(
-        runtime,
-        graph,
+        context.runtime,
+        context.graph,
         state,
         parent_idx,
         child_order.as_ref(),
@@ -3881,34 +3920,31 @@ fn process_children_successors_by_token(
     base_state.stereo_first_emitted_candidates = Arc::new(first_emitted_candidates);
     base_state.stereo_component_phases = Arc::new(component_phases);
     base_state.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
-    normalize_component_token_flips(runtime, graph, &mut base_state)?;
+    normalize_component_token_flips(context.runtime, context.graph, &mut base_state)?;
     process_children_terminal_successors(
-        runtime,
-        graph,
+        context,
         base_state,
-        parent_idx,
-        child_idx,
-        edge_part,
-        require_completable,
-        completion_cache,
+        ProcessChildrenTerminalStep {
+            parent_idx,
+            child_idx,
+            edge_part,
+        },
     )
 }
 
 fn process_children_successors_without_bond_stereo(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
+    context: &mut StereoProcessChildrenContext<'_>,
     state: &RootedConnectedStereoWalkerStateData,
     parent_idx: usize,
     child_order: Arc<[usize]>,
     next_branch_index: usize,
-    require_completable: bool,
-    completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     let branch_count = child_order.len().saturating_sub(1);
 
     if next_branch_index < branch_count {
         let child_idx = child_order[next_branch_index];
-        let bond_token = graph
+        let bond_token = context
+            .graph
             .bond_token(parent_idx, child_idx)
             .ok_or_else(|| {
                 PyKeyError::new_err(format!(
@@ -3953,7 +3989,8 @@ fn process_children_successors_without_bond_stereo(
     }
 
     let child_idx = child_order[child_order.len() - 1];
-    let bond_token = graph
+    let bond_token = context
+        .graph
         .bond_token(parent_idx, child_idx)
         .ok_or_else(|| {
             PyKeyError::new_err(format!(
@@ -3964,14 +4001,13 @@ fn process_children_successors_without_bond_stereo(
     let mut base_state = state.clone();
     base_state.action_stack.pop();
     process_children_terminal_successors(
-        runtime,
-        graph,
+        context,
         base_state,
-        parent_idx,
-        child_idx,
-        Part::Literal(bond_token),
-        require_completable,
-        completion_cache,
+        ProcessChildrenTerminalStep {
+            parent_idx,
+            child_idx,
+            edge_part: Part::Literal(bond_token),
+        },
     )
 }
 
@@ -4247,14 +4283,16 @@ fn successors_by_token_stereo_impl(
             child_order,
             next_branch_index,
         } => process_children_successors_by_token(
-            runtime,
-            graph,
+            &mut StereoProcessChildrenContext {
+                runtime,
+                graph,
+                require_completable,
+                completion_cache,
+            },
             state,
             parent_idx,
             child_order,
             next_branch_index,
-            require_completable,
-            completion_cache,
         ),
     } {
         Ok(successors) => successors,
@@ -4352,8 +4390,10 @@ fn exact_successors_from_atom_stereo_state_drained(
             let parent_idx = *parent_idx;
             let visited_now = visited_with_marked(&state.dynamic.visited, atom_idx);
             let visited_count_now = state.dynamic.visited_count + 1;
-            let (pending_after_closures, closures_here) =
-                take_pending_for_atom_arc(&state.dynamic.pending, atom_idx);
+            let TakenPendingRings {
+                pending: pending_after_closures,
+                rings: closures_here,
+            } = take_pending_for_atom_arc(&state.dynamic.pending, atom_idx);
             let ordered_groups = ordered_neighbor_groups(graph, atom_idx, visited_now.as_ref());
             let is_chiral_atom = graph.atom_chiral_tags[atom_idx] != "CHI_UNSPECIFIED";
 

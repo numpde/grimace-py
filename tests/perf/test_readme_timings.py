@@ -71,6 +71,18 @@ def _format_bold_duration(mean: float, stdev: float) -> str:
     return f"**{mean * 1_000:.1f}** ± {stdev * 1_000:.1f} ms"
 
 
+TIMING_MOLECULES = (
+    "CC(=O)Oc1ccccc1C(=O)O",
+    "C1COCCC12CO2",
+    "CN1CCC[C@H]1C2=CN=CC=C2",
+    "C/C(=N\\\\OC(=O)NC)/SC",
+    "C1=CC(=C(C=C1C[C@@H](C(=O)O)N)O)O",
+    "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)O",
+    "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)",
+    r"CC\1=C(C2=C(/C1=C\C3=CC=C(C=C3)S(=O)C)C=CC(=C2)F)CC(=O)O",
+)
+
+
 @unittest.skipUnless(
     os.environ.get("RUN_PERF_TESTS") == "1",
     "set RUN_PERF_TESTS=1 to run performance checks",
@@ -79,47 +91,10 @@ class ReadmeTimingPerfTests(unittest.TestCase):
     OUTPUT_TSV_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.tsv"
     OUTPUT_MD_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.md"
     HISTORY_KIND = "timings_snapshot"
-    CASES = (
-        TimingCase(
-            smiles="CC(=O)Oc1ccccc1C(=O)O",
-            rooted_at_atom=0,
-            isomeric_smiles=False,
-        ),
-        TimingCase(
-            smiles="C1COCCC12CO2",
-            rooted_at_atom=0,
-            isomeric_smiles=False,
-        ),
-        TimingCase(
-            smiles="CN1CCC[C@H]1C2=CN=CC=C2",
-            rooted_at_atom=0,
-            isomeric_smiles=True,
-        ),
-        TimingCase(
-            smiles="C/C(=N\\\\OC(=O)NC)/SC",
-            rooted_at_atom=0,
-            isomeric_smiles=True,
-        ),
-        TimingCase(
-            smiles="C1=CC(=C(C=C1C[C@@H](C(=O)O)N)O)O",
-            rooted_at_atom=0,
-            isomeric_smiles=True,
-        ),
-        TimingCase(
-            smiles="C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)O",
-            rooted_at_atom=0,
-            isomeric_smiles=True,
-        ),
-        TimingCase(
-            smiles="C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)",
-            rooted_at_atom=0,
-            isomeric_smiles=True,
-        ),
-        TimingCase(
-            smiles=r"CC\1=C(C2=C(/C1=C\C3=CC=C(C=C3)S(=O)C)C=CC(=C2)F)CC(=O)O",
-            rooted_at_atom=0,
-            isomeric_smiles=True,
-        ),
+    CASES = tuple(
+        TimingCase(smiles=smiles, rooted_at_atom=0, isomeric_smiles=isomeric_smiles)
+        for isomeric_smiles in (False, True)
+        for smiles in TIMING_MOLECULES
     )
 
     def test_generate_readme_timing_table(self) -> None:

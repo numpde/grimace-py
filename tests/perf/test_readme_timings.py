@@ -78,6 +78,7 @@ TIMING_MOLECULES = (
     "C/C(=N\\\\OC(=O)NC)/SC",
     "C1=CC(=C(C=C1C[C@@H](C(=O)O)N)O)O",
     "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)O",
+    "C1[C@H]([C@@H]2[C@H](O1)[C@H](CO2)O[N+](=O)[O-])O[N+](=O)[O-]",
     "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)",
     r"CC\1=C(C2=C(/C1=C\C3=CC=C(C=C3)S(=O)C)C=CC(=C2)F)CC(=O)O",
 )

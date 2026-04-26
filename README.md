@@ -303,19 +303,20 @@ RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest tests.perf.tes
 
 ## Current limits
 
-The public API mirrors RDKit `MolToSmiles` flag names, but only a strict subset
-is implemented today.
+The public API keeps RDKit `MolToSmiles` flag names, but it does not aim for
+full RDKit writer-surface parity yet.
 
-Required runtime values today:
+Current public runtime contract:
 
-- `rootedAtAtom == -1` or `rootedAtAtom >= 0` for `MolToSmilesEnum(...)` and
-  the decoder classes
-- `rootedAtAtom == -1` or `rootedAtAtom >= 0` for
-  `MolToSmilesTokenInventory(...)`
 - `canonical=False`
 - `doRandom=True`
+- omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
+- pass `rootedAtAtom >= 0` for one explicit root
 
-Supported writer flags:
+`MolToSmilesTokenInventory(...)` also still accepts `rootedAtAtom=None` as a
+backward-compatible alias for `-1`, but `-1` is the preferred public spelling.
+
+Supported writer flags today:
 
 - `isomericSmiles`
 - `kekuleSmiles`
@@ -323,13 +324,9 @@ Supported writer flags:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-Unsupported flag combinations fail fast with `NotImplementedError`. Other
-invalid public inputs can still raise more specific exceptions such as
-`IndexError` or `ValueError`.
-
-For `MolToSmilesTokenInventory(...)`, `rootedAtAtom=None` is still accepted as
-a backward-compatible alias for `-1`, but `-1` is the preferred public
-spelling.
+Anything outside that runtime subset fails fast. Unsupported flag combinations
+raise `NotImplementedError`. Other invalid public inputs can still raise more
+specific exceptions such as `IndexError` or `ValueError`.
 
 Disconnected molecules are supported by the public APIs.
 

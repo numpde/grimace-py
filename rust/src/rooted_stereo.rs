@@ -4836,7 +4836,7 @@ fn advance_stereo_token_state(
             "Token {chosen_token:?} is not available; choices={available:?}"
         ))
     })?;
-    take_only_stereo_successor_state(candidates, "token advance")
+    take_first_stereo_successor_state(candidates, "token advance")
 }
 
 #[cfg(test)]
@@ -4885,6 +4885,18 @@ fn take_only_stereo_successor_state(
         Some(successor) => Ok(successor),
         None => Err(PyValueError::new_err(format!(
             "Expected exactly one stereo successor state for {context}, got 0"
+        ))),
+    }
+}
+
+fn take_first_stereo_successor_state(
+    mut successors: Vec<RootedConnectedStereoWalkerStateData>,
+    context: &str,
+) -> PyResult<RootedConnectedStereoWalkerStateData> {
+    match successors.drain(..).next() {
+        Some(successor) => Ok(successor),
+        None => Err(PyValueError::new_err(format!(
+            "Expected at least one stereo successor state for {context}, got 0"
         ))),
     }
 }
@@ -5128,7 +5140,7 @@ impl PyRootedConnectedStereoWalker {
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
         let mut choices = successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?;
-        let successors = take_only_stereo_successor_state(
+        let successors = take_first_stereo_successor_state(
             take_transition_or_err(&mut choices, chosen_token)?,
             "walker token advance",
         )?;

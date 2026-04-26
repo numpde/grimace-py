@@ -1084,7 +1084,7 @@ fn advance_token_state(
             "Token {chosen_token:?} is not available; choices={available:?}"
         ))
     })?;
-    take_only_successor_state(candidates, "token advance")
+    take_first_successor_state(candidates, "token advance")
 }
 
 fn choices_for_state(
@@ -1136,6 +1136,18 @@ fn take_only_successor_state(
         Some(successor) => Ok(successor),
         None => Err(PyValueError::new_err(format!(
             "Expected exactly one successor state for {context}, got 0"
+        ))),
+    }
+}
+
+fn take_first_successor_state(
+    mut successors: Vec<RootedConnectedNonStereoWalkerStateData>,
+    context: &str,
+) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
+    match successors.drain(..).next() {
+        Some(successor) => Ok(successor),
+        None => Err(PyValueError::new_err(format!(
+            "Expected at least one successor state for {context}, got 0"
         ))),
     }
 }

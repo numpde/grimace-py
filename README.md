@@ -102,7 +102,8 @@ invalid public inputs can still raise more specific exceptions such as
 
 The most important `rootedAtAtom` semantics are:
 
-- `rootedAtAtom=<idx>` uses one explicit starting atom.
+- `rootedAtAtom=<idx>` uses one explicit starting atom for connected
+  molecules.
 - `rootedAtAtom=-1` for `MolToSmilesEnum(...)` returns the exact support
   unioned across all root atoms.
 - `rootedAtAtom=-1` for the decoder classes starts from one merged all-roots
@@ -114,7 +115,8 @@ The most important `rootedAtAtom` semantics are:
   as a compatibility alias for `-1`.
 - for disconnected molecules, fragment order is preserved; a nonnegative
   `rootedAtAtom` selects the rooted fragment and its local root atom within
-  that fixed fragment order.
+  that fixed fragment order, but non-rooted fragments can still vary
+  internally.
 
 ## Quickstart
 

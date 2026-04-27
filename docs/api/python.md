@@ -112,7 +112,7 @@ are supported here, in
 
 For disconnected molecules, a nonnegative `rootedAtAtom` does not reorder
 fragments. It selects the rooted fragment and the local root atom within that
-fixed fragment order.
+fixed fragment order, but non-rooted fragments can still vary internally.
 
 ## MolToSmilesDecoder
 

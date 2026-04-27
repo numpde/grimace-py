@@ -133,10 +133,10 @@ decoder = grimace.MolToSmilesDecoder(
     canonical=False,
     doRandom=True,
 )
-while decoder.prefix != "CC(=O)Oc1c":
+while decoder.prefix != "CC":
     decoder = decoder.next_choices[0].next_state
 
-decoder.prefix       # 'CC(=O)Oc1c'
+decoder.prefix       # 'CC'
 [choice.text for choice in decoder.next_choices]  # ['(', '(']
 ```
 

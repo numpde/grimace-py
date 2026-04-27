@@ -56,6 +56,10 @@ with language transformers ([link](https://numpde.github.io/shared/msc/)).
 
 The only supported public Python import name is `grimace`.
 
+> [!CAUTION]
+> `grimace` is not currently published on PyPI. Plain `pip install grimace`
+> installs an unrelated older package, not this library.
+
 Main entrypoints:
 
 - `MolToSmilesEnum(...)`
@@ -338,6 +342,7 @@ Current takeaway from the generated table:
   some molecules
 - the table is still a small curated benchmark: 9 molecules, 2 writer modes,
   7 timing repeats, and one development machine
+- this is not a workload study and not an exact-versus-exact comparison
 - the `Grimace enum` row times explicit union over per-root
   `MolToSmilesEnum(..., rootedAtAtom=root_idx)` calls, not the direct public
   `MolToSmilesEnum(..., rootedAtAtom=-1)` path

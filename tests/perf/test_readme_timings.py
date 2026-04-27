@@ -310,6 +310,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "",
             "- This is a small curated benchmark: 9 molecules, 2 writer modes, and",
             "  7 timing repeats per row.",
+            "- This is not a workload study and not an exact-versus-exact comparison.",
             "- `Support`: the size of the exact rooted SMILES support across all root atoms.",
             "- `Grimace enum (per-root union)`: union of",
             "  `MolToSmilesEnum(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>)`",

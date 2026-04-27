@@ -7,7 +7,7 @@ from typing import Any
 
 from rdkit import Chem
 
-from grimace._reference._paths import display_reference_path
+from grimace._reference._paths import DEFAULT_REFERENCE_OUTPUT_ROOT, display_reference_path
 from grimace._reference.dataset import (
     MoleculeCase,
     iter_molecule_cases_from_input_source,
@@ -24,7 +24,9 @@ def _artifact_header(
     policy: ReferencePolicy,
     selection: dict[str, Any],
 ) -> dict[str, Any]:
-    input_source = policy.data["input_source"]
+    input_source = dict(policy.data["input_source"])
+    if "path" in input_source:
+        input_source["path"] = display_reference_path(str(input_source["path"]))
     if policy.source_path is None:
         policy_path = None
     else:
@@ -36,7 +38,7 @@ def _artifact_header(
         "policy_digest": policy.digest(),
         "policy_path": policy_path,
         "input_source": input_source,
-        "source_path": display_reference_path(str(input_source["path"])),
+        "source_path": str(input_source["path"]),
         "selection": selection,
     }
 
@@ -153,7 +155,10 @@ def write_core_exact_sets_artifact(
     limit: int = DEFAULT_CORE_SELECTION_LIMIT,
     path: str | Path | None = None,
 ) -> Path:
-    output_path = policy.core_exact_sets_path() if path is None else Path(path)
+    output_path = (
+        policy.core_exact_sets_path(DEFAULT_REFERENCE_OUTPUT_ROOT) if path is None else Path(path)
+    )
+    output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     artifact = build_core_exact_sets_artifact(policy, limit=limit)
     output_path.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
@@ -168,7 +173,12 @@ def write_full_metrics_artifact(
     path: str | Path | None = None,
 ) -> Path:
     _, selection_tag = _selection(limit, max_smiles_length)
-    output_path = policy.metrics_path(selection_tag) if path is None else Path(path)
+    output_path = (
+        policy.metrics_path(selection_tag, DEFAULT_REFERENCE_OUTPUT_ROOT)
+        if path is None
+        else Path(path)
+    )
+    output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     artifact = build_full_metrics_artifact(policy, limit=limit, max_smiles_length=max_smiles_length)
     with gzip.open(output_path, "wt", encoding="utf-8") as handle:

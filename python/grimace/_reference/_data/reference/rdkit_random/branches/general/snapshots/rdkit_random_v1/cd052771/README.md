@@ -1,7 +1,7 @@
 # rdkit_random / general / rdkit_random_v1 / cd052771
 
 This snapshot was generated from
-`tests/fixtures/reference/rdkit_random/branches/general/policies/rdkit_random_v1.json`.
+`grimace/_reference/_data/reference/rdkit_random/branches/general/policies/rdkit_random_v1.json`.
 
 Artifacts in this directory:
 

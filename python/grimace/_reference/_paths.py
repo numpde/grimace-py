@@ -5,6 +5,7 @@ from pathlib import Path
 
 PACKAGE_REFERENCE_ROOT = Path(__file__).resolve().parent / "_data"
 PACKAGE_REFERENCE_LABEL = Path("grimace") / "_reference" / "_data"
+DEFAULT_REFERENCE_OUTPUT_ROOT = Path("grimace_reference_artifacts")
 REFERENCE_ARTIFACTS_ROOT = PACKAGE_REFERENCE_ROOT / "reference"
 DEFAULT_MOLECULE_SOURCE_PATH = PACKAGE_REFERENCE_ROOT / "top_100000_CIDs.tsv.gz"
 
@@ -24,8 +25,14 @@ def display_reference_path(path: str | Path) -> str:
         try:
             relative_path = raw_path.relative_to(PACKAGE_REFERENCE_ROOT)
         except ValueError:
-            return str(raw_path)
+            try:
+                return str(raw_path.relative_to(Path.cwd()))
+            except ValueError:
+                return str(raw_path)
         return str(PACKAGE_REFERENCE_LABEL / relative_path)
     if raw_path.parts[:2] == ("tests", "fixtures"):
-        return str(PACKAGE_REFERENCE_LABEL.joinpath(*raw_path.parts[2:]))
+        bundled_path = PACKAGE_REFERENCE_ROOT.joinpath(*raw_path.parts[2:])
+        if bundled_path.exists():
+            return str(PACKAGE_REFERENCE_LABEL.joinpath(*raw_path.parts[2:]))
+        return str(raw_path)
     return str(raw_path)

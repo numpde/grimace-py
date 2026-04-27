@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import tempfile
 import unittest
 
 import grimace
@@ -9,6 +12,7 @@ from grimace._reference import (
     DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     ReferencePolicy,
     build_core_exact_sets_artifact,
+    write_core_exact_sets_artifact,
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from tests.helpers.kernel import CORE_MODULE
@@ -185,6 +189,30 @@ class PythonApiSmokeTests(unittest.TestCase):
             "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
             artifact["source_path"],
         )
+        self.assertEqual(
+            "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
+            artifact["input_source"]["path"],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            previous_cwd = Path.cwd()
+            os.chdir(temp_dir)
+            try:
+                output_path = write_core_exact_sets_artifact(policy, limit=1)
+            finally:
+                os.chdir(previous_cwd)
+            self.assertEqual(
+                Path(temp_dir)
+                / "grimace_reference_artifacts"
+                / "rdkit_random"
+                / "branches"
+                / "general"
+                / "snapshots"
+                / policy.policy_name
+                / policy.digest()
+                / "core_exact_sets.json",
+                output_path,
+            )
+            self.assertTrue(output_path.is_file())
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:

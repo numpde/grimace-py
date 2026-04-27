@@ -124,8 +124,6 @@ The most important `rootedAtAtom` semantics are:
 - omitting `rootedAtAtom` means the same thing as passing `-1`.
 - other negative integer `rootedAtAtom` values also behave like `-1`, to stay
   close to RDKit's public binding behavior.
-- `rootedAtAtom=None` is still accepted by `MolToSmilesTokenInventory(...)`
-  as a compatibility alias for `-1`.
 - for disconnected molecules, fragment order is preserved; a nonnegative
   `rootedAtAtom` selects the rooted fragment and its local root atom within
   that fixed fragment order, but non-rooted fragments can still vary
@@ -387,9 +385,6 @@ Current public runtime contract:
 - pass `rootedAtAtom >= 0` for one explicit root
 - other negative integer `rootedAtAtom` values are also accepted for RDKit
   compatibility, but `-1` is the preferred public spelling
-
-`MolToSmilesTokenInventory(...)` also still accepts `rootedAtAtom=None` as a
-backward-compatible alias for `-1`, but `-1` is the preferred public spelling.
 
 Supported writer flags today:
 

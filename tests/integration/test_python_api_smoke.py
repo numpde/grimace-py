@@ -238,7 +238,7 @@ class PythonApiSmokeTests(unittest.TestCase):
                     ):
                         call(rooted_at_atom)
 
-    def test_public_api_rejects_none_rooted_at_atom_except_inventory_alias(self) -> None:
+    def test_public_api_rejects_none_rooted_at_atom(self) -> None:
         mol = parse_smiles("CCO")
         entrypoints = (
             (
@@ -270,6 +270,15 @@ class PythonApiSmokeTests(unittest.TestCase):
                     doRandom=True,
                 ),
             ),
+            (
+                "inventory",
+                lambda: grimace.MolToSmilesTokenInventory(
+                    mol,
+                    rootedAtAtom=None,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
         )
 
         for entrypoint_name, call in entrypoints:
@@ -279,21 +288,6 @@ class PythonApiSmokeTests(unittest.TestCase):
                     "rootedAtAtom to follow RDKit's Python binding and be an integer",
                 ):
                     call()
-
-        self.assertEqual(
-            grimace.MolToSmilesTokenInventory(
-                mol,
-                rootedAtAtom=None,
-                canonical=False,
-                doRandom=True,
-            ),
-            grimace.MolToSmilesTokenInventory(
-                mol,
-                rootedAtAtom=-1,
-                canonical=False,
-                doRandom=True,
-            ),
-        )
 
     def test_public_api_coerces_none_boolean_flags_like_rdkit(self) -> None:
         mol = parse_smiles("CCO")

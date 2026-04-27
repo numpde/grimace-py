@@ -1060,7 +1060,7 @@ def mol_to_smiles_token_inventory(
     *,
     isomeric_smiles: bool = True,
     kekule_smiles: bool = False,
-    rooted_at_atom: int | None = -1,
+    rooted_at_atom: int = -1,
     canonical: bool = True,
     all_bonds_explicit: bool = False,
     all_hs_explicit: bool = False,
@@ -1069,11 +1069,10 @@ def mol_to_smiles_token_inventory(
 ) -> tuple[str, ...]:
     """Return the exact decoder token inventory under the public runtime flags."""
 
-    effective_root = -1 if rooted_at_atom is None else rooted_at_atom
     flags = _make_flags(
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
-        rooted_at_atom=effective_root,
+        rooted_at_atom=rooted_at_atom,
         canonical=canonical,
         all_bonds_explicit=all_bonds_explicit,
         all_hs_explicit=all_hs_explicit,
@@ -1085,7 +1084,7 @@ def mol_to_smiles_token_inventory(
         mol_or_prepared,
         isomeric_smiles=isomeric_smiles,
         kekule_smiles=kekule_smiles,
-        rooted_at_atom=effective_root,
+        rooted_at_atom=rooted_at_atom,
         canonical=canonical,
         all_bonds_explicit=all_bonds_explicit,
         all_hs_explicit=all_hs_explicit,

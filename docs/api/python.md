@@ -275,10 +275,6 @@ transitions are reachable under the requested root mode.
 This is an exact runtime inventory, not a probabilistic distribution and not a
 general-purpose tokenizer vocabulary.
 
-`MolToSmilesTokenInventory(...)` now uses the same all-roots spelling as the
-other public APIs: `rootedAtAtom=-1`. For backward compatibility,
-`rootedAtAtom=None` is still accepted as an alias for the same mode.
-
 ## Correctness
 
 Rust is the source of truth for runtime behavior.

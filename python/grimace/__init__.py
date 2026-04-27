@@ -68,7 +68,7 @@ def MolToSmilesTokenInventory(
     *,
     isomericSmiles: bool = True,
     kekuleSmiles: bool = False,
-    rootedAtAtom: int | None = -1,
+    rootedAtAtom: int = -1,
     canonical: bool = True,
     allBondsExplicit: bool = False,
     allHsExplicit: bool = False,

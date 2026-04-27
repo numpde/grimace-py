@@ -182,6 +182,7 @@ class TokenInventoryTests(unittest.TestCase):
                         rooted_at_atom=case.rooted_at_atom,
                         isomeric_smiles=isomeric_smiles,
                     )
+                    public_root = -1 if case.rooted_at_atom is None else case.rooted_at_atom
 
                     for token in required_tokens:
                         self.assertIn(token, expected)
@@ -191,7 +192,7 @@ class TokenInventoryTests(unittest.TestCase):
                         expected,
                         grimace.MolToSmilesTokenInventory(
                             parse_smiles(case.smiles),
-                            rootedAtAtom=case.rooted_at_atom,
+                            rootedAtAtom=public_root,
                             isomericSmiles=isomeric_smiles,
                             canonical=False,
                             doRandom=True,
@@ -244,7 +245,7 @@ class TokenInventoryTests(unittest.TestCase):
                 for token in required_tokens:
                     self.assertIn(token, expected)
 
-    def test_token_inventory_treats_omitted_minus_one_and_none_as_same_all_roots_mode(self) -> None:
+    def test_token_inventory_treats_omitted_and_minus_one_as_same_all_roots_mode(self) -> None:
         cases = (
             ("CC(=O)Oc1ccccc1C(=O)O", False),
             ("F/C=C\\Cl", True),
@@ -267,16 +268,8 @@ class TokenInventoryTests(unittest.TestCase):
                     canonical=False,
                     doRandom=True,
                 )
-                compatibility_none = grimace.MolToSmilesTokenInventory(
-                    mol,
-                    rootedAtAtom=None,
-                    isomericSmiles=isomeric_smiles,
-                    canonical=False,
-                    doRandom=True,
-                )
 
                 self.assertEqual(omitted, explicit_minus_one)
-                self.assertEqual(compatibility_none, explicit_minus_one)
 
 
 if __name__ == "__main__":

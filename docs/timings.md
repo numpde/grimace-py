@@ -36,8 +36,11 @@ stability, or universality guarantee.
 - All timing columns are shown as `time mean ± std`.
 - The two RDKit columns also show `(draw mean ± std)` over repeated seeded
   trials.
-- In the current table, direct `MolToSmilesEnum(...)` remains the fastest
-  exact route on every listed case.
+- The published table does not directly rank every public exact path:
+  it times `Grimace enum (per-root union)` rather than the direct
+  public `MolToSmilesEnum(..., rootedAtAtom=-1)` path, and some
+  merged decoder rows are numerically lower than that per-root
+  union column.
 - The merged decoder rows expose the public all-roots decoder path directly,
   so they can diverge substantially from the explicit per-root rows.
 - Read the RDKit comparison as 'faster on this benchmark against this

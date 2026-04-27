@@ -8,6 +8,10 @@ The public runtime is intentionally narrow: exact support and decoding for
 RDKit's `canonical=False, doRandom=True` writer regime under the current
 stable writer convention.
 
+The public signatures keep RDKit-like defaults for surface compatibility, but
+those defaults are not currently supported. Pass `canonical=False` and
+`doRandom=True` explicitly.
+
 Current top-level exports:
 
 - `MolToSmilesChoice`
@@ -48,6 +52,10 @@ the current CI matrix.
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This yields the complete exact support as whole SMILES strings.
+
+Although the signature mirrors RDKit defaults, the current runtime does not
+support those defaults. A naive `grimace.MolToSmilesEnum(mol)` call raises
+`NotImplementedError`; pass `canonical=False` and `doRandom=True` explicitly.
 
 When `rootedAtAtom == -1`, the result is the exact union across all valid
 roots for the requested writer flags.

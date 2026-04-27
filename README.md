@@ -2,8 +2,9 @@
 
 SMILES enumeration with exact next-token decoding.
 
-`grimace` is a Rust-first cheminformatics library for RDKit molecules. It
-answers two questions that RDKit does not expose directly:
+`grimace` is a Rust-first RDKit add-on focused on exact rooted SMILES support
+and exact next-token decoding. In its current public form, it answers two
+questions that RDKit does not expose directly:
 
 - What is the exact rooted SMILES support of this molecule under a given
   RDKit-style writer regime?
@@ -78,6 +79,12 @@ The public API uses the compiled Rust extension end to end.
 
 The public signatures mirror RDKit flag names and defaults, but the current
 runtime intentionally supports only a strict subset.
+
+> [!CAUTION]
+> The signatures preserve RDKit-like defaults for surface compatibility, but
+> those defaults are not currently supported. A naive
+> `grimace.MolToSmilesEnum(mol)` call raises `NotImplementedError`; pass
+> `canonical=False` and `doRandom=True` explicitly.
 
 Today, pass:
 
@@ -318,9 +325,15 @@ The table reports both decoder variants:
 
 Current takeaway from the generated table:
 
-- `MolToSmilesEnum(...)` is still the fastest exact route in every listed case
+- the table does not time the direct public
+  `MolToSmilesEnum(..., rootedAtAtom=-1)` path
+- the published `Grimace enum` column is the more conservative exact baseline:
+  explicit union over per-root `MolToSmilesEnum(..., rootedAtAtom=root_idx)`
+  calls
+- some merged decoder rows are numerically lower than that per-root union
+  column, so this table does not prove a universal exact-method ranking
 - `MolToSmilesDeterminizedDecoder(...)` can reduce exhaustive decoder cost on
-  some molecules, but it is still slower than direct exact enumeration here
+  some molecules
 - the table is still a small curated benchmark: 9 molecules, 2 writer modes,
   7 timing repeats, and one development machine
 - the `Grimace enum` row times explicit union over per-root

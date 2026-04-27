@@ -1,4 +1,9 @@
-"""Public runtime API for the Rust-backed SMILES next-token engine."""
+"""Public runtime API for the Rust-backed SMILES next-token engine.
+
+The public signatures keep RDKit-like defaults for surface compatibility, but
+the supported runtime today is intentionally narrower: pass `canonical=False`
+and `doRandom=True` explicitly.
+"""
 
 from __future__ import annotations
 
@@ -37,7 +42,12 @@ def MolToSmilesEnum(
     doRandom: bool = False,
     ignoreAtomMapNumbers: bool = False,
 ) -> Iterator[str]:
-    """Yield the exact rooted SMILES support for a molecule."""
+    """Yield the exact rooted SMILES support for a molecule.
+
+    Pass `canonical=False` and `doRandom=True` explicitly. The RDKit-like
+    default signature is preserved for surface compatibility, not because the
+    defaults are currently implemented.
+    """
 
     runtime = _require_runtime()
     return runtime.mol_to_smiles_enum(
@@ -65,7 +75,12 @@ def MolToSmilesTokenInventory(
     doRandom: bool = False,
     ignoreAtomMapNumbers: bool = False,
 ) -> tuple[str, ...]:
-    """Return the token inventory for a molecule under the public runtime flags."""
+    """Return the token inventory for a molecule under the public runtime flags.
+
+    Pass `canonical=False` and `doRandom=True` explicitly. The RDKit-like
+    default signature is preserved for surface compatibility, not because the
+    defaults are currently implemented.
+    """
 
     runtime = _require_runtime()
     return runtime.mol_to_smiles_token_inventory(
@@ -118,10 +133,20 @@ if _RUNTIME is not None:
 
 
     class MolToSmilesDecoder(_RUNTIME.MolToSmilesDecoder, _PublicDecoderBase):
+        """Branch-preserving online decoder for the supported public runtime.
+
+        Pass `canonical=False` and `doRandom=True` explicitly.
+        """
+
         __slots__ = ()
 
 
     class MolToSmilesDeterminizedDecoder(_RUNTIME.MolToSmilesDeterminizedDecoder, _PublicDecoderBase):
+        """Determinized online decoder for the supported public runtime.
+
+        Pass `canonical=False` and `doRandom=True` explicitly.
+        """
+
         __slots__ = ()
 
 else:

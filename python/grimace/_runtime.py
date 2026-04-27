@@ -142,11 +142,21 @@ def _validate_writer_flags(
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
     if flags.rooted_at_atom < -1:
-        raise NotImplementedError("MolToSmiles runtime requires rootedAtAtom == -1 or rootedAtAtom >= 0")
+        raise NotImplementedError(
+            "MolToSmiles runtime requires rootedAtAtom == -1 or rootedAtAtom >= 0"
+        )
     if flags.canonical:
-        raise NotImplementedError("MolToSmiles runtime requires canonical=False")
+        raise NotImplementedError(
+            "MolToSmiles runtime currently supports only canonical=False and "
+            "doRandom=True; the public signatures keep RDKit-like defaults for "
+            "surface compatibility, so pass those two flags explicitly."
+        )
     if not flags.do_random:
-        raise NotImplementedError("MolToSmiles runtime requires doRandom=True")
+        raise NotImplementedError(
+            "MolToSmiles runtime currently supports only canonical=False and "
+            "doRandom=True; the public signatures keep RDKit-like defaults for "
+            "surface compatibility, so pass those two flags explicitly."
+        )
 
 
 def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:

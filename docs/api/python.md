@@ -4,6 +4,10 @@
 
 The only supported public Python import name is `grimace`.
 
+The public runtime is intentionally narrow: exact support and decoding for
+RDKit's `canonical=False, doRandom=True` writer regime under the current
+stable writer convention.
+
 Current top-level exports:
 
 - `MolToSmilesChoice`
@@ -21,6 +25,13 @@ Environment requirements:
 - package metadata declares Python `>=3.11`
 - `rdkit>=2026.3`
 - for source builds, a Rust toolchain with `rustc >= 1.83`
+
+Install-path caveat:
+
+- this project is not currently published on PyPI
+- plain `pip install grimace` installs an unrelated older package, not this
+  project
+- use a release wheel, sdist, or a local source build instead
 
 Current continuously exercised matrix:
 

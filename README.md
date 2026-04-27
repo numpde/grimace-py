@@ -20,6 +20,10 @@ root inside the preserved fragment order for a disconnected molecule.
 - expose the exact token inventory implied by that support
 - decode online, one token at a time, from a current prefix
 
+Today, that public runtime is intentionally narrow: exact support and decoding
+for RDKit's `canonical=False, doRandom=True` writer regime under the current
+stable writer convention.
+
 The reason this library exists is that RDKit does not provide either:
 
 - an exact rooted SMILES enumeration routine
@@ -326,9 +330,9 @@ Current takeaway from the generated table:
   RDKit happens to reach `1/2` or full support
 - because of that, RDKit can be cheaper when you only want a few random
   strings, especially on small cases
-- but on the larger molecules in this benchmark, Grimace exact methods are
-  usually much faster than this RDKit sampling baseline when you want
-  guaranteed full support
+- but on the larger molecules in this table, Grimace exact methods were
+  usually much faster than this RDKit sampling-to-coverage baseline when
+  guaranteed full support was the goal
 
 Regenerate it with:
 

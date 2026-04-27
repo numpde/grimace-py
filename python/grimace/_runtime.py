@@ -141,6 +141,17 @@ def _validate_writer_flags(
 
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
+    for name, value in (
+        ("isomericSmiles", flags.isomeric_smiles),
+        ("kekuleSmiles", flags.kekule_smiles),
+        ("canonical", flags.canonical),
+        ("allBondsExplicit", flags.all_bonds_explicit),
+        ("allHsExplicit", flags.all_hs_explicit),
+        ("doRandom", flags.do_random),
+        ("ignoreAtomMapNumbers", flags.ignore_atom_map_numbers),
+    ):
+        if not isinstance(value, bool):
+            raise NotImplementedError(f"MolToSmiles runtime requires {name} to be a bool")
     if isinstance(flags.rooted_at_atom, bool) or not isinstance(flags.rooted_at_atom, int):
         raise NotImplementedError(
             "MolToSmiles runtime requires rootedAtAtom to be an integer with "

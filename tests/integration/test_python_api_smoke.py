@@ -175,6 +175,29 @@ class PythonApiSmokeTests(unittest.TestCase):
                     ):
                         call(rooted_at_atom)
 
+    def test_public_api_rejects_non_boolean_flag_values(self) -> None:
+        mol = parse_smiles("CCO")
+        invalid_cases = (
+            ("canonical", 0),
+            ("doRandom", 1),
+            ("isomericSmiles", 1),
+            ("kekuleSmiles", "no"),
+            ("allBondsExplicit", 1),
+            ("allHsExplicit", "no"),
+            ("ignoreAtomMapNumbers", 1),
+        )
+
+        for flag_name, invalid_value in invalid_cases:
+            kwargs = {
+                "rootedAtAtom": 0,
+                "canonical": False,
+                "doRandom": True,
+                flag_name: invalid_value,
+            }
+            with self.subTest(flag_name=flag_name, invalid_value=invalid_value):
+                with self.assertRaisesRegex(NotImplementedError, f"{flag_name} to be a bool"):
+                    tuple(grimace.MolToSmilesEnum(mol, **kwargs))
+
     def test_public_api_reports_out_of_range_root_consistently_for_disconnected_molecules(self) -> None:
         mol = parse_smiles("C.C")
 

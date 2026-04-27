@@ -238,6 +238,63 @@ class PythonApiSmokeTests(unittest.TestCase):
                     ):
                         call(rooted_at_atom)
 
+    def test_public_api_rejects_none_rooted_at_atom_except_inventory_alias(self) -> None:
+        mol = parse_smiles("CCO")
+        entrypoints = (
+            (
+                "enum",
+                lambda: tuple(
+                    grimace.MolToSmilesEnum(
+                        mol,
+                        rootedAtAtom=None,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                ),
+            ),
+            (
+                "decoder",
+                lambda: grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=None,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+            (
+                "determinized_decoder",
+                lambda: grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=None,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+        )
+
+        for entrypoint_name, call in entrypoints:
+            with self.subTest(entrypoint=entrypoint_name):
+                with self.assertRaisesRegex(
+                    NotImplementedError,
+                    "rootedAtAtom to follow RDKit's Python binding and be an integer",
+                ):
+                    call()
+
+        self.assertEqual(
+            grimace.MolToSmilesTokenInventory(
+                mol,
+                rootedAtAtom=None,
+                canonical=False,
+                doRandom=True,
+            ),
+            grimace.MolToSmilesTokenInventory(
+                mol,
+                rootedAtAtom=-1,
+                canonical=False,
+                doRandom=True,
+            ),
+        )
+
     def test_public_api_coerces_none_boolean_flags_like_rdkit(self) -> None:
         mol = parse_smiles("CCO")
         coercion_cases = (

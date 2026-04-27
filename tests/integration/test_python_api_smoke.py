@@ -97,15 +97,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         )
 
     def test_public_api_rejects_unsupported_flag_combination(self) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "rootedAtAtom == -1 or rootedAtAtom >= 0"):
-            tuple(
-                grimace.MolToSmilesEnum(
-                    parse_smiles("CCO"),
-                    rootedAtAtom=-2,
-                    canonical=False,
-                    doRandom=True,
-                )
-            )
         with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
             tuple(
                 grimace.MolToSmilesEnum(
@@ -120,6 +111,77 @@ class PythonApiSmokeTests(unittest.TestCase):
                     rootedAtAtom=0,
                     canonical=False,
                     )
+                )
+
+    def test_public_api_treats_any_negative_root_like_rdkit_unrooted_mode(self) -> None:
+        mol = parse_smiles("CCO")
+        for provided_root in (-1, -2, -3):
+            with self.subTest(provided_root=provided_root):
+                self.assertEqual(
+                    tuple(
+                        grimace.MolToSmilesEnum(
+                            mol,
+                            rootedAtAtom=provided_root,
+                            canonical=False,
+                            doRandom=True,
+                        )
+                    ),
+                    tuple(
+                        grimace.MolToSmilesEnum(
+                            mol,
+                            rootedAtAtom=-1,
+                            canonical=False,
+                            doRandom=True,
+                        )
+                    ),
+                )
+                self.assertEqual(
+                    grimace.MolToSmilesTokenInventory(
+                        mol,
+                        rootedAtAtom=provided_root,
+                        canonical=False,
+                        doRandom=True,
+                    ),
+                    grimace.MolToSmilesTokenInventory(
+                        mol,
+                        rootedAtAtom=-1,
+                        canonical=False,
+                        doRandom=True,
+                    ),
+                )
+                decoder = grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=provided_root,
+                    canonical=False,
+                    doRandom=True,
+                )
+                expected_decoder = grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=-1,
+                    canonical=False,
+                    doRandom=True,
+                )
+                self.assertEqual(decoder.prefix, expected_decoder.prefix)
+                self.assertEqual(
+                    [choice.text for choice in decoder.next_choices],
+                    [choice.text for choice in expected_decoder.next_choices],
+                )
+                determinized = grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=provided_root,
+                    canonical=False,
+                    doRandom=True,
+                )
+                expected_determinized = grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=-1,
+                    canonical=False,
+                    doRandom=True,
+                )
+                self.assertEqual(determinized.prefix, expected_determinized.prefix)
+                self.assertEqual(
+                    [choice.text for choice in determinized.next_choices],
+                    [choice.text for choice in expected_determinized.next_choices],
                 )
 
     def test_public_api_coerces_boolean_rooted_at_atom_like_rdkit(self) -> None:
@@ -242,9 +304,49 @@ class PythonApiSmokeTests(unittest.TestCase):
                 with self.subTest(entrypoint=entrypoint_name, rooted_at_atom=rooted_at_atom):
                     with self.assertRaisesRegex(
                         NotImplementedError,
-                        "rootedAtAtom to be an integer",
+                        "rootedAtAtom to follow RDKit's Python binding and be an integer",
                     ):
                         call(rooted_at_atom)
+
+    def test_public_api_coerces_none_boolean_flags_like_rdkit(self) -> None:
+        mol = parse_smiles("CCO")
+        coercion_cases = (
+            ("canonical", None, False),
+            ("isomericSmiles", None, False),
+            ("kekuleSmiles", None, False),
+            ("allBondsExplicit", None, False),
+            ("allHsExplicit", None, False),
+            ("ignoreAtomMapNumbers", None, False),
+        )
+
+        for flag_name, provided_value, coerced_value in coercion_cases:
+            kwargs = {
+                "rootedAtAtom": 0,
+                "canonical": False,
+                "doRandom": True,
+                flag_name: provided_value,
+            }
+            expected_kwargs = {
+                "rootedAtAtom": 0,
+                "canonical": False,
+                "doRandom": True,
+                flag_name: coerced_value,
+            }
+            with self.subTest(flag_name=flag_name, provided_value=provided_value):
+                self.assertEqual(
+                    tuple(grimace.MolToSmilesEnum(mol, **kwargs)),
+                    tuple(grimace.MolToSmilesEnum(mol, **expected_kwargs)),
+                )
+
+        with self.assertRaisesRegex(NotImplementedError, "doRandom=True"):
+            tuple(
+                grimace.MolToSmilesEnum(
+                    mol,
+                    rootedAtAtom=0,
+                    canonical=False,
+                    doRandom=None,
+                )
+            )
 
     def test_public_api_coerces_integral_boolean_flags_like_rdkit(self) -> None:
         mol = parse_smiles("CCO")
@@ -304,7 +406,7 @@ class PythonApiSmokeTests(unittest.TestCase):
             with self.subTest(flag_name=flag_name, invalid_value=invalid_value):
                 with self.assertRaisesRegex(
                     NotImplementedError,
-                    f"{flag_name} to follow RDKit's Python binding and be a bool or int",
+                    f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None",
                 ):
                     tuple(grimace.MolToSmilesEnum(mol, **kwargs))
 

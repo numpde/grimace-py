@@ -273,14 +273,22 @@ class PublicDecoderTests(unittest.TestCase):
     def test_decoder_rejects_unsupported_flag_combinations(self) -> None:
         mol = parse_smiles("CCO")
 
-        with self.assertRaisesRegex(NotImplementedError, "rootedAtAtom == -1 or rootedAtAtom >= 0"):
-            grimace.MolToSmilesDecoder(
+        self.assertEqual(
+            [choice.text for choice in grimace.MolToSmilesDecoder(
                 mol,
                 rootedAtAtom=-2,
                 isomericSmiles=False,
                 canonical=False,
                 doRandom=True,
-            )
+            ).next_choices],
+            [choice.text for choice in grimace.MolToSmilesDecoder(
+                mol,
+                rootedAtAtom=-1,
+                isomericSmiles=False,
+                canonical=False,
+                doRandom=True,
+            ).next_choices],
+        )
         with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
             grimace.MolToSmilesDecoder(
                 mol,

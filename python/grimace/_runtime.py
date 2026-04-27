@@ -151,20 +151,15 @@ def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
         ("doRandom", flags.do_random),
         ("ignoreAtomMapNumbers", flags.ignore_atom_map_numbers),
     ):
-        if not isinstance(value, Integral):
+        if value is not None and not isinstance(value, Integral):
             raise NotImplementedError(
                 f"MolToSmiles runtime requires {name} to follow RDKit's Python binding "
-                "and be a bool or int"
+                "and be a bool, int, or None"
             )
     if not isinstance(flags.rooted_at_atom, Integral):
         raise NotImplementedError(
-            "MolToSmiles runtime requires rootedAtAtom to be an integer with "
-            "rootedAtAtom == -1 or rootedAtAtom >= 0"
-        )
-    if int(flags.rooted_at_atom) < -1:
-        raise NotImplementedError(
-            "MolToSmiles runtime requires rootedAtAtom to be an integer with "
-            "rootedAtAtom == -1 or rootedAtAtom >= 0"
+            "MolToSmiles runtime requires rootedAtAtom to follow RDKit's Python binding "
+            "and be an integer"
         )
     if bool(flags.canonical):
         raise NotImplementedError(
@@ -693,6 +688,8 @@ def _make_flags(
     ignore_atom_map_numbers: bool = False,
 ) -> MolToSmilesFlags:
     def _normalize_bool_like(value: object) -> object:
+        if value is None:
+            return False
         if isinstance(value, Integral):
             return bool(value)
         return value

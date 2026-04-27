@@ -63,8 +63,9 @@ Although the signature mirrors RDKit defaults, the current runtime does not
 support those defaults. A naive `grimace.MolToSmilesEnum(mol)` call raises
 `NotImplementedError`; pass `canonical=False` and `doRandom=True` explicitly.
 
-When `rootedAtAtom == -1`, the result is the exact union across all valid
-roots for the requested writer flags.
+When `rootedAtAtom < 0`, the result is the exact union across all valid roots
+for the requested writer flags. `rootedAtAtom=-1` is the preferred public
+spelling for that all-roots mode.
 
 Set semantics are the contract here. `MolToSmilesEnum(...)` yields the exact
 support, but callers should not rely on the yielded iteration order as a
@@ -97,7 +98,11 @@ This is the important semantic point:
 
 Supported combination:
 
-- `rootedAtAtom == -1` or `rootedAtAtom >= 0`
+- omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
+- pass `rootedAtAtom >= 0` for one explicit root
+- other negative integer `rootedAtAtom` values are also accepted for RDKit
+  compatibility and behave like `-1`, but `-1` is the preferred public
+  spelling
 - `canonical=False`
 - `doRandom=True`
 
@@ -260,11 +265,12 @@ So:
 This returns the exact sorted tuple of reachable decoder tokens for one
 molecule under the same public writer flags.
 
-When `rootedAtAtom == -1`, it unions the exact reachable token inventories
+When `rootedAtAtom < 0`, it unions the exact reachable token inventories
 across all roots. When `rootedAtAtom >= 0`, it reports the inventory for that
 rooted public runtime. Omitting `rootedAtAtom` means the same thing as passing
-`-1`. For disconnected molecules it includes the `"."` separator token when
-fragment transitions are reachable under the requested root mode.
+`-1`, and `-1` is the preferred public spelling for that all-roots mode. For
+disconnected molecules it includes the `"."` separator token when fragment
+transitions are reachable under the requested root mode.
 
 This is an exact runtime inventory, not a probabilistic distribution and not a
 general-purpose tokenizer vocabulary.

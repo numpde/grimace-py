@@ -100,10 +100,11 @@ Today, pass:
 
 - `canonical=False`
 - `doRandom=True`
-- `rootedAtAtom=-1` or `rootedAtAtom >= 0` for `MolToSmilesEnum(...)` and
-  the decoder classes
-- `rootedAtAtom=-1` or `rootedAtAtom >= 0` for
-  `MolToSmilesTokenInventory(...)`
+- omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
+- pass `rootedAtAtom >= 0` for one explicit root
+- other negative integer `rootedAtAtom` values are also accepted for RDKit
+  compatibility and behave like `-1`, but `-1` is the preferred public
+  spelling
 - omitting `rootedAtAtom` is equivalent to `-1`
 
 Unsupported flag combinations fail fast with `NotImplementedError`. Other
@@ -121,6 +122,8 @@ The most important `rootedAtAtom` semantics are:
 - `rootedAtAtom=-1` for `MolToSmilesTokenInventory(...)` returns the token
   inventory unioned across all root atoms.
 - omitting `rootedAtAtom` means the same thing as passing `-1`.
+- other negative integer `rootedAtAtom` values also behave like `-1`, to stay
+  close to RDKit's public binding behavior.
 - `rootedAtAtom=None` is still accepted by `MolToSmilesTokenInventory(...)`
   as a compatibility alias for `-1`.
 - for disconnected molecules, fragment order is preserved; a nonnegative
@@ -382,6 +385,8 @@ Current public runtime contract:
 - `doRandom=True`
 - omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
 - pass `rootedAtAtom >= 0` for one explicit root
+- other negative integer `rootedAtAtom` values are also accepted for RDKit
+  compatibility, but `-1` is the preferred public spelling
 
 `MolToSmilesTokenInventory(...)` also still accepts `rootedAtAtom=None` as a
 backward-compatible alias for `-1`, but `-1` is the preferred public spelling.

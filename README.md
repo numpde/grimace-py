@@ -58,7 +58,13 @@ The only supported public Python import name is `grimace`.
 
 > [!CAUTION]
 > `grimace` is not currently published on PyPI. Plain `pip install grimace`
-> installs an unrelated older package, not this library.
+> installs an unrelated older package, not this library. Install from a GitHub
+> release asset instead, for example:
+>
+> ```bash
+> python -m pip install \
+>   https://github.com/numpde/grimace-py/releases/download/v0.1.6/grimace-0.1.6-cp312-cp312-manylinux_2_28_x86_64.whl
+> ```
 
 Main entrypoints:
 
@@ -289,6 +295,11 @@ Current continuously exercised matrix:
 
 - Linux source-tree tests on CPython `3.12`
 - Linux wheel build and smoke tests on CPython `3.12` and `3.13`
+- source distribution build plus `twine check` metadata validation
+
+The published sdist is not currently installed and smoke-tested in CI as an
+artifact. Treat it as a supported source-build path, but with weaker
+continuous evidence than the Linux wheel path.
 
 Other Python versions and non-Linux platforms are expected source-build paths,
 not part of the current release asset or CI matrix.

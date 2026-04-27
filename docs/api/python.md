@@ -36,16 +36,22 @@ Install-path caveat:
 - plain `pip install grimace` installs an unrelated older package, not this
   project
 - use a release wheel, sdist, or a local source build instead
+- example wheel install:
+  `python -m pip install`
+  `https://github.com/numpde/grimace-py/releases/download/v0.1.6/grimace-0.1.6-cp312-cp312-manylinux_2_28_x86_64.whl`
 
 Current continuously exercised matrix:
 
 - Linux source-tree tests on CPython `3.12`
 - Linux wheel build and smoke tests on CPython `3.12` and `3.13`
+- source distribution build plus `twine check` metadata validation
 
 Other Python versions and non-Linux platforms are expected source-build paths,
 not part of the current release asset or CI matrix.
 Python `3.11` is in that source-build category today: declared, but not part of
 the current CI matrix.
+The published sdist is not currently installed and smoke-tested in CI as an
+artifact.
 
 ## MolToSmilesEnum
 

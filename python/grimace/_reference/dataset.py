@@ -8,9 +8,7 @@ from typing import Any, Iterator, Mapping
 
 from rdkit import Chem
 
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_MOLECULE_SOURCE_PATH = REPO_ROOT / "tests" / "fixtures" / "top_100000_CIDs.tsv.gz"
+from grimace._reference._paths import DEFAULT_MOLECULE_SOURCE_PATH, resolve_bundled_reference_path
 
 
 @dataclass(frozen=True)
@@ -98,10 +96,7 @@ def load_default_molecule_cases(
 
 
 def _resolve_input_source_path(input_source: Mapping[str, Any]) -> Path:
-    raw_path = Path(str(input_source["path"]))
-    if raw_path.is_absolute():
-        return raw_path
-    return REPO_ROOT / raw_path
+    return resolve_bundled_reference_path(str(input_source["path"]))
 
 
 def _input_source_filters(input_source: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -172,7 +167,7 @@ def iter_default_connected_nonstereo_molecule_cases(
     return iter_molecule_cases_from_input_source(
         {
             "kind": "default_fixture",
-            "path": str(DEFAULT_MOLECULE_SOURCE_PATH.relative_to(REPO_ROOT)),
+            "path": str(DEFAULT_MOLECULE_SOURCE_PATH.name),
             "filters": {
                 "connected_only": True,
                 "stereochemistry": "forbid",

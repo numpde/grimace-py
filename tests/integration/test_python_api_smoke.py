@@ -3,9 +3,14 @@ from __future__ import annotations
 import unittest
 
 import grimace
-from grimace._reference.prepared_graph import (
-    prepare_smiles_graph_from_mol_to_smiles_kwargs,
+from grimace._reference import (
+    DEFAULT_MOLECULE_SOURCE_PATH,
+    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
+    DEFAULT_RDKIT_RANDOM_POLICY_PATH,
+    ReferencePolicy,
+    build_core_exact_sets_artifact,
 )
+from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
@@ -152,6 +157,21 @@ class PythonApiSmokeTests(unittest.TestCase):
             with self.subTest(entrypoint=name):
                 with self.assertRaisesRegex(IndexError, "root_idx out of range"):
                     call()
+
+    def test_reference_defaults_load_from_installed_package_layout(self) -> None:
+        self.assertTrue(DEFAULT_MOLECULE_SOURCE_PATH.is_file())
+        self.assertTrue(DEFAULT_RDKIT_RANDOM_POLICY_PATH.is_file())
+        self.assertTrue(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH.is_file())
+
+        policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
+        connected_nonstereo_policy = ReferencePolicy.from_path(
+            DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH
+        )
+
+        self.assertEqual("rdkit_random_v1", policy.policy_name)
+        self.assertEqual("rdkit_random_connected_nonstereo_v1", connected_nonstereo_policy.policy_name)
+        self.assertEqual(1, build_core_exact_sets_artifact(policy, limit=1)["case_count"])
+        self.assertEqual(1, build_core_exact_sets_artifact(connected_nonstereo_policy, limit=1)["case_count"])
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:

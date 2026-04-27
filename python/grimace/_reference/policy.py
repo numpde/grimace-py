@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from grimace._reference._paths import REFERENCE_ARTIFACTS_ROOT
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-REFERENCE_ARTIFACTS_ROOT = REPO_ROOT / "tests" / "fixtures" / "reference"
+
 DEFAULT_RDKIT_RANDOM_POLICY_PATH = (
     REFERENCE_ARTIFACTS_ROOT
     / "rdkit_random"

@@ -5,13 +5,18 @@ The benchmark first writes `docs/timings.tsv`, then renders this
 Markdown table from that TSV.
 
 Example timings from the opt-in performance benchmark, measured in release mode
-on one development machine. Treat them as indicative, not as a portability or
-stability guarantee.
+on one development machine. Treat them as indicative, not as a portability,
+stability, or universality guarantee.
 
+- This is a small curated benchmark: 9 molecules, 2 writer modes, and
+  7 timing repeats per row.
 - `Support`: the size of the exact rooted SMILES support across all root atoms.
-- `Grimace enum (all roots)`: union of
+- `Grimace enum (per-root union)`: union of
   `MolToSmilesEnum(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>)`
   over every root atom.
+- The direct public `MolToSmilesEnum(..., rootedAtAtom=-1, ...)` path is
+  not timed in this column and can differ materially from the explicit
+  per-root union shown here.
 - `Decoder enum (branch-preserving, per-root)`: exhaustive traversal of
   `MolToSmilesDecoder(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>).next_choices`
   over every root atom, then unioned.
@@ -35,12 +40,15 @@ stability guarantee.
   exact route on every listed case.
 - The merged decoder rows expose the public all-roots decoder path directly,
   so they can diverge substantially from the explicit per-root rows.
+- Read the RDKit comparison as 'faster on this benchmark against this
+  sampling baseline', not as a general claim about every molecule or
+  every SMILES-writing workload.
 - The determinized decoder can reduce exhaustive decoder cost on some
   molecules, but direct exact enumeration is still faster on these cases.
 
 ## Non-stereo (`isomericSmiles=False`)
 
-| Molecule | Atoms | Support | Grimace enum (all roots) | Decoder enum (branch-preserving, per-root) | Decoder enum (determinized, per-root) | Decoder enum (branch-preserving, merged) | Decoder enum (determinized, merged) | RDKit to 1/2 support | RDKit to full support |
+| Molecule | Atoms | Support | Grimace enum (per-root union) | Decoder enum (branch-preserving, per-root) | Decoder enum (determinized, per-root) | Decoder enum (branch-preserving, merged) | Decoder enum (determinized, merged) | RDKit to 1/2 support | RDKit to full support |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **6.9** ± 1.0 ms | **12.7** ± 0.4 ms | **13.9** ± 1.4 ms | **6.9** ± 0.6 ms | **6.7** ± 0.0 ms | **4.9** ± 0.8 ms (230.0 ± 18.8 draws) | **62.0** ± 18.7 ms (3086.7 ± 921.8 draws) |
 | `C1CC2(CCO1)CO2` | 8 | 36 | **2.5** ± 0.0 ms | **3.9** ± 0.0 ms | **3.7** ± 0.4 ms | **1.6** ± 0.0 ms | **1.1** ± 0.0 ms | **0.3** ± 0.0 ms (23.0 ± 1.8 draws) | **2.0** ± 0.5 ms (155.6 ± 35.8 draws) |
@@ -54,7 +62,7 @@ stability guarantee.
 
 ## Stereo (`isomericSmiles=True`)
 
-| Molecule | Atoms | Support | Grimace enum (all roots) | Decoder enum (branch-preserving, per-root) | Decoder enum (determinized, per-root) | Decoder enum (branch-preserving, merged) | Decoder enum (determinized, merged) | RDKit to 1/2 support | RDKit to full support |
+| Molecule | Atoms | Support | Grimace enum (per-root union) | Decoder enum (branch-preserving, per-root) | Decoder enum (determinized, per-root) | Decoder enum (branch-preserving, merged) | Decoder enum (determinized, merged) | RDKit to 1/2 support | RDKit to full support |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | `CC(=O)Oc1ccccc1C(=O)O` | 13 | 304 | **9.0** ± 0.3 ms | **18.1** ± 0.8 ms | **16.3** ± 0.7 ms | **8.6** ± 0.4 ms | **7.2** ± 0.2 ms | **4.6** ± 0.1 ms (222.6 ± 3.8 draws) | **62.2** ± 13.8 ms (3128.4 ± 683.9 draws) |
 | `C1CC2(CCO1)CO2` | 8 | 36 | **3.5** ± 0.1 ms | **5.6** ± 0.1 ms | **4.9** ± 0.1 ms | **2.3** ± 0.0 ms | **1.9** ± 0.0 ms | **0.3** ± 0.0 ms (23.4 ± 2.1 draws) | **2.5** ± 0.5 ms (192.7 ± 37.6 draws) |

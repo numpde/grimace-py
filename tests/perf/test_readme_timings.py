@@ -269,7 +269,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
 
     def _render_document_from_tsv(self) -> str:
         header = (
-            "| Molecule | Atoms | Support | Grimace enum (all roots) | "
+            "| Molecule | Atoms | Support | Grimace enum (per-root union) | "
             "Decoder enum (branch-preserving, per-root) | "
             "Decoder enum (determinized, per-root) | "
             "Decoder enum (branch-preserving, merged) | "
@@ -305,13 +305,18 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "Markdown table from that TSV.",
             "",
             "Example timings from the opt-in performance benchmark, measured in release mode",
-            "on one development machine. Treat them as indicative, not as a portability or",
-            "stability guarantee.",
+            "on one development machine. Treat them as indicative, not as a portability,",
+            "stability, or universality guarantee.",
             "",
+            "- This is a small curated benchmark: 9 molecules, 2 writer modes, and",
+            "  7 timing repeats per row.",
             "- `Support`: the size of the exact rooted SMILES support across all root atoms.",
-            "- `Grimace enum (all roots)`: union of",
+            "- `Grimace enum (per-root union)`: union of",
             "  `MolToSmilesEnum(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>)`",
             "  over every root atom.",
+            "- The direct public `MolToSmilesEnum(..., rootedAtAtom=-1, ...)` path is",
+            "  not timed in this column and can differ materially from the explicit",
+            "  per-root union shown here.",
             "- `Decoder enum (branch-preserving, per-root)`: exhaustive traversal of",
             "  `MolToSmilesDecoder(..., rootedAtAtom=root_idx, canonical=False, doRandom=True, isomericSmiles=<table mode>).next_choices`",
             "  over every root atom, then unioned.",
@@ -335,6 +340,9 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "  exact route on every listed case.",
             "- The merged decoder rows expose the public all-roots decoder path directly,",
             "  so they can diverge substantially from the explicit per-root rows.",
+            "- Read the RDKit comparison as 'faster on this benchmark against this",
+            "  sampling baseline', not as a general claim about every molecule or",
+            "  every SMILES-writing workload.",
             "- The determinized decoder can reduce exhaustive decoder cost on some",
             "  molecules, but direct exact enumeration is still faster on these cases.",
             "",

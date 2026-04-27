@@ -250,9 +250,12 @@ may be one character or several.
 
 ## Installation
 
-`grimace` currently publishes Linux `x86_64` wheels for CPython `3.12` and
-`3.13`. Other supported Python versions and platforms currently require a
-source build.
+`grimace` is not currently published on PyPI. Plain `pip install grimace`
+installs an unrelated older project with the same name, not this library.
+
+Release assets currently publish Linux `x86_64` wheels for CPython `3.12` and
+`3.13`. Other environments may require a source build and are not covered by
+the release wheels.
 
 Install with `pip install <wheel>` using one of these release assets:
 
@@ -288,12 +291,18 @@ Current takeaway from the generated table:
 - `MolToSmilesEnum(...)` is still the fastest exact route in every listed case
 - `MolToSmilesDeterminizedDecoder(...)` can reduce exhaustive decoder cost on
   some molecules, but it is still slower than direct exact enumeration here
+- the table is still a small curated benchmark: 9 molecules, 2 writer modes,
+  7 timing repeats, and one development machine
+- the `Grimace enum` row times explicit union over per-root
+  `MolToSmilesEnum(..., rootedAtAtom=root_idx)` calls, not the direct public
+  `MolToSmilesEnum(..., rootedAtAtom=-1)` path
 - the RDKit columns are not exact enumeration; they are random sampling until
   RDKit happens to reach `1/2` or full support
 - because of that, RDKit can be cheaper when you only want a few random
   strings, especially on small cases
-- but when you want guaranteed full support, Grimace is usually much faster on
-  the larger cases in the table, while also being exact instead of sample-based
+- but on the larger molecules in this benchmark, Grimace exact methods are
+  usually much faster than this RDKit sampling baseline when you want
+  guaranteed full support
 
 Regenerate it with:
 

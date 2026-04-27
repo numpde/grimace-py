@@ -141,9 +141,15 @@ def _validate_writer_flags(
 
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
+    if isinstance(flags.rooted_at_atom, bool) or not isinstance(flags.rooted_at_atom, int):
+        raise NotImplementedError(
+            "MolToSmiles runtime requires rootedAtAtom to be an integer with "
+            "rootedAtAtom == -1 or rootedAtAtom >= 0"
+        )
     if flags.rooted_at_atom < -1:
         raise NotImplementedError(
-            "MolToSmiles runtime requires rootedAtAtom == -1 or rootedAtAtom >= 0"
+            "MolToSmiles runtime requires rootedAtAtom to be an integer with "
+            "rootedAtAtom == -1 or rootedAtAtom >= 0"
         )
     if flags.canonical:
         raise NotImplementedError(

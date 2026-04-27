@@ -122,6 +122,59 @@ class PythonApiSmokeTests(unittest.TestCase):
                     )
                 )
 
+    def test_public_api_rejects_non_integer_rooted_at_atom_values(self) -> None:
+        mol = parse_smiles("CCO")
+        invalid_roots = (-0.2, True, False)
+        entrypoints = (
+            (
+                "enum",
+                lambda rooted_at_atom: tuple(
+                    grimace.MolToSmilesEnum(
+                        mol,
+                        rootedAtAtom=rooted_at_atom,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                ),
+            ),
+            (
+                "decoder",
+                lambda rooted_at_atom: grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=rooted_at_atom,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+            (
+                "determinized_decoder",
+                lambda rooted_at_atom: grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=rooted_at_atom,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+            (
+                "inventory",
+                lambda rooted_at_atom: grimace.MolToSmilesTokenInventory(
+                    mol,
+                    rootedAtAtom=rooted_at_atom,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+        )
+
+        for entrypoint_name, call in entrypoints:
+            for rooted_at_atom in invalid_roots:
+                with self.subTest(entrypoint=entrypoint_name, rooted_at_atom=rooted_at_atom):
+                    with self.assertRaisesRegex(
+                        NotImplementedError,
+                        "rootedAtAtom to be an integer",
+                    ):
+                        call(rooted_at_atom)
+
     def test_public_api_reports_out_of_range_root_consistently_for_disconnected_molecules(self) -> None:
         mol = parse_smiles("C.C")
 

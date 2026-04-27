@@ -11,7 +11,8 @@ answers two questions that RDKit does not expose directly:
 
 By "support" we mean the full set of reachable rooted SMILES strings for the
 chosen writer flags. A "rooted SMILES" here is a SMILES string generated with a
-fixed starting atom.
+fixed starting atom for a connected molecule, or with one rooted fragment/local
+root inside the preserved fragment order for a disconnected molecule.
 
 `grimace` can:
 
@@ -47,7 +48,7 @@ with language transformers ([link](https://numpde.github.io/shared/msc/)).
 
 ## Choose the API
 
-The only supported public Python package is `grimace`.
+The only supported public Python import name is `grimace`.
 
 Main entrypoints:
 
@@ -273,6 +274,8 @@ Current continuously exercised matrix:
 
 Other Python versions and non-Linux platforms are expected source-build paths,
 not part of the current release asset or CI matrix.
+Python `3.11` is in that source-build category today: declared, but not part of
+the current CI matrix.
 
 Install with `pip install <wheel>` using one of these release assets:
 

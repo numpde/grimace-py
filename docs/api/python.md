@@ -2,7 +2,7 @@
 
 ## Public surface
 
-The only supported public Python API is `grimace`.
+The only supported public Python import name is `grimace`.
 
 Current top-level exports:
 
@@ -29,6 +29,8 @@ Current continuously exercised matrix:
 
 Other Python versions and non-Linux platforms are expected source-build paths,
 not part of the current release asset or CI matrix.
+Python `3.11` is in that source-build category today: declared, but not part of
+the current CI matrix.
 
 ## MolToSmilesEnum
 

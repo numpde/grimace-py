@@ -20,6 +20,42 @@ from tests.helpers.mols import parse_smiles
 
 
 class PythonApiSmokeTests(unittest.TestCase):
+    @staticmethod
+    def _decoder_choice_texts(decoder: object) -> tuple[str, ...]:
+        return tuple(choice.text for choice in decoder.next_choices)
+
+    def _assert_public_entrypoints_equivalent(
+        self,
+        mol: Chem.Mol,
+        *,
+        provided_kwargs: dict[str, object],
+        expected_kwargs: dict[str, object],
+    ) -> None:
+        self.assertEqual(
+            tuple(grimace.MolToSmilesEnum(mol, **provided_kwargs)),
+            tuple(grimace.MolToSmilesEnum(mol, **expected_kwargs)),
+        )
+        self.assertEqual(
+            grimace.MolToSmilesTokenInventory(mol, **provided_kwargs),
+            grimace.MolToSmilesTokenInventory(mol, **expected_kwargs),
+        )
+
+        decoder = grimace.MolToSmilesDecoder(mol, **provided_kwargs)
+        expected_decoder = grimace.MolToSmilesDecoder(mol, **expected_kwargs)
+        self.assertEqual(decoder.prefix, expected_decoder.prefix)
+        self.assertEqual(
+            self._decoder_choice_texts(decoder),
+            self._decoder_choice_texts(expected_decoder),
+        )
+
+        determinized = grimace.MolToSmilesDeterminizedDecoder(mol, **provided_kwargs)
+        expected_determinized = grimace.MolToSmilesDeterminizedDecoder(mol, **expected_kwargs)
+        self.assertEqual(determinized.prefix, expected_determinized.prefix)
+        self.assertEqual(
+            self._decoder_choice_texts(determinized),
+            self._decoder_choice_texts(expected_determinized),
+        )
+
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(callable(grimace.MolToSmilesChoice))
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
@@ -117,142 +153,36 @@ class PythonApiSmokeTests(unittest.TestCase):
         mol = parse_smiles("CCO")
         for provided_root in (-1, -2, -3):
             with self.subTest(provided_root=provided_root):
-                self.assertEqual(
-                    tuple(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            rootedAtAtom=provided_root,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    ),
-                    tuple(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            rootedAtAtom=-1,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    ),
-                )
-                self.assertEqual(
-                    grimace.MolToSmilesTokenInventory(
-                        mol,
-                        rootedAtAtom=provided_root,
-                        canonical=False,
-                        doRandom=True,
-                    ),
-                    grimace.MolToSmilesTokenInventory(
-                        mol,
-                        rootedAtAtom=-1,
-                        canonical=False,
-                        doRandom=True,
-                    ),
-                )
-                decoder = grimace.MolToSmilesDecoder(
+                self._assert_public_entrypoints_equivalent(
                     mol,
-                    rootedAtAtom=provided_root,
-                    canonical=False,
-                    doRandom=True,
-                )
-                expected_decoder = grimace.MolToSmilesDecoder(
-                    mol,
-                    rootedAtAtom=-1,
-                    canonical=False,
-                    doRandom=True,
-                )
-                self.assertEqual(decoder.prefix, expected_decoder.prefix)
-                self.assertEqual(
-                    [choice.text for choice in decoder.next_choices],
-                    [choice.text for choice in expected_decoder.next_choices],
-                )
-                determinized = grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=provided_root,
-                    canonical=False,
-                    doRandom=True,
-                )
-                expected_determinized = grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=-1,
-                    canonical=False,
-                    doRandom=True,
-                )
-                self.assertEqual(determinized.prefix, expected_determinized.prefix)
-                self.assertEqual(
-                    [choice.text for choice in determinized.next_choices],
-                    [choice.text for choice in expected_determinized.next_choices],
+                    provided_kwargs={
+                        "rootedAtAtom": provided_root,
+                        "canonical": False,
+                        "doRandom": True,
+                    },
+                    expected_kwargs={
+                        "rootedAtAtom": -1,
+                        "canonical": False,
+                        "doRandom": True,
+                    },
                 )
 
     def test_public_api_coerces_boolean_rooted_at_atom_like_rdkit(self) -> None:
         mol = parse_smiles("CCO")
         for provided_root, expected_root in ((False, 0), (True, 1)):
             with self.subTest(provided_root=provided_root, expected_root=expected_root):
-                self.assertEqual(
-                    tuple(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            rootedAtAtom=provided_root,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    ),
-                    tuple(
-                        grimace.MolToSmilesEnum(
-                            mol,
-                            rootedAtAtom=expected_root,
-                            canonical=False,
-                            doRandom=True,
-                        )
-                    ),
-                )
-                self.assertEqual(
-                    grimace.MolToSmilesTokenInventory(
-                        mol,
-                        rootedAtAtom=provided_root,
-                        canonical=False,
-                        doRandom=True,
-                    ),
-                    grimace.MolToSmilesTokenInventory(
-                        mol,
-                        rootedAtAtom=expected_root,
-                        canonical=False,
-                        doRandom=True,
-                    ),
-                )
-                decoder = grimace.MolToSmilesDecoder(
+                self._assert_public_entrypoints_equivalent(
                     mol,
-                    rootedAtAtom=provided_root,
-                    canonical=False,
-                    doRandom=True,
-                )
-                expected_decoder = grimace.MolToSmilesDecoder(
-                    mol,
-                    rootedAtAtom=expected_root,
-                    canonical=False,
-                    doRandom=True,
-                )
-                self.assertEqual(decoder.prefix, expected_decoder.prefix)
-                self.assertEqual(
-                    [choice.text for choice in decoder.next_choices],
-                    [choice.text for choice in expected_decoder.next_choices],
-                )
-                determinized = grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=provided_root,
-                    canonical=False,
-                    doRandom=True,
-                )
-                expected_determinized = grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=expected_root,
-                    canonical=False,
-                    doRandom=True,
-                )
-                self.assertEqual(determinized.prefix, expected_determinized.prefix)
-                self.assertEqual(
-                    [choice.text for choice in determinized.next_choices],
-                    [choice.text for choice in expected_determinized.next_choices],
+                    provided_kwargs={
+                        "rootedAtAtom": provided_root,
+                        "canonical": False,
+                        "doRandom": True,
+                    },
+                    expected_kwargs={
+                        "rootedAtAtom": expected_root,
+                        "canonical": False,
+                        "doRandom": True,
+                    },
                 )
 
     def test_public_api_rejects_non_integral_rooted_at_atom_values(self) -> None:
@@ -333,9 +263,10 @@ class PythonApiSmokeTests(unittest.TestCase):
                 flag_name: coerced_value,
             }
             with self.subTest(flag_name=flag_name, provided_value=provided_value):
-                self.assertEqual(
-                    tuple(grimace.MolToSmilesEnum(mol, **kwargs)),
-                    tuple(grimace.MolToSmilesEnum(mol, **expected_kwargs)),
+                self._assert_public_entrypoints_equivalent(
+                    mol,
+                    provided_kwargs=kwargs,
+                    expected_kwargs=expected_kwargs,
                 )
 
         with self.assertRaisesRegex(NotImplementedError, "doRandom=True"):
@@ -379,9 +310,10 @@ class PythonApiSmokeTests(unittest.TestCase):
                 flag_name: coerced_value,
             }
             with self.subTest(flag_name=flag_name, provided_value=provided_value):
-                self.assertEqual(
-                    tuple(grimace.MolToSmilesEnum(mol, **kwargs)),
-                    tuple(grimace.MolToSmilesEnum(mol, **expected_kwargs)),
+                self._assert_public_entrypoints_equivalent(
+                    mol,
+                    provided_kwargs=kwargs,
+                    expected_kwargs=expected_kwargs,
                 )
 
     def test_public_api_rejects_non_integral_boolean_flag_values(self) -> None:
@@ -409,6 +341,55 @@ class PythonApiSmokeTests(unittest.TestCase):
                     f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None",
                 ):
                     tuple(grimace.MolToSmilesEnum(mol, **kwargs))
+
+    def test_public_api_reports_out_of_range_root_consistently_for_connected_molecules(self) -> None:
+        mol = parse_smiles("CCO")
+
+        entrypoints = (
+            (
+                "enum",
+                lambda: tuple(
+                    grimace.MolToSmilesEnum(
+                        mol,
+                        rootedAtAtom=99,
+                        canonical=False,
+                        doRandom=True,
+                    )
+                ),
+            ),
+            (
+                "decoder",
+                lambda: grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=99,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+            (
+                "determinized_decoder",
+                lambda: grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=99,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+            (
+                "inventory",
+                lambda: grimace.MolToSmilesTokenInventory(
+                    mol,
+                    rootedAtAtom=99,
+                    canonical=False,
+                    doRandom=True,
+                ),
+            ),
+        )
+
+        for entrypoint_name, call in entrypoints:
+            with self.subTest(entrypoint=entrypoint_name):
+                with self.assertRaisesRegex(IndexError, "root_idx out of range"):
+                    call()
 
     def test_public_api_reports_out_of_range_root_consistently_for_disconnected_molecules(self) -> None:
         mol = parse_smiles("C.C")

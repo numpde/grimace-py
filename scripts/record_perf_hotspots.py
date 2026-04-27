@@ -9,6 +9,10 @@ import sys
 import tempfile
 import textwrap
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from tests.perf._history import (
     REPORT_DIR,
     append_history_record,
@@ -16,9 +20,6 @@ from tests.perf._history import (
     parse_perf_report_top_symbols,
     sanitize_label,
 )
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:

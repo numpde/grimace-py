@@ -109,8 +109,6 @@ class RdkitRegressionMinerTests(unittest.TestCase):
 
     def _run_worker(self, *extra_args: str) -> dict[str, object]:
         env = os.environ.copy()
-        existing_pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = "python:." if not existing_pythonpath else f"python:.:{existing_pythonpath}"
         proc = subprocess.run(
             [sys.executable, str(SCRIPT_PATH), *extra_args],
             cwd=REPO_ROOT,
@@ -124,8 +122,6 @@ class RdkitRegressionMinerTests(unittest.TestCase):
 
     def _run_controller(self, *extra_args: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
-        existing_pythonpath = env.get("PYTHONPATH")
-        env["PYTHONPATH"] = "python:." if not existing_pythonpath else f"python:.:{existing_pythonpath}"
         return subprocess.run(
             [sys.executable, str(SCRIPT_PATH), *extra_args],
             cwd=REPO_ROOT,

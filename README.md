@@ -26,7 +26,9 @@ The reason this library exists is that RDKit does not provide either:
 
 `grimace` targets the current stable RDKit writer convention, currently
 `RDKit 2026.03.1`. Older slash/backslash serialization conventions are out of
-scope.
+scope. The dependency floor is `rdkit>=2026.3`, but exact output parity is
+only validated against that current stable writer convention; newer RDKit
+releases may still require fixture or expectation updates.
 
 It requires Python `>=3.11` and `rdkit>=2026.3`.
 
@@ -38,6 +40,10 @@ with language transformers ([link](https://numpde.github.io/shared/msc/)).
 > `grimace` is still evolving. The supported public API is usable for the
 > documented runtime subset, but feature coverage is still limited and some
 > public details may continue to change between releases.
+
+> [!IMPORTANT]
+> `grimace` is distributed under `PolyForm-Noncommercial-1.0.0`. Commercial
+> use is not permitted under the current license.
 
 ## Choose the API
 
@@ -93,6 +99,9 @@ The most important `rootedAtAtom` semantics are:
 - omitting `rootedAtAtom` means the same thing as passing `-1`.
 - `rootedAtAtom=None` is still accepted by `MolToSmilesTokenInventory(...)`
   as a compatibility alias for `-1`.
+- for disconnected molecules, fragment order is preserved; a nonnegative
+  `rootedAtAtom` selects the rooted fragment and its local root atom within
+  that fixed fragment order.
 
 ## Quickstart
 
@@ -257,6 +266,14 @@ Release assets currently publish Linux `x86_64` wheels for CPython `3.12` and
 `3.13`. Other environments may require a source build and are not covered by
 the release wheels.
 
+Current continuously exercised matrix:
+
+- Linux source-tree tests on CPython `3.12`
+- Linux wheel build and smoke tests on CPython `3.12` and `3.13`
+
+Other Python versions and non-Linux platforms are expected source-build paths,
+not part of the current release asset or CI matrix.
+
 Install with `pip install <wheel>` using one of these release assets:
 
 | System | 3.12 | 3.13 |
@@ -265,7 +282,12 @@ Install with `pip install <wheel>` using one of these release assets:
 
 The built package depends on `rdkit>=2026.3`.
 
-For local development:
+For local development or a source build, you need:
+
+- a Rust toolchain with `rustc >= 1.83`
+- `maturin`
+
+Then:
 
 ```bash
 python -m venv .venv

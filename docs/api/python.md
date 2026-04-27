@@ -20,6 +20,15 @@ Environment requirements:
 
 - Python `>=3.11`
 - `rdkit>=2026.3`
+- for source builds, a Rust toolchain with `rustc >= 1.83`
+
+Current continuously exercised matrix:
+
+- Linux source-tree tests on CPython `3.12`
+- Linux wheel build and smoke tests on CPython `3.12` and `3.13`
+
+Other Python versions and non-Linux platforms are expected source-build paths,
+not part of the current release asset or CI matrix.
 
 ## MolToSmilesEnum
 
@@ -50,7 +59,9 @@ implements rooted random support generation.
 
 The serialization target is the current stable RDKit writer convention,
 currently `RDKit 2026.03.1`. Older slash/backslash serialization conventions
-are out of scope.
+are out of scope. The dependency floor is `rdkit>=2026.3`, but exact output
+parity is only validated against that current stable writer convention; newer
+RDKit releases may still require fixture or expectation updates.
 
 This is the important semantic point:
 
@@ -77,6 +88,10 @@ invalid public inputs can still raise more specific exceptions such as
 are supported here, in
 `MolToSmilesDecoder(...)`, in `MolToSmilesDeterminizedDecoder(...)`, and in
 `MolToSmilesTokenInventory(...)`.
+
+For disconnected molecules, a nonnegative `rootedAtAtom` does not reorder
+fragments. It selects the rooted fragment and the local root atom within that
+fixed fragment order.
 
 ## MolToSmilesDecoder
 

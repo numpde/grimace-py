@@ -122,9 +122,80 @@ class PythonApiSmokeTests(unittest.TestCase):
                     )
                 )
 
-    def test_public_api_rejects_non_integer_rooted_at_atom_values(self) -> None:
+    def test_public_api_coerces_boolean_rooted_at_atom_like_rdkit(self) -> None:
         mol = parse_smiles("CCO")
-        invalid_roots = (-0.2, True, False)
+        for provided_root, expected_root in ((False, 0), (True, 1)):
+            with self.subTest(provided_root=provided_root, expected_root=expected_root):
+                self.assertEqual(
+                    tuple(
+                        grimace.MolToSmilesEnum(
+                            mol,
+                            rootedAtAtom=provided_root,
+                            canonical=False,
+                            doRandom=True,
+                        )
+                    ),
+                    tuple(
+                        grimace.MolToSmilesEnum(
+                            mol,
+                            rootedAtAtom=expected_root,
+                            canonical=False,
+                            doRandom=True,
+                        )
+                    ),
+                )
+                self.assertEqual(
+                    grimace.MolToSmilesTokenInventory(
+                        mol,
+                        rootedAtAtom=provided_root,
+                        canonical=False,
+                        doRandom=True,
+                    ),
+                    grimace.MolToSmilesTokenInventory(
+                        mol,
+                        rootedAtAtom=expected_root,
+                        canonical=False,
+                        doRandom=True,
+                    ),
+                )
+                decoder = grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=provided_root,
+                    canonical=False,
+                    doRandom=True,
+                )
+                expected_decoder = grimace.MolToSmilesDecoder(
+                    mol,
+                    rootedAtAtom=expected_root,
+                    canonical=False,
+                    doRandom=True,
+                )
+                self.assertEqual(decoder.prefix, expected_decoder.prefix)
+                self.assertEqual(
+                    [choice.text for choice in decoder.next_choices],
+                    [choice.text for choice in expected_decoder.next_choices],
+                )
+                determinized = grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=provided_root,
+                    canonical=False,
+                    doRandom=True,
+                )
+                expected_determinized = grimace.MolToSmilesDeterminizedDecoder(
+                    mol,
+                    rootedAtAtom=expected_root,
+                    canonical=False,
+                    doRandom=True,
+                )
+                self.assertEqual(determinized.prefix, expected_determinized.prefix)
+                self.assertEqual(
+                    [choice.text for choice in determinized.next_choices],
+                    [choice.text for choice in expected_determinized.next_choices],
+                )
+
+    def test_public_api_rejects_non_integral_rooted_at_atom_values(self) -> None:
+        mol = parse_smiles("CCO")
+        invalid_roots = (-0.2, 1.0, "1")
         entrypoints = (
             (
                 "enum",
@@ -175,16 +246,52 @@ class PythonApiSmokeTests(unittest.TestCase):
                     ):
                         call(rooted_at_atom)
 
-    def test_public_api_rejects_non_boolean_flag_values(self) -> None:
+    def test_public_api_coerces_integral_boolean_flags_like_rdkit(self) -> None:
+        mol = parse_smiles("CCO")
+        coercion_cases = (
+            ("canonical", 0, False),
+            ("doRandom", 1, True),
+            ("isomericSmiles", 1),
+            ("kekuleSmiles", 1),
+            ("allBondsExplicit", 1),
+            ("allHsExplicit", 1),
+            ("ignoreAtomMapNumbers", 1),
+        )
+
+        for raw_case in coercion_cases:
+            if len(raw_case) == 3:
+                flag_name, provided_value, coerced_value = raw_case
+            else:
+                flag_name, provided_value = raw_case
+                coerced_value = bool(provided_value)
+            kwargs = {
+                "rootedAtAtom": 0,
+                "canonical": False,
+                "doRandom": True,
+                flag_name: provided_value,
+            }
+            expected_kwargs = {
+                "rootedAtAtom": 0,
+                "canonical": False,
+                "doRandom": True,
+                flag_name: coerced_value,
+            }
+            with self.subTest(flag_name=flag_name, provided_value=provided_value):
+                self.assertEqual(
+                    tuple(grimace.MolToSmilesEnum(mol, **kwargs)),
+                    tuple(grimace.MolToSmilesEnum(mol, **expected_kwargs)),
+                )
+
+    def test_public_api_rejects_non_integral_boolean_flag_values(self) -> None:
         mol = parse_smiles("CCO")
         invalid_cases = (
-            ("canonical", 0),
-            ("doRandom", 1),
-            ("isomericSmiles", 1),
+            ("canonical", 0.0),
+            ("doRandom", 1.0),
+            ("isomericSmiles", 1.0),
             ("kekuleSmiles", "no"),
-            ("allBondsExplicit", 1),
+            ("allBondsExplicit", 1.0),
             ("allHsExplicit", "no"),
-            ("ignoreAtomMapNumbers", 1),
+            ("ignoreAtomMapNumbers", 1.0),
         )
 
         for flag_name, invalid_value in invalid_cases:
@@ -195,7 +302,10 @@ class PythonApiSmokeTests(unittest.TestCase):
                 flag_name: invalid_value,
             }
             with self.subTest(flag_name=flag_name, invalid_value=invalid_value):
-                with self.assertRaisesRegex(NotImplementedError, f"{flag_name} to be a bool"):
+                with self.assertRaisesRegex(
+                    NotImplementedError,
+                    f"{flag_name} to follow RDKit's Python binding and be a bool or int",
+                ):
                     tuple(grimace.MolToSmilesEnum(mol, **kwargs))
 
     def test_public_api_reports_out_of_range_root_consistently_for_disconnected_molecules(self) -> None:

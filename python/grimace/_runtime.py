@@ -6,6 +6,7 @@ import importlib
 from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from itertools import product
+from numbers import Integral
 from typing import Protocol, TypeAlias, cast
 
 from rdkit import Chem
@@ -150,25 +151,28 @@ def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
         ("doRandom", flags.do_random),
         ("ignoreAtomMapNumbers", flags.ignore_atom_map_numbers),
     ):
-        if not isinstance(value, bool):
-            raise NotImplementedError(f"MolToSmiles runtime requires {name} to be a bool")
-    if isinstance(flags.rooted_at_atom, bool) or not isinstance(flags.rooted_at_atom, int):
+        if not isinstance(value, Integral):
+            raise NotImplementedError(
+                f"MolToSmiles runtime requires {name} to follow RDKit's Python binding "
+                "and be a bool or int"
+            )
+    if not isinstance(flags.rooted_at_atom, Integral):
         raise NotImplementedError(
             "MolToSmiles runtime requires rootedAtAtom to be an integer with "
             "rootedAtAtom == -1 or rootedAtAtom >= 0"
         )
-    if flags.rooted_at_atom < -1:
+    if int(flags.rooted_at_atom) < -1:
         raise NotImplementedError(
             "MolToSmiles runtime requires rootedAtAtom to be an integer with "
             "rootedAtAtom == -1 or rootedAtAtom >= 0"
         )
-    if flags.canonical:
+    if bool(flags.canonical):
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only canonical=False and "
             "doRandom=True; the public signatures keep RDKit-like defaults for "
             "surface compatibility, so pass those two flags explicitly."
         )
-    if not flags.do_random:
+    if not bool(flags.do_random):
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only canonical=False and "
             "doRandom=True; the public signatures keep RDKit-like defaults for "
@@ -688,15 +692,25 @@ def _make_flags(
     do_random: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> MolToSmilesFlags:
+    def _normalize_bool_like(value: object) -> object:
+        if isinstance(value, Integral):
+            return bool(value)
+        return value
+
+    def _normalize_root(value: object) -> object:
+        if isinstance(value, Integral):
+            return int(value)
+        return value
+
     return MolToSmilesFlags(
-        isomeric_smiles=isomeric_smiles,
-        kekule_smiles=kekule_smiles,
-        rooted_at_atom=rooted_at_atom,
-        canonical=canonical,
-        all_bonds_explicit=all_bonds_explicit,
-        all_hs_explicit=all_hs_explicit,
-        do_random=do_random,
-        ignore_atom_map_numbers=ignore_atom_map_numbers,
+        isomeric_smiles=_normalize_bool_like(isomeric_smiles),
+        kekule_smiles=_normalize_bool_like(kekule_smiles),
+        rooted_at_atom=_normalize_root(rooted_at_atom),
+        canonical=_normalize_bool_like(canonical),
+        all_bonds_explicit=_normalize_bool_like(all_bonds_explicit),
+        all_hs_explicit=_normalize_bool_like(all_hs_explicit),
+        do_random=_normalize_bool_like(do_random),
+        ignore_atom_map_numbers=_normalize_bool_like(ignore_atom_map_numbers),
     )
 
 

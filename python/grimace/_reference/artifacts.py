@@ -7,6 +7,7 @@ from typing import Any
 
 from rdkit import Chem
 
+from grimace._reference._paths import display_reference_path
 from grimace._reference.dataset import (
     MoleculeCase,
     iter_molecule_cases_from_input_source,
@@ -26,13 +27,8 @@ def _artifact_header(
     input_source = policy.data["input_source"]
     if policy.source_path is None:
         policy_path = None
-    elif policy.source_path.is_absolute():
-        try:
-            policy_path = str(policy.source_path.relative_to(Path.cwd()))
-        except ValueError:
-            policy_path = str(policy.source_path)
     else:
-        policy_path = str(policy.source_path)
+        policy_path = display_reference_path(policy.source_path)
     return {
         "policy_name": policy.policy_name,
         "policy_kind": policy.policy_kind,
@@ -40,7 +36,7 @@ def _artifact_header(
         "policy_digest": policy.digest(),
         "policy_path": policy_path,
         "input_source": input_source,
-        "source_path": str(input_source["path"]),
+        "source_path": display_reference_path(str(input_source["path"])),
         "selection": selection,
     }
 

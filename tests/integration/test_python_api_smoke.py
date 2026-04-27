@@ -170,8 +170,21 @@ class PythonApiSmokeTests(unittest.TestCase):
 
         self.assertEqual("rdkit_random_v1", policy.policy_name)
         self.assertEqual("rdkit_random_connected_nonstereo_v1", connected_nonstereo_policy.policy_name)
-        self.assertEqual(1, build_core_exact_sets_artifact(policy, limit=1)["case_count"])
-        self.assertEqual(1, build_core_exact_sets_artifact(connected_nonstereo_policy, limit=1)["case_count"])
+        artifact = build_core_exact_sets_artifact(policy, limit=1)
+        connected_nonstereo_artifact = build_core_exact_sets_artifact(
+            connected_nonstereo_policy,
+            limit=1,
+        )
+        self.assertEqual(1, artifact["case_count"])
+        self.assertEqual(1, connected_nonstereo_artifact["case_count"])
+        self.assertEqual(
+            "grimace/_reference/_data/reference/rdkit_random/branches/general/policies/rdkit_random_v1.json",
+            artifact["policy_path"],
+        )
+        self.assertEqual(
+            "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
+            artifact["source_path"],
+        )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:

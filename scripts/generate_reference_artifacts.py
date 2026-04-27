@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from smiles_next_token.reference import (
+from grimace._reference import (
     DEFAULT_CORE_SELECTION_LIMIT,
     DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     ReferencePolicy,

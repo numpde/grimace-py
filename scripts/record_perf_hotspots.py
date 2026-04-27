@@ -167,7 +167,6 @@ def main() -> int:
         payload_path.write_text(build_payload_script(args), encoding="utf-8")
 
         env = os.environ.copy()
-        env["PYTHONPATH"] = f"python:."
 
         subprocess.run(
             [

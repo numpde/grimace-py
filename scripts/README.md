@@ -59,7 +59,7 @@ including `kekuleSmiles`, `allBondsExplicit`, `allHsExplicit`, and
 Examples:
 
 ```bash
-PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
+python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --connected connected \
@@ -68,7 +68,7 @@ PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
+python scripts/mine_rdkit_regressions.py \
   --root last \
   --isomeric true \
   --connected connected \
@@ -77,7 +77,7 @@ PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
+python scripts/mine_rdkit_regressions.py \
   --root zero \
   --isomeric false \
   --all-bonds-explicit true \
@@ -88,7 +88,7 @@ PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
+python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --rdkit-mode sampled \
@@ -101,7 +101,7 @@ PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
+python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --rdkit-mode sampled \
@@ -112,7 +112,7 @@ PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
 ```
 
 ```bash
-PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
+python scripts/mine_rdkit_regressions.py \
   --root none \
   --isomeric true \
   --rdkit-mode sampled \
@@ -122,3 +122,6 @@ PYTHONPATH=python:. python scripts/mine_rdkit_regressions.py \
   --jsonl-output tmp/rdkit-scan.jsonl \
   --resume-jsonl
 ```
+
+If you intentionally want to run against an uninstalled source tree instead of
+an installed or `maturin develop` build, prepend `PYTHONPATH=python:.`.

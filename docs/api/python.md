@@ -18,7 +18,7 @@ where the extension was built or installed.
 
 Environment requirements:
 
-- Python `>=3.11`
+- package metadata declares Python `>=3.11`
 - `rdkit>=2026.3`
 - for source builds, a Rust toolchain with `rustc >= 1.83`
 

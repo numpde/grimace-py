@@ -31,7 +31,8 @@ scope. The dependency floor is `rdkit>=2026.3`, but exact output parity is
 only validated against that current stable writer convention; newer RDKit
 releases may still require fixture or expectation updates.
 
-It requires Python `>=3.11` and `rdkit>=2026.3`.
+The package metadata declares Python `>=3.11` and `rdkit>=2026.3`. The
+currently exercised CI and release matrix is narrower and documented below.
 
 GRIMACE stands for "graph representation integrating multiple alternate
 chemical equivalents", motivated by research on NMR spectroscopy

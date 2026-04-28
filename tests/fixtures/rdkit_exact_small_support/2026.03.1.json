@@ -63,6 +63,19 @@
       "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
     },
     {
+      "id": "mapped_fragments_root0_disconnected",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": [
+        "[C:1][C:2].[C:4][N:3]=[O:5]",
+        "[C:1][C:2].[N:3](=[O:5])[C:4]",
+        "[C:1][C:2].[N:3]([C:4])=[O:5]",
+        "[C:1][C:2].[O:5]=[N:3][C:4]"
+      ],
+      "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+    },
+    {
       "id": "mapped_fragments_root2_disconnected",
       "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
       "rooted_at_atom": 2,
@@ -104,6 +117,22 @@
       "isomeric_smiles": false,
       "expected": ["c1cccnc1", "c1cnccc1"],
       "expected_inventory": ["1", "c", "n"]
+    },
+    {
+      "id": "pyrroline_root0_aromatized_nh",
+      "smiles": "C1=CNC=C1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["c1c[nH]cc1", "c1cc[nH]c1"],
+      "expected_inventory": ["1", "[nH]", "c"]
+    },
+    {
+      "id": "pyrroline_root2_aromatized_nh",
+      "smiles": "C1=CNC=C1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected": ["[nH]1cccc1"],
+      "expected_inventory": ["1", "[nH]", "c"]
     },
     {
       "id": "pyridine_root1_all_bonds_explicit",
@@ -217,6 +246,14 @@
       "isomeric_smiles": true,
       "expected": ["C(/F)=N\\Cl", "C(=N\\Cl)/F"],
       "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F", "N", "\\"]
+    },
+    {
+      "id": "fluorochloroimine_root0_stereo",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected": ["F/C=N/Cl"],
+      "expected_inventory": ["/", "=", "C", "Cl", "F", "N"]
     },
     {
       "id": "fluorochloroimine_root1_all_hs_explicit",

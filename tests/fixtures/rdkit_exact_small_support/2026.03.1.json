@@ -143,12 +143,29 @@
       "expected_inventory": ["1", "[nH]", "c"]
     },
     {
+      "id": "explicit_pyrroline_root2_aromatized_nh",
+      "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected": ["[nH]1cccc1"],
+      "expected_inventory": ["1", "[nH]", "c"]
+    },
+    {
       "id": "pyridine_root1_all_bonds_explicit",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "all_bonds_explicit": true,
       "expected": ["c1:c:c:c:n:c:1", "c1:c:n:c:c:c:1"],
+      "expected_inventory": ["1", ":", "c", "n"]
+    },
+    {
+      "id": "pyridine_root0_all_bonds_explicit",
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": ["c1:c:c:n:c:c:1"],
       "expected_inventory": ["1", ":", "c", "n"]
     },
     {
@@ -414,6 +431,15 @@
       "expected_inventory": ["C"]
     },
     {
+      "id": "ethyl_atom_maps_ignored_root1",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected": ["CC"],
+      "expected_inventory": ["C"]
+    },
+    {
       "id": "ethyl_atom_maps_kept",
       "smiles": "[CH3:7]C",
       "rooted_at_atom": 0,
@@ -421,6 +447,23 @@
       "ignore_atom_map_numbers": false,
       "expected": ["[CH3:7]C"],
       "expected_inventory": ["C", "[CH3:7]"]
+    },
+    {
+      "id": "ethyl_atom_maps_kept_root1",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected": ["C[CH3:7]"],
+      "expected_inventory": ["C", "[CH3:7]"]
+    },
+    {
+      "id": "trimethylamine_root1",
+      "smiles": "CN(C)C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": ["N(C)(C)C"],
+      "expected_inventory": ["(", ")", "C", "N"]
     },
     {
       "id": "methane_all_hs_explicit",

@@ -20,6 +20,10 @@ The test suite is organized by intent first, then by feature.
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
 
+CI runs the exact public invariants and pinned RDKit parity layers as separate
+source-tree jobs, and reuses them inside the installed-artifact correctness
+subset.
+
 ## Rules
 
 - Performance assertions do not belong in correctness suites.

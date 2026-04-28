@@ -53,6 +53,23 @@ jobs:
       - name: Run pinned RDKit parity suite
         run: unset CONDA_PREFIX && . .venv/bin/activate && python -m unittest tests.run_pinned_rdkit_parity -q
 
+  exact-public-invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Create test environment
+        run: python -m venv .venv
+      - name: Install test tools
+        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install --upgrade pip maturin
+      - name: Install package into test environment
+        run: unset CONDA_PREFIX && . .venv/bin/activate && maturin develop --release
+      - name: Run exact public invariant suite
+        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m unittest tests.run_exact_public_invariants -q
+
   package:
     runs-on: ubuntu-latest
     strategy:

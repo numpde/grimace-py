@@ -22,6 +22,17 @@ class PinnedExactSmallSupportCase:
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "rdkit_exact_small_support"
 
 
+def _normalized_unique_sorted_strings(values: list[object], *, field_name: str, fixture_path: Path, case_id: str) -> tuple[str, ...]:
+    normalized = tuple(str(value) for value in values)
+    expected = tuple(sorted(set(normalized)))
+    if normalized != expected:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} has non-canonical {field_name}; "
+            f"expected sorted unique strings {expected!r}, got {normalized!r}"
+        )
+    return normalized
+
+
 def load_pinned_exact_small_support_cases(rdkit_version: str) -> tuple[PinnedExactSmallSupportCase, ...]:
     fixture_path = _FIXTURE_ROOT / f"{rdkit_version}.json"
     if not fixture_path.is_file():
@@ -49,8 +60,18 @@ def load_pinned_exact_small_support_cases(rdkit_version: str) -> tuple[PinnedExa
                 smiles=str(raw_case["smiles"]),
                 rooted_at_atom=int(raw_case["rooted_at_atom"]),
                 isomeric_smiles=bool(raw_case["isomeric_smiles"]),
-                expected=tuple(str(value) for value in raw_case["expected"]),
-                expected_inventory=tuple(str(value) for value in raw_case["expected_inventory"]),
+                expected=_normalized_unique_sorted_strings(
+                    list(raw_case["expected"]),
+                    field_name="expected",
+                    fixture_path=fixture_path,
+                    case_id=case_id,
+                ),
+                expected_inventory=_normalized_unique_sorted_strings(
+                    list(raw_case["expected_inventory"]),
+                    field_name="expected_inventory",
+                    fixture_path=fixture_path,
+                    case_id=case_id,
+                ),
                 kekule_smiles=bool(raw_case.get("kekule_smiles", False)),
                 all_bonds_explicit=bool(raw_case.get("all_bonds_explicit", False)),
                 all_hs_explicit=bool(raw_case.get("all_hs_explicit", False)),

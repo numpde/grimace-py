@@ -252,6 +252,48 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_kekule_aromatic_nh_surface(self) -> None:
+        # Regression pinned to RDKit catch_tests.cpp Github #2788 basics2:
+        # doKekule=True on aromatic [nH] systems should emit a stable kekule
+        # family instead of leaving the aromatic form untouched.
+        source = (
+            "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+            " Github #2788 doKekule=true basics2"
+        )
+        mol = parse_smiles("c1cc[nH]c1")
+        expected_support = {
+            "C1=CC=CN1",
+            "C1=CNC=C1",
+            "C1C=CNC=1",
+            "C1NC=CC=1",
+            "N1C=CC=C1",
+        }
+        expected_inventory = ("1", "=", "C", "N")
+
+        with self.subTest(source=source):
+            self.assertEqual(
+                expected_support,
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=False,
+                        kekuleSmiles=True,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                expected_inventory,
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=False,
+                        kekuleSmiles=True,
+                    ),
+                ),
+            )
+
     def test_explicit_kekule_input_normalizes_to_aromatic_nh(self) -> None:
         # Regression pinned to RDKit's aromatic normalization behavior from
         # explicit non-aromatic inputs like C1=CNC=C1 and
@@ -1521,6 +1563,122 @@ M  END
                         mol,
                         **supported_public_kwargs(
                             rootedAtAtom=1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+
+    def test_molblock_atom_order_invariance_for_chiral_center(self) -> None:
+        # Regression pinned to repeated chiral1 molblock variants in
+        # rough_test._test32MolFilesWithChirality: atom-order differences in
+        # the mol block should not change the exact stereochemical support.
+        source = (
+            "RDKit Code/GraphMol/Wrap/rough_test.py:"
+            "_test32MolFilesWithChirality chiral1 variants"
+        )
+        molblocks = (
+            """chiral1.mol
+  ChemDraw10160313232D
+
+  5  4  0  0  0  0  0  0  0  0999 V2000
+    0.0553    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0553   -0.2062    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.7697   -0.6188    0.0000 I   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.6592   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0
+   -0.7697   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  2  4  1  1
+  2  5  1  0
+M  END
+""",
+            """chiral1.mol
+  ChemDraw10160313232D
+
+  5  4  0  0  0  0  0  0  0  0999 V2000
+    0.0553   -0.2062    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.7697   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+   -0.6592   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0
+    0.7697   -0.6188    0.0000 I   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0553    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  1  3  1  1
+  1  4  1  0
+  1  5  1  0
+M  END
+""",
+        )
+        expected_support = {
+            "Br[C@@](Cl)(F)I",
+            "Br[C@@](F)(I)Cl",
+            "Br[C@@](I)(Cl)F",
+            "Br[C@](Cl)(I)F",
+            "Br[C@](F)(Cl)I",
+            "Br[C@](I)(F)Cl",
+            "Cl[C@@](Br)(I)F",
+            "Cl[C@@](F)(Br)I",
+            "Cl[C@@](I)(F)Br",
+            "Cl[C@](Br)(F)I",
+            "Cl[C@](F)(I)Br",
+            "Cl[C@](I)(Br)F",
+            "F[C@@](Br)(Cl)I",
+            "F[C@@](Cl)(I)Br",
+            "F[C@@](I)(Br)Cl",
+            "F[C@](Br)(I)Cl",
+            "F[C@](Cl)(Br)I",
+            "F[C@](I)(Cl)Br",
+            "I[C@@](Br)(F)Cl",
+            "I[C@@](Cl)(Br)F",
+            "I[C@@](F)(Cl)Br",
+            "I[C@](Br)(Cl)F",
+            "I[C@](Cl)(F)Br",
+            "I[C@](F)(Br)Cl",
+            "[C@@](Br)(Cl)(F)I",
+            "[C@@](Br)(F)(I)Cl",
+            "[C@@](Br)(I)(Cl)F",
+            "[C@@](Cl)(Br)(I)F",
+            "[C@@](Cl)(F)(Br)I",
+            "[C@@](Cl)(I)(F)Br",
+            "[C@@](F)(Br)(Cl)I",
+            "[C@@](F)(Cl)(I)Br",
+            "[C@@](F)(I)(Br)Cl",
+            "[C@@](I)(Br)(F)Cl",
+            "[C@@](I)(Cl)(Br)F",
+            "[C@@](I)(F)(Cl)Br",
+            "[C@](Br)(Cl)(I)F",
+            "[C@](Br)(F)(Cl)I",
+            "[C@](Br)(I)(F)Cl",
+            "[C@](Cl)(Br)(F)I",
+            "[C@](Cl)(F)(I)Br",
+            "[C@](Cl)(I)(Br)F",
+            "[C@](F)(Br)(I)Cl",
+            "[C@](F)(Cl)(Br)I",
+            "[C@](F)(I)(Cl)Br",
+            "[C@](I)(Br)(Cl)F",
+            "[C@](I)(Cl)(F)Br",
+            "[C@](I)(F)(Br)Cl",
+        }
+        expected_inventory = ("(", ")", "Br", "Cl", "F", "I", "[C@@]", "[C@]")
+
+        for variant_idx, molblock in enumerate(molblocks, start=1):
+            mol = self._parse_molblock(molblock)
+            with self.subTest(source=source, variant=variant_idx):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
                             isomericSmiles=True,
                         ),
                     ),

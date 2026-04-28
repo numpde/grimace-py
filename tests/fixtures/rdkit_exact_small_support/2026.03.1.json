@@ -3,54 +3,114 @@
   "cases": [
     {
       "id": "cco_root1_nonstereo",
+      "source": "Local exact-support probe for small rooted branching support",
       "smiles": "CCO",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["C(C)O", "C(O)C"],
-      "expected_inventory": ["(", ")", "C", "O"]
+      "expected": [
+        "C(C)O",
+        "C(O)C"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "O"
+      ]
     },
     {
       "id": "na_cyanide_root0_disconnected",
+      "source": "Local exact-support probe guided by RDKit SmilesWrite.cpp fragment-local rootedAtAtom handling",
       "smiles": "[Na+].C#N",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["[Na+].C#N", "[Na+].N#C"],
-      "expected_inventory": ["#", ".", "C", "N", "[Na+]"]
+      "expected": [
+        "[Na+].C#N",
+        "[Na+].N#C"
+      ],
+      "expected_inventory": [
+        "#",
+        ".",
+        "C",
+        "N",
+        "[Na+]"
+      ]
     },
     {
       "id": "co_cco_root0_disconnected",
+      "source": "Local exact-support probe guided by RDKit SmilesWrite.cpp fragment-local rootedAtAtom handling",
       "smiles": "CO.CCO",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["CO.C(C)O", "CO.C(O)C", "CO.CCO", "CO.OCC"],
-      "expected_inventory": ["(", ")", ".", "C", "O"]
+      "expected": [
+        "CO.C(C)O",
+        "CO.C(O)C",
+        "CO.CCO",
+        "CO.OCC"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "C",
+        "O"
+      ]
     },
     {
       "id": "co_cco_root2_disconnected",
+      "source": "Local exact-support probe guided by RDKit SmilesWrite.cpp fragment-local rootedAtAtom handling",
       "smiles": "CO.CCO",
       "rooted_at_atom": 2,
       "isomeric_smiles": false,
-      "expected": ["CO.CCO", "OC.CCO"],
-      "expected_inventory": [".", "C", "O"]
+      "expected": [
+        "CO.CCO",
+        "OC.CCO"
+      ],
+      "expected_inventory": [
+        ".",
+        "C",
+        "O"
+      ]
     },
     {
       "id": "co_cco_root3_disconnected",
+      "source": "Local exact-support probe guided by RDKit SmilesWrite.cpp fragment-local rootedAtAtom handling",
       "smiles": "CO.CCO",
       "rooted_at_atom": 3,
       "isomeric_smiles": false,
-      "expected": ["CO.C(C)O", "CO.C(O)C", "OC.C(C)O", "OC.C(O)C"],
-      "expected_inventory": ["(", ")", ".", "C", "O"]
+      "expected": [
+        "CO.C(C)O",
+        "CO.C(O)C",
+        "OC.C(C)O",
+        "OC.C(O)C"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "C",
+        "O"
+      ]
     },
     {
       "id": "co_cco_root4_disconnected",
+      "source": "Local exact-support probe guided by RDKit SmilesWrite.cpp fragment-local rootedAtAtom handling",
       "smiles": "CO.CCO",
       "rooted_at_atom": 4,
       "isomeric_smiles": false,
-      "expected": ["CO.OCC", "OC.OCC"],
-      "expected_inventory": [".", "C", "O"]
+      "expected": [
+        "CO.OCC",
+        "OC.OCC"
+      ],
+      "expected_inventory": [
+        ".",
+        "C",
+        "O"
+      ]
     },
     {
       "id": "mapped_fragments_root1_disconnected",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:3165 (Github 8328 rootedAtAtom for multiple fragments)",
       "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
@@ -60,10 +120,21 @@
         "[C:2][C:1].[N:3]([C:4])=[O:5]",
         "[C:2][C:1].[O:5]=[N:3][C:4]"
       ],
-      "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ]
     },
     {
       "id": "mapped_fragments_root0_disconnected",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:3165 (Github 8328 rootedAtAtom for multiple fragments)",
       "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
@@ -73,10 +144,21 @@
         "[C:1][C:2].[N:3]([C:4])=[O:5]",
         "[C:1][C:2].[O:5]=[N:3][C:4]"
       ],
-      "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ]
     },
     {
       "id": "mapped_fragments_root2_disconnected",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:3165 (Github 8328 rootedAtAtom for multiple fragments)",
       "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
       "rooted_at_atom": 2,
       "isomeric_smiles": false,
@@ -86,10 +168,21 @@
         "[C:2][C:1].[N:3](=[O:5])[C:4]",
         "[C:2][C:1].[N:3]([C:4])=[O:5]"
       ],
-      "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ]
     },
     {
       "id": "mapped_fragments_root3_disconnected",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:3165 (Github 8328 rootedAtAtom for multiple fragments)",
       "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
       "rooted_at_atom": 3,
       "isomeric_smiles": false,
@@ -97,10 +190,19 @@
         "[C:1][C:2].[C:4][N:3]=[O:5]",
         "[C:2][C:1].[C:4][N:3]=[O:5]"
       ],
-      "expected_inventory": [".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+      "expected_inventory": [
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ]
     },
     {
       "id": "mapped_fragments_root4_disconnected",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:3165 (Github 8328 rootedAtAtom for multiple fragments)",
       "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
       "rooted_at_atom": 4,
       "isomeric_smiles": false,
@@ -108,262 +210,563 @@
         "[C:1][C:2].[O:5]=[N:3][C:4]",
         "[C:2][C:1].[O:5]=[N:3][C:4]"
       ],
-      "expected_inventory": [".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+      "expected_inventory": [
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ]
     },
     {
       "id": "pyridine_root1_nonstereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["c1cccnc1", "c1cnccc1"],
-      "expected_inventory": ["1", "c", "n"]
+      "expected": [
+        "c1cccnc1",
+        "c1cnccc1"
+      ],
+      "expected_inventory": [
+        "1",
+        "c",
+        "n"
+      ]
     },
     {
       "id": "explicit_kekule_pyridine_root0_aromatized",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "C1=CC=NC=C1",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["c1ccncc1"],
-      "expected_inventory": ["1", "c", "n"]
+      "expected": [
+        "c1ccncc1"
+      ],
+      "expected_inventory": [
+        "1",
+        "c",
+        "n"
+      ]
     },
     {
       "id": "explicit_kekule_pyridine_root1_aromatized",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "C1=CC=NC=C1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["c1cccnc1", "c1cnccc1"],
-      "expected_inventory": ["1", "c", "n"]
+      "expected": [
+        "c1cccnc1",
+        "c1cnccc1"
+      ],
+      "expected_inventory": [
+        "1",
+        "c",
+        "n"
+      ]
     },
     {
       "id": "pyrroline_root0_aromatized_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "C1=CNC=C1",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["c1c[nH]cc1", "c1cc[nH]c1"],
-      "expected_inventory": ["1", "[nH]", "c"]
+      "expected": [
+        "c1c[nH]cc1",
+        "c1cc[nH]c1"
+      ],
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ]
     },
     {
       "id": "pyrroline_root2_aromatized_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "C1=CNC=C1",
       "rooted_at_atom": 2,
       "isomeric_smiles": false,
-      "expected": ["[nH]1cccc1"],
-      "expected_inventory": ["1", "[nH]", "c"]
+      "expected": [
+        "[nH]1cccc1"
+      ],
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ]
     },
     {
       "id": "explicit_pyrroline_root0_aromatized_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["c1c[nH]cc1", "c1cc[nH]c1"],
-      "expected_inventory": ["1", "[nH]", "c"]
+      "expected": [
+        "c1c[nH]cc1",
+        "c1cc[nH]c1"
+      ],
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ]
     },
     {
       "id": "explicit_pyrroline_root2_aromatized_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java aromatic normalization cases",
       "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
       "rooted_at_atom": 2,
       "isomeric_smiles": false,
-      "expected": ["[nH]1cccc1"],
-      "expected_inventory": ["1", "[nH]", "c"]
+      "expected": [
+        "[nH]1cccc1"
+      ],
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ]
     },
     {
       "id": "pyridine_root1_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "all_bonds_explicit": true,
-      "expected": ["c1:c:c:c:n:c:1", "c1:c:n:c:c:c:1"],
-      "expected_inventory": ["1", ":", "c", "n"]
+      "expected": [
+        "c1:c:c:c:n:c:1",
+        "c1:c:n:c:c:c:1"
+      ],
+      "expected_inventory": [
+        "1",
+        ":",
+        "c",
+        "n"
+      ]
     },
     {
       "id": "pyridine_root0_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
       "all_bonds_explicit": true,
-      "expected": ["c1:c:c:n:c:c:1"],
-      "expected_inventory": ["1", ":", "c", "n"]
+      "expected": [
+        "c1:c:c:n:c:c:1"
+      ],
+      "expected_inventory": [
+        "1",
+        ":",
+        "c",
+        "n"
+      ]
     },
     {
       "id": "pyridine_root0_kekule",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIssue266 plus local rooted exact-support probe",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
       "kekule_smiles": true,
-      "expected": ["C1=CC=NC=C1", "C1C=CN=CC=1"],
-      "expected_inventory": ["1", "=", "C", "N"]
+      "expected": [
+        "C1=CC=NC=C1",
+        "C1C=CN=CC=1"
+      ],
+      "expected_inventory": [
+        "1",
+        "=",
+        "C",
+        "N"
+      ]
     },
     {
       "id": "pyridine_root1_kekule_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIssue266 plus local rooted exact-support probe",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "kekule_smiles": true,
       "all_bonds_explicit": true,
-      "expected": ["C1-C=N-C=C-C=1", "C1=C-C=C-N=C-1"],
-      "expected_inventory": ["-", "1", "=", "C", "N"]
+      "expected": [
+        "C1-C=N-C=C-C=1",
+        "C1=C-C=C-N=C-1"
+      ],
+      "expected_inventory": [
+        "-",
+        "1",
+        "=",
+        "C",
+        "N"
+      ]
     },
     {
       "id": "benzene_root0_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
       "smiles": "c1ccccc1",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
       "all_bonds_explicit": true,
-      "expected": ["c1:c:c:c:c:c:1"],
-      "expected_inventory": ["1", ":", "c"]
+      "expected": [
+        "c1:c:c:c:c:c:1"
+      ],
+      "expected_inventory": [
+        "1",
+        ":",
+        "c"
+      ]
     },
     {
       "id": "acetonitrile_root1_nonstereo",
+      "source": "Local exact-support probe for rooted nitrile branch ordering",
       "smiles": "CC#N",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["C(#N)C", "C(C)#N"],
-      "expected_inventory": ["#", "(", ")", "C", "N"]
+      "expected": [
+        "C(#N)C",
+        "C(C)#N"
+      ],
+      "expected_inventory": [
+        "#",
+        "(",
+        ")",
+        "C",
+        "N"
+      ]
     },
     {
       "id": "acetonitrile_root1_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
       "smiles": "CC#N",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "all_bonds_explicit": true,
-      "expected": ["C(#N)-C", "C(-C)#N"],
-      "expected_inventory": ["#", "(", ")", "-", "C", "N"]
+      "expected": [
+        "C(#N)-C",
+        "C(-C)#N"
+      ],
+      "expected_inventory": [
+        "#",
+        "(",
+        ")",
+        "-",
+        "C",
+        "N"
+      ]
     },
     {
       "id": "fluorochloroethene_root1_stereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C\\Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
-      "expected": ["C(/F)=C/Cl", "C(=C/Cl)/F"],
-      "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
+      "expected": [
+        "C(/F)=C/Cl",
+        "C(=C/Cl)/F"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F"
+      ]
     },
     {
       "id": "fluorochloroethene_root1_nonstereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C/Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["C(=CCl)F", "C(F)=CCl"],
-      "expected_inventory": ["(", ")", "=", "C", "Cl", "F"]
+      "expected": [
+        "C(=CCl)F",
+        "C(F)=CCl"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "C",
+        "Cl",
+        "F"
+      ]
     },
     {
       "id": "fluorochloroethene_root0_stereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C/Cl",
       "rooted_at_atom": 0,
       "isomeric_smiles": true,
-      "expected": ["F/C=C/Cl"],
-      "expected_inventory": ["/", "=", "C", "Cl", "F"]
+      "expected": [
+        "F/C=C/Cl"
+      ],
+      "expected_inventory": [
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F"
+      ]
     },
     {
       "id": "fluorochloroethene_root0_nonstereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C/Cl",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["FC=CCl"],
-      "expected_inventory": ["=", "C", "Cl", "F"]
+      "expected": [
+        "FC=CCl"
+      ],
+      "expected_inventory": [
+        "=",
+        "C",
+        "Cl",
+        "F"
+      ]
     },
     {
       "id": "fluorochloroethene_root1_explicit_bonds",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C\\Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "all_bonds_explicit": true,
-      "expected": ["C(/F)=C/Cl", "C(=C/Cl)/F"],
-      "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
+      "expected": [
+        "C(/F)=C/Cl",
+        "C(=C/Cl)/F"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F"
+      ]
     },
     {
       "id": "fluorochloroethene_root1_all_hs_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C/Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
       "all_hs_explicit": true,
-      "expected": ["[CH](/[F])=[CH]\\[Cl]", "[CH](=[CH]\\[Cl])/[F]"],
-      "expected_inventory": ["(", ")", "/", "=", "[CH]", "[Cl]", "[F]", "\\"]
+      "expected": [
+        "[CH](/[F])=[CH]\\[Cl]",
+        "[CH](=[CH]\\[Cl])/[F]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "[CH]",
+        "[Cl]",
+        "[F]",
+        "\\"
+      ]
     },
     {
       "id": "fluorochloroethene_root0_all_hs_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=C/Cl",
       "rooted_at_atom": 0,
       "isomeric_smiles": true,
       "all_hs_explicit": true,
-      "expected": ["[F]/[CH]=[CH]/[Cl]"],
-      "expected_inventory": ["/", "=", "[CH]", "[Cl]", "[F]"]
+      "expected": [
+        "[F]/[CH]=[CH]/[Cl]"
+      ],
+      "expected_inventory": [
+        "/",
+        "=",
+        "[CH]",
+        "[Cl]",
+        "[F]"
+      ]
     },
     {
       "id": "methylchloroethene_root1_nonstereo",
+      "source": "Local exact-support probe of directional double-bond serializer behavior",
       "smiles": "C/C=C\\Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["C(=CCl)C", "C(C)=CCl"],
-      "expected_inventory": ["(", ")", "=", "C", "Cl"]
+      "expected": [
+        "C(=CCl)C",
+        "C(C)=CCl"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "C",
+        "Cl"
+      ]
     },
     {
       "id": "methylchloroethene_root1_stereo",
+      "source": "Local exact-support probe of directional double-bond serializer behavior",
       "smiles": "C/C=C\\Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
-      "expected": ["C(/C)=C/Cl", "C(=C/Cl)/C"],
-      "expected_inventory": ["(", ")", "/", "=", "C", "Cl"]
+      "expected": [
+        "C(/C)=C/Cl",
+        "C(=C/Cl)/C"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl"
+      ]
     },
     {
       "id": "fluorochloroimine_root1_stereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=N/Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
-      "expected": ["C(/F)=N\\Cl", "C(=N\\Cl)/F"],
-      "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F", "N", "\\"]
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ]
     },
     {
       "id": "fluorochloroimine_root0_nonstereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=N/Cl",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["FC=NCl"],
-      "expected_inventory": ["=", "C", "Cl", "F", "N"]
+      "expected": [
+        "FC=NCl"
+      ],
+      "expected_inventory": [
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N"
+      ]
     },
     {
       "id": "fluorochloroimine_root1_nonstereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=N/Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["C(=NCl)F", "C(F)=NCl"],
-      "expected_inventory": ["(", ")", "=", "C", "Cl", "F", "N"]
+      "expected": [
+        "C(=NCl)F",
+        "C(F)=NCl"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N"
+      ]
     },
     {
       "id": "fluorochloroimine_root0_stereo",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=N/Cl",
       "rooted_at_atom": 0,
       "isomeric_smiles": true,
-      "expected": ["F/C=N/Cl"],
-      "expected_inventory": ["/", "=", "C", "Cl", "F", "N"]
+      "expected": [
+        "F/C=N/Cl"
+      ],
+      "expected_inventory": [
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N"
+      ]
     },
     {
       "id": "fluorochloroimine_root1_all_hs_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=N/Cl",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
       "all_hs_explicit": true,
-      "expected": ["[CH](/[F])=[N]\\[Cl]", "[CH](=[N]\\[Cl])/[F]"],
-      "expected_inventory": ["(", ")", "/", "=", "[CH]", "[Cl]", "[F]", "[N]", "\\"]
+      "expected": [
+        "[CH](/[F])=[N]\\[Cl]",
+        "[CH](=[N]\\[Cl])/[F]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "[CH]",
+        "[Cl]",
+        "[F]",
+        "[N]",
+        "\\"
+      ]
     },
     {
       "id": "fluorochloroimine_root0_all_hs_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 plus local rooted exact-support probe",
       "smiles": "F/C=N/Cl",
       "rooted_at_atom": 0,
       "isomeric_smiles": true,
       "all_hs_explicit": true,
-      "expected": ["[F]/[CH]=[N]/[Cl]"],
-      "expected_inventory": ["/", "=", "[CH]", "[Cl]", "[F]", "[N]"]
+      "expected": [
+        "[F]/[CH]=[N]/[Cl]"
+      ],
+      "expected_inventory": [
+        "/",
+        "=",
+        "[CH]",
+        "[Cl]",
+        "[F]",
+        "[N]"
+      ]
     },
     {
       "id": "bromochlorofluoromethane_root0_nonstereo",
+      "source": "Local exact-support probe of rooted chiral-atom serializer behavior",
       "smiles": "F[C@H](Cl)Br",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["FC(Br)Cl", "FC(Cl)Br"],
-      "expected_inventory": ["(", ")", "Br", "C", "Cl", "F"]
+      "expected": [
+        "FC(Br)Cl",
+        "FC(Cl)Br"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "C",
+        "Cl",
+        "F"
+      ]
     },
     {
       "id": "bromochlorofluoromethane_root1_stereo",
+      "source": "Local exact-support probe of rooted chiral-atom serializer behavior",
       "smiles": "F[C@H](Cl)Br",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
@@ -375,34 +778,69 @@
         "[C@H](Cl)(F)Br",
         "[C@H](F)(Br)Cl"
       ],
-      "expected_inventory": ["(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "[C@@H]",
+        "[C@H]"
+      ]
     },
     {
       "id": "bromochlorofluoromethane_root2_stereo",
+      "source": "Local exact-support probe of rooted chiral-atom serializer behavior",
       "smiles": "F[C@H](Cl)Br",
       "rooted_at_atom": 2,
       "isomeric_smiles": true,
-      "expected": ["Cl[C@@H](F)Br", "Cl[C@H](Br)F"],
-      "expected_inventory": ["(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"]
+      "expected": [
+        "Cl[C@@H](F)Br",
+        "Cl[C@H](Br)F"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "[C@@H]",
+        "[C@H]"
+      ]
     },
     {
       "id": "ammine_copper_root1_dative",
+      "source": "Local exact-support probe of RDKit SmilesWrite.cpp dative bond arrow emission branch",
       "smiles": "[NH3][Cu]",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["[Cu]<-[NH3]"],
-      "expected_inventory": ["<-", "[Cu]", "[NH3]"]
+      "expected": [
+        "[Cu]<-[NH3]"
+      ],
+      "expected_inventory": [
+        "<-",
+        "[Cu]",
+        "[NH3]"
+      ]
     },
     {
       "id": "ammine_copper_root0_dative",
+      "source": "Local exact-support probe of RDKit SmilesWrite.cpp dative bond arrow emission branch",
       "smiles": "[NH3][Cu]",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
-      "expected": ["[NH3]->[Cu]"],
-      "expected_inventory": ["->", "[Cu]", "[NH3]"]
+      "expected": [
+        "[NH3]->[Cu]"
+      ],
+      "expected_inventory": [
+        "->",
+        "[Cu]",
+        "[NH3]"
+      ]
     },
     {
       "id": "ammine_platinum_root0_dative",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp atoms bound to metals should always have Hs specified",
       "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
@@ -414,10 +852,20 @@
         "[Cl][Pt]([OH])(<-[NH3])[F]",
         "[Cl][Pt]([OH])([F])<-[NH3]"
       ],
-      "expected_inventory": ["(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "<-",
+        "[Cl]",
+        "[F]",
+        "[NH3]",
+        "[OH]",
+        "[Pt]"
+      ]
     },
     {
       "id": "ammine_platinum_root2_dative",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp atoms bound to metals should always have Hs specified",
       "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
       "rooted_at_atom": 2,
       "isomeric_smiles": false,
@@ -429,10 +877,20 @@
         "[F][Pt]([OH])(<-[NH3])[Cl]",
         "[F][Pt]([OH])([Cl])<-[NH3]"
       ],
-      "expected_inventory": ["(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "<-",
+        "[Cl]",
+        "[F]",
+        "[NH3]",
+        "[OH]",
+        "[Pt]"
+      ]
     },
     {
       "id": "ammine_platinum_root4_dative",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp atoms bound to metals should always have Hs specified",
       "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
       "rooted_at_atom": 4,
       "isomeric_smiles": false,
@@ -444,10 +902,20 @@
         "[OH][Pt]([F])(<-[NH3])[Cl]",
         "[OH][Pt]([F])([Cl])<-[NH3]"
       ],
-      "expected_inventory": ["(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "<-",
+        "[Cl]",
+        "[F]",
+        "[NH3]",
+        "[OH]",
+        "[Pt]"
+      ]
     },
     {
       "id": "amine_platinum_root0_hs_shown",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp atoms bound to metals should always have Hs specified",
       "smiles": "Cl[Pt](F)([NH2])[OH]",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
@@ -459,10 +927,19 @@
         "[Cl][Pt]([OH])([F])[NH2]",
         "[Cl][Pt]([OH])([NH2])[F]"
       ],
-      "expected_inventory": ["(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "[Cl]",
+        "[F]",
+        "[NH2]",
+        "[OH]",
+        "[Pt]"
+      ]
     },
     {
       "id": "amine_platinum_root2_hs_shown",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp atoms bound to metals should always have Hs specified",
       "smiles": "Cl[Pt](F)([NH2])[OH]",
       "rooted_at_atom": 2,
       "isomeric_smiles": false,
@@ -474,10 +951,19 @@
         "[F][Pt]([OH])([Cl])[NH2]",
         "[F][Pt]([OH])([NH2])[Cl]"
       ],
-      "expected_inventory": ["(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "[Cl]",
+        "[F]",
+        "[NH2]",
+        "[OH]",
+        "[Pt]"
+      ]
     },
     {
       "id": "amine_platinum_root4_hs_shown",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp atoms bound to metals should always have Hs specified",
       "smiles": "Cl[Pt](F)([NH2])[OH]",
       "rooted_at_atom": 4,
       "isomeric_smiles": false,
@@ -489,60 +975,103 @@
         "[OH][Pt]([NH2])([Cl])[F]",
         "[OH][Pt]([NH2])([F])[Cl]"
       ],
-      "expected_inventory": ["(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"]
+      "expected_inventory": [
+        "(",
+        ")",
+        "[Cl]",
+        "[F]",
+        "[NH2]",
+        "[OH]",
+        "[Pt]"
+      ]
     },
     {
       "id": "ethyl_atom_maps_ignored",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
       "smiles": "[CH3:7]C",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
       "ignore_atom_map_numbers": true,
-      "expected": ["CC"],
-      "expected_inventory": ["C"]
+      "expected": [
+        "CC"
+      ],
+      "expected_inventory": [
+        "C"
+      ]
     },
     {
       "id": "ethyl_atom_maps_ignored_root1",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
       "smiles": "[CH3:7]C",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "ignore_atom_map_numbers": true,
-      "expected": ["CC"],
-      "expected_inventory": ["C"]
+      "expected": [
+        "CC"
+      ],
+      "expected_inventory": [
+        "C"
+      ]
     },
     {
       "id": "ethyl_atom_maps_kept",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
       "smiles": "[CH3:7]C",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
       "ignore_atom_map_numbers": false,
-      "expected": ["[CH3:7]C"],
-      "expected_inventory": ["C", "[CH3:7]"]
+      "expected": [
+        "[CH3:7]C"
+      ],
+      "expected_inventory": [
+        "C",
+        "[CH3:7]"
+      ]
     },
     {
       "id": "ethyl_atom_maps_kept_root1",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
       "smiles": "[CH3:7]C",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "ignore_atom_map_numbers": false,
-      "expected": ["C[CH3:7]"],
-      "expected_inventory": ["C", "[CH3:7]"]
+      "expected": [
+        "C[CH3:7]"
+      ],
+      "expected_inventory": [
+        "C",
+        "[CH3:7]"
+      ]
     },
     {
       "id": "trimethylamine_root1",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test40SmilesRootedAtAtom",
       "smiles": "CN(C)C",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
-      "expected": ["N(C)(C)C"],
-      "expected_inventory": ["(", ")", "C", "N"]
+      "expected": [
+        "N(C)(C)C"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "N"
+      ]
     },
     {
       "id": "methane_all_hs_explicit",
+      "source": "Local exact-support probe of allHsExplicit atom-token emission",
       "smiles": "C",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
       "all_hs_explicit": true,
-      "expected": ["[CH4]"],
-      "expected_inventory": ["[CH4]"]
+      "expected": [
+        "[CH4]"
+      ],
+      "expected_inventory": [
+        "[CH4]"
+      ]
     }
   ]
 }

@@ -5,6 +5,7 @@ import unittest
 
 PINNED_RDKIT_PARITY_MODULES: tuple[str, ...] = (
     "tests.rdkit_serialization.test_exact_small_support",
+    "tests.rdkit_serialization.test_serializer_regressions",
 )
 
 

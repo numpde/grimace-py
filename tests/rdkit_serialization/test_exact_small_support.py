@@ -52,6 +52,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             expected = set(case.expected)
             with self.subTest(
                 case_id=case.case_id,
+                source=case.source,
             ):
                 for seed in (12345, 54321):
                     self.assertEqual(
@@ -75,6 +76,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             self.assertIsNotNone(mol)
             with self.subTest(
                 case_id=case.case_id,
+                source=case.source,
             ):
                 assert_grimace_support_equals(
                     self,
@@ -93,6 +95,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             mol = parse_smiles(case.smiles)
             with self.subTest(
                 case_id=case.case_id,
+                source=case.source,
             ):
                 self.assertEqual(
                     case.expected_inventory,
@@ -105,6 +108,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             decoder = make_decoder(mol, **self._public_kwargs(case))
             with self.subTest(
                 case_id=case.case_id,
+                source=case.source,
             ):
                 self.assertEqual(
                     set(case.expected),
@@ -117,6 +121,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             decoder = make_determinized_decoder(mol, **self._public_kwargs(case))
             with self.subTest(
                 case_id=case.case_id,
+                source=case.source,
             ):
                 self.assertEqual(
                     set(case.expected),

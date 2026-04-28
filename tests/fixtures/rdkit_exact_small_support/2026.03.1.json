@@ -94,6 +94,15 @@
       "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
     },
     {
+      "id": "fluorochloroethene_root1_all_hs_explicit",
+      "smiles": "F/C=C/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "all_hs_explicit": true,
+      "expected": ["[CH](/[F])=[CH]\\[Cl]", "[CH](=[CH]\\[Cl])/[F]"],
+      "expected_inventory": ["(", ")", "/", "=", "[CH]", "[Cl]", "[F]", "\\"]
+    },
+    {
       "id": "methylchloroethene_root1_nonstereo",
       "smiles": "C/C=C\\Cl",
       "rooted_at_atom": 1,
@@ -116,6 +125,15 @@
       "isomeric_smiles": true,
       "expected": ["C(/F)=N\\Cl", "C(=N\\Cl)/F"],
       "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F", "N", "\\"]
+    },
+    {
+      "id": "fluorochloroimine_root1_all_hs_explicit",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "all_hs_explicit": true,
+      "expected": ["[CH](/[F])=[N]\\[Cl]", "[CH](=[N]\\[Cl])/[F]"],
+      "expected_inventory": ["(", ")", "/", "=", "[CH]", "[Cl]", "[F]", "[N]", "\\"]
     },
     {
       "id": "bromochlorofluoromethane_root0_nonstereo",
@@ -172,6 +190,15 @@
       "ignore_atom_map_numbers": true,
       "expected": ["CC"],
       "expected_inventory": ["C"]
+    },
+    {
+      "id": "ethyl_atom_maps_kept",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected": ["[CH3:7]C"],
+      "expected_inventory": ["C", "[CH3:7]"]
     },
     {
       "id": "methane_all_hs_explicit",

@@ -703,28 +703,103 @@ class SerializerRegressionTests(unittest.TestCase):
         # Regression pinned to the first two writer cases in RDKit
         # SmilesDetailsTests.testBug1719046: explicit-valence/chiral input
         # variants must normalize to the same non-stereo cyclohexyl halide
-        # support surface.
+        # support surface, including the multisubstituted ring case.
         source = (
             "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
             "SmilesDetailsTests.java:testBug1719046"
         )
-        expected_support = {
-            "C1(CCCCC1)Cl",
-            "C1(Cl)CCCCC1",
-            "C1C(CCCC1)Cl",
-            "C1C(Cl)CCCC1",
-            "C1CC(CCC1)Cl",
-            "C1CC(Cl)CCC1",
-            "C1CCC(CC1)Cl",
-            "C1CCC(Cl)CC1",
-            "C1CCCC(C1)Cl",
-            "C1CCCC(Cl)C1",
-            "C1CCCCC1Cl",
-            "ClC1CCCCC1",
-        }
-        expected_inventory = ("(", ")", "1", "C", "Cl")
+        cases = (
+            (
+                "Cl[CH]1CCCCC1",
+                {
+                    "C1(CCCCC1)Cl",
+                    "C1(Cl)CCCCC1",
+                    "C1C(CCCC1)Cl",
+                    "C1C(Cl)CCCC1",
+                    "C1CC(CCC1)Cl",
+                    "C1CC(Cl)CCC1",
+                    "C1CCC(CC1)Cl",
+                    "C1CCC(Cl)CC1",
+                    "C1CCCC(C1)Cl",
+                    "C1CCCC(Cl)C1",
+                    "C1CCCCC1Cl",
+                    "ClC1CCCCC1",
+                },
+                ("(", ")", "1", "C", "Cl"),
+            ),
+            (
+                "Cl[C@H]1CCCCC1",
+                {
+                    "C1(CCCCC1)Cl",
+                    "C1(Cl)CCCCC1",
+                    "C1C(CCCC1)Cl",
+                    "C1C(Cl)CCCC1",
+                    "C1CC(CCC1)Cl",
+                    "C1CC(Cl)CCC1",
+                    "C1CCC(CC1)Cl",
+                    "C1CCC(Cl)CC1",
+                    "C1CCCC(C1)Cl",
+                    "C1CCCC(Cl)C1",
+                    "C1CCCCC1Cl",
+                    "ClC1CCCCC1",
+                },
+                ("(", ")", "1", "C", "Cl"),
+            ),
+            (
+                "Cl[C@H]1C(Br)CCCC1",
+                {
+                    "BrC1C(CCCC1)Cl",
+                    "BrC1C(Cl)CCCC1",
+                    "BrC1CCCCC1Cl",
+                    "C1(Br)C(CCCC1)Cl",
+                    "C1(Br)C(Cl)CCCC1",
+                    "C1(Br)CCCCC1Cl",
+                    "C1(C(Br)CCCC1)Cl",
+                    "C1(C(CCCC1)Br)Cl",
+                    "C1(C(CCCC1)Cl)Br",
+                    "C1(C(Cl)CCCC1)Br",
+                    "C1(CCCCC1Br)Cl",
+                    "C1(CCCCC1Cl)Br",
+                    "C1(Cl)C(Br)CCCC1",
+                    "C1(Cl)C(CCCC1)Br",
+                    "C1(Cl)CCCCC1Br",
+                    "C1C(Br)C(CCC1)Cl",
+                    "C1C(Br)C(Cl)CCC1",
+                    "C1C(C(Br)CCC1)Cl",
+                    "C1C(C(CCC1)Br)Cl",
+                    "C1C(C(CCC1)Cl)Br",
+                    "C1C(C(Cl)CCC1)Br",
+                    "C1C(Cl)C(Br)CCC1",
+                    "C1C(Cl)C(CCC1)Br",
+                    "C1CC(Br)C(CC1)Cl",
+                    "C1CC(Br)C(Cl)CC1",
+                    "C1CC(C(Br)CC1)Cl",
+                    "C1CC(C(CC1)Br)Cl",
+                    "C1CC(C(CC1)Cl)Br",
+                    "C1CC(C(Cl)CC1)Br",
+                    "C1CC(Cl)C(Br)CC1",
+                    "C1CC(Cl)C(CC1)Br",
+                    "C1CCC(Br)C(C1)Cl",
+                    "C1CCC(Br)C(Cl)C1",
+                    "C1CCC(C(Br)C1)Cl",
+                    "C1CCC(C(C1)Br)Cl",
+                    "C1CCC(C(C1)Cl)Br",
+                    "C1CCC(C(Cl)C1)Br",
+                    "C1CCC(Cl)C(Br)C1",
+                    "C1CCC(Cl)C(C1)Br",
+                    "C1CCCC(Br)C1Cl",
+                    "C1CCCC(C1Br)Cl",
+                    "C1CCCC(C1Cl)Br",
+                    "C1CCCC(Cl)C1Br",
+                    "ClC1C(Br)CCCC1",
+                    "ClC1C(CCCC1)Br",
+                    "ClC1CCCCC1Br",
+                },
+                ("(", ")", "1", "Br", "C", "Cl"),
+            ),
+        )
 
-        for smiles in ("Cl[CH]1CCCCC1", "Cl[C@H]1CCCCC1"):
+        for smiles, expected_support, expected_inventory in cases:
             mol = parse_smiles(smiles)
             with self.subTest(source=source, smiles=smiles):
                 self.assertEqual(

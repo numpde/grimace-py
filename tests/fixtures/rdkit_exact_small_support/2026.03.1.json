@@ -186,6 +186,15 @@
       "expected_inventory": ["(", ")", "/", "=", "[CH]", "[Cl]", "[F]", "\\"]
     },
     {
+      "id": "fluorochloroethene_root0_all_hs_explicit",
+      "smiles": "F/C=C/Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "all_hs_explicit": true,
+      "expected": ["[F]/[CH]=[CH]/[Cl]"],
+      "expected_inventory": ["/", "=", "[CH]", "[Cl]", "[F]"]
+    },
+    {
       "id": "methylchloroethene_root1_nonstereo",
       "smiles": "C/C=C\\Cl",
       "rooted_at_atom": 1,
@@ -217,6 +226,15 @@
       "all_hs_explicit": true,
       "expected": ["[CH](/[F])=[N]\\[Cl]", "[CH](=[N]\\[Cl])/[F]"],
       "expected_inventory": ["(", ")", "/", "=", "[CH]", "[Cl]", "[F]", "[N]", "\\"]
+    },
+    {
+      "id": "fluorochloroimine_root0_all_hs_explicit",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "all_hs_explicit": true,
+      "expected": ["[F]/[CH]=[N]/[Cl]"],
+      "expected_inventory": ["/", "=", "[CH]", "[Cl]", "[F]", "[N]"]
     },
     {
       "id": "bromochlorofluoromethane_root0_nonstereo",
@@ -264,6 +282,36 @@
       "isomeric_smiles": false,
       "expected": ["[NH3]->[Cu]"],
       "expected_inventory": ["->", "[Cu]", "[NH3]"]
+    },
+    {
+      "id": "ammine_platinum_root0_dative",
+      "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": [
+        "[Cl][Pt](<-[NH3])([F])[OH]",
+        "[Cl][Pt](<-[NH3])([OH])[F]",
+        "[Cl][Pt]([F])(<-[NH3])[OH]",
+        "[Cl][Pt]([F])([OH])<-[NH3]",
+        "[Cl][Pt]([OH])(<-[NH3])[F]",
+        "[Cl][Pt]([OH])([F])<-[NH3]"
+      ],
+      "expected_inventory": ["(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"]
+    },
+    {
+      "id": "amine_platinum_root0_hs_shown",
+      "smiles": "Cl[Pt](F)([NH2])[OH]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": [
+        "[Cl][Pt]([F])([NH2])[OH]",
+        "[Cl][Pt]([F])([OH])[NH2]",
+        "[Cl][Pt]([NH2])([F])[OH]",
+        "[Cl][Pt]([NH2])([OH])[F]",
+        "[Cl][Pt]([OH])([F])[NH2]",
+        "[Cl][Pt]([OH])([NH2])[F]"
+      ],
+      "expected_inventory": ["(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"]
     },
     {
       "id": "ethyl_atom_maps_ignored",

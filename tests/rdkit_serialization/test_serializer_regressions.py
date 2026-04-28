@@ -523,17 +523,114 @@ class SerializerRegressionTests(unittest.TestCase):
                 ),
             ),
         )
-        self.assertEqual(
-            ("(", ")", "-", "C"),
-            public_token_inventory(
-                mol,
-                **supported_public_kwargs(
-                    rootedAtAtom=1,
-                    isomericSmiles=False,
-                    allBondsExplicit=True,
+
+    def test_rooted_tertiary_amine_branch_shape(self) -> None:
+        # Regression pinned to RDKit rough_test.test40SmilesRootedAtAtom:
+        # rooting on the tertiary amine center should produce the rooted
+        # branch shape N(C)(C)C, with the explicit-bond variant preserving
+        # that same rooted order.
+        source = "RDKit Code/GraphMol/Wrap/rough_test.py:test40SmilesRootedAtAtom"
+        mol = parse_smiles("CN(C)C")
+
+        with self.subTest(source=source, rooted_at_atom=1, all_bonds_explicit=False):
+            self.assertEqual(
+                {"N(C)(C)C"},
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=1,
+                        isomericSmiles=False,
+                    ),
                 ),
-            ),
+            )
+            self.assertEqual(
+                ("(", ")", "C", "N"),
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=1,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
+
+        with self.subTest(source=source, rooted_at_atom=1, all_bonds_explicit=True):
+            self.assertEqual(
+                {"N(-C)(-C)-C"},
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=1,
+                        isomericSmiles=False,
+                        allBondsExplicit=True,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                ("(", ")", "-", "C", "N"),
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=1,
+                        isomericSmiles=False,
+                        allBondsExplicit=True,
+                    ),
+                ),
+            )
+
+    def test_rooted_conjugated_diene_stereo_surface(self) -> None:
+        # Regression pinned to the second case in RDKit
+        # SmilesDetailsTests.testBug1842174. RDKit's single rooted writer
+        # surfaces correspond to one rooted slice of our exact support.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testBug1842174"
         )
+        mol = parse_smiles(r"C(\C=C\F)=C(/Cl)Br")
+
+        with self.subTest(source=source, rooted_at_atom=3, isomeric_smiles=True):
+            self.assertEqual(
+                {"F/C=C/C=C(/Cl)Br", "F/C=C/C=C(\\Br)Cl"},
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=3,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                ("(", ")", "/", "=", "Br", "C", "Cl", "F", "\\"),
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=3,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+
+        with self.subTest(source=source, rooted_at_atom=3, isomeric_smiles=False):
+            self.assertEqual(
+                {"FC=CC=C(Br)Cl", "FC=CC=C(Cl)Br"},
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=3,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                ("(", ")", "=", "Br", "C", "Cl", "F"),
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=3,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from typing import Any
 from rdkit import Chem, rdBase
 
 from grimace._reference.policy import ReferencePolicy
-from grimace._reference.rdkit_random import identity_smiles
+from grimace._reference.rdkit_random import mol_to_identity_smiles
 
 
 PREPARED_SMILES_GRAPH_SCHEMA_VERSION = 1
@@ -194,11 +194,17 @@ def format_charge(charge: int) -> str:
     return f"-{abs(charge)}"
 
 
+def writer_atom_map_number(atom: Chem.Atom, sampling: dict[str, object]) -> int:
+    if bool(sampling["ignoreAtomMapNumbers"]):
+        return 0
+    return atom.GetAtomMapNum()
+
+
 def atom_requires_brackets(atom: Chem.Atom, sampling: dict[str, object]) -> bool:
     if bool(sampling["allHsExplicit"]):
         return True
 
-    atom_map_num = atom.GetAtomMapNum()
+    atom_map_num = writer_atom_map_number(atom, sampling)
     if atom.GetIsotope() or atom_map_num or atom.GetFormalCharge() or atom.GetNumRadicalElectrons():
         return True
 
@@ -222,7 +228,7 @@ def atom_token(atom: Chem.Atom, sampling: dict[str, object]) -> str:
     if not atom_requires_brackets(atom, sampling):
         return symbol
 
-    atom_map_num = atom.GetAtomMapNum()
+    atom_map_num = writer_atom_map_number(atom, sampling)
     parts = ["["]
     if atom.GetIsotope():
         parts.append(str(atom.GetIsotope()))
@@ -548,7 +554,7 @@ class PreparedSmilesGraph:
     def identity_smiles_for(self, mol: Chem.Mol) -> str:
         if not self.identity_parse_with_rdkit:
             raise NotImplementedError("Only parse_with_rdkit=true identity checks are supported")
-        return Chem.MolToSmiles(
+        return mol_to_identity_smiles(
             Chem.Mol(mol),
             canonical=self.identity_canonical,
             isomericSmiles=self.identity_do_isomeric_smiles,
@@ -840,7 +846,7 @@ def _prepare_smiles_graph_with_sections(
         policy_name=policy_name,
         policy_digest=policy_digest,
         rdkit_version=rdBase.rdkitVersion,
-        identity_smiles=Chem.MolToSmiles(
+        identity_smiles=mol_to_identity_smiles(
             Chem.Mol(working_mol),
             canonical=bool(identity["canonical"]),
             isomericSmiles=bool(identity["isomericSmiles"]),

@@ -108,8 +108,9 @@ WRITER_FLAG_CASES: tuple[ExactWriterCase, ...] = (
     # Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers()
     ExactWriterCase(
         smiles="[NH2:1]c1ccccc1",
-        expected="[NH2:1]c1ccccc1",
+        expected="Nc1ccccc1",
         isomeric_smiles=False,
+        rdkit_canonical=False,
         ignore_atom_map_numbers=True,
     ),
     ExactWriterCase(

@@ -26,6 +26,10 @@ class PinnedExactSmallSupportCase:
     isomeric_smiles: bool
     expected: tuple[str, ...]
     expected_inventory: tuple[str, ...]
+    kekule_smiles: bool = False
+    all_bonds_explicit: bool = False
+    all_hs_explicit: bool = False
+    ignore_atom_map_numbers: bool = False
 
 
 PINNED_EXACT_SMALL_SUPPORT_CASES_BY_RDKIT_VERSION: dict[str, tuple[PinnedExactSmallSupportCase, ...]] = {
@@ -45,6 +49,14 @@ PINNED_EXACT_SMALL_SUPPORT_CASES_BY_RDKIT_VERSION: dict[str, tuple[PinnedExactSm
             expected_inventory=("1", "c", "n"),
         ),
         PinnedExactSmallSupportCase(
+            smiles="c1ccncc1",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+            expected=("C1=CC=NC=C1", "C1C=CN=CC=1"),
+            expected_inventory=("1", "=", "C", "N"),
+            kekule_smiles=True,
+        ),
+        PinnedExactSmallSupportCase(
             smiles="CC#N",
             rooted_at_atom=1,
             isomeric_smiles=False,
@@ -52,11 +64,27 @@ PINNED_EXACT_SMALL_SUPPORT_CASES_BY_RDKIT_VERSION: dict[str, tuple[PinnedExactSm
             expected_inventory=("#", "(", ")", "C", "N"),
         ),
         PinnedExactSmallSupportCase(
+            smiles="CC#N",
+            rooted_at_atom=1,
+            isomeric_smiles=False,
+            expected=("C(#N)-C", "C(-C)#N"),
+            expected_inventory=("#", "(", ")", "-", "C", "N"),
+            all_bonds_explicit=True,
+        ),
+        PinnedExactSmallSupportCase(
             smiles="F/C=C\\Cl",
             rooted_at_atom=1,
             isomeric_smiles=True,
             expected=("C(/F)=C/Cl", "C(=C/Cl)/F"),
             expected_inventory=("(", ")", "/", "=", "C", "Cl", "F"),
+        ),
+        PinnedExactSmallSupportCase(
+            smiles="F/C=C\\Cl",
+            rooted_at_atom=1,
+            isomeric_smiles=False,
+            expected=("C(/F)=C/Cl", "C(=C/Cl)/F"),
+            expected_inventory=("(", ")", "/", "=", "C", "Cl", "F"),
+            all_bonds_explicit=True,
         ),
         PinnedExactSmallSupportCase(
             smiles="F[C@H](Cl)Br",
@@ -79,6 +107,22 @@ PINNED_EXACT_SMALL_SUPPORT_CASES_BY_RDKIT_VERSION: dict[str, tuple[PinnedExactSm
             expected=("[Cu]<-[NH3]",),
             expected_inventory=("<-", "[Cu]", "[NH3]"),
         ),
+        PinnedExactSmallSupportCase(
+            smiles="[CH3:7]C",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+            expected=("CC",),
+            expected_inventory=("C",),
+            ignore_atom_map_numbers=True,
+        ),
+        PinnedExactSmallSupportCase(
+            smiles="C",
+            rooted_at_atom=0,
+            isomeric_smiles=False,
+            expected=("[CH4]",),
+            expected_inventory=("[CH4]",),
+            all_hs_explicit=True,
+        ),
     ),
 }
 
@@ -97,6 +141,10 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
         return supported_public_kwargs(
             rootedAtAtom=case.rooted_at_atom,
             isomericSmiles=case.isomeric_smiles,
+            kekuleSmiles=case.kekule_smiles,
+            allBondsExplicit=case.all_bonds_explicit,
+            allHsExplicit=case.all_hs_explicit,
+            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
         )
 
     def test_pinned_fixture_matches_repeated_rdkit_sampling(self) -> None:
@@ -119,6 +167,10 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
                             root_idx=case.rooted_at_atom,
                             isomeric_smiles=case.isomeric_smiles,
                             draw_budget=10_000,
+                            kekule_smiles=case.kekule_smiles,
+                            all_bonds_explicit=case.all_bonds_explicit,
+                            all_hs_explicit=case.all_hs_explicit,
+                            ignore_atom_map_numbers=case.ignore_atom_map_numbers,
                             seed=seed,
                         ),
                     )
@@ -138,6 +190,10 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
                     expected=set(case.expected),
                     rooted_at_atom=case.rooted_at_atom,
                     isomeric_smiles=case.isomeric_smiles,
+                    kekule_smiles=case.kekule_smiles,
+                    all_bonds_explicit=case.all_bonds_explicit,
+                    all_hs_explicit=case.all_hs_explicit,
+                    ignore_atom_map_numbers=case.ignore_atom_map_numbers,
                 )
 
     def test_public_token_inventory_matches_pinned_fixture(self) -> None:

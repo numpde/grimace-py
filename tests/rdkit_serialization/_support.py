@@ -36,13 +36,21 @@ def sample_rdkit_random_support(
     root_idx: int | None,
     isomeric_smiles: bool,
     draw_budget: int,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
     seed: int = 12345,
 ) -> set[str]:
     rdBase.SeedRandomNumberGenerator(seed)
     kwargs = dict(
         isomericSmiles=isomeric_smiles,
+        kekuleSmiles=kekule_smiles,
         canonical=False,
+        allBondsExplicit=all_bonds_explicit,
+        allHsExplicit=all_hs_explicit,
         doRandom=True,
+        ignoreAtomMapNumbers=ignore_atom_map_numbers,
     )
     if root_idx is not None:
         kwargs["rootedAtAtom"] = root_idx
@@ -195,12 +203,20 @@ def assert_grimace_support_matches_rdkit_sampling(
     rooted_at_atom: int | None,
     isomeric_smiles: bool,
     draw_budget: int,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
 ) -> None:
     expected = sample_rdkit_random_support(
         mol,
         root_idx=rooted_at_atom,
         isomeric_smiles=isomeric_smiles,
         draw_budget=draw_budget,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     assert_grimace_support_equals(
         test_case,
@@ -208,4 +224,8 @@ def assert_grimace_support_matches_rdkit_sampling(
         expected=expected,
         rooted_at_atom=rooted_at_atom,
         isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
     )

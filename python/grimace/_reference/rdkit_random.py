@@ -100,8 +100,37 @@ def _identity_kwargs(policy: ReferencePolicy) -> dict[str, Any]:
     }
 
 
+def mol_to_identity_smiles(
+    mol: Chem.Mol,
+    *,
+    isomericSmiles: bool,
+    kekuleSmiles: bool,
+    rootedAtAtom: int,
+    canonical: bool,
+    allBondsExplicit: bool,
+    allHsExplicit: bool,
+    doRandom: bool,
+    ignoreAtomMapNumbers: bool,
+) -> str:
+    working_mol = Chem.Mol(mol)
+    if ignoreAtomMapNumbers:
+        for atom in working_mol.GetAtoms():
+            atom.SetAtomMapNum(0)
+    return Chem.MolToSmiles(
+        working_mol,
+        isomericSmiles=isomericSmiles,
+        kekuleSmiles=kekuleSmiles,
+        rootedAtAtom=rootedAtAtom,
+        canonical=canonical,
+        allBondsExplicit=allBondsExplicit,
+        allHsExplicit=allHsExplicit,
+        doRandom=doRandom,
+        ignoreAtomMapNumbers=ignoreAtomMapNumbers,
+    )
+
+
 def identity_smiles(mol: Chem.Mol, policy: ReferencePolicy) -> str:
-    return Chem.MolToSmiles(Chem.Mol(mol), **_identity_kwargs(policy))
+    return mol_to_identity_smiles(Chem.Mol(mol), **_identity_kwargs(policy))
 
 
 def sample_rdkit_random_smiles(mol: Chem.Mol, policy: ReferencePolicy) -> tuple[str, ...]:

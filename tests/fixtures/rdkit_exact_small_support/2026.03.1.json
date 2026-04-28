@@ -135,6 +135,14 @@
       "expected_inventory": ["1", "[nH]", "c"]
     },
     {
+      "id": "explicit_pyrroline_root0_aromatized_nh",
+      "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["c1c[nH]cc1", "c1cc[nH]c1"],
+      "expected_inventory": ["1", "[nH]", "c"]
+    },
+    {
       "id": "pyridine_root1_all_bonds_explicit",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
@@ -195,6 +203,22 @@
       "isomeric_smiles": true,
       "expected": ["C(/F)=C/Cl", "C(=C/Cl)/F"],
       "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
+    },
+    {
+      "id": "fluorochloroethene_root0_stereo",
+      "smiles": "F/C=C/Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected": ["F/C=C/Cl"],
+      "expected_inventory": ["/", "=", "C", "Cl", "F"]
+    },
+    {
+      "id": "fluorochloroethene_root0_nonstereo",
+      "smiles": "F/C=C/Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["FC=CCl"],
+      "expected_inventory": ["=", "C", "Cl", "F"]
     },
     {
       "id": "fluorochloroethene_root1_explicit_bonds",
@@ -336,6 +360,21 @@
       "expected_inventory": ["(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"]
     },
     {
+      "id": "ammine_platinum_root2_dative",
+      "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected": [
+        "[F][Pt](<-[NH3])([Cl])[OH]",
+        "[F][Pt](<-[NH3])([OH])[Cl]",
+        "[F][Pt]([Cl])(<-[NH3])[OH]",
+        "[F][Pt]([Cl])([OH])<-[NH3]",
+        "[F][Pt]([OH])(<-[NH3])[Cl]",
+        "[F][Pt]([OH])([Cl])<-[NH3]"
+      ],
+      "expected_inventory": ["(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"]
+    },
+    {
       "id": "amine_platinum_root0_hs_shown",
       "smiles": "Cl[Pt](F)([NH2])[OH]",
       "rooted_at_atom": 0,
@@ -347,6 +386,21 @@
         "[Cl][Pt]([NH2])([OH])[F]",
         "[Cl][Pt]([OH])([F])[NH2]",
         "[Cl][Pt]([OH])([NH2])[F]"
+      ],
+      "expected_inventory": ["(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"]
+    },
+    {
+      "id": "amine_platinum_root2_hs_shown",
+      "smiles": "Cl[Pt](F)([NH2])[OH]",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected": [
+        "[F][Pt]([Cl])([NH2])[OH]",
+        "[F][Pt]([Cl])([OH])[NH2]",
+        "[F][Pt]([NH2])([Cl])[OH]",
+        "[F][Pt]([NH2])([OH])[Cl]",
+        "[F][Pt]([OH])([Cl])[NH2]",
+        "[F][Pt]([OH])([NH2])[Cl]"
       ],
       "expected_inventory": ["(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"]
     },

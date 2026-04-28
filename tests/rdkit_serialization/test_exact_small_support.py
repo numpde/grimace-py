@@ -51,9 +51,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             mol = parse_smiles(case.smiles)
             expected = set(case.expected)
             with self.subTest(
-                smiles=case.smiles,
-                rooted_at_atom=case.rooted_at_atom,
-                isomeric_smiles=case.isomeric_smiles,
+                case_id=case.case_id,
             ):
                 for seed in (12345, 54321):
                     self.assertEqual(
@@ -76,9 +74,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             mol = Chem.MolFromSmiles(case.smiles)
             self.assertIsNotNone(mol)
             with self.subTest(
-                smiles=case.smiles,
-                rooted_at_atom=case.rooted_at_atom,
-                isomeric_smiles=case.isomeric_smiles,
+                case_id=case.case_id,
             ):
                 assert_grimace_support_equals(
                     self,
@@ -96,9 +92,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
         for case in self.cases:
             mol = parse_smiles(case.smiles)
             with self.subTest(
-                smiles=case.smiles,
-                rooted_at_atom=case.rooted_at_atom,
-                isomeric_smiles=case.isomeric_smiles,
+                case_id=case.case_id,
             ):
                 self.assertEqual(
                     case.expected_inventory,
@@ -110,9 +104,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             mol = parse_smiles(case.smiles)
             decoder = make_decoder(mol, **self._public_kwargs(case))
             with self.subTest(
-                smiles=case.smiles,
-                rooted_at_atom=case.rooted_at_atom,
-                isomeric_smiles=case.isomeric_smiles,
+                case_id=case.case_id,
             ):
                 self.assertEqual(
                     set(case.expected),
@@ -124,9 +116,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             mol = parse_smiles(case.smiles)
             decoder = make_determinized_decoder(mol, **self._public_kwargs(case))
             with self.subTest(
-                smiles=case.smiles,
-                rooted_at_atom=case.rooted_at_atom,
-                isomeric_smiles=case.isomeric_smiles,
+                case_id=case.case_id,
             ):
                 self.assertEqual(
                     set(case.expected),

@@ -7,6 +7,7 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class PinnedExactSmallSupportCase:
+    case_id: str
     smiles: str
     rooted_at_atom: int
     isomeric_smiles: bool
@@ -34,9 +35,17 @@ def load_pinned_exact_small_support_cases(rdkit_version: str) -> tuple[PinnedExa
         )
 
     cases = []
+    seen_ids: set[str] = set()
     for raw_case in data["cases"]:
+        case_id = str(raw_case["id"])
+        if not case_id:
+            raise ValueError(f"fixture {fixture_path} contains an empty case id")
+        if case_id in seen_ids:
+            raise ValueError(f"fixture {fixture_path} contains duplicate case id {case_id!r}")
+        seen_ids.add(case_id)
         cases.append(
             PinnedExactSmallSupportCase(
+                case_id=case_id,
                 smiles=str(raw_case["smiles"]),
                 rooted_at_atom=int(raw_case["rooted_at_atom"]),
                 isomeric_smiles=bool(raw_case["isomeric_smiles"]),

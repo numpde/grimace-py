@@ -5,11 +5,7 @@ import unittest
 
 INSTALLED_PACKAGE_CORRECTNESS_MODULES: tuple[str, ...] = (
     "tests.integration.test_python_api_smoke",
-    "tests.integration.test_public_decoder",
-    "tests.integration.test_token_inventory",
-    "tests.integration.test_public_runtime_writer_flags",
-    "tests.integration.test_public_all_roots_identities",
-    "tests.integration.test_public_prepared_equivalence",
+    "tests.run_exact_public_invariants",
     "tests.run_pinned_rdkit_parity",
 )
 

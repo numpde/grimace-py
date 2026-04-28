@@ -15,6 +15,7 @@ The test suite is organized by intent first, then by feature.
 ## Commands
 
 - Default suite: `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
+- Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
@@ -25,6 +26,7 @@ The test suite is organized by intent first, then by feature.
 - Kernel parity tests belong under `tests/parity/`, not `tests/reference/`.
 - Dataset-backed kernel contract checks belong under `tests/integration/` once they stop being cross-language parity checks.
 - RDKit-derived writer expectations belong under `tests/rdkit_serialization/`, not scattered through smoke tests.
+- Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.
 - Prefer strengthening Rust-native tests before expanding parity breadth.

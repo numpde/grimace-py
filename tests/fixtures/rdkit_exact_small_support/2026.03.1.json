@@ -1,0 +1,94 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "smiles": "CCO",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": ["C(C)O", "C(O)C"],
+      "expected_inventory": ["(", ")", "C", "O"]
+    },
+    {
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": ["c1cccnc1", "c1cnccc1"],
+      "expected_inventory": ["1", "c", "n"]
+    },
+    {
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "kekule_smiles": true,
+      "expected": ["C1=CC=NC=C1", "C1C=CN=CC=1"],
+      "expected_inventory": ["1", "=", "C", "N"]
+    },
+    {
+      "smiles": "CC#N",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": ["C(#N)C", "C(C)#N"],
+      "expected_inventory": ["#", "(", ")", "C", "N"]
+    },
+    {
+      "smiles": "CC#N",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": ["C(#N)-C", "C(-C)#N"],
+      "expected_inventory": ["#", "(", ")", "-", "C", "N"]
+    },
+    {
+      "smiles": "F/C=C\\Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected": ["C(/F)=C/Cl", "C(=C/Cl)/F"],
+      "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
+    },
+    {
+      "smiles": "F/C=C\\Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": ["C(/F)=C/Cl", "C(=C/Cl)/F"],
+      "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
+    },
+    {
+      "smiles": "F[C@H](Cl)Br",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected": [
+        "[C@@H](Br)(F)Cl",
+        "[C@@H](Cl)(Br)F",
+        "[C@@H](F)(Cl)Br",
+        "[C@H](Br)(Cl)F",
+        "[C@H](Cl)(F)Br",
+        "[C@H](F)(Br)Cl"
+      ],
+      "expected_inventory": ["(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"]
+    },
+    {
+      "smiles": "[NH3][Cu]",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": ["[Cu]<-[NH3]"],
+      "expected_inventory": ["<-", "[Cu]", "[NH3]"]
+    },
+    {
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected": ["CC"],
+      "expected_inventory": ["C"]
+    },
+    {
+      "smiles": "C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_hs_explicit": true,
+      "expected": ["[CH4]"],
+      "expected_inventory": ["[CH4]"]
+    }
+  ]
+}

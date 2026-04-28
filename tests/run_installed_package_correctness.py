@@ -10,6 +10,7 @@ INSTALLED_PACKAGE_CORRECTNESS_MODULES: tuple[str, ...] = (
     "tests.integration.test_public_runtime_writer_flags",
     "tests.integration.test_public_all_roots_identities",
     "tests.integration.test_public_prepared_equivalence",
+    "tests.rdkit_serialization.test_exact_small_support",
 )
 
 

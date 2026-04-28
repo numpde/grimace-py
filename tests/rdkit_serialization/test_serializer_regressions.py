@@ -632,6 +632,96 @@ class SerializerRegressionTests(unittest.TestCase):
                 ),
             )
 
+    def test_protonated_ring_normalizes_explicit_vs_implicit_hydrogens(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testBug1670149:
+        # explicit and implicit protonation forms should collapse onto the same
+        # writer surface for a charged ring nitrogen.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testBug1670149"
+        )
+        expected_support = {
+            "C1CCC[NH2+]1",
+            "C1CC[NH2+]C1",
+            "C1C[NH2+]CC1",
+            "C1[NH2+]CCC1",
+            "[NH2+]1CCCC1",
+        }
+        expected_inventory = ("1", "C", "[NH2+]")
+
+        for smiles in ("C1[NH2+]CCC1", "C1CC[NH2+]C1"):
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+
+    def test_cyclohexyl_halide_normalizes_nonstereo_surface(self) -> None:
+        # Regression pinned to the first two writer cases in RDKit
+        # SmilesDetailsTests.testBug1719046: explicit-valence/chiral input
+        # variants must normalize to the same non-stereo cyclohexyl halide
+        # support surface.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testBug1719046"
+        )
+        expected_support = {
+            "C1(CCCCC1)Cl",
+            "C1(Cl)CCCCC1",
+            "C1C(CCCC1)Cl",
+            "C1C(Cl)CCCC1",
+            "C1CC(CCC1)Cl",
+            "C1CC(Cl)CCC1",
+            "C1CCC(CC1)Cl",
+            "C1CCC(Cl)CC1",
+            "C1CCCC(C1)Cl",
+            "C1CCCC(Cl)C1",
+            "C1CCCCC1Cl",
+            "ClC1CCCCC1",
+        }
+        expected_inventory = ("(", ")", "1", "C", "Cl")
+
+        for smiles in ("Cl[CH]1CCCCC1", "Cl[C@H]1CCCCC1"):
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

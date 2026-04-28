@@ -875,6 +875,94 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_rooted_small_center_surfaces(self) -> None:
+        # Regression pinned to additional small-center cases in RDKit
+        # rough_test.test31ChiralitySmiles: a tetrahedral CH center, a neutral
+        # amine, and a charged chiral amine should each preserve their rooted
+        # writer surface family.
+        cases = (
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
+                "F[C@H](Cl)Br",
+                1,
+                True,
+                {
+                    "[C@@H](Br)(F)Cl",
+                    "[C@@H](Cl)(Br)F",
+                    "[C@@H](F)(Cl)Br",
+                    "[C@H](Br)(Cl)F",
+                    "[C@H](Cl)(F)Br",
+                    "[C@H](F)(Br)Cl",
+                },
+                ("(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
+                "FN(Cl)Br",
+                1,
+                False,
+                {
+                    "N(Br)(Cl)F",
+                    "N(Br)(F)Cl",
+                    "N(Cl)(Br)F",
+                    "N(Cl)(F)Br",
+                    "N(F)(Br)Cl",
+                    "N(F)(Cl)Br",
+                },
+                ("(", ")", "Br", "Cl", "F", "N"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
+                "F[N@H+](Cl)Br",
+                1,
+                True,
+                {
+                    "[N@@H+](Br)(F)Cl",
+                    "[N@@H+](Cl)(Br)F",
+                    "[N@@H+](F)(Cl)Br",
+                    "[N@H+](Br)(Cl)F",
+                    "[N@H+](Cl)(F)Br",
+                    "[N@H+](F)(Br)Cl",
+                },
+                ("(", ")", "Br", "Cl", "F", "[N@@H+]", "[N@H+]"),
+            ),
+        )
+        for (
+            source,
+            smiles,
+            rooted_at_atom,
+            isomeric_smiles,
+            expected_support,
+            expected_inventory,
+        ) in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(
+                source=source,
+                smiles=smiles,
+                rooted_at_atom=rooted_at_atom,
+                isomeric_smiles=isomeric_smiles,
+            ):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=isomeric_smiles,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=isomeric_smiles,
+                        ),
+                    ),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

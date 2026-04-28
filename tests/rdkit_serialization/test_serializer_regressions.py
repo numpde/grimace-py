@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from rdkit import rdBase
+from rdkit import Chem, rdBase
 
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
@@ -23,6 +23,13 @@ class SerializerRegressionTests(unittest.TestCase):
                 f"serializer regressions are pinned to RDKit {PINNED_RDKIT_VERSION}, "
                 f"got {rdBase.rdkitVersion}"
             )
+
+    @staticmethod
+    def _parse_molblock(molblock: str) -> Chem.Mol:
+        mol = Chem.MolFromMolBlock(molblock)
+        if mol is None:
+            raise AssertionError("RDKit failed to parse regression mol block")
+        return mol
 
     def test_ignore_atom_map_numbers_rooted_surface(self) -> None:
         # Regression for the bug where ignoreAtomMapNumbers=True still leaked
@@ -1325,13 +1332,196 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     ),
                 )
+
+    def test_molblock_rooted_stereochemistry_surfaces(self) -> None:
+        # Regression pinned to RDKit rough_test._test32MolFilesWithChirality:
+        # wedge-bond stereoperception from mol blocks must yield the expected
+        # rooted writer surface family, not just the same result from SMILES.
+        cases = (
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral2",
+                """chiral2.cdxml
+  ChemDraw10160314052D
+
+  5  4  0  0  0  0  0  0  0  0999 V2000
+    0.0553    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0553   -0.2062    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.7697   -0.6188    0.0000 I   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.6592   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0
+   -0.7697   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  2  4  1  6
+  2  5  1  0
+M  END
+""",
+                {
+                    "[C@@](Br)(Cl)(I)F",
+                    "[C@@](Br)(F)(Cl)I",
+                    "[C@@](Br)(I)(F)Cl",
+                    "[C@@](Cl)(Br)(F)I",
+                    "[C@@](Cl)(F)(I)Br",
+                    "[C@@](Cl)(I)(Br)F",
+                    "[C@@](F)(Br)(I)Cl",
+                    "[C@@](F)(Cl)(Br)I",
+                    "[C@@](F)(I)(Cl)Br",
+                    "[C@@](I)(Br)(Cl)F",
+                    "[C@@](I)(Cl)(F)Br",
+                    "[C@@](I)(F)(Br)Cl",
+                    "[C@](Br)(Cl)(F)I",
+                    "[C@](Br)(F)(I)Cl",
+                    "[C@](Br)(I)(Cl)F",
+                    "[C@](Cl)(Br)(I)F",
+                    "[C@](Cl)(F)(Br)I",
+                    "[C@](Cl)(I)(F)Br",
+                    "[C@](F)(Br)(Cl)I",
+                    "[C@](F)(Cl)(I)Br",
+                    "[C@](F)(I)(Br)Cl",
+                    "[C@](I)(Br)(F)Cl",
+                    "[C@](I)(Cl)(Br)F",
+                    "[C@](I)(F)(Cl)Br",
+                },
+                ("(", ")", "Br", "Cl", "F", "I", "[C@@]", "[C@]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality case 10-14-3",
+                """Case 10-14-3
+  ChemDraw10140308512D
+
+  4  3  0  0  0  0  0  0  0  0999 V2000
+   -0.8250   -0.4125    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000   -0.4125    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.8250   -0.4125    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.4125    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  2  4  1  1
+M  END
+""",
+                {
+                    "[C@@H](Br)(Cl)F",
+                    "[C@@H](Cl)(F)Br",
+                    "[C@@H](F)(Br)Cl",
+                    "[C@H](Br)(F)Cl",
+                    "[C@H](Cl)(Br)F",
+                    "[C@H](F)(Cl)Br",
+                },
+                ("(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality case 10-14-4",
+                """Case 10-14-4
+  ChemDraw10140308512D
+
+  4  3  0  0  0  0  0  0  0  0999 V2000
+   -0.8250   -0.4125    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000   -0.4125    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.8250   -0.4125    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+    0.0000    0.4125    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  1
+  2  4  1  0
+M  END
+""",
+                {
+                    "[C@@H](Br)(F)Cl",
+                    "[C@@H](Cl)(Br)F",
+                    "[C@@H](F)(Cl)Br",
+                    "[C@H](Br)(Cl)F",
+                    "[C@H](Cl)(F)Br",
+                    "[C@H](F)(Br)Cl",
+                },
+                ("(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral4 wedge",
+                """chiral4.mol
+  ChemDraw10160315172D
+
+  6  6  0  0  0  0  0  0  0  0999 V2000
+   -0.4422    0.1402    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.4422   -0.6848    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.2723   -0.2723    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.8547    0.8547    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.6848    0.4422    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+    0.8547   -0.8547    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  1  1  0
+  1  4  1  0
+  3  5  1  1
+  3  6  1  0
+M  END
+""",
+                {
+                    "C1C(C)[C@@]1(Cl)F",
+                    "C1C(C)[C@]1(F)Cl",
+                    "C1C([C@@]1(Cl)F)C",
+                    "C1C([C@]1(F)Cl)C",
+                    "C1[C@@](C1C)(F)Cl",
+                    "C1[C@@](Cl)(C1C)F",
+                    "C1[C@@](F)(Cl)C1C",
+                    "C1[C@](C1C)(Cl)F",
+                    "C1[C@](Cl)(F)C1C",
+                    "C1[C@](F)(C1C)Cl",
+                },
+                ("(", ")", "1", "C", "Cl", "F", "[C@@]", "[C@]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral4 dash",
+                """chiral4.mol
+  ChemDraw10160315172D
+
+  6  6  0  0  0  0  0  0  0  0999 V2000
+   -0.4422    0.1402    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.4422   -0.6848    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.2723   -0.2723    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.8547    0.8547    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    0.6848    0.4422    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0
+    0.8547   -0.8547    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  1  1  0
+  1  4  1  0
+  3  5  1  6
+  3  6  1  0
+M  END
+""",
+                {
+                    "C1C(C)[C@@]1(F)Cl",
+                    "C1C(C)[C@]1(Cl)F",
+                    "C1C([C@@]1(F)Cl)C",
+                    "C1C([C@]1(Cl)F)C",
+                    "C1[C@@](C1C)(Cl)F",
+                    "C1[C@@](Cl)(F)C1C",
+                    "C1[C@@](F)(C1C)Cl",
+                    "C1[C@](C1C)(F)Cl",
+                    "C1[C@](Cl)(C1C)F",
+                    "C1[C@](F)(Cl)C1C",
+                },
+                ("(", ")", "1", "C", "Cl", "F", "[C@@]", "[C@]"),
+            ),
+        )
+        for source, molblock, expected_support, expected_inventory in cases:
+            mol = self._parse_molblock(molblock)
+            with self.subTest(source=source, rooted_at_atom=1):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
                 self.assertEqual(
                     expected_inventory,
                     public_token_inventory(
                         mol,
                         **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
+                            rootedAtAtom=1,
+                            isomericSmiles=True,
                         ),
                     ),
                 )

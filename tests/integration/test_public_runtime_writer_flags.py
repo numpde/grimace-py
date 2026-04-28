@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unittest
 
-import grimace
 from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
@@ -14,6 +13,7 @@ from grimace._reference.rooted_enumerator import (
 )
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
+from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,16 +142,16 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
                     )
 
                 actual_from_enum = set(
-                    grimace.MolToSmilesEnum(
+                    public_enum_support(
                         mol,
-                        isomericSmiles=case.isomeric_smiles,
-                        kekuleSmiles=case.kekule_smiles,
-                        rootedAtAtom=case.rooted_at_atom,
-                        canonical=False,
-                        allBondsExplicit=case.all_bonds_explicit,
-                        allHsExplicit=case.all_hs_explicit,
-                        doRandom=True,
-                        ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                        **supported_public_kwargs(
+                            isomericSmiles=case.isomeric_smiles,
+                            kekuleSmiles=case.kekule_smiles,
+                            rootedAtAtom=case.rooted_at_atom,
+                            allBondsExplicit=case.all_bonds_explicit,
+                            allHsExplicit=case.all_hs_explicit,
+                            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                        ),
                     )
                 )
                 actual = _runtime.mol_to_smiles_support(

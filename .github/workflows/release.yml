@@ -36,8 +36,8 @@ jobs:
           args: --release --out dist -i python${{ matrix.python-version }}
       - name: Install built wheel
         run: python -m pip install dist/grimace-*.whl
-      - name: Run installed-package smoke tests
-        run: python -m unittest tests.integration.test_python_api_smoke -q
+      - name: Run installed-package correctness subset
+        run: python -m unittest tests.run_installed_package_correctness -q
       - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.name }}-cp${{ matrix.python-version }}
@@ -57,8 +57,8 @@ jobs:
           args: --out dist
       - name: Install built source distribution
         run: python -m pip install dist/grimace-*.tar.gz
-      - name: Run installed-package smoke tests
-        run: python -m unittest tests.integration.test_python_api_smoke -q
+      - name: Run installed-package correctness subset
+        run: python -m unittest tests.run_installed_package_correctness -q
       - uses: actions/upload-artifact@v7
         with:
           name: sdist

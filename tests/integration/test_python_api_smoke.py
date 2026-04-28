@@ -15,47 +15,16 @@ from grimace._reference import (
     write_core_exact_sets_artifact,
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
+from tests.helpers.public_runtime import (
+    assert_public_entrypoints_equivalent,
+    assert_public_entrypoints_raise,
+    supported_public_kwargs,
+)
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
 
 class PythonApiSmokeTests(unittest.TestCase):
-    @staticmethod
-    def _decoder_choice_texts(decoder: object) -> tuple[str, ...]:
-        return tuple(choice.text for choice in decoder.next_choices)
-
-    def _assert_public_entrypoints_equivalent(
-        self,
-        mol: Chem.Mol,
-        *,
-        provided_kwargs: dict[str, object],
-        expected_kwargs: dict[str, object],
-    ) -> None:
-        self.assertEqual(
-            tuple(grimace.MolToSmilesEnum(mol, **provided_kwargs)),
-            tuple(grimace.MolToSmilesEnum(mol, **expected_kwargs)),
-        )
-        self.assertEqual(
-            grimace.MolToSmilesTokenInventory(mol, **provided_kwargs),
-            grimace.MolToSmilesTokenInventory(mol, **expected_kwargs),
-        )
-
-        decoder = grimace.MolToSmilesDecoder(mol, **provided_kwargs)
-        expected_decoder = grimace.MolToSmilesDecoder(mol, **expected_kwargs)
-        self.assertEqual(decoder.prefix, expected_decoder.prefix)
-        self.assertEqual(
-            self._decoder_choice_texts(decoder),
-            self._decoder_choice_texts(expected_decoder),
-        )
-
-        determinized = grimace.MolToSmilesDeterminizedDecoder(mol, **provided_kwargs)
-        expected_determinized = grimace.MolToSmilesDeterminizedDecoder(mol, **expected_kwargs)
-        self.assertEqual(determinized.prefix, expected_determinized.prefix)
-        self.assertEqual(
-            self._decoder_choice_texts(determinized),
-            self._decoder_choice_texts(expected_determinized),
-        )
-
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
         self.assertTrue(callable(grimace.MolToSmilesChoice))
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
@@ -153,7 +122,8 @@ class PythonApiSmokeTests(unittest.TestCase):
         mol = parse_smiles("CCO")
         for provided_root in (-1, -2, -3):
             with self.subTest(provided_root=provided_root):
-                self._assert_public_entrypoints_equivalent(
+                assert_public_entrypoints_equivalent(
+                    self,
                     mol,
                     provided_kwargs={
                         "rootedAtAtom": provided_root,
@@ -171,7 +141,8 @@ class PythonApiSmokeTests(unittest.TestCase):
         mol = parse_smiles("CCO")
         for provided_root, expected_root in ((False, 0), (True, 1)):
             with self.subTest(provided_root=provided_root, expected_root=expected_root):
-                self._assert_public_entrypoints_equivalent(
+                assert_public_entrypoints_equivalent(
+                    self,
                     mol,
                     provided_kwargs={
                         "rootedAtAtom": provided_root,
@@ -187,107 +158,27 @@ class PythonApiSmokeTests(unittest.TestCase):
 
     def test_public_api_rejects_non_integral_rooted_at_atom_values(self) -> None:
         mol = parse_smiles("CCO")
-        invalid_roots = (-0.2, 1.0, "1")
-        entrypoints = (
-            (
-                "enum",
-                lambda rooted_at_atom: tuple(
-                    grimace.MolToSmilesEnum(
-                        mol,
-                        rootedAtAtom=rooted_at_atom,
-                        canonical=False,
-                        doRandom=True,
-                    )
-                ),
-            ),
-            (
-                "decoder",
-                lambda rooted_at_atom: grimace.MolToSmilesDecoder(
+        for rooted_at_atom in (-0.2, 1.0, "1"):
+            with self.subTest(rooted_at_atom=rooted_at_atom):
+                assert_public_entrypoints_raise(
+                    self,
                     mol,
-                    rootedAtAtom=rooted_at_atom,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "determinized_decoder",
-                lambda rooted_at_atom: grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=rooted_at_atom,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "inventory",
-                lambda rooted_at_atom: grimace.MolToSmilesTokenInventory(
-                    mol,
-                    rootedAtAtom=rooted_at_atom,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-        )
-
-        for entrypoint_name, call in entrypoints:
-            for rooted_at_atom in invalid_roots:
-                with self.subTest(entrypoint=entrypoint_name, rooted_at_atom=rooted_at_atom):
-                    with self.assertRaisesRegex(
-                        NotImplementedError,
-                        "rootedAtAtom to follow RDKit's Python binding and be an integer",
-                    ):
-                        call(rooted_at_atom)
+                    kwargs=supported_public_kwargs(rootedAtAtom=rooted_at_atom),
+                    expected_exception=NotImplementedError,
+                    expected_regex=(
+                        "rootedAtAtom to follow RDKit's Python binding and be an integer"
+                    ),
+                )
 
     def test_public_api_rejects_none_rooted_at_atom(self) -> None:
         mol = parse_smiles("CCO")
-        entrypoints = (
-            (
-                "enum",
-                lambda: tuple(
-                    grimace.MolToSmilesEnum(
-                        mol,
-                        rootedAtAtom=None,
-                        canonical=False,
-                        doRandom=True,
-                    )
-                ),
-            ),
-            (
-                "decoder",
-                lambda: grimace.MolToSmilesDecoder(
-                    mol,
-                    rootedAtAtom=None,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "determinized_decoder",
-                lambda: grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=None,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "inventory",
-                lambda: grimace.MolToSmilesTokenInventory(
-                    mol,
-                    rootedAtAtom=None,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
+        assert_public_entrypoints_raise(
+            self,
+            mol,
+            kwargs=supported_public_kwargs(rootedAtAtom=None),
+            expected_exception=NotImplementedError,
+            expected_regex="rootedAtAtom to follow RDKit's Python binding and be an integer",
         )
-
-        for entrypoint_name, call in entrypoints:
-            with self.subTest(entrypoint=entrypoint_name):
-                with self.assertRaisesRegex(
-                    NotImplementedError,
-                    "rootedAtAtom to follow RDKit's Python binding and be an integer",
-                ):
-                    call()
 
     def test_public_api_coerces_none_boolean_flags_like_rdkit(self) -> None:
         mol = parse_smiles("CCO")
@@ -314,7 +205,8 @@ class PythonApiSmokeTests(unittest.TestCase):
                 flag_name: coerced_value,
             }
             with self.subTest(flag_name=flag_name, provided_value=provided_value):
-                self._assert_public_entrypoints_equivalent(
+                assert_public_entrypoints_equivalent(
+                    self,
                     mol,
                     provided_kwargs=kwargs,
                     expected_kwargs=expected_kwargs,
@@ -361,7 +253,8 @@ class PythonApiSmokeTests(unittest.TestCase):
                 flag_name: coerced_value,
             }
             with self.subTest(flag_name=flag_name, provided_value=provided_value):
-                self._assert_public_entrypoints_equivalent(
+                assert_public_entrypoints_equivalent(
+                    self,
                     mol,
                     provided_kwargs=kwargs,
                     expected_kwargs=expected_kwargs,
@@ -380,107 +273,38 @@ class PythonApiSmokeTests(unittest.TestCase):
         )
 
         for flag_name, invalid_value in invalid_cases:
-            kwargs = {
-                "rootedAtAtom": 0,
-                "canonical": False,
-                "doRandom": True,
-                flag_name: invalid_value,
-            }
             with self.subTest(flag_name=flag_name, invalid_value=invalid_value):
-                with self.assertRaisesRegex(
-                    NotImplementedError,
-                    f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None",
-                ):
-                    tuple(grimace.MolToSmilesEnum(mol, **kwargs))
+                assert_public_entrypoints_raise(
+                    self,
+                    mol,
+                    kwargs=supported_public_kwargs(rootedAtAtom=0, **{flag_name: invalid_value}),
+                    expected_exception=NotImplementedError,
+                    expected_regex=(
+                        f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None"
+                    ),
+                    included_entrypoints=("enum",),
+                )
 
     def test_public_api_reports_out_of_range_root_consistently_for_connected_molecules(self) -> None:
         mol = parse_smiles("CCO")
-
-        entrypoints = (
-            (
-                "enum",
-                lambda: tuple(
-                    grimace.MolToSmilesEnum(
-                        mol,
-                        rootedAtAtom=99,
-                        canonical=False,
-                        doRandom=True,
-                    )
-                ),
-            ),
-            (
-                "decoder",
-                lambda: grimace.MolToSmilesDecoder(
-                    mol,
-                    rootedAtAtom=99,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "determinized_decoder",
-                lambda: grimace.MolToSmilesDeterminizedDecoder(
-                    mol,
-                    rootedAtAtom=99,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "inventory",
-                lambda: grimace.MolToSmilesTokenInventory(
-                    mol,
-                    rootedAtAtom=99,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
+        assert_public_entrypoints_raise(
+            self,
+            mol,
+            kwargs=supported_public_kwargs(rootedAtAtom=99),
+            expected_exception=IndexError,
+            expected_regex="root_idx out of range",
         )
-
-        for entrypoint_name, call in entrypoints:
-            with self.subTest(entrypoint=entrypoint_name):
-                with self.assertRaisesRegex(IndexError, "root_idx out of range"):
-                    call()
 
     def test_public_api_reports_out_of_range_root_consistently_for_disconnected_molecules(self) -> None:
         mol = parse_smiles("C.C")
-
-        entrypoints = (
-            (
-                "enum",
-                lambda: tuple(
-                    grimace.MolToSmilesEnum(
-                        mol,
-                        rootedAtAtom=99,
-                        canonical=False,
-                        doRandom=True,
-                    )
-                ),
-            ),
-            (
-                "decoder",
-                lambda: grimace.MolToSmilesDecoder(
-                    mol,
-                    rootedAtAtom=99,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
-            (
-                "inventory",
-                lambda: grimace.MolToSmilesTokenInventory(
-                    mol,
-                    rootedAtAtom=99,
-                    canonical=False,
-                    doRandom=True,
-                ),
-            ),
+        assert_public_entrypoints_raise(
+            self,
+            mol,
+            kwargs=supported_public_kwargs(rootedAtAtom=99),
+            expected_exception=IndexError,
+            expected_regex="root_idx out of range",
+            included_entrypoints=("enum", "decoder", "inventory"),
         )
-
-        for name, call in entrypoints:
-            with self.subTest(entrypoint=name):
-                with self.assertRaisesRegex(IndexError, "root_idx out of range"):
-                    call()
 
     def test_reference_defaults_load_from_installed_package_layout(self) -> None:
         self.assertTrue(DEFAULT_MOLECULE_SOURCE_PATH.is_file())

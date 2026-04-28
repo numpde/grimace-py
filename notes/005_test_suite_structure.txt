@@ -86,6 +86,35 @@ How CI executes it
 - perf tests are excluded from default CI and only run when
   `RUN_PERF_TESTS=1`.
 
+RDKit parity discipline
+-----------------------
+
+There are two different correctness layers here and they should stay separate.
+
+1. Version-agnostic invariants.
+   These do not depend on the installed RDKit build and should always run:
+   - all-roots identity laws
+   - decoder reachable-output equality with exact enum support
+   - prepared-input equivalence
+   - Rust/Python parity
+
+2. RDKit-parity checks.
+   These must be keyed by exact RDKit version, not treated as generic proof.
+   For this layer:
+   - exact expected supports/inventories should be tied to a specific
+     `rdBase.rdkitVersion`
+   - pinned parity tests should enforce exact equality only on that exact
+     version
+   - newer/different RDKit builds may still run lighter compatibility checks,
+     but that is not the same claim as exact parity
+
+The key design rule is:
+- exact equality tests should be primary correctness evidence
+- sampled-RDKit subset checks are useful secondary sanity checks, not the main
+  proof
+- “whatever RDKit happens to be installed” should not silently redefine the
+  meaning of parity
+
 Current blind spots
 -------------------
 
@@ -104,7 +133,8 @@ Current blind spots
 4. RDKit-version drift is only partially enforced.
    Some RDKit-backed fixture checks skip when the local RDKit version differs
    from the fixture version. That avoids false failures, but also means exact
-   cross-version stability is not continuously proven.
+   parity is not continuously proven unless the parity corpus is explicitly
+   keyed and exercised against a pinned RDKit build.
 
 5. Coverage breadth is curated rather than generative.
    The suite is strong on representative and adversarial hand-picked cases,
@@ -129,5 +159,168 @@ Highest-value next upgrades
 
 1. Run a broader installed-artifact suite than just `test_python_api_smoke`.
 2. Add one non-Linux CI lane.
-3. Add a small fuzz/property layer for rooted-random parity.
-4. Add executable-doc tests for public README/API snippets.
+3. Split RDKit checks into:
+   - version-agnostic invariant tests that always run
+   - exact parity tests keyed to one pinned RDKit version
+4. Add a curated exact small-support RDKit parity corpus for the pinned
+   version.
+5. Add a small fuzz/property layer for rooted-random compatibility checks.
+6. Add executable-doc tests for public README/API snippets.
+
+Test suite revision plan
+------------------------
+
+The expansion plan should be organized around exact oracles first and broader
+compatibility checks second.
+
+Primary goal
+------------
+
+- Make exact equality tests the main correctness evidence.
+- Keep sampled-RDKit subset checks only as auxiliary compatibility/sanity
+  checks.
+
+Phase 1: exact public invariants
+--------------------------------
+
+Add new integration coverage that does not depend on RDKit version.
+
+1. Public all-roots identity tests.
+   Add a file such as:
+   - `tests/integration/test_public_all_roots_identities.py`
+
+   Assertions to add:
+   - `MolToSmilesEnum(..., rootedAtAtom=-1)` equals the union over all
+     explicit nonnegative roots.
+   - `MolToSmilesTokenInventory(..., rootedAtAtom=-1)` equals the union over
+     all explicit-root inventories.
+   - merged decoder reachable terminal outputs equal exact enum support.
+   - determinized decoder reachable terminal outputs equal exact enum support.
+
+   Coverage to include:
+   - connected and disconnected molecules
+   - stereo and nonstereo modes
+   - supported writer-flag combinations
+
+2. Prepared-input equivalence tests.
+   Add a file such as:
+   - `tests/integration/test_public_prepared_equivalence.py`
+
+   Assertions to add:
+   - the same public call returns exactly the same result for:
+     - RDKit `Mol`
+     - reference prepared graph
+     - core prepared graph
+
+   Public surfaces to include:
+   - enum
+   - token inventory
+   - decoder
+   - determinized decoder
+
+3. Keep Phase 1 exact.
+   - No random sampling inside the assertions.
+   - Prove set equality or reachable-output equality directly.
+
+Phase 2: installed-artifact correctness
+---------------------------------------
+
+Broaden the installed wheel/sdist lanes so they check correctness, not only
+import smoke behavior.
+
+CI changes:
+- In the built-wheel job, run at least:
+  - `tests.integration.test_python_api_smoke`
+  - `tests.integration.test_public_decoder`
+  - `tests.integration.test_token_inventory`
+  - `tests.integration.test_public_all_roots_identities`
+  - `tests.integration.test_public_prepared_equivalence`
+
+- In the sdist job, run the same subset if runtime is acceptable.
+
+Why this matters:
+- source-tree tests are strong already
+- installed-artifact correctness is the highest-value next trust upgrade for
+  users
+
+Phase 3: pinned RDKit parity corpus
+-----------------------------------
+
+Add a small curated exact-parity layer that is explicitly keyed to one RDKit
+ version.
+
+New test file:
+- `tests/rdkit_serialization/test_exact_small_support.py`
+
+Fixture/data expectations:
+- store exact expected supports and inventories keyed to exact
+  `rdBase.rdkitVersion`
+- keep the corpus small and saturable
+- prefer rooted cases with low enough support to prove full equality
+
+Assertions to add:
+- exact support equality
+- exact token-inventory equality
+- decoder reachable-output equality with the exact support
+
+Execution model:
+- run this as a pinned parity lane for one exact RDKit version
+- if the installed RDKit version differs, skip or move to a lighter
+  compatibility lane
+
+Phase 4: regression discipline
+------------------------------
+
+Every real parity bug should become a permanent deterministic test.
+
+Rule:
+- if a mismatch is found by the regression miner or manual review, add a
+  focused regression test immediately
+- do not leave correctness bugs only in notes, miner output, or one-off
+  experiments
+
+Likely homes:
+- `tests/rdkit_serialization/test_dataset_regressions.py`
+- a new focused regression file when the bug is more structural than
+  dataset-specific
+
+Phase 5: broader search
+-----------------------
+
+Only after the exact corpus is strong, add broader generative coverage.
+
+Possible addition:
+- a small property/fuzz layer for tiny molecules or curated random slices
+
+Use this layer for:
+- internal exact invariants
+- sampled-RDKit subset checks
+- round-trip parseability checks
+
+Do not use this layer as the primary exact-parity proof.
+
+Concrete CI changes
+-------------------
+
+1. Keep the current Linux source-tree lane.
+2. Expand the installed wheel/sdist lanes beyond smoke tests.
+3. Add one pinned RDKit parity lane for exact equality.
+4. Optionally add one floating RDKit compatibility lane for early drift
+   detection.
+5. Add one non-Linux lane after installed-artifact correctness is broader.
+
+Concrete file additions
+-----------------------
+
+- `tests/integration/test_public_all_roots_identities.py`
+- `tests/integration/test_public_prepared_equivalence.py`
+- `tests/rdkit_serialization/test_exact_small_support.py`
+
+Acceptance bar
+--------------
+
+- Exact-equality tests should be the primary correctness evidence.
+- Installed wheel/sdist jobs should exercise real correctness checks, not just
+  smoke imports.
+- RDKit parity should be explicit about what is pinned proof versus what is
+  broader compatibility monitoring.

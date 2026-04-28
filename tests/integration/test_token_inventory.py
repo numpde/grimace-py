@@ -3,17 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unittest
 
-import grimace
-from grimace import _runtime
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
+from tests.helpers.public_runtime import (
+    exact_token_inventory_via_decoder,
+    public_token_inventory,
+    supported_public_kwargs,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class InventoryCase:
     name: str
     smiles: str
-    rooted_at_atom: int | None
+    rooted_at_atom: int
     cid: str | None = None
     required_nonstereo: frozenset[str] = frozenset()
     required_stereo: frozenset[str] = frozenset()
@@ -26,7 +29,7 @@ class TokenInventoryTests(unittest.TestCase):
         InventoryCase(
             name="aspirin_all_roots",
             smiles="CC(=O)Oc1ccccc1C(=O)O",
-            rooted_at_atom=None,
+            rooted_at_atom=-1,
             required_nonstereo=frozenset({"(", ")", "1", "=", "C", "O", "c"}),
             required_stereo=frozenset({"(", ")", "1", "=", "C", "O", "c"}),
             min_nonstereo_token_count=7,
@@ -44,7 +47,7 @@ class TokenInventoryTests(unittest.TestCase):
         InventoryCase(
             name="bond_stereo_all_roots",
             smiles="C/C=C/C(=O)O",
-            rooted_at_atom=None,
+            rooted_at_atom=-1,
             required_nonstereo=frozenset({"(", ")", "=", "C", "O"}),
             required_stereo=frozenset({"(", ")", "/", "\\", "=", "C", "O"}),
             min_nonstereo_token_count=5,
@@ -53,7 +56,7 @@ class TokenInventoryTests(unittest.TestCase):
         InventoryCase(
             name="disconnected_all_roots",
             smiles="[Na+].C#N",
-            rooted_at_atom=None,
+            rooted_at_atom=-1,
             required_nonstereo=frozenset({".", "#", "C", "N", "[Na+]"}),
             required_stereo=frozenset({".", "#", "C", "N", "[Na+]"}),
             min_nonstereo_token_count=5,
@@ -135,34 +138,6 @@ class TokenInventoryTests(unittest.TestCase):
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
 
-    def _exact_inventory_via_decoder(
-        self,
-        smiles: str,
-        *,
-        rooted_at_atom: int | None,
-        isomeric_smiles: bool,
-    ) -> tuple[str, ...]:
-        mol = parse_smiles(smiles)
-        roots = range(mol.GetNumAtoms()) if rooted_at_atom is None else (rooted_at_atom,)
-        inventory: set[str] = set()
-
-        for root_idx in roots:
-            decoder = _runtime.MolToSmilesDecoder(
-                mol,
-                rooted_at_atom=root_idx,
-                isomeric_smiles=isomeric_smiles,
-                canonical=False,
-                do_random=True,
-            )
-            stack = [decoder._state]
-            while stack:
-                state = stack.pop()
-                grouped_successors = _runtime._determinized_choice_successors(state)
-                inventory.update(text for text, _ in grouped_successors)
-                stack.extend(successor for _, successor in grouped_successors)
-
-        return tuple(sorted(inventory))
-
     def test_token_inventory_matches_exact_decoder_inventory(self) -> None:
         # Use one shared demanding molecule set for both branches. On the
         # nonstereo surface, Grimace should follow RDKit and drop stereo
@@ -177,12 +152,14 @@ class TokenInventoryTests(unittest.TestCase):
                     cid=case.cid,
                     isomeric_smiles=isomeric_smiles,
                 ):
-                    expected = self._exact_inventory_via_decoder(
-                        case.smiles,
-                        rooted_at_atom=case.rooted_at_atom,
-                        isomeric_smiles=isomeric_smiles,
+                    mol = parse_smiles(case.smiles)
+                    expected = exact_token_inventory_via_decoder(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=case.rooted_at_atom,
+                            isomericSmiles=isomeric_smiles,
+                        ),
                     )
-                    public_root = -1 if case.rooted_at_atom is None else case.rooted_at_atom
 
                     for token in required_tokens:
                         self.assertIn(token, expected)
@@ -190,30 +167,33 @@ class TokenInventoryTests(unittest.TestCase):
 
                     self.assertEqual(
                         expected,
-                        grimace.MolToSmilesTokenInventory(
-                            parse_smiles(case.smiles),
-                            rootedAtAtom=public_root,
-                            isomericSmiles=isomeric_smiles,
-                            canonical=False,
-                            doRandom=True,
+                        public_token_inventory(
+                            mol,
+                            **supported_public_kwargs(
+                                rootedAtAtom=case.rooted_at_atom,
+                                isomericSmiles=isomeric_smiles,
+                            ),
                         ),
                     )
 
     def test_token_inventory_includes_branch_tokens_for_rooted_degree_two_branch_point(self) -> None:
-        expected = self._exact_inventory_via_decoder(
-            "C(CO)O",
-            rooted_at_atom=0,
-            isomeric_smiles=False,
+        mol = parse_smiles("C(CO)O")
+        expected = exact_token_inventory_via_decoder(
+            mol,
+            **supported_public_kwargs(
+                rootedAtAtom=0,
+                isomericSmiles=False,
+            ),
         )
 
         self.assertEqual(
             expected,
-            grimace.MolToSmilesTokenInventory(
-                parse_smiles("C(CO)O"),
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                canonical=False,
-                doRandom=True,
+            public_token_inventory(
+                mol,
+                **supported_public_kwargs(
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                ),
             ),
         )
         self.assertIn("(", expected)
@@ -228,17 +208,20 @@ class TokenInventoryTests(unittest.TestCase):
 
         for smiles, required_tokens in cases:
             with self.subTest(smiles=smiles):
-                expected = self._exact_inventory_via_decoder(
-                    smiles,
-                    rooted_at_atom=0,
-                    isomeric_smiles=True,
+                mol = parse_smiles(smiles)
+                expected = exact_token_inventory_via_decoder(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=0,
+                        isomericSmiles=True,
+                    ),
                 )
-                actual = grimace.MolToSmilesTokenInventory(
-                    parse_smiles(smiles),
-                    rootedAtAtom=0,
-                    isomericSmiles=True,
-                    canonical=False,
-                    doRandom=True,
+                actual = public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=0,
+                        isomericSmiles=True,
+                    ),
                 )
 
                 self.assertEqual(expected, actual)
@@ -255,18 +238,18 @@ class TokenInventoryTests(unittest.TestCase):
         for smiles, isomeric_smiles in cases:
             with self.subTest(smiles=smiles, isomeric_smiles=isomeric_smiles):
                 mol = parse_smiles(smiles)
-                omitted = grimace.MolToSmilesTokenInventory(
+                omitted = public_token_inventory(
                     mol,
-                    isomericSmiles=isomeric_smiles,
-                    canonical=False,
-                    doRandom=True,
+                    **supported_public_kwargs(
+                        isomericSmiles=isomeric_smiles,
+                    ),
                 )
-                explicit_minus_one = grimace.MolToSmilesTokenInventory(
+                explicit_minus_one = public_token_inventory(
                     mol,
-                    rootedAtAtom=-1,
-                    isomericSmiles=isomeric_smiles,
-                    canonical=False,
-                    doRandom=True,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=isomeric_smiles,
+                    ),
                 )
 
                 self.assertEqual(omitted, explicit_minus_one)

@@ -1063,6 +1063,76 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_dative_bond_direction_surfaces(self) -> None:
+        # Regression pinned to RDKit catch_tests github #3774:
+        # serializer output must preserve dative-bond direction, and rooting
+        # flips which side of the arrow is emitted first.
+        source = (
+            "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+            " github #3774 MolToSmarts inverts direction of dative bond"
+        )
+        cases = (
+            (
+                "[NH3][Cu+]",
+                -1,
+                {"[Cu+]<-[NH3]", "[NH3]->[Cu+]"},
+                ("->", "<-", "[Cu+]", "[NH3]"),
+            ),
+            (
+                "[NH3][Cu+]",
+                0,
+                {"[NH3]->[Cu+]"},
+                ("->", "[Cu+]", "[NH3]"),
+            ),
+            (
+                "[NH3][Cu+]",
+                1,
+                {"[Cu+]<-[NH3]"},
+                ("<-", "[Cu+]", "[NH3]"),
+            ),
+            (
+                "[NH2]<-[Cu+]",
+                -1,
+                {"[Cu+]->[NH2]", "[NH2]<-[Cu+]"},
+                ("->", "<-", "[Cu+]", "[NH2]"),
+            ),
+            (
+                "[NH2]<-[Cu+]",
+                0,
+                {"[NH2]<-[Cu+]"},
+                ("<-", "[Cu+]", "[NH2]"),
+            ),
+            (
+                "[NH2]<-[Cu+]",
+                1,
+                {"[Cu+]->[NH2]"},
+                ("->", "[Cu+]", "[NH2]"),
+            ),
+        )
+        for smiles, rooted_at_atom, expected_support, expected_inventory in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles, rooted_at_atom=rooted_at_atom):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

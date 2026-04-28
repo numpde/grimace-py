@@ -9,6 +9,27 @@
       "expected_inventory": ["(", ")", "C", "O"]
     },
     {
+      "smiles": "[Na+].C#N",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["[Na+].C#N", "[Na+].N#C"],
+      "expected_inventory": ["#", ".", "C", "N", "[Na+]"]
+    },
+    {
+      "smiles": "CO.CCO",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["CO.C(C)O", "CO.C(O)C", "CO.CCO", "CO.OCC"],
+      "expected_inventory": ["(", ")", ".", "C", "O"]
+    },
+    {
+      "smiles": "CO.CCO",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected": ["CO.CCO", "OC.CCO"],
+      "expected_inventory": [".", "C", "O"]
+    },
+    {
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
@@ -54,6 +75,27 @@
       "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F"]
     },
     {
+      "smiles": "C/C=C\\Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": ["C(=CCl)C", "C(C)=CCl"],
+      "expected_inventory": ["(", ")", "=", "C", "Cl"]
+    },
+    {
+      "smiles": "C/C=C\\Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected": ["C(/C)=C/Cl", "C(=C/Cl)/C"],
+      "expected_inventory": ["(", ")", "/", "=", "C", "Cl"]
+    },
+    {
+      "smiles": "F[C@H](Cl)Br",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["FC(Br)Cl", "FC(Cl)Br"],
+      "expected_inventory": ["(", ")", "Br", "C", "Cl", "F"]
+    },
+    {
       "smiles": "F[C@H](Cl)Br",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
@@ -65,6 +107,13 @@
         "[C@H](Cl)(F)Br",
         "[C@H](F)(Br)Cl"
       ],
+      "expected_inventory": ["(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"]
+    },
+    {
+      "smiles": "F[C@H](Cl)Br",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": true,
+      "expected": ["Cl[C@@H](F)Br", "Cl[C@H](Br)F"],
       "expected_inventory": ["(", ")", "Br", "Cl", "F", "[C@@H]", "[C@H]"]
     },
     {

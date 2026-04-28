@@ -1,0 +1,133 @@
+Test suite structure and current blind spots
+===========================================
+
+Snapshot
+--------
+
+- Rust core tests:
+  - live in the Rust modules and run through `cargo test --lib`
+  - current count: 39
+- Python tests:
+  - live under `tests/`
+  - current count: 172 test methods
+
+Python suite by intent
+----------------------
+
+- `tests/contract/`
+  - package/export invariants
+  - default dataset and policy metadata
+  - prepared-graph schema and shape validation
+  - reference artifact structure
+
+- `tests/reference/`
+  - pure-Python/reference prepared-graph, walker, and enumerator behavior
+  - RDKit random-sampling helper reproducibility
+  - acts as the main non-kernel oracle layer
+
+- `tests/parity/`
+  - Rust kernel versus Python/reference parity
+  - prepared-graph parity
+  - stereo and nonstereo enumerator parity
+  - stereo and nonstereo walker parity
+
+- `tests/integration/`
+  - top-level API smoke behavior
+  - public decoder behavior and reachable-output invariants
+  - token inventory behavior
+  - public writer-flag behavior
+  - compiled-extension smoke tests
+  - dataset-backed kernel checks
+  - local script smoke tests
+  - RDKit regression miner behavior
+
+- `tests/rdkit_serialization/`
+  - RDKit-derived writer conformance checks
+  - rooted random support semantics
+  - disconnected behavior
+  - chirality and bond-token handling
+  - writer-flag behavior and dataset regressions
+
+- `tests/perf/`
+  - opt-in timing checks only
+  - kernel timing probes
+  - README timing table generation/verification
+
+What the suite is good at
+-------------------------
+
+- Catching package/runtime coupling bugs.
+  - wheel and sdist installation are smoke-tested in CI.
+  - bundled reference data is exercised from installed artifacts.
+
+- Catching public-contract drift.
+  - `test_python_api_smoke.py` now covers most public argument-validation and
+    RDKit-parity edge cases.
+  - decoder and inventory surface behavior are covered directly.
+
+- Catching Rust/Python drift.
+  - the parity layer compares kernel behavior against the Python/reference
+    layer on curated stereo and nonstereo slices.
+
+- Catching RDKit-convention drift on representative writer cases.
+  - rooted-random, writer-flag, disconnected, and stereo-sensitive cases are
+    checked against RDKit-derived expectations.
+
+- Catching prepared-graph shape/schema regressions.
+  - both Rust and Python layers validate graph metadata and token surfaces.
+
+How CI executes it
+------------------
+
+- `cargo test --lib` on Linux.
+- full Python source-tree suite on Linux / Python 3.12.
+- built wheel smoke tests on Linux / Python 3.12 and 3.13.
+- built sdist smoke tests on Linux / Python 3.12.
+- perf tests are excluded from default CI and only run when
+  `RUN_PERF_TESTS=1`.
+
+Current blind spots
+-------------------
+
+1. Installed-artifact coverage is still shallow.
+   CI installs the wheel and sdist, but only runs the smoke suite there, not
+   the full decoder/parity/RDKit-conformance matrix.
+
+2. Platform coverage is narrow.
+   CI is Linux-only. There is no automated macOS or Windows execution, and no
+   exercised Python 3.11 lane.
+
+3. Perf regressions are not gated.
+   The perf suite is opt-in, which is correct for stability, but it means
+   timing regressions are not caught automatically.
+
+4. RDKit-version drift is only partially enforced.
+   Some RDKit-backed fixture checks skip when the local RDKit version differs
+   from the fixture version. That avoids false failures, but also means exact
+   cross-version stability is not continuously proven.
+
+5. Coverage breadth is curated rather than generative.
+   The suite is strong on representative and adversarial hand-picked cases,
+   but there is no fuzz/property layer over large random molecule families.
+
+6. Concurrency and resource-stress behavior are mostly untested.
+   There is little to no explicit coverage for:
+   - parallel decoder use
+   - thread-safety expectations
+   - long-running memory/resource behavior on very large supports
+
+7. Public docs/examples are only partially executable.
+   Some examples are exercised indirectly by smoke tests, but there is no full
+   “every README/API snippet runs as written” harness.
+
+8. Installed-script surface is only smoke-tested.
+   Local helper scripts are checked for import/execution basics, but not with a
+   broader behavioral matrix from installed artifacts.
+
+Highest-value next upgrades
+---------------------------
+
+1. Run a broader installed-artifact suite than just `test_python_api_smoke`.
+2. Add one non-Linux CI lane.
+3. Add a small fuzz/property layer for rooted-random parity.
+4. Add executable-doc tests for public README/API snippets.

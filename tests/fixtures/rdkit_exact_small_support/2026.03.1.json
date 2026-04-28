@@ -51,6 +51,15 @@
       "expected_inventory": ["1", "=", "C", "N"]
     },
     {
+      "id": "benzene_root0_all_bonds_explicit",
+      "smiles": "c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": ["c1:c:c:c:c:c:1"],
+      "expected_inventory": ["1", ":", "c"]
+    },
+    {
       "id": "acetonitrile_root1_nonstereo",
       "smiles": "CC#N",
       "rooted_at_atom": 1,
@@ -101,6 +110,14 @@
       "expected_inventory": ["(", ")", "/", "=", "C", "Cl"]
     },
     {
+      "id": "fluorochloroimine_root1_stereo",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected": ["C(/F)=N\\Cl", "C(=N\\Cl)/F"],
+      "expected_inventory": ["(", ")", "/", "=", "C", "Cl", "F", "N", "\\"]
+    },
+    {
       "id": "bromochlorofluoromethane_root0_nonstereo",
       "smiles": "F[C@H](Cl)Br",
       "rooted_at_atom": 0,
@@ -138,6 +155,14 @@
       "isomeric_smiles": false,
       "expected": ["[Cu]<-[NH3]"],
       "expected_inventory": ["<-", "[Cu]", "[NH3]"]
+    },
+    {
+      "id": "ammine_copper_root0_dative",
+      "smiles": "[NH3][Cu]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected": ["[NH3]->[Cu]"],
+      "expected_inventory": ["->", "[Cu]", "[NH3]"]
     },
     {
       "id": "ethyl_atom_maps_ignored",

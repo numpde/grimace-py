@@ -1208,6 +1208,134 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_fragment_and_ring_output_order_surfaces(self) -> None:
+        # Regression pinned to RDKit catch_tests smilesBondOutputOrder:
+        # exact support must preserve fragment-local writer traversal and ring
+        # closure ordering for these small non-canonical examples.
+        cases = (
+            (
+                "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+                " smilesBondOutputOrder basics",
+                "OCCN.CCO",
+                -1,
+                {
+                    "C(CN)O.C(C)O",
+                    "C(CN)O.C(O)C",
+                    "C(CN)O.CCO",
+                    "C(CN)O.OCC",
+                    "C(CO)N.C(C)O",
+                    "C(CO)N.C(O)C",
+                    "C(CO)N.CCO",
+                    "C(CO)N.OCC",
+                    "C(N)CO.C(C)O",
+                    "C(N)CO.C(O)C",
+                    "C(N)CO.CCO",
+                    "C(N)CO.OCC",
+                    "C(O)CN.C(C)O",
+                    "C(O)CN.C(O)C",
+                    "C(O)CN.CCO",
+                    "C(O)CN.OCC",
+                    "NCCO.C(C)O",
+                    "NCCO.C(O)C",
+                    "NCCO.CCO",
+                    "NCCO.OCC",
+                    "OCCN.C(C)O",
+                    "OCCN.C(O)C",
+                    "OCCN.CCO",
+                    "OCCN.OCC",
+                },
+                ("(", ")", ".", "C", "N", "O"),
+            ),
+            (
+                "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+                " smilesBondOutputOrder basics rooted first fragment",
+                "OCCN.CCO",
+                0,
+                {
+                    "OCCN.C(C)O",
+                    "OCCN.C(O)C",
+                    "OCCN.CCO",
+                    "OCCN.OCC",
+                },
+                ("(", ")", ".", "C", "N", "O"),
+            ),
+            (
+                "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+                " smilesBondOutputOrder basics rooted second fragment",
+                "OCCN.CCO",
+                4,
+                {
+                    "C(CN)O.CCO",
+                    "C(CO)N.CCO",
+                    "C(N)CO.CCO",
+                    "C(O)CN.CCO",
+                    "NCCO.CCO",
+                    "OCCN.CCO",
+                },
+                ("(", ")", ".", "C", "N", "O"),
+            ),
+            (
+                "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+                " github #5585 incorrect ordering for ring closures",
+                "OC1CCCN1",
+                -1,
+                {
+                    "C1(CCCN1)O",
+                    "C1(NCCC1)O",
+                    "C1(O)CCCN1",
+                    "C1(O)NCCC1",
+                    "C1C(NCC1)O",
+                    "C1C(O)NCC1",
+                    "C1CC(NC1)O",
+                    "C1CC(O)NC1",
+                    "C1CCC(N1)O",
+                    "C1CCC(O)N1",
+                    "C1CCNC1O",
+                    "C1CNC(C1)O",
+                    "C1CNC(O)C1",
+                    "C1NC(CC1)O",
+                    "C1NC(O)CC1",
+                    "N1C(CCC1)O",
+                    "N1C(O)CCC1",
+                    "N1CCCC1O",
+                    "OC1CCCN1",
+                    "OC1NCCC1",
+                },
+                ("(", ")", "1", "C", "N", "O"),
+            ),
+            (
+                "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+                " github #5585 incorrect ordering for ring closures rooted",
+                "OC1CCCN1",
+                0,
+                {"OC1CCCN1", "OC1NCCC1"},
+                ("1", "C", "N", "O"),
+            ),
+        )
+        for source, smiles, rooted_at_atom, expected_support, expected_inventory in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles, rooted_at_atom=rooted_at_atom):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

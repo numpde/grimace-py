@@ -722,6 +722,159 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_benzene_and_pyridine_aromatic_normalization(self) -> None:
+        # Regression pinned to the aromatic normalization cases immediately
+        # before RDKit SmilesDetailsTests.testBug1842174.
+        cases = (
+            (
+                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+                "SmilesDetailsTests.java:1113-1120",
+                "[CH]1=[CH][CH]=[CH][CH]=[CH]1",
+                {"c1ccccc1"},
+                ("1", "c"),
+            ),
+            (
+                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+                "SmilesDetailsTests.java:1119-1120",
+                "c1ccccn1",
+                {"c1ccccn1", "c1cccnc1", "c1ccncc1", "c1cnccc1", "c1ncccc1", "n1ccccc1"},
+                ("1", "c", "n"),
+            ),
+        )
+        for source, smiles, expected_support, expected_inventory in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+
+    def test_rooted_chirality_surfaces(self) -> None:
+        # Regression pinned to RDKit rough_test.test31ChiralitySmiles:
+        # rooted writing on tetrahedral stereocenters and small chiral rings
+        # must preserve the rooted branch/ring surface family.
+        cases = (
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
+                "F[C@](Br)(I)Cl",
+                1,
+                {
+                    "[C@@](Br)(Cl)(F)I",
+                    "[C@@](Br)(F)(I)Cl",
+                    "[C@@](Br)(I)(Cl)F",
+                    "[C@@](Cl)(Br)(I)F",
+                    "[C@@](Cl)(F)(Br)I",
+                    "[C@@](Cl)(I)(F)Br",
+                    "[C@@](F)(Br)(Cl)I",
+                    "[C@@](F)(Cl)(I)Br",
+                    "[C@@](F)(I)(Br)Cl",
+                    "[C@@](I)(Br)(F)Cl",
+                    "[C@@](I)(Cl)(Br)F",
+                    "[C@@](I)(F)(Cl)Br",
+                    "[C@](Br)(Cl)(I)F",
+                    "[C@](Br)(F)(Cl)I",
+                    "[C@](Br)(I)(F)Cl",
+                    "[C@](Cl)(Br)(F)I",
+                    "[C@](Cl)(F)(I)Br",
+                    "[C@](Cl)(I)(Br)F",
+                    "[C@](F)(Br)(I)Cl",
+                    "[C@](F)(Cl)(Br)I",
+                    "[C@](F)(I)(Cl)Br",
+                    "[C@](I)(Br)(Cl)F",
+                    "[C@](I)(Cl)(F)Br",
+                    "[C@](I)(F)(Br)Cl",
+                },
+                ("(", ")", "Br", "Cl", "F", "I", "[C@@]", "[C@]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
+                "CC1C[C@@]1(Cl)F",
+                1,
+                {
+                    "C1(C)C[C@@]1(Cl)F",
+                    "C1(C)C[C@]1(F)Cl",
+                    "C1(C)[C@@](C1)(F)Cl",
+                    "C1(C)[C@@](Cl)(C1)F",
+                    "C1(C)[C@@](F)(Cl)C1",
+                    "C1(C)[C@](C1)(Cl)F",
+                    "C1(C)[C@](Cl)(F)C1",
+                    "C1(C)[C@](F)(C1)Cl",
+                    "C1(C[C@@]1(Cl)F)C",
+                    "C1(C[C@]1(F)Cl)C",
+                    "C1([C@@](C1)(F)Cl)C",
+                    "C1([C@@](Cl)(C1)F)C",
+                    "C1([C@@](F)(Cl)C1)C",
+                    "C1([C@](C1)(Cl)F)C",
+                    "C1([C@](Cl)(F)C1)C",
+                    "C1([C@](F)(C1)Cl)C",
+                },
+                ("(", ")", "1", "C", "Cl", "F", "[C@@]", "[C@]"),
+            ),
+            (
+                "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
+                "CC1C[C@]1(Cl)F",
+                1,
+                {
+                    "C1(C)C[C@@]1(F)Cl",
+                    "C1(C)C[C@]1(Cl)F",
+                    "C1(C)[C@@](C1)(Cl)F",
+                    "C1(C)[C@@](Cl)(F)C1",
+                    "C1(C)[C@@](F)(C1)Cl",
+                    "C1(C)[C@](C1)(F)Cl",
+                    "C1(C)[C@](Cl)(C1)F",
+                    "C1(C)[C@](F)(Cl)C1",
+                    "C1(C[C@@]1(F)Cl)C",
+                    "C1(C[C@]1(Cl)F)C",
+                    "C1([C@@](C1)(Cl)F)C",
+                    "C1([C@@](Cl)(F)C1)C",
+                    "C1([C@@](F)(C1)Cl)C",
+                    "C1([C@](C1)(F)Cl)C",
+                    "C1([C@](Cl)(C1)F)C",
+                    "C1([C@](F)(Cl)C1)C",
+                },
+                ("(", ")", "1", "C", "Cl", "F", "[C@@]", "[C@]"),
+            ),
+        )
+        for source, smiles, rooted_at_atom, expected_support, expected_inventory in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles, rooted_at_atom=rooted_at_atom):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=rooted_at_atom,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

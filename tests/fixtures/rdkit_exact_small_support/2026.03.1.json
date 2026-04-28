@@ -34,12 +34,37 @@
       "expected_inventory": [".", "C", "O"]
     },
     {
+      "id": "co_cco_root3_disconnected",
+      "smiles": "CO.CCO",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": false,
+      "expected": ["CO.C(C)O", "CO.C(O)C", "OC.C(C)O", "OC.C(O)C"],
+      "expected_inventory": ["(", ")", ".", "C", "O"]
+    },
+    {
+      "id": "co_cco_root4_disconnected",
+      "smiles": "CO.CCO",
+      "rooted_at_atom": 4,
+      "isomeric_smiles": false,
+      "expected": ["CO.OCC", "OC.OCC"],
+      "expected_inventory": [".", "C", "O"]
+    },
+    {
       "id": "pyridine_root1_nonstereo",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
       "expected": ["c1cccnc1", "c1cnccc1"],
       "expected_inventory": ["1", "c", "n"]
+    },
+    {
+      "id": "pyridine_root1_all_bonds_explicit",
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": ["c1:c:c:c:n:c:1", "c1:c:n:c:c:c:1"],
+      "expected_inventory": ["1", ":", "c", "n"]
     },
     {
       "id": "pyridine_root0_kekule",
@@ -49,6 +74,16 @@
       "kekule_smiles": true,
       "expected": ["C1=CC=NC=C1", "C1C=CN=CC=1"],
       "expected_inventory": ["1", "=", "C", "N"]
+    },
+    {
+      "id": "pyridine_root1_kekule_all_bonds_explicit",
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "kekule_smiles": true,
+      "all_bonds_explicit": true,
+      "expected": ["C1-C=N-C=C-C=1", "C1=C-C=C-N=C-1"],
+      "expected_inventory": ["-", "1", "=", "C", "N"]
     },
     {
       "id": "benzene_root0_all_bonds_explicit",

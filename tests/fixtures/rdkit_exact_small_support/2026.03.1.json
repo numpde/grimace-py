@@ -50,6 +50,54 @@
       "expected_inventory": [".", "C", "O"]
     },
     {
+      "id": "mapped_fragments_root1_disconnected",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected": [
+        "[C:2][C:1].[C:4][N:3]=[O:5]",
+        "[C:2][C:1].[N:3](=[O:5])[C:4]",
+        "[C:2][C:1].[N:3]([C:4])=[O:5]",
+        "[C:2][C:1].[O:5]=[N:3][C:4]"
+      ],
+      "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+    },
+    {
+      "id": "mapped_fragments_root2_disconnected",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected": [
+        "[C:1][C:2].[N:3](=[O:5])[C:4]",
+        "[C:1][C:2].[N:3]([C:4])=[O:5]",
+        "[C:2][C:1].[N:3](=[O:5])[C:4]",
+        "[C:2][C:1].[N:3]([C:4])=[O:5]"
+      ],
+      "expected_inventory": ["(", ")", ".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+    },
+    {
+      "id": "mapped_fragments_root3_disconnected",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": false,
+      "expected": [
+        "[C:1][C:2].[C:4][N:3]=[O:5]",
+        "[C:2][C:1].[C:4][N:3]=[O:5]"
+      ],
+      "expected_inventory": [".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+    },
+    {
+      "id": "mapped_fragments_root4_disconnected",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 4,
+      "isomeric_smiles": false,
+      "expected": [
+        "[C:1][C:2].[O:5]=[N:3][C:4]",
+        "[C:2][C:1].[O:5]=[N:3][C:4]"
+      ],
+      "expected_inventory": [".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"]
+    },
+    {
       "id": "pyridine_root1_nonstereo",
       "smiles": "c1ccncc1",
       "rooted_at_atom": 1,

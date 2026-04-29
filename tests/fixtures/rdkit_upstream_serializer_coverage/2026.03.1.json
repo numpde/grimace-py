@@ -5575,7 +5575,16 @@
     {
       "claim": "complex-fused-alkaloid-stereochemistry-roundtrip",
       "end_line": 1212,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "canonical_chirality_07_bug1844617_fused_alkaloid",
+            "canonical_chirality_08_bug1844617_multicenter_fused_alkaloid"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/10_chirality.json",
+          "note": "The Java test checks canonical isomeric round-trip stability; membership fixtures pin both canonical RDKit outputs and confirm they are in Grimace support."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1844617",
       "kind": "java_test",
       "language": "java",
@@ -5583,11 +5592,11 @@
         "MolToSmiles"
       ],
       "name": "testBug1844617",
-      "notes": "Complex fused alkaloid stereochemistry round-trip cases are not yet represented by pinned Grimace fixtures.",
+      "notes": "Complex fused alkaloid canonical isomeric round-trip outputs are represented by writer-membership fixtures. Exact all-roots supports are intentionally not pinned here because this upstream test is not an exact random-support enumeration test.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "ecbd5178b37f6aff7eca6c7a3ef53798d02f3a74c5137095b8eb71664a7481a9",
       "start_line": 1162,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

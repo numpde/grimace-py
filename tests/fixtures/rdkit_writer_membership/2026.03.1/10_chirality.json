@@ -54,6 +54,24 @@
       "rooted_at_atom": null,
       "isomeric_smiles": true,
       "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_07_bug1844617_fused_alkaloid",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1844617 first fused alkaloid",
+      "smiles": "O=C1C2OCC[C@@]22C(CC1)CNCC2",
+      "expected": "O=C1CCC2CNCC[C@]23CCOC13",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_08_bug1844617_multicenter_fused_alkaloid",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1844617 second fused alkaloid",
+      "smiles": "O=C1CC[C@@]2(O)[C@@H]3N(C)CC[C@]22[C@H]1OC[C@H]2CC3",
+      "expected": "CN1CC[C@@]23[C@@H]4CC[C@@H]1[C@]2(O)CCC(=O)[C@@H]3OC4",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
     }
   ]
 }

@@ -5190,7 +5190,7 @@
         "MolToSmiles"
       ],
       "name": "testIssue185",
-      "notes": "Root-0 branched imine E/Z case C(/C)=N/O is not yet represented by an exact Grimace fixture.",
+      "notes": "Rooted branched imine E/Z case is not yet represented by an exact Grimace fixture. RDKit 2026.03.1 emits slash-oriented rooted random outputs for C(/C)=N/O, while current Grimace emits the opposite backslash-oriented convention for the same roots; fix directional token parity before pinning this as a passing fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "e18bf6b52e101cfa798de76368e91e10b9ce502d64e0fa0e864c4fd75329ab20",
       "start_line": 924,

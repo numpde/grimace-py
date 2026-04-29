@@ -316,5 +316,71 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
         self.assertEqual([True, False], [case.validate_support for case in cases])
 
 
+class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
+    def test_disconnected_root_zero_fixture_rejects_bad_case_list(self) -> None:
+        invalid_payloads = (
+            {"cases": "CC.O"},
+            {"cases": []},
+            {"cases": ["CC.O", "CC.O"]},
+            {"cases": ["CC.O", ""]},
+            {"cases": ["CC.O", 123]},
+        )
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fixture_path = Path(tmpdir) / "root_zero_smiles.json"
+                    _write_json(fixture_path, payload)
+
+                    with self.assertRaises(ValueError):
+                        load_disconnected_root_zero_smiles(fixture_path)
+
+    def test_steroid_ring_coupled_component_fixture_rejects_bad_fields(self) -> None:
+        valid_payload = {
+            "input_smiles": "CC",
+            "rooted_at_atom": 0,
+            "expected_member": "CC",
+            "rejected_member": "C.C",
+        }
+        invalid_overrides = (
+            {"input_smiles": ""},
+            {"rooted_at_atom": "0"},
+            {"expected_member": ""},
+            {"rejected_member": ""},
+        )
+        for override in invalid_overrides:
+            with self.subTest(override=override):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fixture_path = Path(tmpdir) / "steroid.json"
+                    payload = {**valid_payload, **override}
+                    _write_json(fixture_path, payload)
+
+                    with self.assertRaises(ValueError):
+                        load_steroid_ring_coupled_component_regression(fixture_path)
+
+    def test_stereo_expected_member_fixture_rejects_bad_case_fields(self) -> None:
+        valid_case = {
+            "id": "case_a",
+            "input_smiles": "CC",
+            "rooted_at_atom": 0,
+            "expected_member": "CC",
+            "validate_support": True,
+        }
+        invalid_payloads = (
+            {"cases": []},
+            {"cases": "case_a"},
+            {"cases": [{**valid_case, "id": ""}]},
+            {"cases": [{**valid_case, "rooted_at_atom": "0"}]},
+            {"cases": [{**valid_case, "validate_support": "true"}]},
+        )
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fixture_path = Path(tmpdir) / "rooted_membership.json"
+                    _write_json(fixture_path, payload)
+
+                    with self.assertRaises(ValueError):
+                        load_stereo_expected_member_regressions(fixture_path)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1553,6 +1553,112 @@
         "C1[C@](Cl)(C1C)F",
         "C1[C@](F)(Cl)C1C"
       ]
+    },
+    {
+      "id": "molblock_chiral4_neutral_nitrogen_root1",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral4 neutral N",
+      "molblock": "chiral4.mol\n  ChemDraw10160314362D\n\n  4  3  0  0  0  0  0  0  0  0999 V2000\n    0.4125    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n    0.4125   -0.2062    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.3020   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4125   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0\n  2  3  1  1\n  2  4  1  0\nM  END\n",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "N"
+      ],
+      "expected": [
+        "N(Br)(Cl)F",
+        "N(Br)(F)Cl",
+        "N(Cl)(Br)F",
+        "N(Cl)(F)Br",
+        "N(F)(Br)Cl",
+        "N(F)(Cl)Br"
+      ]
+    },
+    {
+      "id": "molblock_chiral4_neutral_nitrogen_all_roots",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral4 neutral N",
+      "molblock": "chiral4.mol\n  ChemDraw10160314362D\n\n  4  3  0  0  0  0  0  0  0  0999 V2000\n    0.4125    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n    0.4125   -0.2062    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.3020   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4125   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0\n  2  3  1  1\n  2  4  1  0\nM  END\n",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "N"
+      ],
+      "expected": [
+        "BrN(Cl)F",
+        "BrN(F)Cl",
+        "ClN(Br)F",
+        "ClN(F)Br",
+        "FN(Br)Cl",
+        "FN(Cl)Br",
+        "N(Br)(Cl)F",
+        "N(Br)(F)Cl",
+        "N(Cl)(Br)F",
+        "N(Cl)(F)Br",
+        "N(F)(Br)Cl",
+        "N(F)(Cl)Br"
+      ]
+    },
+    {
+      "id": "molblock_chiral5_ammonium_nitrogen_root1",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral5 ammonium",
+      "molblock": "chiral5.mol\n  ChemDraw10160314362D\n\n  4  3  0  0  0  0  0  0  0  0999 V2000\n    0.4125    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n    0.4125   -0.2062    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.3020   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4125   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0\n  2  3  1  1\n  2  4  1  0\nM  CHG  1   2   1\nM  END\n",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "[N@@H+]",
+        "[N@H+]"
+      ],
+      "expected": [
+        "[N@@H+](Br)(F)Cl",
+        "[N@@H+](Cl)(Br)F",
+        "[N@@H+](F)(Cl)Br",
+        "[N@H+](Br)(Cl)F",
+        "[N@H+](Cl)(F)Br",
+        "[N@H+](F)(Br)Cl"
+      ]
+    },
+    {
+      "id": "molblock_chiral5_ammonium_nitrogen_all_roots",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:_test32MolFilesWithChirality chiral5 ammonium",
+      "molblock": "chiral5.mol\n  ChemDraw10160314362D\n\n  4  3  0  0  0  0  0  0  0  0999 V2000\n    0.4125    0.6188    0.0000 F   0  0  0  0  0  0  0  0  0  0  0  0\n    0.4125   -0.2062    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.3020   -0.6188    0.0000 Br  0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4125   -0.2062    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0\n  2  3  1  1\n  2  4  1  0\nM  CHG  1   2   1\nM  END\n",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "[N@@H+]",
+        "[N@H+]"
+      ],
+      "expected": [
+        "Br[N@@H+](Cl)F",
+        "Br[N@H+](F)Cl",
+        "Cl[N@@H+](F)Br",
+        "Cl[N@H+](Br)F",
+        "F[N@@H+](Br)Cl",
+        "F[N@H+](Cl)Br",
+        "[N@@H+](Br)(F)Cl",
+        "[N@@H+](Cl)(Br)F",
+        "[N@@H+](F)(Cl)Br",
+        "[N@H+](Br)(Cl)F",
+        "[N@H+](Cl)(F)Br",
+        "[N@H+](F)(Br)Cl"
+      ]
     }
   ]
 }

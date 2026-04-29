@@ -3545,7 +3545,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "python-wrapper-molops-smoke",
       "end_line": 360,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test11molops",
@@ -3555,15 +3555,15 @@
         "MolToSmiles"
       ],
       "name": "test11MolOps",
-      "notes": "",
+      "notes": "MolToSmiles result is unused; the test exercises sanitization and ring-finding wrapper behavior.",
       "parent": "TestCase",
       "snippet_sha256": "85d18bf72ee27bd90f3cac6618eab6e9bf4b0ebb3daa692edce98a7f2584a484",
       "start_line": 352,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "pickle-roundtrip-wrapper-smoke",
       "end_line": 542,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test16pickle",
@@ -3573,15 +3573,15 @@
         "MolToSmiles"
       ],
       "name": "test16Pickle",
-      "notes": "",
+      "notes": "Uses MolToSmiles only to compare a molecule with its pickle round-trip, not to pin writer output.",
       "parent": "TestCase",
       "snippet_sha256": "0178ba92d419df3923a70785844170996b4caa0ecb14ed503748f5c23dd68441",
       "start_line": 527,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekulize-wrapper-canonical-smoke",
       "end_line": 654,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test17kekulize",
@@ -3591,15 +3591,15 @@
         "MolToSmiles"
       ],
       "name": "test17Kekulize",
-      "notes": "",
+      "notes": "Checks RDKit Kekulize mutation plus default canonical MolToSmiles output; Grimace targets noncanonical random writer support.",
       "parent": "TestCase",
       "snippet_sha256": "172bd404a9b856f0e66a4582b27b05516d1f03af3490f7f11b710c62a38368c1",
       "start_line": 639,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "python-wrapper-molops-smoke",
       "end_line": 859,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test22deletesubstruct",
@@ -3609,11 +3609,11 @@
         "MolToSmiles"
       ],
       "name": "test22DeleteSubstruct",
-      "notes": "",
+      "notes": "Uses MolToSmiles as an oracle for DeleteSubstructs results, not as a standalone serializer regression.",
       "parent": "TestCase",
       "snippet_sha256": "9837aa2cb56170157dc74a6dfeba901f2e2908cad0bc49ef40de1da891ecce38",
       "start_line": 832,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3636,7 +3636,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "explicit-h-parser-canonical-equivalence",
       "end_line": 1373,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test30issues109and110",
@@ -3646,15 +3646,15 @@
         "MolToSmiles"
       ],
       "name": "test30Issues109and110",
-      "notes": "",
+      "notes": "Exercises explicit-H parser handling and canonical equivalence; not a supported Grimace noncanonical writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "8cad77d087f6c9df9e75cad5872cc2802c8f667052afd274fbf370183bd73c83",
       "start_line": 1349,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-isomeric-wrapper-behavior",
       "end_line": 1389,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test31chiralitysmiles",
@@ -3664,15 +3664,15 @@
         "MolToSmiles"
       ],
       "name": "test31ChiralitySmiles",
-      "notes": "",
+      "notes": "Pins default canonical isomeric writer strings from Python wrapper tests; Grimace does not target canonical writer output.",
       "parent": "TestCase",
       "snippet_sha256": "5fa6683612a61bc7388a77293574d7dbc2f2ff6c167d9ab7c41bbe9a7f562192",
       "start_line": 1375,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-isomeric-substructure-wrapper-behavior",
       "end_line": 1405,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test31achiralitysubstructs",
@@ -3682,11 +3682,11 @@
         "MolToSmiles"
       ],
       "name": "test31aChiralitySubstructs",
-      "notes": "",
+      "notes": "Combines canonical isomeric writer checks with substructure matching behavior, outside Grimace writer support.",
       "parent": "TestCase",
       "snippet_sha256": "fda50ba84d380f928cc76e13af7a96f75f5f3b3351f4ae21bc891c838d201b97",
       "start_line": 1391,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3747,7 +3747,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "manual-mutated-bond-stereo-writer",
       "end_line": 2026,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
@@ -3757,11 +3757,11 @@
         "MolToSmiles"
       ],
       "name": "testBondSetStereoAtoms",
-      "notes": "",
+      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces; this mutated-molecule writer behavior is not yet pinned.",
       "parent": "TestCase",
       "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
       "start_line": 1983,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3835,7 +3835,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "replacecore-wrapper-smoke",
       "end_line": 2360,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test46replacecore",
@@ -3845,15 +3845,15 @@
         "MolToSmiles"
       ],
       "name": "test46ReplaceCore",
-      "notes": "",
+      "notes": "Uses MolToSmiles to check Chem.ReplaceCore products, not direct serializer behavior for an input molecule.",
       "parent": "TestCase",
       "snippet_sha256": "0513f44ccbf22f33cfcab4ceaada70933c96a6e8199b723e756720dcd718b9c1",
       "start_line": 2276,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rwmol-mutation-wrapper-smoke",
       "end_line": 2452,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test47rwmols",
@@ -3863,11 +3863,11 @@
         "MolToSmiles"
       ],
       "name": "test47RWMols",
-      "notes": "",
+      "notes": "Uses MolToSmiles after RWMol/EditMol mutations and property checks; mutation API behavior is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "fa21b221a8e077b7079ac619b7894cacdc073539313e09c547af8f90c80ce1bb",
       "start_line": 2362,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3890,7 +3890,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "mol2-parser-wrapper-smoke",
       "end_line": 2683,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test54mol2parser",
@@ -3900,15 +3900,15 @@
         "MolToSmiles"
       ],
       "name": "test54Mol2Parser",
-      "notes": "",
+      "notes": "Uses MolToSmiles to validate Mol2 parser cleanup behavior, not serializer parity.",
       "parent": "TestCase",
       "snippet_sha256": "8884ed9f6ac8c7ae23f13ab2b2f20351eb65d00563a9f01b7175319d28692513",
       "start_line": 2664,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "owning-mol-lifetime-wrapper-smoke",
       "end_line": 2801,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test59issue3007178",
@@ -3918,11 +3918,11 @@
         "MolToSmiles"
       ],
       "name": "test59Issue3007178",
-      "notes": "",
+      "notes": "Uses MolToSmiles to check atom/bond owning-molecule lifetime behavior.",
       "parent": "TestCase",
       "snippet_sha256": "0d703d9b8bd9c7d0205d98628f6de3ed6e9d412afcc6dee9d0552398c791d256",
       "start_line": 2792,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3999,7 +3999,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "murcko-decompose-wrapper-smoke",
       "end_line": 3333,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test81issue275",
@@ -4009,15 +4009,15 @@
         "MolToSmiles"
       ],
       "name": "test81Issue275",
-      "notes": "",
+      "notes": "Uses MolToSmiles to check MurckoDecompose output, not direct serializer behavior.",
       "parent": "TestCase",
       "snippet_sha256": "98b50e21f0066d6c050d870cc8a80e0e3a22907a95e85f8194eec5634c0e3462",
       "start_line": 3330,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "atom-map-dummy-smiles",
       "end_line": 3345,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test82issue288",
@@ -4027,15 +4027,15 @@
         "MolToSmiles"
       ],
       "name": "test82Issue288",
-      "notes": "",
+      "notes": "Pins MolToSmiles output for a mapped dummy atom; this writer surface is not yet represented in Grimace fixtures.",
       "parent": "TestCase",
       "snippet_sha256": "d221f8b6032763ef67aa24b7480329f21eaa5977173c82535f6432e1b6c10ced",
       "start_line": 3335,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molecule-copy-wrapper-smoke",
       "end_line": 3484,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test85molcopying",
@@ -4045,15 +4045,15 @@
         "MolToSmiles"
       ],
       "name": "test85MolCopying",
-      "notes": "",
+      "notes": "Uses MolToSmiles to compare copied molecules; copying/property behavior is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "04be6cf2f429e9d4190cc7515379355373b18517f9e59af5d9eb9b4e8e40be0c",
       "start_line": 3475,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-renumbering-invariance",
       "end_line": 3533,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test86molrenumbering",
@@ -4063,15 +4063,15 @@
         "MolToSmiles"
       ],
       "name": "test86MolRenumbering",
-      "notes": "",
+      "notes": "Checks canonical isomeric output invariance under atom renumbering; Grimace does not target canonical writer behavior.",
       "parent": "TestCase",
       "snippet_sha256": "32bf9011ad18619570296070672a06274b357d23a42ed61157689edca7ad0a90",
       "start_line": 3524,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "fragment-dummy-label-smiles",
       "end_line": 3578,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test87fragmentonbonds",
@@ -4081,15 +4081,15 @@
         "MolToSmiles"
       ],
       "name": "test87FragmentOnBonds",
-      "notes": "",
+      "notes": "Pins MolToSmiles output for FragmentOnBonds products with dummy labels and bond types; not yet represented in Grimace fixtures.",
       "parent": "TestCase",
       "snippet_sha256": "76d3cfc592c5ed3f5b8663ad54eddbc901ebc00e96e8d4c5fc1c1236990e5f35",
       "start_line": 3535,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rwmol-romol-wrapper-smoke",
       "end_line": 3746,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test93rwmolsasromol",
@@ -4099,15 +4099,15 @@
         "MolToSmiles"
       ],
       "name": "test93RWMolsAsROMol",
-      "notes": "",
+      "notes": "Compares RWMol and ROMol wrapper views using MolToSmiles; wrapper type behavior is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "d1b05870a817383f5c528b1e9542e70f18369f4b223c63465021e9004d630853",
       "start_line": 3736,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rwmol-mutation-wrapper-smoke",
       "end_line": 3943,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testreplacebond",
@@ -4117,11 +4117,11 @@
         "MolToSmiles"
       ],
       "name": "testReplaceBond",
-      "notes": "",
+      "notes": "Uses MolToSmiles to confirm ReplaceBond mutation effects, not serializer behavior for a stable input.",
       "parent": "TestCase",
       "snippet_sha256": "6eed8aff174485647aecd1b1ea954a4c9c542fd7ba6880c035e38fd052b7edf9",
       "start_line": 3927,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4144,7 +4144,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "sdwriter-roundtrip-wrapper-smoke",
       "end_line": 4748,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgetsdtext",
@@ -4154,15 +4154,15 @@
         "MolToSmiles"
       ],
       "name": "testGetSDText",
-      "notes": "",
+      "notes": "Uses MolToSmiles to compare SDWriter/SDMolSupplier round-trips and properties.",
       "parent": "TestCase",
       "snippet_sha256": "f469945528d3e43f654d534d1fa90a00fa57c7f0c7341c6d4e1e074ebd9b73cb",
       "start_line": 4735,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "supplemental-smiles-label-extension",
       "end_line": 4890,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmilesprops",
@@ -4172,11 +4172,11 @@
         "MolToSmiles"
       ],
       "name": "testSmilesProps",
-      "notes": "",
+      "notes": "Tests RDKit supplemental SMILES labels such as Cxxx, which are not part of Grimace supported output.",
       "parent": "TestCase",
       "snippet_sha256": "f2646096deb2654c33230e8008db7bf8838b7c0704e3f401591816c3afce4bb9",
       "start_line": 4887,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4199,7 +4199,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "pickle-property-roundtrip",
       "end_line": 4991,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testpickleprops",
@@ -4209,11 +4209,11 @@
         "MolToSmiles"
       ],
       "name": "testPickleProps",
-      "notes": "",
+      "notes": "Uses MolToSmiles to compare pickle property round-trips, not direct serializer output.",
       "parent": "TestCase",
       "snippet_sha256": "179bac3870a5fb64b2f13fc2a24a2b4e1ac79e4a6279243327883cea23dfbef9",
       "start_line": 4940,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4236,7 +4236,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "legacy-pickle-property-roundtrip",
       "end_line": 5098,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testoldproppickles",
@@ -4246,11 +4246,11 @@
         "MolToSmiles"
       ],
       "name": "testOldPropPickles",
-      "notes": "",
+      "notes": "Uses MolToSmiles to compare a legacy pickle with a reference molecule; pickle compatibility is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "9152c566f6bbc08dc99145e2624153586fa11e41cc76c88970fcae10194a1480",
       "start_line": 5082,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4302,7 +4302,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "svg-parser-wrapper-smoke",
       "end_line": 5408,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsvgparsing",
@@ -4312,15 +4312,15 @@
         "MolToSmiles"
       ],
       "name": "testSVGParsing",
-      "notes": "",
+      "notes": "Uses MolToSmiles to validate RDKit SVG metadata parsing behavior.",
       "parent": "TestCase",
       "snippet_sha256": "19cfa782312352475beac429fdef6a1f0fe998dc67b0d2e7bd31bfde40b7190a",
       "start_line": 5327,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molblock-2d-chirality-writer",
       "end_line": 5486,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub2082",
@@ -4330,11 +4330,11 @@
         "MolToSmiles"
       ],
       "name": "testGitHub2082",
-      "notes": "",
+      "notes": "Inline molblock chirality perception test checks isomeric MolToSmiles contains chirality; a pinned molblock-backed Grimace fixture would be needed for parity.",
       "parent": "TestCase",
       "snippet_sha256": "a1e653fb924c83ffc358c37f197d77fb9a76cf415429258e1a830887ef824290",
       "start_line": 5459,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4357,7 +4357,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "manual-bond-direction-from-stereo-writer",
       "end_line": 6326,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsetbonddirfromstereo",
@@ -4367,15 +4367,15 @@
         "MolToSmiles"
       ],
       "name": "testSetBondDirFromStereo",
-      "notes": "",
+      "notes": "Manually sets double-bond stereo and derives bond directions before checking MolToSmiles; not yet pinned as a Grimace fixture.",
       "parent": "TestCase",
       "snippet_sha256": "ddc2ff56f28cdd85191a82e375b56f774a44b752803dd09193a387555eeda3e2",
       "start_line": 6319,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "mol-parity-assignment-wrapper-smoke",
       "end_line": 6418,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testassignchiraltypesfrommolparity",
@@ -4385,11 +4385,11 @@
         "MolToSmiles"
       ],
       "name": "testAssignChiralTypesFromMolParity",
-      "notes": "",
+      "notes": "Exercises RDKit atom chiral tag assignment from mol parity and bond permutation stability, not a Grimace writer API surface.",
       "parent": "TestCase",
       "snippet_sha256": "c0ae39d6475c911cc2bc284dbf5cf92b3510f7e1f17f7cc8a50c09d7c66ff7a3",
       "start_line": 6328,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4430,7 +4430,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "png-metadata-parser-wrapper-smoke",
       "end_line": 6895,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolsfrompng",
@@ -4440,15 +4440,15 @@
         "MolToSmiles"
       ],
       "name": "testMolsFromPNG",
-      "notes": "",
+      "notes": "Uses MolToSmiles to compare molecules loaded from PNG metadata; PNG IO is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "b952e4bed3e5e88a787a27ed3d25b72a9ce7e620ae59abc15fc2df56d651ab15",
       "start_line": 6888,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molzip-wrapper-smoke",
       "end_line": 7088,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolzip",
@@ -4458,15 +4458,15 @@
         "MolToSmiles"
       ],
       "name": "testMolzip",
-      "notes": "",
+      "notes": "Uses MolToSmiles to validate Chem.molzip products, not direct serializer behavior.",
       "parent": "TestCase",
       "snippet_sha256": "e224b23f2c359152c4786890aded189caeacb857187e65292c2439f3e5d7ab79",
       "start_line": 7054,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rwmol-insertmol-wrapper-smoke",
       "end_line": 7176,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testinsertmol",
@@ -4476,15 +4476,15 @@
         "MolToSmiles"
       ],
       "name": "testInsertMol",
-      "notes": "",
+      "notes": "Uses MolToSmiles to validate RWMol.InsertMol behavior, outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "59216924b560f0df80c9c2ae201ddc4c7a0997a3fdf4f88a845c70667bd18c42",
       "start_line": 7168,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rwmol-batch-edit-wrapper-smoke",
       "end_line": 7204,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbatchedits",
@@ -4494,11 +4494,11 @@
         "MolToSmiles"
       ],
       "name": "testBatchEdits",
-      "notes": "",
+      "notes": "Uses MolToSmiles to validate RWMol batch edit mutation behavior, outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "edb140f5b753669c32507415fa217646fb62c9a0c88b7c5c59e4193478b5ea72",
       "start_line": 7178,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4574,7 +4574,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfile-parser-stereo-validation",
       "end_line": 7637,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationmol",
@@ -4584,15 +4584,15 @@
         "MolToSmiles"
       ],
       "name": "testValidationMol",
-      "notes": "",
+      "notes": "Checks molfile parser stereo validation and legacy stereo perception using external RDKit test data.",
       "parent": "TestCase",
       "snippet_sha256": "cddb55cc98f407745bf0f8cde2bd31d033882dfb4c1fab2dc961614f64428b7c",
       "start_line": 7574,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "mrv-parser-stereo-validation",
       "end_line": 7655,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationmrv",
@@ -4602,15 +4602,15 @@
         "MolToSmiles"
       ],
       "name": "testValidationMrv",
-      "notes": "",
+      "notes": "Checks MRV parser stereo validation using external RDKit test data.",
       "parent": "TestCase",
       "snippet_sha256": "eb01bdf4058b674649bc86f25676857931c1cf08a07bc2c289c14d0e0e9772ec",
       "start_line": 7639,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "mae-writer-roundtrip",
       "end_line": 7820,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmaewriterroundtrip",
@@ -4620,11 +4620,11 @@
         "MolToSmiles"
       ],
       "name": "testMaeWriterRoundtrip",
-      "notes": "",
+      "notes": "Uses MolToSmiles after MAE writer/parser round-trips; MAE IO is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "8f7de830562b91f51450b28c664391ca22dd22311acfc14363b516e68806be03",
       "start_line": 7806,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4765,7 +4765,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "mae-writer-roundtrip",
       "end_line": 8346,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmaewriterroundtrip__line_8332",
@@ -4775,15 +4775,15 @@
         "MolToSmiles"
       ],
       "name": "testMaeWriterRoundtrip",
-      "notes": "",
+      "notes": "Uses MolToSmiles after MAE writer/parser round-trips; MAE IO is outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "8f7de830562b91f51450b28c664391ca22dd22311acfc14363b516e68806be03",
       "start_line": 8332,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "haptic-dative-conversion-wrapper-smoke",
       "end_line": 8383,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test_hapticbondstodative",
@@ -4793,15 +4793,15 @@
         "MolToSmiles"
       ],
       "name": "test_HapticBondsToDative",
-      "notes": "",
+      "notes": "Uses MolToSmiles after RDKit haptic/dative conversion helper behavior, outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "6e7c7d5e1f0a1670bce9561326bc113b03ef44fa8a70b726436a01047cb13a26",
       "start_line": 8376,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "haptic-dative-conversion-wrapper-smoke",
       "end_line": 8391,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test_dativebondstohaptic",
@@ -4811,15 +4811,15 @@
         "MolToSmiles"
       ],
       "name": "test_DativeBondsToHaptic",
-      "notes": "",
+      "notes": "Uses MolToSmiles after RDKit dative/haptic conversion helper behavior, outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "1858f2a6dfa4557a3c08bfbf82db6220347663a64a559a552bbc550277f94ce5",
       "start_line": 8385,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "ring-fusion-wrapper-smoke",
       "end_line": 8539,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testisringfused",
@@ -4829,15 +4829,15 @@
         "MolToSmiles"
       ],
       "name": "testIsRingFused",
-      "notes": "",
+      "notes": "Uses MolToSmiles inside ring-fusion helper tests, not to pin writer output.",
       "parent": "TestCase",
       "snippet_sha256": "0d319b87c12753b3286bf532c5d728a4f9657ad2ab634971c6a5c9e20cd2eb12",
       "start_line": 8501,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smarts-dative-write-params",
       "end_line": 8568,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmileswriteparamsforsmarts",
@@ -4847,11 +4847,11 @@
         "SmilesWriteParams"
       ],
       "name": "testSmilesWriteParamsForSMARTS",
-      "notes": "",
+      "notes": "Tests MolToSmarts with SmilesWriteParams includeDativeBonds, not MolToSmiles output.",
       "parent": "TestCase",
       "snippet_sha256": "876e9428dc8d2a14eb67dedd3cabfe03cf6ec6b220e0936546a9337ef2a43f53",
       "start_line": 8560,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

@@ -566,6 +566,106 @@
       ]
     },
     {
+      "id": "imine_stereo_orientation_all_roots_isomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "all_bonds_explicit": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F",
+        "Cl/N=C/F",
+        "F/C=N/Cl",
+        "N(/Cl)=C\\F",
+        "N(=C\\F)/Cl"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_root1_isomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "all_bonds_explicit": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_all_roots_nonisomeric_all_bonds_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F",
+        "Cl/N=C/F",
+        "F/C=N/Cl",
+        "N(/Cl)=C\\F",
+        "N(=C\\F)/Cl"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_root1_nonisomeric_all_bonds_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

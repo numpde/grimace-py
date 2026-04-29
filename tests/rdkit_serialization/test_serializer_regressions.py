@@ -77,68 +77,6 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     )
 
-    def test_rooted_imine_stereo_orientation(self) -> None:
-        # Regression pinned to RDKit Java SmilesDetailsTests.testBug1842174:
-        # rootedAtAtom changes the emitted orientation surface for F/C=N/Cl.
-        source = (
-            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
-            "SmilesDetailsTests.java:testBug1842174"
-        )
-        mol = parse_smiles("F/C=N/Cl")
-
-        expectations = (
-            (
-                -1,
-                {
-                    "C(/F)=N\\Cl",
-                    "C(=N\\Cl)/F",
-                    "Cl/N=C/F",
-                    "F/C=N/Cl",
-                    "N(/Cl)=C\\F",
-                    "N(=C\\F)/Cl",
-                },
-                ("(", ")", "/", "=", "C", "Cl", "F", "N", "\\"),
-            ),
-            (
-                1,
-                {"C(/F)=N\\Cl", "C(=N\\Cl)/F"},
-                ("(", ")", "/", "=", "C", "Cl", "F", "N", "\\"),
-            ),
-        )
-        for rooted_at_atom, expected_support, expected_inventory in expectations:
-            with self.subTest(source=source, rooted_at_atom=rooted_at_atom):
-                self.assertEqual(
-                    expected_support,
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=True,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=True,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            allBondsExplicit=True,
-                        ),
-                    ),
-                )
-
     def test_isotope_surface_respects_isomeric_smiles(self) -> None:
         # Regression pinned to RDKit SmilesDetailsTests.testIsotopes:
         # isotope labels must disappear when isomericSmiles=False and reappear

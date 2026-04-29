@@ -10,20 +10,25 @@ import re
 import sys
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
 from tree_sitter import Language, Node, Parser
 import tree_sitter_cpp
 import tree_sitter_java
 
+from tests.helpers.rdkit_serializer_coverage import (
+    DEFAULT_COVERAGE_REVIEW,
+    DEFAULT_RDKIT_SERIALIZER_VERSION,
+    default_serializer_coverage_path,
+    default_serializer_source_root,
+)
+
 
 EXTRACTOR_VERSION = 1
-RDKIT_VERSION = "2026.03.1"
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE_ROOT = (
-    REPO_ROOT / "tests" / "fixtures" / "rdkit_upstream_serializer_sources" / RDKIT_VERSION
-)
-DEFAULT_OUTPUT = (
-    REPO_ROOT / "tests" / "fixtures" / "rdkit_upstream_serializer_coverage" / f"{RDKIT_VERSION}.json"
-)
+RDKIT_VERSION = DEFAULT_RDKIT_SERIALIZER_VERSION
+DEFAULT_SOURCE_ROOT = default_serializer_source_root(RDKIT_VERSION)
+DEFAULT_OUTPUT = default_serializer_coverage_path(RDKIT_VERSION)
 
 SERIALIZER_TERMS = (
     "MolToSmiles",
@@ -40,14 +45,7 @@ SERIALIZER_TERMS = (
     "CXSmiles",
 )
 
-DEFAULT_REVIEW = {
-    "status": "unreviewed",
-    "claim": "needs-triage",
-    "grimace_fixtures": [],
-    "grimace_cases": [],
-    "notes": "",
-}
-REVIEW_FIELDS = tuple(DEFAULT_REVIEW)
+REVIEW_FIELDS = tuple(DEFAULT_COVERAGE_REVIEW)
 
 
 @dataclass(frozen=True)
@@ -383,7 +381,7 @@ def build_manifest(source_root: Path, output_path: Path) -> dict[str, Any]:
             "matched_terms": list(block.matched_terms),
             "snippet_sha256": block.snippet_sha256,
         }
-        review = {**DEFAULT_REVIEW, **reviews.get(entry_id, {})}
+        review = {**DEFAULT_COVERAGE_REVIEW, **reviews.get(entry_id, {})}
         entry.update(review)
         entries.append(entry)
 

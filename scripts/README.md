@@ -67,38 +67,6 @@ python scripts/mine_rdkit_regressions.py \
   --limit 120
 ```
 
-## `extract_rdkit_serializer_cases.py`
-
-Parser-based extractor for the local RDKit serializer source fixture.
-
-It reads `tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/` and
-writes the upstream serializer coverage inventory:
-
-- `tests/fixtures/rdkit_upstream_serializer_coverage/2026.03.1.json`
-
-The extractor uses:
-
-- `tree-sitter-cpp` for RDKit C++ Catch2 `TEST_CASE` and `SECTION` blocks
-- Python `ast` for RDKit Python `test*` functions/methods
-- `tree-sitter-java` for RDKit Java `test*` methods
-
-It owns generated fields such as upstream file, line range, parser kind,
-matched serializer terms, and snippet hash.  Reviewed coverage fields such as
-`status`, `claim`, `grimace_fixtures`, `grimace_cases`, and `notes` are
-preserved when regenerating.
-
-Regenerate after changing the upstream source fixture:
-
-```bash
-python scripts/extract_rdkit_serializer_cases.py --write
-```
-
-Check that the committed inventory is current:
-
-```bash
-python scripts/extract_rdkit_serializer_cases.py --check
-```
-
 ```bash
 python scripts/mine_rdkit_regressions.py \
   --root last \
@@ -157,3 +125,56 @@ python scripts/mine_rdkit_regressions.py \
 
 If you intentionally want to run against an uninstalled source tree instead of
 an installed or `maturin develop` build, prepend `PYTHONPATH=python:.`.
+
+## `extract_rdkit_serializer_cases.py`
+
+Parser-based extractor for the local RDKit serializer source fixture.
+
+It reads `tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/` and
+writes the upstream serializer coverage inventory:
+
+- `tests/fixtures/rdkit_upstream_serializer_coverage/2026.03.1.json`
+
+The extractor uses:
+
+- `tree-sitter-cpp` for RDKit C++ Catch2 `TEST_CASE` and `SECTION` blocks
+- Python `ast` for RDKit Python `test*` functions/methods
+- `tree-sitter-java` for RDKit Java `test*` methods
+
+It owns generated fields such as upstream file, line range, parser kind,
+matched serializer terms, and snippet hash.  Reviewed coverage fields such as
+`status`, `claim`, `grimace_links`, and `notes` are preserved when
+regenerating.
+
+Regenerate after changing the upstream source fixture:
+
+```bash
+python scripts/extract_rdkit_serializer_cases.py --write
+```
+
+Check that the committed inventory is current:
+
+```bash
+python scripts/extract_rdkit_serializer_cases.py --check
+```
+
+## `report_rdkit_serializer_coverage.py`
+
+Summarizes the RDKit serializer coverage ledger before and during triage.
+
+```bash
+python scripts/report_rdkit_serializer_coverage.py
+```
+
+Show the first unreviewed entries:
+
+```bash
+python scripts/report_rdkit_serializer_coverage.py --status unreviewed
+```
+
+Once triage is expected to be complete, make remaining `unreviewed` or
+`needs-fixture` entries fail explicitly:
+
+```bash
+python scripts/report_rdkit_serializer_coverage.py --fail-untriaged
+```

@@ -49,8 +49,8 @@ behavioral checks against the installed RDKit build.
 - `tests/fixtures/rdkit_upstream_serializer_coverage/`: parser-generated
   inventory of upstream RDKit serializer test blocks.  The extractor owns
   upstream file, line range, parser kind, matched terms, and snippet hash.
-  Reviewed fields map each upstream block to Grimace fixture coverage or a
-  coverage status.
+  Reviewed fields map each upstream block to a coverage status and, when
+  covered, `grimace_links` pointing at concrete fixture files and case IDs.
 
 ## Reference Dataset Fixtures
 

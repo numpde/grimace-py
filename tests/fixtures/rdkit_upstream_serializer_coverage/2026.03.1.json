@@ -3,8 +3,7 @@
     {
       "claim": "needs-triage",
       "end_line": 73,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_1972",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -22,8 +21,7 @@
     {
       "claim": "needs-triage",
       "end_line": 52,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -41,8 +39,7 @@
     {
       "claim": "needs-triage",
       "end_line": 72,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__further_examples",
       "kind": "cpp_section",
       "language": "cpp",
@@ -60,8 +57,7 @@
     {
       "claim": "needs-triage",
       "end_line": 117,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2029",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -79,8 +75,7 @@
     {
       "claim": "needs-triage",
       "end_line": 86,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__wedging",
       "kind": "cpp_section",
       "language": "cpp",
@@ -98,8 +93,7 @@
     {
       "claim": "needs-triage",
       "end_line": 100,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__direction",
       "kind": "cpp_section",
       "language": "cpp",
@@ -117,8 +111,7 @@
     {
       "claim": "needs-triage",
       "end_line": 116,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__aromatic_double_bonds",
       "kind": "cpp_section",
       "language": "cpp",
@@ -136,8 +129,7 @@
     {
       "claim": "needs-triage",
       "end_line": 339,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2257_writing_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -156,8 +148,7 @@
     {
       "claim": "needs-triage",
       "end_line": 175,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -176,8 +167,7 @@
     {
       "claim": "needs-triage",
       "end_line": 185,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_labels",
       "kind": "cpp_section",
       "language": "cpp",
@@ -196,8 +186,7 @@
     {
       "claim": "needs-triage",
       "end_line": 197,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_ordering",
       "kind": "cpp_section",
       "language": "cpp",
@@ -216,8 +205,7 @@
     {
       "claim": "needs-triage",
       "end_line": 207,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_values",
       "kind": "cpp_section",
       "language": "cpp",
@@ -236,8 +224,7 @@
     {
       "claim": "needs-triage",
       "end_line": 218,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__radicals",
       "kind": "cpp_section",
       "language": "cpp",
@@ -256,8 +243,7 @@
     {
       "claim": "needs-triage",
       "end_line": 228,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__radicals2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -276,8 +262,7 @@
     {
       "claim": "needs-triage",
       "end_line": 236,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__coordinates",
       "kind": "cpp_section",
       "language": "cpp",
@@ -296,8 +281,7 @@
     {
       "claim": "needs-triage",
       "end_line": 244,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__coordinates3d",
       "kind": "cpp_section",
       "language": "cpp",
@@ -316,8 +300,7 @@
     {
       "claim": "needs-triage",
       "end_line": 260,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_props",
       "kind": "cpp_section",
       "language": "cpp",
@@ -336,8 +319,7 @@
     {
       "claim": "needs-triage",
       "end_line": 267,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_props_and_values",
       "kind": "cpp_section",
       "language": "cpp",
@@ -356,8 +338,7 @@
     {
       "claim": "needs-triage",
       "end_line": 273,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -376,8 +357,7 @@
     {
       "claim": "needs-triage",
       "end_line": 280,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -396,8 +376,7 @@
     {
       "claim": "needs-triage",
       "end_line": 290,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_3",
       "kind": "cpp_section",
       "language": "cpp",
@@ -416,8 +395,7 @@
     {
       "claim": "needs-triage",
       "end_line": 297,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_4",
       "kind": "cpp_section",
       "language": "cpp",
@@ -436,8 +414,7 @@
     {
       "claim": "needs-triage",
       "end_line": 304,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_with_other_properties",
       "kind": "cpp_section",
       "language": "cpp",
@@ -456,8 +433,7 @@
     {
       "claim": "needs-triage",
       "end_line": 314,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -475,8 +451,7 @@
     {
       "claim": "needs-triage",
       "end_line": 326,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -494,8 +469,7 @@
     {
       "claim": "needs-triage",
       "end_line": 338,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments3",
       "kind": "cpp_section",
       "language": "cpp",
@@ -513,8 +487,7 @@
     {
       "claim": "needs-triage",
       "end_line": 386,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2148",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -532,8 +505,7 @@
     {
       "claim": "needs-triage",
       "end_line": 385,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2148__writing_smiles",
       "kind": "cpp_section",
       "language": "cpp",
@@ -551,8 +523,7 @@
     {
       "claim": "needs-triage",
       "end_line": 521,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2667_moltocxsmiles_generates_error_for_empty_molecule",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -571,8 +542,7 @@
     {
       "claim": "needs-triage",
       "end_line": 520,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2667_moltocxsmiles_generates_error_for_empty_molecule__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -591,8 +561,7 @@
     {
       "claim": "needs-triage",
       "end_line": 700,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__random_smiles_vectors",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -614,8 +583,7 @@
     {
       "claim": "needs-triage",
       "end_line": 656,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -633,8 +601,7 @@
     {
       "claim": "needs-triage",
       "end_line": 675,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__options1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -656,8 +623,7 @@
     {
       "claim": "needs-triage",
       "end_line": 699,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__options2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -679,8 +645,7 @@
     {
       "claim": "needs-triage",
       "end_line": 738,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3197_molecule_constructed_from_cxsmiles_cannot_be_translated_to",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -699,8 +664,7 @@
     {
       "claim": "needs-triage",
       "end_line": 737,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_3197_molecule_constructed_from_cxsmiles_cannot_be_translated_to__serialization",
       "kind": "cpp_section",
       "language": "cpp",
@@ -719,8 +683,7 @@
     {
       "claim": "needs-triage",
       "end_line": 828,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3774_moltosmarts_inverts_direction_of_dative_bond",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -738,8 +701,7 @@
     {
       "claim": "needs-triage",
       "end_line": 815,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_3774_moltosmarts_inverts_direction_of_dative_bond__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -757,8 +719,7 @@
     {
       "claim": "needs-triage",
       "end_line": 874,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2788_dokekule_true_should_kekulize_the_molecule",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -776,8 +737,7 @@
     {
       "claim": "needs-triage",
       "end_line": 848,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -795,8 +755,7 @@
     {
       "claim": "needs-triage",
       "end_line": 855,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -814,8 +773,7 @@
     {
       "claim": "needs-triage",
       "end_line": 873,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__can_thrown_exceptions",
       "kind": "cpp_section",
       "language": "cpp",
@@ -833,8 +791,7 @@
     {
       "claim": "needs-triage",
       "end_line": 907,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3998_molfragmenttosmiles_failing_in_kekulization_with",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -852,8 +809,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1096,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4233_data_groups_in_cxsmiles_neither_parsed_nor_written",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -872,8 +828,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1095,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4233_data_groups_in_cxsmiles_neither_parsed_nor_written__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -892,8 +847,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1252,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__polymer_sgroups",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -912,8 +866,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1178,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__polymer_sgroups__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -932,8 +885,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1251,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__polymer_sgroups__multiple_s_groups",
       "kind": "cpp_section",
       "language": "cpp",
@@ -952,8 +904,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1297,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__sgroup_hierarchy",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -972,8 +923,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1275,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__sgroup_hierarchy__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -992,8 +942,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1296,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__sgroup_hierarchy__nested",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1012,8 +961,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1321,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__linknode_writing",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1032,8 +980,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1307,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__single",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1052,8 +999,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1315,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__multiple",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1072,8 +1018,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1320,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__two_coordinate",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1092,8 +1037,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1344,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__smilesbondoutputorder",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1111,8 +1055,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1333,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__smilesbondoutputorder__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1130,8 +1073,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1343,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__smilesbondoutputorder__github_5585_incorrect_ordering_for_ring_closures",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1149,8 +1091,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1454,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4320_support_toggling_components_of_cxsmiles_output",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1170,8 +1111,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1402,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__sgroups",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1191,8 +1131,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1412,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__coordinates",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1212,8 +1151,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1423,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__enhanced_stereo",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1233,8 +1171,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1433,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__link_nodes",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1254,8 +1191,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1443,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__radicals",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1275,8 +1211,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1453,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__values",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1296,8 +1231,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1727,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_double_bonds_and_ring_closures",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1317,8 +1251,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1710,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__basic_test",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1336,8 +1269,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1726,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__bulk_random_output_order",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1357,8 +1289,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1881,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_continued_double_bonds_and_ring_closures",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1376,8 +1307,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1761,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1395,8 +1325,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1768,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1414,8 +1343,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1775,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1433,8 +1361,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1879,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__chembl3623347",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1452,8 +1379,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1956,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__pol_and_mod_atoms_in_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1472,8 +1398,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1945,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__pol_and_mod_atoms_in_cxsmiles__pol_basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1492,8 +1417,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1955,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__pol_and_mod_atoms_in_cxsmiles__mod_basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1512,8 +1436,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1987,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__empty_atom_label_block",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1532,8 +1455,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1986,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__empty_atom_label_block__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1552,8 +1474,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1998,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5372_errors_with_fragments_and_dorandom_true",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1573,8 +1494,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1997,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5372_errors_with_fragments_and_dorandom_true__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1594,8 +1514,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2023,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5466_writing_floating_point_atom_props_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1614,8 +1533,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2014,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5466_writing_floating_point_atom_props_cxsmiles__simple",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1634,8 +1552,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2022,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5466_writing_floating_point_atom_props_cxsmiles__label_with",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1654,8 +1571,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2252,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__wiggly_and_wedged_bonds_in_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1675,8 +1591,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2076,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__basic_reading_writing",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1696,8 +1611,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2096,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__cxsmiles_wiggly_bond_over_rides_atomic_stereo",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1717,8 +1631,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2163,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__writing_examples",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1738,8 +1651,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2213,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__writing_wedges_and_dashes",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1759,8 +1671,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2313,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ring_bond_stereochemistry_in_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1780,8 +1691,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2312,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ring_bond_stereochemistry_in_cxsmiles__basic_writing",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1801,8 +1711,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2476,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atropisomer_output_in_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1822,8 +1731,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2475,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atropisomer_output_in_cxsmiles__withchiralatom_label",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1843,8 +1751,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2498,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dative_bond_in_cxsmiles_double_double_def",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1863,8 +1770,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2497,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dative_bond_in_cxsmiles_double_double_def__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1883,8 +1789,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2519,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__fieldname_not_found_in_superatomsgroup_in_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1904,8 +1809,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2518,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__fieldname_not_found_in_superatomsgroup_in_cxsmiles__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1925,8 +1829,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2615,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ensure_unused_features_are_not_used",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1947,8 +1850,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2539,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__isotopes",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1967,8 +1869,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2559,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__chirality",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1987,8 +1888,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2579,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__ring_stereo",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2007,8 +1907,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2605,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__enhanced_stereo",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2029,8 +1928,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2614,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__problematic_cases",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2048,8 +1946,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2701,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__enhanced_stereo_canonicalized",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2069,8 +1966,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2630,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__case_takes_forever",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2089,8 +1985,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2645,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__case_takes_long_but_not_forever",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2109,8 +2004,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2663,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__basic",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2130,8 +2024,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2687,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__trimethylcyclohexane",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2151,8 +2044,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2700,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__multifrag_test",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2172,8 +2064,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2810,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__test_rootedatatom_argument",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2193,8 +2084,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2809,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__test_rootedatatom_argument__issue_7572_prevent_rootatatom_if_more_than_one_fragment_exists",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2214,8 +2104,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2867,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5499_stereoany_bonds_lead_to_non_stable_smiles_smarts_strings",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2233,8 +2122,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2866,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5499_stereoany_bonds_lead_to_non_stable_smiles_smarts_strings__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2252,8 +2140,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2905,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7295",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2271,8 +2158,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2904,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7295__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2290,8 +2176,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2914,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__simplesmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2309,8 +2194,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2913,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__simplesmiles__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2328,8 +2212,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2939,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__cx_bond_atropisomer_option_requires_ring_info",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2349,8 +2232,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2966,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7372_smiles_output_option_to_disable_dative_bonds",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2369,8 +2251,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2955,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2389,8 +2270,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2965,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__smarts_basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2408,8 +2288,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2990,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__remove_cx_extension_from_smiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2428,8 +2307,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2989,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__remove_cx_extension_from_smiles__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2448,8 +2326,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3011,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__canonicalization_of_meso_structures",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2467,8 +2344,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3010,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__canonicalization_of_meso_structures__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2486,8 +2362,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3024,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ignore_atom_map_numbers",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2507,8 +2382,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3073,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7340",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2527,8 +2401,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3053,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7340__test_getcxextensions_with_a_vector",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2547,8 +2420,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3072,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7340__expects_an_error",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2566,8 +2438,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3094,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__trimethylcyclohexane",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2586,8 +2457,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3084,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__trimethylcyclohexane__basic",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2606,8 +2476,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3093,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__trimethylcyclohexane__withenhancedstereo",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2626,8 +2495,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3162,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dnatesterror",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2652,8 +2520,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3161,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dnatesterror__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2678,8 +2545,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3207,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8328",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2699,8 +2565,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3181,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8328__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2720,8 +2585,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3206,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8328__compare_with_and_without_canonicalization",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2741,8 +2605,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3223,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atoms_bound_to_metals_should_always_have_hs_specified",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2760,8 +2623,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3222,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atoms_bound_to_metals_should_always_have_hs_specified__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2779,8 +2641,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3256,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__zob_cx_smiles_extension",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2799,8 +2660,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3240,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__zob_cx_smiles_extension__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2819,8 +2679,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3255,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__zob_cx_smiles_extension__reverse",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2839,8 +2698,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3287,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8654_stereogroups_used_in_canonicalization_even_if_not_in_output",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2860,8 +2718,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3286,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8654_stereogroups_used_in_canonicalization_even_if_not_in_output__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2881,8 +2738,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3305,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__bond_labels_not_being_used_in_fragment_canonicalization",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2900,8 +2756,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3304,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__bond_labels_not_being_used_in_fragment_canonicalization__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2919,8 +2774,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3316,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8906",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2938,8 +2792,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3315,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8906__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2957,8 +2810,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3380,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__non_encodeable_sgroups",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2977,8 +2829,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3409,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_9144_pr_9082_breaks_molfragmenttosmarts",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2996,8 +2847,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3389,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_9144_pr_9082_breaks_molfragmenttosmarts__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3015,8 +2865,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3408,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_9144_pr_9082_breaks_molfragmenttosmarts__another_example",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3034,8 +2883,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1104,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__testatropisomersincxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3053,8 +2901,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1121,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__testatropisomersincxsmilescanon",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3072,8 +2919,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1360,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__smiles_canonicalization",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3092,8 +2938,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1359,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__smiles_canonicalization__other_compounds",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3112,8 +2957,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1384,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6225_removes_enhanced_stereo_if_doisomericsmiles_is_false",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3133,8 +2977,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1425,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3155,8 +2998,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1398,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__initial_report",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3177,8 +3019,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1409,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__details",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3197,8 +3038,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1424,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__bond_ordering_is_actually_correct",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3217,8 +3057,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1459,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__stereogroup_id_forwarding",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3237,8 +3076,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1439,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__ids_reassigned_by_default",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3257,8 +3095,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1448,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__forward_input_ids",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3277,8 +3114,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1458,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__forward_input_ids_rigorous",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3297,8 +3133,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1474,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6309_cxsmiles_atom_with_labels_should_not_also_have_dummylabel_property_set",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3317,8 +3152,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1473,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6309_cxsmiles_atom_with_labels_should_not_also_have_dummylabel_property_set__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3337,8 +3171,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1482,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__write_attachment_points",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3357,8 +3190,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1492,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_7414_cxsmiles_writer_does_not_use_default_conformer_id",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3377,8 +3209,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1491,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7414_cxsmiles_writer_does_not_use_default_conformer_id__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3397,8 +3228,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1526,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_7372_smiles_output_option_to_disable_dative_bonds",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3418,8 +3248,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1507,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3439,8 +3268,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1519,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__two_dative_bonds",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3459,8 +3287,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1638,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_8348_unable_to_write_wiggly_bond_information_by_default",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3480,8 +3307,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1722,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__test_cxsmilesfields_option_parsing_from_json",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3499,8 +3325,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1672,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__empty_json_string_preserves_current_values",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3518,8 +3343,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1682,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__no_cxsmilesfields_key_preserves_current_values",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3537,8 +3361,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1692,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3556,8 +3379,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1703,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_adding_unrelated_false_values_makes_no_difference",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3575,8 +3397,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1712,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_then_and_noted_with_ored_false_values",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3594,8 +3415,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1721,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_then_and_noted_with_ored_false_values_order_does_not_matter",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3613,8 +3433,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1734,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__atom_maps_and_dummy_labels_in_cxsmiles",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -3633,8 +3452,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1733,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__atom_maps_and_dummy_labels_in_cxsmiles__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3653,8 +3471,7 @@
     {
       "claim": "needs-triage",
       "end_line": 360,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test11molops",
       "kind": "python_test",
       "language": "python",
@@ -3672,8 +3489,7 @@
     {
       "claim": "needs-triage",
       "end_line": 542,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test16pickle",
       "kind": "python_test",
       "language": "python",
@@ -3691,8 +3507,7 @@
     {
       "claim": "needs-triage",
       "end_line": 654,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test17kekulize",
       "kind": "python_test",
       "language": "python",
@@ -3710,8 +3525,7 @@
     {
       "claim": "needs-triage",
       "end_line": 859,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test22deletesubstruct",
       "kind": "python_test",
       "language": "python",
@@ -3729,8 +3543,7 @@
     {
       "claim": "needs-triage",
       "end_line": 916,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test23molfileparsing",
       "kind": "python_test",
       "language": "python",
@@ -3749,8 +3562,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1373,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test30issues109and110",
       "kind": "python_test",
       "language": "python",
@@ -3768,8 +3580,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1389,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test31chiralitysmiles",
       "kind": "python_test",
       "language": "python",
@@ -3787,8 +3598,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1405,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test31achiralitysubstructs",
       "kind": "python_test",
       "language": "python",
@@ -3806,8 +3616,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1807,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereo",
       "kind": "python_test",
       "language": "python",
@@ -3826,8 +3635,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1860,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereodifficultcase",
       "kind": "python_test",
       "language": "python",
@@ -3846,8 +3654,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1909,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoreallydifficultcase",
       "kind": "python_test",
       "language": "python",
@@ -3866,8 +3673,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2026,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
       "kind": "python_test",
       "language": "python",
@@ -3885,8 +3691,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2081,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test38issue266",
       "kind": "python_test",
       "language": "python",
@@ -3905,8 +3710,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2115,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test40smilesrootedatatom",
       "kind": "python_test",
       "language": "python",
@@ -3925,8 +3729,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2360,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test46replacecore",
       "kind": "python_test",
       "language": "python",
@@ -3944,8 +3747,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2452,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test47rwmols",
       "kind": "python_test",
       "language": "python",
@@ -3963,8 +3765,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2483,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test47smartspieces",
       "kind": "python_test",
       "language": "python",
@@ -3983,8 +3784,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2683,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test54mol2parser",
       "kind": "python_test",
       "language": "python",
@@ -4002,8 +3802,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2801,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test59issue3007178",
       "kind": "python_test",
       "language": "python",
@@ -4021,8 +3820,7 @@
     {
       "claim": "needs-triage",
       "end_line": 2832,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test61pathtosubmol",
       "kind": "python_test",
       "language": "python",
@@ -4041,8 +3839,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3255,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test75allbondsexplicit",
       "kind": "python_test",
       "language": "python",
@@ -4061,8 +3858,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3290,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test77molfragmenttosmiles",
       "kind": "python_test",
       "language": "python",
@@ -4080,8 +3876,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3333,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test81issue275",
       "kind": "python_test",
       "language": "python",
@@ -4099,8 +3894,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3345,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test82issue288",
       "kind": "python_test",
       "language": "python",
@@ -4118,8 +3912,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3484,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test85molcopying",
       "kind": "python_test",
       "language": "python",
@@ -4137,8 +3930,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3533,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test86molrenumbering",
       "kind": "python_test",
       "language": "python",
@@ -4156,8 +3948,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3578,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test87fragmentonbonds",
       "kind": "python_test",
       "language": "python",
@@ -4175,8 +3966,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3746,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test93rwmolsasromol",
       "kind": "python_test",
       "language": "python",
@@ -4194,8 +3984,7 @@
     {
       "claim": "needs-triage",
       "end_line": 3943,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testreplacebond",
       "kind": "python_test",
       "language": "python",
@@ -4213,8 +4002,7 @@
     {
       "claim": "needs-triage",
       "end_line": 4079,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsequencebasics",
       "kind": "python_test",
       "language": "python",
@@ -4233,8 +4021,7 @@
     {
       "claim": "needs-triage",
       "end_line": 4748,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgetsdtext",
       "kind": "python_test",
       "language": "python",
@@ -4252,8 +4039,7 @@
     {
       "claim": "needs-triage",
       "end_line": 4890,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmilesprops",
       "kind": "python_test",
       "language": "python",
@@ -4271,8 +4057,7 @@
     {
       "claim": "needs-triage",
       "end_line": 4938,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testwritecxsmiles",
       "kind": "python_test",
       "language": "python",
@@ -4291,8 +4076,7 @@
     {
       "claim": "needs-triage",
       "end_line": 4991,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testpickleprops",
       "kind": "python_test",
       "language": "python",
@@ -4310,8 +4094,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5080,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub1320",
       "kind": "python_test",
       "language": "python",
@@ -4330,8 +4113,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5098,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testoldproppickles",
       "kind": "python_test",
       "language": "python",
@@ -4349,8 +4131,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5168,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolbundles1",
       "kind": "python_test",
       "language": "python",
@@ -4369,8 +4150,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5274,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolblockchirality",
       "kind": "python_test",
       "language": "python",
@@ -4389,8 +4169,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5408,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsvgparsing",
       "kind": "python_test",
       "language": "python",
@@ -4408,8 +4187,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5486,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub2082",
       "kind": "python_test",
       "language": "python",
@@ -4427,8 +4205,7 @@
     {
       "claim": "needs-triage",
       "end_line": 5780,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testforwardenhancedstereogroupids",
       "kind": "python_test",
       "language": "python",
@@ -4447,8 +4224,7 @@
     {
       "claim": "needs-triage",
       "end_line": 6326,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsetbonddirfromstereo",
       "kind": "python_test",
       "language": "python",
@@ -4466,8 +4242,7 @@
     {
       "claim": "needs-triage",
       "end_line": 6418,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testassignchiraltypesfrommolparity",
       "kind": "python_test",
       "language": "python",
@@ -4485,8 +4260,7 @@
     {
       "claim": "needs-triage",
       "end_line": 6676,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testrandomsmilesvect",
       "kind": "python_test",
       "language": "python",
@@ -4505,8 +4279,7 @@
     {
       "claim": "needs-triage",
       "end_line": 6885,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmoltopng",
       "kind": "python_test",
       "language": "python",
@@ -4524,8 +4297,7 @@
     {
       "claim": "needs-triage",
       "end_line": 6895,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolsfrompng",
       "kind": "python_test",
       "language": "python",
@@ -4543,8 +4315,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7088,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolzip",
       "kind": "python_test",
       "language": "python",
@@ -4562,8 +4333,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7176,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testinsertmol",
       "kind": "python_test",
       "language": "python",
@@ -4581,8 +4351,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7204,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbatchedits",
       "kind": "python_test",
       "language": "python",
@@ -4600,8 +4369,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7302,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmileswriteparams",
       "kind": "python_test",
       "language": "python",
@@ -4623,8 +4391,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7314,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testcxsmilesoptions",
       "kind": "python_test",
       "language": "python",
@@ -4645,8 +4412,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7572,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationsmiles",
       "kind": "python_test",
       "language": "python",
@@ -4666,8 +4432,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7637,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationmol",
       "kind": "python_test",
       "language": "python",
@@ -4685,8 +4450,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7655,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationmrv",
       "kind": "python_test",
       "language": "python",
@@ -4704,8 +4468,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7820,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmaewriterroundtrip",
       "kind": "python_test",
       "language": "python",
@@ -4723,8 +4486,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7899,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralmolfile",
       "kind": "python_test",
       "language": "python",
@@ -4743,8 +4505,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7952,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralmrvfile",
       "kind": "python_test",
       "language": "python",
@@ -4763,8 +4524,7 @@
     {
       "claim": "needs-triage",
       "end_line": 7995,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralcxsmiles",
       "kind": "python_test",
       "language": "python",
@@ -4783,8 +4543,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8098,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testatropisomerwedging",
       "kind": "python_test",
       "language": "python",
@@ -4804,8 +4563,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8123,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testatropisomerwedgingrigorousenhancedstereo",
       "kind": "python_test",
       "language": "python",
@@ -4825,8 +4583,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8152,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testenhancedstereoexceedslimit",
       "kind": "python_test",
       "language": "python",
@@ -4846,8 +4603,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8186,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testenhancedstereodoesnotexceedslimit",
       "kind": "python_test",
       "language": "python",
@@ -4867,8 +4623,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8346,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmaewriterroundtrip__line_8332",
       "kind": "python_test",
       "language": "python",
@@ -4886,8 +4641,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8383,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test_hapticbondstodative",
       "kind": "python_test",
       "language": "python",
@@ -4905,8 +4659,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8391,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test_dativebondstohaptic",
       "kind": "python_test",
       "language": "python",
@@ -4924,8 +4677,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8539,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testisringfused",
       "kind": "python_test",
       "language": "python",
@@ -4943,8 +4695,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8568,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmileswriteparamsforsmarts",
       "kind": "python_test",
       "language": "python",
@@ -4962,8 +4713,7 @@
     {
       "claim": "needs-triage",
       "end_line": 8609,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testignoreatommapnumbers",
       "kind": "python_test",
       "language": "python",
@@ -4983,8 +4733,7 @@
     {
       "claim": "needs-triage",
       "end_line": 184,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbasiccanon",
       "kind": "java_test",
       "language": "java",
@@ -5002,8 +4751,7 @@
     {
       "claim": "needs-triage",
       "end_line": 593,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__teststereochem",
       "kind": "java_test",
       "language": "java",
@@ -5021,8 +4769,7 @@
     {
       "claim": "needs-triage",
       "end_line": 618,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue127",
       "kind": "java_test",
       "language": "java",
@@ -5040,8 +4787,7 @@
     {
       "claim": "needs-triage",
       "end_line": 637,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue143",
       "kind": "java_test",
       "language": "java",
@@ -5059,8 +4805,7 @@
     {
       "claim": "needs-triage",
       "end_line": 716,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue151",
       "kind": "java_test",
       "language": "java",
@@ -5078,8 +4823,7 @@
     {
       "claim": "needs-triage",
       "end_line": 762,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue153",
       "kind": "java_test",
       "language": "java",
@@ -5097,8 +4841,7 @@
     {
       "claim": "needs-triage",
       "end_line": 829,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue157",
       "kind": "java_test",
       "language": "java",
@@ -5116,8 +4859,7 @@
     {
       "claim": "needs-triage",
       "end_line": 852,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue159",
       "kind": "java_test",
       "language": "java",
@@ -5135,8 +4877,7 @@
     {
       "claim": "needs-triage",
       "end_line": 922,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue184",
       "kind": "java_test",
       "language": "java",
@@ -5154,8 +4895,7 @@
     {
       "claim": "needs-triage",
       "end_line": 945,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue185",
       "kind": "java_test",
       "language": "java",
@@ -5173,8 +4913,7 @@
     {
       "claim": "needs-triage",
       "end_line": 975,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue191",
       "kind": "java_test",
       "language": "java",
@@ -5192,8 +4931,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1031,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue266",
       "kind": "java_test",
       "language": "java",
@@ -5211,8 +4949,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1048,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testrootedat",
       "kind": "java_test",
       "language": "java",
@@ -5230,8 +4967,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1065,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testisotopes",
       "kind": "java_test",
       "language": "java",
@@ -5249,8 +4985,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1085,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1670149",
       "kind": "java_test",
       "language": "java",
@@ -5268,8 +5003,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1134,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1719046",
       "kind": "java_test",
       "language": "java",
@@ -5287,8 +5021,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1160,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1842174",
       "kind": "java_test",
       "language": "java",
@@ -5306,8 +5039,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1212,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1844617",
       "kind": "java_test",
       "language": "java",
@@ -5325,8 +5057,7 @@
     {
       "claim": "needs-triage",
       "end_line": 1231,
-      "grimace_cases": [],
-      "grimace_fixtures": [],
+      "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testringstereochem",
       "kind": "java_test",
       "language": "java",

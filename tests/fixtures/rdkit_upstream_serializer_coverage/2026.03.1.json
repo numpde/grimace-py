@@ -5215,7 +5215,18 @@
     {
       "claim": "complex-chiral-roundtrip-smiles",
       "end_line": 829,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "issue157_two_center_chloro_alcohol_surface",
+            "issue157_chloro_cyclohexane_surface",
+            "issue157_bicyclic_amine_surface",
+            "issue157_isotopic_fused_imide_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/15_complex_chirality_smiles.json",
+          "note": "Exact all-roots fixtures pin the four complex chiral writer surfaces from Java testIssue157."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue157",
       "kind": "java_test",
       "language": "java",
@@ -5223,11 +5234,11 @@
         "MolToSmiles"
       ],
       "name": "testIssue157",
-      "notes": "Multiple complex chiral round-trip examples, including isotopic/fused systems, are not yet mirrored as pinned Grimace fixtures.",
+      "notes": "All Java testIssue157 complex chiral round-trip examples are represented by exact all-roots serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "660c2eefa6e61b2dae69cdcf74f3a54c962a4791800f8c887d90ae51354f4224",
       "start_line": 764,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

@@ -845,7 +845,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 1252,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__polymer_sgroups",
@@ -856,15 +856,15 @@
         "CXSmiles"
       ],
       "name": "polymer SGroups",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": null,
       "snippet_sha256": "321d3b0c7096e5d2d7f507a89431801ad3ebcce3d20745a189835c4c3364b6b5",
       "start_line": 1098,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 1178,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__polymer_sgroups__basics",
@@ -875,15 +875,15 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": "polymer SGroups",
       "snippet_sha256": "23744d286cf30180a4afd805c04349b2da051a4762dfb92194a4e8d24676bac9",
       "start_line": 1099,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 1251,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__polymer_sgroups__multiple_s_groups",
@@ -894,15 +894,15 @@
         "CXSmiles"
       ],
       "name": "multiple s groups",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": "polymer SGroups",
       "snippet_sha256": "dc3f08eb715d4bc56fb256f17c3900ea854a8ff88203e313bbc77ab58ceedc8e",
       "start_line": 1179,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 1297,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__sgroup_hierarchy",
@@ -913,15 +913,15 @@
         "CXSmiles"
       ],
       "name": "SGroup hierarchy",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": null,
       "snippet_sha256": "a1337be481b3649d3bc8239287af7330a4c8ba7de19684f8862adf76fc49d6dd",
       "start_line": 1254,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 1275,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__sgroup_hierarchy__basics",
@@ -932,15 +932,15 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": "SGroup hierarchy",
       "snippet_sha256": "bffa01c022b191ef9f76a6fa958057be95668c10f200ad495470ed635b24af6a",
       "start_line": 1255,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 1296,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__sgroup_hierarchy__nested",
@@ -951,15 +951,15 @@
         "CXSmiles"
       ],
       "name": "nested",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": "SGroup hierarchy",
       "snippet_sha256": "d58fc099729ef8f8c9c95a937cf60d2892d354899d105d707ec96e81f9180c31",
       "start_line": 1276,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-linknode-serialization",
       "end_line": 1321,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__linknode_writing",
@@ -970,15 +970,15 @@
         "CXSmiles"
       ],
       "name": "Linknode writing",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES link-node extension output. Plain SMILES support in Grimace does not include link-node CX fields.",
       "parent": null,
       "snippet_sha256": "fbe3f74551fee904eb3bd8f8062373bd239311f711a8cc97d8fd040e31b53af4",
       "start_line": 1299,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-linknode-serialization",
       "end_line": 1307,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__single",
@@ -989,15 +989,15 @@
         "CXSmiles"
       ],
       "name": "single",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES link-node extension output. Plain SMILES support in Grimace does not include link-node CX fields.",
       "parent": "Linknode writing",
       "snippet_sha256": "c6d91250dc561f893308fb9711702a918b82c4b0e1d20ef02ea5f455935137de",
       "start_line": 1300,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-linknode-serialization",
       "end_line": 1315,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__multiple",
@@ -1008,15 +1008,15 @@
         "CXSmiles"
       ],
       "name": "multiple",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES link-node extension output. Plain SMILES support in Grimace does not include link-node CX fields.",
       "parent": "Linknode writing",
       "snippet_sha256": "e22f6fe0f6e3726ce53d6d6df0e2113b582f69e8954549b4cb8efa5afbd0f4f2",
       "start_line": 1308,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-linknode-serialization",
       "end_line": 1320,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__two_coordinate",
@@ -1027,11 +1027,11 @@
         "CXSmiles"
       ],
       "name": "two-coordinate",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES link-node extension output. Plain SMILES support in Grimace does not include link-node CX fields.",
       "parent": "Linknode writing",
       "snippet_sha256": "f9743c3327ee9af5eaff1e487d1eb7949cd58c9a9dbdc801a21b48340daea93d",
       "start_line": 1316,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1377,7 +1377,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-polymer-modatom-metadata",
       "end_line": 1956,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__pol_and_mod_atoms_in_cxsmiles",
@@ -1388,15 +1388,15 @@
         "CXSmiles"
       ],
       "name": "Pol and Mod atoms in CXSMILES",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES polymer/modification atom metadata. Grimace does not emit or parse CXSMILES extension fields.",
       "parent": null,
       "snippet_sha256": "2a197e0b25a323cb1ba3aa7bfaad7e7b633adcd20516ffbb66ca1aa3e197a472",
       "start_line": 1935,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-polymer-modatom-metadata",
       "end_line": 1945,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__pol_and_mod_atoms_in_cxsmiles__pol_basics",
@@ -1407,15 +1407,15 @@
         "CXSmiles"
       ],
       "name": "Pol basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES polymer/modification atom metadata. Grimace does not emit or parse CXSMILES extension fields.",
       "parent": "Pol and Mod atoms in CXSMILES",
       "snippet_sha256": "34d77a10bf16f7bfe6a81266b9946913e6fcf23c901537e4f764a01482af4eff",
       "start_line": 1936,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-polymer-modatom-metadata",
       "end_line": 1955,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__pol_and_mod_atoms_in_cxsmiles__mod_basics",
@@ -1426,11 +1426,11 @@
         "CXSmiles"
       ],
       "name": "Mod basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES polymer/modification atom metadata. Grimace does not emit or parse CXSMILES extension fields.",
       "parent": "Pol and Mod atoms in CXSMILES",
       "snippet_sha256": "e77e7079a91457ec762ade432ac87e7d28ece4a49ceea208901a59b96fa4334b",
       "start_line": 1946,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1585,7 +1585,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2252,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__wiggly_and_wedged_bonds_in_cxsmiles",
@@ -1597,15 +1597,15 @@
         "CXSmiles"
       ],
       "name": "wiggly and wedged bonds in CXSMILES",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "643fcdf6f2464d9ca8d90aba18fb2c6c442742e0b73916b728365e92685d4a3b",
       "start_line": 2055,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2076,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__basic_reading_writing",
@@ -1617,15 +1617,15 @@
         "CXSmiles"
       ],
       "name": "basic reading/writing",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": "wiggly and wedged bonds in CXSMILES",
       "snippet_sha256": "b5bab45cf531e147e0e7527d6de4b331881c29ff0d5d25e893be5a0b86482f33",
       "start_line": 2056,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2096,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__cxsmiles_wiggly_bond_over_rides_atomic_stereo",
@@ -1637,15 +1637,15 @@
         "CXSmiles"
       ],
       "name": "CXSMILES wiggly bond over-rides atomic stereo",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": "wiggly and wedged bonds in CXSMILES",
       "snippet_sha256": "ab7e930f1ffaff276d3cc2abcd0a35db0d0eac391e6be98a6e39ee8005bb05f1",
       "start_line": 2078,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2163,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__writing_examples",
@@ -1657,15 +1657,15 @@
         "CXSmiles"
       ],
       "name": "writing examples",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": "wiggly and wedged bonds in CXSMILES",
       "snippet_sha256": "179de6beb21bbe836e1dcedd3a092f62cf99a267e293cc94562e02c184c13a57",
       "start_line": 2144,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2213,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__writing_wedges_and_dashes",
@@ -1677,15 +1677,15 @@
         "CXSmiles"
       ],
       "name": "writing wedges and dashes",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": "wiggly and wedged bonds in CXSMILES",
       "snippet_sha256": "bd71043aaf4479e65c4131673bde70a3019150d0b60dd89242ac71cd69312bb2",
       "start_line": 2165,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2313,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ring_bond_stereochemistry_in_cxsmiles",
@@ -1697,15 +1697,15 @@
         "CXSmiles"
       ],
       "name": "ring bond stereochemistry in CXSMILES",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "093d5fa94b3667d6e1e09a4c9392abb5fe311f7f6cba008e22d86a9581019ade",
       "start_line": 2254,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2312,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ring_bond_stereochemistry_in_cxsmiles__basic_writing",
@@ -1717,15 +1717,15 @@
         "CXSmiles"
       ],
       "name": "basic writing",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": "ring bond stereochemistry in CXSMILES",
       "snippet_sha256": "38b3c5891be9893d947380d8401ad9e54dd1385703ae1ddf33ac287b00050ecc",
       "start_line": 2293,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2476,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atropisomer_output_in_cxsmiles",
@@ -1737,15 +1737,15 @@
         "CXSmiles"
       ],
       "name": "Atropisomer output in CXSMILES",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "500ed96a83c49e9186474718564d5e9dbc1735370a5227ef1a61252c8285f913",
       "start_line": 2429,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2475,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atropisomer_output_in_cxsmiles__withchiralatom_label",
@@ -1757,11 +1757,11 @@
         "CXSmiles"
       ],
       "name": "'WithChiralAtom' label",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": "Atropisomer output in CXSMILES",
       "snippet_sha256": "190002372a7ae79e8802d36a805bb81071c625fbb8f0e265b631e92829226dc0",
       "start_line": 2430,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1803,7 +1803,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 2519,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__fieldname_not_found_in_superatomsgroup_in_cxsmiles",
@@ -1815,15 +1815,15 @@
         "CXSmiles"
       ],
       "name": "Fieldname not found in SuperatomSgroup in CXSmiles",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": null,
       "snippet_sha256": "27200ccd410ccf1cfe3a1a83f96ed1f979f7c66d1d9a2bf66561ac4073129ee7",
       "start_line": 2500,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 2518,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__fieldname_not_found_in_superatomsgroup_in_cxsmiles__basics",
@@ -1835,11 +1835,11 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": "Fieldname not found in SuperatomSgroup in CXSmiles",
       "snippet_sha256": "1e1bbbff9f79d5297e7d4a9e9b250bb57eb7efe8e35aff2802e9154c9fab5d9b",
       "start_line": 2502,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1960,7 +1960,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2701,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__enhanced_stereo_canonicalized",
@@ -1972,15 +1972,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo canonicalized",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": null,
       "snippet_sha256": "cd07a0a3208d52beeb45d9077d306bb8420c939ea376f15cb4416099212ca5e8",
       "start_line": 2616,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2630,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__case_takes_forever",
@@ -1991,15 +1991,15 @@
         "CXSmiles"
       ],
       "name": "case takes forever",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "enhanced stereo canonicalized",
       "snippet_sha256": "aa446658cba403b2ef81280dec39cc1ca7976907351d4bf6e8210c458e665f4e",
       "start_line": 2617,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2645,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__case_takes_long_but_not_forever",
@@ -2010,15 +2010,15 @@
         "CXSmiles"
       ],
       "name": "case takes long but not forever",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "enhanced stereo canonicalized",
       "snippet_sha256": "c6239357a4f89d6b7d8f1ace7ecb8a45bcd6d64482508cca4deb31fb7adeda9a",
       "start_line": 2632,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2663,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__basic",
@@ -2030,15 +2030,15 @@
         "CXSmiles"
       ],
       "name": "basic",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "enhanced stereo canonicalized",
       "snippet_sha256": "dac10552fc4da68dd53171a38e8c31ec1177c2b0825452a786090289289c8214",
       "start_line": 2647,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2687,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__trimethylcyclohexane",
@@ -2050,15 +2050,15 @@
         "CXSmiles"
       ],
       "name": "trimethylcyclohexane",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "enhanced stereo canonicalized",
       "snippet_sha256": "e28179370888c7a25da17ddab6fb53df273833d66cc58c39f861806bd6256afe",
       "start_line": 2665,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2700,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__multifrag_test",
@@ -2070,11 +2070,11 @@
         "CXSmiles"
       ],
       "name": "multiFrag test",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "enhanced stereo canonicalized",
       "snippet_sha256": "a0530680a27accb4791cb59b8b6a0b5e27f74dcce933e3e46aecf25e20ea8edb",
       "start_line": 2689,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2246,7 +2246,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 2939,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__cx_bond_atropisomer_option_requires_ring_info",
@@ -2258,11 +2258,11 @@
         "CXSmiles"
       ],
       "name": "CX_BOND_ATROPISOMER option requires ring info",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "172d1ab8fde47deb32df574646c7b2d89c5bf81d5573ab002aed39a13703014d",
       "start_line": 2916,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2472,7 +2472,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 3094,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__trimethylcyclohexane",
@@ -2483,15 +2483,15 @@
         "CXSmiles"
       ],
       "name": "trimethylcyclohexane",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": null,
       "snippet_sha256": "262e2eb99e850503b6b55d45749f57c7c92440c0c93e15318bd24b5c7e4e7b2d",
       "start_line": 3075,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 3084,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__trimethylcyclohexane__basic",
@@ -2502,15 +2502,15 @@
         "CXSmiles"
       ],
       "name": "Basic",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "trimethylcyclohexane",
       "snippet_sha256": "1bc559b90d0ff6f12e1710f1e877fec4a27a028598f0209321173168b50e4163",
       "start_line": 3076,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 3093,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__trimethylcyclohexane__withenhancedstereo",
@@ -2521,11 +2521,11 @@
         "CXSmiles"
       ],
       "name": "WithEnhancedStereo",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "trimethylcyclohexane",
       "snippet_sha256": "5976cbdae841882e828d576cc9163af1b8466a57c3a6d0dedb1c9f58f1551776",
       "start_line": 3085,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2772,7 +2772,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 3287,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8654_stereogroups_used_in_canonicalization_even_if_not_in_output",
@@ -2784,15 +2784,15 @@
         "CXSmiles"
       ],
       "name": "github #8654: stereogroups used in canonicalization even if not in output",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": null,
       "snippet_sha256": "ac63a6866febc683e30d7a76d14d3deb1993fa35872b9210d9b05b499c9e1d7e",
       "start_line": 3275,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 3286,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8654_stereogroups_used_in_canonicalization_even_if_not_in_output__as_reported",
@@ -2804,11 +2804,11 @@
         "CXSmiles"
       ],
       "name": "as reported",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "github #8654: stereogroups used in canonicalization even if not in output",
       "snippet_sha256": "b3bedfd50dbbd7022069be35306cbed159399509bf667fe2fc99d024264aa611",
       "start_line": 3277,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2884,7 +2884,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-sgroup-serialization",
       "end_line": 3380,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__non_encodeable_sgroups",
@@ -2895,11 +2895,11 @@
         "CXSmiles"
       ],
       "name": "Non-encodeable SGroups",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES SGroup serialization or SGroup-related error handling. Grimace does not model CXSMILES extension fields or SGroup output.",
       "parent": null,
       "snippet_sha256": "814d230f649ab328104537f6c8d2fb0f3e1b9fd7b75d2773e54509a54025fdb6",
       "start_line": 3347,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2957,7 +2957,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 1104,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__testatropisomersincxsmiles",
@@ -2967,15 +2967,15 @@
         "CXSmiles"
       ],
       "name": "testAtropisomersInCXSmiles",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "09632f365a360fbbb7999a7620e58515e1339de2784dc2c95ae9265d7cb575ea",
       "start_line": 1030,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 1121,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__testatropisomersincxsmilescanon",
@@ -2985,11 +2985,11 @@
         "CXSmiles"
       ],
       "name": "testAtropisomersInCXSmilesCanon",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "2e28620866a6d9317879b008cfc9c1e8b121bdfa81b0acd73cf55148b5479fab",
       "start_line": 1106,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -3031,7 +3031,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 1384,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6225_removes_enhanced_stereo_if_doisomericsmiles_is_false",
@@ -3043,11 +3043,11 @@
         "CXSmiles"
       ],
       "name": "github #6225: removes enhanced stereo if doIsomericSmiles is false",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": null,
       "snippet_sha256": "8340c9ca06a93b03907fc24a021f88300c7b99184224ccdeea606ed65d0a0b57",
       "start_line": 1362,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -3131,7 +3131,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 1459,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__stereogroup_id_forwarding",
@@ -3142,15 +3142,15 @@
         "CXSmiles"
       ],
       "name": "StereoGroup id forwarding",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": null,
       "snippet_sha256": "4e3d62f4e75cd135b3c797b60eb8b63bc915d8979b05cf470023895f578fff4d",
       "start_line": 1427,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 1439,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__ids_reassigned_by_default",
@@ -3161,15 +3161,15 @@
         "CXSmiles"
       ],
       "name": "ids reassigned by default",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "StereoGroup id forwarding",
       "snippet_sha256": "3618107359561bd5c4aabddae84a543c16f9afdb918c0598db599c7c810ad5a3",
       "start_line": 1433,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 1448,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__forward_input_ids",
@@ -3180,15 +3180,15 @@
         "CXSmiles"
       ],
       "name": "forward input ids",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "StereoGroup id forwarding",
       "snippet_sha256": "1b58cb26106ff3e82b82f5d684113a874ac70441d5dac83ecdc66057719a8573",
       "start_line": 1441,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 1458,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__forward_input_ids_rigorous",
@@ -3199,11 +3199,11 @@
         "CXSmiles"
       ],
       "name": "forward input ids - rigorous",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata, stereo-group IDs, or canonicalization interactions. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "StereoGroup id forwarding",
       "snippet_sha256": "f4fdc4433ab30aa506e78bfd41018a40e70b9d7efcb9b85b397e9c061c8554d5",
       "start_line": 1450,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -3361,7 +3361,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 1638,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_8348_unable_to_write_wiggly_bond_information_by_default",
@@ -3373,11 +3373,11 @@
         "CXSmiles"
       ],
       "name": "Github #8348: Unable to write wiggly bond information by default",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration metadata such as wiggly/wedged bonds, ring bond stereo, or atropisomer CX fields. Grimace currently targets plain SMILES tokens, not CX bond metadata serialization.",
       "parent": null,
       "snippet_sha256": "ee08bee167bdc103ac308ea7782439d12af7aa88998d891761dfebb40a42aed2",
       "start_line": 1602,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {

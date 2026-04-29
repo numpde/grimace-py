@@ -475,6 +475,49 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_directional_bond_input_normalization(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testIssue159:
+        # equivalent directional-bond input spellings should produce the same
+        # exact E/Z serializer support.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testIssue159"
+        )
+        inputs = ("C/C=C/O", r"C(\C)=C/O")
+        expected_support = {
+            r"C(/C)=C\O",
+            r"C(/O)=C\C",
+            r"C(=C\C)/O",
+            r"C(=C\O)/C",
+            "C/C=C/O",
+            "O/C=C/C",
+        }
+        expected_inventory = ("(", ")", "/", "=", "C", "O", "\\")
+
+        for smiles in inputs:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+
     def test_nondegenerate_chirality_is_suppressed(self) -> None:
         # Regression pinned to RDKit SmilesDetailsTests.testIssue143:
         # chiral annotations on non-stereogenic centers should disappear from

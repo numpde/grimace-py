@@ -25,17 +25,6 @@ DEFAULT_OUTPUT = (
     REPO_ROOT / "tests" / "fixtures" / "rdkit_upstream_serializer_coverage" / f"{RDKIT_VERSION}.json"
 )
 
-CPP_TEST_FILES = (
-    "Code/GraphMol/SmilesParse/catch_tests.cpp",
-    "Code/GraphMol/SmilesParse/cxsmiles_test.cpp",
-)
-PYTHON_TEST_FILES = (
-    "Code/GraphMol/Wrap/rough_test.py",
-)
-JAVA_TEST_FILES = (
-    "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java",
-)
-
 SERIALIZER_TERMS = (
     "MolToSmiles",
     "MolToRandomSmilesVect",
@@ -51,14 +40,6 @@ SERIALIZER_TERMS = (
     "CXSmiles",
 )
 
-REVIEW_FIELDS = (
-    "status",
-    "claim",
-    "grimace_fixtures",
-    "grimace_cases",
-    "notes",
-)
-
 DEFAULT_REVIEW = {
     "status": "unreviewed",
     "claim": "needs-triage",
@@ -66,6 +47,7 @@ DEFAULT_REVIEW = {
     "grimace_cases": [],
     "notes": "",
 }
+REVIEW_FIELDS = tuple(DEFAULT_REVIEW)
 
 
 @dataclass(frozen=True)
@@ -249,7 +231,6 @@ def _extract_cpp(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 def _extract_python(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
     source_path = source_root / "source" / rel_path
     text = source_path.read_text()
-    source = text.encode()
     tree = ast.parse(text)
     blocks = []
 
@@ -338,14 +319,20 @@ def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
     return blocks
 
 
+def _source_files_from_manifest(source_root: Path) -> list[str]:
+    manifest = json.loads((source_root / "manifest.json").read_text())
+    return sorted(file["path"] for file in manifest["files"])
+
+
 def extract_blocks(source_root: Path) -> list[ExtractedBlock]:
     blocks = []
-    for rel_path in CPP_TEST_FILES:
-        blocks.extend(_extract_cpp(source_root, rel_path))
-    for rel_path in PYTHON_TEST_FILES:
-        blocks.extend(_extract_python(source_root, rel_path))
-    for rel_path in JAVA_TEST_FILES:
-        blocks.extend(_extract_java(source_root, rel_path))
+    for rel_path in _source_files_from_manifest(source_root):
+        if rel_path.endswith(".cpp"):
+            blocks.extend(_extract_cpp(source_root, rel_path))
+        elif rel_path.endswith(".py"):
+            blocks.extend(_extract_python(source_root, rel_path))
+        elif rel_path.endswith(".java"):
+            blocks.extend(_extract_java(source_root, rel_path))
     return sorted(
         blocks,
         key=lambda block: (

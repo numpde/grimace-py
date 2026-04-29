@@ -5,7 +5,16 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
+from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_EXACT_SMALL_SUPPORT,
+    PINNED_RDKIT_PARITY_FIXTURE_FAMILIES,
+    PINNED_RDKIT_ROOTED_RANDOM,
+    PINNED_RDKIT_SERIALIZER_REGRESSIONS,
+    PINNED_RDKIT_WRITER_MEMBERSHIP,
+    load_pinned_rdkit_fixture_cases,
+    pinned_rdkit_fixture_root,
+    pinned_rdkit_fixture_versions,
+)
 from tests.helpers.rdkit_disconnected_sampling import load_disconnected_root_zero_smiles
 from tests.helpers.rdkit_exact_small_support import (
     load_pinned_exact_small_support_cases,
@@ -22,7 +31,12 @@ from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_
 
 
 RDKIT_VERSION = "2099.01.1"
-CHECKED_IN_FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
+PINNED_FIXTURE_LOADERS = {
+    PINNED_RDKIT_EXACT_SMALL_SUPPORT: load_pinned_exact_small_support_cases,
+    PINNED_RDKIT_ROOTED_RANDOM: load_pinned_rooted_random_cases,
+    PINNED_RDKIT_SERIALIZER_REGRESSIONS: load_pinned_serializer_regression_cases,
+    PINNED_RDKIT_WRITER_MEMBERSHIP: load_pinned_writer_membership_cases,
+}
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -55,18 +69,6 @@ def _serializer_case(case_id: str, **overrides: object) -> dict[str, object]:
     }
     case.update(overrides)
     return case
-
-
-def _pinned_fixture_versions(fixture_root: Path) -> tuple[str, ...]:
-    versions = {
-        path.stem
-        for path in fixture_root.glob("*.json")
-    } | {
-        path.name
-        for path in fixture_root.iterdir()
-        if path.is_dir()
-    }
-    return tuple(sorted(versions))
 
 
 class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
@@ -238,57 +240,26 @@ class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
 
 
 class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
-    def test_all_checked_in_exact_small_support_fixtures_load(self) -> None:
-        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_exact_small_support"
-        versions = _pinned_fixture_versions(fixture_root)
+    def test_all_checked_in_pinned_rdkit_fixtures_load(self) -> None:
+        self.assertEqual(
+            set(PINNED_RDKIT_PARITY_FIXTURE_FAMILIES),
+            set(PINNED_FIXTURE_LOADERS),
+        )
+        for fixture_family in PINNED_RDKIT_PARITY_FIXTURE_FAMILIES:
+            fixture_root = pinned_rdkit_fixture_root(fixture_family)
+            versions = pinned_rdkit_fixture_versions(fixture_root)
+            self.assertTrue(versions, fixture_family)
 
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_exact_small_support_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-                self.assertTrue(cases)
-
-    def test_all_checked_in_serializer_regression_fixtures_load(self) -> None:
-        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_serializer_regressions"
-        versions = _pinned_fixture_versions(fixture_root)
-
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_serializer_regression_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-                self.assertTrue(cases)
-
-    def test_all_checked_in_rooted_random_fixtures_load(self) -> None:
-        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_rooted_random"
-        versions = _pinned_fixture_versions(fixture_root)
-
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_rooted_random_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-                self.assertTrue(cases)
-
-    def test_all_checked_in_writer_membership_fixtures_load(self) -> None:
-        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_writer_membership"
-        versions = _pinned_fixture_versions(fixture_root)
-
-        self.assertTrue(versions)
-        for rdkit_version in versions:
-            with self.subTest(rdkit_version=rdkit_version):
-                cases = load_pinned_writer_membership_cases(
-                    rdkit_version,
-                    fixture_root=fixture_root,
-                )
-                self.assertTrue(cases)
+            for rdkit_version in versions:
+                with self.subTest(
+                    fixture_family=fixture_family,
+                    rdkit_version=rdkit_version,
+                ):
+                    cases = PINNED_FIXTURE_LOADERS[fixture_family](
+                        rdkit_version,
+                        fixture_root=fixture_root,
+                    )
+                    self.assertTrue(cases)
 
 
 class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):

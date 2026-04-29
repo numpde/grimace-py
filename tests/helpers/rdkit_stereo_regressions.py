@@ -4,18 +4,16 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from tests.helpers.fixture_paths import checked_in_fixture_path
 
-_STEROID_RING_COUPLED_COMPONENT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "fixtures"
-    / "rdkit_stereo_regressions"
-    / "steroid_ring_coupled_component.json"
+
+_STEROID_RING_COUPLED_COMPONENT_PATH = checked_in_fixture_path(
+    "rdkit_stereo_regressions",
+    "steroid_ring_coupled_component.json",
 )
-_ROOTED_MEMBERSHIP_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "fixtures"
-    / "rdkit_stereo_regressions"
-    / "rooted_membership.json"
+_ROOTED_MEMBERSHIP_PATH = checked_in_fixture_path(
+    "rdkit_stereo_regressions",
+    "rooted_membership.json",
 )
 
 

@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_EXACT_SMALL_SUPPORT,
     load_pinned_rdkit_fixture_cases,
     normalized_unique_sorted_strings,
     optional_bool,
+    pinned_rdkit_fixture_root,
     required_bool,
     required_int,
     required_string,
@@ -28,9 +30,7 @@ class PinnedExactSmallSupportCase:
     ignore_atom_map_numbers: bool = False
 
 
-_FIXTURE_ROOT = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "rdkit_exact_small_support"
-)
+_FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_EXACT_SMALL_SUPPORT)
 
 
 def load_pinned_exact_small_support_cases(

@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from tests.helpers.fixture_paths import checked_in_fixture_path
 
-_FIXTURE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "fixtures"
-    / "rdkit_disconnected_sampling"
-    / "root_zero_smiles.json"
+
+_FIXTURE_PATH = checked_in_fixture_path(
+    "rdkit_disconnected_sampling",
+    "root_zero_smiles.json",
 )
 
 

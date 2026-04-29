@@ -4,6 +4,20 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from tests.helpers.fixture_paths import checked_in_fixture_path
+
+
+PINNED_RDKIT_EXACT_SMALL_SUPPORT = "rdkit_exact_small_support"
+PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
+PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
+PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
+PINNED_RDKIT_PARITY_FIXTURE_FAMILIES: tuple[str, ...] = (
+    PINNED_RDKIT_EXACT_SMALL_SUPPORT,
+    PINNED_RDKIT_ROOTED_RANDOM,
+    PINNED_RDKIT_SERIALIZER_REGRESSIONS,
+    PINNED_RDKIT_WRITER_MEMBERSHIP,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class PinnedFixtureCase:
@@ -11,6 +25,37 @@ class PinnedFixtureCase:
     source: str
     raw: dict[str, object]
     fixture_path: Path
+
+
+def pinned_rdkit_fixture_root(fixture_family: str) -> Path:
+    return checked_in_fixture_path(fixture_family)
+
+
+def pinned_rdkit_parity_fixture_roots() -> tuple[Path, ...]:
+    return tuple(
+        pinned_rdkit_fixture_root(fixture_family)
+        for fixture_family in PINNED_RDKIT_PARITY_FIXTURE_FAMILIES
+    )
+
+
+def has_pinned_rdkit_fixture(fixture_root: Path, rdkit_version: str) -> bool:
+    fixture_path = fixture_root / f"{rdkit_version}.json"
+    fixture_dir = fixture_root / rdkit_version
+    return fixture_path.is_file() or (
+        fixture_dir.is_dir() and any(fixture_dir.glob("*.json"))
+    )
+
+
+def pinned_rdkit_fixture_versions(fixture_root: Path) -> tuple[str, ...]:
+    versions = {
+        path.stem
+        for path in fixture_root.glob("*.json")
+    } | {
+        path.name
+        for path in fixture_root.iterdir()
+        if path.is_dir()
+    }
+    return tuple(sorted(versions))
 
 
 def normalized_unique_sorted_strings(

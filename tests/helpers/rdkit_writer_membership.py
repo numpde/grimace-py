@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_WRITER_MEMBERSHIP,
     load_pinned_rdkit_fixture_cases,
     optional_bool,
     optional_int,
+    pinned_rdkit_fixture_root,
     required_bool,
     required_string,
 )
@@ -27,9 +29,7 @@ class PinnedWriterMembershipCase:
     ignore_atom_map_numbers: bool = False
 
 
-_FIXTURE_ROOT = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "rdkit_writer_membership"
-)
+_FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_WRITER_MEMBERSHIP)
 
 
 def load_pinned_writer_membership_cases(

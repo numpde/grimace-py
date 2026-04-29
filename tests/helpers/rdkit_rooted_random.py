@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_ROOTED_RANDOM,
     load_pinned_rdkit_fixture_cases,
+    pinned_rdkit_fixture_root,
     required_string,
     required_string_tuple,
 )
@@ -18,9 +20,7 @@ class PinnedRootedRandomCase:
     rooted_outputs: tuple[str, ...]
 
 
-_FIXTURE_ROOT = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "rdkit_rooted_random"
-)
+_FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_ROOTED_RANDOM)
 
 
 def load_pinned_rooted_random_cases(

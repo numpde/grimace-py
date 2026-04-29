@@ -4,11 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_SERIALIZER_REGRESSIONS,
     load_pinned_rdkit_fixture_cases,
     normalized_unique_sorted_strings,
     optional_bool,
     optional_positive_int,
     optional_string,
+    pinned_rdkit_fixture_root,
     required_bool,
     required_int,
 )
@@ -31,9 +33,7 @@ class PinnedSerializerRegressionCase:
     rdkit_sample_draw_budget: int | None = None
 
 
-_FIXTURE_ROOT = (
-    Path(__file__).resolve().parents[1] / "fixtures" / "rdkit_serializer_regressions"
-)
+_FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_SERIALIZER_REGRESSIONS)
 
 
 def load_pinned_serializer_regression_cases(

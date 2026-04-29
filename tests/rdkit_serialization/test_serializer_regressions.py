@@ -20,16 +20,14 @@ from tests.rdkit_serialization._support import (
 )
 
 
-PINNED_RDKIT_VERSION = "2026.03.1"
-
-
 class SerializerRegressionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if rdBase.rdkitVersion != PINNED_RDKIT_VERSION:
+        try:
+            cls.cases = load_pinned_serializer_regression_cases(rdBase.rdkitVersion)
+        except FileNotFoundError:
             raise unittest.SkipTest(
-                f"serializer regressions are pinned to RDKit {PINNED_RDKIT_VERSION}, "
-                f"got {rdBase.rdkitVersion}"
+                f"no pinned serializer-regression corpus for RDKit {rdBase.rdkitVersion}"
             )
 
     @staticmethod
@@ -40,7 +38,7 @@ class SerializerRegressionTests(unittest.TestCase):
         return mol
 
     def test_fixture_backed_serializer_regressions(self) -> None:
-        for case in load_pinned_serializer_regression_cases(PINNED_RDKIT_VERSION):
+        for case in self.cases:
             mol = parse_smiles(case.smiles)
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(
@@ -59,7 +57,7 @@ class SerializerRegressionTests(unittest.TestCase):
                 )
 
     def test_fixture_backed_rdkit_sampling_when_declared(self) -> None:
-        for case in load_pinned_serializer_regression_cases(PINNED_RDKIT_VERSION):
+        for case in self.cases:
             if case.rdkit_sample_draw_budget is None:
                 continue
             mol = parse_smiles(case.smiles)

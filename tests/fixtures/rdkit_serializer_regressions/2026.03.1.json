@@ -314,6 +314,87 @@
       ]
     },
     {
+      "id": "explicit_h_epoxide_normalizes_to_chiral_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:483-487 epoxide explicit-H",
+      "smiles": "C1O[C@@]1([H])F",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "F",
+        "O",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "C1O[C@H]1F",
+        "C1[C@@H](O1)F",
+        "C1[C@H](F)O1",
+        "F[C@@H]1OC1",
+        "F[C@H]1CO1",
+        "O1C[C@@H]1F",
+        "O1[C@@H](F)C1",
+        "O1[C@H](C1)F",
+        "[C@@H]1(CO1)F",
+        "[C@@H]1(F)OC1",
+        "[C@H]1(F)CO1",
+        "[C@H]1(OC1)F"
+      ]
+    },
+    {
+      "id": "cis_alkene_directional_bond_normalization",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:492-508 cis alkene normalization",
+      "smiles": "F\\C=C/Br",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "Br\\C=C/F",
+        "C(=C\\Br)\\F",
+        "C(=C\\F)\\Br",
+        "C(\\Br)=C\\F",
+        "C(\\F)=C\\Br",
+        "F\\C=C/Br"
+      ]
+    },
+    {
+      "id": "trans_alkene_directional_bond_normalization",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:510-526 trans alkene normalization",
+      "smiles": "F\\C=C\\Br",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "Br\\C=C\\F",
+        "C(=C/Br)\\F",
+        "C(=C/F)\\Br",
+        "C(\\Br)=C/F",
+        "C(\\F)=C/Br",
+        "F\\C=C\\Br"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

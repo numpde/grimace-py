@@ -255,6 +255,41 @@
       "expected": [
         "N(-C)(-C)-C"
       ]
+    },
+    {
+      "id": "mapped_dummy_atom_surface_all_roots",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test82Issue288",
+      "smiles": "CC[*:30]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "[*:30]",
+        "[CH2]"
+      ],
+      "expected": [
+        "C[CH2][*:30]",
+        "[*:30][CH2]C",
+        "[CH2](C)[*:30]",
+        "[CH2]([*:30])C"
+      ]
+    },
+    {
+      "id": "isotopic_dummy_atom_surface_all_roots",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:github #8906",
+      "smiles": "[1*][2C]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "[1*]",
+        "[2C]"
+      ],
+      "expected": [
+        "[1*][2C]",
+        "[2C][1*]"
+      ]
     }
   ]
 }

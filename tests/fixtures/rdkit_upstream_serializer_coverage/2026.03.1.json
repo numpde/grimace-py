@@ -2724,7 +2724,16 @@
     {
       "claim": "metal-bound-hydrogen-smiles",
       "end_line": 3223,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "metal_bound_atoms_keep_explicit_hydrogens_neutral",
+            "metal_bound_atoms_keep_explicit_hydrogens_dative"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Existing exact serializer fixtures cover both Pt-bound neutral and dative hydrogen spelling examples."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atoms_bound_to_metals_should_always_have_hs_specified",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2732,17 +2741,26 @@
         "MolToSmiles"
       ],
       "name": "atoms bound to metals should always have Hs specified",
-      "notes": "Metal-bound N/O hydrogen spelling in MolToSmiles is not yet represented by Grimace fixtures.",
+      "notes": "Metal-bound explicit-H spelling is represented by exact serializer fixtures for neutral and dative Pt examples.",
       "parent": null,
       "snippet_sha256": "2da0d0689d87c2ffcdef7990ef9bbe39430978525cba012b80ee828ee0c20346",
       "start_line": 3209,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "metal-bound-hydrogen-smiles",
       "end_line": 3222,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "metal_bound_atoms_keep_explicit_hydrogens_neutral",
+            "metal_bound_atoms_keep_explicit_hydrogens_dative"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Existing exact serializer fixtures cover both Pt-bound neutral and dative hydrogen spelling examples."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atoms_bound_to_metals_should_always_have_hs_specified__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2750,11 +2768,11 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "Pt-bound [NH2]/[NH3] and [OH] writer spelling is not yet represented by Grimace fixtures.",
+      "notes": "Metal-bound explicit-H spelling is represented by exact serializer fixtures for neutral and dative Pt examples.",
       "parent": "atoms bound to metals should always have Hs specified",
       "snippet_sha256": "577d826dfbb6bf646414823e71c34b80e40167d654d587ca3c01dd01e5f9e246",
       "start_line": 3210,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2893,7 +2911,15 @@
     {
       "claim": "isotopic-dummy-atom-smiles",
       "end_line": 3316,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "isotopic_dummy_atom_surface_all_roots"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Exact support fixture covers isotope-labelled dummy atom output from GitHub #8906."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8906",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2901,17 +2927,25 @@
         "MolToSmiles"
       ],
       "name": "github #8906",
-      "notes": "Isotope-labelled dummy atom output [1*][2C] is not yet represented by a Grimace fixture.",
+      "notes": "Isotope-labelled dummy atom output is represented by an exact serializer fixture.",
       "parent": null,
       "snippet_sha256": "86cae09a7cb6e94b950975472c99af0c2e95ce9456e2a011855f47b9e7d5d43f",
       "start_line": 3307,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "isotopic-dummy-atom-smiles",
       "end_line": 3315,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "isotopic_dummy_atom_surface_all_roots"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Exact support fixture covers isotope-labelled dummy atom output from GitHub #8906."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8906__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2919,11 +2953,11 @@
         "MolToSmiles"
       ],
       "name": "as reported",
-      "notes": "Reported isotope-labelled dummy atom output [1*][2C] is not yet represented by a Grimace fixture.",
+      "notes": "Isotope-labelled dummy atom output is represented by an exact serializer fixture.",
       "parent": "github #8906",
       "snippet_sha256": "d41e49268cc18db00ec8527b39a27594b9346d7d3fcb1a3dbbd92e852550ecaf",
       "start_line": 3308,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -4062,7 +4096,15 @@
     {
       "claim": "atom-map-dummy-smiles",
       "end_line": 3345,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "mapped_dummy_atom_surface_all_roots"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Exact support fixture covers the mapped dummy atom writer surface from the Python wrapper regression."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test82issue288",
       "kind": "python_test",
       "language": "python",
@@ -4070,11 +4112,11 @@
         "MolToSmiles"
       ],
       "name": "test82Issue288",
-      "notes": "Pins MolToSmiles output for a mapped dummy atom; this writer surface is not yet represented in Grimace fixtures.",
+      "notes": "Mapped dummy atom output is represented by an exact serializer fixture.",
       "parent": "TestCase",
       "snippet_sha256": "d221f8b6032763ef67aa24b7480329f21eaa5977173c82535f6432e1b6c10ced",
       "start_line": 3335,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

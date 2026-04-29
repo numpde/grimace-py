@@ -1,7 +1,7 @@
 {
   "entries": [
     {
-      "claim": "needs-triage",
+      "claim": "pseudo-ring-closure-chirality-smiles",
       "end_line": 73,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_1972",
@@ -11,15 +11,15 @@
         "MolToSmiles"
       ],
       "name": "Github #1972",
-      "notes": "",
+      "notes": "Aggregate test for chiral atoms using ring-closure syntax to external substituents; exact noncanonical support fixtures are still needed.",
       "parent": null,
       "snippet_sha256": "7471f283ff3db26697d8ec2e2146e09b0fc27072e475b5c480f6f9f96538a794",
       "start_line": 36,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "pseudo-ring-closure-chirality-smiles",
       "end_line": 52,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__basics",
@@ -29,15 +29,15 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Basic pseudo-ring-closure chirality equivalence examples are not yet represented by Grimace fixtures.",
       "parent": "Github #1972",
       "snippet_sha256": "a280c3be2d1ad3dc84e26463b652dcb038820074fbbbce43340c29eb11249c8e",
       "start_line": 37,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "pseudo-ring-closure-chirality-smiles",
       "end_line": 72,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__further_examples",
@@ -47,11 +47,11 @@
         "MolToSmiles"
       ],
       "name": "further examples",
-      "notes": "",
+      "notes": "Multi-substituent pseudo-ring-closure chirality equivalence examples are not yet represented by Grimace fixtures.",
       "parent": "Github #1972",
       "snippet_sha256": "23d04028331827d882ccc809271ae21dba9360a953b85bc30b37bd17180af0fb",
       "start_line": 53,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -485,7 +485,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "aromatic-double-bond-ring-closure-stereo",
       "end_line": 386,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2148",
@@ -495,15 +495,15 @@
         "MolToSmiles"
       ],
       "name": "Github #2148",
-      "notes": "",
+      "notes": "Aggregate GitHub #2148 test includes an aromatic double-bond ring-closure MolToSmiles writer regression not yet pinned by Grimace fixtures.",
       "parent": null,
       "snippet_sha256": "f99409d1815758fa079408891037b93d301ad97dfdc28e166745863693d3909d",
       "start_line": 341,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "aromatic-double-bond-ring-closure-stereo",
       "end_line": 385,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2148__writing_smiles",
@@ -513,11 +513,11 @@
         "MolToSmiles"
       ],
       "name": "Writing SMILES",
-      "notes": "",
+      "notes": "MolToSmiles output for C/C=c1/ncc(=C)cc1 is not yet represented by a Grimace fixture.",
       "parent": "Github #2148",
       "snippet_sha256": "245e7331ff475aba29826edebb975cab2f9148b494666441907482980465ce1b",
       "start_line": 368,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -681,9 +681,22 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "dative-bond-direction-smiles",
       "end_line": 828,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "dative_bond_direction_surface_1_nh3_cu_root-1",
+            "dative_bond_direction_surface_2_nh3_cu_root0",
+            "dative_bond_direction_surface_3_nh3_cu_root1",
+            "dative_bond_direction_surface_4_nh2_cu_root-1",
+            "dative_bond_direction_surface_5_nh2_cu_root0",
+            "dative_bond_direction_surface_6_nh2_cu_root1"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/40_dative_fragment_order.json",
+          "note": "Covers the N->[Cu+] and N<-[Cu+] MolToSmiles arrow-direction surfaces."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3774_moltosmarts_inverts_direction_of_dative_bond",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -691,17 +704,30 @@
         "MolToSmiles"
       ],
       "name": "github #3774: MolToSmarts inverts direction of dative bond",
-      "notes": "",
+      "notes": "Dative-arrow MolToSmiles outputs from the C++ regression are represented by exact serializer fixtures.",
       "parent": null,
       "snippet_sha256": "fdd43b7cb9384c93b66f1efc13c4bc54eba4357838bfb81c54bf06ea152e5edd",
       "start_line": 800,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "dative-bond-direction-smiles",
       "end_line": 815,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "dative_bond_direction_surface_1_nh3_cu_root-1",
+            "dative_bond_direction_surface_2_nh3_cu_root0",
+            "dative_bond_direction_surface_3_nh3_cu_root1",
+            "dative_bond_direction_surface_4_nh2_cu_root-1",
+            "dative_bond_direction_surface_5_nh2_cu_root0",
+            "dative_bond_direction_surface_6_nh2_cu_root1"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/40_dative_fragment_order.json",
+          "note": "Covers both dative-arrow directions and rooted surfaces for the reported inputs."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_3774_moltosmarts_inverts_direction_of_dative_bond__as_reported",
       "kind": "cpp_section",
       "language": "cpp",
@@ -709,15 +735,15 @@
         "MolToSmiles"
       ],
       "name": "as reported",
-      "notes": "",
+      "notes": "The reported dative-arrow MolToSmiles cases are represented by exact serializer fixtures.",
       "parent": "github #3774: MolToSmarts inverts direction of dative bond",
       "snippet_sha256": "c9da51edfccb15aab47671c4240097ddcdf9d97b447be0efd2e698a490b442dd",
       "start_line": 802,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekule-smiles-writer",
       "end_line": 874,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2788_dokekule_true_should_kekulize_the_molecule",
@@ -727,17 +753,25 @@
         "MolToSmiles"
       ],
       "name": "Github #2788: doKekule=true should kekulize the molecule",
-      "notes": "",
+      "notes": "Aggregate doKekule writer test is only partially covered: benzene is pinned, pyrrole and exception behavior are not complete Grimace fixtures.",
       "parent": null,
       "snippet_sha256": "ee480730629834d5e764ba481f58c355617e8768bdab1eb684c27726c9cad689",
       "start_line": 840,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekule-benzene-smiles-writer",
       "end_line": 848,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_05_benzene_kekule"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Pins c1ccccc1 with kekuleSmiles=True producing C1=CC=CC=C1."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -745,15 +779,15 @@
         "MolToSmiles"
       ],
       "name": "basics1",
-      "notes": "",
+      "notes": "Benzene doKekule MolToSmiles output is represented by a writer-membership fixture.",
       "parent": "Github #2788: doKekule=true should kekulize the molecule",
       "snippet_sha256": "81beb9cb61a64358fd78f0fcb439aeed2b6585ca610c0888f5b5e983ffef1410",
       "start_line": 842,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekule-pyrrole-smiles-writer",
       "end_line": 855,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics2",
@@ -763,15 +797,15 @@
         "MolToSmiles"
       ],
       "name": "basics2",
-      "notes": "",
+      "notes": "Pyrrole doKekule MolToSmiles output C1=CNC=C1 is not yet represented by a Grimace fixture.",
       "parent": "Github #2788: doKekule=true should kekulize the molecule",
       "snippet_sha256": "acdeb71251967880758a298d0f6d9596505f7f900a246a904731bbc035a68a23",
       "start_line": 849,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekule-exception-behavior",
       "end_line": 873,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__can_thrown_exceptions",
@@ -781,11 +815,11 @@
         "MolToSmiles"
       ],
       "name": "can thrown exceptions",
-      "notes": "",
+      "notes": "Checks RDKit KekulizeException behavior for an unsanitized aromatic input, not Grimace serializer output parity.",
       "parent": "Github #2788: doKekule=true should kekulize the molecule",
       "snippet_sha256": "ac1ed073c30a9d5b08f4c8f98976e86dac3824b063b9c3641261ef7752f80562",
       "start_line": 857,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1035,7 +1069,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smiles-bond-output-order-property",
       "end_line": 1344,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__smilesbondoutputorder",
@@ -1045,15 +1079,15 @@
         "MolToSmiles"
       ],
       "name": "smilesBondOutputOrder",
-      "notes": "",
+      "notes": "Aggregate test validates RDKit private _smilesAtomOutputOrder/_smilesBondOutputOrder properties after MolToSmiles.",
       "parent": null,
       "snippet_sha256": "83e5e8f1022ac1c39bece22100a1d400fad8936b8403041a1392e8643480e873",
       "start_line": 1323,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smiles-bond-output-order-property",
       "end_line": 1333,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__smilesbondoutputorder__basics",
@@ -1063,15 +1097,15 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Checks RDKit private atom/bond output-order properties, which Grimace does not expose.",
       "parent": "smilesBondOutputOrder",
       "snippet_sha256": "d237ba588615eab70037d4c14745afa576e4967e3e0e7b7e97793487f5ceb2ef",
       "start_line": 1324,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smiles-bond-output-order-property",
       "end_line": 1343,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__smilesbondoutputorder__github_5585_incorrect_ordering_for_ring_closures",
@@ -1081,11 +1115,11 @@
         "MolToSmiles"
       ],
       "name": "Github #5585: incorrect ordering for ring closures",
-      "notes": "",
+      "notes": "Checks RDKit private output-order properties for ring closures, which Grimace does not expose.",
       "parent": "smilesBondOutputOrder",
       "snippet_sha256": "b8a8b17cde4033d80276141d51b293a58220e864d1fbca97de41f6e92602f359",
       "start_line": 1334,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1249,7 +1283,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "double-bond-ring-closure-molblock",
       "end_line": 1710,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__basic_test",
@@ -1259,11 +1293,11 @@
         "MolToSmiles"
       ],
       "name": "basic test",
-      "notes": "",
+      "notes": "Molblock-backed double-bond/ring-closure writer output is not yet represented by a Grimace fixture.",
       "parent": "Github #4582: double bonds and ring closures",
       "snippet_sha256": "6e14a7614a9fe32eac489410877bca0e542f65e23927e9da2882ab7d44511602",
       "start_line": 1697,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1287,7 +1321,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "double-bond-ring-closure-smiles-and-molblock",
       "end_line": 1881,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_continued_double_bonds_and_ring_closures",
@@ -1297,15 +1331,15 @@
         "MolToSmiles"
       ],
       "name": "Github #4582 continued: double bonds and ring closures",
-      "notes": "",
+      "notes": "Aggregate continued #4582 test contains several SMILES/molblock double-bond ring-closure writer regressions still needing fixtures.",
       "parent": null,
       "snippet_sha256": "1cdbc245ae04260b9f7967bf787d91435176dec501d302475d03c986b7fced8a",
       "start_line": 1729,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "double-bond-ring-closure-molblock",
       "end_line": 1761,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__basics",
@@ -1315,15 +1349,15 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Small molblock double-bond/ring-closure writer output is not yet represented by a Grimace fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "1fba684ec0d7a3ec2fe07332324a9787acc45fc4d2fbd881d1baa3a92743c4c2",
       "start_line": 1730,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "double-bond-ring-closure-smiles",
       "end_line": 1768,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_1",
@@ -1333,15 +1367,15 @@
         "MolToSmiles"
       ],
       "name": "github #3967 part 1",
-      "notes": "",
+      "notes": "GitHub #3967 part 1 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "20e890c8c079f70f924b6ede0237be511382c3af8c108d5e1d17951662cd1422",
       "start_line": 1762,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "double-bond-ring-closure-smiles",
       "end_line": 1775,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_2",
@@ -1351,15 +1385,15 @@
         "MolToSmiles"
       ],
       "name": "github #3967 part 2",
-      "notes": "",
+      "notes": "GitHub #3967 part 2 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "450c01cbf17469589f7ad9b7c5fae7ec974578d65e6289df95e54bccc00604b1",
       "start_line": 1769,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "large-double-bond-ring-closure-molblock",
       "end_line": 1879,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__chembl3623347",
@@ -1369,11 +1403,11 @@
         "MolToSmiles"
       ],
       "name": "CHEMBL3623347",
-      "notes": "",
+      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is not yet represented by a Grimace fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "2a65afa36b90e9d45ca512a1f2a7fb5ff21eb099819910a8ad47d680fcba1aad",
       "start_line": 1776,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

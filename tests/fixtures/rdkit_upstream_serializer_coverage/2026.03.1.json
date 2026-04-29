@@ -1799,7 +1799,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "complex-dative-metal-smiles",
       "end_line": 2498,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dative_bond_in_cxsmiles_double_double_def",
@@ -1810,15 +1810,15 @@
         "SmilesWriteParams"
       ],
       "name": "Dative  bond in cxsmiles double double def",
-      "notes": "",
+      "notes": "Complex Fe/N/O dative writer output is not yet represented by a Grimace fixture.",
       "parent": null,
       "snippet_sha256": "9842aafadd9972412178563011fc20dd28682b84bce4a35107d0ab7a17245089",
       "start_line": 2478,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "complex-dative-metal-smiles",
       "end_line": 2497,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dative_bond_in_cxsmiles_double_double_def__basics",
@@ -1829,11 +1829,11 @@
         "SmilesWriteParams"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Complex Fe/N/O dative writer output with canonical SmilesWriteParams is not yet represented by a Grimace fixture.",
       "parent": "Dative  bond in cxsmiles double double def",
       "snippet_sha256": "82c593bd2a6ea69377afd5e2bdcbaf9d1aff426913ecb78abe30bf96128904f0",
       "start_line": 2479,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1898,9 +1898,18 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "isotope-placement-smiles",
       "end_line": 2539,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "isotope_placement_terminal_15f_nonisomeric_collapses",
+            "isotope_placement_terminal_15f_isomeric_keeps_label"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Covers the FOCN[15F]/[15F]OCNF isotope placement surfaces in both writer modes."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__isotopes",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1909,15 +1918,15 @@
         "SmilesWriteParams"
       ],
       "name": "isotopes",
-      "notes": "",
+      "notes": "Terminal isotope placement examples are represented by exact serializer fixtures for isomeric and nonisomeric modes.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "5f774c705daf3ca6523d61096ccc71e57df032b4c70cdb534571086c42464c85",
       "start_line": 2521,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "chirality-canonical-rank-feature-suppression",
       "end_line": 2559,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__chirality",
@@ -1928,15 +1937,15 @@
         "SmilesWriteParams"
       ],
       "name": "chirality",
-      "notes": "",
+      "notes": "Chirality-sensitive canonical ranking examples are not yet represented by Grimace fixtures.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "b3ef68af86cf8f71b1bc1266296b390c95fcc8b3f372b4d261ed1a2e9393e16d",
       "start_line": 2541,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "ring-stereo-canonical-rank-feature-suppression",
       "end_line": 2579,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__ring_stereo",
@@ -1947,11 +1956,11 @@
         "SmilesWriteParams"
       ],
       "name": "ring stereo",
-      "notes": "",
+      "notes": "Ring-stereo canonical ranking examples are not yet represented by Grimace fixtures.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "7f50ccec98d6c2cbd2bcd8c046f50bb3d58dd7b51650750c81f7236abf69c0db",
       "start_line": 2561,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1976,7 +1985,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "enhanced-stereo-canonicalization",
       "end_line": 2614,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__problematic_cases",
@@ -1986,11 +1995,11 @@
         "MolToSmiles"
       ],
       "name": "problematic cases",
-      "notes": "",
+      "notes": "Calls RDKit enhanced-stereo canonicalization before MolToSmiles; enhanced stereo canonicalization is outside Grimace scope.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "4c344d6f7b8d4d9683f7ffc19cd682bef47cf2a2229c89f1612b920ec24ba6ab",
       "start_line": 2607,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2172,7 +2181,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "stereoany-molblock-smiles-stability",
       "end_line": 2867,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5499_stereoany_bonds_lead_to_non_stable_smiles_smarts_strings",
@@ -2182,15 +2191,15 @@
         "MolToSmiles"
       ],
       "name": "Github #5499: STEREOANY bonds lead to non-stable SMILES/SMARTS strings",
-      "notes": "",
+      "notes": "V3000 STEREOANY molblock round-trip stability through MolToSmiles is not yet pinned as a Grimace fixture.",
       "parent": null,
       "snippet_sha256": "368c9c5990bd1ecc389d48f59fb77a2cb6c9fc0c0fb84f5dc6d658ce7bf4516b",
       "start_line": 2812,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "stereoany-molblock-smiles-stability",
       "end_line": 2866,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5499_stereoany_bonds_lead_to_non_stable_smiles_smarts_strings__as_reported",
@@ -2200,15 +2209,15 @@
         "MolToSmiles"
       ],
       "name": "as reported",
-      "notes": "",
+      "notes": "Reported V3000 STEREOANY molblock round-trip stability case is not yet pinned as a Grimace fixture.",
       "parent": "Github #5499: STEREOANY bonds lead to non-stable SMILES/SMARTS strings",
       "snippet_sha256": "6628111174010685674ca3e68ba555c79b3dc33bf96130d86ef7cd5ea23b4828",
       "start_line": 2814,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "computed-property-stereo-wrapper-stability",
       "end_line": 2905,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7295",
@@ -2218,15 +2227,15 @@
         "MolToSmiles"
       ],
       "name": "Github #7295",
-      "notes": "",
+      "notes": "Checks MolToSmiles stability after clearing computed properties and reassigning stereochemistry, not a standalone writer output surface.",
       "parent": null,
       "snippet_sha256": "569f9664e43676998513a872409b4cb0ee9465c3e47e5ee26d44f195f97b4cde",
       "start_line": 2891,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "computed-property-stereo-wrapper-stability",
       "end_line": 2904,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7295__basics",
@@ -2236,15 +2245,15 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Checks writer stability across RDKit computed-property cleanup/reassignment state, outside Grimace scope.",
       "parent": "Github #7295",
       "snippet_sha256": "c935d71ef71f8018632bfa9c81f5eabdf2e27482679e8d1bc3978cfc9da045fd",
       "start_line": 2892,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-simple-smiles-smoke",
       "end_line": 2914,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__simplesmiles",
@@ -2254,15 +2263,15 @@
         "MolToSmiles"
       ],
       "name": "simpleSmiles",
-      "notes": "",
+      "notes": "Pins one default canonical MolToSmiles string for a larger molecule; Grimace does not target canonical writer output.",
       "parent": null,
       "snippet_sha256": "7c6f18c7e25d50ea5430192d9d9af8348f412b9f6e699e4892dc08392362f4fb",
       "start_line": 2907,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-simple-smiles-smoke",
       "end_line": 2913,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__simplesmiles__basics",
@@ -2272,11 +2281,11 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Pins one default canonical MolToSmiles string for a larger molecule; Grimace does not target canonical writer output.",
       "parent": "simpleSmiles",
       "snippet_sha256": "db45ee4508473f4861d0358d508276794218a664ed7569bec284cdfe4493c941",
       "start_line": 2908,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2300,7 +2309,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "include-dative-bonds-write-option",
       "end_line": 2966,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7372_smiles_output_option_to_disable_dative_bonds",
@@ -2311,15 +2320,15 @@
         "SmilesWriteParams"
       ],
       "name": "Github #7372: SMILES output option to disable dative bonds",
-      "notes": "",
+      "notes": "Tests SmilesWriteParams.includeDativeBonds, which is outside Grimace supported writer flags.",
       "parent": null,
       "snippet_sha256": "3c3ac93657ecdc7db1377a9c6a1e119410a5bb0ac05603ab436538c227371540",
       "start_line": 2941,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "include-dative-bonds-write-option",
       "end_line": 2955,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__basics",
@@ -2330,15 +2339,15 @@
         "SmilesWriteParams"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Tests disabling dative-bond output in MolToSmiles via SmilesWriteParams.includeDativeBonds, outside Grimace supported flags.",
       "parent": "Github #7372: SMILES output option to disable dative bonds",
       "snippet_sha256": "851b95e896e05d54abf93d23577663504b82772e27a706100c454531a9f60a7b",
       "start_line": 2942,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smarts-include-dative-bonds-write-option",
       "end_line": 2965,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__smarts_basics",
@@ -2348,11 +2357,11 @@
         "SmilesWriteParams"
       ],
       "name": "SMARTS basics",
-      "notes": "",
+      "notes": "Tests MolToSmarts includeDativeBonds behavior, not MolToSmiles parity.",
       "parent": "Github #7372: SMILES output option to disable dative bonds",
       "snippet_sha256": "6f4312671a8fd4658cb1b92de4ab113916468a7b37bbbb664a7bda1f4287a6c8",
       "start_line": 2956,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2394,7 +2403,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-meso-structure-smiles",
       "end_line": 3011,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__canonicalization_of_meso_structures",
@@ -2404,15 +2413,15 @@
         "MolToSmiles"
       ],
       "name": "Canonicalization of meso structures",
-      "notes": "",
+      "notes": "Pins canonical meso structure output; Grimace does not target canonical writer behavior.",
       "parent": null,
       "snippet_sha256": "8a3b019f4bf32855b624b50d7e2074278c10adfbb4e1a6c85dc13275244d1b78",
       "start_line": 2992,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-meso-structure-smiles",
       "end_line": 3010,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__canonicalization_of_meso_structures__basics",
@@ -2422,11 +2431,11 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Pins canonical meso structure output; Grimace does not target canonical writer behavior.",
       "parent": "Canonicalization of meso structures",
       "snippet_sha256": "ac8c0b410b6c6fb26f042f2565357beaec021dfdc3f66c991f38bf4f8951bb19",
       "start_line": 2993,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2713,7 +2722,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "metal-bound-hydrogen-smiles",
       "end_line": 3223,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atoms_bound_to_metals_should_always_have_hs_specified",
@@ -2723,15 +2732,15 @@
         "MolToSmiles"
       ],
       "name": "atoms bound to metals should always have Hs specified",
-      "notes": "",
+      "notes": "Metal-bound N/O hydrogen spelling in MolToSmiles is not yet represented by Grimace fixtures.",
       "parent": null,
       "snippet_sha256": "2da0d0689d87c2ffcdef7990ef9bbe39430978525cba012b80ee828ee0c20346",
       "start_line": 3209,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "metal-bound-hydrogen-smiles",
       "end_line": 3222,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atoms_bound_to_metals_should_always_have_hs_specified__basics",
@@ -2741,11 +2750,11 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Pt-bound [NH2]/[NH3] and [OH] writer spelling is not yet represented by Grimace fixtures.",
       "parent": "atoms bound to metals should always have Hs specified",
       "snippet_sha256": "577d826dfbb6bf646414823e71c34b80e40167d654d587ca3c01dd01e5f9e246",
       "start_line": 3210,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2846,7 +2855,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmiles-bond-labels",
       "end_line": 3305,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__bond_labels_not_being_used_in_fragment_canonicalization",
@@ -2856,15 +2865,15 @@
         "SmilesWriteParams"
       ],
       "name": "bond labels not being used in fragment canonicalization",
-      "notes": "",
+      "notes": "Tests MolFragmentToSmiles bond-label canonicalization, outside Grimace public writer support.",
       "parent": null,
       "snippet_sha256": "d59eafb9254c5a72a07dc4bcd3c325df190fd5eed54b5faf6b613140c4d84a4b",
       "start_line": 3289,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmiles-bond-labels",
       "end_line": 3304,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__bond_labels_not_being_used_in_fragment_canonicalization__as_reported",
@@ -2874,15 +2883,15 @@
         "SmilesWriteParams"
       ],
       "name": "as reported",
-      "notes": "",
+      "notes": "Tests MolFragmentToSmiles bond-label canonicalization, outside Grimace public writer support.",
       "parent": "bond labels not being used in fragment canonicalization",
       "snippet_sha256": "aec8c8b425460783ebc2a2b497cde070b396b13c6f5d932cefb52210b880dd92",
       "start_line": 3290,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "isotopic-dummy-atom-smiles",
       "end_line": 3316,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8906",
@@ -2892,15 +2901,15 @@
         "MolToSmiles"
       ],
       "name": "github #8906",
-      "notes": "",
+      "notes": "Isotope-labelled dummy atom output [1*][2C] is not yet represented by a Grimace fixture.",
       "parent": null,
       "snippet_sha256": "86cae09a7cb6e94b950975472c99af0c2e95ce9456e2a011855f47b9e7d5d43f",
       "start_line": 3307,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "isotopic-dummy-atom-smiles",
       "end_line": 3315,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8906__as_reported",
@@ -2910,11 +2919,11 @@
         "MolToSmiles"
       ],
       "name": "as reported",
-      "notes": "",
+      "notes": "Reported isotope-labelled dummy atom output [1*][2C] is not yet represented by a Grimace fixture.",
       "parent": "github #8906",
       "snippet_sha256": "d41e49268cc18db00ec8527b39a27594b9346d7d3fcb1a3dbbd92e852550ecaf",
       "start_line": 3308,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2937,7 +2946,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmarts",
       "end_line": 3409,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_9144_pr_9082_breaks_molfragmenttosmarts",
@@ -2947,15 +2956,15 @@
         "SmilesWriteParams"
       ],
       "name": "github #9144: PR #9082 breaks MolFragmentToSmarts()",
-      "notes": "",
+      "notes": "Tests MolFragmentToSmarts/MolFragmentToSmiles fragment APIs, outside Grimace public writer support.",
       "parent": null,
       "snippet_sha256": "045c9cd3ee4d80ae52c67fb576a3ec42b88ea8a78b25b2fd299b6e905abcce11",
       "start_line": 3382,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmarts",
       "end_line": 3389,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_9144_pr_9082_breaks_molfragmenttosmarts__as_reported",
@@ -2965,15 +2974,15 @@
         "SmilesWriteParams"
       ],
       "name": "as reported",
-      "notes": "",
+      "notes": "Tests MolFragmentToSmarts, outside Grimace public writer support.",
       "parent": "github #9144: PR #9082 breaks MolFragmentToSmarts()",
       "snippet_sha256": "53bb06df99420367034ef445a60f4c6430bd5318a224ff431a08285a77023616",
       "start_line": 3383,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmarts",
       "end_line": 3408,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_9144_pr_9082_breaks_molfragmenttosmarts__another_example",
@@ -2983,11 +2992,11 @@
         "SmilesWriteParams"
       ],
       "name": "another example",
-      "notes": "",
+      "notes": "Tests MolFragmentToSmarts plus one MolFragmentToSmiles fragment API example, outside Grimace public writer support.",
       "parent": "github #9144: PR #9082 breaks MolFragmentToSmarts()",
       "snippet_sha256": "aa39990d0867c17f5c79998fee740d8e0db087f9036d21fb61cf00aa1ac56758",
       "start_line": 3390,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

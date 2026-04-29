@@ -5182,7 +5182,15 @@
     {
       "claim": "branched-imine-rooted-stereo",
       "end_line": 945,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "branched_imine_directional_normalization"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Exact all-roots fixture pins RDKit 2026.03.1 rooted random outputs for C(/C)=N/O."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue185",
       "kind": "java_test",
       "language": "java",
@@ -5190,11 +5198,11 @@
         "MolToSmiles"
       ],
       "name": "testIssue185",
-      "notes": "Rooted branched imine E/Z case is not yet represented by an exact Grimace fixture. RDKit 2026.03.1 emits slash-oriented rooted random outputs for C(/C)=N/O, while current Grimace emits the opposite backslash-oriented convention for the same roots; fix directional token parity before pinning this as a passing fixture.",
+      "notes": "Rooted branched imine E/Z case is represented by an exact serializer fixture after normalizing RDKit directional-token family inference for selected double-bond carriers.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "e18bf6b52e101cfa798de76368e91e10b9ce502d64e0fa0e864c4fd75329ab20",
       "start_line": 924,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

@@ -379,6 +379,45 @@ def _is_stereo_double_bond(prepared: PreparedSmilesGraph, bond_idx: int) -> bool
     return stereo_kind in _CIS_STEREO_BOND_KINDS or stereo_kind in _TRANS_STEREO_BOND_KINDS
 
 
+def _rdkit_selected_stereo_seed_token(
+    prepared: PreparedSmilesGraph,
+    bond_idx: int,
+    component_idx: int,
+    isolated_components: tuple[bool, ...],
+    all_single_candidate_components: tuple[bool, ...],
+    endpoint_idx: int,
+    neighbor_idx: int,
+) -> str | None:
+    if (
+        not isolated_components[component_idx]
+        or not all_single_candidate_components[component_idx]
+        or not _is_stereo_double_bond(prepared, bond_idx)
+    ):
+        return None
+
+    stored_begin_idx = prepared.bond_begin_atom_indices[bond_idx]
+    stored_end_idx = prepared.bond_end_atom_indices[bond_idx]
+    stereo_begin_atom, stereo_end_atom = prepared.bond_stereo_atoms[bond_idx]
+    if (
+        endpoint_idx == stored_begin_idx
+        and stereo_begin_atom >= 0
+        and neighbor_idx == stereo_begin_atom
+    ):
+        return "\\"
+    if (
+        endpoint_idx == stored_end_idx
+        and stereo_end_atom >= 0
+        and neighbor_idx == stereo_end_atom
+    ):
+        stereo_kind = prepared.bond_stereo_kinds[bond_idx]
+        if stereo_kind in _CIS_STEREO_BOND_KINDS:
+            return "\\"
+        if stereo_kind in _TRANS_STEREO_BOND_KINDS:
+            return "/"
+        raise ValueError(f"Unsupported stereo bond kind: {stereo_kind}")
+    return None
+
+
 def _canonical_edge(begin_idx: int, end_idx: int) -> tuple[int, int]:
     if begin_idx < end_idx:
         return (begin_idx, end_idx)
@@ -616,10 +655,12 @@ def _stereo_side_infos(
     prepared: PreparedSmilesGraph,
     stereo_component_ids: tuple[int, ...],
 ) -> tuple[tuple[StereoSideInfo, ...], dict[tuple[int, int], tuple[int, ...]]]:
+    isolated_components = tuple(size == 1 for size in _component_sizes(stereo_component_ids))
     side_candidates: list[tuple[int, int, int, tuple[int, ...]]] = []
     oriented_nodes: set[tuple[int, int]] = set()
     parity_edges: defaultdict[tuple[int, int], list[tuple[tuple[int, int], bool]]] = defaultdict(list)
     seed_tokens: dict[tuple[int, int], str] = {}
+    seed_nodes: list[tuple[int, int, tuple[int, int]]] = []
 
     for bond_idx in range(prepared.bond_count):
         component_idx = stereo_component_ids[bond_idx]
@@ -658,12 +699,29 @@ def _stereo_side_infos(
                     parity_edges[node].append((reverse_node, True))
                     parity_edges[reverse_node].append((node, True))
 
-                stored_token = prepared.directed_bond_token(node[0], node[1])
-                if stored_token in {"/", "\\"}:
-                    existing = seed_tokens.get(node)
-                    if existing is not None and existing != stored_token:
-                        raise ValueError("Inconsistent stored directional token assignment")
-                    seed_tokens[node] = stored_token
+                seed_nodes.append((bond_idx, component_idx, node))
+
+    all_single_candidate_components = [True for _ in isolated_components]
+    for component_idx, _endpoint_idx, _other_idx, candidate_neighbors in side_candidates:
+        if len(candidate_neighbors) != 1:
+            all_single_candidate_components[component_idx] = False
+    all_single_candidate_components = tuple(all_single_candidate_components)
+
+    for bond_idx, component_idx, node in seed_nodes:
+        stored_token = _rdkit_selected_stereo_seed_token(
+            prepared,
+            bond_idx,
+            component_idx,
+            isolated_components,
+            all_single_candidate_components,
+            node[0],
+            node[1],
+        ) or prepared.directed_bond_token(node[0], node[1])
+        if stored_token in {"/", "\\"}:
+            existing = seed_tokens.get(node)
+            if existing is not None and existing != stored_token:
+                raise ValueError("Inconsistent stored directional token assignment")
+            seed_tokens[node] = stored_token
 
     for _component_idx, endpoint_idx, _other_idx, candidate_neighbors in side_candidates:
         if len(candidate_neighbors) != 2:

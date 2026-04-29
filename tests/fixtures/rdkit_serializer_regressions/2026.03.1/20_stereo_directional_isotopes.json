@@ -49,13 +49,14 @@
         "\\"
       ],
       "expected": [
-        "Br\\C=C/F",
-        "C(=C\\Br)\\F",
-        "C(=C\\F)\\Br",
-        "C(\\Br)=C\\F",
-        "C(\\F)=C\\Br",
-        "F\\C=C/Br"
-      ]
+        "Br/C=C\\F",
+        "C(/Br)=C/F",
+        "C(/F)=C/Br",
+        "C(=C/Br)/F",
+        "C(=C/F)/Br",
+        "F/C=C\\Br"
+      ],
+      "rdkit_sample_draw_budget": 1024
     },
     {
       "id": "trans_alkene_directional_bond_normalization",
@@ -74,13 +75,14 @@
         "\\"
       ],
       "expected": [
-        "Br\\C=C\\F",
-        "C(=C/Br)\\F",
-        "C(=C/F)\\Br",
-        "C(\\Br)=C/F",
-        "C(\\F)=C/Br",
-        "F\\C=C\\Br"
-      ]
+        "Br/C=C/F",
+        "C(/Br)=C\\F",
+        "C(/F)=C\\Br",
+        "C(=C\\Br)/F",
+        "C(=C\\F)/Br",
+        "F/C=C/Br"
+      ],
+      "rdkit_sample_draw_budget": 1024
     },
     {
       "id": "directional_bond_issue159_slash_input",
@@ -129,6 +131,82 @@
         "C/C=C/O",
         "O/C=C/C"
       ]
+    },
+    {
+      "id": "directional_bond_issue159_branch_slash_input",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159; local RDKit 2026.03.1 exact all-roots expansion for branch slash/slash input",
+      "smiles": "C(/C)=C/O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C/O",
+        "C(/O)=C/C",
+        "C(=C/C)/O",
+        "C(=C/O)/C",
+        "C/C=C\\O",
+        "O/C=C\\C"
+      ],
+      "rdkit_sample_draw_budget": 1024
+    },
+    {
+      "id": "directional_bond_issue159_branch_slash_backslash_input",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159; local RDKit 2026.03.1 exact all-roots expansion for branch slash/backslash input",
+      "smiles": "C(/C)=C\\O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C\\O",
+        "C(/O)=C\\C",
+        "C(=C\\C)/O",
+        "C(=C\\O)/C",
+        "C/C=C/O",
+        "O/C=C/C"
+      ],
+      "rdkit_sample_draw_budget": 1024
+    },
+    {
+      "id": "branched_imine_directional_normalization",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue185; local RDKit 2026.03.1 exact all-roots expansion",
+      "smiles": "C(/C)=N/O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "N",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=N/O",
+        "C(=N/O)/C",
+        "C/C=N\\O",
+        "N(/O)=C/C",
+        "N(=C/C)/O",
+        "O/N=C\\C"
+      ],
+      "rdkit_sample_draw_budget": 1024
     },
     {
       "id": "imine_stereo_orientation_all_roots_isomeric",

@@ -1382,6 +1382,55 @@ fn is_stereo_double_bond(graph: &PreparedSmilesGraphData, bond_idx: usize) -> bo
     CIS_STEREO_BOND_KINDS.contains(&stereo_kind) || TRANS_STEREO_BOND_KINDS.contains(&stereo_kind)
 }
 
+fn rdkit_selected_stereo_seed_token(
+    graph: &PreparedSmilesGraphData,
+    bond_idx: usize,
+    component_idx: usize,
+    isolated_components: &[bool],
+    all_single_candidate_components: &[bool],
+    endpoint_idx: usize,
+    neighbor_idx: usize,
+) -> PyResult<Option<String>> {
+    if !isolated_components
+        .get(component_idx)
+        .copied()
+        .unwrap_or(false)
+        || !all_single_candidate_components
+            .get(component_idx)
+            .copied()
+            .unwrap_or(false)
+        || !is_stereo_double_bond(graph, bond_idx)
+    {
+        return Ok(None);
+    }
+
+    let stored_begin_idx = graph.bond_begin_atom_indices[bond_idx];
+    let stored_end_idx = graph.bond_end_atom_indices[bond_idx];
+    let (stereo_begin_atom, stereo_end_atom) = graph.bond_stereo_atoms[bond_idx];
+    if endpoint_idx == stored_begin_idx
+        && stereo_begin_atom >= 0
+        && neighbor_idx == stereo_begin_atom as usize
+    {
+        return Ok(Some("\\".to_owned()));
+    }
+    if endpoint_idx == stored_end_idx
+        && stereo_end_atom >= 0
+        && neighbor_idx == stereo_end_atom as usize
+    {
+        let stereo_kind = graph.bond_stereo_kinds[bond_idx].as_str();
+        if CIS_STEREO_BOND_KINDS.contains(&stereo_kind) {
+            return Ok(Some("\\".to_owned()));
+        }
+        if TRANS_STEREO_BOND_KINDS.contains(&stereo_kind) {
+            return Ok(Some("/".to_owned()));
+        }
+        return Err(PyValueError::new_err(format!(
+            "Unsupported stereo bond kind: {stereo_kind}"
+        )));
+    }
+    Ok(None)
+}
+
 fn stereo_component_ids(graph: &PreparedSmilesGraphData) -> Vec<isize> {
     let stereo_bond_indices = (0..graph.bond_count)
         .filter(|&bond_idx| is_stereo_double_bond(graph, bond_idx))
@@ -1790,10 +1839,15 @@ fn stereo_side_infos(
     graph: &PreparedSmilesGraphData,
     stereo_component_ids: &[isize],
 ) -> PyResult<StereoSideInfoBuild> {
+    let isolated_components = component_sizes(stereo_component_ids)
+        .into_iter()
+        .map(|size| size == 1)
+        .collect::<Vec<_>>();
     let mut side_candidates = Vec::<(usize, usize, usize, Vec<usize>)>::new();
     let mut oriented_nodes = BTreeSet::<(usize, usize)>::new();
     let mut parity_edges = BTreeMap::<(usize, usize), Vec<((usize, usize), bool)>>::new();
     let mut seed_tokens = BTreeMap::<(usize, usize), String>::new();
+    let mut seed_nodes = Vec::<(usize, usize, (usize, usize))>::new();
 
     for (bond_idx, &component_idx) in stereo_component_ids
         .iter()
@@ -1871,18 +1925,38 @@ fn stereo_side_infos(
                         .push((node, true));
                 }
 
-                let stored_token = graph.directed_bond_token(node.0, node.1)?;
-                if stored_token == "/" || stored_token == "\\" {
-                    if let Some(existing) = seed_tokens.get(&node) {
-                        if existing != &stored_token {
-                            return Err(PyValueError::new_err(
-                                "Inconsistent stored directional token assignment",
-                            ));
-                        }
-                    } else {
-                        seed_tokens.insert(node, stored_token);
-                    }
+                seed_nodes.push((bond_idx, component_idx as usize, node));
+            }
+        }
+    }
+
+    let mut all_single_candidate_components = vec![true; isolated_components.len()];
+    for (component_idx, _endpoint_idx, _other_idx, candidate_neighbors) in &side_candidates {
+        if candidate_neighbors.len() != 1 {
+            all_single_candidate_components[*component_idx] = false;
+        }
+    }
+
+    for (bond_idx, component_idx, node) in seed_nodes {
+        let stored_token = rdkit_selected_stereo_seed_token(
+            graph,
+            bond_idx,
+            component_idx,
+            &isolated_components,
+            &all_single_candidate_components,
+            node.0,
+            node.1,
+        )?
+        .unwrap_or(graph.directed_bond_token(node.0, node.1)?);
+        if stored_token == "/" || stored_token == "\\" {
+            if let Some(existing) = seed_tokens.get(&node) {
+                if existing != &stored_token {
+                    return Err(PyValueError::new_err(
+                        "Inconsistent stored directional token assignment",
+                    ));
                 }
+            } else {
+                seed_tokens.insert(node, stored_token);
             }
         }
     }

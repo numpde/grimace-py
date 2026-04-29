@@ -4,7 +4,8 @@ from rdkit import Chem, rdBase
 
 import grimace
 from tests.helpers.public_runtime import supported_public_kwargs
-from tests.helpers.rdkit_writer_cases import ExactWriterCase, RootedRandomCase
+from tests.helpers.rdkit_writer_cases import RootedRandomCase
+from tests.helpers.rdkit_writer_membership import PinnedWriterMembershipCase
 
 
 RDKIT_PINNED_SAMPLING_SEEDS = (12345, 54321)
@@ -151,7 +152,7 @@ def _deterministic_drift_draw_budget(mol: Chem.Mol) -> int:
     return 20_000
 
 
-def rdkit_exact_writer_output(case: ExactWriterCase) -> str:
+def rdkit_exact_writer_output(case: PinnedWriterMembershipCase) -> str:
     mol = Chem.MolFromSmiles(case.smiles)
     kwargs = rdkit_mol_to_smiles_kwargs_from_options(
         rooted_at_atom=case.rooted_at_atom,
@@ -166,7 +167,10 @@ def rdkit_exact_writer_output(case: ExactWriterCase) -> str:
     return Chem.MolToSmiles(Chem.Mol(mol), **kwargs)
 
 
-def assert_exact_writer_case_in_grimace_support(test_case, case: ExactWriterCase) -> None:
+def assert_exact_writer_case_in_grimace_support(
+    test_case,
+    case: PinnedWriterMembershipCase,
+) -> None:
     mol = Chem.MolFromSmiles(case.smiles)
     rdkit_out = rdkit_exact_writer_output(case)
     test_case.assertEqual(case.expected, rdkit_out)

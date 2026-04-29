@@ -1,0 +1,179 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "writer_flags_01_propane_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit()",
+      "smiles": "CCC",
+      "expected": "C-C-C",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true,
+      "all_bonds_explicit": true
+    },
+    {
+      "id": "writer_flags_02_benzene_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit()",
+      "smiles": "c1ccccc1",
+      "expected": "c1:c:c:c:c:c:1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true,
+      "all_bonds_explicit": true
+    },
+    {
+      "id": "writer_flags_03_ignore_atom_map_numbers",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers()",
+      "smiles": "[NH2:1]c1ccccc1",
+      "expected": "Nc1ccccc1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": false,
+      "ignore_atom_map_numbers": true
+    },
+    {
+      "id": "writer_flags_04_preserve_atom_map_numbers",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers()",
+      "smiles": "[NH2:1]c1ccccc1",
+      "expected": "c1ccc([NH2:1])cc1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true,
+      "ignore_atom_map_numbers": false
+    },
+    {
+      "id": "writer_flags_05_benzene_kekule",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIssue266()",
+      "smiles": "c1ccccc1",
+      "expected": "C1=CC=CC=C1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true,
+      "kekule_smiles": true
+    },
+    {
+      "id": "writer_flags_06_biphenyl_kekule",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIssue266()",
+      "smiles": "c1ccccc1c1ccccc1",
+      "expected": "C1=CC=C(C2=CC=CC=C2)C=C1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true,
+      "kekule_smiles": true
+    },
+    {
+      "id": "writer_flags_07_rooted_at_unrooted_tertiary_amine",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testRootedAt()",
+      "smiles": "CN(C)C",
+      "expected": "CN(C)C",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_08_rooted_at_nitrogen_tertiary_amine",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testRootedAt()",
+      "smiles": "CN(C)C",
+      "expected": "N(C)(C)C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_09_bug1719046_chirality_suppressed",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046()",
+      "smiles": "Cl[C@H]1C(Br)CCCC1",
+      "expected": "ClC1CCCCC1Br",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_10_bug1719046_pyridine_normalization",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046()",
+      "smiles": "c1ccccn1",
+      "expected": "c1ccncc1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_11_bug1719046_pyrrole_normalization",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046()",
+      "smiles": "C1=CNC=C1",
+      "expected": "c1cc[nH]c1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": false,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_12_bug1842174_unrooted_imine_stereo",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174()",
+      "smiles": "F/C=N/Cl",
+      "expected": "F/C=N/Cl",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_13_bug1842174_rooted_imine_stereo",
+      "source": "RDKit Code/GraphMol/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174()",
+      "smiles": "F/C=N/Cl",
+      "expected": "C(/F)=N\\Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_14_github1219_all_hs_explicit",
+      "source": "RDKit Code/GraphMol/SmilesParse/test.cpp:testGithub1219()",
+      "smiles": "C[C@H](F)Cl",
+      "expected": "[CH3][C@H]([F])[Cl]",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true,
+      "all_hs_explicit": true
+    },
+    {
+      "id": "writer_flags_15_nonisomeric_explicit_stereo_bond",
+      "source": "RDKit-grounded writer flag regression: nonisomeric allBondsExplicit preserves directional bond token",
+      "smiles": "F/C=C\\Cl",
+      "expected": "F/C=C\\Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "rdkit_canonical": false,
+      "all_bonds_explicit": true
+    },
+    {
+      "id": "writer_flags_16_aromatic_selenium",
+      "source": "RDKit-grounded aromatic selenium writer regression",
+      "smiles": "C1=CC=C(C=C1)N2C(=O)C3=CC=CC=C3[Se]2",
+      "expected": "O=c1c2ccccc2[se]n1-c1ccccc1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "writer_flags_17_tetrasubstituted_alkene_root1_explicit",
+      "source": "RDKit-grounded writer flag regression: rooted tetrasubstituted alkene with all bonds/hydrogens explicit",
+      "smiles": "C/C(=C(/C)\\c1ccccc1)/c1ccccc1",
+      "expected": "[C](/[CH3])(=[C](\\[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false,
+      "all_bonds_explicit": true,
+      "all_hs_explicit": true
+    },
+    {
+      "id": "writer_flags_18_tetrasubstituted_alkene_root2_explicit",
+      "source": "RDKit-grounded writer flag regression: rooted tetrasubstituted alkene with all bonds/hydrogens explicit",
+      "smiles": "C/C(=C(/C)\\c1ccccc1)/c1ccccc1",
+      "expected": "[C](=[C](\\[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)(/[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false,
+      "all_bonds_explicit": true,
+      "all_hs_explicit": true
+    }
+  ]
+}

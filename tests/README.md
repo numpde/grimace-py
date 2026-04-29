@@ -33,6 +33,8 @@ subset.
 - Bulky serializer expected-output sets belong in version-keyed JSON fixtures
   under `tests/fixtures/rdkit_serializer_regressions/`, with a source reference
   for each case.
+- Deterministic RDKit writer-output membership cases belong in version-keyed
+  fixtures under `tests/fixtures/rdkit_writer_membership/`.
 - Large pinned RDKit fixture corpora may use `VERSION/*.json` shards under the
   fixture root; keep shard names ordered by source area or serializer feature.
 - Pinned RDKit JSON fixtures should reuse `tests/helpers/pinned_rdkit_fixtures.py`

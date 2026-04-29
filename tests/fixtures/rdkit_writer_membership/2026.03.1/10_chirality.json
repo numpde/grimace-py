@@ -1,0 +1,59 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "canonical_chirality_01_tetrasubstituted_carbon",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles()",
+      "smiles": "F[C@](Br)(I)Cl",
+      "expected": "F[C@](Cl)(Br)I",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_02_cyclopropane_at_to_at",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles()",
+      "smiles": "CC1C[C@@]1(Cl)F",
+      "expected": "CC1C[C@]1(F)Cl",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_03_cyclopropane_at_to_atat",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles()",
+      "smiles": "CC1C[C@]1(Cl)F",
+      "expected": "CC1C[C@@]1(F)Cl",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_04_chiral_hydrogen",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles()",
+      "smiles": "F[C@H](Cl)Br",
+      "expected": "F[C@H](Cl)Br",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_05_neutral_nitrogen_nonchiral",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles()",
+      "smiles": "FN(Cl)Br",
+      "expected": "FN(Cl)Br",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "canonical_chirality_06_chiral_ammonium",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles()",
+      "smiles": "F[N@H+](Cl)Br",
+      "expected": "F[N@H+](Cl)Br",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    }
+  ]
+}

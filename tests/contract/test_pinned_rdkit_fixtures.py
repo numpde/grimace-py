@@ -12,6 +12,7 @@ from tests.helpers.rdkit_exact_small_support import (
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
 )
+from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
 
 
 RDKIT_VERSION = "2099.01.1"
@@ -252,6 +253,19 @@ class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
         for rdkit_version in versions:
             with self.subTest(rdkit_version=rdkit_version):
                 cases = load_pinned_serializer_regression_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+                self.assertTrue(cases)
+
+    def test_all_checked_in_writer_membership_fixtures_load(self) -> None:
+        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_writer_membership"
+        versions = _pinned_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_writer_membership_cases(
                     rdkit_version,
                     fixture_root=fixture_root,
                 )

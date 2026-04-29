@@ -395,6 +395,54 @@
       ]
     },
     {
+      "id": "directional_bond_issue159_slash_input",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159",
+      "smiles": "C/C=C/O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C\\O",
+        "C(/O)=C\\C",
+        "C(=C\\C)/O",
+        "C(=C\\O)/C",
+        "C/C=C/O",
+        "O/C=C/C"
+      ]
+    },
+    {
+      "id": "directional_bond_issue159_branch_input",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159",
+      "smiles": "C(\\C)=C/O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C\\O",
+        "C(/O)=C\\C",
+        "C(=C\\C)/O",
+        "C(=C\\O)/C",
+        "C/C=C/O",
+        "O/C=C/C"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

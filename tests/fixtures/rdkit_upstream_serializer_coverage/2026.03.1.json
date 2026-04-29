@@ -2275,11 +2275,11 @@
         "MolToSmiles"
       ],
       "name": "Github #5499: STEREOANY bonds lead to non-stable SMILES/SMARTS strings",
-      "notes": "V3000 STEREOANY molblock round-trip stability through MolToSmiles is not yet pinned as a Grimace fixture.",
+      "notes": "V3000 STEREOANY round-trip stability uses RDKit STEREOANY/EITHERDOUBLE bond metadata. Grimace currently supports specified cis/trans/E/Z double-bond stereo, not STEREOANY writer surfaces, so this is outside the current serializer fixture scope.",
       "parent": null,
       "snippet_sha256": "368c9c5990bd1ecc389d48f59fb77a2cb6c9fc0c0fb84f5dc6d658ce7bf4516b",
       "start_line": 2812,
-      "status": "needs-fixture",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2293,11 +2293,11 @@
         "MolToSmiles"
       ],
       "name": "as reported",
-      "notes": "Reported V3000 STEREOANY molblock round-trip stability case is not yet pinned as a Grimace fixture.",
+      "notes": "Reported V3000 STEREOANY molblock round-trip stability case uses a STEREOANY/EITHERDOUBLE bond. Grimace currently rejects that stereo family, so this is outside the current supported writer surface.",
       "parent": "Github #5499: STEREOANY bonds lead to non-stable SMILES/SMARTS strings",
       "snippet_sha256": "6628111174010685674ca3e68ba555c79b3dc33bf96130d86ef7cd5ea23b4828",
       "start_line": 2814,
-      "status": "needs-fixture",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

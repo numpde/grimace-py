@@ -1511,7 +1511,7 @@
         "MolToSmiles"
       ],
       "name": "CHEMBL3623347",
-      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is not yet represented by a Grimace fixture.",
+      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is not yet represented by a Grimace fixture. Local RDKit 2026.03.1 probing confirmed the asserted canonical output, but it was absent from a 2,000-draw RDKit random sample, so the current writer-membership drift guard would not provide a meaningful Grimace-support assertion for this case.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "2a65afa36b90e9d45ca512a1f2a7fb5ff21eb099819910a8ad47d680fcba1aad",
       "start_line": 1776,

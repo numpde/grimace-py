@@ -1,0 +1,14 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "github3967_part1_directional_ring_closure_canonical",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 continued github #3967 part 1",
+      "smiles": "C=c1s/c2n(c1=O)CCCCCCC\\N=2",
+      "expected": "C=c1s/c2n(c1=O)CCCCCCC\\N=2",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    }
+  ]
+}

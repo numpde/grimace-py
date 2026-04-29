@@ -1423,7 +1423,7 @@
         "MolToSmiles"
       ],
       "name": "Github #4582 continued: double bonds and ring closures",
-      "notes": "Aggregate continued #4582 test contains several SMILES/molblock double-bond ring-closure writer regressions. The small deterministic molblock output is covered; #3967, CHEMBL3623347, and exact directional ring-closure parity gaps still need fixtures or runtime work.",
+      "notes": "Aggregate continued #4582 test contains several SMILES/molblock double-bond ring-closure writer regressions. The small deterministic molblock output and #3967 part 1 deterministic output are covered; #3967 part 2, CHEMBL3623347, and exact directional ring-closure parity gaps still need fixtures or runtime work.",
       "parent": null,
       "snippet_sha256": "1cdbc245ae04260b9f7967bf787d91435176dec501d302475d03c986b7fced8a",
       "start_line": 1729,
@@ -1459,7 +1459,15 @@
     {
       "claim": "double-bond-ring-closure-smiles",
       "end_line": 1768,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "github3967_part1_directional_ring_closure_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/70_ring_closure_writer.json",
+          "note": "Writer-membership fixture pins the deterministic canonical output asserted by this section."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_1",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1467,11 +1475,11 @@
         "MolToSmiles"
       ],
       "name": "github #3967 part 1",
-      "notes": "GitHub #3967 part 1 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture. Local RDKit 2026.03.1 probing found exact-support mismatches, so this needs directional ring-closure parity work before pinning as a passing fixture.",
+      "notes": "GitHub #3967 part 1 deterministic canonical writer output is represented by a writer-membership fixture. Local RDKit 2026.03.1 probing still found broader exact-support mismatches, so exact random-support equality is intentionally not claimed here.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "20e890c8c079f70f924b6ede0237be511382c3af8c108d5e1d17951662cd1422",
       "start_line": 1762,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

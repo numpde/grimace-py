@@ -102,6 +102,18 @@ class RootedAtomTokenTests(unittest.TestCase):
         prepared = prepare_smiles_graph(benzene, self.policy)
         self.assertEqual("[cH:7]", prepared.atom_tokens[0])
 
+    def test_isotopes_are_suppressed_without_isomeric_smiles(self) -> None:
+        nonisomeric_policy = with_sampling_override(self.policy, isomericSmiles=False)
+
+        methane = parse_smiles("C")
+        methane.GetAtomWithIdx(0).SetIsotope(13)
+        prepared = prepare_smiles_graph(methane, nonisomeric_policy)
+        self.assertEqual(("C",), prepared.atom_tokens)
+
+        neopentane = parse_smiles("C[13C](C)(C)C")
+        prepared = prepare_smiles_graph(neopentane, nonisomeric_policy)
+        self.assertEqual(("C", "C", "C", "C", "C"), prepared.atom_tokens)
+
     def test_ignore_atom_map_numbers_does_not_change_emitted_atom_maps(self) -> None:
         ignore_maps_policy = with_sampling_override(self.policy, ignoreAtomMapNumbers=True)
         prepared = prepare_smiles_graph(parse_smiles("[CH3:7]C"), ignore_maps_policy)

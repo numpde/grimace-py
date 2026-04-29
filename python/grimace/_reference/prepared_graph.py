@@ -200,12 +200,19 @@ def writer_atom_map_number(atom: Chem.Atom, sampling: dict[str, object]) -> int:
     return atom.GetAtomMapNum()
 
 
+def writer_isotope(atom: Chem.Atom, sampling: dict[str, object]) -> int:
+    if not bool(sampling["isomericSmiles"]):
+        return 0
+    return atom.GetIsotope()
+
+
 def atom_requires_brackets(atom: Chem.Atom, sampling: dict[str, object]) -> bool:
     if bool(sampling["allHsExplicit"]):
         return True
 
     atom_map_num = writer_atom_map_number(atom, sampling)
-    if atom.GetIsotope() or atom_map_num or atom.GetFormalCharge() or atom.GetNumRadicalElectrons():
+    isotope = writer_isotope(atom, sampling)
+    if isotope or atom_map_num or atom.GetFormalCharge() or atom.GetNumRadicalElectrons():
         return True
 
     symbol = atom_symbol(atom, sampling)
@@ -229,9 +236,10 @@ def atom_token(atom: Chem.Atom, sampling: dict[str, object]) -> str:
         return symbol
 
     atom_map_num = writer_atom_map_number(atom, sampling)
+    isotope = writer_isotope(atom, sampling)
     parts = ["["]
-    if atom.GetIsotope():
-        parts.append(str(atom.GetIsotope()))
+    if isotope:
+        parts.append(str(isotope))
     parts.append(symbol)
     parts.append(format_hydrogen_count(atom.GetTotalNumHs()))
     parts.append(format_charge(atom.GetFormalCharge()))

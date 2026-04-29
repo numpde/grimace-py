@@ -510,6 +510,60 @@ class SerializerRegressionTests(unittest.TestCase):
                 ),
             )
 
+    def test_isotope_surface_respects_isomeric_smiles(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testIsotopes:
+        # isotope labels must disappear when isomericSmiles=False and reappear
+        # when isomericSmiles=True.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testIsotopes"
+        )
+        mol = parse_smiles("C[13C](C)(C)C")
+
+        with self.subTest(source=source, isomeric_smiles=False):
+            self.assertEqual(
+                {"CC(C)(C)C", "C(C)(C)(C)C"},
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                ("(", ")", "C"),
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
+
+        with self.subTest(source=source, isomeric_smiles=True):
+            self.assertEqual(
+                {"C[13C](C)(C)C", "[13C](C)(C)(C)C"},
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                ("(", ")", "C", "[13C]"),
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+
     def test_ignore_atom_map_numbers_on_aromatic_attachment(self) -> None:
         # Regression pinned to RDKit rough_test.testIgnoreAtomMapNumbers:
         # map suppression must change the emitted atom token surface cleanly

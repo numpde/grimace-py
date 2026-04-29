@@ -4439,7 +4439,15 @@
     {
       "claim": "molblock-2d-chirality-writer",
       "end_line": 5486,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "molblock_github2082_2d_chirality_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/50_molblock_stereo.json",
+          "note": "Exact all-roots molblock fixture pins the chiral 2D MolToSmiles surface from testGitHub2082."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub2082",
       "kind": "python_test",
       "language": "python",
@@ -4447,11 +4455,11 @@
         "MolToSmiles"
       ],
       "name": "testGitHub2082",
-      "notes": "Inline molblock chirality perception test checks isomeric MolToSmiles contains chirality; a pinned molblock-backed Grimace fixture would be needed for parity.",
+      "notes": "Inline 2D molblock chirality perception writer output is represented by an exact molblock-backed serializer fixture.",
       "parent": "TestCase",
       "snippet_sha256": "a1e653fb924c83ffc358c37f197d77fb9a76cf415429258e1a830887ef824290",
       "start_line": 5459,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

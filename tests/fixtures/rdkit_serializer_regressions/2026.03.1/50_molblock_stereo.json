@@ -389,6 +389,58 @@
         "[C@](I)(Cl)(F)Br",
         "[C@](I)(F)(Br)Cl"
       ]
+    },
+    {
+      "id": "molblock_github2082_2d_chirality_surface",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testGitHub2082",
+      "molblock": "\n  MJ150720\n\n  9  9  0  0  0  0  0  0  0  0999 V2000\n    2.5687   -0.7144    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.1562    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.5687    0.7144    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    1.3312    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9187   -0.7144    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0937   -0.7144    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.3187    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0937    0.7144    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9187    0.7144    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  2  1  1  6\n  2  3  1  0\n  2  4  1  0\n  4  5  2  0\n  5  6  1  0\n  6  7  2  0\n  7  8  1  0\n  8  9  2  0\n  9  4  1  0\nM  END\n",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 2048,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "O",
+        "[C@@H]",
+        "[C@H]",
+        "c"
+      ],
+      "expected": [
+        "C[C@@H](O)c1ccccc1",
+        "C[C@H](c1ccccc1)O",
+        "O[C@@H](c1ccccc1)C",
+        "O[C@H](C)c1ccccc1",
+        "[C@@H](C)(c1ccccc1)O",
+        "[C@@H](O)(C)c1ccccc1",
+        "[C@@H](c1ccccc1)(O)C",
+        "[C@H](C)(O)c1ccccc1",
+        "[C@H](O)(c1ccccc1)C",
+        "[C@H](c1ccccc1)(C)O",
+        "c1([C@@H](C)O)ccccc1",
+        "c1([C@H](O)C)ccccc1",
+        "c1(ccccc1)[C@@H](C)O",
+        "c1(ccccc1)[C@H](O)C",
+        "c1c([C@@H](C)O)cccc1",
+        "c1c([C@H](O)C)cccc1",
+        "c1c(cccc1)[C@@H](C)O",
+        "c1c(cccc1)[C@H](O)C",
+        "c1cc([C@@H](C)O)ccc1",
+        "c1cc([C@H](O)C)ccc1",
+        "c1cc(ccc1)[C@@H](C)O",
+        "c1cc(ccc1)[C@H](O)C",
+        "c1ccc([C@@H](C)O)cc1",
+        "c1ccc([C@H](O)C)cc1",
+        "c1ccc(cc1)[C@@H](C)O",
+        "c1ccc(cc1)[C@H](O)C",
+        "c1cccc([C@@H](C)O)c1",
+        "c1cccc([C@H](O)C)c1",
+        "c1cccc(c1)[C@@H](C)O",
+        "c1cccc(c1)[C@H](O)C",
+        "c1ccccc1[C@@H](C)O",
+        "c1ccccc1[C@H](O)C"
+      ]
     }
   ]
 }

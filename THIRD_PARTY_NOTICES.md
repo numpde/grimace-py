@@ -21,6 +21,11 @@ Some tests under `tests/rdkit_serialization/` are derived from local RDKit
 serialization tests. Their provenance is called out in the test files
 themselves, and the underlying RDKit material remains under the RDKit license.
 
+The directory `tests/fixtures/rdkit_upstream_serializer_sources/` contains
+local copies of selected RDKit serializer source and test files used as audit
+fixtures.  Each versioned copy includes the RDKit BSD-3-Clause license text
+and a manifest recording source commit metadata and file digests.
+
 ## Rust crates linked into the extension
 
 The compiled `_core` extension is built from `grimace-kernel` plus the Rust

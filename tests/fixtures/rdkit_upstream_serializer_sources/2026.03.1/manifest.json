@@ -1,0 +1,49 @@
+{
+  "files": [
+    {
+      "bytes": 34612,
+      "lines": 1047,
+      "path": "Code/GraphMol/SmilesParse/SmilesWrite.cpp",
+      "sha256": "25954afacc92a04dbf57454ae8ea1764a386b70f7f7060eda56f1bd4470a60a5"
+    },
+    {
+      "bytes": 15383,
+      "lines": 364,
+      "path": "Code/GraphMol/SmilesParse/SmilesWrite.h",
+      "sha256": "c84f6f787152100d6432f7d62f1c73d5007b3a506c74639a2045a3d74f21ec3f"
+    },
+    {
+      "bytes": 132624,
+      "lines": 3408,
+      "path": "Code/GraphMol/SmilesParse/catch_tests.cpp",
+      "sha256": "ed06e3338f641cd75095d775e5ca5bd1ab50eaad9382de16450939be41ed9498"
+    },
+    {
+      "bytes": 61106,
+      "lines": 1733,
+      "path": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp",
+      "sha256": "d85e3c4b00da95af96866116026aca5406f420949bd4f14deedb91b2b7a79bca"
+    },
+    {
+      "bytes": 344487,
+      "lines": 8716,
+      "path": "Code/GraphMol/Wrap/rough_test.py",
+      "sha256": "ab772950adb4837a96e7864cf8d44308af8f357205519bfb612216451fda39b7"
+    },
+    {
+      "bytes": 37760,
+      "lines": 1237,
+      "path": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java",
+      "sha256": "df1e077793d29d289cb4183999ebb2f19b20873fc8f88c6ea201f40e94a062c8"
+    }
+  ],
+  "license": {
+    "path": "LICENSE.rdkit.txt",
+    "sha256": "daeb8d194502cbcf34c05c39541a0d02be65bc9bada5b891c1974cd24e9fca30",
+    "spdx": "BSD-3-Clause"
+  },
+  "rdkit_version": "2026.03.1",
+  "source_commit": "cb251343b9448601963cbcec5057a76ff02b27c2",
+  "source_describe": "Release_2026_03_1-17-gcb251343b",
+  "source_repository": "https://github.com/rdkit/rdkit"
+}

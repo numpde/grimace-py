@@ -39,6 +39,14 @@ behavioral checks against the installed RDKit build.
   members and rejected members shared across reference and public-surface
   tests.
 
+## RDKit Upstream Source Fixtures
+
+- `tests/fixtures/rdkit_upstream_serializer_sources/`: local copies of the
+  RDKit serializer source and test files used to audit serializer coverage.
+  These files are fixture data, not runtime code.  Each versioned copy includes
+  `manifest.json` with upstream commit metadata and SHA-256 digests, plus the
+  RDKit BSD-3-Clause license text.
+
 ## Reference Dataset Fixtures
 
 - `tests/fixtures/reference/`: reference-policy fixtures and generated

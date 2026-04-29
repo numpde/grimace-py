@@ -1089,7 +1089,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1454,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4320_support_toggling_components_of_cxsmiles_output",
@@ -1101,15 +1101,15 @@
         "CXSmiles"
       ],
       "name": "Github #4320: Support toggling components of CXSMILES output",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": null,
       "snippet_sha256": "511251894a450bac46f569ad5bdbbc26e6d3970e157c9dc762d52645285996b7",
       "start_line": 1346,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1402,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__sgroups",
@@ -1121,15 +1121,15 @@
         "CXSmiles"
       ],
       "name": "sgroups",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": "Github #4320: Support toggling components of CXSMILES output",
       "snippet_sha256": "7e1daf925719a147353b3b96a4edd8a1be9848675733bf7008c2af12dc9593c9",
       "start_line": 1347,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1412,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__coordinates",
@@ -1141,15 +1141,15 @@
         "CXSmiles"
       ],
       "name": "coordinates",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": "Github #4320: Support toggling components of CXSMILES output",
       "snippet_sha256": "b93e36255580ea50fcd130ee6fffb25b40085ee3eb34533135b23dbd118f4093",
       "start_line": 1403,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1423,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__enhanced_stereo",
@@ -1161,15 +1161,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": "Github #4320: Support toggling components of CXSMILES output",
       "snippet_sha256": "5cc82b7522b04d62ea522048e752ecf12e028b271d66c5e3a030027d01217ae7",
       "start_line": 1413,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1433,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__link_nodes",
@@ -1181,15 +1181,15 @@
         "CXSmiles"
       ],
       "name": "link nodes",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": "Github #4320: Support toggling components of CXSMILES output",
       "snippet_sha256": "d624562ec8543aeb3e2b60b82794ebe9588abfc2ef88c86b54ade1adba1497e6",
       "start_line": 1424,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1443,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__radicals",
@@ -1201,15 +1201,15 @@
         "CXSmiles"
       ],
       "name": "radicals",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": "Github #4320: Support toggling components of CXSMILES output",
       "snippet_sha256": "52911400e162f9a83c95054e996e15b79f6af410b34bc7bfdeed7ad79bc9de9c",
       "start_line": 1434,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection",
       "end_line": 1453,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__values",
@@ -1221,11 +1221,11 @@
         "CXSmiles"
       ],
       "name": "values",
-      "notes": "",
+      "notes": "GitHub #4320 validates CXSMILES field filtering for SGroups, coordinates, enhanced stereo, link nodes, radicals, and molfile values. Grimace does not expose MolToCXSmiles or CXSmilesFields selection.",
       "parent": "Github #4320: Support toggling components of CXSMILES output",
       "snippet_sha256": "10c7333e760379ec8d4316a1b68015d6d819d21f11c1f18fd768233031de0f17",
       "start_line": 1444,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -3381,7 +3381,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1722,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__test_cxsmilesfields_option_parsing_from_json",
@@ -3391,15 +3391,15 @@
         "CXSmiles"
       ],
       "name": "Test CXSmilesFields option parsing from JSON",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": null,
       "snippet_sha256": "db12c56311a1889b459c187d8cca4d7ec7c12ecbc97cb6e7ecbbb52e457a12d1",
       "start_line": 1664,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1672,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__empty_json_string_preserves_current_values",
@@ -3409,15 +3409,15 @@
         "CXSmiles"
       ],
       "name": "Empty JSON string preserves current values",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": "Test CXSmilesFields option parsing from JSON",
       "snippet_sha256": "7b8459dd56d6282ac77de821ea1a3a003cd46b5ff6c15b877b5e6b8968fa0555",
       "start_line": 1665,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1682,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__no_cxsmilesfields_key_preserves_current_values",
@@ -3427,15 +3427,15 @@
         "CXSmiles"
       ],
       "name": "No CXSmilesFields key preserves current values",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": "Test CXSmilesFields option parsing from JSON",
       "snippet_sha256": "bb9b9c24499c06fcb45bf55ddaf6dfe7d3bd6dc34a5ed6d65ac67b460a0040ac",
       "start_line": 1673,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1692,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together",
@@ -3445,15 +3445,15 @@
         "CXSmiles"
       ],
       "name": "Multiple CXSmilesFields keys with true value are ORed together",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": "Test CXSmilesFields option parsing from JSON",
       "snippet_sha256": "0f22a466f3db7e2564d8c7cd3ed67f3b3bcafb171f210deea0f5de1b51016b8a",
       "start_line": 1683,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1703,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_adding_unrelated_false_values_makes_no_difference",
@@ -3463,15 +3463,15 @@
         "CXSmiles"
       ],
       "name": "Multiple CXSmilesFields keys with true value are ORed together; adding unrelated false values makes no difference",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": "Test CXSmilesFields option parsing from JSON",
       "snippet_sha256": "cc2154f4b19ca99f397bc70f068e9bdd753386c5e256ae64a01ac1264203fe14",
       "start_line": 1693,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1712,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_then_and_noted_with_ored_false_values",
@@ -3481,15 +3481,15 @@
         "CXSmiles"
       ],
       "name": "Multiple CXSmilesFields keys with true value are ORed together, then AND NOTed with ORed false values",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": "Test CXSmilesFields option parsing from JSON",
       "snippet_sha256": "e79b56df9a347030ba4b62b9f06cc7b1a6e0c5050b1624d573056e115b95bf21",
       "start_line": 1704,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-field-selection-json",
       "end_line": 1721,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_then_and_noted_with_ored_false_values_order_does_not_matter",
@@ -3499,11 +3499,11 @@
         "CXSmiles"
       ],
       "name": "Multiple CXSmilesFields keys with true value are ORed together, then AND NOTed with ORed false values; order does not matter",
-      "notes": "",
+      "notes": "This block validates RDKit JSON parsing for CXSmilesFields and restoreBondDirOption. Grimace has no CXSMILES field-selection API.",
       "parent": "Test CXSmilesFields option parsing from JSON",
       "snippet_sha256": "48d0df4030ab5f86221f0f229eb7078ff3c3a73bfecb909d02cb45774dccaecc",
       "start_line": 1713,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {

@@ -63,7 +63,7 @@ The only supported public Python import name is `grimace`.
 >
 > ```bash
 > python -m pip install \
->   https://github.com/numpde/grimace-py/releases/download/v0.1.7/grimace-0.1.7-cp312-cp312-manylinux_2_28_x86_64.whl
+>   https://github.com/numpde/grimace-py/releases/download/v0.1.8/grimace-0.1.8-cp312-cp312-manylinux_2_28_x86_64.whl
 > ```
 
 Main entrypoints:
@@ -313,7 +313,7 @@ Install with `pip install <wheel>` using one of these release assets:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
-| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.7/grimace-0.1.7-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.7/grimace-0.1.7-cp313-cp313-manylinux_2_28_x86_64.whl) |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.8/grimace-0.1.8-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.8/grimace-0.1.8-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 The built package depends on `rdkit>=2026.3`.
 

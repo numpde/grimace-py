@@ -21,6 +21,7 @@ Testing and correctness evidence
 - Updated the pinned RDKit parity runner so it fails when the installed RDKit
   version has no checked-in pinned fixture corpus, instead of silently passing
   via skipped tests.
+- Added fixture taxonomy documentation in `docs/testing-fixtures.md`.
 
 Scope note
 ----------

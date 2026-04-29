@@ -413,6 +413,7 @@ Disconnected molecules are supported by the public APIs.
 
 - [Docs index](docs/README.md)
 - [Python API](docs/api/python.md)
+- [Testing fixtures](docs/testing-fixtures.md)
 
 ## License
 

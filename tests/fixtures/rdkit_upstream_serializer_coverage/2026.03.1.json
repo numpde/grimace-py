@@ -55,7 +55,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "internal-getbondsmiles-helper",
       "end_line": 117,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2029",
@@ -65,15 +65,15 @@
         "allBondsExplicit"
       ],
       "name": "Github #2029",
-      "notes": "",
+      "notes": "Uses RDKit internal SmilesWrite::GetBondSmiles helper directly, not MolToSmiles. Public allBondsExplicit writer behavior is covered by separate fixtures.",
       "parent": null,
       "snippet_sha256": "4a7ff04f513fe69cb28fd91f74063cb2071191bcc7f71d1aa01e2f43d4d1a1ef",
       "start_line": 75,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "internal-getbondsmiles-helper",
       "end_line": 86,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__wedging",
@@ -83,15 +83,15 @@
         "allBondsExplicit"
       ],
       "name": "wedging",
-      "notes": "",
+      "notes": "Directly checks SmilesWrite::GetBondSmiles for a wedged bond. Grimace does not expose this internal bond-token helper.",
       "parent": "Github #2029",
       "snippet_sha256": "314f69aa06b66aec26df912988eafeb0c2c6f4156c7bb6d9101cc7550d168c0d",
       "start_line": 76,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "internal-getbondsmiles-helper",
       "end_line": 100,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__direction",
@@ -101,15 +101,15 @@
         "allBondsExplicit"
       ],
       "name": "direction",
-      "notes": "",
+      "notes": "Directly checks SmilesWrite::GetBondSmiles for directional bond tokens. Grimace covers complete SMILES outputs rather than the internal helper API.",
       "parent": "Github #2029",
       "snippet_sha256": "5156ab3aac69942520365116184f92bdcf434d623aea433e986410578ebf11f8",
       "start_line": 87,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "internal-getbondsmiles-helper",
       "end_line": 116,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__aromatic_double_bonds",
@@ -119,11 +119,11 @@
         "allBondsExplicit"
       ],
       "name": "aromatic double bonds",
-      "notes": "",
+      "notes": "Directly checks SmilesWrite::GetBondSmiles after kekulization. Grimace public allBondsExplicit aromatic output is covered elsewhere, but this internal helper contract is outside scope.",
       "parent": "Github #2029",
       "snippet_sha256": "8742302cc83aa24c296d85c1f4bbbbb14850b3307aad5a1d0fa2987d102ab2f3",
       "start_line": 101,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1229,7 +1229,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "random-double-bond-ring-closure-molblock",
       "end_line": 1727,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_double_bonds_and_ring_closures",
@@ -1241,11 +1241,11 @@
         "doRandom"
       ],
       "name": "Github #4582: double bonds and ring closures",
-      "notes": "",
+      "notes": "Molblock regression checks doRandom=True outputs for a double-bond/ring-closure case by round-tripping 100 seeded random outputs to the same canonical SMILES. This is in-scope writer behavior but is not yet pinned as a Grimace fixture.",
       "parent": null,
       "snippet_sha256": "bae01c5910c81fe671e0155e66a6f9c1497e1a75437c5558672fafe838ae40da",
       "start_line": 1635,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1267,7 +1267,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "random-double-bond-ring-closure-molblock",
       "end_line": 1726,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__bulk_random_output_order",
@@ -1279,11 +1279,11 @@
         "doRandom"
       ],
       "name": "bulk random output order",
-      "notes": "",
+      "notes": "Bulk random-output section should become a pinned molblock-backed sampled-output or membership fixture; current fixtures do not cover this CHEMBL409450 ring-closure/double-bond regression.",
       "parent": "Github #4582: double bonds and ring closures",
       "snippet_sha256": "3ada867dc414c15617213d49cd782c537f2478051a6163b94f2489c0b41ce8e2",
       "start_line": 1712,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1472,9 +1472,17 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "disconnected-random-fragment-smiles",
       "end_line": 1998,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "methane_fragments_unrooted_disconnected"
+          ],
+          "fixture": "tests/fixtures/rdkit_exact_small_support/2026.03.1.json",
+          "note": "Exact support for C.C under canonical=False, doRandom=True, rootedAtAtom=-1."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5372_errors_with_fragments_and_dorandom_true",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1484,17 +1492,25 @@
         "doRandom"
       ],
       "name": "Github #5372: errors with fragments and doRandom=True",
-      "notes": "",
+      "notes": "Github #5372 simple disconnected doRandom=True fragment regression is pinned as an exact small-support case.",
       "parent": null,
       "snippet_sha256": "28d67638000600555c40b0a8002298557b64ff8081ea0eb0035bc08ffcf043f2",
       "start_line": 1989,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "disconnected-random-fragment-smiles",
       "end_line": 1997,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "methane_fragments_unrooted_disconnected"
+          ],
+          "fixture": "tests/fixtures/rdkit_exact_small_support/2026.03.1.json",
+          "note": "Exact support for C.C under canonical=False, doRandom=True, rootedAtAtom=-1."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5372_errors_with_fragments_and_dorandom_true__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1504,11 +1520,11 @@
         "doRandom"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Github #5372 simple disconnected doRandom=True fragment regression is pinned as an exact small-support case.",
       "parent": "Github #5372: errors with fragments and doRandom=True",
       "snippet_sha256": "a99af5b02ab8dc760eb7a2683afe25de0d18ab3e8d45ebaaf4d328d8b964e3e9",
       "start_line": 1990,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -3929,9 +3945,26 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "all-bonds-explicit-whole-molecule",
       "end_line": 3255,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_01_propane_all_bonds_explicit",
+            "writer_flags_02_benzene_all_bonds_explicit"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Deterministic RDKit membership checks for the same propane and benzene allBondsExplicit examples."
+        },
+        {
+          "cases": [
+            "all_bonds_explicit_aromatic_benzene_colons",
+            "all_bonds_explicit_aliphatic_branch"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Exact-support coverage for aromatic colon bonds and aliphatic explicit single bonds."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test75allbondsexplicit",
       "kind": "python_test",
       "language": "python",
@@ -3940,11 +3973,11 @@
         "allBondsExplicit"
       ],
       "name": "test75AllBondsExplicit",
-      "notes": "",
+      "notes": "Python whole-molecule allBondsExplicit examples are covered by writer membership and exact serializer fixtures.",
       "parent": "TestCase",
       "snippet_sha256": "5631383d28082bab64aacc92bfc08571db8499c1dd616211622f9556e000b258",
       "start_line": 3244,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

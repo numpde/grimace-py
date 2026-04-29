@@ -37,6 +37,20 @@
       ]
     },
     {
+      "id": "methane_fragments_unrooted_disconnected",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:1989 (Github #5372 fragments with doRandom=True)",
+      "smiles": "C.C",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected": [
+        "C.C"
+      ],
+      "expected_inventory": [
+        ".",
+        "C"
+      ]
+    },
+    {
       "id": "co_cco_root0_disconnected",
       "source": "Local exact-support probe guided by RDKit SmilesWrite.cpp fragment-local rootedAtAtom handling",
       "smiles": "CO.CCO",

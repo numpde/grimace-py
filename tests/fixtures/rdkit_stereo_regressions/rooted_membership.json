@@ -1,0 +1,19 @@
+{
+  "description": "Stereo reference regressions where specific rooted outputs must be present.",
+  "cases": [
+    {
+      "id": "ring_opening_does_not_precommit_stereo_carrier",
+      "input_smiles": "CC\\1=C(C2=C(/C1=C\\C3=CC=C(C=C3)S(=O)C)C=CC(=C2)F)CC(=O)O",
+      "rooted_at_atom": 0,
+      "validate_support": true,
+      "expected_member": "CC1=C(CC(=O)O)c2c(ccc(F)c2)/C1=C\\c1ccc(S(=O)C)cc1"
+    },
+    {
+      "id": "porphyrin_like_fragment",
+      "input_smiles": "C1=CC=C2/C/3=N/C4=C5C(=C([N-]4)/N=C/6\\[N-]/C(=N\\C7=C8C(=C([N-]7)/N=C(/C2=C1)\\[N-]3)C=CC=C8)/C9=CC=CC=C69)C=CC=C5",
+      "rooted_at_atom": 0,
+      "validate_support": false,
+      "expected_member": "c1ccc2/c3[n-]/c(c2c1)=N\\c1c2c(c([n-]1)/N=c1\\[n-]/c(c4c1cccc4)=N\\c1c4c(c([n-]1)/N=3)cccc4)cccc2"
+    }
+  ]
+}

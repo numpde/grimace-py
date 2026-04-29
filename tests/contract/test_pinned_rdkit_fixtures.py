@@ -15,6 +15,7 @@ from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
 )
 from tests.helpers.rdkit_stereo_regressions import (
+    load_stereo_expected_member_regressions,
     load_steroid_ring_coupled_component_regression,
 )
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
@@ -305,6 +306,14 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
         self.assertIn("C[C@H]", case.input_smiles)
         self.assertIn("/C(=C/C=C1", case.expected_member)
         self.assertIn("\\C(=C\\C=C1", case.rejected_member)
+
+    def test_stereo_expected_member_fixture_loads(self) -> None:
+        cases = load_stereo_expected_member_regressions()
+
+        self.assertEqual(2, len(cases))
+        self.assertEqual(2, len({case.case_id for case in cases}))
+        self.assertTrue(all(case.rooted_at_atom == 0 for case in cases))
+        self.assertEqual([True, False], [case.validate_support for case in cases])
 
 
 if __name__ == "__main__":

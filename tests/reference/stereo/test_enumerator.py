@@ -19,6 +19,7 @@ from tests.helpers.cases import (
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 from tests.helpers.rdkit_stereo_regressions import (
+    load_stereo_expected_member_regressions,
     load_steroid_ring_coupled_component_regression,
 )
 
@@ -249,34 +250,24 @@ class RootedConnectedStereoTests(unittest.TestCase):
                     )
                     self.assertEqual(sampled, observed)
 
-    def test_dataset_regression_ring_opening_does_not_precommit_stereo_carrier(self) -> None:
-        mol = parse_smiles("CC\\1=C(C2=C(/C1=C\\C3=CC=C(C=C3)S(=O)C)C=CC(=C2)F)CC(=O)O")
-        expected = "CC1=C(CC(=O)O)c2c(ccc(F)c2)/C1=C\\c1ccc(S(=O)C)cc1"
-
-        observed = enumerate_rooted_connected_stereo_smiles_support(
-            mol,
-            0,
-            self.policy,
-        )
-        self.assertIn(expected, observed)
-        _assert_support_valid(self, mol, self.policy, 0, observed)
-
-    def test_dataset_regression_porphyrin_like_fragment_matches_rooted_rdkit(self) -> None:
-        mol = parse_smiles(
-            "C1=CC=C2/C/3=N/C4=C5C(=C([N-]4)/N=C/6\\[N-]/C(=N\\C7=C8C(=C([N-]7)"
-            "/N=C(/C2=C1)\\[N-]3)C=CC=C8)/C9=CC=CC=C69)C=CC=C5"
-        )
-        expected = (
-            "c1ccc2/c3[n-]/c(c2c1)=N\\c1c2c(c([n-]1)/N=c1\\[n-]/c(c4c1cccc4)"
-            "=N\\c1c4c(c([n-]1)/N=3)cccc4)cccc2"
-        )
-
-        observed = enumerate_rooted_connected_stereo_smiles_support(
-            mol,
-            0,
-            self.policy,
-        )
-        self.assertIn(expected, observed)
+    def test_dataset_regression_expected_members_are_in_rooted_support(self) -> None:
+        for case in load_stereo_expected_member_regressions():
+            mol = parse_smiles(case.input_smiles)
+            with self.subTest(case_id=case.case_id):
+                observed = enumerate_rooted_connected_stereo_smiles_support(
+                    mol,
+                    case.rooted_at_atom,
+                    self.policy,
+                )
+                self.assertIn(case.expected_member, observed)
+                if case.validate_support:
+                    _assert_support_valid(
+                        self,
+                        mol,
+                        self.policy,
+                        case.rooted_at_atom,
+                        observed,
+                    )
 
     def test_dataset_regression_steroid_ring_coupled_component_matches_rooted_rdkit_samples(self) -> None:
         case = load_steroid_ring_coupled_component_regression()

@@ -77,69 +77,6 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     )
 
-    def test_ignore_atom_map_numbers_rooted_surface(self) -> None:
-        # Regression for the bug where ignoreAtomMapNumbers=True still leaked
-        # atom-map text through the prepared-graph/reference writer surface.
-        source = "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers"
-        mol = parse_smiles("[CH3:7]C")
-
-        rooted_expectations = (
-            (0, {"[CH3:7]C"}, ("C", "[CH3:7]"), {"CC"}, ("C",)),
-            (1, {"C[CH3:7]"}, ("C", "[CH3:7]"), {"CC"}, ("C",)),
-        )
-        for (
-            rooted_at_atom,
-            expected_kept_support,
-            expected_kept_inventory,
-            expected_ignored_support,
-            expected_ignored_inventory,
-        ) in rooted_expectations:
-            with self.subTest(source=source, rooted_at_atom=rooted_at_atom):
-                self.assertEqual(
-                    expected_kept_support,
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            ignoreAtomMapNumbers=False,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_kept_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            ignoreAtomMapNumbers=False,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_ignored_support,
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            ignoreAtomMapNumbers=True,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_ignored_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            ignoreAtomMapNumbers=True,
-                        ),
-                    ),
-                )
-
     def test_rooted_atom_on_disconnected_fragment(self) -> None:
         # Regression for RDKit Github 8328: rootedAtAtom on multi-fragment
         # molecules must only root the fragment that contains the atom while

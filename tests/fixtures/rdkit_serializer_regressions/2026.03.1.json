@@ -51,6 +51,64 @@
       ]
     },
     {
+      "id": "ignore_atom_map_numbers_root0_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "C",
+        "[CH3:7]"
+      ],
+      "expected": [
+        "[CH3:7]C"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root0_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "C"
+      ],
+      "expected": [
+        "CC"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root1_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "C",
+        "[CH3:7]"
+      ],
+      "expected": [
+        "C[CH3:7]"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root1_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "C"
+      ],
+      "expected": [
+        "CC"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

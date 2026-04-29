@@ -10,14 +10,35 @@ from tests.helpers.rdkit_writer_cases import ExactSupportCase, ExactWriterCase, 
 RDKIT_PINNED_SAMPLING_SEEDS = (12345, 54321)
 
 
+def supported_public_kwargs_from_rdkit_options(
+    *,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> dict[str, object]:
+    kwargs = supported_public_kwargs(
+        isomericSmiles=isomeric_smiles,
+        kekuleSmiles=kekule_smiles,
+        allBondsExplicit=all_bonds_explicit,
+        allHsExplicit=all_hs_explicit,
+        ignoreAtomMapNumbers=ignore_atom_map_numbers,
+    )
+    if rooted_at_atom is not None:
+        kwargs["rootedAtAtom"] = rooted_at_atom
+    return kwargs
+
+
 def supported_public_kwargs_for_case(case: object) -> dict[str, object]:
-    return supported_public_kwargs(
-        rootedAtAtom=getattr(case, "rooted_at_atom"),
-        isomericSmiles=getattr(case, "isomeric_smiles"),
-        kekuleSmiles=getattr(case, "kekule_smiles"),
-        allBondsExplicit=getattr(case, "all_bonds_explicit"),
-        allHsExplicit=getattr(case, "all_hs_explicit"),
-        ignoreAtomMapNumbers=getattr(case, "ignore_atom_map_numbers"),
+    return supported_public_kwargs_from_rdkit_options(
+        rooted_at_atom=getattr(case, "rooted_at_atom"),
+        isomeric_smiles=getattr(case, "isomeric_smiles"),
+        kekule_smiles=getattr(case, "kekule_smiles"),
+        all_bonds_explicit=getattr(case, "all_bonds_explicit"),
+        all_hs_explicit=getattr(case, "all_hs_explicit"),
+        ignore_atom_map_numbers=getattr(case, "ignore_atom_map_numbers"),
     )
 
 
@@ -31,18 +52,42 @@ def grimace_support(
     all_hs_explicit: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> set[str]:
-    kwargs = dict(
-        isomericSmiles=isomeric_smiles,
-        kekuleSmiles=kekule_smiles,
-        canonical=False,
-        allBondsExplicit=all_bonds_explicit,
-        allHsExplicit=all_hs_explicit,
-        doRandom=True,
-        ignoreAtomMapNumbers=ignore_atom_map_numbers,
+    return set(
+        grimace.MolToSmilesEnum(
+            mol,
+            **supported_public_kwargs_from_rdkit_options(
+                rooted_at_atom=rooted_at_atom,
+                isomeric_smiles=isomeric_smiles,
+                kekule_smiles=kekule_smiles,
+                all_bonds_explicit=all_bonds_explicit,
+                all_hs_explicit=all_hs_explicit,
+                ignore_atom_map_numbers=ignore_atom_map_numbers,
+            ),
+        )
     )
-    if rooted_at_atom is not None:
-        kwargs["rootedAtAtom"] = rooted_at_atom
-    return set(grimace.MolToSmilesEnum(mol, **kwargs))
+
+
+def grimace_token_inventory(
+    mol: Chem.Mol,
+    *,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> tuple[str, ...]:
+    return grimace.MolToSmilesTokenInventory(
+        mol,
+        **supported_public_kwargs_from_rdkit_options(
+            rooted_at_atom=rooted_at_atom,
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
+        ),
+    )
 
 
 def sample_rdkit_random_support(
@@ -187,6 +232,44 @@ def assert_grimace_support_equals(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     test_case.assertEqual(expected, actual)
+
+
+def assert_grimace_support_and_inventory_equal(
+    test_case,
+    *,
+    mol: Chem.Mol,
+    expected_support: set[str],
+    expected_inventory: tuple[str, ...],
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> None:
+    assert_grimace_support_equals(
+        test_case,
+        mol=mol,
+        expected=expected_support,
+        rooted_at_atom=rooted_at_atom,
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
+    test_case.assertEqual(
+        expected_inventory,
+        grimace_token_inventory(
+            mol,
+            rooted_at_atom=rooted_at_atom,
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
+        ),
+    )
 
 
 def assert_exact_support_case_equals_grimace_support(

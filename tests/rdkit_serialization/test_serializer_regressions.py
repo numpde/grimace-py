@@ -15,8 +15,8 @@ from tests.helpers.rdkit_serializer_regressions import (
 )
 from tests.rdkit_serialization._support import (
     RDKIT_PINNED_SAMPLING_SEEDS,
+    assert_grimace_support_and_inventory_equal,
     sample_rdkit_random_support,
-    supported_public_kwargs_for_case,
 )
 
 
@@ -41,19 +41,17 @@ class SerializerRegressionTests(unittest.TestCase):
         for case in self.cases:
             mol = parse_smiles(case.smiles)
             with self.subTest(case_id=case.case_id, source=case.source):
-                self.assertEqual(
-                    set(case.expected),
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs_for_case(case),
-                    ),
-                )
-                self.assertEqual(
-                    case.expected_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs_for_case(case),
-                    ),
+                assert_grimace_support_and_inventory_equal(
+                    self,
+                    mol=mol,
+                    expected_support=set(case.expected),
+                    expected_inventory=case.expected_inventory,
+                    rooted_at_atom=case.rooted_at_atom,
+                    isomeric_smiles=case.isomeric_smiles,
+                    kekule_smiles=case.kekule_smiles,
+                    all_bonds_explicit=case.all_bonds_explicit,
+                    all_hs_explicit=case.all_hs_explicit,
+                    ignore_atom_map_numbers=case.ignore_atom_map_numbers,
                 )
 
     def test_fixture_backed_rdkit_sampling_when_declared(self) -> None:

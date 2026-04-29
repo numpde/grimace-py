@@ -3,7 +3,22 @@ from __future__ import annotations
 from rdkit import Chem, rdBase
 
 import grimace
+from tests.helpers.public_runtime import supported_public_kwargs
 from tests.helpers.rdkit_writer_cases import ExactSupportCase, ExactWriterCase, RootedRandomCase
+
+
+RDKIT_PINNED_SAMPLING_SEEDS = (12345, 54321)
+
+
+def supported_public_kwargs_for_case(case: object) -> dict[str, object]:
+    return supported_public_kwargs(
+        rootedAtAtom=getattr(case, "rooted_at_atom"),
+        isomericSmiles=getattr(case, "isomeric_smiles"),
+        kekuleSmiles=getattr(case, "kekule_smiles"),
+        allBondsExplicit=getattr(case, "all_bonds_explicit"),
+        allHsExplicit=getattr(case, "all_hs_explicit"),
+        ignoreAtomMapNumbers=getattr(case, "ignore_atom_map_numbers"),
+    )
 
 
 def grimace_support(

@@ -13,7 +13,11 @@ from tests.helpers.public_runtime import (
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
 )
-from tests.rdkit_serialization._support import sample_rdkit_random_support
+from tests.rdkit_serialization._support import (
+    RDKIT_PINNED_SAMPLING_SEEDS,
+    sample_rdkit_random_support,
+    supported_public_kwargs_for_case,
+)
 
 
 PINNED_RDKIT_VERSION = "2026.03.1"
@@ -43,28 +47,14 @@ class SerializerRegressionTests(unittest.TestCase):
                     set(case.expected),
                     public_enum_support(
                         mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=case.rooted_at_atom,
-                            isomericSmiles=case.isomeric_smiles,
-                            kekuleSmiles=case.kekule_smiles,
-                            allBondsExplicit=case.all_bonds_explicit,
-                            allHsExplicit=case.all_hs_explicit,
-                            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
-                        ),
+                        **supported_public_kwargs_for_case(case),
                     ),
                 )
                 self.assertEqual(
                     case.expected_inventory,
                     public_token_inventory(
                         mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=case.rooted_at_atom,
-                            isomericSmiles=case.isomeric_smiles,
-                            kekuleSmiles=case.kekule_smiles,
-                            allBondsExplicit=case.all_bonds_explicit,
-                            allHsExplicit=case.all_hs_explicit,
-                            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
-                        ),
+                        **supported_public_kwargs_for_case(case),
                     ),
                 )
 
@@ -75,7 +65,7 @@ class SerializerRegressionTests(unittest.TestCase):
             mol = parse_smiles(case.smiles)
             expected = set(case.expected)
             with self.subTest(case_id=case.case_id, source=case.source):
-                for seed in (12345, 54321):
+                for seed in RDKIT_PINNED_SAMPLING_SEEDS:
                     self.assertEqual(
                         expected,
                         sample_rdkit_random_support(

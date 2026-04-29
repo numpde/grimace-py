@@ -5,7 +5,6 @@ import unittest
 from rdkit import Chem, rdBase
 
 from tests.helpers.rdkit_exact_small_support import (
-    PinnedExactSmallSupportCase,
     load_pinned_exact_small_support_cases,
 )
 from tests.helpers.mols import parse_smiles
@@ -14,11 +13,12 @@ from tests.helpers.public_runtime import (
     make_determinized_decoder,
     public_token_inventory,
     reachable_outputs_from_decoder,
-    supported_public_kwargs,
 )
 from tests.rdkit_serialization._support import (
+    RDKIT_PINNED_SAMPLING_SEEDS,
     assert_grimace_support_equals,
     sample_rdkit_random_support,
+    supported_public_kwargs_for_case,
 )
 
 
@@ -32,17 +32,6 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
                 f"no pinned exact small-support corpus for RDKit {rdBase.rdkitVersion}"
             )
 
-    @staticmethod
-    def _public_kwargs(case: PinnedExactSmallSupportCase) -> dict[str, object]:
-        return supported_public_kwargs(
-            rootedAtAtom=case.rooted_at_atom,
-            isomericSmiles=case.isomeric_smiles,
-            kekuleSmiles=case.kekule_smiles,
-            allBondsExplicit=case.all_bonds_explicit,
-            allHsExplicit=case.all_hs_explicit,
-            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
-        )
-
     def test_pinned_fixture_matches_repeated_rdkit_sampling(self) -> None:
         # These cases are intentionally tiny rooted supports that saturated
         # exactly in repeated rooted-random RDKit draws for this specific
@@ -54,7 +43,7 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
                 case_id=case.case_id,
                 source=case.source,
             ):
-                for seed in (12345, 54321):
+                for seed in RDKIT_PINNED_SAMPLING_SEEDS:
                     self.assertEqual(
                         expected,
                         sample_rdkit_random_support(
@@ -99,13 +88,16 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
             ):
                 self.assertEqual(
                     case.expected_inventory,
-                    public_token_inventory(mol, **self._public_kwargs(case)),
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs_for_case(case),
+                    ),
                 )
 
     def test_decoder_reachable_outputs_match_pinned_fixture(self) -> None:
         for case in self.cases:
             mol = parse_smiles(case.smiles)
-            decoder = make_decoder(mol, **self._public_kwargs(case))
+            decoder = make_decoder(mol, **supported_public_kwargs_for_case(case))
             with self.subTest(
                 case_id=case.case_id,
                 source=case.source,
@@ -118,7 +110,10 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
     def test_determinized_decoder_reachable_outputs_match_pinned_fixture(self) -> None:
         for case in self.cases:
             mol = parse_smiles(case.smiles)
-            decoder = make_determinized_decoder(mol, **self._public_kwargs(case))
+            decoder = make_determinized_decoder(
+                mol,
+                **supported_public_kwargs_for_case(case),
+            )
             with self.subTest(
                 case_id=case.case_id,
                 source=case.source,

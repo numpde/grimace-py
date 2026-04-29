@@ -33,6 +33,8 @@ subset.
 - Bulky serializer expected-output sets belong in version-keyed JSON fixtures
   under `tests/fixtures/rdkit_serializer_regressions/`, with a source reference
   for each case.
+- Pinned RDKit JSON fixtures should reuse `tests/helpers/pinned_rdkit_fixtures.py`
+  for version, id, source, and canonical expected-set validation.
 - Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.

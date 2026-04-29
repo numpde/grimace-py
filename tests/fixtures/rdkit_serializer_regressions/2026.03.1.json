@@ -490,6 +490,82 @@
       ]
     },
     {
+      "id": "explicit_kekule_pyrrole_root0_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1121-1126",
+      "smiles": "C1=CNC=C1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "c1c[nH]cc1",
+        "c1cc[nH]c1"
+      ]
+    },
+    {
+      "id": "explicit_kekule_pyrrole_root2_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1121-1126",
+      "smiles": "C1=CNC=C1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "[nH]1cccc1"
+      ]
+    },
+    {
+      "id": "explicit_h_kekule_pyrrole_root0_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1127-1132",
+      "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "c1c[nH]cc1",
+        "c1cc[nH]c1"
+      ]
+    },
+    {
+      "id": "explicit_h_kekule_pyrrole_root2_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1127-1132",
+      "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "[nH]1cccc1"
+      ]
+    },
+    {
+      "id": "explicit_kekule_benzene_normalizes_aromatic",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046 benzene",
+      "smiles": "[CH]1=[CH][CH]=[CH][CH]=[CH]1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "c"
+      ],
+      "expected": [
+        "c1ccccc1"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

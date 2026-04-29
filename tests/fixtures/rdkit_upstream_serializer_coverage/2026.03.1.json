@@ -5038,7 +5038,15 @@
     {
       "claim": "chiral-silicon-ring-roundtrip",
       "end_line": 618,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "chiral_silicon_ring_issue127_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact all-roots fixture pins the Java testIssue127 chiral silicon writer surface."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue127",
       "kind": "java_test",
       "language": "java",
@@ -5046,11 +5054,11 @@
         "MolToSmiles"
       ],
       "name": "testIssue127",
-      "notes": "Chiral silicon fused-ring SMILES round-trip is not yet represented by a pinned Grimace serializer fixture.",
+      "notes": "Chiral silicon fused-ring round-trip is represented by an exact all-roots serializer fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "19cf013e63659aa87e21f53e776c924236de67723adf208b51eb3e9716bd0158",
       "start_line": 595,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
@@ -5235,7 +5243,15 @@
     {
       "claim": "triazine-hydrazone-stereo-roundtrip",
       "end_line": 975,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "triazine_hydrazone_stereo_issue191_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Exact all-roots fixture pins the Java testIssue191 triazine/hydrazone writer surface."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue191",
       "kind": "java_test",
       "language": "java",
@@ -5243,11 +5259,11 @@
         "MolToSmiles"
       ],
       "name": "testIssue191",
-      "notes": "Complex triazine/hydrazone E/Z round-trip case is not yet represented by a pinned Grimace serializer fixture.",
+      "notes": "Triazine/hydrazone E/Z round-trip is represented by an exact all-roots serializer fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "2379ab17c7d55f87077210260f1a548dbcfca7f05ebc0184fc4849602d8a5bb0",
       "start_line": 947,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

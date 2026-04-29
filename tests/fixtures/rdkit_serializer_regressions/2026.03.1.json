@@ -206,6 +206,114 @@
       ]
     },
     {
+      "id": "rooted_chiral_alcohol_root0",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:455-474 chiral alcohol",
+      "smiles": "[C@@H](F)(O)C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "F",
+        "O",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "[C@@H](C)(F)O",
+        "[C@@H](F)(O)C",
+        "[C@@H](O)(C)F",
+        "[C@H](C)(O)F",
+        "[C@H](F)(C)O",
+        "[C@H](O)(F)C"
+      ]
+    },
+    {
+      "id": "rooted_chiral_alcohol_all_roots",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:455-474 chiral alcohol",
+      "smiles": "[C@@H](F)(O)C",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "F",
+        "O",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "C[C@@H](O)F",
+        "C[C@H](F)O",
+        "F[C@@H](C)O",
+        "F[C@H](O)C",
+        "O[C@@H](F)C",
+        "O[C@H](C)F",
+        "[C@@H](C)(F)O",
+        "[C@@H](F)(O)C",
+        "[C@@H](O)(C)F",
+        "[C@H](C)(O)F",
+        "[C@H](F)(C)O",
+        "[C@H](O)(F)C"
+      ]
+    },
+    {
+      "id": "rooted_chiral_epoxide_root0",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:468-474 chiral epoxide",
+      "smiles": "[C@@H]1(F)OC1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "F",
+        "O",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "[C@@H]1(CO1)F",
+        "[C@@H]1(F)OC1",
+        "[C@H]1(F)CO1",
+        "[C@H]1(OC1)F"
+      ]
+    },
+    {
+      "id": "rooted_chiral_epoxide_all_roots",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:468-474 chiral epoxide",
+      "smiles": "[C@@H]1(F)OC1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "F",
+        "O",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "C1O[C@H]1F",
+        "C1[C@@H](O1)F",
+        "C1[C@H](F)O1",
+        "F[C@@H]1OC1",
+        "F[C@H]1CO1",
+        "O1C[C@@H]1F",
+        "O1[C@@H](F)C1",
+        "O1[C@H](C1)F",
+        "[C@@H]1(CO1)F",
+        "[C@@H]1(F)OC1",
+        "[C@H]1(F)CO1",
+        "[C@H]1(OC1)F"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

@@ -290,6 +290,27 @@
         "[1*][2C]",
         "[2C][1*]"
       ]
+    },
+    {
+      "id": "kekule_pyrrole_surface_all_roots",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #2788 basics2",
+      "smiles": "c1cc[nH]c1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "kekule_smiles": true,
+      "expected_inventory": [
+        "1",
+        "=",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "C1=CC=CN1",
+        "C1=CNC=C1",
+        "C1C=CNC=1",
+        "C1NC=CC=1",
+        "N1C=CC=C1"
+      ]
     }
   ]
 }

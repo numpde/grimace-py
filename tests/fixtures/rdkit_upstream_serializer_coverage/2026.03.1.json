@@ -745,7 +745,22 @@
     {
       "claim": "kekule-smiles-writer",
       "end_line": 874,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_05_benzene_kekule"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Pins the benzene doKekule output from basics1."
+        },
+        {
+          "cases": [
+            "kekule_pyrrole_surface_all_roots"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Covers the pyrrole doKekule output from basics2."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2788_dokekule_true_should_kekulize_the_molecule",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -753,11 +768,11 @@
         "MolToSmiles"
       ],
       "name": "Github #2788: doKekule=true should kekulize the molecule",
-      "notes": "Aggregate doKekule writer test is only partially covered: benzene is pinned, pyrrole and exception behavior are not complete Grimace fixtures.",
+      "notes": "Relevant benzene and pyrrole doKekule writer outputs are represented by fixtures; exception behavior is tracked separately as out-of-scope.",
       "parent": null,
       "snippet_sha256": "ee480730629834d5e764ba481f58c355617e8768bdab1eb684c27726c9cad689",
       "start_line": 840,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -789,7 +804,15 @@
     {
       "claim": "kekule-pyrrole-smiles-writer",
       "end_line": 855,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "kekule_pyrrole_surface_all_roots"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Covers c1cc[nH]c1 with kekuleSmiles=True across all random roots."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -797,11 +820,11 @@
         "MolToSmiles"
       ],
       "name": "basics2",
-      "notes": "Pyrrole doKekule MolToSmiles output C1=CNC=C1 is not yet represented by a Grimace fixture.",
+      "notes": "Pyrrole doKekule MolToSmiles output is represented by an exact serializer fixture.",
       "parent": "Github #2788: doKekule=true should kekulize the molecule",
       "snippet_sha256": "acdeb71251967880758a298d0f6d9596505f7f900a246a904731bbc035a68a23",
       "start_line": 849,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

@@ -46,6 +46,11 @@ behavioral checks against the installed RDKit build.
   These files are fixture data, not runtime code.  Each versioned copy includes
   `manifest.json` with upstream commit metadata and SHA-256 digests, plus the
   RDKit BSD-3-Clause license text.
+- `tests/fixtures/rdkit_upstream_serializer_coverage/`: parser-generated
+  inventory of upstream RDKit serializer test blocks.  The extractor owns
+  upstream file, line range, parser kind, matched terms, and snippet hash.
+  Reviewed fields map each upstream block to Grimace fixture coverage or a
+  coverage status.
 
 ## Reference Dataset Fixtures
 

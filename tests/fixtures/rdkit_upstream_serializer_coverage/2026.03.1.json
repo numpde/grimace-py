@@ -1,0 +1,5349 @@
+{
+  "entries": [
+    {
+      "claim": "needs-triage",
+      "end_line": 73,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_1972",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #1972",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "7471f283ff3db26697d8ec2e2146e09b0fc27072e475b5c480f6f9f96538a794",
+      "start_line": 36,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 52,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #1972",
+      "snippet_sha256": "a280c3be2d1ad3dc84e26463b652dcb038820074fbbbce43340c29eb11249c8e",
+      "start_line": 37,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 72,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__further_examples",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "further examples",
+      "notes": "",
+      "parent": "Github #1972",
+      "snippet_sha256": "23d04028331827d882ccc809271ae21dba9360a953b85bc30b37bd17180af0fb",
+      "start_line": 53,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 117,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2029",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "allBondsExplicit"
+      ],
+      "name": "Github #2029",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "4a7ff04f513fe69cb28fd91f74063cb2071191bcc7f71d1aa01e2f43d4d1a1ef",
+      "start_line": 75,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 86,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__wedging",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "allBondsExplicit"
+      ],
+      "name": "wedging",
+      "notes": "",
+      "parent": "Github #2029",
+      "snippet_sha256": "314f69aa06b66aec26df912988eafeb0c2c6f4156c7bb6d9101cc7550d168c0d",
+      "start_line": 76,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 100,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__direction",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "allBondsExplicit"
+      ],
+      "name": "direction",
+      "notes": "",
+      "parent": "Github #2029",
+      "snippet_sha256": "5156ab3aac69942520365116184f92bdcf434d623aea433e986410578ebf11f8",
+      "start_line": 87,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 116,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2029__aromatic_double_bonds",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "allBondsExplicit"
+      ],
+      "name": "aromatic double bonds",
+      "notes": "",
+      "parent": "Github #2029",
+      "snippet_sha256": "8742302cc83aa24c296d85c1f4bbbbb14850b3307aad5a1d0fa2987d102ab2f3",
+      "start_line": 101,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 339,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2257_writing_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #2257: writing cxsmiles",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "97840dd9be3d19100b641e4002612ef7657f740b91f16443c93573109768de67",
+      "start_line": 169,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 175,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "f977158170fbd4dfd8fc5627a8db68fff7e91485fb1ac1f5e68c66983ac2e929",
+      "start_line": 170,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 185,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_labels",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "atom labels",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "fbaa3918ef0ca3f93218f481751c013bf4a6339affd904ca9ccc553bf208ffb2",
+      "start_line": 176,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 197,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_ordering",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "atom ordering",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "ed0efe61379a4f20353655b225c34f9484c58d1927feefd181ba5885d3243dc9",
+      "start_line": 186,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 207,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_values",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "atom values",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "b69826042e63a57b0c60c6170438b04c203cc23219dbbd6adcf33eed8038e210",
+      "start_line": 198,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 218,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__radicals",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "radicals",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "3e0d9b9e373d70350520a525cf468c3d433cbc5419ce25130e79eef2aa366799",
+      "start_line": 209,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 228,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__radicals2",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "radicals2",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "f6b5e891c9fa967631d5f306268129695aa5598b036ba59a50a3acb099c539c9",
+      "start_line": 219,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 236,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__coordinates",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "coordinates",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "93b077f5be58ee4314ce22ebc4a58bc4487d8a94b2c027b6e84c31ac976d7cd6",
+      "start_line": 229,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 244,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__coordinates3d",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "coordinates3d",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "25863411e1bf6073720dfe6ca986148c5b337978049ba25052ef50f07461f60e",
+      "start_line": 237,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 260,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_props",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "atom props",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "b8473080f7d4faa00c31bf0cfd2e96e270c8bc09b0e0cb33216a7b9e02fe2217",
+      "start_line": 245,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 267,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_props_and_values",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "atom props and values",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "70c17a9a820050ecc9ffc2b7d689370eb57bd1a519a256673128ad8cc3052c2f",
+      "start_line": 261,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 273,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_1",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo 1",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "12c2e926f9c719beefcef985bbb25cf5f0b1a815ef0b20ff7b73281f1b755aca",
+      "start_line": 268,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 280,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_2",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo 2",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "fbf5e5fbe086caa8ccc2656a3efcdae29d30919ab784cebe216396e2f50b9cde",
+      "start_line": 275,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 290,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_3",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo 3",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "5008648cfe041f67731994405e1da8867f7f339379fd5487bf15c4d791fc855f",
+      "start_line": 282,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 297,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_4",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo 4",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "e1a01cde7b27e2ca26a53294994b0b06f08aa0c30c758bc392a75f50c4606f79",
+      "start_line": 292,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 304,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_with_other_properties",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo with other properties",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "faf476f0acc9b7e54b39627c9ae829280e7093be8197218573979bd326912879",
+      "start_line": 299,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 314,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments1",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "mol fragments1",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "b82925ad484f47a342fcb503c1423c3e8a5c29225d146af76d440293a9edcf91",
+      "start_line": 306,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 326,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments2",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "mol fragments2",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "5038e3c957f6466fb8cbe5fafa94b3cc835eb2803c53a702d3b3ed8fb3896dce",
+      "start_line": 315,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 338,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments3",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "mol fragments3",
+      "notes": "",
+      "parent": "github #2257: writing cxsmiles",
+      "snippet_sha256": "29bf0446152cf54562561d2cfebf92245e905b3964dfb4a3afde6062168cb325",
+      "start_line": 328,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 386,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2148",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #2148",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "f99409d1815758fa079408891037b93d301ad97dfdc28e166745863693d3909d",
+      "start_line": 341,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 385,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2148__writing_smiles",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Writing SMILES",
+      "notes": "",
+      "parent": "Github #2148",
+      "snippet_sha256": "245e7331ff475aba29826edebb975cab2f9148b494666441907482980465ce1b",
+      "start_line": 368,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 521,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2667_moltocxsmiles_generates_error_for_empty_molecule",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #2667: MolToCXSmiles generates error for empty molecule",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "3d6612d8149907c3ed4efbb7fc9a44742dc24a29fa94d11535f3764e6d137717",
+      "start_line": 513,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 520,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2667_moltocxsmiles_generates_error_for_empty_molecule__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "github #2667: MolToCXSmiles generates error for empty molecule",
+      "snippet_sha256": "e1ac82c559571ac8948c2726d4150f8f82d97be90c62d586fbd6f6b1629291ca",
+      "start_line": 515,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 700,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__random_smiles_vectors",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToRandomSmilesVect",
+        "allBondsExplicit",
+        "allHsExplicit",
+        "isomericSmiles",
+        "kekuleSmiles"
+      ],
+      "name": "random smiles vectors",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "2b932eaefbe1b343a3af5a4258528218e1831d9fc769f8d0f3a8f1250a138011",
+      "start_line": 645,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 656,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToRandomSmilesVect"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "random smiles vectors",
+      "snippet_sha256": "fe70a095c6f3318f3293f23e1894d4db2a3c4610017051a8b532d6539dde35e4",
+      "start_line": 648,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 675,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__options1",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToRandomSmilesVect",
+        "allBondsExplicit",
+        "allHsExplicit",
+        "isomericSmiles",
+        "kekuleSmiles"
+      ],
+      "name": "options1",
+      "notes": "",
+      "parent": "random smiles vectors",
+      "snippet_sha256": "49f16cac759975a344111ac9ec60741440633414725159183d0ba33e7f1a8387",
+      "start_line": 657,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 699,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__options2",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToRandomSmilesVect",
+        "allBondsExplicit",
+        "allHsExplicit",
+        "isomericSmiles",
+        "kekuleSmiles"
+      ],
+      "name": "options2",
+      "notes": "",
+      "parent": "random smiles vectors",
+      "snippet_sha256": "d3407e9bdcfa2344cce320f0b013fa0c19049b20597ef0e01f66a2ad3d254938",
+      "start_line": 676,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 738,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3197_molecule_constructed_from_cxsmiles_cannot_be_translated_to",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #3197: Molecule constructed from CXSMILES cannot be translated to ",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "1857d076568717566e943ac021e2fe3a917ae4eef534aa65328075ff544b9a42",
+      "start_line": 702,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 737,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_3197_molecule_constructed_from_cxsmiles_cannot_be_translated_to__serialization",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "serialization",
+      "notes": "",
+      "parent": "github #3197: Molecule constructed from CXSMILES cannot be translated to ",
+      "snippet_sha256": "c7b714661630c4b07521a3d080a1354db2357a407156d22e045539f5e2ba1f03",
+      "start_line": 717,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 828,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3774_moltosmarts_inverts_direction_of_dative_bond",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "github #3774: MolToSmarts inverts direction of dative bond",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "fdd43b7cb9384c93b66f1efc13c4bc54eba4357838bfb81c54bf06ea152e5edd",
+      "start_line": 800,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 815,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_3774_moltosmarts_inverts_direction_of_dative_bond__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "as reported",
+      "notes": "",
+      "parent": "github #3774: MolToSmarts inverts direction of dative bond",
+      "snippet_sha256": "c9da51edfccb15aab47671c4240097ddcdf9d97b447be0efd2e698a490b442dd",
+      "start_line": 802,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 874,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2788_dokekule_true_should_kekulize_the_molecule",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #2788: doKekule=true should kekulize the molecule",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "ee480730629834d5e764ba481f58c355617e8768bdab1eb684c27726c9cad689",
+      "start_line": 840,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 848,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics1",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics1",
+      "notes": "",
+      "parent": "Github #2788: doKekule=true should kekulize the molecule",
+      "snippet_sha256": "81beb9cb61a64358fd78f0fcb439aeed2b6585ca610c0888f5b5e983ffef1410",
+      "start_line": 842,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 855,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__basics2",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics2",
+      "notes": "",
+      "parent": "Github #2788: doKekule=true should kekulize the molecule",
+      "snippet_sha256": "acdeb71251967880758a298d0f6d9596505f7f900a246a904731bbc035a68a23",
+      "start_line": 849,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 873,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2788_dokekule_true_should_kekulize_the_molecule__can_thrown_exceptions",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "can thrown exceptions",
+      "notes": "",
+      "parent": "Github #2788: doKekule=true should kekulize the molecule",
+      "snippet_sha256": "ac1ed073c30a9d5b08f4c8f98976e86dac3824b063b9c3641261ef7752f80562",
+      "start_line": 857,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 907,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3998_molfragmenttosmiles_failing_in_kekulization_with",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "kekuleSmiles"
+      ],
+      "name": "Github #3998 MolFragmentToSmiles failing in Kekulization with ",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "3dfac0fa26563f9997ca0297729b694b8a7faf9c8280432a226603efe209da78",
+      "start_line": 881,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1096,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4233_data_groups_in_cxsmiles_neither_parsed_nor_written",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #4233: data groups in CXSMILES neither parsed nor written",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "275cbb9f59f7c56254324d2ebb8536e6afd7a517035b14bd0ee1e2b6ebc20be9",
+      "start_line": 1013,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1095,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4233_data_groups_in_cxsmiles_neither_parsed_nor_written__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #4233: data groups in CXSMILES neither parsed nor written",
+      "snippet_sha256": "c0c7755975ac811e9bdec456af2ae9187b2f59cfaa72a1f2e7feb16d65ce374f",
+      "start_line": 1014,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1252,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__polymer_sgroups",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "polymer SGroups",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "321d3b0c7096e5d2d7f507a89431801ad3ebcce3d20745a189835c4c3364b6b5",
+      "start_line": 1098,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1178,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__polymer_sgroups__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "polymer SGroups",
+      "snippet_sha256": "23744d286cf30180a4afd805c04349b2da051a4762dfb92194a4e8d24676bac9",
+      "start_line": 1099,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1251,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__polymer_sgroups__multiple_s_groups",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "multiple s groups",
+      "notes": "",
+      "parent": "polymer SGroups",
+      "snippet_sha256": "dc3f08eb715d4bc56fb256f17c3900ea854a8ff88203e313bbc77ab58ceedc8e",
+      "start_line": 1179,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1297,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__sgroup_hierarchy",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "SGroup hierarchy",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "a1337be481b3649d3bc8239287af7330a4c8ba7de19684f8862adf76fc49d6dd",
+      "start_line": 1254,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1275,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__sgroup_hierarchy__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "SGroup hierarchy",
+      "snippet_sha256": "bffa01c022b191ef9f76a6fa958057be95668c10f200ad495470ed635b24af6a",
+      "start_line": 1255,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1296,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__sgroup_hierarchy__nested",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "nested",
+      "notes": "",
+      "parent": "SGroup hierarchy",
+      "snippet_sha256": "d58fc099729ef8f8c9c95a937cf60d2892d354899d105d707ec96e81f9180c31",
+      "start_line": 1276,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1321,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__linknode_writing",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Linknode writing",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "fbe3f74551fee904eb3bd8f8062373bd239311f711a8cc97d8fd040e31b53af4",
+      "start_line": 1299,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1307,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__single",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "single",
+      "notes": "",
+      "parent": "Linknode writing",
+      "snippet_sha256": "c6d91250dc561f893308fb9711702a918b82c4b0e1d20ef02ea5f455935137de",
+      "start_line": 1300,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1315,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__multiple",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "multiple",
+      "notes": "",
+      "parent": "Linknode writing",
+      "snippet_sha256": "e22f6fe0f6e3726ce53d6d6df0e2113b582f69e8954549b4cb8efa5afbd0f4f2",
+      "start_line": 1308,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1320,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__linknode_writing__two_coordinate",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "two-coordinate",
+      "notes": "",
+      "parent": "Linknode writing",
+      "snippet_sha256": "f9743c3327ee9af5eaff1e487d1eb7949cd58c9a9dbdc801a21b48340daea93d",
+      "start_line": 1316,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1344,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__smilesbondoutputorder",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "smilesBondOutputOrder",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "83e5e8f1022ac1c39bece22100a1d400fad8936b8403041a1392e8643480e873",
+      "start_line": 1323,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1333,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__smilesbondoutputorder__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "smilesBondOutputOrder",
+      "snippet_sha256": "d237ba588615eab70037d4c14745afa576e4967e3e0e7b7e97793487f5ceb2ef",
+      "start_line": 1324,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1343,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__smilesbondoutputorder__github_5585_incorrect_ordering_for_ring_closures",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #5585: incorrect ordering for ring closures",
+      "notes": "",
+      "parent": "smilesBondOutputOrder",
+      "snippet_sha256": "b8a8b17cde4033d80276141d51b293a58220e864d1fbca97de41f6e92602f359",
+      "start_line": 1334,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1454,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4320_support_toggling_components_of_cxsmiles_output",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #4320: Support toggling components of CXSMILES output",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "511251894a450bac46f569ad5bdbbc26e6d3970e157c9dc762d52645285996b7",
+      "start_line": 1346,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1402,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__sgroups",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "sgroups",
+      "notes": "",
+      "parent": "Github #4320: Support toggling components of CXSMILES output",
+      "snippet_sha256": "7e1daf925719a147353b3b96a4edd8a1be9848675733bf7008c2af12dc9593c9",
+      "start_line": 1347,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1412,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__coordinates",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "coordinates",
+      "notes": "",
+      "parent": "Github #4320: Support toggling components of CXSMILES output",
+      "snippet_sha256": "b93e36255580ea50fcd130ee6fffb25b40085ee3eb34533135b23dbd118f4093",
+      "start_line": 1403,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1423,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__enhanced_stereo",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo",
+      "notes": "",
+      "parent": "Github #4320: Support toggling components of CXSMILES output",
+      "snippet_sha256": "5cc82b7522b04d62ea522048e752ecf12e028b271d66c5e3a030027d01217ae7",
+      "start_line": 1413,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1433,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__link_nodes",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "link nodes",
+      "notes": "",
+      "parent": "Github #4320: Support toggling components of CXSMILES output",
+      "snippet_sha256": "d624562ec8543aeb3e2b60b82794ebe9588abfc2ef88c86b54ade1adba1497e6",
+      "start_line": 1424,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1443,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__radicals",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "radicals",
+      "notes": "",
+      "parent": "Github #4320: Support toggling components of CXSMILES output",
+      "snippet_sha256": "52911400e162f9a83c95054e996e15b79f6af410b34bc7bfdeed7ad79bc9de9c",
+      "start_line": 1434,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1453,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4320_support_toggling_components_of_cxsmiles_output__values",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "values",
+      "notes": "",
+      "parent": "Github #4320: Support toggling components of CXSMILES output",
+      "snippet_sha256": "10c7333e760379ec8d4316a1b68015d6d819d21f11c1f18fd768233031de0f17",
+      "start_line": 1444,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1727,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_double_bonds_and_ring_closures",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "doRandom"
+      ],
+      "name": "Github #4582: double bonds and ring closures",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "bae01c5910c81fe671e0155e66a6f9c1497e1a75437c5558672fafe838ae40da",
+      "start_line": 1635,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1710,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__basic_test",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basic test",
+      "notes": "",
+      "parent": "Github #4582: double bonds and ring closures",
+      "snippet_sha256": "6e14a7614a9fe32eac489410877bca0e542f65e23927e9da2882ab7d44511602",
+      "start_line": 1697,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1726,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__bulk_random_output_order",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "doRandom"
+      ],
+      "name": "bulk random output order",
+      "notes": "",
+      "parent": "Github #4582: double bonds and ring closures",
+      "snippet_sha256": "3ada867dc414c15617213d49cd782c537f2478051a6163b94f2489c0b41ce8e2",
+      "start_line": 1712,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1881,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_continued_double_bonds_and_ring_closures",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #4582 continued: double bonds and ring closures",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "1cdbc245ae04260b9f7967bf787d91435176dec501d302475d03c986b7fced8a",
+      "start_line": 1729,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1761,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #4582 continued: double bonds and ring closures",
+      "snippet_sha256": "1fba684ec0d7a3ec2fe07332324a9787acc45fc4d2fbd881d1baa3a92743c4c2",
+      "start_line": 1730,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1768,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_1",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "github #3967 part 1",
+      "notes": "",
+      "parent": "Github #4582 continued: double bonds and ring closures",
+      "snippet_sha256": "20e890c8c079f70f924b6ede0237be511382c3af8c108d5e1d17951662cd1422",
+      "start_line": 1762,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1775,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_2",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "github #3967 part 2",
+      "notes": "",
+      "parent": "Github #4582 continued: double bonds and ring closures",
+      "snippet_sha256": "450c01cbf17469589f7ad9b7c5fae7ec974578d65e6289df95e54bccc00604b1",
+      "start_line": 1769,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1879,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__chembl3623347",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "CHEMBL3623347",
+      "notes": "",
+      "parent": "Github #4582 continued: double bonds and ring closures",
+      "snippet_sha256": "2a65afa36b90e9d45ca512a1f2a7fb5ff21eb099819910a8ad47d680fcba1aad",
+      "start_line": 1776,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1956,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__pol_and_mod_atoms_in_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Pol and Mod atoms in CXSMILES",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "2a197e0b25a323cb1ba3aa7bfaad7e7b633adcd20516ffbb66ca1aa3e197a472",
+      "start_line": 1935,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1945,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__pol_and_mod_atoms_in_cxsmiles__pol_basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Pol basics",
+      "notes": "",
+      "parent": "Pol and Mod atoms in CXSMILES",
+      "snippet_sha256": "34d77a10bf16f7bfe6a81266b9946913e6fcf23c901537e4f764a01482af4eff",
+      "start_line": 1936,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1955,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__pol_and_mod_atoms_in_cxsmiles__mod_basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Mod basics",
+      "notes": "",
+      "parent": "Pol and Mod atoms in CXSMILES",
+      "snippet_sha256": "e77e7079a91457ec762ade432ac87e7d28ece4a49ceea208901a59b96fa4334b",
+      "start_line": 1946,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1987,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__empty_atom_label_block",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "empty atom label block",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "603804cc079bd397a9baa5c5a49efdf563d597b072be8654b9b577cfbe12ba57",
+      "start_line": 1958,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1986,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__empty_atom_label_block__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "empty atom label block",
+      "snippet_sha256": "52396c46cbb7781b7cf7b1368939ee35d9aa65d974f05c7c8c1ed8c5cb8aa630",
+      "start_line": 1959,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1998,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5372_errors_with_fragments_and_dorandom_true",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "doRandom"
+      ],
+      "name": "Github #5372: errors with fragments and doRandom=True",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "28d67638000600555c40b0a8002298557b64ff8081ea0eb0035bc08ffcf043f2",
+      "start_line": 1989,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1997,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5372_errors_with_fragments_and_dorandom_true__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "doRandom"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #5372: errors with fragments and doRandom=True",
+      "snippet_sha256": "a99af5b02ab8dc760eb7a2683afe25de0d18ab3e8d45ebaaf4d328d8b964e3e9",
+      "start_line": 1990,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2023,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5466_writing_floating_point_atom_props_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #5466 writing floating point atom props cxsmiles",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "5709e3eefd3d36f6eafef6120572b9fe7a6118cd1bede1da4ab84e49f4a4f825",
+      "start_line": 2000,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2014,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5466_writing_floating_point_atom_props_cxsmiles__simple",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "simple",
+      "notes": "",
+      "parent": "github #5466 writing floating point atom props cxsmiles",
+      "snippet_sha256": "4e4a208beec94c4aaf4eff876c1fb8565618f56b1aaf7be143594d54c3670fe1",
+      "start_line": 2002,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2022,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5466_writing_floating_point_atom_props_cxsmiles__label_with",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "label with .",
+      "notes": "",
+      "parent": "github #5466 writing floating point atom props cxsmiles",
+      "snippet_sha256": "e5d7ba598992f250292db1d914e5cb7785092a504c38fed184d3fbcd0f821aa8",
+      "start_line": 2015,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2252,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__wiggly_and_wedged_bonds_in_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "wiggly and wedged bonds in CXSMILES",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "643fcdf6f2464d9ca8d90aba18fb2c6c442742e0b73916b728365e92685d4a3b",
+      "start_line": 2055,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2076,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__basic_reading_writing",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basic reading/writing",
+      "notes": "",
+      "parent": "wiggly and wedged bonds in CXSMILES",
+      "snippet_sha256": "b5bab45cf531e147e0e7527d6de4b331881c29ff0d5d25e893be5a0b86482f33",
+      "start_line": 2056,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2096,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__cxsmiles_wiggly_bond_over_rides_atomic_stereo",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "CXSMILES wiggly bond over-rides atomic stereo",
+      "notes": "",
+      "parent": "wiggly and wedged bonds in CXSMILES",
+      "snippet_sha256": "ab7e930f1ffaff276d3cc2abcd0a35db0d0eac391e6be98a6e39ee8005bb05f1",
+      "start_line": 2078,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2163,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__writing_examples",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "writing examples",
+      "notes": "",
+      "parent": "wiggly and wedged bonds in CXSMILES",
+      "snippet_sha256": "179de6beb21bbe836e1dcedd3a092f62cf99a267e293cc94562e02c184c13a57",
+      "start_line": 2144,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2213,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__wiggly_and_wedged_bonds_in_cxsmiles__writing_wedges_and_dashes",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "writing wedges and dashes",
+      "notes": "",
+      "parent": "wiggly and wedged bonds in CXSMILES",
+      "snippet_sha256": "bd71043aaf4479e65c4131673bde70a3019150d0b60dd89242ac71cd69312bb2",
+      "start_line": 2165,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2313,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ring_bond_stereochemistry_in_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "ring bond stereochemistry in CXSMILES",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "093d5fa94b3667d6e1e09a4c9392abb5fe311f7f6cba008e22d86a9581019ade",
+      "start_line": 2254,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2312,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ring_bond_stereochemistry_in_cxsmiles__basic_writing",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basic writing",
+      "notes": "",
+      "parent": "ring bond stereochemistry in CXSMILES",
+      "snippet_sha256": "38b3c5891be9893d947380d8401ad9e54dd1385703ae1ddf33ac287b00050ecc",
+      "start_line": 2293,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2476,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atropisomer_output_in_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Atropisomer output in CXSMILES",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "500ed96a83c49e9186474718564d5e9dbc1735370a5227ef1a61252c8285f913",
+      "start_line": 2429,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2475,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atropisomer_output_in_cxsmiles__withchiralatom_label",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "'WithChiralAtom' label",
+      "notes": "",
+      "parent": "Atropisomer output in CXSMILES",
+      "snippet_sha256": "190002372a7ae79e8802d36a805bb81071c625fbb8f0e265b631e92829226dc0",
+      "start_line": 2430,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2498,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dative_bond_in_cxsmiles_double_double_def",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "Dative  bond in cxsmiles double double def",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "9842aafadd9972412178563011fc20dd28682b84bce4a35107d0ab7a17245089",
+      "start_line": 2478,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2497,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dative_bond_in_cxsmiles_double_double_def__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Dative  bond in cxsmiles double double def",
+      "snippet_sha256": "82c593bd2a6ea69377afd5e2bdcbaf9d1aff426913ecb78abe30bf96128904f0",
+      "start_line": 2479,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2519,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__fieldname_not_found_in_superatomsgroup_in_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Fieldname not found in SuperatomSgroup in CXSmiles",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "27200ccd410ccf1cfe3a1a83f96ed1f979f7c66d1d9a2bf66561ac4073129ee7",
+      "start_line": 2500,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2518,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__fieldname_not_found_in_superatomsgroup_in_cxsmiles__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Fieldname not found in SuperatomSgroup in CXSmiles",
+      "snippet_sha256": "1e1bbbff9f79d5297e7d4a9e9b250bb57eb7efe8e35aff2802e9154c9fab5d9b",
+      "start_line": 2502,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2615,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ensure_unused_features_are_not_used",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "ensure unused features are not used",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "4150843645be6da3f868f0117b26f0d626c1ff28f93913a2d676d8aa487fece8",
+      "start_line": 2520,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2539,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__isotopes",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "isotopes",
+      "notes": "",
+      "parent": "ensure unused features are not used",
+      "snippet_sha256": "5f774c705daf3ca6523d61096ccc71e57df032b4c70cdb534571086c42464c85",
+      "start_line": 2521,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2559,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__chirality",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "chirality",
+      "notes": "",
+      "parent": "ensure unused features are not used",
+      "snippet_sha256": "b3ef68af86cf8f71b1bc1266296b390c95fcc8b3f372b4d261ed1a2e9393e16d",
+      "start_line": 2541,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2579,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__ring_stereo",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "ring stereo",
+      "notes": "",
+      "parent": "ensure unused features are not used",
+      "snippet_sha256": "7f50ccec98d6c2cbd2bcd8c046f50bb3d58dd7b51650750c81f7236abf69c0db",
+      "start_line": 2561,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2605,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__enhanced_stereo",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo",
+      "notes": "",
+      "parent": "ensure unused features are not used",
+      "snippet_sha256": "154c509d4edb2a7803e0f4aafe8bef08c70eae65c59c5744bf95246b1738dd7a",
+      "start_line": 2581,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2614,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__problematic_cases",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "problematic cases",
+      "notes": "",
+      "parent": "ensure unused features are not used",
+      "snippet_sha256": "4c344d6f7b8d4d9683f7ffc19cd682bef47cf2a2229c89f1612b920ec24ba6ab",
+      "start_line": 2607,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2701,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__enhanced_stereo_canonicalized",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "enhanced stereo canonicalized",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "cd07a0a3208d52beeb45d9077d306bb8420c939ea376f15cb4416099212ca5e8",
+      "start_line": 2616,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2630,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__case_takes_forever",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "case takes forever",
+      "notes": "",
+      "parent": "enhanced stereo canonicalized",
+      "snippet_sha256": "aa446658cba403b2ef81280dec39cc1ca7976907351d4bf6e8210c458e665f4e",
+      "start_line": 2617,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2645,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__case_takes_long_but_not_forever",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "case takes long but not forever",
+      "notes": "",
+      "parent": "enhanced stereo canonicalized",
+      "snippet_sha256": "c6239357a4f89d6b7d8f1ace7ecb8a45bcd6d64482508cca4deb31fb7adeda9a",
+      "start_line": 2632,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2663,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__basic",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basic",
+      "notes": "",
+      "parent": "enhanced stereo canonicalized",
+      "snippet_sha256": "dac10552fc4da68dd53171a38e8c31ec1177c2b0825452a786090289289c8214",
+      "start_line": 2647,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2687,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__trimethylcyclohexane",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "trimethylcyclohexane",
+      "notes": "",
+      "parent": "enhanced stereo canonicalized",
+      "snippet_sha256": "e28179370888c7a25da17ddab6fb53df273833d66cc58c39f861806bd6256afe",
+      "start_line": 2665,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2700,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__enhanced_stereo_canonicalized__multifrag_test",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "multiFrag test",
+      "notes": "",
+      "parent": "enhanced stereo canonicalized",
+      "snippet_sha256": "a0530680a27accb4791cb59b8b6a0b5e27f74dcce933e3e46aecf25e20ea8edb",
+      "start_line": 2689,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2810,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__test_rootedatatom_argument",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "rootedAtAtom"
+      ],
+      "name": "Test rootedAtAtom argument",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "2d25851d8949ec543964f7f8a3309cb0cac2c9c02dca0301c368e24c439713d9",
+      "start_line": 2709,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2809,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__test_rootedatatom_argument__issue_7572_prevent_rootatatom_if_more_than_one_fragment_exists",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "rootedAtAtom"
+      ],
+      "name": "Issue #7572: prevent rootAtAtom if more than one fragment exists.",
+      "notes": "",
+      "parent": "Test rootedAtAtom argument",
+      "snippet_sha256": "a168777667ffe8ba52380023f1c0ebe5ebc58ea1c69403eb4b9163055a18fcde",
+      "start_line": 2798,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2867,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5499_stereoany_bonds_lead_to_non_stable_smiles_smarts_strings",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #5499: STEREOANY bonds lead to non-stable SMILES/SMARTS strings",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "368c9c5990bd1ecc389d48f59fb77a2cb6c9fc0c0fb84f5dc6d658ce7bf4516b",
+      "start_line": 2812,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2866,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5499_stereoany_bonds_lead_to_non_stable_smiles_smarts_strings__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "as reported",
+      "notes": "",
+      "parent": "Github #5499: STEREOANY bonds lead to non-stable SMILES/SMARTS strings",
+      "snippet_sha256": "6628111174010685674ca3e68ba555c79b3dc33bf96130d86ef7cd5ea23b4828",
+      "start_line": 2814,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2905,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7295",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Github #7295",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "569f9664e43676998513a872409b4cb0ee9465c3e47e5ee26d44f195f97b4cde",
+      "start_line": 2891,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2904,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7295__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #7295",
+      "snippet_sha256": "c935d71ef71f8018632bfa9c81f5eabdf2e27482679e8d1bc3978cfc9da045fd",
+      "start_line": 2892,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2914,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__simplesmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "simpleSmiles",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "7c6f18c7e25d50ea5430192d9d9af8348f412b9f6e699e4892dc08392362f4fb",
+      "start_line": 2907,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2913,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__simplesmiles__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "simpleSmiles",
+      "snippet_sha256": "db45ee4508473f4861d0358d508276794218a664ed7569bec284cdfe4493c941",
+      "start_line": 2908,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2939,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__cx_bond_atropisomer_option_requires_ring_info",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "CX_BOND_ATROPISOMER option requires ring info",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "172d1ab8fde47deb32df574646c7b2d89c5bf81d5573ab002aed39a13703014d",
+      "start_line": 2916,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2966,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7372_smiles_output_option_to_disable_dative_bonds",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "Github #7372: SMILES output option to disable dative bonds",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "3c3ac93657ecdc7db1377a9c6a1e119410a5bb0ac05603ab436538c227371540",
+      "start_line": 2941,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2955,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #7372: SMILES output option to disable dative bonds",
+      "snippet_sha256": "851b95e896e05d54abf93d23577663504b82772e27a706100c454531a9f60a7b",
+      "start_line": 2942,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2965,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__smarts_basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "SMARTS basics",
+      "notes": "",
+      "parent": "Github #7372: SMILES output option to disable dative bonds",
+      "snippet_sha256": "6f4312671a8fd4658cb1b92de4ab113916468a7b37bbbb664a7bda1f4287a6c8",
+      "start_line": 2956,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2990,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__remove_cx_extension_from_smiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Remove CX extension from SMILES",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "3d45a277439a216202c70a504014d3d5f73e37c8b6033e24aeb73629e984c7ab",
+      "start_line": 2978,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2989,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__remove_cx_extension_from_smiles__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Remove CX extension from SMILES",
+      "snippet_sha256": "ed432f1af64889dd5f07f9984c7a1a20e224dc03817773829ffeaae0781a9bf0",
+      "start_line": 2979,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3011,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__canonicalization_of_meso_structures",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "Canonicalization of meso structures",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "8a3b019f4bf32855b624b50d7e2074278c10adfbb4e1a6c85dc13275244d1b78",
+      "start_line": 2992,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3010,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__canonicalization_of_meso_structures__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Canonicalization of meso structures",
+      "snippet_sha256": "ac8c0b410b6c6fb26f042f2565357beaec021dfdc3f66c991f38bf4f8951bb19",
+      "start_line": 2993,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3024,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ignore_atom_map_numbers",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "ignoreAtomMapNumbers"
+      ],
+      "name": "Ignore atom map numbers",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "93f09eddd8f705a9697b72a6f332bf3f5ab6f924fc27c6dfe8fef62a16c05011",
+      "start_line": 3013,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3073,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7340",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #7340",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "3a14ced509279000853d9f7aedec2a7047dcc1f5edd3423fa2cc9cc93378f986",
+      "start_line": 3026,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3053,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7340__test_getcxextensions_with_a_vector",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "CXSmiles"
+      ],
+      "name": "Test getCXExtensions with a Vector",
+      "notes": "",
+      "parent": "Github #7340",
+      "snippet_sha256": "8dd13f31b34016ff01b4dec851f8074be18c9aab557b6f1f814033d888f26da4",
+      "start_line": 3027,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3072,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7340__expects_an_error",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Expects an error",
+      "notes": "",
+      "parent": "Github #7340",
+      "snippet_sha256": "22f1bc04c98713912cf0f1289607d3759252e1f8e59e26ab0640f0e5636c24a6",
+      "start_line": 3055,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3094,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__trimethylcyclohexane",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "trimethylcyclohexane",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "262e2eb99e850503b6b55d45749f57c7c92440c0c93e15318bd24b5c7e4e7b2d",
+      "start_line": 3075,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3084,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__trimethylcyclohexane__basic",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Basic",
+      "notes": "",
+      "parent": "trimethylcyclohexane",
+      "snippet_sha256": "1bc559b90d0ff6f12e1710f1e877fec4a27a028598f0209321173168b50e4163",
+      "start_line": 3076,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3093,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__trimethylcyclohexane__withenhancedstereo",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "WithEnhancedStereo",
+      "notes": "",
+      "parent": "trimethylcyclohexane",
+      "snippet_sha256": "5976cbdae841882e828d576cc9163af1b8466a57c3a6d0dedb1c9f58f1551776",
+      "start_line": 3085,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3162,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dnatesterror",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "doRandom",
+        "rootedAtAtom",
+        "allBondsExplicit",
+        "allHsExplicit",
+        "ignoreAtomMapNumbers",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "DnaTestError",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "0b724446eda55f9ce99a28c683866ff8582008d02c075e18c4de4a9a35296d37",
+      "start_line": 3096,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3161,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dnatesterror__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "doRandom",
+        "rootedAtAtom",
+        "allBondsExplicit",
+        "allHsExplicit",
+        "ignoreAtomMapNumbers",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "DnaTestError",
+      "snippet_sha256": "8f7b45448b795a0de1df64536fd4a35f48f9dde8e77cecde39126c231e43004b",
+      "start_line": 3097,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3207,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8328",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "rootedAtAtom"
+      ],
+      "name": "Github 8328",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "39f58ca33c83775c647309c2d38e0bf4e067887529cfaab8b7136ec2141a656d",
+      "start_line": 3164,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3181,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8328__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "rootedAtAtom"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github 8328",
+      "snippet_sha256": "ad6a7b5625249f2d5c3ec6d1e6915887dc1e0c491ac226d6d72e89e53ee393b8",
+      "start_line": 3166,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3206,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8328__compare_with_and_without_canonicalization",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "rootedAtAtom"
+      ],
+      "name": "Compare with and without canonicalization",
+      "notes": "",
+      "parent": "Github 8328",
+      "snippet_sha256": "97a6a9140ffd43df4247d211eb67d2c112bb34dc7d0534eb906bd085ad2dd872",
+      "start_line": 3182,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3223,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__atoms_bound_to_metals_should_always_have_hs_specified",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "atoms bound to metals should always have Hs specified",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "2da0d0689d87c2ffcdef7990ef9bbe39430978525cba012b80ee828ee0c20346",
+      "start_line": 3209,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3222,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__atoms_bound_to_metals_should_always_have_hs_specified__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "atoms bound to metals should always have Hs specified",
+      "snippet_sha256": "577d826dfbb6bf646414823e71c34b80e40167d654d587ca3c01dd01e5f9e246",
+      "start_line": 3210,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3256,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__zob_cx_smiles_extension",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "ZOB cx smiles extension",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "aa318e0bad834e13c160b79b263302384840c38421ac1cce561905e62da74eb7",
+      "start_line": 3225,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3240,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__zob_cx_smiles_extension__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "ZOB cx smiles extension",
+      "snippet_sha256": "2dd81ac54dbe770b0537877d5e81a529901547350c2759b191b72909600e26f7",
+      "start_line": 3226,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3255,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__zob_cx_smiles_extension__reverse",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Reverse",
+      "notes": "",
+      "parent": "ZOB cx smiles extension",
+      "snippet_sha256": "919245d187272a8a563b25b4f40d80053c69523774d11ef7fe2f2b043f9958e7",
+      "start_line": 3241,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3287,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8654_stereogroups_used_in_canonicalization_even_if_not_in_output",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #8654: stereogroups used in canonicalization even if not in output",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "ac63a6866febc683e30d7a76d14d3deb1993fa35872b9210d9b05b499c9e1d7e",
+      "start_line": 3275,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3286,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8654_stereogroups_used_in_canonicalization_even_if_not_in_output__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "as reported",
+      "notes": "",
+      "parent": "github #8654: stereogroups used in canonicalization even if not in output",
+      "snippet_sha256": "b3bedfd50dbbd7022069be35306cbed159399509bf667fe2fc99d024264aa611",
+      "start_line": 3277,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3305,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__bond_labels_not_being_used_in_fragment_canonicalization",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "bond labels not being used in fragment canonicalization",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "d59eafb9254c5a72a07dc4bcd3c325df190fd5eed54b5faf6b613140c4d84a4b",
+      "start_line": 3289,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3304,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__bond_labels_not_being_used_in_fragment_canonicalization__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "as reported",
+      "notes": "",
+      "parent": "bond labels not being used in fragment canonicalization",
+      "snippet_sha256": "aec8c8b425460783ebc2a2b497cde070b396b13c6f5d932cefb52210b880dd92",
+      "start_line": 3290,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3316,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8906",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "github #8906",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "86cae09a7cb6e94b950975472c99af0c2e95ce9456e2a011855f47b9e7d5d43f",
+      "start_line": 3307,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3315,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8906__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "as reported",
+      "notes": "",
+      "parent": "github #8906",
+      "snippet_sha256": "d41e49268cc18db00ec8527b39a27594b9346d7d3fcb1a3dbbd92e852550ecaf",
+      "start_line": 3308,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3380,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__non_encodeable_sgroups",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "CXSmiles"
+      ],
+      "name": "Non-encodeable SGroups",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "814d230f649ab328104537f6c8d2fb0f3e1b9fd7b75d2773e54509a54025fdb6",
+      "start_line": 3347,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3409,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_9144_pr_9082_breaks_molfragmenttosmarts",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "github #9144: PR #9082 breaks MolFragmentToSmarts()",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "045c9cd3ee4d80ae52c67fb576a3ec42b88ea8a78b25b2fd299b6e905abcce11",
+      "start_line": 3382,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3389,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_9144_pr_9082_breaks_molfragmenttosmarts__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "as reported",
+      "notes": "",
+      "parent": "github #9144: PR #9082 breaks MolFragmentToSmarts()",
+      "snippet_sha256": "53bb06df99420367034ef445a60f4c6430bd5318a224ff431a08285a77023616",
+      "start_line": 3383,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3408,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_9144_pr_9082_breaks_molfragmenttosmarts__another_example",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "another example",
+      "notes": "",
+      "parent": "github #9144: PR #9082 breaks MolFragmentToSmarts()",
+      "snippet_sha256": "aa39990d0867c17f5c79998fee740d8e0db087f9036d21fb61cf00aa1ac56758",
+      "start_line": 3390,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1104,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__testatropisomersincxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "testAtropisomersInCXSmiles",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "09632f365a360fbbb7999a7620e58515e1339de2784dc2c95ae9265d7cb575ea",
+      "start_line": 1030,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1121,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__testatropisomersincxsmilescanon",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "testAtropisomersInCXSmilesCanon",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "2e28620866a6d9317879b008cfc9c1e8b121bdfa81b0acd73cf55148b5479fab",
+      "start_line": 1106,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1360,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__smiles_canonicalization",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "SMILES CANONICALIZATION",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "019becb19f969099b0b2c99858c78f1a33c74455e47e9c8a84085b685f737deb",
+      "start_line": 1307,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1359,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__smiles_canonicalization__other_compounds",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Other Compounds",
+      "notes": "",
+      "parent": "SMILES CANONICALIZATION",
+      "snippet_sha256": "f88820fd690e788aae05d57e6c33fe886ca25e10f0ffa7bff9249f2940e624dc",
+      "start_line": 1326,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1384,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6225_removes_enhanced_stereo_if_doisomericsmiles_is_false",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #6225: removes enhanced stereo if doIsomericSmiles is false",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "8340c9ca06a93b03907fc24a021f88300c7b99184224ccdeea606ed65d0a0b57",
+      "start_line": 1362,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1425,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "786f983922377c8e21da3005ca60234558f57bdd38a1df1fc9a157cb8960e07e",
+      "start_line": 1386,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1398,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__initial_report",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "initial report",
+      "notes": "",
+      "parent": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
+      "snippet_sha256": "09b85d95fbf1618a0b4d450c3b1c85ea16e6e650fa3919503ca53bfbc5c29276",
+      "start_line": 1391,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1409,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__details",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "details",
+      "notes": "",
+      "parent": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
+      "snippet_sha256": "5de3fb2779d29f6a9c7f7a0745098a9d22bbcfc9c18c8068f4bb0cc1d271b92d",
+      "start_line": 1400,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1424,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__bond_ordering_is_actually_correct",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams"
+      ],
+      "name": "bond ordering is actually correct",
+      "notes": "",
+      "parent": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
+      "snippet_sha256": "478e16ed143f877cd19daeabdd629d22b5cdc86fbfd5e3147f990068cccfb8f7",
+      "start_line": 1411,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1459,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__stereogroup_id_forwarding",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "StereoGroup id forwarding",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "4e3d62f4e75cd135b3c797b60eb8b63bc915d8979b05cf470023895f578fff4d",
+      "start_line": 1427,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1439,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__ids_reassigned_by_default",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "ids reassigned by default",
+      "notes": "",
+      "parent": "StereoGroup id forwarding",
+      "snippet_sha256": "3618107359561bd5c4aabddae84a543c16f9afdb918c0598db599c7c810ad5a3",
+      "start_line": 1433,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1448,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__forward_input_ids",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "forward input ids",
+      "notes": "",
+      "parent": "StereoGroup id forwarding",
+      "snippet_sha256": "1b58cb26106ff3e82b82f5d684113a874ac70441d5dac83ecdc66057719a8573",
+      "start_line": 1441,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1458,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__stereogroup_id_forwarding__forward_input_ids_rigorous",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "forward input ids - rigorous",
+      "notes": "",
+      "parent": "StereoGroup id forwarding",
+      "snippet_sha256": "f4fdc4433ab30aa506e78bfd41018a40e70b9d7efcb9b85b397e9c061c8554d5",
+      "start_line": 1450,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1474,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6309_cxsmiles_atom_with_labels_should_not_also_have_dummylabel_property_set",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #6309: CXSMILES: atom with labels should not also have dummyLabel property set",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "1a067f79259157c4e9e86b5579b83b5b2c69ca7080938e5249d0d920768aa74e",
+      "start_line": 1461,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1473,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6309_cxsmiles_atom_with_labels_should_not_also_have_dummylabel_property_set__as_reported",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "as-reported",
+      "notes": "",
+      "parent": "Github #6309: CXSMILES: atom with labels should not also have dummyLabel property set",
+      "snippet_sha256": "e7996f54911c9be08b5a86fc1b6daa5f735bda4ba752696c2f3aa37e22ccdc7b",
+      "start_line": 1463,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1482,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__write_attachment_points",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "write attachment points",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "1c5ccf59bb687159cc8752e3fcb3d73a422bce7d1f55e0a2acaae0c754e81458",
+      "start_line": 1476,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1492,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_7414_cxsmiles_writer_does_not_use_default_conformer_id",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "github #7414: CXSmiles writer does not use default conformer ID",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "56b41a341cb03e1766bcab945616258605839e20ba94210207701a8536e75a06",
+      "start_line": 1484,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1491,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7414_cxsmiles_writer_does_not_use_default_conformer_id__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "github #7414: CXSmiles writer does not use default conformer ID",
+      "snippet_sha256": "1e0e37b6bbc6fd2275e8e3841cc295ee6023a73a4bb44668db6e34cdde16acfc",
+      "start_line": 1485,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1526,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_7372_smiles_output_option_to_disable_dative_bonds",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #7372: SMILES output option to disable dative bonds",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "e03cc829d3242dd22ee567b9b87b48180f2f46c103da8a23a9389566884b8da4",
+      "start_line": 1494,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1507,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "Github #7372: SMILES output option to disable dative bonds",
+      "snippet_sha256": "682858b4ad7654d6ebcd246e54a3d54a368586d734941b94125004897e2c48e0",
+      "start_line": 1495,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1519,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__two_dative_bonds",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "two dative bonds",
+      "notes": "",
+      "parent": "Github #7372: SMILES output option to disable dative bonds",
+      "snippet_sha256": "623c43bacbf061648adf8cfe92d30c3296c7807ab5da604afe121b8593007f0c",
+      "start_line": 1514,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1638,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_8348_unable_to_write_wiggly_bond_information_by_default",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "Github #8348: Unable to write wiggly bond information by default",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "ee08bee167bdc103ac308ea7782439d12af7aa88998d891761dfebb40a42aed2",
+      "start_line": 1602,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1722,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__test_cxsmilesfields_option_parsing_from_json",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Test CXSmilesFields option parsing from JSON",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "db12c56311a1889b459c187d8cca4d7ec7c12ecbc97cb6e7ecbbb52e457a12d1",
+      "start_line": 1664,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1672,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__empty_json_string_preserves_current_values",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Empty JSON string preserves current values",
+      "notes": "",
+      "parent": "Test CXSmilesFields option parsing from JSON",
+      "snippet_sha256": "7b8459dd56d6282ac77de821ea1a3a003cd46b5ff6c15b877b5e6b8968fa0555",
+      "start_line": 1665,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1682,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__no_cxsmilesfields_key_preserves_current_values",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "No CXSmilesFields key preserves current values",
+      "notes": "",
+      "parent": "Test CXSmilesFields option parsing from JSON",
+      "snippet_sha256": "bb9b9c24499c06fcb45bf55ddaf6dfe7d3bd6dc34a5ed6d65ac67b460a0040ac",
+      "start_line": 1673,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1692,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Multiple CXSmilesFields keys with true value are ORed together",
+      "notes": "",
+      "parent": "Test CXSmilesFields option parsing from JSON",
+      "snippet_sha256": "0f22a466f3db7e2564d8c7cd3ed67f3b3bcafb171f210deea0f5de1b51016b8a",
+      "start_line": 1683,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1703,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_adding_unrelated_false_values_makes_no_difference",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Multiple CXSmilesFields keys with true value are ORed together; adding unrelated false values makes no difference",
+      "notes": "",
+      "parent": "Test CXSmilesFields option parsing from JSON",
+      "snippet_sha256": "cc2154f4b19ca99f397bc70f068e9bdd753386c5e256ae64a01ac1264203fe14",
+      "start_line": 1693,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1712,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_then_and_noted_with_ored_false_values",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Multiple CXSmilesFields keys with true value are ORed together, then AND NOTed with ORed false values",
+      "notes": "",
+      "parent": "Test CXSmilesFields option parsing from JSON",
+      "snippet_sha256": "e79b56df9a347030ba4b62b9f06cc7b1a6e0c5050b1624d573056e115b95bf21",
+      "start_line": 1704,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1721,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__test_cxsmilesfields_option_parsing_from_json__multiple_cxsmilesfields_keys_with_true_value_are_ored_together_then_and_noted_with_ored_false_values_order_does_not_matter",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "Multiple CXSmilesFields keys with true value are ORed together, then AND NOTed with ORed false values; order does not matter",
+      "notes": "",
+      "parent": "Test CXSmilesFields option parsing from JSON",
+      "snippet_sha256": "48d0df4030ab5f86221f0f229eb7078ff3c3a73bfecb909d02cb45774dccaecc",
+      "start_line": 1713,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1734,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__atom_maps_and_dummy_labels_in_cxsmiles",
+      "kind": "cpp_test_case",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "atom maps and dummy labels in CXSMILES",
+      "notes": "",
+      "parent": null,
+      "snippet_sha256": "47e035f968ddfaacf2d34d0a81813324f1004a9f37337c9c955807d8f91c5443",
+      "start_line": 1724,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1733,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__atom_maps_and_dummy_labels_in_cxsmiles__basics",
+      "kind": "cpp_section",
+      "language": "cpp",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "basics",
+      "notes": "",
+      "parent": "atom maps and dummy labels in CXSMILES",
+      "snippet_sha256": "dfa8fe44321287d7ef0ff8156ada31e1e6a374049dad032ede226d5b25fd2ff9",
+      "start_line": 1725,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 360,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test11molops",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test11MolOps",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "85d18bf72ee27bd90f3cac6618eab6e9bf4b0ebb3daa692edce98a7f2584a484",
+      "start_line": 352,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 542,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test16pickle",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test16Pickle",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0178ba92d419df3923a70785844170996b4caa0ecb14ed503748f5c23dd68441",
+      "start_line": 527,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 654,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test17kekulize",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test17Kekulize",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "172bd404a9b856f0e66a4582b27b05516d1f03af3490f7f11b710c62a38368c1",
+      "start_line": 639,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 859,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test22deletesubstruct",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test22DeleteSubstruct",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "9837aa2cb56170157dc74a6dfeba901f2e2908cad0bc49ef40de1da891ecce38",
+      "start_line": 832,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 916,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test23molfileparsing",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "rootedAtAtom"
+      ],
+      "name": "test23MolFileParsing",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "6b17549b3e6111f278c597eea994b9bd60f440eb9d5dd7698dba27ccff94028c",
+      "start_line": 861,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1373,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test30issues109and110",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test30Issues109and110",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "8cad77d087f6c9df9e75cad5872cc2802c8f667052afd274fbf370183bd73c83",
+      "start_line": 1349,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1389,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test31chiralitysmiles",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test31ChiralitySmiles",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "5fa6683612a61bc7388a77293574d7dbc2f2ff6c167d9ab7c41bbe9a7f562192",
+      "start_line": 1375,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1405,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test31achiralitysubstructs",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test31aChiralitySubstructs",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "fda50ba84d380f928cc76e13af7a96f75f5f3b3351f4ae21bc891c838d201b97",
+      "start_line": 1391,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1807,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereo",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testBondSetStereo",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "91deacb51a30ee6d0a956d97fe88f8289840e0d29110232a44cd1d71d1fc6715",
+      "start_line": 1772,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1860,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereodifficultcase",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testBondSetStereoDifficultCase",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "2c2ae1f369b3aafde6d84f76f6dedfb317cd3aed1ac2704e0f9f27e741ab1a56",
+      "start_line": 1830,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1909,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoreallydifficultcase",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testBondSetStereoReallyDifficultCase",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "720de76a2e03208afef7d678be413dc7f4963c9fc2452e9d218baa06038068d8",
+      "start_line": 1875,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2026,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBondSetStereoAtoms",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
+      "start_line": 1983,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2081,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test38issue266",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "kekuleSmiles"
+      ],
+      "name": "test38Issue266",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0cb4c2766213a9afffa15f516a9edf74973e422bafd8c53aca3dfb19431c77d3",
+      "start_line": 2074,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2115,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test40smilesrootedatatom",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "rootedAtAtom"
+      ],
+      "name": "test40SmilesRootedAtAtom",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "e8211ea3359663de0f14c19e9b1b8ff2b7a18c21dcc0402b654a7f0a6bc9659a",
+      "start_line": 2107,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2360,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test46replacecore",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test46ReplaceCore",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0513f44ccbf22f33cfcab4ceaada70933c96a6e8199b723e756720dcd718b9c1",
+      "start_line": 2276,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2452,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test47rwmols",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test47RWMols",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "fa21b221a8e077b7079ac619b7894cacdc073539313e09c547af8f90c80ce1bb",
+      "start_line": 2362,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2483,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test47smartspieces",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "allBondsExplicit",
+        "allHsExplicit"
+      ],
+      "name": "test47SmartsPieces",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "e6db9350f9dd530d33abd86899311d82f485f9d31f61a353364c92014b750e77",
+      "start_line": 2454,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2683,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test54mol2parser",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test54Mol2Parser",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "8884ed9f6ac8c7ae23f13ab2b2f20351eb65d00563a9f01b7175319d28692513",
+      "start_line": 2664,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2801,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test59issue3007178",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test59Issue3007178",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0d703d9b8bd9c7d0205d98628f6de3ed6e9d412afcc6dee9d0552398c791d256",
+      "start_line": 2792,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 2832,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test61pathtosubmol",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "rootedAtAtom"
+      ],
+      "name": "test61PathToSubmol",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "1782d91044e0ce0940eee1f06b4c61d906919e4db847a62a68af0168e940db7d",
+      "start_line": 2820,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3255,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test75allbondsexplicit",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "allBondsExplicit"
+      ],
+      "name": "test75AllBondsExplicit",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "5631383d28082bab64aacc92bfc08571db8499c1dd616211622f9556e000b258",
+      "start_line": 3244,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3290,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test77molfragmenttosmiles",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "kekuleSmiles"
+      ],
+      "name": "test77MolFragmentToSmiles",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0dd89915ca05395071be66eabc269273f762b903e1ce9f0014698edc10d05b2b",
+      "start_line": 3266,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3333,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test81issue275",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test81Issue275",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "98b50e21f0066d6c050d870cc8a80e0e3a22907a95e85f8194eec5634c0e3462",
+      "start_line": 3330,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3345,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test82issue288",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test82Issue288",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "d221f8b6032763ef67aa24b7480329f21eaa5977173c82535f6432e1b6c10ced",
+      "start_line": 3335,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3484,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test85molcopying",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test85MolCopying",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "04be6cf2f429e9d4190cc7515379355373b18517f9e59af5d9eb9b4e8e40be0c",
+      "start_line": 3475,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3533,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test86molrenumbering",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test86MolRenumbering",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "32bf9011ad18619570296070672a06274b357d23a42ed61157689edca7ad0a90",
+      "start_line": 3524,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3578,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test87fragmentonbonds",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test87FragmentOnBonds",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "76d3cfc592c5ed3f5b8663ad54eddbc901ebc00e96e8d4c5fc1c1236990e5f35",
+      "start_line": 3535,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3746,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test93rwmolsasromol",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test93RWMolsAsROMol",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "d1b05870a817383f5c528b1e9542e70f18369f4b223c63465021e9004d630853",
+      "start_line": 3736,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 3943,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testreplacebond",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testReplaceBond",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "6eed8aff174485647aecd1b1ea954a4c9c542fd7ba6880c035e38fd052b7edf9",
+      "start_line": 3927,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 4079,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsequencebasics",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testSequenceBasics",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "06738c8de7c88a6ad55552b81180b4ac212e475faf08eca77508711b560cd473",
+      "start_line": 4032,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 4748,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgetsdtext",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testGetSDText",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "f469945528d3e43f654d534d1fa90a00fa57c7f0c7341c6d4e1e074ebd9b73cb",
+      "start_line": 4735,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 4890,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmilesprops",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testSmilesProps",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "f2646096deb2654c33230e8008db7bf8838b7c0704e3f401591816c3afce4bb9",
+      "start_line": 4887,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 4938,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testwritecxsmiles",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testWriteCXSmiles",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "5646b54385e1d99dc87200abe38afd84b076b93d00ad7e0caf98ae95ac75ebe7",
+      "start_line": 4923,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 4991,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testpickleprops",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testPickleProps",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "179bac3870a5fb64b2f13fc2a24a2b4e1ac79e4a6279243327883cea23dfbef9",
+      "start_line": 4940,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5080,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub1320",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testGithub1320",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "a5775a85fb9bac18dd106c967bfaa4597987e6617c42c6d3625cbe470bd812a1",
+      "start_line": 5042,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5098,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testoldproppickles",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testOldPropPickles",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "9152c566f6bbc08dc99145e2624153586fa11e41cc76c88970fcae10194a1480",
+      "start_line": 5082,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5168,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolbundles1",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testMolBundles1",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "d2479c7120c88624204306981060bb7f0cd872665cef8311c0e66ddd4d3e6d8b",
+      "start_line": 5109,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5274,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolblockchirality",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "isomericSmiles"
+      ],
+      "name": "testMolBlockChirality",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "69bff4e52d239a259bdf6b2eedeb9301910db5b95e0a95d63d5f608caa38f773",
+      "start_line": 5268,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5408,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsvgparsing",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testSVGParsing",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "19cfa782312352475beac429fdef6a1f0fe998dc67b0d2e7bd31bfde40b7190a",
+      "start_line": 5327,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5486,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub2082",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testGitHub2082",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "a1e653fb924c83ffc358c37f197d77fb9a76cf415429258e1a830887ef824290",
+      "start_line": 5459,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 5780,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testforwardenhancedstereogroupids",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testForwardEnhancedStereoGroupIds",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "32fefcdeb05795eac535571182e8677fa8e3ae40b6b58f6da9a76f0ff785a690",
+      "start_line": 5745,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 6326,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsetbonddirfromstereo",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testSetBondDirFromStereo",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "ddc2ff56f28cdd85191a82e375b56f774a44b752803dd09193a387555eeda3e2",
+      "start_line": 6319,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 6418,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testassignchiraltypesfrommolparity",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testAssignChiralTypesFromMolParity",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "c0ae39d6475c911cc2bc284dbf5cf92b3510f7e1f17f7cc8a50c09d7c66ff7a3",
+      "start_line": 6328,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 6676,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testrandomsmilesvect",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToRandomSmilesVect",
+        "allHsExplicit"
+      ],
+      "name": "testRandomSmilesVect",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "9a649f038e56437495fbd40448fb121cd9a6a7e90a871a6db54095cb3320aafd",
+      "start_line": 6661,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 6885,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmoltopng",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "CXSmiles"
+      ],
+      "name": "testMolToPNG",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "c31c4e729acea04ffe0bf6e953e829ace3c39386cf8addf217b578eeb7aa06af",
+      "start_line": 6786,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 6895,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolsfrompng",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testMolsFromPNG",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "b952e4bed3e5e88a787a27ed3d25b72a9ce7e620ae59abc15fc2df56d651ab15",
+      "start_line": 6888,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7088,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolzip",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testMolzip",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "e224b23f2c359152c4786890aded189caeacb857187e65292c2439f3e5d7ab79",
+      "start_line": 7054,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7176,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testinsertmol",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testInsertMol",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "59216924b560f0df80c9c2ae201ddc4c7a0997a3fdf4f88a845c70667bd18c42",
+      "start_line": 7168,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7204,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbatchedits",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBatchEdits",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "edb140f5b753669c32507415fa217646fb62c9a0c88b7c5c59e4193478b5ea72",
+      "start_line": 7178,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7302,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmileswriteparams",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "rootedAtAtom",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testSmilesWriteParams",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "d2757fc279c0c95e255faa12bd959708a6aa0a903eeacacbef7462450f532328",
+      "start_line": 7297,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7314,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testcxsmilesoptions",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "rootedAtAtom",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testCXSmilesOptions",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "05645866d28c3c7fe60c2ce3641cf6c875dc4c4cb0165a3ff83a9273f39785e6",
+      "start_line": 7304,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7572,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationsmiles",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testValidationSmiles",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "17c25745c76a140f33901b75048f470889c2f2f199d46b0c9aafe294d9b80c6d",
+      "start_line": 7547,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7637,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationmol",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testValidationMol",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "cddb55cc98f407745bf0f8cde2bd31d033882dfb4c1fab2dc961614f64428b7c",
+      "start_line": 7574,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7655,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationmrv",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testValidationMrv",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "eb01bdf4058b674649bc86f25676857931c1cf08a07bc2c289c14d0e0e9772ec",
+      "start_line": 7639,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7820,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmaewriterroundtrip",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testMaeWriterRoundtrip",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "8f7de830562b91f51450b28c664391ca22dd22311acfc14363b516e68806be03",
+      "start_line": 7806,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7899,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralmolfile",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "test3dChiralMolFile",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0b0d6513b7c5d139d8b43aa48e174027752bbf2a97350a48fbf711cc5b92b7f8",
+      "start_line": 7852,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7952,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralmrvfile",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "test3dChiralMrvFile",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "4ccdbd1592494d3f296cb258add5966c275138ac23e3b3c545fb15ea03d7f7b5",
+      "start_line": 7901,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 7995,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralcxsmiles",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "test3dChiralCxsmiles",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "24c8fd8f5e553ee3ad1e11f0ee5d8fcb6ab5aae31d4fa00b3944a7ec6ce3ddb7",
+      "start_line": 7954,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8098,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testatropisomerwedging",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testAtropisomerWedging",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "2a41b42f5ffb1fc604218e77a25e64dd3f3d7c41414ca03daec3db3c041b94d4",
+      "start_line": 8054,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8123,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testatropisomerwedgingrigorousenhancedstereo",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testAtropisomerWedgingRigorousEnhancedStereo",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "c68b41e37fbc56f72bfa33d2f5290d248daac8370b537549523999ba8c9cbf26",
+      "start_line": 8100,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8152,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testenhancedstereoexceedslimit",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testEnhancedStereoExceedsLimit",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "edfc85a44b4a0029056b43f98a290641b19943d300064c99558e09b52123bb0e",
+      "start_line": 8125,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8186,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testenhancedstereodoesnotexceedslimit",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams",
+        "MolToCXSmiles",
+        "CXSmiles"
+      ],
+      "name": "testEnhancedStereoDoesNotExceedsLimit",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "692dcb6349a8deed4f705100da30980ae56748d925def3448ff03e451ea37c9e",
+      "start_line": 8154,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8346,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmaewriterroundtrip__line_8332",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testMaeWriterRoundtrip",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "8f7de830562b91f51450b28c664391ca22dd22311acfc14363b516e68806be03",
+      "start_line": 8332,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8383,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test_hapticbondstodative",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test_HapticBondsToDative",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "6e7c7d5e1f0a1670bce9561326bc113b03ef44fa8a70b726436a01047cb13a26",
+      "start_line": 8376,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8391,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__test_dativebondstohaptic",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "test_DativeBondsToHaptic",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "1858f2a6dfa4557a3c08bfbf82db6220347663a64a559a552bbc550277f94ce5",
+      "start_line": 8385,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8539,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testisringfused",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIsRingFused",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "0d319b87c12753b3286bf532c5d728a4f9657ad2ab634971c6a5c9e20cd2eb12",
+      "start_line": 8501,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8568,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmileswriteparamsforsmarts",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "SmilesWriteParams"
+      ],
+      "name": "testSmilesWriteParamsForSMARTS",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "876e9428dc8d2a14eb67dedd3cabfe03cf6ec6b220e0936546a9337ef2a43f53",
+      "start_line": 8560,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 8609,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_graphmol_wrap_rough_test__python_test__testcase__testignoreatommapnumbers",
+      "kind": "python_test",
+      "language": "python",
+      "matched_terms": [
+        "MolToSmiles",
+        "SmilesWriteParams",
+        "ignoreAtomMapNumbers"
+      ],
+      "name": "testIgnoreAtomMapNumbers",
+      "notes": "",
+      "parent": "TestCase",
+      "snippet_sha256": "3457a862e9b4f6d71519566ae40b97b9aa2111cad2a0090174869460f0038929",
+      "start_line": 8603,
+      "status": "unreviewed",
+      "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 184,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbasiccanon",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBasicCanon",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "b1bedb3008d11104a9555f89c1600029a9de70f35a06001936aa4eb9f712e38c",
+      "start_line": 109,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 593,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__teststereochem",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testStereochem",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "9fb2f3af3d91152d1ca73269cf086947187d5a7fb4f696c28eb908c602761356",
+      "start_line": 186,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 618,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue127",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue127",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "19cf013e63659aa87e21f53e776c924236de67723adf208b51eb3e9716bd0158",
+      "start_line": 595,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 637,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue143",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue143",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "36479eaf6ee128809f31079607b6adc374128260ed801185e127daf6c2c591de",
+      "start_line": 620,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 716,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue151",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue151",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "4d5cba2bd6ca43ce04370474aa0c4c440616851cd77e151ba99d47b0eda46f6e",
+      "start_line": 639,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 762,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue153",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue153",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "313ea80ac8a904837ce78844a6caa91bde050ffc8167738656e06f693f156f86",
+      "start_line": 718,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 829,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue157",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue157",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "660c2eefa6e61b2dae69cdcf74f3a54c962a4791800f8c887d90ae51354f4224",
+      "start_line": 764,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 852,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue159",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue159",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "349a9313b2b050c936591d0a89c9853fab7307a3072be214c7bf3cd1dd6350d7",
+      "start_line": 831,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 922,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue184",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue184",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "a84e70c43f896568c79532f084001cd0bcebd005cc6d6a202d6ca569980bff25",
+      "start_line": 896,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 945,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue185",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue185",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "e18bf6b52e101cfa798de76368e91e10b9ce502d64e0fa0e864c4fd75329ab20",
+      "start_line": 924,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 975,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue191",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue191",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "2379ab17c7d55f87077210260f1a548dbcfca7f05ebc0184fc4849602d8a5bb0",
+      "start_line": 947,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1031,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue266",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIssue266",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "ebb0c647845723a18dd757c34849973e504e452c1f2918144b62c7f5b7458a8e",
+      "start_line": 1006,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1048,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testrootedat",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testRootedAt",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "416a515060d38cd175dbb728e4dadb55214a41991fd00531f85bac2f933fef09",
+      "start_line": 1033,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1065,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testisotopes",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testIsotopes",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "75ded30aa8b9122d97766ac7cb48e8b05d9d9295c74f7de5c2b15e4278166158",
+      "start_line": 1050,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1085,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1670149",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBug1670149",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "5a51fc432d734f04e35d429a95e23eb8a2cf974660e65c0bd13a0f2ac8bbb775",
+      "start_line": 1067,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1134,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1719046",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBug1719046",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "6037033eda963cbf9b08ea8ff9ad0aa218661714ad3183e4bb721b84453a7a19",
+      "start_line": 1087,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1160,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1842174",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBug1842174",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "56c93eeca38293a0778f73cacff69c8590deff0205c977643ff42e90ff16b12e",
+      "start_line": 1136,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1212,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1844617",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testBug1844617",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "ecbd5178b37f6aff7eca6c7a3ef53798d02f3a74c5137095b8eb71664a7481a9",
+      "start_line": 1162,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    },
+    {
+      "claim": "needs-triage",
+      "end_line": 1231,
+      "grimace_cases": [],
+      "grimace_fixtures": [],
+      "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testringstereochem",
+      "kind": "java_test",
+      "language": "java",
+      "matched_terms": [
+        "MolToSmiles"
+      ],
+      "name": "testRingStereochem",
+      "notes": "",
+      "parent": "SmilesDetailsTests",
+      "snippet_sha256": "117a1ee965032216c295f4e537a36684497d8526663a3e633ddfbdc189953ad7",
+      "start_line": 1214,
+      "status": "unreviewed",
+      "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
+    }
+  ],
+  "extractor_version": 1,
+  "rdkit_version": "2026.03.1",
+  "source_commit": "cb251343b9448601963cbcec5057a76ff02b27c2",
+  "source_manifest": "tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/manifest.json"
+}

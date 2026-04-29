@@ -891,6 +891,217 @@
       ]
     },
     {
+      "id": "rooted_chiral_center_isomeric",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testSmilesWriteParams",
+      "smiles": "C[C@H](F)Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "Cl",
+        "F",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "[C@@H](C)(F)Cl",
+        "[C@@H](Cl)(C)F",
+        "[C@@H](F)(Cl)C",
+        "[C@H](C)(Cl)F",
+        "[C@H](Cl)(F)C",
+        "[C@H](F)(C)Cl"
+      ]
+    },
+    {
+      "id": "rooted_chiral_center_nonisomeric",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testSmilesWriteParams",
+      "smiles": "C[C@H](F)Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "Cl",
+        "F"
+      ],
+      "expected": [
+        "C(C)(Cl)F",
+        "C(C)(F)Cl",
+        "C(Cl)(C)F",
+        "C(Cl)(F)C",
+        "C(F)(C)Cl",
+        "C(F)(Cl)C"
+      ]
+    },
+    {
+      "id": "all_bonds_explicit_aliphatic_branch",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
+      "smiles": "CCC",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "-",
+        "C"
+      ],
+      "expected": [
+        "C(-C)-C"
+      ]
+    },
+    {
+      "id": "rooted_tertiary_amine_branch_shape",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test40SmilesRootedAtAtom",
+      "smiles": "CN(C)C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "N(C)(C)C"
+      ]
+    },
+    {
+      "id": "rooted_tertiary_amine_branch_shape_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test40SmilesRootedAtAtom",
+      "smiles": "CN(C)C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "-",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "N(-C)(-C)-C"
+      ]
+    },
+    {
+      "id": "rooted_conjugated_diene_stereo_surface_isomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "C(\\C=C\\F)=C(/Cl)Br",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "Cl",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "F/C=C/C=C(/Cl)Br",
+        "F/C=C/C=C(\\Br)Cl"
+      ]
+    },
+    {
+      "id": "rooted_conjugated_diene_stereo_surface_nonisomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "C(\\C=C\\F)=C(/Cl)Br",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "Br",
+        "C",
+        "Cl",
+        "F"
+      ],
+      "expected": [
+        "FC=CC=C(Br)Cl",
+        "FC=CC=C(Cl)Br"
+      ]
+    },
+    {
+      "id": "protonated_ring_normalization_explicit_start",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1670149",
+      "smiles": "C1[NH2+]CCC1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "C",
+        "[NH2+]"
+      ],
+      "expected": [
+        "C1CCC[NH2+]1",
+        "C1CC[NH2+]C1",
+        "C1C[NH2+]CC1",
+        "C1[NH2+]CCC1",
+        "[NH2+]1CCCC1"
+      ]
+    },
+    {
+      "id": "protonated_ring_normalization_implicit_position",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1670149",
+      "smiles": "C1CC[NH2+]C1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "C",
+        "[NH2+]"
+      ],
+      "expected": [
+        "C1CCC[NH2+]1",
+        "C1CC[NH2+]C1",
+        "C1C[NH2+]CC1",
+        "C1[NH2+]CCC1",
+        "[NH2+]1CCCC1"
+      ]
+    },
+    {
+      "id": "explicit_kekule_benzene_aromatic_normalization_duplicate_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1113-1120",
+      "smiles": "[CH]1=[CH][CH]=[CH][CH]=[CH]1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "c"
+      ],
+      "expected": [
+        "c1ccccc1"
+      ]
+    },
+    {
+      "id": "pyridine_aromatic_normalization_all_roots",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1119-1120",
+      "smiles": "c1ccccn1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "c",
+        "n"
+      ],
+      "expected": [
+        "c1ccccn1",
+        "c1cccnc1",
+        "c1ccncc1",
+        "c1cnccc1",
+        "c1ncccc1",
+        "n1ccccc1"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

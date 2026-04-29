@@ -356,6 +356,39 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_explicit_kekule_benzene_normalizes_to_aromatic(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testBug1719046:
+        # explicit kekule benzene input should normalize to aromatic output.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testBug1719046 benzene"
+        )
+        mol = parse_smiles("[CH]1=[CH][CH]=[CH][CH]=[CH]1")
+        expected_support = {"c1ccccc1"}
+        expected_inventory = ("1", "c")
+
+        with self.subTest(source=source):
+            self.assertEqual(
+                expected_support,
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                expected_inventory,
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=False,
+                    ),
+                ),
+            )
+
     def test_rooted_imine_stereo_orientation(self) -> None:
         # Regression pinned to RDKit Java SmilesDetailsTests.testBug1842174:
         # rootedAtAtom changes the emitted orientation surface for F/C=N/Cl.
@@ -417,6 +450,65 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     ),
                 )
+
+    def test_conjugated_diene_stereo_normalization(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testBug1842174:
+        # conjugated diene stereo input should normalize to the expected
+        # serializer support family under exact all-roots enumeration.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testBug1842174 diene"
+        )
+        mol = parse_smiles(r"C(\C=C\F)=C(/Cl)Br")
+        expected_support = {
+            r"Br/C(=C\C=C\F)Cl",
+            r"Br/C(Cl)=C\C=C\F",
+            r"C(/Br)(=C/C=C/F)Cl",
+            r"C(/Br)(Cl)=C/C=C/F",
+            r"C(/C=C(/Cl)Br)=C\F",
+            r"C(/C=C(\Br)Cl)=C\F",
+            r"C(/C=C/F)=C(/Br)Cl",
+            r"C(/C=C/F)=C(\Cl)Br",
+            r"C(/Cl)(=C\C=C\F)Br",
+            r"C(/Cl)(Br)=C\C=C\F",
+            r"C(/F)=C\C=C(/Br)Cl",
+            r"C(/F)=C\C=C(\Cl)Br",
+            r"C(=C(/Br)Cl)/C=C/F",
+            r"C(=C(\Cl)Br)/C=C/F",
+            r"C(=C/C=C/F)(/Br)Cl",
+            r"C(=C\C=C(/Br)Cl)/F",
+            r"C(=C\C=C(\Cl)Br)/F",
+            r"C(=C\C=C\F)(/Cl)Br",
+            r"C(=C\F)/C=C(/Cl)Br",
+            r"C(=C\F)/C=C(\Br)Cl",
+            r"Cl/C(=C/C=C/F)Br",
+            r"Cl/C(Br)=C/C=C/F",
+            r"F/C=C/C=C(/Cl)Br",
+            r"F/C=C/C=C(\Br)Cl",
+        }
+        expected_inventory = ("(", ")", "/", "=", "Br", "C", "Cl", "F", "\\")
+
+        with self.subTest(source=source):
+            self.assertEqual(
+                expected_support,
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                expected_inventory,
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
 
     def test_ignore_atom_map_numbers_on_aromatic_attachment(self) -> None:
         # Regression pinned to RDKit rough_test.testIgnoreAtomMapNumbers:

@@ -18,6 +18,7 @@ class PinnedSerializerRegressionCase:
     all_bonds_explicit: bool = False
     all_hs_explicit: bool = False
     ignore_atom_map_numbers: bool = False
+    rdkit_sample_draw_budget: int | None = None
 
 
 _FIXTURE_ROOT = (
@@ -71,6 +72,15 @@ def load_pinned_serializer_regression_cases(
         source = str(raw_case["source"])
         if not source:
             raise ValueError(f"fixture {fixture_path} case {case_id!r} contains an empty source")
+        raw_draw_budget = raw_case.get("rdkit_sample_draw_budget")
+        rdkit_sample_draw_budget = (
+            None if raw_draw_budget is None else int(raw_draw_budget)
+        )
+        if rdkit_sample_draw_budget is not None and rdkit_sample_draw_budget <= 0:
+            raise ValueError(
+                f"fixture {fixture_path} case {case_id!r} has nonpositive "
+                f"rdkit_sample_draw_budget={rdkit_sample_draw_budget}"
+            )
 
         cases.append(
             PinnedSerializerRegressionCase(
@@ -95,6 +105,7 @@ def load_pinned_serializer_regression_cases(
                 all_bonds_explicit=bool(raw_case.get("all_bonds_explicit", False)),
                 all_hs_explicit=bool(raw_case.get("all_hs_explicit", False)),
                 ignore_atom_map_numbers=bool(raw_case.get("ignore_atom_map_numbers", False)),
+                rdkit_sample_draw_budget=rdkit_sample_draw_budget,
             )
         )
 

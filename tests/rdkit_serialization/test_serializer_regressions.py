@@ -13,6 +13,7 @@ from tests.helpers.public_runtime import (
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
 )
+from tests.rdkit_serialization._support import sample_rdkit_random_support
 
 
 PINNED_RDKIT_VERSION = "2026.03.1"
@@ -66,6 +67,29 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     ),
                 )
+
+    def test_fixture_backed_rdkit_sampling_when_declared(self) -> None:
+        for case in load_pinned_serializer_regression_cases(PINNED_RDKIT_VERSION):
+            if case.rdkit_sample_draw_budget is None:
+                continue
+            mol = parse_smiles(case.smiles)
+            expected = set(case.expected)
+            with self.subTest(case_id=case.case_id, source=case.source):
+                for seed in (12345, 54321):
+                    self.assertEqual(
+                        expected,
+                        sample_rdkit_random_support(
+                            mol,
+                            root_idx=case.rooted_at_atom,
+                            isomeric_smiles=case.isomeric_smiles,
+                            draw_budget=case.rdkit_sample_draw_budget,
+                            kekule_smiles=case.kekule_smiles,
+                            all_bonds_explicit=case.all_bonds_explicit,
+                            all_hs_explicit=case.all_hs_explicit,
+                            ignore_atom_map_numbers=case.ignore_atom_map_numbers,
+                            seed=seed,
+                        ),
+                    )
 
     def test_ignore_atom_map_numbers_rooted_surface(self) -> None:
         # Regression for the bug where ignoreAtomMapNumbers=True still leaked

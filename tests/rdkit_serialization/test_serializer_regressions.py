@@ -646,6 +646,108 @@ class SerializerRegressionTests(unittest.TestCase):
                 ),
             )
 
+    def test_fused_ring_chirality_surfaces(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testIssue153:
+        # fused-ring ring-label ordering and chiral orientation must remain
+        # coupled in the exact serializer support.
+        cases = (
+            (
+                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+                "SmilesDetailsTests.java:testIssue153 S",
+                "C1(O[C@H]12)S2",
+                {
+                    "C12O[C@H]1S2",
+                    "C12O[C@H]2S1",
+                    "C12S[C@@H]1O2",
+                    "C12S[C@@H]2O1",
+                    "C12[C@@H](O1)S2",
+                    "C12[C@@H](O2)S1",
+                    "C12[C@H](S1)O2",
+                    "C12[C@H](S2)O1",
+                    "O1C2S[C@@H]21",
+                    "O1C2S[C@H]12",
+                    "O1C2[C@@H]1S2",
+                    "O1[C@@H]2C1S2",
+                    "O1[C@H]2SC12",
+                    "O1[C@H]2SC21",
+                    "S1C2O[C@@H]12",
+                    "S1C2O[C@H]21",
+                    "S1C2[C@H]1O2",
+                    "S1[C@@H]2OC12",
+                    "S1[C@@H]2OC21",
+                    "S1[C@H]2C1O2",
+                    "[C@@H]12C(O2)S1",
+                    "[C@@H]12C(S1)O2",
+                    "[C@@H]12OC1S2",
+                    "[C@@H]12SC2O1",
+                    "[C@H]12C(O1)S2",
+                    "[C@H]12C(S2)O1",
+                    "[C@H]12OC2S1",
+                    "[C@H]12SC1O2",
+                },
+            ),
+            (
+                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+                "SmilesDetailsTests.java:testIssue153 R",
+                "C1(O[C@H]21)S2",
+                {
+                    "C12O[C@@H]1S2",
+                    "C12O[C@@H]2S1",
+                    "C12S[C@H]1O2",
+                    "C12S[C@H]2O1",
+                    "C12[C@@H](S1)O2",
+                    "C12[C@@H](S2)O1",
+                    "C12[C@H](O1)S2",
+                    "C12[C@H](O2)S1",
+                    "O1C2S[C@@H]12",
+                    "O1C2S[C@H]21",
+                    "O1C2[C@H]1S2",
+                    "O1[C@@H]2SC12",
+                    "O1[C@@H]2SC21",
+                    "O1[C@H]2C1S2",
+                    "S1C2O[C@@H]21",
+                    "S1C2O[C@H]12",
+                    "S1C2[C@@H]1O2",
+                    "S1[C@@H]2C1O2",
+                    "S1[C@H]2OC12",
+                    "S1[C@H]2OC21",
+                    "[C@@H]12C(O1)S2",
+                    "[C@@H]12C(S2)O1",
+                    "[C@@H]12OC2S1",
+                    "[C@@H]12SC1O2",
+                    "[C@H]12C(O2)S1",
+                    "[C@H]12C(S1)O2",
+                    "[C@H]12OC1S2",
+                    "[C@H]12SC2O1",
+                },
+            ),
+        )
+        expected_inventory = ("(", ")", "1", "2", "C", "O", "S", "[C@@H]", "[C@H]")
+
+        for source, smiles, expected_support in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+
     def test_explicit_kekule_input_normalizes_to_aromatic_nh(self) -> None:
         # Regression pinned to RDKit's aromatic normalization behavior from
         # explicit non-aromatic inputs like C1=CNC=C1 and

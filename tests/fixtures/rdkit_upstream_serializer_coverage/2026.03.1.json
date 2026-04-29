@@ -1359,7 +1359,7 @@
         "doRandom"
       ],
       "name": "Github #4582: double bonds and ring closures",
-      "notes": "Molblock regression checks a canonical double-bond/ring-closure output and then round-trips 100 seeded random outputs to that canonical SMILES. The deterministic canonical output is pinned; the bulk random-output order loop is still not represented as a Grimace fixture.",
+      "notes": "Molblock regression checks a canonical double-bond/ring-closure output and then round-trips 100 seeded random outputs to that canonical SMILES. The deterministic canonical output is pinned. Local RDKit 2026.03.1 probing reproduced 99 unique seeded random outputs, all RDKit-canonical round-tripping correctly, with 78 outside current Grimace support; the bulk loop therefore needs directional ring-closure parity work before it can become a passing fixture.",
       "parent": null,
       "snippet_sha256": "bae01c5910c81fe671e0155e66a6f9c1497e1a75437c5558672fafe838ae40da",
       "start_line": 1635,
@@ -1405,7 +1405,7 @@
         "doRandom"
       ],
       "name": "bulk random output order",
-      "notes": "Bulk random-output section should become a pinned molblock-backed sampled-output fixture; current fixtures cover the deterministic CHEMBL409450 canonical output but do not cover the 100 seeded random round-trip loop.",
+      "notes": "Bulk random-output section is not yet represented by a passing Grimace fixture. Local RDKit 2026.03.1 probing reproduced 99 unique outputs from seeds 1-100, all RDKit-canonical round-tripping to the expected canonical string, with 78 outputs outside current Grimace support.",
       "parent": "Github #4582: double bonds and ring closures",
       "snippet_sha256": "3ada867dc414c15617213d49cd782c537f2478051a6163b94f2489c0b41ce8e2",
       "start_line": 1712,

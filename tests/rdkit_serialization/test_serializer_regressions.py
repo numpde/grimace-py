@@ -1018,6 +1018,98 @@ class SerializerRegressionTests(unittest.TestCase):
                 ),
             )
 
+    def test_isotope_placement_collapses_without_isomeric_smiles(self) -> None:
+        # Regression pinned to RDKit catch_tests.cpp "ensure unused features
+        # are not used": isotope placement is ignored for non-isomeric SMILES
+        # and retained for isomeric SMILES.
+        source = (
+            "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
+            " ensure unused features are not used isotopes"
+        )
+        nonisomeric_support = {
+            "C(NF)OF",
+            "C(OF)NF",
+            "FNCOF",
+            "FOCNF",
+            "N(COF)F",
+            "N(F)COF",
+            "O(CNF)F",
+            "O(F)CNF",
+        }
+        cases = (
+            (
+                "FOCN[15F]",
+                {
+                    "C(N[15F])OF",
+                    "C(OF)N[15F]",
+                    "FOCN[15F]",
+                    "N(COF)[15F]",
+                    "N([15F])COF",
+                    "O(CN[15F])F",
+                    "O(F)CN[15F]",
+                    "[15F]NCOF",
+                },
+            ),
+            (
+                "[15F]OCNF",
+                {
+                    "C(NF)O[15F]",
+                    "C(O[15F])NF",
+                    "FNCO[15F]",
+                    "N(CO[15F])F",
+                    "N(F)CO[15F]",
+                    "O(CNF)[15F]",
+                    "O([15F])CNF",
+                    "[15F]OCNF",
+                },
+            ),
+        )
+
+        for smiles, isomeric_support in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles, isomeric_smiles=False):
+                self.assertEqual(
+                    nonisomeric_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    ("(", ")", "C", "F", "N", "O"),
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=False,
+                        ),
+                    ),
+                )
+            with self.subTest(source=source, smiles=smiles, isomeric_smiles=True):
+                self.assertEqual(
+                    isomeric_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    ("(", ")", "C", "F", "N", "O", "[15F]"),
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+
     def test_ignore_atom_map_numbers_on_aromatic_attachment(self) -> None:
         # Regression pinned to RDKit rough_test.testIgnoreAtomMapNumbers:
         # map suppression must change the emitted atom token surface cleanly

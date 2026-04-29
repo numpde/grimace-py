@@ -1359,7 +1359,7 @@
         "doRandom"
       ],
       "name": "Github #4582: double bonds and ring closures",
-      "notes": "Molblock regression checks doRandom=True outputs for a double-bond/ring-closure case by round-tripping 100 seeded random outputs to the same canonical SMILES. This is in-scope writer behavior but is not yet pinned as a Grimace fixture.",
+      "notes": "Molblock regression checks a canonical double-bond/ring-closure output and then round-trips 100 seeded random outputs to that canonical SMILES. The deterministic canonical output is pinned; the bulk random-output order loop is still not represented as a Grimace fixture.",
       "parent": null,
       "snippet_sha256": "bae01c5910c81fe671e0155e66a6f9c1497e1a75437c5558672fafe838ae40da",
       "start_line": 1635,
@@ -1369,7 +1369,15 @@
     {
       "claim": "double-bond-ring-closure-molblock",
       "end_line": 1710,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "molblock_github4582_chembl409450_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/40_molblock_writer.json",
+          "note": "Molblock-backed membership fixture pins the CHEMBL409450 canonical MolToSmiles output checked by this section."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_double_bonds_and_ring_closures__basic_test",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1377,11 +1385,11 @@
         "MolToSmiles"
       ],
       "name": "basic test",
-      "notes": "Molblock-backed double-bond/ring-closure writer output is not yet represented by a passing Grimace fixture. Local RDKit 2026.03.1 probing of the small C/N=C/C1=C/CCCCCC1 surface found a one-output exact-support mismatch in directional ring-closure spelling, so this needs directional ring-closure parity work before pinning.",
+      "notes": "Molblock-backed CHEMBL409450 canonical writer output is represented by a writer-membership fixture. Exact random-support equality is intentionally not claimed by this section link.",
       "parent": "Github #4582: double bonds and ring closures",
       "snippet_sha256": "6e14a7614a9fe32eac489410877bca0e542f65e23927e9da2882ab7d44511602",
       "start_line": 1697,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1397,7 +1405,7 @@
         "doRandom"
       ],
       "name": "bulk random output order",
-      "notes": "Bulk random-output section should become a pinned molblock-backed sampled-output or membership fixture; current fixtures do not cover this CHEMBL409450 ring-closure/double-bond regression.",
+      "notes": "Bulk random-output section should become a pinned molblock-backed sampled-output fixture; current fixtures cover the deterministic CHEMBL409450 canonical output but do not cover the 100 seeded random round-trip loop.",
       "parent": "Github #4582: double bonds and ring closures",
       "snippet_sha256": "3ada867dc414c15617213d49cd782c537f2478051a6163b94f2489c0b41ce8e2",
       "start_line": 1712,
@@ -1415,7 +1423,7 @@
         "MolToSmiles"
       ],
       "name": "Github #4582 continued: double bonds and ring closures",
-      "notes": "Aggregate continued #4582 test contains several SMILES/molblock double-bond ring-closure writer regressions still needing fixtures.",
+      "notes": "Aggregate continued #4582 test contains several SMILES/molblock double-bond ring-closure writer regressions. The small deterministic molblock output is covered; #3967, CHEMBL3623347, and exact directional ring-closure parity gaps still need fixtures or runtime work.",
       "parent": null,
       "snippet_sha256": "1cdbc245ae04260b9f7967bf787d91435176dec501d302475d03c986b7fced8a",
       "start_line": 1729,
@@ -1425,7 +1433,15 @@
     {
       "claim": "double-bond-ring-closure-molblock",
       "end_line": 1761,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "molblock_github4582_small_ring_closure_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/40_molblock_writer.json",
+          "note": "Molblock-backed membership fixture pins the small ring-closure canonical MolToSmiles output checked by this section."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1433,11 +1449,11 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "Small molblock double-bond/ring-closure writer output is not yet represented by a passing Grimace fixture. Local RDKit 2026.03.1 probing found the expected canonical output in support but a one-output exact-support mismatch between C1(=C\\CCCCCC1)/C=N/C and C1(=C/CCCCCC1)\\C=N\\C.",
+      "notes": "Small molblock double-bond/ring-closure canonical writer output is represented by a writer-membership fixture. Local RDKit 2026.03.1 probing also found a one-output exact-support mismatch between C1(=C\\CCCCCC1)/C=N/C and C1(=C/CCCCCC1)\\C=N\\C, so exact random-support equality is intentionally not claimed here.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "1fba684ec0d7a3ec2fe07332324a9787acc45fc4d2fbd881d1baa3a92743c4c2",
       "start_line": 1730,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

@@ -11,6 +11,17 @@ from tests.helpers.rdkit_writer_membership import PinnedWriterMembershipCase
 RDKIT_PINNED_SAMPLING_SEEDS = (12345, 54321)
 
 
+def mol_from_pinned_source(case: object) -> Chem.Mol:
+    molblock = getattr(case, "molblock", None)
+    if molblock is not None:
+        mol = Chem.MolFromMolBlock(molblock)
+    else:
+        mol = Chem.MolFromSmiles(getattr(case, "smiles"))
+    if mol is None:
+        raise AssertionError(f"RDKit failed to parse pinned case {case.case_id!r}")
+    return mol
+
+
 def supported_public_kwargs_from_rdkit_options(
     *,
     rooted_at_atom: int | None,
@@ -153,7 +164,7 @@ def _deterministic_drift_draw_budget(mol: Chem.Mol) -> int:
 
 
 def rdkit_exact_writer_output(case: PinnedWriterMembershipCase) -> str:
-    mol = Chem.MolFromSmiles(case.smiles)
+    mol = mol_from_pinned_source(case)
     kwargs = rdkit_mol_to_smiles_kwargs_from_options(
         rooted_at_atom=case.rooted_at_atom,
         isomeric_smiles=case.isomeric_smiles,
@@ -171,7 +182,7 @@ def assert_exact_writer_case_in_grimace_support(
     test_case,
     case: PinnedWriterMembershipCase,
 ) -> None:
-    mol = Chem.MolFromSmiles(case.smiles)
+    mol = mol_from_pinned_source(case)
     rdkit_out = rdkit_exact_writer_output(case)
     test_case.assertEqual(case.expected, rdkit_out)
 

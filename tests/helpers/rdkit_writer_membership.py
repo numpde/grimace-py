@@ -8,6 +8,7 @@ from tests.helpers.pinned_rdkit_fixtures import (
     load_pinned_rdkit_fixture_cases,
     optional_bool,
     optional_int,
+    optional_string,
     pinned_rdkit_fixture_root,
     required_bool,
     required_string,
@@ -18,7 +19,8 @@ from tests.helpers.pinned_rdkit_fixtures import (
 class PinnedWriterMembershipCase:
     case_id: str
     source: str
-    smiles: str
+    smiles: str | None
+    molblock: str | None
     expected: str
     rooted_at_atom: int | None
     isomeric_smiles: bool
@@ -44,16 +46,29 @@ def load_pinned_writer_membership_cases(
         fixture_label="writer-membership",
     ):
         raw_case = fixture_case.raw
+        smiles = optional_string(
+            raw_case,
+            field_name="smiles",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        molblock = optional_string(
+            raw_case,
+            field_name="molblock",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        if (smiles is None) == (molblock is None):
+            raise ValueError(
+                f"fixture {fixture_case.fixture_path} case {fixture_case.case_id!r} "
+                "must define exactly one of 'smiles' or 'molblock'"
+            )
         cases.append(
             PinnedWriterMembershipCase(
                 case_id=fixture_case.case_id,
                 source=fixture_case.source,
-                smiles=required_string(
-                    raw_case,
-                    field_name="smiles",
-                    fixture_path=fixture_case.fixture_path,
-                    case_id=fixture_case.case_id,
-                ),
+                smiles=smiles,
+                molblock=molblock,
                 expected=required_string(
                     raw_case,
                     field_name="expected",

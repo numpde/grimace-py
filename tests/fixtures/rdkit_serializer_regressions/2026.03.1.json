@@ -2,6 +2,55 @@
   "rdkit_version": "2026.03.1",
   "cases": [
     {
+      "id": "metal_bound_atoms_keep_explicit_hydrogens_neutral",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:atoms bound to metals should always have Hs specified",
+      "smiles": "Cl[Pt](F)([NH2])[OH]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "[Cl]",
+        "[F]",
+        "[NH2]",
+        "[OH]",
+        "[Pt]"
+      ],
+      "expected": [
+        "[Cl][Pt]([F])([NH2])[OH]",
+        "[Cl][Pt]([F])([OH])[NH2]",
+        "[Cl][Pt]([NH2])([F])[OH]",
+        "[Cl][Pt]([NH2])([OH])[F]",
+        "[Cl][Pt]([OH])([F])[NH2]",
+        "[Cl][Pt]([OH])([NH2])[F]"
+      ]
+    },
+    {
+      "id": "metal_bound_atoms_keep_explicit_hydrogens_dative",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:atoms bound to metals should always have Hs specified",
+      "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "<-",
+        "[Cl]",
+        "[F]",
+        "[NH3]",
+        "[OH]",
+        "[Pt]"
+      ],
+      "expected": [
+        "[Cl][Pt](<-[NH3])([F])[OH]",
+        "[Cl][Pt](<-[NH3])([OH])[F]",
+        "[Cl][Pt]([F])(<-[NH3])[OH]",
+        "[Cl][Pt]([F])([OH])<-[NH3]",
+        "[Cl][Pt]([OH])(<-[NH3])[F]",
+        "[Cl][Pt]([OH])([F])<-[NH3]"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

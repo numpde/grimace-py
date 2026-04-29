@@ -193,65 +193,6 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
-    def test_atoms_bound_to_metals_keep_explicit_hydrogens(self) -> None:
-        # Regression pinned to RDKit's serializer rule that atoms bound to
-        # metals retain explicit Hs in the emitted atom tokens.
-        source = (
-            "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
-            " atoms bound to metals should always have Hs specified"
-        )
-        cases = (
-            (
-                "Cl[Pt](F)([NH2])[OH]",
-                0,
-                {
-                    "[Cl][Pt]([F])([NH2])[OH]",
-                    "[Cl][Pt]([F])([OH])[NH2]",
-                    "[Cl][Pt]([NH2])([F])[OH]",
-                    "[Cl][Pt]([NH2])([OH])[F]",
-                    "[Cl][Pt]([OH])([F])[NH2]",
-                    "[Cl][Pt]([OH])([NH2])[F]",
-                },
-                ("(", ")", "[Cl]", "[F]", "[NH2]", "[OH]", "[Pt]"),
-            ),
-            (
-                "Cl[Pt](F)(<-[NH3])[OH]",
-                0,
-                {
-                    "[Cl][Pt](<-[NH3])([F])[OH]",
-                    "[Cl][Pt](<-[NH3])([OH])[F]",
-                    "[Cl][Pt]([F])(<-[NH3])[OH]",
-                    "[Cl][Pt]([F])([OH])<-[NH3]",
-                    "[Cl][Pt]([OH])(<-[NH3])[F]",
-                    "[Cl][Pt]([OH])([F])<-[NH3]",
-                },
-                ("(", ")", "<-", "[Cl]", "[F]", "[NH3]", "[OH]", "[Pt]"),
-            ),
-        )
-        for smiles, rooted_at_atom, expected_support, expected_inventory in cases:
-            mol = parse_smiles(smiles)
-            with self.subTest(source=source, smiles=smiles, rooted_at_atom=rooted_at_atom):
-                self.assertEqual(
-                    expected_support,
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                        ),
-                    ),
-                )
-
     def test_all_bonds_explicit_uses_aromatic_colons(self) -> None:
         # Regression pinned to RDKit's allBondsExplicit behavior on aromatic
         # systems: aromatic bonds emit ":" instead of flipping to single/double.

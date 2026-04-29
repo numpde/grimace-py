@@ -10,6 +10,9 @@ from tests.helpers.public_runtime import (
     public_token_inventory,
     supported_public_kwargs,
 )
+from tests.helpers.rdkit_serializer_regressions import (
+    load_pinned_serializer_regression_cases,
+)
 
 
 PINNED_RDKIT_VERSION = "2026.03.1"
@@ -30,6 +33,39 @@ class SerializerRegressionTests(unittest.TestCase):
         if mol is None:
             raise AssertionError("RDKit failed to parse regression mol block")
         return mol
+
+    def test_fixture_backed_serializer_regressions(self) -> None:
+        for case in load_pinned_serializer_regression_cases(PINNED_RDKIT_VERSION):
+            mol = parse_smiles(case.smiles)
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(
+                    set(case.expected),
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=case.rooted_at_atom,
+                            isomericSmiles=case.isomeric_smiles,
+                            kekuleSmiles=case.kekule_smiles,
+                            allBondsExplicit=case.all_bonds_explicit,
+                            allHsExplicit=case.all_hs_explicit,
+                            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    case.expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=case.rooted_at_atom,
+                            isomericSmiles=case.isomeric_smiles,
+                            kekuleSmiles=case.kekule_smiles,
+                            allBondsExplicit=case.all_bonds_explicit,
+                            allHsExplicit=case.all_hs_explicit,
+                            ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                        ),
+                    ),
+                )
 
     def test_ignore_atom_map_numbers_rooted_surface(self) -> None:
         # Regression for the bug where ignoreAtomMapNumbers=True still leaked
@@ -530,50 +566,6 @@ class SerializerRegressionTests(unittest.TestCase):
                 {"C(C)(C)(C)C", "CC(C)(C)C"},
                 ("(", ")", "C"),
             ),
-            (
-                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
-                "SmilesDetailsTests.java:testIssue143 aldehyde",
-                "CC[C@](C)(C)C=O",
-                {
-                    "C(=O)C(C)(C)CC",
-                    "C(=O)C(C)(CC)C",
-                    "C(=O)C(CC)(C)C",
-                    "C(C(C)(C)C=O)C",
-                    "C(C(C)(C)CC)=O",
-                    "C(C(C)(C=O)C)C",
-                    "C(C(C)(CC)C)=O",
-                    "C(C(C=O)(C)C)C",
-                    "C(C(CC)(C)C)=O",
-                    "C(C)(C)(C=O)CC",
-                    "C(C)(C)(CC)C=O",
-                    "C(C)(C=O)(C)CC",
-                    "C(C)(C=O)(CC)C",
-                    "C(C)(CC)(C)C=O",
-                    "C(C)(CC)(C=O)C",
-                    "C(C)C(C)(C)C=O",
-                    "C(C)C(C)(C=O)C",
-                    "C(C)C(C=O)(C)C",
-                    "C(C=O)(C)(C)CC",
-                    "C(C=O)(C)(CC)C",
-                    "C(C=O)(CC)(C)C",
-                    "C(CC)(C)(C)C=O",
-                    "C(CC)(C)(C=O)C",
-                    "C(CC)(C=O)(C)C",
-                    "CC(C)(C=O)CC",
-                    "CC(C)(CC)C=O",
-                    "CC(C=O)(C)CC",
-                    "CC(C=O)(CC)C",
-                    "CC(CC)(C)C=O",
-                    "CC(CC)(C=O)C",
-                    "CCC(C)(C)C=O",
-                    "CCC(C)(C=O)C",
-                    "CCC(C=O)(C)C",
-                    "O=CC(C)(C)CC",
-                    "O=CC(C)(CC)C",
-                    "O=CC(CC)(C)C",
-                },
-                ("(", ")", "=", "C", "O"),
-            ),
         )
         for source, smiles, expected_support, expected_inventory in cases:
             mol = parse_smiles(smiles)
@@ -645,108 +637,6 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 ),
             )
-
-    def test_fused_ring_chirality_surfaces(self) -> None:
-        # Regression pinned to RDKit SmilesDetailsTests.testIssue153:
-        # fused-ring ring-label ordering and chiral orientation must remain
-        # coupled in the exact serializer support.
-        cases = (
-            (
-                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
-                "SmilesDetailsTests.java:testIssue153 S",
-                "C1(O[C@H]12)S2",
-                {
-                    "C12O[C@H]1S2",
-                    "C12O[C@H]2S1",
-                    "C12S[C@@H]1O2",
-                    "C12S[C@@H]2O1",
-                    "C12[C@@H](O1)S2",
-                    "C12[C@@H](O2)S1",
-                    "C12[C@H](S1)O2",
-                    "C12[C@H](S2)O1",
-                    "O1C2S[C@@H]21",
-                    "O1C2S[C@H]12",
-                    "O1C2[C@@H]1S2",
-                    "O1[C@@H]2C1S2",
-                    "O1[C@H]2SC12",
-                    "O1[C@H]2SC21",
-                    "S1C2O[C@@H]12",
-                    "S1C2O[C@H]21",
-                    "S1C2[C@H]1O2",
-                    "S1[C@@H]2OC12",
-                    "S1[C@@H]2OC21",
-                    "S1[C@H]2C1O2",
-                    "[C@@H]12C(O2)S1",
-                    "[C@@H]12C(S1)O2",
-                    "[C@@H]12OC1S2",
-                    "[C@@H]12SC2O1",
-                    "[C@H]12C(O1)S2",
-                    "[C@H]12C(S2)O1",
-                    "[C@H]12OC2S1",
-                    "[C@H]12SC1O2",
-                },
-            ),
-            (
-                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
-                "SmilesDetailsTests.java:testIssue153 R",
-                "C1(O[C@H]21)S2",
-                {
-                    "C12O[C@@H]1S2",
-                    "C12O[C@@H]2S1",
-                    "C12S[C@H]1O2",
-                    "C12S[C@H]2O1",
-                    "C12[C@@H](S1)O2",
-                    "C12[C@@H](S2)O1",
-                    "C12[C@H](O1)S2",
-                    "C12[C@H](O2)S1",
-                    "O1C2S[C@@H]12",
-                    "O1C2S[C@H]21",
-                    "O1C2[C@H]1S2",
-                    "O1[C@@H]2SC12",
-                    "O1[C@@H]2SC21",
-                    "O1[C@H]2C1S2",
-                    "S1C2O[C@@H]21",
-                    "S1C2O[C@H]12",
-                    "S1C2[C@@H]1O2",
-                    "S1[C@@H]2C1O2",
-                    "S1[C@H]2OC12",
-                    "S1[C@H]2OC21",
-                    "[C@@H]12C(O1)S2",
-                    "[C@@H]12C(S2)O1",
-                    "[C@@H]12OC2S1",
-                    "[C@@H]12SC1O2",
-                    "[C@H]12C(O2)S1",
-                    "[C@H]12C(S1)O2",
-                    "[C@H]12OC1S2",
-                    "[C@H]12SC2O1",
-                },
-            ),
-        )
-        expected_inventory = ("(", ")", "1", "2", "C", "O", "S", "[C@@H]", "[C@H]")
-
-        for source, smiles, expected_support in cases:
-            mol = parse_smiles(smiles)
-            with self.subTest(source=source, smiles=smiles):
-                self.assertEqual(
-                    expected_support,
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=-1,
-                            isomericSmiles=True,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=-1,
-                            isomericSmiles=True,
-                        ),
-                    ),
-                )
 
     def test_explicit_kekule_input_normalizes_to_aromatic_nh(self) -> None:
         # Regression pinned to RDKit's aromatic normalization behavior from
@@ -904,65 +794,6 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     ),
                 )
-
-    def test_conjugated_diene_stereo_normalization(self) -> None:
-        # Regression pinned to RDKit SmilesDetailsTests.testBug1842174:
-        # conjugated diene stereo input should normalize to the expected
-        # serializer support family under exact all-roots enumeration.
-        source = (
-            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
-            "SmilesDetailsTests.java:testBug1842174 diene"
-        )
-        mol = parse_smiles(r"C(\C=C\F)=C(/Cl)Br")
-        expected_support = {
-            r"Br/C(=C\C=C\F)Cl",
-            r"Br/C(Cl)=C\C=C\F",
-            r"C(/Br)(=C/C=C/F)Cl",
-            r"C(/Br)(Cl)=C/C=C/F",
-            r"C(/C=C(/Cl)Br)=C\F",
-            r"C(/C=C(\Br)Cl)=C\F",
-            r"C(/C=C/F)=C(/Br)Cl",
-            r"C(/C=C/F)=C(\Cl)Br",
-            r"C(/Cl)(=C\C=C\F)Br",
-            r"C(/Cl)(Br)=C\C=C\F",
-            r"C(/F)=C\C=C(/Br)Cl",
-            r"C(/F)=C\C=C(\Cl)Br",
-            r"C(=C(/Br)Cl)/C=C/F",
-            r"C(=C(\Cl)Br)/C=C/F",
-            r"C(=C/C=C/F)(/Br)Cl",
-            r"C(=C\C=C(/Br)Cl)/F",
-            r"C(=C\C=C(\Cl)Br)/F",
-            r"C(=C\C=C\F)(/Cl)Br",
-            r"C(=C\F)/C=C(/Cl)Br",
-            r"C(=C\F)/C=C(\Br)Cl",
-            r"Cl/C(=C/C=C/F)Br",
-            r"Cl/C(Br)=C/C=C/F",
-            r"F/C=C/C=C(/Cl)Br",
-            r"F/C=C/C=C(\Br)Cl",
-        }
-        expected_inventory = ("(", ")", "/", "=", "Br", "C", "Cl", "F", "\\")
-
-        with self.subTest(source=source):
-            self.assertEqual(
-                expected_support,
-                public_enum_support(
-                    mol,
-                    **supported_public_kwargs(
-                        rootedAtAtom=-1,
-                        isomericSmiles=True,
-                    ),
-                ),
-            )
-            self.assertEqual(
-                expected_inventory,
-                public_token_inventory(
-                    mol,
-                    **supported_public_kwargs(
-                        rootedAtAtom=-1,
-                        isomericSmiles=True,
-                    ),
-                ),
-            )
 
     def test_isotope_surface_respects_isomeric_smiles(self) -> None:
         # Regression pinned to RDKit SmilesDetailsTests.testIsotopes:

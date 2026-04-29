@@ -30,6 +30,9 @@ subset.
 - Kernel parity tests belong under `tests/parity/`, not `tests/reference/`.
 - Dataset-backed kernel contract checks belong under `tests/integration/` once they stop being cross-language parity checks.
 - RDKit-derived writer expectations belong under `tests/rdkit_serialization/`, not scattered through smoke tests.
+- Bulky serializer expected-output sets belong in version-keyed JSON fixtures
+  under `tests/fixtures/rdkit_serializer_regressions/`, with a source reference
+  for each case.
 - Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.

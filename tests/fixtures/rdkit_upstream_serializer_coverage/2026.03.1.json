@@ -2021,11 +2021,11 @@
         "SmilesWriteParams"
       ],
       "name": "chirality",
-      "notes": "Chirality-sensitive canonical ranking examples are not yet represented by Grimace fixtures.",
+      "notes": "This section checks canonical ranking suppression when chirality is omitted from canonical MolToSmiles output. Grimace currently supports the noncanonical random writer regime, so canonical-rank behavior is outside the serializer fixture scope.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "b3ef68af86cf8f71b1bc1266296b390c95fcc8b3f372b4d261ed1a2e9393e16d",
       "start_line": 2541,
-      "status": "needs-fixture",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2040,11 +2040,11 @@
         "SmilesWriteParams"
       ],
       "name": "ring stereo",
-      "notes": "Ring-stereo canonical ranking examples are not yet represented by Grimace fixtures.",
+      "notes": "This section checks canonical ranking suppression when ring stereochemistry is omitted from canonical MolToSmiles output. Grimace currently supports the noncanonical random writer regime, so canonical-rank behavior is outside the serializer fixture scope.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "7f50ccec98d6c2cbd2bcd8c046f50bb3d58dd7b51650750c81f7236abf69c0db",
       "start_line": 2561,
-      "status": "needs-fixture",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

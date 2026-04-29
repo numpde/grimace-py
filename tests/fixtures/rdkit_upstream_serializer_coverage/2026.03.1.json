@@ -3690,7 +3690,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "manual-bond-stereo-isomeric-smiles",
       "end_line": 1807,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereo",
@@ -3701,15 +3701,15 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereo",
-      "notes": "",
+      "notes": "Manual Bond.SetStereo cis/trans FC=CF serialization is in-scope writer behavior, but the exact manually-mutated bond-stereo case is not yet pinned as a Grimace fixture.",
       "parent": "TestCase",
       "snippet_sha256": "91deacb51a30ee6d0a956d97fe88f8289840e0d29110232a44cd1d71d1fc6715",
       "start_line": 1772,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "manual-bond-stereo-isomeric-smiles",
       "end_line": 1860,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereodifficultcase",
@@ -3720,15 +3720,15 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereoDifficultCase",
-      "notes": "",
+      "notes": "Enumerates manually assigned stereo across multiple potential double bonds and round-trips each isomer. This is in-scope directional-stereo writer behavior but needs a dedicated pinned fixture.",
       "parent": "TestCase",
       "snippet_sha256": "2c2ae1f369b3aafde6d84f76f6dedfb317cd3aed1ac2704e0f9f27e741ab1a56",
       "start_line": 1830,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "manual-bond-stereo-isomeric-smiles",
       "end_line": 1909,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoreallydifficultcase",
@@ -3739,11 +3739,11 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereoReallyDifficultCase",
-      "notes": "",
+      "notes": "Legacy stereo-perception coupled double-bond case is in-scope as directional-stereo serialization evidence, but no pinned Grimace fixture currently captures this exact case.",
       "parent": "TestCase",
       "snippet_sha256": "720de76a2e03208afef7d678be413dc7f4963c9fc2452e9d218baa06038068d8",
       "start_line": 1875,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4125,7 +4125,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "sequence-reader-writer-roundtrip",
       "end_line": 4079,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsequencebasics",
@@ -4136,11 +4136,11 @@
         "isomericSmiles"
       ],
       "name": "testSequenceBasics",
-      "notes": "",
+      "notes": "Calls MolToSmiles as part of peptide/DNA/RNA sequence reader/writer round-trip checks. Sequence parsing and sequence writer APIs are outside Grimace SMILES enumeration scope.",
       "parent": "TestCase",
       "snippet_sha256": "06738c8de7c88a6ad55552b81180b4ac212e475faf08eca77508711b560cd473",
       "start_line": 4032,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4217,7 +4217,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "pickle-property-roundtrip",
       "end_line": 5080,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testgithub1320",
@@ -4228,11 +4228,11 @@
         "isomericSmiles"
       ],
       "name": "testGithub1320",
-      "notes": "",
+      "notes": "Uses isomeric MolToSmiles only to confirm molecule pickling preserves computed properties and stereochemistry. Pickle/property persistence is outside Grimace writer scope.",
       "parent": "TestCase",
       "snippet_sha256": "a5775a85fb9bac18dd106c967bfaa4597987e6617c42c6d3625cbe470bd812a1",
       "start_line": 5042,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4254,7 +4254,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molbundle-substructure-and-pickle",
       "end_line": 5168,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolbundles1",
@@ -4265,17 +4265,27 @@
         "isomericSmiles"
       ],
       "name": "testMolBundles1",
-      "notes": "",
+      "notes": "Uses MolToSmiles as a consistency check inside MolBundle substructure and pickle behavior. MolBundle APIs are outside Grimace writer scope.",
       "parent": "TestCase",
       "snippet_sha256": "d2479c7120c88624204306981060bb7f0cd872665cef8311c0e66ddd4d3e6d8b",
       "start_line": 5109,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molblock-chirality-smiles-roundtrip",
       "end_line": 5274,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "molblock_chiral2_rooted_stereochemistry_root1",
+            "molblock_chiral4_wedge_rooted_stereochemistry_root1",
+            "molblock_chiral4_dash_rooted_stereochemistry_root1"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/50_molblock_stereo.json",
+          "note": "Pinned molblock-backed chiral SMILES support cases exercise chirality preservation from molblock input."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmolblockchirality",
       "kind": "python_test",
       "language": "python",
@@ -4284,11 +4294,11 @@
         "isomericSmiles"
       ],
       "name": "testMolBlockChirality",
-      "notes": "",
+      "notes": "Molblock chirality preservation is covered by dedicated molblock-backed serializer regression fixtures rather than this exact generated molblock.",
       "parent": "TestCase",
       "snippet_sha256": "69bff4e52d239a259bdf6b2eedeb9301910db5b95e0a95d63d5f608caa38f773",
       "start_line": 5268,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

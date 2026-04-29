@@ -3,7 +3,26 @@
     {
       "claim": "pseudo-ring-closure-chirality-smiles",
       "end_line": 73,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "pseudo_ring_closure_chirality_basic_1",
+            "pseudo_ring_closure_chirality_basic_2",
+            "pseudo_ring_closure_chirality_basic_3",
+            "pseudo_ring_closure_chirality_basic_4",
+            "pseudo_ring_closure_chirality_further_1",
+            "pseudo_ring_closure_chirality_further_2",
+            "pseudo_ring_closure_chirality_further_3",
+            "pseudo_ring_closure_chirality_further_4",
+            "pseudo_ring_closure_chirality_further_5",
+            "pseudo_ring_closure_chirality_further_6",
+            "pseudo_ring_closure_chirality_further_7",
+            "pseudo_ring_closure_chirality_further_8"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact all-roots fixtures pin the RDKit 2026.03.1 writer surfaces for pseudo-ring-closure chirality inputs."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_1972",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -11,17 +30,28 @@
         "MolToSmiles"
       ],
       "name": "Github #1972",
-      "notes": "Aggregate test for chiral atoms using ring-closure syntax to external substituents; exact noncanonical support fixtures are still needed.",
+      "notes": "GitHub #1972 pseudo-ring-closure chirality examples are represented by exact serializer fixtures.",
       "parent": null,
       "snippet_sha256": "7471f283ff3db26697d8ec2e2146e09b0fc27072e475b5c480f6f9f96538a794",
       "start_line": 36,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "pseudo-ring-closure-chirality-smiles",
       "end_line": 52,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "pseudo_ring_closure_chirality_basic_1",
+            "pseudo_ring_closure_chirality_basic_2",
+            "pseudo_ring_closure_chirality_basic_3",
+            "pseudo_ring_closure_chirality_basic_4"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact all-roots fixtures pin the RDKit 2026.03.1 writer surfaces for pseudo-ring-closure chirality inputs."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -29,17 +59,32 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "Basic pseudo-ring-closure chirality equivalence examples are not yet represented by Grimace fixtures.",
+      "notes": "Basic pseudo-ring-closure chirality equivalence examples are represented by exact serializer fixtures.",
       "parent": "Github #1972",
       "snippet_sha256": "a280c3be2d1ad3dc84e26463b652dcb038820074fbbbce43340c29eb11249c8e",
       "start_line": 37,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "pseudo-ring-closure-chirality-smiles",
       "end_line": 72,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "pseudo_ring_closure_chirality_further_1",
+            "pseudo_ring_closure_chirality_further_2",
+            "pseudo_ring_closure_chirality_further_3",
+            "pseudo_ring_closure_chirality_further_4",
+            "pseudo_ring_closure_chirality_further_5",
+            "pseudo_ring_closure_chirality_further_6",
+            "pseudo_ring_closure_chirality_further_7",
+            "pseudo_ring_closure_chirality_further_8"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact all-roots fixtures pin the RDKit 2026.03.1 writer surfaces for pseudo-ring-closure chirality inputs."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_1972__further_examples",
       "kind": "cpp_section",
       "language": "cpp",
@@ -47,11 +92,11 @@
         "MolToSmiles"
       ],
       "name": "further examples",
-      "notes": "Multi-substituent pseudo-ring-closure chirality equivalence examples are not yet represented by Grimace fixtures.",
+      "notes": "Multi-substituent pseudo-ring-closure chirality equivalence examples are represented by exact serializer fixtures.",
       "parent": "Github #1972",
       "snippet_sha256": "23d04028331827d882ccc809271ae21dba9360a953b85bc30b37bd17180af0fb",
       "start_line": 53,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

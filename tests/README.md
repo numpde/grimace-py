@@ -39,5 +39,7 @@ subset.
   for version, id, source, and canonical expected-set validation.
 - Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
+- `tests.run_pinned_rdkit_parity` must fail, not silently skip, when the
+  installed RDKit version has no checked-in pinned fixtures.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.
 - Prefer strengthening Rust-native tests before expanding parity breadth.

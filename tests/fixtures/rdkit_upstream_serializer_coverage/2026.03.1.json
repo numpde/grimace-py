@@ -559,7 +559,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "moltorandomsmilesvect-seeded-sequence",
       "end_line": 700,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__random_smiles_vectors",
@@ -573,15 +573,15 @@
         "kekuleSmiles"
       ],
       "name": "random smiles vectors",
-      "notes": "",
+      "notes": "Parent block validates RDKit MolToRandomSmilesVect seeded output sequence and option plumbing. Grimace exposes exact support/decoding, not RDKit RNG sequence reproduction or a vector sampling API.",
       "parent": null,
       "snippet_sha256": "2b932eaefbe1b343a3af5a4258528218e1831d9fc769f8d0f3a8f1250a138011",
       "start_line": 645,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "moltorandomsmilesvect-seeded-sequence",
       "end_line": 656,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__basics",
@@ -591,15 +591,15 @@
         "MolToRandomSmilesVect"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Checks the exact five-output sequence from MolToRandomSmilesVect for a fixed seed. Grimace does not attempt to reproduce RDKit RNG ordering.",
       "parent": "random smiles vectors",
       "snippet_sha256": "fe70a095c6f3318f3293f23e1894d4db2a3c4610017051a8b532d6539dde35e4",
       "start_line": 648,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "moltorandomsmilesvect-seeded-sequence",
       "end_line": 675,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__options1",
@@ -613,15 +613,15 @@
         "kekuleSmiles"
       ],
       "name": "options1",
-      "notes": "",
+      "notes": "Checks seeded MolToRandomSmilesVect output under kekuleSmiles/allBondsExplicit options. Grimace covers exact support for writer flags separately, but not RDKit random-vector sequence order.",
       "parent": "random smiles vectors",
       "snippet_sha256": "49f16cac759975a344111ac9ec60741440633414725159183d0ba33e7f1a8387",
       "start_line": 657,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "moltorandomsmilesvect-seeded-sequence",
       "end_line": 699,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__random_smiles_vectors__options2",
@@ -635,11 +635,11 @@
         "kekuleSmiles"
       ],
       "name": "options2",
-      "notes": "",
+      "notes": "Checks seeded MolToRandomSmilesVect output under allHsExplicit. Grimace covers exact support for writer flags separately, but not RDKit random-vector sequence order.",
       "parent": "random smiles vectors",
       "snippet_sha256": "d3407e9bdcfa2344cce320f0b013fa0c19049b20597ef0e01f66a2ad3d254938",
       "start_line": 676,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -789,7 +789,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmiles",
       "end_line": 907,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3998_molfragmenttosmiles_failing_in_kekulization_with",
@@ -799,11 +799,11 @@
         "kekuleSmiles"
       ],
       "name": "Github #3998 MolFragmentToSmiles failing in Kekulization with ",
-      "notes": "",
+      "notes": "Uses kekuleSmiles through MolFragmentToSmiles on selected atom subsets. Grimace does not expose RDKit fragment serialization APIs.",
       "parent": null,
       "snippet_sha256": "3dfac0fa26563f9997ca0297729b694b8a7faf9c8280432a226603efe209da78",
       "start_line": 881,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2380,7 +2380,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-ignore-atom-map-ranking",
       "end_line": 3024,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ignore_atom_map_numbers",
@@ -2392,11 +2392,11 @@
         "ignoreAtomMapNumbers"
       ],
       "name": "Ignore atom map numbers",
-      "notes": "",
+      "notes": "Upstream checks canonical MolToSmiles ranking with atom maps ignored while map labels remain emitted. Current Grimace support is canonical=False, doRandom=True; canonical ranking parity is outside scope. Supported canonical=False ignoreAtomMapNumbers behavior is covered in writer flag fixtures but does not cover this upstream canonical contract.",
       "parent": null,
       "snippet_sha256": "93f09eddd8f705a9697b72a6f332bf3f5ab6f924fc27c6dfe8fef62a16c05011",
       "start_line": 3013,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -3749,9 +3749,24 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekule-smiles-whole-molecule",
       "end_line": 2081,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_05_benzene_kekule"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Deterministic RDKit membership check for benzene with kekuleSmiles=True."
+        },
+        {
+          "cases": [
+            "kekule_aromatic_nh_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Additional exact-support coverage for aromatic kekule writer surface."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test38issue266",
       "kind": "python_test",
       "language": "python",
@@ -3760,11 +3775,11 @@
         "kekuleSmiles"
       ],
       "name": "test38Issue266",
-      "notes": "",
+      "notes": "Whole-molecule kekuleSmiles behavior is covered by pinned writer-flag fixtures. The upstream test uses benzene after explicit Kekulize; Grimace coverage checks the emitted kekule writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "0cb4c2766213a9afffa15f516a9edf74973e422bafd8c53aca3dfb19431c77d3",
       "start_line": 2074,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3840,7 +3855,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smarts-atom-bond-piece-serialization",
       "end_line": 2483,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test47smartspieces",
@@ -3851,11 +3866,11 @@
         "allHsExplicit"
       ],
       "name": "test47SmartsPieces",
-      "notes": "",
+      "notes": "Uses allBondsExplicit/allHsExplicit on GetAtomSmarts/GetBondSmarts SMARTS-piece APIs. Grimace targets SMILES support/decoding, not SMARTS atom or bond piece serialization.",
       "parent": "TestCase",
       "snippet_sha256": "e6db9350f9dd530d33abd86899311d82f485f9d31f61a353364c92014b750e77",
       "start_line": 2454,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3933,7 +3948,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "molfragmenttosmiles",
       "end_line": 3290,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test77molfragmenttosmiles",
@@ -3943,11 +3958,11 @@
         "kekuleSmiles"
       ],
       "name": "test77MolFragmentToSmiles",
-      "notes": "",
+      "notes": "Exercises MolFragmentToSmiles with atom/bond subsets, custom atom/bond symbols, kekuleSmiles, and error handling. Fragment serialization is outside Grimace public scope.",
       "parent": "TestCase",
       "snippet_sha256": "0dd89915ca05395071be66eabc269273f762b903e1ce9f0014698edc10d05b2b",
       "start_line": 3266,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4335,7 +4350,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "moltorandomsmilesvect-seeded-sequence",
       "end_line": 6676,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testrandomsmilesvect",
@@ -4346,11 +4361,11 @@
         "allHsExplicit"
       ],
       "name": "testRandomSmilesVect",
-      "notes": "",
+      "notes": "Python wrapper test pins exact MolToRandomSmilesVect seeded sequences. Grimace does not provide or emulate this RDKit sampling API.",
       "parent": "TestCase",
       "snippet_sha256": "9a649f038e56437495fbd40448fb121cd9a6a7e90a871a6db54095cb3320aafd",
       "start_line": 6661,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4797,7 +4812,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-ignore-atom-map-ranking",
       "end_line": 8609,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testignoreatommapnumbers",
@@ -4809,11 +4824,11 @@
         "ignoreAtomMapNumbers"
       ],
       "name": "testIgnoreAtomMapNumbers",
-      "notes": "",
+      "notes": "Upstream checks canonical MolToSmiles ranking with atom maps ignored while map labels remain emitted. Current Grimace support is canonical=False, doRandom=True; canonical ranking parity is outside scope. Supported canonical=False ignoreAtomMapNumbers behavior is covered in writer flag fixtures but does not cover this upstream canonical contract.",
       "parent": "TestCase",
       "snippet_sha256": "3457a862e9b4f6d71519566ae40b97b9aa2111cad2a0090174869460f0038929",
       "start_line": 8603,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

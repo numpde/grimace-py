@@ -6,12 +6,16 @@ import tempfile
 import unittest
 
 from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
+from tests.helpers.rdkit_disconnected_sampling import load_disconnected_root_zero_smiles
 from tests.helpers.rdkit_exact_small_support import (
     load_pinned_exact_small_support_cases,
 )
 from tests.helpers.rdkit_rooted_random import load_pinned_rooted_random_cases
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
+)
+from tests.helpers.rdkit_stereo_regressions import (
+    load_steroid_ring_coupled_component_regression,
 )
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
 
@@ -284,6 +288,23 @@ class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
                     fixture_root=fixture_root,
                 )
                 self.assertTrue(cases)
+
+
+class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
+    def test_disconnected_root_zero_fixture_loads(self) -> None:
+        cases = load_disconnected_root_zero_smiles()
+
+        self.assertEqual(30, len(cases))
+        self.assertEqual(30, len(set(cases)))
+        self.assertIn("[Na+].[Cl-]", cases)
+
+    def test_steroid_ring_coupled_component_fixture_loads(self) -> None:
+        case = load_steroid_ring_coupled_component_regression()
+
+        self.assertEqual(0, case.rooted_at_atom)
+        self.assertIn("C[C@H]", case.input_smiles)
+        self.assertIn("/C(=C/C=C1", case.expected_member)
+        self.assertIn("\\C(=C\\C=C1", case.rejected_member)
 
 
 if __name__ == "__main__":

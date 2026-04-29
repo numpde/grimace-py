@@ -20,7 +20,12 @@ def normalized_unique_sorted_strings(
     fixture_path: Path,
     case_id: str,
 ) -> tuple[str, ...]:
-    normalized = tuple(str(value) for value in values)
+    if not all(type(value) is str for value in values):
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define {field_name} "
+            f"as strings; got {values!r}"
+        )
+    normalized = tuple(values)
     expected = tuple(sorted(set(normalized)))
     if normalized != expected:
         raise ValueError(

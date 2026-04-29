@@ -215,6 +215,20 @@ class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
                             fixture_root=root,
                         )
 
+    def test_serializer_fixture_rejects_non_string_expected_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(_serializer_case("bad_expected", expected=[123])),
+            )
+
+            with self.assertRaisesRegex(ValueError, "expected as strings"):
+                load_pinned_serializer_regression_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
+
 
 class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
     def test_all_checked_in_exact_small_support_fixtures_load(self) -> None:

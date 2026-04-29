@@ -77,59 +77,6 @@ class SerializerRegressionTests(unittest.TestCase):
                         ),
                     )
 
-    def test_rooted_atom_on_disconnected_fragment(self) -> None:
-        # Regression for RDKit Github 8328: rootedAtAtom on multi-fragment
-        # molecules must only root the fragment that contains the atom while
-        # leaving other fragments in their own rooted-random support space.
-        source = (
-            "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:"
-            "Github 8328 MolToSmiles with rootedAtAtom for multiple fragments"
-        )
-        mol = parse_smiles("[C:1][C:2].[N:3]([C:4])=[O:5]")
-
-        expectations = (
-            (
-                3,
-                {
-                    "[C:1][C:2].[C:4][N:3]=[O:5]",
-                    "[C:2][C:1].[C:4][N:3]=[O:5]",
-                },
-                (".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"),
-            ),
-            (
-                4,
-                {
-                    "[C:1][C:2].[O:5]=[N:3][C:4]",
-                    "[C:2][C:1].[O:5]=[N:3][C:4]",
-                },
-                (".", "=", "[C:1]", "[C:2]", "[C:4]", "[N:3]", "[O:5]"),
-            ),
-        )
-        for rooted_at_atom, expected_support, expected_inventory in expectations:
-            with self.subTest(source=source, rooted_at_atom=rooted_at_atom):
-                self.assertEqual(
-                    expected_support,
-                    public_enum_support(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            ignoreAtomMapNumbers=False,
-                        ),
-                    ),
-                )
-                self.assertEqual(
-                    expected_inventory,
-                    public_token_inventory(
-                        mol,
-                        **supported_public_kwargs(
-                            rootedAtAtom=rooted_at_atom,
-                            isomericSmiles=False,
-                            ignoreAtomMapNumbers=False,
-                        ),
-                    ),
-                )
-
     def test_all_bonds_explicit_uses_aromatic_colons(self) -> None:
         # Regression pinned to RDKit's allBondsExplicit behavior on aromatic
         # systems: aromatic bonds emit ":" instead of flipping to single/double.

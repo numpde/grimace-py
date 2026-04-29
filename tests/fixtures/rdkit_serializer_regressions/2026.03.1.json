@@ -109,6 +109,48 @@
       ]
     },
     {
+      "id": "disconnected_rooted_atom_roots_selected_fragment_root3",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github 8328 MolToSmiles with rootedAtAtom for multiple fragments",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ],
+      "expected": [
+        "[C:1][C:2].[C:4][N:3]=[O:5]",
+        "[C:2][C:1].[C:4][N:3]=[O:5]"
+      ]
+    },
+    {
+      "id": "disconnected_rooted_atom_roots_selected_fragment_root4",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github 8328 MolToSmiles with rootedAtAtom for multiple fragments",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 4,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ],
+      "expected": [
+        "[C:1][C:2].[O:5]=[N:3][C:4]",
+        "[C:2][C:1].[O:5]=[N:3][C:4]"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

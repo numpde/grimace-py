@@ -475,6 +475,134 @@ class SerializerRegressionTests(unittest.TestCase):
                     ),
                 )
 
+    def test_nondegenerate_chirality_is_suppressed(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testIssue143:
+        # chiral annotations on non-stereogenic centers should disappear from
+        # the emitted exact support.
+        cases = (
+            (
+                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+                "SmilesDetailsTests.java:testIssue143 neopentane",
+                "C[C@](C)(C)C",
+                {"C(C)(C)(C)C", "CC(C)(C)C"},
+                ("(", ")", "C"),
+            ),
+            (
+                "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+                "SmilesDetailsTests.java:testIssue143 aldehyde",
+                "CC[C@](C)(C)C=O",
+                {
+                    "C(=O)C(C)(C)CC",
+                    "C(=O)C(C)(CC)C",
+                    "C(=O)C(CC)(C)C",
+                    "C(C(C)(C)C=O)C",
+                    "C(C(C)(C)CC)=O",
+                    "C(C(C)(C=O)C)C",
+                    "C(C(C)(CC)C)=O",
+                    "C(C(C=O)(C)C)C",
+                    "C(C(CC)(C)C)=O",
+                    "C(C)(C)(C=O)CC",
+                    "C(C)(C)(CC)C=O",
+                    "C(C)(C=O)(C)CC",
+                    "C(C)(C=O)(CC)C",
+                    "C(C)(CC)(C)C=O",
+                    "C(C)(CC)(C=O)C",
+                    "C(C)C(C)(C)C=O",
+                    "C(C)C(C)(C=O)C",
+                    "C(C)C(C=O)(C)C",
+                    "C(C=O)(C)(C)CC",
+                    "C(C=O)(C)(CC)C",
+                    "C(C=O)(CC)(C)C",
+                    "C(CC)(C)(C)C=O",
+                    "C(CC)(C)(C=O)C",
+                    "C(CC)(C=O)(C)C",
+                    "CC(C)(C=O)CC",
+                    "CC(C)(CC)C=O",
+                    "CC(C=O)(C)CC",
+                    "CC(C=O)(CC)C",
+                    "CC(CC)(C)C=O",
+                    "CC(CC)(C=O)C",
+                    "CCC(C)(C)C=O",
+                    "CCC(C)(C=O)C",
+                    "CCC(C=O)(C)C",
+                    "O=CC(C)(C)CC",
+                    "O=CC(C)(CC)C",
+                    "O=CC(CC)(C)C",
+                },
+                ("(", ")", "=", "C", "O"),
+            ),
+        )
+        for source, smiles, expected_support, expected_inventory in cases:
+            mol = parse_smiles(smiles)
+            with self.subTest(source=source, smiles=smiles):
+                self.assertEqual(
+                    expected_support,
+                    public_enum_support(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+                self.assertEqual(
+                    expected_inventory,
+                    public_token_inventory(
+                        mol,
+                        **supported_public_kwargs(
+                            rootedAtAtom=-1,
+                            isomericSmiles=True,
+                        ),
+                    ),
+                )
+
+    def test_small_sulfur_ring_chirality_surface(self) -> None:
+        # Regression pinned to RDKit SmilesDetailsTests.testIssue151:
+        # a small sulfur-containing ring should preserve the rooted chiral
+        # surface through exact all-roots enumeration.
+        source = (
+            "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/"
+            "SmilesDetailsTests.java:testIssue151 C1S[C@H]1O"
+        )
+        mol = parse_smiles("C1S[C@H]1O")
+        expected_support = {
+            "C1S[C@H]1O",
+            "C1[C@@H](S1)O",
+            "C1[C@H](O)S1",
+            "O[C@@H]1SC1",
+            "O[C@H]1CS1",
+            "S1C[C@@H]1O",
+            "S1[C@@H](O)C1",
+            "S1[C@H](C1)O",
+            "[C@@H]1(CS1)O",
+            "[C@@H]1(O)SC1",
+            "[C@H]1(O)CS1",
+            "[C@H]1(SC1)O",
+        }
+        expected_inventory = ("(", ")", "1", "C", "O", "S", "[C@@H]", "[C@H]")
+
+        with self.subTest(source=source):
+            self.assertEqual(
+                expected_support,
+                public_enum_support(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+            self.assertEqual(
+                expected_inventory,
+                public_token_inventory(
+                    mol,
+                    **supported_public_kwargs(
+                        rootedAtAtom=-1,
+                        isomericSmiles=True,
+                    ),
+                ),
+            )
+
     def test_explicit_kekule_input_normalizes_to_aromatic_nh(self) -> None:
         # Regression pinned to RDKit's aromatic normalization behavior from
         # explicit non-aromatic inputs like C1=CNC=C1 and

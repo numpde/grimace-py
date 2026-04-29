@@ -801,6 +801,96 @@
       ]
     },
     {
+      "id": "aromatic_atom_map_attachment_root0_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "1",
+        "[NH2:1]",
+        "c"
+      ],
+      "expected": [
+        "[NH2:1]c1ccccc1"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_root0_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "1",
+        "N",
+        "c"
+      ],
+      "expected": [
+        "Nc1ccccc1"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_all_roots_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "[NH2:1]",
+        "c"
+      ],
+      "expected": [
+        "[NH2:1]c1ccccc1",
+        "c1([NH2:1])ccccc1",
+        "c1(ccccc1)[NH2:1]",
+        "c1c([NH2:1])cccc1",
+        "c1c(cccc1)[NH2:1]",
+        "c1cc([NH2:1])ccc1",
+        "c1cc(ccc1)[NH2:1]",
+        "c1ccc([NH2:1])cc1",
+        "c1ccc(cc1)[NH2:1]",
+        "c1cccc([NH2:1])c1",
+        "c1cccc(c1)[NH2:1]",
+        "c1ccccc1[NH2:1]"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_all_roots_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "N",
+        "c"
+      ],
+      "expected": [
+        "Nc1ccccc1",
+        "c1(N)ccccc1",
+        "c1(ccccc1)N",
+        "c1c(N)cccc1",
+        "c1c(cccc1)N",
+        "c1cc(N)ccc1",
+        "c1cc(ccc1)N",
+        "c1ccc(N)cc1",
+        "c1ccc(cc1)N",
+        "c1cccc(N)c1",
+        "c1cccc(c1)N",
+        "c1ccccc1N"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

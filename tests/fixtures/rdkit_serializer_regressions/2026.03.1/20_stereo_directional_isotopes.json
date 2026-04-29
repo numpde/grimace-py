@@ -85,6 +85,50 @@
       "rdkit_sample_draw_budget": 1024
     },
     {
+      "id": "manual_set_bond_stereo_trans_fc_cf_surface",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereo STEREOTRANS FC=CF writer surface",
+      "smiles": "F/C=C/F",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 512,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=C\\F",
+        "C(=C\\F)/F",
+        "F/C=C/F"
+      ]
+    },
+    {
+      "id": "manual_set_bond_stereo_cis_fc_cf_surface",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereo STEREOCIS FC=CF writer surface",
+      "smiles": "F/C=C\\F",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 512,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=C/F",
+        "C(=C/F)/F",
+        "F/C=C\\F"
+      ]
+    },
+    {
       "id": "directional_bond_issue159_slash_input",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159",
       "smiles": "C/C=C/O",

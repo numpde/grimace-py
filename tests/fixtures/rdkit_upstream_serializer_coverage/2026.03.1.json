@@ -3792,7 +3792,16 @@
     {
       "claim": "manual-bond-stereo-isomeric-smiles",
       "end_line": 1807,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "manual_set_bond_stereo_trans_fc_cf_surface",
+            "manual_set_bond_stereo_cis_fc_cf_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Fixtures pin exact all-roots support for the trans and cis FC=CF surfaces produced by RDKit manual bond stereo assignment."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereo",
       "kind": "python_test",
       "language": "python",
@@ -3801,11 +3810,11 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereo",
-      "notes": "Manual Bond.SetStereo cis/trans FC=CF serialization is in-scope writer behavior, but the exact manually-mutated bond-stereo case is not yet pinned as a Grimace fixture.",
+      "notes": "Manual Bond.SetStereo cis/trans FC=CF writer surfaces are represented by exact serializer fixtures for the resulting RDKit directional-stereo molecules.",
       "parent": "TestCase",
       "snippet_sha256": "91deacb51a30ee6d0a956d97fe88f8289840e0d29110232a44cd1d71d1fc6715",
       "start_line": 1772,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

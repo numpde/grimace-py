@@ -151,6 +151,61 @@
       ]
     },
     {
+      "id": "all_bonds_explicit_aromatic_benzene_colons",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
+      "smiles": "c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "1",
+        ":",
+        "c"
+      ],
+      "expected": [
+        "c1:c:c:c:c:c:1"
+      ]
+    },
+    {
+      "id": "all_bonds_explicit_aromatic_pyridine_colons",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:aromatic double bonds allBondsExplicit sections",
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "1",
+        ":",
+        "c",
+        "n"
+      ],
+      "expected": [
+        "c1:c:c:c:n:c:1",
+        "c1:c:n:c:c:c:1"
+      ]
+    },
+    {
+      "id": "kekule_aromatic_nh_surface",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #2788 doKekule=true basics2",
+      "smiles": "c1cc[nH]c1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "kekule_smiles": true,
+      "expected_inventory": [
+        "1",
+        "=",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "C1=CC=CN1",
+        "C1=CNC=C1",
+        "C1C=CNC=1",
+        "C1NC=CC=1",
+        "N1C=CC=C1"
+      ]
+    },
+    {
       "id": "nonstereogenic_aldehyde_chirality_suppressed",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue143 aldehyde",
       "smiles": "CC[C@](C)(C)C=O",

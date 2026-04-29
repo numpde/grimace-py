@@ -5066,7 +5066,17 @@
     {
       "claim": "small-sulfur-ring-chirality-roundtrip",
       "end_line": 716,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "small_sulfur_ring_chirality_surface",
+            "small_sulfur_oxygen_ring_two_center_equivalent_surface",
+            "small_sulfur_oxygen_ring_two_center_inverted_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact all-roots fixtures cover the one-center and two-center Java sulfur/oxygen ring chirality examples."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue151",
       "kind": "java_test",
       "language": "java",
@@ -5074,11 +5084,11 @@
         "MolToSmiles"
       ],
       "name": "testIssue151",
-      "notes": "The first C1S[C@H]1O Java example is covered, but the two-center sulfur/oxygen ring variants in the same method are not yet pinned as exact Grimace serializer fixtures.",
+      "notes": "All Java testIssue151 sulfur/oxygen ring chirality examples are represented by exact serializer fixtures; the two equivalent two-center inputs share one exact support fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "4d5cba2bd6ca43ce04370474aa0c4c440616851cd77e151ba99d47b0eda46f6e",
       "start_line": 639,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

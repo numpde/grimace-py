@@ -9,6 +9,7 @@ from tests.helpers.rdkit_writer_cases import ROOTED_RANDOM_CASES
 from tests.rdkit_serialization._support import (
     assert_rooted_random_case_in_grimace_support,
     grimace_support,
+    rdkit_mol_to_smiles_kwargs_from_options,
     sample_rdkit_random_support,
 )
 
@@ -32,11 +33,12 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
         rdkit_seen = {
             Chem.MolToSmiles(
                 Chem.Mol(mol),
-                isomericSmiles=True,
-                kekuleSmiles=False,
-                rootedAtAtom=-1,
-                canonical=False,
-                doRandom=True,
+                **rdkit_mol_to_smiles_kwargs_from_options(
+                    rooted_at_atom=-1,
+                    isomeric_smiles=True,
+                    canonical=False,
+                    do_random=True,
+                ),
             )
             for _ in range(100)
         }
@@ -126,10 +128,12 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
             with self.subTest(root_idx=root_idx):
                 expected = Chem.MolToSmiles(
                     Chem.Mol(mol),
-                    rootedAtAtom=root_idx,
-                    canonical=False,
-                    doRandom=False,
-                    isomericSmiles=True,
+                    **rdkit_mol_to_smiles_kwargs_from_options(
+                        rooted_at_atom=root_idx,
+                        isomeric_smiles=True,
+                        canonical=False,
+                        do_random=False,
+                    ),
                 )
                 support = grimace_support(
                     mol,

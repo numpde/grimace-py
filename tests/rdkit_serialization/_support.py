@@ -42,6 +42,31 @@ def supported_public_kwargs_for_case(case: object) -> dict[str, object]:
     )
 
 
+def rdkit_mol_to_smiles_kwargs_from_options(
+    *,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    canonical: bool,
+    do_random: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> dict[str, object]:
+    kwargs = dict(
+        isomericSmiles=isomeric_smiles,
+        canonical=canonical,
+        doRandom=do_random,
+        kekuleSmiles=kekule_smiles,
+        allBondsExplicit=all_bonds_explicit,
+        allHsExplicit=all_hs_explicit,
+        ignoreAtomMapNumbers=ignore_atom_map_numbers,
+    )
+    if rooted_at_atom is not None:
+        kwargs["rootedAtAtom"] = rooted_at_atom
+    return kwargs
+
+
 def grimace_support(
     mol: Chem.Mol,
     *,
@@ -103,17 +128,16 @@ def sample_rdkit_random_support(
     seed: int = 12345,
 ) -> set[str]:
     rdBase.SeedRandomNumberGenerator(seed)
-    kwargs = dict(
-        isomericSmiles=isomeric_smiles,
-        kekuleSmiles=kekule_smiles,
+    kwargs = rdkit_mol_to_smiles_kwargs_from_options(
+        rooted_at_atom=root_idx,
+        isomeric_smiles=isomeric_smiles,
         canonical=False,
-        allBondsExplicit=all_bonds_explicit,
-        allHsExplicit=all_hs_explicit,
-        doRandom=True,
-        ignoreAtomMapNumbers=ignore_atom_map_numbers,
+        do_random=True,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
-    if root_idx is not None:
-        kwargs["rootedAtAtom"] = root_idx
     return {Chem.MolToSmiles(Chem.Mol(mol), **kwargs) for _ in range(draw_budget)}
 
 
@@ -129,17 +153,16 @@ def _deterministic_drift_draw_budget(mol: Chem.Mol) -> int:
 
 def rdkit_exact_writer_output(case: ExactWriterCase) -> str:
     mol = Chem.MolFromSmiles(case.smiles)
-    kwargs = dict(
-        isomericSmiles=case.isomeric_smiles,
+    kwargs = rdkit_mol_to_smiles_kwargs_from_options(
+        rooted_at_atom=case.rooted_at_atom,
+        isomeric_smiles=case.isomeric_smiles,
         canonical=case.rdkit_canonical,
-        doRandom=False,
-        kekuleSmiles=case.kekule_smiles,
-        allBondsExplicit=case.all_bonds_explicit,
-        allHsExplicit=case.all_hs_explicit,
-        ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+        do_random=False,
+        kekule_smiles=case.kekule_smiles,
+        all_bonds_explicit=case.all_bonds_explicit,
+        all_hs_explicit=case.all_hs_explicit,
+        ignore_atom_map_numbers=case.ignore_atom_map_numbers,
     )
-    if case.rooted_at_atom is not None:
-        kwargs["rootedAtAtom"] = case.rooted_at_atom
     return Chem.MolToSmiles(Chem.Mol(mol), **kwargs)
 
 
@@ -193,11 +216,12 @@ def assert_rooted_random_case_in_grimace_support(test_case, case: RootedRandomCa
         with test_case.subTest(smiles=case.smiles, root_idx=root_idx):
             rdkit_rooted = Chem.MolToSmiles(
                 Chem.Mol(mol),
-                isomericSmiles=True,
-                kekuleSmiles=False,
-                rootedAtAtom=root_idx,
-                canonical=False,
-                doRandom=False,
+                **rdkit_mol_to_smiles_kwargs_from_options(
+                    rooted_at_atom=root_idx,
+                    isomeric_smiles=True,
+                    canonical=False,
+                    do_random=False,
+                ),
             )
             test_case.assertEqual(expected, rdkit_rooted)
 

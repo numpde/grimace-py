@@ -11,11 +11,30 @@ PINNED_RDKIT_EXACT_SMALL_SUPPORT = "rdkit_exact_small_support"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
 PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
 PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
-PINNED_RDKIT_PARITY_FIXTURE_FAMILIES: tuple[str, ...] = (
-    PINNED_RDKIT_EXACT_SMALL_SUPPORT,
-    PINNED_RDKIT_ROOTED_RANDOM,
-    PINNED_RDKIT_SERIALIZER_REGRESSIONS,
-    PINNED_RDKIT_WRITER_MEMBERSHIP,
+PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
+    (
+        PINNED_RDKIT_EXACT_SMALL_SUPPORT,
+        "tests.rdkit_serialization.test_exact_small_support",
+    ),
+    (
+        PINNED_RDKIT_ROOTED_RANDOM,
+        "tests.rdkit_serialization.test_rooted_random.RDKITRootedRandomWriterTests."
+        "test_rdkit_rooted_random_generation_cases_are_in_grimace_support",
+    ),
+    (
+        PINNED_RDKIT_SERIALIZER_REGRESSIONS,
+        "tests.rdkit_serialization.test_serializer_regressions",
+    ),
+    (
+        PINNED_RDKIT_WRITER_MEMBERSHIP,
+        "tests.rdkit_serialization.test_writer_membership",
+    ),
+)
+PINNED_RDKIT_PARITY_FIXTURE_FAMILIES = tuple(
+    fixture_family for fixture_family, _module_name in PINNED_RDKIT_PARITY_TARGETS
+)
+PINNED_RDKIT_PARITY_MODULES = tuple(
+    module_name for _fixture_family, module_name in PINNED_RDKIT_PARITY_TARGETS
 )
 
 

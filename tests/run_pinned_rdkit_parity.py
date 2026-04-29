@@ -5,17 +5,9 @@ import unittest
 from rdkit import rdBase
 
 from tests.helpers.pinned_rdkit_fixtures import (
+    PINNED_RDKIT_PARITY_MODULES,
     has_pinned_rdkit_fixture,
     pinned_rdkit_parity_fixture_roots,
-)
-
-
-PINNED_RDKIT_PARITY_MODULES: tuple[str, ...] = (
-    "tests.rdkit_serialization.test_exact_small_support",
-    "tests.rdkit_serialization.test_rooted_random.RDKITRootedRandomWriterTests."
-    "test_rdkit_rooted_random_generation_cases_are_in_grimace_support",
-    "tests.rdkit_serialization.test_serializer_regressions",
-    "tests.rdkit_serialization.test_writer_membership",
 )
 
 

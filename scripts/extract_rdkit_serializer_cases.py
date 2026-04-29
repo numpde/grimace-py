@@ -319,14 +319,22 @@ def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
     return blocks
 
 
-def _source_files_from_manifest(source_root: Path) -> list[str]:
-    manifest = json.loads((source_root / "manifest.json").read_text())
-    return sorted(file["path"] for file in manifest["files"])
+def _load_source_manifest(source_root: Path) -> dict[str, Any]:
+    return json.loads((source_root / "manifest.json").read_text())
 
 
-def extract_blocks(source_root: Path) -> list[ExtractedBlock]:
+def _source_files_from_manifest(source_manifest: dict[str, Any]) -> list[str]:
+    return sorted(file["path"] for file in source_manifest["files"])
+
+
+def extract_blocks(
+    source_root: Path,
+    *,
+    source_manifest: dict[str, Any] | None = None,
+) -> list[ExtractedBlock]:
+    source_manifest = source_manifest or _load_source_manifest(source_root)
     blocks = []
-    for rel_path in _source_files_from_manifest(source_root):
+    for rel_path in _source_files_from_manifest(source_manifest):
         if rel_path.endswith(".cpp"):
             blocks.extend(_extract_cpp(source_root, rel_path))
         elif rel_path.endswith(".py"):
@@ -357,11 +365,11 @@ def _load_existing_reviews(output_path: Path) -> dict[str, dict[str, Any]]:
 
 
 def build_manifest(source_root: Path, output_path: Path) -> dict[str, Any]:
-    source_manifest = json.loads((source_root / "manifest.json").read_text())
+    source_manifest = _load_source_manifest(source_root)
     reviews = _load_existing_reviews(output_path)
     seen_ids: set[str] = set()
     entries = []
-    for block in extract_blocks(source_root):
+    for block in extract_blocks(source_root, source_manifest=source_manifest):
         entry_id = _entry_id(block, seen_ids)
         entry = {
             "id": entry_id,

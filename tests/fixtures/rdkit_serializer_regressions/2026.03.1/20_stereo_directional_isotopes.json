@@ -129,6 +129,27 @@
       ]
     },
     {
+      "id": "set_bond_dir_from_stereo_cis_butene_surface",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testSetBondDirFromStereo CC=CC STEREOCIS writer surface after SetDoubleBondNeighborDirections",
+      "smiles": "C/C=C\\C",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 512,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C/C",
+        "C(=C/C)/C",
+        "C/C=C\\C"
+      ]
+    },
+    {
       "id": "directional_bond_issue159_slash_input",
       "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159",
       "smiles": "C/C=C/O",

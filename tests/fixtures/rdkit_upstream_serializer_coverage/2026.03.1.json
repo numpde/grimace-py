@@ -4476,7 +4476,15 @@
     {
       "claim": "manual-bond-direction-from-stereo-writer",
       "end_line": 6326,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "set_bond_dir_from_stereo_cis_butene_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Exact all-roots fixture pins the C/C=C\\C surface asserted by the RDKit wrapper test."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsetbonddirfromstereo",
       "kind": "python_test",
       "language": "python",
@@ -4484,11 +4492,11 @@
         "MolToSmiles"
       ],
       "name": "testSetBondDirFromStereo",
-      "notes": "Manually sets double-bond stereo and derives bond directions before checking MolToSmiles; not yet pinned as a Grimace fixture.",
+      "notes": "The writer surface produced by SetDoubleBondNeighborDirections for cis CC=CC is represented by an exact serializer fixture; the mutation helper itself remains outside Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "ddc2ff56f28cdd85191a82e375b56f774a44b752803dd09193a387555eeda3e2",
       "start_line": 6319,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

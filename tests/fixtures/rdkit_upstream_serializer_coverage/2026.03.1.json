@@ -1377,7 +1377,7 @@
         "MolToSmiles"
       ],
       "name": "basic test",
-      "notes": "Molblock-backed double-bond/ring-closure writer output is not yet represented by a Grimace fixture.",
+      "notes": "Molblock-backed double-bond/ring-closure writer output is not yet represented by a passing Grimace fixture. Local RDKit 2026.03.1 probing of the small C/N=C/C1=C/CCCCCC1 surface found a one-output exact-support mismatch in directional ring-closure spelling, so this needs directional ring-closure parity work before pinning.",
       "parent": "Github #4582: double bonds and ring closures",
       "snippet_sha256": "6e14a7614a9fe32eac489410877bca0e542f65e23927e9da2882ab7d44511602",
       "start_line": 1697,
@@ -1433,7 +1433,7 @@
         "MolToSmiles"
       ],
       "name": "basics",
-      "notes": "Small molblock double-bond/ring-closure writer output is not yet represented by a Grimace fixture.",
+      "notes": "Small molblock double-bond/ring-closure writer output is not yet represented by a passing Grimace fixture. Local RDKit 2026.03.1 probing found the expected canonical output in support but a one-output exact-support mismatch between C1(=C\\CCCCCC1)/C=N/C and C1(=C/CCCCCC1)\\C=N\\C.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "1fba684ec0d7a3ec2fe07332324a9787acc45fc4d2fbd881d1baa3a92743c4c2",
       "start_line": 1730,
@@ -3927,7 +3927,7 @@
         "MolToSmiles"
       ],
       "name": "testBondSetStereoAtoms",
-      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces; this mutated-molecule writer behavior is not yet pinned.",
+      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Local RDKit 2026.03.1 probing found that four of the six generated isomer surfaces match Grimace exactly, while the two remaining stable round-tripped directional surfaces produce RDKit random outputs outside current Grimace support; this needs coupled directional-stereo parity work before pinning as a complete passing fixture.",
       "parent": "TestCase",
       "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
       "start_line": 1983,
@@ -5089,7 +5089,40 @@
     {
       "claim": "broad-java-stereochemistry-smiles",
       "end_line": 593,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "rooted_chiral_alcohol_all_roots",
+            "rooted_chiral_alcohol_root0",
+            "rooted_chiral_epoxide_all_roots",
+            "rooted_chiral_epoxide_root0",
+            "rooted_chirality_surface_1_f_c_br_i_cl",
+            "rooted_small_center_surface_1_f_c_h_cl_br",
+            "small_chiral_hydrogen_all_roots_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact fixtures cover the Java method's tetrasubstituted atom, chiral hydrogen, chiral alcohol, epoxide, rooted, explicit-H, and pseudo-ring hydrogen writer surfaces."
+        },
+        {
+          "cases": [
+            "cis_alkene_directional_bond_normalization",
+            "explicit_h_epoxide_normalizes_to_chiral_surface",
+            "java_stereochem_combined_atom_bond_surface",
+            "java_stereochem_substituted_alkene_surface",
+            "trans_alkene_directional_bond_normalization"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Exact fixtures cover the Java method's explicit-H epoxide, simple alkene, substituted alkene, and combined atom/bond stereo writer surfaces."
+        },
+        {
+          "cases": [
+            "canonical_chirality_01_tetrasubstituted_carbon",
+            "canonical_chirality_04_chiral_hydrogen"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/10_chirality.json",
+          "note": "Deterministic membership fixtures pin the canonical isomeric writer outputs used by the Java round-trip checks."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__teststereochem",
       "kind": "java_test",
       "language": "java",
@@ -5097,11 +5130,11 @@
         "MolToSmiles"
       ],
       "name": "testStereochem",
-      "notes": "Large Java stereochemistry method mixes CIP assertions, canonical isomeric round-trips, rooted writer calls, explicit-H handling, disconnected pseudo-ring hydrogen forms, simple alkene stereo, substituted alkene stereo, and combined atom/bond stereo. Existing Grimace fixtures cover selected chiral alcohol, epoxide, explicit-H epoxide, and alkene normalization slices, but not the full method as a complete pinned parity corpus.",
+      "notes": "The method mixes CIP assertions with writer round-trip checks. Non-writer CIP assertions are outside the serializer ledger; the MolToSmiles surfaces are represented by exact and membership fixtures for the tetrasubstituted atom, chiral hydrogen, explicit-H/pseudo-ring forms, chiral alcohol, epoxide, simple alkene, substituted alkene, and combined atom/bond stereo slices.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "9fb2f3af3d91152d1ca73269cf086947187d5a7fb4f696c28eb908c602761356",
       "start_line": 186,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

@@ -1528,6 +1528,37 @@
       ]
     },
     {
+      "id": "small_chiral_hydrogen_all_roots_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testStereochem explicit-H and pseudo-ring hydrogen forms",
+      "smiles": "Br[C@]1(F)(Cl).[H]1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 512,
+      "expected_inventory": [
+        "(",
+        ")",
+        "Br",
+        "Cl",
+        "F",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "Br[C@@H](Cl)F",
+        "Br[C@H](F)Cl",
+        "Cl[C@@H](F)Br",
+        "Cl[C@H](Br)F",
+        "F[C@@H](Br)Cl",
+        "F[C@H](Cl)Br",
+        "[C@@H](Br)(F)Cl",
+        "[C@@H](Cl)(Br)F",
+        "[C@@H](F)(Cl)Br",
+        "[C@H](Br)(Cl)F",
+        "[C@H](Cl)(F)Br",
+        "[C@H](F)(Br)Cl"
+      ]
+    },
+    {
       "id": "rooted_small_center_surface_2_fn_cl_br",
       "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test31ChiralitySmiles",
       "smiles": "FN(Cl)Br",

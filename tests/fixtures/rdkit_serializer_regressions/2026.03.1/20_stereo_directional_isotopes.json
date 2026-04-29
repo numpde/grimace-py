@@ -750,6 +750,85 @@
         "F/C=C/C=C(/Cl)Br",
         "F/C=C/C=C(\\Br)Cl"
       ]
+    },
+    {
+      "id": "java_stereochem_substituted_alkene_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testStereochem substituted alkene",
+      "smiles": "F\\C=C(/Cl)\\Br",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 1024,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "Cl",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "Br/C(=C/F)Cl",
+        "Br/C(Cl)=C/F",
+        "C(/Br)(=C\\F)Cl",
+        "C(/Br)(Cl)=C\\F",
+        "C(/Cl)(=C/F)Br",
+        "C(/Cl)(Br)=C/F",
+        "C(/F)=C(/Cl)Br",
+        "C(/F)=C(\\Br)Cl",
+        "C(=C(/Cl)Br)/F",
+        "C(=C(\\Br)Cl)/F",
+        "C(=C/F)(/Cl)Br",
+        "C(=C\\F)(/Br)Cl",
+        "Cl/C(=C\\F)Br",
+        "Cl/C(Br)=C\\F",
+        "F/C=C(/Br)Cl",
+        "F/C=C(\\Cl)Br"
+      ]
+    },
+    {
+      "id": "java_stereochem_combined_atom_bond_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testStereochem combined atom/bond stereo",
+      "smiles": "F[C@H](Cl)\\C=C(/F)",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "rdkit_sample_draw_budget": 1024,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "[C@@H]",
+        "[C@H]",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=C/[C@@H](Cl)F",
+        "C(/F)=C/[C@H](F)Cl",
+        "C(/[C@@H](Cl)F)=C/F",
+        "C(/[C@H](F)Cl)=C/F",
+        "C(=C/F)/[C@@H](Cl)F",
+        "C(=C/F)/[C@H](F)Cl",
+        "C(=C/[C@@H](Cl)F)/F",
+        "C(=C/[C@H](F)Cl)/F",
+        "Cl[C@@H](F)/C=C\\F",
+        "Cl[C@H](/C=C\\F)F",
+        "F/C=C\\[C@@H](Cl)F",
+        "F/C=C\\[C@H](F)Cl",
+        "F[C@@H](/C=C\\F)Cl",
+        "F[C@H](Cl)/C=C\\F",
+        "[C@@H](/C=C\\F)(F)Cl",
+        "[C@@H](Cl)(/C=C\\F)F",
+        "[C@@H](F)(Cl)/C=C\\F",
+        "[C@H](/C=C\\F)(Cl)F",
+        "[C@H](Cl)(F)/C=C\\F",
+        "[C@H](F)(/C=C\\F)Cl"
+      ]
     }
   ]
 }

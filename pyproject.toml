@@ -3,8 +3,8 @@ requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "grimace"
-version = "0.1.8"
+name = "grimace-py"
+version = "0.1.9"
 description = "Rust-first SMILES enumeration and next-token decoding with Python bindings."
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"

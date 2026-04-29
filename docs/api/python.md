@@ -32,13 +32,12 @@ Environment requirements:
 
 Install-path caveat:
 
-- this project is not currently published on PyPI
+- install the PyPI distribution named `grimace-py`
+- import the package as `grimace`
 - plain `pip install grimace` installs an unrelated older package, not this
   project
-- use a release wheel, sdist, or a local source build instead
-- example wheel install:
-  `python -m pip install`
-  `https://github.com/numpde/grimace-py/releases/download/v0.1.6/grimace-0.1.6-cp312-cp312-manylinux_2_28_x86_64.whl`
+- release wheels, sdists, and local source builds remain supported install
+  paths
 
 Current continuously exercised matrix:
 

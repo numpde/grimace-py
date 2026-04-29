@@ -57,13 +57,12 @@ with language transformers ([link](https://numpde.github.io/shared/msc/)).
 The only supported public Python import name is `grimace`.
 
 > [!CAUTION]
-> `grimace` is not currently published on PyPI. Plain `pip install grimace`
-> installs an unrelated older package, not this library. Install from a GitHub
-> release asset instead, for example:
+> Install the PyPI distribution named `grimace-py`; import the package as
+> `grimace`. Plain `pip install grimace` installs an unrelated older package,
+> not this library.
 >
 > ```bash
-> python -m pip install \
->   https://github.com/numpde/grimace-py/releases/download/v0.1.8/grimace-0.1.8-cp312-cp312-manylinux_2_28_x86_64.whl
+> python -m pip install grimace-py
 > ```
 
 Main entrypoints:
@@ -287,12 +286,24 @@ may be one character or several.
 
 ## Installation
 
-`grimace` is not currently published on PyPI. Plain `pip install grimace`
-installs an unrelated older project with the same name, not this library.
+Install the PyPI distribution named `grimace-py`:
 
-Release assets currently publish Linux `x86_64` wheels for CPython `3.12` and
-`3.13`. Other environments may require a source build and are not covered by
-the release wheels.
+```bash
+python -m pip install grimace-py
+```
+
+Then import it as `grimace`:
+
+```python
+import grimace
+```
+
+Plain `pip install grimace` installs an unrelated older project with the same
+name, not this library.
+
+PyPI and GitHub release assets currently publish Linux `x86_64` wheels for
+CPython `3.12` and `3.13`. Other environments may require a source build and
+are not covered by the release wheels.
 
 Current continuously exercised matrix:
 
@@ -309,11 +320,11 @@ not part of the current release asset or CI matrix.
 Python `3.11` is in that source-build category today: declared, but not part of
 the current CI matrix.
 
-Install with `pip install <wheel>` using one of these release assets:
+GitHub release wheels are also available:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
-| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.8/grimace-0.1.8-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.8/grimace-0.1.8-cp313-cp313-manylinux_2_28_x86_64.whl) |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.9/grimace_py-0.1.9-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.9/grimace_py-0.1.9-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 The built package depends on `rdkit>=2026.3`.
 

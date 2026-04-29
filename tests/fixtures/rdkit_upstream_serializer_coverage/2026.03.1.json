@@ -1901,7 +1901,15 @@
     {
       "claim": "complex-dative-metal-smiles",
       "end_line": 2498,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "dative_cxsmiles_double_double_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/50_dative_writer.json",
+          "note": "Writer-membership fixture pins the canonical Fe/N/O dative MolToSmiles output asserted by this test."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dative_bond_in_cxsmiles_double_double_def",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1910,17 +1918,25 @@
         "SmilesWriteParams"
       ],
       "name": "Dative  bond in cxsmiles double double def",
-      "notes": "Complex Fe/N/O dative writer output is not yet represented by a Grimace fixture. Local RDKit 2026.03.1 probing found exact-support mismatches on the canonical output surface, so this needs dative/directional parity work before pinning as a passing fixture.",
+      "notes": "Complex Fe/N/O dative canonical writer output is represented by a writer-membership fixture. Local RDKit 2026.03.1 probing still found broader exact-support mismatches on this molecule, so exact random-support equality is intentionally not claimed here.",
       "parent": null,
       "snippet_sha256": "9842aafadd9972412178563011fc20dd28682b84bce4a35107d0ab7a17245089",
       "start_line": 2478,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "complex-dative-metal-smiles",
       "end_line": 2497,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "dative_cxsmiles_double_double_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/50_dative_writer.json",
+          "note": "Writer-membership fixture pins the canonical Fe/N/O dative MolToSmiles output asserted by this section."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dative_bond_in_cxsmiles_double_double_def__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1929,11 +1945,11 @@
         "SmilesWriteParams"
       ],
       "name": "basics",
-      "notes": "Complex Fe/N/O dative writer output with canonical SmilesWriteParams is not yet represented by a Grimace fixture. Local probing found exact-support mismatches on the asserted output surface, so this needs dative/directional parity work before pinning.",
+      "notes": "Complex Fe/N/O dative writer output with canonical SmilesWriteParams is represented by a writer-membership fixture. Local probing found broader exact-support mismatches on this molecule, so exact random-support equality is intentionally not claimed here.",
       "parent": "Dative  bond in cxsmiles double double def",
       "snippet_sha256": "82c593bd2a6ea69377afd5e2bdcbaf9d1aff426913ecb78abe30bf96128904f0",
       "start_line": 2479,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

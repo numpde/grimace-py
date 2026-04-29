@@ -1,0 +1,14 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "dative_cxsmiles_double_double_canonical",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Dative bond in cxsmiles double double def",
+      "smiles": "C1CCC2=[N]1[Fe](\\[O]=C(\\C)/C=C/C1CCCC1)[N]1=C(CCC1)C2",
+      "expected": "CC(/C=C/C1CCCC1)=[O]->[Fe]1<-[N]2=C(CC3=[N]->1CCC3)CCC2",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    }
+  ]
+}

@@ -1,0 +1,238 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "dative_bond_direction_surface_1_nh3_cu_root-1",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #3774 MolToSmarts inverts direction of dative bond",
+      "smiles": "[NH3][Cu+]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "->",
+        "<-",
+        "[Cu+]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[Cu+]<-[NH3]",
+        "[NH3]->[Cu+]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_2_nh3_cu_root0",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #3774 MolToSmarts inverts direction of dative bond",
+      "smiles": "[NH3][Cu+]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "->",
+        "[Cu+]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[NH3]->[Cu+]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_3_nh3_cu_root1",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #3774 MolToSmarts inverts direction of dative bond",
+      "smiles": "[NH3][Cu+]",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "<-",
+        "[Cu+]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[Cu+]<-[NH3]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_4_nh2_cu_root-1",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #3774 MolToSmarts inverts direction of dative bond",
+      "smiles": "[NH2]<-[Cu+]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "->",
+        "<-",
+        "[Cu+]",
+        "[NH2]"
+      ],
+      "expected": [
+        "[Cu+]->[NH2]",
+        "[NH2]<-[Cu+]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_5_nh2_cu_root0",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #3774 MolToSmarts inverts direction of dative bond",
+      "smiles": "[NH2]<-[Cu+]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "<-",
+        "[Cu+]",
+        "[NH2]"
+      ],
+      "expected": [
+        "[NH2]<-[Cu+]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_6_nh2_cu_root1",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #3774 MolToSmarts inverts direction of dative bond",
+      "smiles": "[NH2]<-[Cu+]",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "->",
+        "[Cu+]",
+        "[NH2]"
+      ],
+      "expected": [
+        "[Cu+]->[NH2]"
+      ]
+    },
+    {
+      "id": "fragment_ring_output_order_1_occn_cco_all_roots",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: smilesBondOutputOrder basics",
+      "smiles": "OCCN.CCO",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "C",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "C(CN)O.C(C)O",
+        "C(CN)O.C(O)C",
+        "C(CN)O.CCO",
+        "C(CN)O.OCC",
+        "C(CO)N.C(C)O",
+        "C(CO)N.C(O)C",
+        "C(CO)N.CCO",
+        "C(CO)N.OCC",
+        "C(N)CO.C(C)O",
+        "C(N)CO.C(O)C",
+        "C(N)CO.CCO",
+        "C(N)CO.OCC",
+        "C(O)CN.C(C)O",
+        "C(O)CN.C(O)C",
+        "C(O)CN.CCO",
+        "C(O)CN.OCC",
+        "NCCO.C(C)O",
+        "NCCO.C(O)C",
+        "NCCO.CCO",
+        "NCCO.OCC",
+        "OCCN.C(C)O",
+        "OCCN.C(O)C",
+        "OCCN.CCO",
+        "OCCN.OCC"
+      ]
+    },
+    {
+      "id": "fragment_ring_output_order_2_occn_cco_root0",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: smilesBondOutputOrder basics rooted first fragment",
+      "smiles": "OCCN.CCO",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "C",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "OCCN.C(C)O",
+        "OCCN.C(O)C",
+        "OCCN.CCO",
+        "OCCN.OCC"
+      ]
+    },
+    {
+      "id": "fragment_ring_output_order_3_occn_cco_root4",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: smilesBondOutputOrder basics rooted second fragment",
+      "smiles": "OCCN.CCO",
+      "rooted_at_atom": 4,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "C",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "C(CN)O.CCO",
+        "C(CO)N.CCO",
+        "C(N)CO.CCO",
+        "C(O)CN.CCO",
+        "NCCO.CCO",
+        "OCCN.CCO"
+      ]
+    },
+    {
+      "id": "fragment_ring_output_order_4_oc1cccn1_all_roots",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #5585 incorrect ordering for ring closures",
+      "smiles": "OC1CCCN1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "C1(CCCN1)O",
+        "C1(NCCC1)O",
+        "C1(O)CCCN1",
+        "C1(O)NCCC1",
+        "C1C(NCC1)O",
+        "C1C(O)NCC1",
+        "C1CC(NC1)O",
+        "C1CC(O)NC1",
+        "C1CCC(N1)O",
+        "C1CCC(O)N1",
+        "C1CCNC1O",
+        "C1CNC(C1)O",
+        "C1CNC(O)C1",
+        "C1NC(CC1)O",
+        "C1NC(O)CC1",
+        "N1C(CCC1)O",
+        "N1C(O)CCC1",
+        "N1CCCC1O",
+        "OC1CCCN1",
+        "OC1NCCC1"
+      ]
+    },
+    {
+      "id": "fragment_ring_output_order_5_oc1cccn1_root0",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: github #5585 incorrect ordering for ring closures rooted",
+      "smiles": "OC1CCCN1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "C",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "OC1CCCN1",
+        "OC1NCCC1"
+      ]
+    }
+  ]
+}

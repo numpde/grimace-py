@@ -56,43 +56,55 @@ def load_pinned_rdkit_fixture_cases(
     fixture_label: str,
 ) -> tuple[PinnedFixtureCase, ...]:
     fixture_path = fixture_root / f"{rdkit_version}.json"
-    if not fixture_path.is_file():
+    fixture_dir = fixture_root / rdkit_version
+    if fixture_path.is_file():
+        payloads = ((fixture_path, json.loads(fixture_path.read_text())),)
+    elif fixture_dir.is_dir():
+        payloads = tuple(
+            (path, json.loads(path.read_text()))
+            for path in sorted(fixture_dir.glob("*.json"))
+        )
+    else:
         raise FileNotFoundError(
             f"no pinned {fixture_label} fixture for RDKit {rdkit_version}"
         )
 
-    data = json.loads(fixture_path.read_text())
-    if data.get("rdkit_version") != rdkit_version:
-        raise ValueError(
-            f"fixture {fixture_path} declares rdkit_version={data.get('rdkit_version')!r}, "
-            f"expected {rdkit_version!r}"
-        )
-
     cases = []
     seen_ids: set[str] = set()
-    for raw_case in data["cases"]:
-        case_id = str(raw_case["id"])
-        if not case_id:
-            raise ValueError(f"fixture {fixture_path} contains an empty case id")
-        if case_id in seen_ids:
+    for current_fixture_path, data in payloads:
+        if data.get("rdkit_version") != rdkit_version:
             raise ValueError(
-                f"fixture {fixture_path} contains duplicate case id {case_id!r}"
+                f"fixture {current_fixture_path} declares "
+                f"rdkit_version={data.get('rdkit_version')!r}, "
+                f"expected {rdkit_version!r}"
             )
-        seen_ids.add(case_id)
+        for raw_case in data["cases"]:
+            case_id = str(raw_case["id"])
+            if not case_id:
+                raise ValueError(
+                    f"fixture {current_fixture_path} contains an empty case id"
+                )
+            if case_id in seen_ids:
+                raise ValueError(
+                    f"fixture {current_fixture_path} contains duplicate case id "
+                    f"{case_id!r}"
+                )
+            seen_ids.add(case_id)
 
-        source = str(raw_case["source"])
-        if not source:
-            raise ValueError(
-                f"fixture {fixture_path} case {case_id!r} contains an empty source"
-            )
+            source = str(raw_case["source"])
+            if not source:
+                raise ValueError(
+                    f"fixture {current_fixture_path} case {case_id!r} "
+                    "contains an empty source"
+                )
 
-        cases.append(
-            PinnedFixtureCase(
-                case_id=case_id,
-                source=source,
-                raw=raw_case,
-                fixture_path=fixture_path,
+            cases.append(
+                PinnedFixtureCase(
+                    case_id=case_id,
+                    source=source,
+                    raw=raw_case,
+                    fixture_path=current_fixture_path,
+                )
             )
-        )
 
     return tuple(cases)

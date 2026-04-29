@@ -1,0 +1,362 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "explicit_kekule_pyrrole_root0_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1121-1126",
+      "smiles": "C1=CNC=C1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "c1c[nH]cc1",
+        "c1cc[nH]c1"
+      ]
+    },
+    {
+      "id": "explicit_kekule_pyrrole_root2_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1121-1126",
+      "smiles": "C1=CNC=C1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "[nH]1cccc1"
+      ]
+    },
+    {
+      "id": "explicit_h_kekule_pyrrole_root0_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1127-1132",
+      "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "c1c[nH]cc1",
+        "c1cc[nH]c1"
+      ]
+    },
+    {
+      "id": "explicit_h_kekule_pyrrole_root2_normalizes_aromatic_nh",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1127-1132",
+      "smiles": "[CH]1=[CH][NH][CH]=[CH]1",
+      "rooted_at_atom": 2,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "[nH]",
+        "c"
+      ],
+      "expected": [
+        "[nH]1cccc1"
+      ]
+    },
+    {
+      "id": "explicit_kekule_benzene_normalizes_aromatic",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046 benzene",
+      "smiles": "[CH]1=[CH][CH]=[CH][CH]=[CH]1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "c"
+      ],
+      "expected": [
+        "c1ccccc1"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_root0_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "1",
+        "[NH2:1]",
+        "c"
+      ],
+      "expected": [
+        "[NH2:1]c1ccccc1"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_root0_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "1",
+        "N",
+        "c"
+      ],
+      "expected": [
+        "Nc1ccccc1"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_all_roots_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "[NH2:1]",
+        "c"
+      ],
+      "expected": [
+        "[NH2:1]c1ccccc1",
+        "c1([NH2:1])ccccc1",
+        "c1(ccccc1)[NH2:1]",
+        "c1c([NH2:1])cccc1",
+        "c1c(cccc1)[NH2:1]",
+        "c1cc([NH2:1])ccc1",
+        "c1cc(ccc1)[NH2:1]",
+        "c1ccc([NH2:1])cc1",
+        "c1ccc(cc1)[NH2:1]",
+        "c1cccc([NH2:1])c1",
+        "c1cccc(c1)[NH2:1]",
+        "c1ccccc1[NH2:1]"
+      ]
+    },
+    {
+      "id": "aromatic_atom_map_attachment_all_roots_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[NH2:1]c1ccccc1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "N",
+        "c"
+      ],
+      "expected": [
+        "Nc1ccccc1",
+        "c1(N)ccccc1",
+        "c1(ccccc1)N",
+        "c1c(N)cccc1",
+        "c1c(cccc1)N",
+        "c1cc(N)ccc1",
+        "c1cc(ccc1)N",
+        "c1ccc(N)cc1",
+        "c1ccc(cc1)N",
+        "c1cccc(N)c1",
+        "c1cccc(c1)N",
+        "c1ccccc1N"
+      ]
+    },
+    {
+      "id": "protonated_ring_normalization_explicit_start",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1670149",
+      "smiles": "C1[NH2+]CCC1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "C",
+        "[NH2+]"
+      ],
+      "expected": [
+        "C1CCC[NH2+]1",
+        "C1CC[NH2+]C1",
+        "C1C[NH2+]CC1",
+        "C1[NH2+]CCC1",
+        "[NH2+]1CCCC1"
+      ]
+    },
+    {
+      "id": "protonated_ring_normalization_implicit_position",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1670149",
+      "smiles": "C1CC[NH2+]C1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "C",
+        "[NH2+]"
+      ],
+      "expected": [
+        "C1CCC[NH2+]1",
+        "C1CC[NH2+]C1",
+        "C1C[NH2+]CC1",
+        "C1[NH2+]CCC1",
+        "[NH2+]1CCCC1"
+      ]
+    },
+    {
+      "id": "explicit_kekule_benzene_aromatic_normalization_duplicate_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1113-1120",
+      "smiles": "[CH]1=[CH][CH]=[CH][CH]=[CH]1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "c"
+      ],
+      "expected": [
+        "c1ccccc1"
+      ]
+    },
+    {
+      "id": "pyridine_aromatic_normalization_all_roots",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:1119-1120",
+      "smiles": "c1ccccn1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "1",
+        "c",
+        "n"
+      ],
+      "expected": [
+        "c1ccccn1",
+        "c1cccnc1",
+        "c1ccncc1",
+        "c1cnccc1",
+        "c1ncccc1",
+        "n1ccccc1"
+      ]
+    },
+    {
+      "id": "cyclohexyl_halide_nonstereo_normalization_1_cl_ch_1ccccc1",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046",
+      "smiles": "Cl[CH]1CCCCC1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "Cl"
+      ],
+      "expected": [
+        "C1(CCCCC1)Cl",
+        "C1(Cl)CCCCC1",
+        "C1C(CCCC1)Cl",
+        "C1C(Cl)CCCC1",
+        "C1CC(CCC1)Cl",
+        "C1CC(Cl)CCC1",
+        "C1CCC(CC1)Cl",
+        "C1CCC(Cl)CC1",
+        "C1CCCC(C1)Cl",
+        "C1CCCC(Cl)C1",
+        "C1CCCCC1Cl",
+        "ClC1CCCCC1"
+      ]
+    },
+    {
+      "id": "cyclohexyl_halide_nonstereo_normalization_2_cl_c_h_1ccccc1",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046",
+      "smiles": "Cl[C@H]1CCCCC1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "Cl"
+      ],
+      "expected": [
+        "C1(CCCCC1)Cl",
+        "C1(Cl)CCCCC1",
+        "C1C(CCCC1)Cl",
+        "C1C(Cl)CCCC1",
+        "C1CC(CCC1)Cl",
+        "C1CC(Cl)CCC1",
+        "C1CCC(CC1)Cl",
+        "C1CCC(Cl)CC1",
+        "C1CCCC(C1)Cl",
+        "C1CCCC(Cl)C1",
+        "C1CCCCC1Cl",
+        "ClC1CCCCC1"
+      ]
+    },
+    {
+      "id": "cyclohexyl_halide_nonstereo_normalization_3_cl_c_h_1c_br_cccc1",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1719046",
+      "smiles": "Cl[C@H]1C(Br)CCCC1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "Br",
+        "C",
+        "Cl"
+      ],
+      "expected": [
+        "BrC1C(CCCC1)Cl",
+        "BrC1C(Cl)CCCC1",
+        "BrC1CCCCC1Cl",
+        "C1(Br)C(CCCC1)Cl",
+        "C1(Br)C(Cl)CCCC1",
+        "C1(Br)CCCCC1Cl",
+        "C1(C(Br)CCCC1)Cl",
+        "C1(C(CCCC1)Br)Cl",
+        "C1(C(CCCC1)Cl)Br",
+        "C1(C(Cl)CCCC1)Br",
+        "C1(CCCCC1Br)Cl",
+        "C1(CCCCC1Cl)Br",
+        "C1(Cl)C(Br)CCCC1",
+        "C1(Cl)C(CCCC1)Br",
+        "C1(Cl)CCCCC1Br",
+        "C1C(Br)C(CCC1)Cl",
+        "C1C(Br)C(Cl)CCC1",
+        "C1C(C(Br)CCC1)Cl",
+        "C1C(C(CCC1)Br)Cl",
+        "C1C(C(CCC1)Cl)Br",
+        "C1C(C(Cl)CCC1)Br",
+        "C1C(Cl)C(Br)CCC1",
+        "C1C(Cl)C(CCC1)Br",
+        "C1CC(Br)C(CC1)Cl",
+        "C1CC(Br)C(Cl)CC1",
+        "C1CC(C(Br)CC1)Cl",
+        "C1CC(C(CC1)Br)Cl",
+        "C1CC(C(CC1)Cl)Br",
+        "C1CC(C(Cl)CC1)Br",
+        "C1CC(Cl)C(Br)CC1",
+        "C1CC(Cl)C(CC1)Br",
+        "C1CCC(Br)C(C1)Cl",
+        "C1CCC(Br)C(Cl)C1",
+        "C1CCC(C(Br)C1)Cl",
+        "C1CCC(C(C1)Br)Cl",
+        "C1CCC(C(C1)Cl)Br",
+        "C1CCC(C(Cl)C1)Br",
+        "C1CCC(Cl)C(Br)C1",
+        "C1CCC(Cl)C(C1)Br",
+        "C1CCCC(Br)C1Cl",
+        "C1CCCC(C1Br)Cl",
+        "C1CCCC(C1Cl)Br",
+        "C1CCCC(Cl)C1Br",
+        "ClC1C(Br)CCCC1",
+        "ClC1C(CCCC1)Br",
+        "ClC1CCCCC1Br"
+      ]
+    }
+  ]
+}

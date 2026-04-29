@@ -1,0 +1,455 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "explicit_h_epoxide_normalizes_to_chiral_surface",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:483-487 epoxide explicit-H",
+      "smiles": "C1O[C@@]1([H])F",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "F",
+        "O",
+        "[C@@H]",
+        "[C@H]"
+      ],
+      "expected": [
+        "C1O[C@H]1F",
+        "C1[C@@H](O1)F",
+        "C1[C@H](F)O1",
+        "F[C@@H]1OC1",
+        "F[C@H]1CO1",
+        "O1C[C@@H]1F",
+        "O1[C@@H](F)C1",
+        "O1[C@H](C1)F",
+        "[C@@H]1(CO1)F",
+        "[C@@H]1(F)OC1",
+        "[C@H]1(F)CO1",
+        "[C@H]1(OC1)F"
+      ]
+    },
+    {
+      "id": "cis_alkene_directional_bond_normalization",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:492-508 cis alkene normalization",
+      "smiles": "F\\C=C/Br",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "Br\\C=C/F",
+        "C(=C\\Br)\\F",
+        "C(=C\\F)\\Br",
+        "C(\\Br)=C\\F",
+        "C(\\F)=C\\Br",
+        "F\\C=C/Br"
+      ]
+    },
+    {
+      "id": "trans_alkene_directional_bond_normalization",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:510-526 trans alkene normalization",
+      "smiles": "F\\C=C\\Br",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "Br\\C=C\\F",
+        "C(=C/Br)\\F",
+        "C(=C/F)\\Br",
+        "C(\\Br)=C/F",
+        "C(\\F)=C/Br",
+        "F\\C=C\\Br"
+      ]
+    },
+    {
+      "id": "directional_bond_issue159_slash_input",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159",
+      "smiles": "C/C=C/O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C\\O",
+        "C(/O)=C\\C",
+        "C(=C\\C)/O",
+        "C(=C\\O)/C",
+        "C/C=C/O",
+        "O/C=C/C"
+      ]
+    },
+    {
+      "id": "directional_bond_issue159_branch_input",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIssue159",
+      "smiles": "C(\\C)=C/O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "O",
+        "\\"
+      ],
+      "expected": [
+        "C(/C)=C\\O",
+        "C(/O)=C\\C",
+        "C(=C\\C)/O",
+        "C(=C\\O)/C",
+        "C/C=C/O",
+        "O/C=C/C"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_all_roots_isomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "all_bonds_explicit": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F",
+        "Cl/N=C/F",
+        "F/C=N/Cl",
+        "N(/Cl)=C\\F",
+        "N(=C\\F)/Cl"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_root1_isomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "all_bonds_explicit": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_all_roots_nonisomeric_all_bonds_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F",
+        "Cl/N=C/F",
+        "F/C=N/Cl",
+        "N(/Cl)=C\\F",
+        "N(=C\\F)/Cl"
+      ]
+    },
+    {
+      "id": "imine_stereo_orientation_root1_nonisomeric_all_bonds_explicit",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "F/C=N/Cl",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "C",
+        "Cl",
+        "F",
+        "N",
+        "\\"
+      ],
+      "expected": [
+        "C(/F)=N\\Cl",
+        "C(=N\\Cl)/F"
+      ]
+    },
+    {
+      "id": "isotope_surface_nonisomeric_collapses_13c",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIsotopes",
+      "smiles": "C[13C](C)(C)C",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C"
+      ],
+      "expected": [
+        "C(C)(C)(C)C",
+        "CC(C)(C)C"
+      ]
+    },
+    {
+      "id": "isotope_surface_isomeric_keeps_13c",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testIsotopes",
+      "smiles": "C[13C](C)(C)C",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "[13C]"
+      ],
+      "expected": [
+        "C[13C](C)(C)C",
+        "[13C](C)(C)(C)C"
+      ]
+    },
+    {
+      "id": "isotope_placement_terminal_15f_nonisomeric_collapses",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:ensure unused features are not used isotopes",
+      "smiles": "FOCN[15F]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "F",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "C(NF)OF",
+        "C(OF)NF",
+        "FNCOF",
+        "FOCNF",
+        "N(COF)F",
+        "N(F)COF",
+        "O(CNF)F",
+        "O(F)CNF"
+      ]
+    },
+    {
+      "id": "isotope_placement_terminal_15f_isomeric_keeps_label",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:ensure unused features are not used isotopes",
+      "smiles": "FOCN[15F]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "F",
+        "N",
+        "O",
+        "[15F]"
+      ],
+      "expected": [
+        "C(N[15F])OF",
+        "C(OF)N[15F]",
+        "FOCN[15F]",
+        "N(COF)[15F]",
+        "N([15F])COF",
+        "O(CN[15F])F",
+        "O(F)CN[15F]",
+        "[15F]NCOF"
+      ]
+    },
+    {
+      "id": "isotope_placement_leading_15f_nonisomeric_collapses",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:ensure unused features are not used isotopes",
+      "smiles": "[15F]OCNF",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "F",
+        "N",
+        "O"
+      ],
+      "expected": [
+        "C(NF)OF",
+        "C(OF)NF",
+        "FNCOF",
+        "FOCNF",
+        "N(COF)F",
+        "N(F)COF",
+        "O(CNF)F",
+        "O(F)CNF"
+      ]
+    },
+    {
+      "id": "isotope_placement_leading_15f_isomeric_keeps_label",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:ensure unused features are not used isotopes",
+      "smiles": "[15F]OCNF",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "F",
+        "N",
+        "O",
+        "[15F]"
+      ],
+      "expected": [
+        "C(NF)O[15F]",
+        "C(O[15F])NF",
+        "FNCO[15F]",
+        "N(CO[15F])F",
+        "N(F)CO[15F]",
+        "O(CNF)[15F]",
+        "O([15F])CNF",
+        "[15F]OCNF"
+      ]
+    },
+    {
+      "id": "rooted_conjugated_diene_stereo_surface_isomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "C(\\C=C\\F)=C(/Cl)Br",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "Cl",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "F/C=C/C=C(/Cl)Br",
+        "F/C=C/C=C(\\Br)Cl"
+      ]
+    },
+    {
+      "id": "rooted_conjugated_diene_stereo_surface_nonisomeric",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174",
+      "smiles": "C(\\C=C\\F)=C(/Cl)Br",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "Br",
+        "C",
+        "Cl",
+        "F"
+      ],
+      "expected": [
+        "FC=CC=C(Br)Cl",
+        "FC=CC=C(Cl)Br"
+      ]
+    },
+    {
+      "id": "conjugated_diene_stereo_normalization",
+      "source": "RDKit Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java:testBug1842174 diene",
+      "smiles": "C(\\C=C\\F)=C(/Cl)Br",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "/",
+        "=",
+        "Br",
+        "C",
+        "Cl",
+        "F",
+        "\\"
+      ],
+      "expected": [
+        "Br/C(=C\\C=C\\F)Cl",
+        "Br/C(Cl)=C\\C=C\\F",
+        "C(/Br)(=C/C=C/F)Cl",
+        "C(/Br)(Cl)=C/C=C/F",
+        "C(/C=C(/Cl)Br)=C\\F",
+        "C(/C=C(\\Br)Cl)=C\\F",
+        "C(/C=C/F)=C(/Br)Cl",
+        "C(/C=C/F)=C(\\Cl)Br",
+        "C(/Cl)(=C\\C=C\\F)Br",
+        "C(/Cl)(Br)=C\\C=C\\F",
+        "C(/F)=C\\C=C(/Br)Cl",
+        "C(/F)=C\\C=C(\\Cl)Br",
+        "C(=C(/Br)Cl)/C=C/F",
+        "C(=C(\\Cl)Br)/C=C/F",
+        "C(=C/C=C/F)(/Br)Cl",
+        "C(=C\\C=C(/Br)Cl)/F",
+        "C(=C\\C=C(\\Cl)Br)/F",
+        "C(=C\\C=C\\F)(/Cl)Br",
+        "C(=C\\F)/C=C(/Cl)Br",
+        "C(=C\\F)/C=C(\\Br)Cl",
+        "Cl/C(=C/C=C/F)Br",
+        "Cl/C(Br)=C/C=C/F",
+        "F/C=C/C=C(/Cl)Br",
+        "F/C=C/C=C(\\Br)Cl"
+      ]
+    }
+  ]
+}

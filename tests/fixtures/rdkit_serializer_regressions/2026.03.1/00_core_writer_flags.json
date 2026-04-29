@@ -1,0 +1,260 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "metal_bound_atoms_keep_explicit_hydrogens_neutral",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:atoms bound to metals should always have Hs specified",
+      "smiles": "Cl[Pt](F)([NH2])[OH]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "[Cl]",
+        "[F]",
+        "[NH2]",
+        "[OH]",
+        "[Pt]"
+      ],
+      "expected": [
+        "[Cl][Pt]([F])([NH2])[OH]",
+        "[Cl][Pt]([F])([OH])[NH2]",
+        "[Cl][Pt]([NH2])([F])[OH]",
+        "[Cl][Pt]([NH2])([OH])[F]",
+        "[Cl][Pt]([OH])([F])[NH2]",
+        "[Cl][Pt]([OH])([NH2])[F]"
+      ]
+    },
+    {
+      "id": "metal_bound_atoms_keep_explicit_hydrogens_dative",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:atoms bound to metals should always have Hs specified",
+      "smiles": "Cl[Pt](F)(<-[NH3])[OH]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "<-",
+        "[Cl]",
+        "[F]",
+        "[NH3]",
+        "[OH]",
+        "[Pt]"
+      ],
+      "expected": [
+        "[Cl][Pt](<-[NH3])([F])[OH]",
+        "[Cl][Pt](<-[NH3])([OH])[F]",
+        "[Cl][Pt]([F])(<-[NH3])[OH]",
+        "[Cl][Pt]([F])([OH])<-[NH3]",
+        "[Cl][Pt]([OH])(<-[NH3])[F]",
+        "[Cl][Pt]([OH])([F])<-[NH3]"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root0_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "C",
+        "[CH3:7]"
+      ],
+      "expected": [
+        "[CH3:7]C"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root0_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "C"
+      ],
+      "expected": [
+        "CC"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root1_keep_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        "C",
+        "[CH3:7]"
+      ],
+      "expected": [
+        "C[CH3:7]"
+      ]
+    },
+    {
+      "id": "ignore_atom_map_numbers_root1_strip_maps",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testIgnoreAtomMapNumbers",
+      "smiles": "[CH3:7]C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": true,
+      "expected_inventory": [
+        "C"
+      ],
+      "expected": [
+        "CC"
+      ]
+    },
+    {
+      "id": "disconnected_rooted_atom_roots_selected_fragment_root3",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github 8328 MolToSmiles with rootedAtAtom for multiple fragments",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 3,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ],
+      "expected": [
+        "[C:1][C:2].[C:4][N:3]=[O:5]",
+        "[C:2][C:1].[C:4][N:3]=[O:5]"
+      ]
+    },
+    {
+      "id": "disconnected_rooted_atom_roots_selected_fragment_root4",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github 8328 MolToSmiles with rootedAtAtom for multiple fragments",
+      "smiles": "[C:1][C:2].[N:3]([C:4])=[O:5]",
+      "rooted_at_atom": 4,
+      "isomeric_smiles": false,
+      "ignore_atom_map_numbers": false,
+      "expected_inventory": [
+        ".",
+        "=",
+        "[C:1]",
+        "[C:2]",
+        "[C:4]",
+        "[N:3]",
+        "[O:5]"
+      ],
+      "expected": [
+        "[C:1][C:2].[O:5]=[N:3][C:4]",
+        "[C:2][C:1].[O:5]=[N:3][C:4]"
+      ]
+    },
+    {
+      "id": "all_bonds_explicit_aromatic_benzene_colons",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
+      "smiles": "c1ccccc1",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "1",
+        ":",
+        "c"
+      ],
+      "expected": [
+        "c1:c:c:c:c:c:1"
+      ]
+    },
+    {
+      "id": "all_bonds_explicit_aromatic_pyridine_colons",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:aromatic double bonds allBondsExplicit sections",
+      "smiles": "c1ccncc1",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "1",
+        ":",
+        "c",
+        "n"
+      ],
+      "expected": [
+        "c1:c:c:c:n:c:1",
+        "c1:c:n:c:c:c:1"
+      ]
+    },
+    {
+      "id": "kekule_aromatic_nh_surface",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #2788 doKekule=true basics2",
+      "smiles": "c1cc[nH]c1",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "kekule_smiles": true,
+      "expected_inventory": [
+        "1",
+        "=",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "C1=CC=CN1",
+        "C1=CNC=C1",
+        "C1C=CNC=1",
+        "C1NC=CC=1",
+        "N1C=CC=C1"
+      ]
+    },
+    {
+      "id": "all_bonds_explicit_aliphatic_branch",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test75AllBondsExplicit",
+      "smiles": "CCC",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "-",
+        "C"
+      ],
+      "expected": [
+        "C(-C)-C"
+      ]
+    },
+    {
+      "id": "rooted_tertiary_amine_branch_shape",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test40SmilesRootedAtAtom",
+      "smiles": "CN(C)C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "N(C)(C)C"
+      ]
+    },
+    {
+      "id": "rooted_tertiary_amine_branch_shape_all_bonds_explicit",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test40SmilesRootedAtAtom",
+      "smiles": "CN(C)C",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "-",
+        "C",
+        "N"
+      ],
+      "expected": [
+        "N(-C)(-C)-C"
+      ]
+    }
+  ]
+}

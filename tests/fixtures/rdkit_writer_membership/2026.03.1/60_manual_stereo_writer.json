@@ -1,0 +1,32 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "manual_bond_stereo_really_difficult_01",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoReallyDifficultCase generated isomer",
+      "smiles": "CC/C=C/C(/C=C/CC)=C(CC)CO",
+      "expected": "CC/C=C/C(/C=C/CC)=C(CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_really_difficult_02",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoReallyDifficultCase generated isomer",
+      "smiles": "CC/C=C\\C(/C=C/CC)=C(CC)CO",
+      "expected": "CC/C=C\\C(/C=C/CC)=C(CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_really_difficult_03",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoReallyDifficultCase generated isomer",
+      "smiles": "CC/C=C\\C(/C=C\\CC)=C(CC)CO",
+      "expected": "CC/C=C\\C(/C=C\\CC)=C(CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    }
+  ]
+}

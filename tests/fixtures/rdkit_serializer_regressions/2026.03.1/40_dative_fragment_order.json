@@ -96,6 +96,124 @@
       ]
     },
     {
+      "id": "dative_bond_direction_surface_7_neutral_cu_root0_nonisomeric",
+      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "smiles": "[NH3][Cu]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "->",
+        "[Cu]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[NH3]->[Cu]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_8_neutral_cu_root1_nonisomeric",
+      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "smiles": "[NH3][Cu]",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "<-",
+        "[Cu]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[Cu]<-[NH3]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_9_neutral_cu_root0_isomeric",
+      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "smiles": "[NH3][Cu]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "->",
+        "[Cu]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[NH3]->[Cu]"
+      ]
+    },
+    {
+      "id": "dative_bond_direction_surface_10_neutral_cu_root1_isomeric",
+      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "smiles": "[NH3][Cu]",
+      "rooted_at_atom": 1,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "<-",
+        "[Cu]",
+        "[NH3]"
+      ],
+      "expected": [
+        "[Cu]<-[NH3]"
+      ]
+    },
+    {
+      "id": "aromatic_bridge_explicit_dash_surface_root0_nonisomeric",
+      "source": "RDKit-grounded aromatic explicit '-' token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "smiles": "C1=CC=C(C=C1)N2C=C(C=N2)C=O",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "expected_inventory": [
+        "(",
+        ")",
+        "-",
+        "1",
+        "2",
+        "=",
+        "C",
+        "O",
+        "c",
+        "n"
+      ],
+      "expected": [
+        "c1ccc(-n2cc(C=O)cn2)cc1",
+        "c1ccc(-n2cc(cn2)C=O)cc1",
+        "c1ccc(-n2ncc(C=O)c2)cc1",
+        "c1ccc(-n2ncc(c2)C=O)cc1",
+        "c1ccc(cc1)-n1cc(C=O)cn1",
+        "c1ccc(cc1)-n1cc(cn1)C=O",
+        "c1ccc(cc1)-n1ncc(C=O)c1",
+        "c1ccc(cc1)-n1ncc(c1)C=O"
+      ]
+    },
+    {
+      "id": "aromatic_bridge_explicit_dash_surface_root0_isomeric",
+      "source": "RDKit-grounded aromatic explicit '-' token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "smiles": "C1=CC=C(C=C1)N2C=C(C=N2)C=O",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected_inventory": [
+        "(",
+        ")",
+        "-",
+        "1",
+        "2",
+        "=",
+        "C",
+        "O",
+        "c",
+        "n"
+      ],
+      "expected": [
+        "c1ccc(-n2cc(C=O)cn2)cc1",
+        "c1ccc(-n2cc(cn2)C=O)cc1",
+        "c1ccc(-n2ncc(C=O)c2)cc1",
+        "c1ccc(-n2ncc(c2)C=O)cc1",
+        "c1ccc(cc1)-n1cc(C=O)cn1",
+        "c1ccc(cc1)-n1cc(cn1)C=O",
+        "c1ccc(cc1)-n1ncc(C=O)c1",
+        "c1ccc(cc1)-n1ncc(c1)C=O"
+      ]
+    },
+    {
       "id": "fragment_ring_output_order_1_occn_cco_all_roots",
       "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp: smilesBondOutputOrder basics",
       "smiles": "OCCN.CCO",

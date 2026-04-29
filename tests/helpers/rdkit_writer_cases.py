@@ -22,12 +22,6 @@ class ExactWriterCase:
     ignore_atom_map_numbers: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class ExactSupportCase:
-    smiles: str
-    expected_by_root: tuple[tuple[int, tuple[str, ...]], ...]
-
-
 ROOTED_RANDOM_CASES: tuple[RootedRandomCase, ...] = (
     RootedRandomCase(
         smiles="COc1ccnc(CC)c1C",
@@ -46,7 +40,6 @@ ROOTED_RANDOM_CASES: tuple[RootedRandomCase, ...] = (
         ),
     ),
 )
-
 DISCONNECTED_ROOT_ZERO_CASES: tuple[str, ...] = (
     "[Na+].[Cl-]",
     "[K+].[Cl-]",
@@ -222,34 +215,5 @@ DATASET_REGRESSION_CASES: tuple[ExactWriterCase, ...] = (
         isomeric_smiles=True,
         rooted_at_atom=None,
         rdkit_canonical=False,
-    ),
-)
-
-
-BOND_TOKEN_CASES: tuple[ExactSupportCase, ...] = (
-    ExactSupportCase(
-        smiles="[NH3][Cu]",
-        expected_by_root=(
-            (0, ("[NH3]->[Cu]",)),
-            (1, ("[Cu]<-[NH3]",)),
-        ),
-    ),
-    ExactSupportCase(
-        smiles="C1=CC=C(C=C1)N2C=C(C=N2)C=O",
-        expected_by_root=(
-            (
-                0,
-                (
-                    "c1ccc(-n2cc(C=O)cn2)cc1",
-                    "c1ccc(-n2cc(cn2)C=O)cc1",
-                    "c1ccc(-n2ncc(C=O)c2)cc1",
-                    "c1ccc(-n2ncc(c2)C=O)cc1",
-                    "c1ccc(cc1)-n1cc(C=O)cn1",
-                    "c1ccc(cc1)-n1cc(cn1)C=O",
-                    "c1ccc(cc1)-n1ncc(C=O)c1",
-                    "c1ccc(cc1)-n1ncc(c1)C=O",
-                ),
-            ),
-        ),
     ),
 )

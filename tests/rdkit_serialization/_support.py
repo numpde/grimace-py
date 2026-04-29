@@ -4,7 +4,7 @@ from rdkit import Chem, rdBase
 
 import grimace
 from tests.helpers.public_runtime import supported_public_kwargs
-from tests.helpers.rdkit_writer_cases import ExactSupportCase, ExactWriterCase, RootedRandomCase
+from tests.helpers.rdkit_writer_cases import ExactWriterCase, RootedRandomCase
 
 
 RDKIT_PINNED_SAMPLING_SEEDS = (12345, 54321)
@@ -295,28 +295,6 @@ def assert_grimace_support_and_inventory_equal(
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         ),
     )
-
-
-def assert_exact_support_case_equals_grimace_support(
-    test_case,
-    case: ExactSupportCase,
-    *,
-    isomeric_smiles: bool,
-) -> None:
-    mol = Chem.MolFromSmiles(case.smiles)
-    for root_idx, expected in case.expected_by_root:
-        with test_case.subTest(
-            smiles=case.smiles,
-            root_idx=root_idx,
-            isomeric_smiles=isomeric_smiles,
-        ):
-            assert_grimace_support_equals(
-                test_case,
-                mol=mol,
-                expected=set(expected),
-                rooted_at_atom=root_idx,
-                isomeric_smiles=isomeric_smiles,
-            )
 
 
 def assert_grimace_support_matches_rdkit_sampling(

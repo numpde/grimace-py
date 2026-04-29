@@ -487,7 +487,15 @@
     {
       "claim": "aromatic-double-bond-ring-closure-stereo",
       "end_line": 386,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "aromatic_double_bond_ring_closure_github2148_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Exact all-roots fixture pins the C/C=c1/ncc(=C)cc1 writer surface from GitHub #2148."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2148",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -495,17 +503,25 @@
         "MolToSmiles"
       ],
       "name": "Github #2148",
-      "notes": "Aggregate GitHub #2148 test includes an aromatic double-bond ring-closure MolToSmiles writer regression not yet pinned by Grimace fixtures.",
+      "notes": "Aggregate GitHub #2148 MolToSmiles writer regression is represented by an exact aromatic directional-ring fixture; parser-only sections remain outside Grimace writer-fixture scope.",
       "parent": null,
       "snippet_sha256": "f99409d1815758fa079408891037b93d301ad97dfdc28e166745863693d3909d",
       "start_line": 341,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "aromatic-double-bond-ring-closure-stereo",
       "end_line": 385,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "aromatic_double_bond_ring_closure_github2148_surface"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Exact all-roots fixture pins the C/C=c1/ncc(=C)cc1 writer surface from GitHub #2148."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2148__writing_smiles",
       "kind": "cpp_section",
       "language": "cpp",
@@ -513,11 +529,11 @@
         "MolToSmiles"
       ],
       "name": "Writing SMILES",
-      "notes": "MolToSmiles output for C/C=c1/ncc(=C)cc1 is not yet represented by a Grimace fixture.",
+      "notes": "MolToSmiles output for C/C=c1/ncc(=C)cc1 is represented by an exact serializer fixture.",
       "parent": "Github #2148",
       "snippet_sha256": "245e7331ff475aba29826edebb975cab2f9148b494666441907482980465ce1b",
       "start_line": 368,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

@@ -4875,7 +4875,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-wrapper-behavior",
       "end_line": 184,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbasiccanon",
@@ -4885,15 +4885,15 @@
         "MolToSmiles"
       ],
       "name": "testBasicCanon",
-      "notes": "",
+      "notes": "Java wrapper test exercises canonical MolToSmiles equivalence, parser round-trips, and empty molecule output. Grimace currently targets canonical=False, doRandom=True writer support rather than canonical writer behavior.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "b1bedb3008d11104a9555f89c1600029a9de70f35a06001936aa4eb9f712e38c",
       "start_line": 109,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "broad-java-stereochemistry-smiles",
       "end_line": 593,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__teststereochem",
@@ -4903,15 +4903,15 @@
         "MolToSmiles"
       ],
       "name": "testStereochem",
-      "notes": "",
+      "notes": "Large Java stereochemistry method mixes CIP assertions, canonical isomeric round-trips, rooted writer calls, explicit-H handling, disconnected pseudo-ring hydrogen forms, simple alkene stereo, substituted alkene stereo, and combined atom/bond stereo. Existing Grimace fixtures cover selected chiral alcohol, epoxide, explicit-H epoxide, and alkene normalization slices, but not the full method as a complete pinned parity corpus.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "9fb2f3af3d91152d1ca73269cf086947187d5a7fb4f696c28eb908c602761356",
       "start_line": 186,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "chiral-silicon-ring-roundtrip",
       "end_line": 618,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue127",
@@ -4921,17 +4921,26 @@
         "MolToSmiles"
       ],
       "name": "testIssue127",
-      "notes": "",
+      "notes": "Chiral silicon fused-ring SMILES round-trip is not yet represented by a pinned Grimace serializer fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "19cf013e63659aa87e21f53e776c924236de67723adf208b51eb3e9716bd0158",
       "start_line": 595,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "nonstereogenic-chirality-suppression",
       "end_line": 637,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "nonstereogenic_neopentane_chirality_suppressed",
+            "nonstereogenic_aldehyde_chirality_suppressed"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Covers the Java testIssue143 neopentane and aldehyde chirality-suppression expectations."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue143",
       "kind": "java_test",
       "language": "java",
@@ -4939,15 +4948,15 @@
         "MolToSmiles"
       ],
       "name": "testIssue143",
-      "notes": "",
+      "notes": "Both Java nonstereogenic chirality examples are represented as exact serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "36479eaf6ee128809f31079607b6adc374128260ed801185e127daf6c2c591de",
       "start_line": 620,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "small-sulfur-ring-chirality-roundtrip",
       "end_line": 716,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue151",
@@ -4957,17 +4966,26 @@
         "MolToSmiles"
       ],
       "name": "testIssue151",
-      "notes": "",
+      "notes": "The first C1S[C@H]1O Java example is covered, but the two-center sulfur/oxygen ring variants in the same method are not yet pinned as exact Grimace serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "4d5cba2bd6ca43ce04370474aa0c4c440616851cd77e151ba99d47b0eda46f6e",
       "start_line": 639,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "fused-ring-chirality-roundtrip",
       "end_line": 762,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "fused_ring_chirality_issue153_s",
+            "fused_ring_chirality_issue153_r"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Covers the S/R Java testIssue153 fused-ring writer surfaces."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue153",
       "kind": "java_test",
       "language": "java",
@@ -4975,15 +4993,15 @@
         "MolToSmiles"
       ],
       "name": "testIssue153",
-      "notes": "",
+      "notes": "Both Java fused-ring chirality variants are represented as exact serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "313ea80ac8a904837ce78844a6caa91bde050ffc8167738656e06f693f156f86",
       "start_line": 718,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "complex-chiral-roundtrip-smiles",
       "end_line": 829,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue157",
@@ -4993,17 +5011,26 @@
         "MolToSmiles"
       ],
       "name": "testIssue157",
-      "notes": "",
+      "notes": "Multiple complex chiral round-trip examples, including isotopic/fused systems, are not yet mirrored as pinned Grimace fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "660c2eefa6e61b2dae69cdcf74f3a54c962a4791800f8c887d90ae51354f4224",
       "start_line": 764,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "directional-bond-stereo-normalization",
       "end_line": 852,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "directional_bond_issue159_slash_input",
+            "directional_bond_issue159_branch_input"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Covers the Java C/C=C/O and C(\\C)=C/O normalization pair."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue159",
       "kind": "java_test",
       "language": "java",
@@ -5011,17 +5038,25 @@
         "MolToSmiles"
       ],
       "name": "testIssue159",
-      "notes": "",
+      "notes": "Both Java issue159 equivalent E/Z input forms are represented as exact serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "349a9313b2b050c936591d0a89c9853fab7307a3072be214c7bf3cd1dd6350d7",
       "start_line": 831,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "dioxime-ring-stereo-roundtrip",
       "end_line": 922,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "issue184_dioxime_ring_nonisomeric"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/90_large_sampled_regressions.json",
+          "note": "Covers the Java testIssue184 molecule in nonisomeric exact-support form."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue184",
       "kind": "java_test",
       "language": "java",
@@ -5029,15 +5064,15 @@
         "MolToSmiles"
       ],
       "name": "testIssue184",
-      "notes": "",
+      "notes": "The Java dioxime ring regression is represented by a sampled exact-support fixture for the same input molecule.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "a84e70c43f896568c79532f084001cd0bcebd005cc6d6a202d6ca569980bff25",
       "start_line": 896,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "branched-imine-rooted-stereo",
       "end_line": 945,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue185",
@@ -5047,15 +5082,15 @@
         "MolToSmiles"
       ],
       "name": "testIssue185",
-      "notes": "",
+      "notes": "Root-0 branched imine E/Z case C(/C)=N/O is not yet represented by an exact Grimace fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "e18bf6b52e101cfa798de76368e91e10b9ce502d64e0fa0e864c4fd75329ab20",
       "start_line": 924,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "triazine-hydrazone-stereo-roundtrip",
       "end_line": 975,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue191",
@@ -5065,17 +5100,26 @@
         "MolToSmiles"
       ],
       "name": "testIssue191",
-      "notes": "",
+      "notes": "Complex triazine/hydrazone E/Z round-trip case is not yet represented by a pinned Grimace serializer fixture.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "2379ab17c7d55f87077210260f1a548dbcfca7f05ebc0184fc4849602d8a5bb0",
       "start_line": 947,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "kekule-aromatic-whole-molecule-smiles",
       "end_line": 1031,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_05_benzene_kekule",
+            "writer_flags_06_biphenyl_kekule"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Covers the Java testIssue266 kekulized benzene and biphenyl writer outputs."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testissue266",
       "kind": "java_test",
       "language": "java",
@@ -5083,11 +5127,11 @@
         "MolToSmiles"
       ],
       "name": "testIssue266",
-      "notes": "",
+      "notes": "Java benzene and biphenyl aromatic/kekulized whole-molecule writer expectations are represented by writer-membership fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "ebb0c647845723a18dd757c34849973e504e452c1f2918144b62c7f5b7458a8e",
       "start_line": 1006,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
@@ -5125,9 +5169,18 @@
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "isotope-isomeric-smiles-surface",
       "end_line": 1065,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "isotope_surface_nonisomeric_collapses_13c",
+            "isotope_surface_isomeric_keeps_13c"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Covers C[13C](C)(C)C with isomericSmiles false and true."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testisotopes",
       "kind": "java_test",
       "language": "java",
@@ -5135,17 +5188,26 @@
         "MolToSmiles"
       ],
       "name": "testIsotopes",
-      "notes": "",
+      "notes": "Java isotope suppression/preservation expectations are represented as nonisomeric and isomeric exact serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "75ded30aa8b9122d97766ac7cb48e8b05d9d9295c74f7de5c2b15e4278166158",
       "start_line": 1050,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "protonated-ring-normalization",
       "end_line": 1085,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "protonated_ring_normalization_explicit_start",
+            "protonated_ring_normalization_implicit_position"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/30_aromatic_charge_normalization.json",
+          "note": "Covers the Java explicit and post-cache-update protonated pyrrolidine forms."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1670149",
       "kind": "java_test",
       "language": "java",
@@ -5153,17 +5215,40 @@
         "MolToSmiles"
       ],
       "name": "testBug1670149",
-      "notes": "",
+      "notes": "Both protonated ring normalization surfaces from the Java regression are represented by exact serializer fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "5a51fc432d734f04e35d429a95e23eb8a2cf974660e65c0bd13a0f2ac8bbb775",
       "start_line": 1067,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "aromatic-and-chirality-normalization",
       "end_line": 1134,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "cyclohexyl_halide_nonstereo_normalization_1_cl_ch_1ccccc1",
+            "cyclohexyl_halide_nonstereo_normalization_2_cl_c_h_1ccccc1",
+            "cyclohexyl_halide_nonstereo_normalization_3_cl_c_h_1c_br_cccc1",
+            "explicit_kekule_benzene_aromatic_normalization_duplicate_surface",
+            "pyridine_aromatic_normalization_all_roots",
+            "explicit_kekule_pyrrole_root0_normalizes_aromatic_nh",
+            "explicit_h_kekule_pyrrole_root0_normalizes_aromatic_nh"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/30_aromatic_charge_normalization.json",
+          "note": "Covers the Java cyclohexyl halide, benzene, pyridine, and pyrrole normalization surfaces."
+        },
+        {
+          "cases": [
+            "writer_flags_09_bug1719046_chirality_suppressed",
+            "writer_flags_10_bug1719046_pyridine_normalization",
+            "writer_flags_11_bug1719046_pyrrole_normalization"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Membership fixtures pin the specific Java expected writer outputs for this bug."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1719046",
       "kind": "java_test",
       "language": "java",
@@ -5171,17 +5256,36 @@
         "MolToSmiles"
       ],
       "name": "testBug1719046",
-      "notes": "",
+      "notes": "Java nonisomeric chirality suppression and aromatic normalization expectations are represented by exact serializer and writer-membership fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "6037033eda963cbf9b08ea8ff9ad0aa218661714ad3183e4bb721b84453a7a19",
       "start_line": 1087,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "imine-and-diene-stereo-orientation",
       "end_line": 1160,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "imine_stereo_orientation_all_roots_isomeric",
+            "imine_stereo_orientation_root1_isomeric",
+            "rooted_conjugated_diene_stereo_surface_isomeric",
+            "conjugated_diene_stereo_normalization"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/20_stereo_directional_isotopes.json",
+          "note": "Covers the Java F/C=N/Cl and conjugated diene stereo output surfaces."
+        },
+        {
+          "cases": [
+            "writer_flags_12_bug1842174_unrooted_imine_stereo",
+            "writer_flags_13_bug1842174_rooted_imine_stereo"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Membership fixtures pin the exact Java imine expected strings."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1842174",
       "kind": "java_test",
       "language": "java",
@@ -5189,15 +5293,15 @@
         "MolToSmiles"
       ],
       "name": "testBug1842174",
-      "notes": "",
+      "notes": "Java imine and conjugated diene stereo-orientation expectations are represented by exact serializer and writer-membership fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "56c93eeca38293a0778f73cacff69c8590deff0205c977643ff42e90ff16b12e",
       "start_line": 1136,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "complex-fused-alkaloid-stereochemistry-roundtrip",
       "end_line": 1212,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testbug1844617",
@@ -5207,15 +5311,15 @@
         "MolToSmiles"
       ],
       "name": "testBug1844617",
-      "notes": "",
+      "notes": "Complex fused alkaloid stereochemistry round-trip cases are not yet represented by pinned Grimace fixtures.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "ecbd5178b37f6aff7eca6c7a3ef53798d02f3a74c5137095b8eb71664a7481a9",
       "start_line": 1162,
-      "status": "unreviewed",
+      "status": "needs-fixture",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "ring-stereo-warning-property",
       "end_line": 1231,
       "grimace_links": [],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testringstereochem",
@@ -5225,11 +5329,11 @@
         "MolToSmiles"
       ],
       "name": "testRingStereochem",
-      "notes": "",
+      "notes": "Java test checks RDKit ring stereochemistry warning/property behavior around MolToSmiles calls, not a Grimace-supported writer surface.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "117a1ee965032216c295f4e537a36684497d8526663a3e633ddfbdc189953ad7",
       "start_line": 1214,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     }
   ],

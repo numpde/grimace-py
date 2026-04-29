@@ -37,6 +37,8 @@ subset.
   fixtures under `tests/fixtures/rdkit_writer_membership/`.
 - Deterministic RDKit rooted random-writer cases belong in version-keyed
   fixtures under `tests/fixtures/rdkit_rooted_random/`.
+- RDKit disconnected sampling input suites belong under
+  `tests/fixtures/rdkit_disconnected_sampling/`.
 - Large pinned RDKit fixture corpora may use `VERSION/*.json` shards under the
   fixture root; keep shard names ordered by source area or serializer feature.
 - Pinned RDKit JSON fixtures should reuse `tests/helpers/pinned_rdkit_fixtures.py`

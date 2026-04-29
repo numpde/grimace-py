@@ -1,6 +1,6 @@
-from __future__ import annotations
-
-DISCONNECTED_ROOT_ZERO_CASES: tuple[str, ...] = (
+{
+  "description": "Disconnected molecule inputs used for root-zero RDKit sampling compatibility checks.",
+  "cases": [
     "[Na+].[Cl-]",
     "[K+].[Cl-]",
     "[F-].[Na+]",
@@ -30,5 +30,6 @@ DISCONNECTED_ROOT_ZERO_CASES: tuple[str, ...] = (
     "CC(C)O.O",
     "CC(C)N.O",
     "CCS.O",
-    "CC#N.O",
-)
+    "CC#N.O"
+  ]
+}

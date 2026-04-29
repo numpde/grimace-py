@@ -5,7 +5,7 @@ import unittest
 from rdkit import Chem
 
 from tests.helpers.mols import parse_smiles
-from tests.helpers.rdkit_writer_cases import DISCONNECTED_ROOT_ZERO_CASES
+from tests.helpers.rdkit_disconnected_sampling import load_disconnected_root_zero_smiles
 from tests.rdkit_serialization._support import assert_grimace_support_matches_rdkit_sampling
 
 
@@ -48,9 +48,10 @@ class RDKITDisconnectedWriterTests(unittest.TestCase):
                     )
 
     def test_disconnected_root_zero_suite_matches_rdkit_sampling(self) -> None:
-        self.assertEqual(30, len(DISCONNECTED_ROOT_ZERO_CASES))
+        root_zero_cases = load_disconnected_root_zero_smiles()
+        self.assertEqual(30, len(root_zero_cases))
 
-        for smiles in DISCONNECTED_ROOT_ZERO_CASES:
+        for smiles in root_zero_cases:
             mol = parse_smiles(smiles)
             self.assertGreater(len(Chem.GetMolFrags(mol)), 1)
             for isomeric_smiles in (False, True):

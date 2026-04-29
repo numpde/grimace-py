@@ -1451,7 +1451,7 @@
         "MolToSmiles"
       ],
       "name": "github #3967 part 1",
-      "notes": "GitHub #3967 part 1 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture.",
+      "notes": "GitHub #3967 part 1 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture. Local RDKit 2026.03.1 probing found exact-support mismatches, so this needs directional ring-closure parity work before pinning as a passing fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "20e890c8c079f70f924b6ede0237be511382c3af8c108d5e1d17951662cd1422",
       "start_line": 1762,
@@ -1469,7 +1469,7 @@
         "MolToSmiles"
       ],
       "name": "github #3967 part 2",
-      "notes": "GitHub #3967 part 2 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture.",
+      "notes": "GitHub #3967 part 2 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture. Local probing currently hits a stereo carrier-token conflict in Grimace, so this needs runtime parity work before pinning as a passing fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "450c01cbf17469589f7ad9b7c5fae7ec974578d65e6289df95e54bccc00604b1",
       "start_line": 1769,
@@ -1894,7 +1894,7 @@
         "SmilesWriteParams"
       ],
       "name": "Dative  bond in cxsmiles double double def",
-      "notes": "Complex Fe/N/O dative writer output is not yet represented by a Grimace fixture.",
+      "notes": "Complex Fe/N/O dative writer output is not yet represented by a Grimace fixture. Local RDKit 2026.03.1 probing found exact-support mismatches on the canonical output surface, so this needs dative/directional parity work before pinning as a passing fixture.",
       "parent": null,
       "snippet_sha256": "9842aafadd9972412178563011fc20dd28682b84bce4a35107d0ab7a17245089",
       "start_line": 2478,
@@ -1913,7 +1913,7 @@
         "SmilesWriteParams"
       ],
       "name": "basics",
-      "notes": "Complex Fe/N/O dative writer output with canonical SmilesWriteParams is not yet represented by a Grimace fixture.",
+      "notes": "Complex Fe/N/O dative writer output with canonical SmilesWriteParams is not yet represented by a Grimace fixture. Local probing found exact-support mismatches on the asserted output surface, so this needs dative/directional parity work before pinning.",
       "parent": "Dative  bond in cxsmiles double double def",
       "snippet_sha256": "82c593bd2a6ea69377afd5e2bdcbaf9d1aff426913ecb78abe30bf96128904f0",
       "start_line": 2479,
@@ -3890,7 +3890,7 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereoDifficultCase",
-      "notes": "Enumerates manually assigned stereo across multiple potential double bonds and round-trips each isomer. This is in-scope directional-stereo writer behavior but needs a dedicated pinned fixture.",
+      "notes": "Manual multi-double-bond stereo isomers are not yet represented by Grimace fixtures. Local RDKit 2026.03.1 probing found 80 sampled outputs per generated isomer versus 32 current Grimace outputs, so this needs coupled directional-stereo parity work before pinning.",
       "parent": "TestCase",
       "snippet_sha256": "2c2ae1f369b3aafde6d84f76f6dedfb317cd3aed1ac2704e0f9f27e741ab1a56",
       "start_line": 1830,
@@ -3909,7 +3909,7 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereoReallyDifficultCase",
-      "notes": "Legacy stereo-perception coupled double-bond case is in-scope as directional-stereo serialization evidence, but no pinned Grimace fixture currently captures this exact case.",
+      "notes": "Legacy stereo-perception coupled double-bond case is in-scope as directional-stereo serialization evidence, but no pinned Grimace fixture currently captures it. Related manual stereo probes expose coupled directional-stereo parity gaps that should be fixed before pinning.",
       "parent": "TestCase",
       "snippet_sha256": "720de76a2e03208afef7d678be413dc7f4963c9fc2452e9d218baa06038068d8",
       "start_line": 1875,
@@ -4259,7 +4259,7 @@
         "MolToSmiles"
       ],
       "name": "test87FragmentOnBonds",
-      "notes": "Pins MolToSmiles output for FragmentOnBonds products with dummy labels and bond types; not yet represented in Grimace fixtures.",
+      "notes": "FragmentOnBonds products with dummy labels and bond types are not yet represented in Grimace fixtures. Local probes of the asserted fragmented surfaces found exact-support mismatches, so this needs dummy-label/fragment serialization parity work before pinning.",
       "parent": "TestCase",
       "snippet_sha256": "76d3cfc592c5ed3f5b8663ad54eddbc901ebc00e96e8d4c5fc1c1236990e5f35",
       "start_line": 3535,

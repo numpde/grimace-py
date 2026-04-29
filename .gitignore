@@ -23,5 +23,6 @@ python/grimace/_core*.pyd
 Cargo.lock
 
 .DS_Store
+.codex
 .idea/
 .vscode/

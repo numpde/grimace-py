@@ -18,6 +18,9 @@ from tests.helpers.cases import (
 )
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
+from tests.helpers.rdkit_stereo_regressions import (
+    load_steroid_ring_coupled_component_regression,
+)
 
 
 def _sample_rooted_rdkit_support(
@@ -276,30 +279,17 @@ class RootedConnectedStereoTests(unittest.TestCase):
         self.assertIn(expected, observed)
 
     def test_dataset_regression_steroid_ring_coupled_component_matches_rooted_rdkit_samples(self) -> None:
-        mol = parse_smiles(
-            "C[C@H](/C=C/[C@H](C)C(C)C)[C@H]1CC[C@@H]\\\\2"
-            "[C@@]1(CCC/C2=C\\\\C=C/3\\\\C[C@H](CCC3=C)O)C"
-        )
+        case = load_steroid_ring_coupled_component_regression()
+        mol = parse_smiles(case.input_smiles)
         observed = enumerate_rooted_connected_stereo_smiles_support(
             mol,
-            0,
+            case.rooted_at_atom,
             self.policy,
         )
-        # These two rooted outputs differ only in the coupled begin-side token
-        # family. The first was observed in RDKit samples and was missing before
-        # the coupled-component fix; the second is the prior wrong-family form.
-        expected = (
-            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
-            "/C=C/[C@@H](C(C)C)C"
-        )
-        rejected = (
-            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)\\C(=C\\C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
-            "/C=C/[C@@H](C(C)C)C"
-        )
 
-        self.assertIn(expected, observed)
-        self.assertNotIn(rejected, observed)
-        _assert_support_valid(self, mol, self.policy, 0, observed)
+        self.assertIn(case.expected_member, observed)
+        self.assertNotIn(case.rejected_member, observed)
+        _assert_support_valid(self, mol, self.policy, case.rooted_at_atom, observed)
 
     def test_dataset_regression_sidechain_steroid_rooted_outputs_are_in_support(self) -> None:
         mol = parse_smiles(

@@ -6,6 +6,9 @@ from rdkit import Chem, rdBase
 
 from tests.helpers.mols import parse_smiles
 from tests.helpers.rdkit_rooted_random import load_pinned_rooted_random_cases
+from tests.helpers.rdkit_stereo_regressions import (
+    load_steroid_ring_coupled_component_regression,
+)
 from tests.rdkit_serialization._support import (
     assert_rooted_random_case_in_grimace_support,
     grimace_support,
@@ -104,29 +107,15 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
         )
 
     def test_rooted_steroid_ring_coupled_stereo_case_matches_high_draw_rdkit_support(self) -> None:
-        mol = parse_smiles(
-            "C[C@H](/C=C/[C@H](C)C(C)C)[C@H]1CC[C@@H]\\\\2"
-            "[C@@]1(CCC/C2=C\\\\C=C/3\\\\C[C@H](CCC3=C)O)C"
-        )
+        case = load_steroid_ring_coupled_component_regression()
+        mol = parse_smiles(case.input_smiles)
         support = grimace_support(
             mol,
-            rooted_at_atom=0,
+            rooted_at_atom=case.rooted_at_atom,
             isomeric_smiles=True,
         )
-        # These two rooted outputs differ only in the coupled begin-side token
-        # family. The first was observed in RDKit samples and was missing before
-        # the coupled-component fix; the second is the prior wrong-family form.
-        expected = (
-            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)/C(=C/C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
-            "/C=C/[C@@H](C(C)C)C"
-        )
-        rejected = (
-            "C[C@@H]([C@@H]1[C@@]2([C@@H](CC1)\\C(=C\\C=C1/C[C@@H](O)CCC1=C)CCC2)C)"
-            "/C=C/[C@@H](C(C)C)C"
-        )
-
-        self.assertIn(expected, support)
-        self.assertNotIn(rejected, support)
+        self.assertIn(case.expected_member, support)
+        self.assertNotIn(case.rejected_member, support)
 
     def test_rooted_sidechain_steroid_outputs_are_in_support(self) -> None:
         mol = parse_smiles(

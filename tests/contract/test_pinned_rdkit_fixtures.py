@@ -6,12 +6,16 @@ import tempfile
 import unittest
 
 from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
+from tests.helpers.rdkit_exact_small_support import (
+    load_pinned_exact_small_support_cases,
+)
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
 )
 
 
 RDKIT_VERSION = "2099.01.1"
+CHECKED_IN_FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures"
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -44,6 +48,18 @@ def _serializer_case(case_id: str, **overrides: object) -> dict[str, object]:
     }
     case.update(overrides)
     return case
+
+
+def _pinned_fixture_versions(fixture_root: Path) -> tuple[str, ...]:
+    versions = {
+        path.stem
+        for path in fixture_root.glob("*.json")
+    } | {
+        path.name
+        for path in fixture_root.iterdir()
+        if path.is_dir()
+    }
+    return tuple(sorted(versions))
 
 
 class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
@@ -198,6 +214,34 @@ class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
                             RDKIT_VERSION,
                             fixture_root=root,
                         )
+
+
+class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
+    def test_all_checked_in_exact_small_support_fixtures_load(self) -> None:
+        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_exact_small_support"
+        versions = _pinned_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_exact_small_support_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+                self.assertTrue(cases)
+
+    def test_all_checked_in_serializer_regression_fixtures_load(self) -> None:
+        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_serializer_regressions"
+        versions = _pinned_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_serializer_regression_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+                self.assertTrue(cases)
 
 
 if __name__ == "__main__":

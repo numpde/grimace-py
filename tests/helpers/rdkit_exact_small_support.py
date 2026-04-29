@@ -35,10 +35,12 @@ _FIXTURE_ROOT = (
 
 def load_pinned_exact_small_support_cases(
     rdkit_version: str,
+    *,
+    fixture_root: Path = _FIXTURE_ROOT,
 ) -> tuple[PinnedExactSmallSupportCase, ...]:
     cases = []
     for fixture_case in load_pinned_rdkit_fixture_cases(
-        fixture_root=_FIXTURE_ROOT,
+        fixture_root=fixture_root,
         rdkit_version=rdkit_version,
         fixture_label="exact small-support",
     ):

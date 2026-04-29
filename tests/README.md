@@ -33,6 +33,8 @@ subset.
 - Bulky serializer expected-output sets belong in version-keyed JSON fixtures
   under `tests/fixtures/rdkit_serializer_regressions/`, with a source reference
   for each case.
+- Large pinned RDKit fixture corpora may use `VERSION/*.json` shards under the
+  fixture root; keep shard names ordered by source area or serializer feature.
 - Pinned RDKit JSON fixtures should reuse `tests/helpers/pinned_rdkit_fixtures.py`
   for version, id, source, and canonical expected-set validation.
 - Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.

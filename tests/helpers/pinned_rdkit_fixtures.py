@@ -40,13 +40,95 @@ def optional_positive_int(
     raw_value = raw_case.get(field_name)
     if raw_value is None:
         return None
-    value = int(raw_value)
-    if value <= 0:
+    if type(raw_value) is not int or raw_value <= 0:
         raise ValueError(
-            f"fixture {fixture_path} case {case_id!r} has nonpositive "
-            f"{field_name}={value}"
+            f"fixture {fixture_path} case {case_id!r} must define positive "
+            f"integer {field_name}; got {raw_value!r}"
         )
-    return value
+    return raw_value
+
+
+def required_int(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> int:
+    raw_value = raw_case.get(field_name)
+    if type(raw_value) is not int:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define integer "
+            f"{field_name}; got {raw_value!r}"
+        )
+    return raw_value
+
+
+def required_bool(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> bool:
+    raw_value = raw_case.get(field_name)
+    if type(raw_value) is not bool:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define boolean "
+            f"{field_name}; got {raw_value!r}"
+        )
+    return raw_value
+
+
+def optional_bool(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    default: bool,
+    fixture_path: Path,
+    case_id: str,
+) -> bool:
+    raw_value = raw_case.get(field_name, default)
+    if type(raw_value) is not bool:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define boolean "
+            f"{field_name}; got {raw_value!r}"
+        )
+    return raw_value
+
+
+def required_string(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> str:
+    raw_value = raw_case.get(field_name)
+    if type(raw_value) is not str or not raw_value:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonempty "
+            f"string {field_name}; got {raw_value!r}"
+        )
+    return raw_value
+
+
+def optional_string(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> str | None:
+    raw_value = raw_case.get(field_name)
+    if raw_value is None:
+        return None
+    if type(raw_value) is not str or not raw_value:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonempty "
+            f"string {field_name}; got {raw_value!r}"
+        )
+    return raw_value
 
 
 def load_pinned_rdkit_fixture_cases(
@@ -64,13 +146,18 @@ def load_pinned_rdkit_fixture_cases(
             (path, json.loads(path.read_text()))
             for path in sorted(fixture_dir.glob("*.json"))
         )
+        if not payloads:
+            raise FileNotFoundError(
+                f"pinned {fixture_label} fixture directory for RDKit "
+                f"{rdkit_version} contains no JSON shards: {fixture_dir}"
+            )
     else:
         raise FileNotFoundError(
             f"no pinned {fixture_label} fixture for RDKit {rdkit_version}"
         )
 
     cases = []
-    seen_ids: set[str] = set()
+    seen_ids: dict[str, Path] = {}
     for current_fixture_path, data in payloads:
         if data.get("rdkit_version") != rdkit_version:
             raise ValueError(
@@ -86,17 +173,17 @@ def load_pinned_rdkit_fixture_cases(
                 )
             if case_id in seen_ids:
                 raise ValueError(
-                    f"fixture {current_fixture_path} contains duplicate case id "
-                    f"{case_id!r}"
+                    f"fixture {current_fixture_path} duplicates case id {case_id!r} "
+                    f"from {seen_ids[case_id]}"
                 )
-            seen_ids.add(case_id)
+            seen_ids[case_id] = current_fixture_path
 
-            source = str(raw_case["source"])
-            if not source:
-                raise ValueError(
-                    f"fixture {current_fixture_path} case {case_id!r} "
-                    "contains an empty source"
-                )
+            source = required_string(
+                raw_case,
+                field_name="source",
+                fixture_path=current_fixture_path,
+                case_id=case_id,
+            )
 
             cases.append(
                 PinnedFixtureCase(

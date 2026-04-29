@@ -97,7 +97,7 @@
     },
     {
       "id": "dative_bond_direction_surface_7_neutral_cu_root0_nonisomeric",
-      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "source": "RDKit-grounded dative bond token regression: explicit dative arrow direction",
       "smiles": "[NH3][Cu]",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
@@ -112,7 +112,7 @@
     },
     {
       "id": "dative_bond_direction_surface_8_neutral_cu_root1_nonisomeric",
-      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "source": "RDKit-grounded dative bond token regression: explicit dative arrow direction",
       "smiles": "[NH3][Cu]",
       "rooted_at_atom": 1,
       "isomeric_smiles": false,
@@ -127,7 +127,7 @@
     },
     {
       "id": "dative_bond_direction_surface_9_neutral_cu_root0_isomeric",
-      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "source": "RDKit-grounded dative bond token regression: explicit dative arrow direction",
       "smiles": "[NH3][Cu]",
       "rooted_at_atom": 0,
       "isomeric_smiles": true,
@@ -142,7 +142,7 @@
     },
     {
       "id": "dative_bond_direction_surface_10_neutral_cu_root1_isomeric",
-      "source": "RDKit-grounded dative bond token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "source": "RDKit-grounded dative bond token regression: explicit dative arrow direction",
       "smiles": "[NH3][Cu]",
       "rooted_at_atom": 1,
       "isomeric_smiles": true,
@@ -157,7 +157,7 @@
     },
     {
       "id": "aromatic_bridge_explicit_dash_surface_root0_nonisomeric",
-      "source": "RDKit-grounded aromatic explicit '-' token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "source": "RDKit-grounded aromatic bond token regression: explicit '-' bridge token",
       "smiles": "C1=CC=C(C=C1)N2C=C(C=N2)C=O",
       "rooted_at_atom": 0,
       "isomeric_smiles": false,
@@ -186,7 +186,7 @@
     },
     {
       "id": "aromatic_bridge_explicit_dash_surface_root0_isomeric",
-      "source": "RDKit-grounded aromatic explicit '-' token regression formerly in tests.helpers.rdkit_writer_cases.BOND_TOKEN_CASES",
+      "source": "RDKit-grounded aromatic bond token regression: explicit '-' bridge token",
       "smiles": "C1=CC=C(C=C1)N2C=C(C=N2)C=O",
       "rooted_at_atom": 0,
       "isomeric_smiles": true,

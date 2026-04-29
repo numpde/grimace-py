@@ -14,7 +14,8 @@ from tests.helpers.pinned_rdkit_fixtures import (
 class PinnedSerializerRegressionCase:
     case_id: str
     source: str
-    smiles: str
+    smiles: str | None
+    molblock: str | None
     rooted_at_atom: int
     isomeric_smiles: bool
     expected: tuple[str, ...]
@@ -24,6 +25,13 @@ class PinnedSerializerRegressionCase:
     all_hs_explicit: bool = False
     ignore_atom_map_numbers: bool = False
     rdkit_sample_draw_budget: int | None = None
+
+
+def _optional_string(raw_case: dict[str, object], field_name: str) -> str | None:
+    raw_value = raw_case.get(field_name)
+    if raw_value is None:
+        return None
+    return str(raw_value)
 
 
 _FIXTURE_ROOT = (
@@ -41,11 +49,19 @@ def load_pinned_serializer_regression_cases(
         fixture_label="serializer-regression",
     ):
         raw_case = fixture_case.raw
+        smiles = _optional_string(raw_case, "smiles")
+        molblock = _optional_string(raw_case, "molblock")
+        if (smiles is None) == (molblock is None):
+            raise ValueError(
+                f"fixture {fixture_case.fixture_path} case {fixture_case.case_id!r} "
+                "must define exactly one of 'smiles' or 'molblock'"
+            )
         cases.append(
             PinnedSerializerRegressionCase(
                 case_id=fixture_case.case_id,
                 source=fixture_case.source,
-                smiles=str(raw_case["smiles"]),
+                smiles=smiles,
+                molblock=molblock,
                 rooted_at_atom=int(raw_case.get("rooted_at_atom", -1)),
                 isomeric_smiles=bool(raw_case.get("isomeric_smiles", True)),
                 expected=normalized_unique_sorted_strings(

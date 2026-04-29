@@ -37,9 +37,15 @@ class SerializerRegressionTests(unittest.TestCase):
             raise AssertionError("RDKit failed to parse regression mol block")
         return mol
 
+    @classmethod
+    def _parse_fixture_molecule(cls, case) -> Chem.Mol:
+        if case.molblock is not None:
+            return cls._parse_molblock(case.molblock)
+        return parse_smiles(case.smiles)
+
     def test_fixture_backed_serializer_regressions(self) -> None:
         for case in self.cases:
-            mol = parse_smiles(case.smiles)
+            mol = self._parse_fixture_molecule(case)
             with self.subTest(case_id=case.case_id, source=case.source):
                 assert_grimace_support_and_inventory_equal(
                     self,
@@ -58,7 +64,7 @@ class SerializerRegressionTests(unittest.TestCase):
         for case in self.cases:
             if case.rdkit_sample_draw_budget is None:
                 continue
-            mol = parse_smiles(case.smiles)
+            mol = self._parse_fixture_molecule(case)
             expected = set(case.expected)
             with self.subTest(case_id=case.case_id, source=case.source):
                 for seed in RDKIT_PINNED_SAMPLING_SEEDS:

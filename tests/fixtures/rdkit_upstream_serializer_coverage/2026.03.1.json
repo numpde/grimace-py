@@ -2062,7 +2062,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smarts-rooted-query",
       "end_line": 2810,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__test_rootedatatom_argument",
@@ -2074,17 +2074,37 @@
         "rootedAtAtom"
       ],
       "name": "Test rootedAtAtom argument",
-      "notes": "",
+      "notes": "Parent block primarily validates MolToSmarts rooted query chirality. Grimace targets SMILES support/decoding, not SMARTS serialization; the nested disconnected MolToSmiles regression is tracked separately.",
       "parent": null,
       "snippet_sha256": "2d25851d8949ec543964f7f8a3309cb0cac2c9c02dca0301c368e24c439713d9",
       "start_line": 2709,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "disconnected-rooted-smiles-support",
       "end_line": 2809,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "mapped_fragments_root0_disconnected",
+            "mapped_fragments_root1_disconnected",
+            "mapped_fragments_root2_disconnected",
+            "mapped_fragments_root3_disconnected",
+            "mapped_fragments_root4_disconnected"
+          ],
+          "fixture": "tests/fixtures/rdkit_exact_small_support/2026.03.1.json",
+          "note": "Covers rootedAtAtom selection in disconnected mapped fragments across all valid roots."
+        },
+        {
+          "cases": [
+            "disconnected_rooted_atom_roots_selected_fragment_root3",
+            "disconnected_rooted_atom_roots_selected_fragment_root4"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Pinned serializer regression for selected-fragment rooted output shape."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__test_rootedatatom_argument__issue_7572_prevent_rootatatom_if_more_than_one_fragment_exists",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2094,11 +2114,11 @@
         "rootedAtAtom"
       ],
       "name": "Issue #7572: prevent rootAtAtom if more than one fragment exists.",
-      "notes": "",
+      "notes": "RDKit issue #7572/#8328 multi-fragment rooted MolToSmiles behavior is covered through smaller pinned disconnected-fragment fixtures rather than the original large zinc salt molecule.",
       "parent": "Test rootedAtAtom argument",
       "snippet_sha256": "a168777667ffe8ba52380023f1c0ebe5ebc58ea1c69403eb4b9163055a18fcde",
       "start_line": 2798,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2493,7 +2513,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-canonical-large-molecule",
       "end_line": 3162,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__dnatesterror",
@@ -2510,15 +2530,15 @@
         "CXSmiles"
       ],
       "name": "DnaTestError",
-      "notes": "",
+      "notes": "Large DNA regression uses MolToCXSmiles with canonical=True and CX fields/restored bond directions, outside the current canonical=False, doRandom=True SMILES surface.",
       "parent": null,
       "snippet_sha256": "0b724446eda55f9ce99a28c683866ff8582008d02c075e18c4de4a9a35296d37",
       "start_line": 3096,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-canonical-large-molecule",
       "end_line": 3161,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__dnatesterror__basics",
@@ -2535,17 +2555,37 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Section exercises CXSMILES coordinates, CX stereo fields, canonical output, and restore-bond-direction behavior; Grimace does not model CXSMILES serialization.",
       "parent": "DnaTestError",
       "snippet_sha256": "8f7b45448b795a0de1df64536fd4a35f48f9dde8e77cecde39126c231e43004b",
       "start_line": 3097,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "disconnected-rooted-smiles-support",
       "end_line": 3207,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "mapped_fragments_root0_disconnected",
+            "mapped_fragments_root1_disconnected",
+            "mapped_fragments_root2_disconnected",
+            "mapped_fragments_root3_disconnected",
+            "mapped_fragments_root4_disconnected"
+          ],
+          "fixture": "tests/fixtures/rdkit_exact_small_support/2026.03.1.json",
+          "note": "Exact support for the Github #8328 mapped disconnected molecule across valid roots 0-4."
+        },
+        {
+          "cases": [
+            "disconnected_rooted_atom_roots_selected_fragment_root3",
+            "disconnected_rooted_atom_roots_selected_fragment_root4"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Serializer regression locks the two branch-sensitive selected-fragment roots."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_8328",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -2555,17 +2595,37 @@
         "rootedAtAtom"
       ],
       "name": "Github 8328",
-      "notes": "",
+      "notes": "In-scope random-writer support for the Github #8328 disconnected rooted molecule is pinned. The upstream invalid root exception and canonical comparison are not represented as support fixtures.",
       "parent": null,
       "snippet_sha256": "39f58ca33c83775c647309c2d38e0bf4e067887529cfaab8b7136ec2141a656d",
       "start_line": 3164,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "disconnected-rooted-smiles-support",
       "end_line": 3181,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "mapped_fragments_root0_disconnected",
+            "mapped_fragments_root1_disconnected",
+            "mapped_fragments_root2_disconnected",
+            "mapped_fragments_root3_disconnected",
+            "mapped_fragments_root4_disconnected"
+          ],
+          "fixture": "tests/fixtures/rdkit_exact_small_support/2026.03.1.json",
+          "note": "Exact support for valid roots 0-4 on the same mapped disconnected molecule."
+        },
+        {
+          "cases": [
+            "disconnected_rooted_atom_roots_selected_fragment_root3",
+            "disconnected_rooted_atom_roots_selected_fragment_root4"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Branch-shape regression for roots 3 and 4."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8328__basics",
       "kind": "cpp_section",
       "language": "cpp",
@@ -2575,15 +2635,15 @@
         "rootedAtAtom"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "Covers the valid rooted outputs from the upstream basics section under Grimace exact-support semantics. Out-of-range root validation is covered by API tests, not a fixture case.",
       "parent": "Github 8328",
       "snippet_sha256": "ad6a7b5625249f2d5c3ec6d1e6915887dc1e0c491ac226d6d72e89e53ee393b8",
       "start_line": 3166,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "canonical-and-deterministic-rooted-writer",
       "end_line": 3206,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_8328__compare_with_and_without_canonicalization",
@@ -2595,11 +2655,11 @@
         "rootedAtAtom"
       ],
       "name": "Compare with and without canonicalization",
-      "notes": "",
+      "notes": "Checks RDKit canonical=True ordering and deterministic doRandom=False rooted output for multiple fragments. Current Grimace parity fixtures cover random-writer support, not canonical/deterministic ranking.",
       "parent": "Github 8328",
       "snippet_sha256": "97a6a9140ffd43df4247d211eb67d2c112bb34dc7d0534eb906bd085ad2dd872",
       "start_line": 3182,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -3541,7 +3601,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smarts-and-molfile-query-serialization",
       "end_line": 916,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test23molfileparsing",
@@ -3552,11 +3612,11 @@
         "rootedAtAtom"
       ],
       "name": "test23MolFileParsing",
-      "notes": "",
+      "notes": "Uses rootedAtAtom only through Chem.MolToSmarts on query molecules loaded from molfile fixtures; SMARTS and molfile query serialization are outside Grimace SMILES support.",
       "parent": "TestCase",
       "snippet_sha256": "6b17549b3e6111f278c597eea994b9bd60f440eb9d5dd7698dba27ccff94028c",
       "start_line": 861,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3708,9 +3768,26 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rooted-tertiary-amine-smiles",
       "end_line": 2115,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_07_rooted_at_unrooted_tertiary_amine",
+            "writer_flags_08_rooted_at_nitrogen_tertiary_amine"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Deterministic RDKit membership checks for unrooted and nitrogen-rooted tertiary amine output."
+        },
+        {
+          "cases": [
+            "rooted_tertiary_amine_branch_shape",
+            "rooted_tertiary_amine_branch_shape_all_bonds_explicit"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Exact support and inventory checks for the rooted tertiary amine branch shape."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test40smilesrootedatatom",
       "kind": "python_test",
       "language": "python",
@@ -3719,11 +3796,11 @@
         "rootedAtAtom"
       ],
       "name": "test40SmilesRootedAtAtom",
-      "notes": "",
+      "notes": "Python rooted tertiary amine example is covered by both deterministic membership and exact support fixtures.",
       "parent": "TestCase",
       "snippet_sha256": "e8211ea3359663de0f14c19e9b1b8ff2b7a18c21dcc0402b654a7f0a6bc9659a",
       "start_line": 2107,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -3818,7 +3895,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "path-submol-canonical-deterministic-writer",
       "end_line": 2832,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test61pathtosubmol",
@@ -3829,11 +3906,11 @@
         "rootedAtAtom"
       ],
       "name": "test61PathToSubmol",
-      "notes": "",
+      "notes": "Builds a submol with PathToSubmol and checks canonical deterministic MolToSmiles output shape. Grimace does not model PathToSubmol or RDKit canonical ranking.",
       "parent": "TestCase",
       "snippet_sha256": "1782d91044e0ce0940eee1f06b4c61d906919e4db847a62a68af0168e940db7d",
       "start_line": 2820,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4367,9 +4444,18 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rooted-chiral-smiles-write-params",
       "end_line": 7302,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "rooted_chiral_center_isomeric",
+            "rooted_chiral_center_nonisomeric"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/10_chirality_smiles.json",
+          "note": "Exact support and token inventory for the same C[C@H](F)Cl root-1 chiral center."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testsmileswriteparams",
       "kind": "python_test",
       "language": "python",
@@ -4381,15 +4467,15 @@
         "CXSmiles"
       ],
       "name": "testSmilesWriteParams",
-      "notes": "",
+      "notes": "In-scope rooted chiral SMILES surface is covered. The upstream MolToCXSmiles assertion uses the same string but CXSMILES as an API is outside current Grimace scope.",
       "parent": "TestCase",
       "snippet_sha256": "d2757fc279c0c95e255faa12bd959708a6aa0a903eeacacbef7462450f532328",
       "start_line": 7297,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-options",
       "end_line": 7314,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testcxsmilesoptions",
@@ -4402,11 +4488,11 @@
         "CXSmiles"
       ],
       "name": "testCXSmilesOptions",
-      "notes": "",
+      "notes": "Checks MolToCXSmiles CX field filtering with rootedAtAtom. CXSMILES option serialization is outside the current Grimace SMILES writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "05645866d28c3c7fe60c2ce3641cf6c875dc4c4cb0165a3ff83a9273f39785e6",
       "start_line": 7304,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4947,9 +5033,25 @@
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {
-      "claim": "needs-triage",
+      "claim": "rooted-tertiary-amine-smiles",
       "end_line": 1048,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "writer_flags_07_rooted_at_unrooted_tertiary_amine",
+            "writer_flags_08_rooted_at_nitrogen_tertiary_amine"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/20_writer_flags.json",
+          "note": "Covers the Java testRootedAt unrooted/root-1 examples for CN(C)C."
+        },
+        {
+          "cases": [
+            "rooted_tertiary_amine_branch_shape"
+          ],
+          "fixture": "tests/fixtures/rdkit_serializer_regressions/2026.03.1/00_core_writer_flags.json",
+          "note": "Exact support for nitrogen-rooted tertiary amine branch shape."
+        }
+      ],
       "id": "code_javawrappers_gmwrapper_src_test_org_rdkit_smilesdetailstests__java_test__smilesdetailstests__testrootedat",
       "kind": "java_test",
       "language": "java",
@@ -4957,11 +5059,11 @@
         "MolToSmiles"
       ],
       "name": "testRootedAt",
-      "notes": "",
+      "notes": "Java rootedAt wrapper example is covered by shared Python fixture corpus for the same RDKit writer behavior.",
       "parent": "SmilesDetailsTests",
       "snippet_sha256": "416a515060d38cd175dbb728e4dadb55214a41991fd00531f85bac2f933fef09",
       "start_line": 1033,
-      "status": "unreviewed",
+      "status": "covered",
       "upstream_file": "Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java"
     },
     {

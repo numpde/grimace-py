@@ -136,21 +136,29 @@ Current blind spots
    parity is not continuously proven unless the parity corpus is explicitly
    keyed and exercised against a pinned RDKit build.
 
-5. Coverage breadth is curated rather than generative.
+5. Isomeric directional-bond all-roots parity has known gaps.
+   During fixture expansion against RDKit 2026.03.1, simple directional-bond
+   cases such as `C(/C)=N/O` and the larger
+   `C1NC(Cl)C(=N\O)/C1=N\O` issue184 dioxime produced RDKit sampled
+   isomeric outputs outside the current Grimace support. Their non-stereo
+   surfaces matched after slash/backslash suppression, so this appears scoped
+   to directional stereo polarity/placement rather than graph coverage.
+
+6. Coverage breadth is curated rather than generative.
    The suite is strong on representative and adversarial hand-picked cases,
    but there is no fuzz/property layer over large random molecule families.
 
-6. Concurrency and resource-stress behavior are mostly untested.
+7. Concurrency and resource-stress behavior are mostly untested.
    There is little to no explicit coverage for:
    - parallel decoder use
    - thread-safety expectations
    - long-running memory/resource behavior on very large supports
 
-7. Public docs/examples are only partially executable.
+8. Public docs/examples are only partially executable.
    Some examples are exercised indirectly by smoke tests, but there is no full
    “every README/API snippet runs as written” harness.
 
-8. Installed-script surface is only smoke-tested.
+9. Installed-script surface is only smoke-tested.
    Local helper scripts are checked for import/execution basics, but not with a
    broader behavioral matrix from installed artifacts.
 

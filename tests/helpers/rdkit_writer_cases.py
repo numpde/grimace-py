@@ -1,31 +1,5 @@
 from __future__ import annotations
 
-from typing import NamedTuple
-
-
-class RootedRandomCase(NamedTuple):
-    smiles: str
-    rooted_outputs: tuple[str, ...]
-
-
-ROOTED_RANDOM_CASES: tuple[RootedRandomCase, ...] = (
-    RootedRandomCase(
-        smiles="COc1ccnc(CC)c1C",
-        rooted_outputs=(
-            "COc1ccnc(CC)c1C",
-            "O(C)c1ccnc(CC)c1C",
-            "c1(OC)ccnc(CC)c1C",
-            "c1c(OC)c(C)c(CC)nc1",
-            "c1cc(OC)c(C)c(CC)n1",
-            "n1ccc(OC)c(C)c1CC",
-            "c1(CC)nccc(OC)c1C",
-            "C(c1nccc(OC)c1C)C",
-            "CCc1nccc(OC)c1C",
-            "c1(C)c(OC)ccnc1CC",
-            "Cc1c(OC)ccnc1CC",
-        ),
-    ),
-)
 DISCONNECTED_ROOT_ZERO_CASES: tuple[str, ...] = (
     "[Na+].[Cl-]",
     "[K+].[Cl-]",

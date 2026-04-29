@@ -9,6 +9,7 @@ from tests.helpers.pinned_rdkit_fixtures import load_pinned_rdkit_fixture_cases
 from tests.helpers.rdkit_exact_small_support import (
     load_pinned_exact_small_support_cases,
 )
+from tests.helpers.rdkit_rooted_random import load_pinned_rooted_random_cases
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
 )
@@ -253,6 +254,19 @@ class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
         for rdkit_version in versions:
             with self.subTest(rdkit_version=rdkit_version):
                 cases = load_pinned_serializer_regression_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+                self.assertTrue(cases)
+
+    def test_all_checked_in_rooted_random_fixtures_load(self) -> None:
+        fixture_root = CHECKED_IN_FIXTURE_ROOT / "rdkit_rooted_random"
+        versions = _pinned_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_rooted_random_cases(
                     rdkit_version,
                     fixture_root=fixture_root,
                 )

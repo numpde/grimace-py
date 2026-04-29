@@ -5,13 +5,16 @@ import unittest
 from rdkit import Chem, rdBase
 
 from tests.helpers.mols import parse_smiles
-from tests.helpers.rdkit_writer_cases import ROOTED_RANDOM_CASES
+from tests.helpers.rdkit_rooted_random import load_pinned_rooted_random_cases
 from tests.rdkit_serialization._support import (
     assert_rooted_random_case_in_grimace_support,
     grimace_support,
     rdkit_mol_to_smiles_kwargs_from_options,
     sample_rdkit_random_support,
 )
+
+
+_RANDOM_START_CASE_SMILES = "COc1ccnc(CC)c1C"
 
 
 class RDKITRootedRandomWriterTests(unittest.TestCase):
@@ -22,12 +25,19 @@ class RDKITRootedRandomWriterTests(unittest.TestCase):
     """
 
     def test_rdkit_rooted_random_generation_cases_are_in_grimace_support(self) -> None:
-        for case in ROOTED_RANDOM_CASES:
-            assert_rooted_random_case_in_grimace_support(self, case)
+        try:
+            cases = load_pinned_rooted_random_cases(rdBase.rdkitVersion)
+        except FileNotFoundError:
+            raise unittest.SkipTest(
+                f"no pinned rooted-random corpus for RDKit {rdBase.rdkitVersion}"
+            )
+
+        for case in cases:
+            with self.subTest(case_id=case.case_id, source=case.source):
+                assert_rooted_random_case_in_grimace_support(self, case)
 
     def test_rdkit_random_start_behavior_is_reflected_in_unrooted_support(self) -> None:
-        case = ROOTED_RANDOM_CASES[0]
-        mol = parse_smiles(case.smiles)
+        mol = parse_smiles(_RANDOM_START_CASE_SMILES)
 
         rdBase.SeedRandomNumberGenerator(0xF00D)
         rdkit_seen = {

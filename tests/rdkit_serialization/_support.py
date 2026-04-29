@@ -4,7 +4,7 @@ from rdkit import Chem, rdBase
 
 import grimace
 from tests.helpers.public_runtime import supported_public_kwargs
-from tests.helpers.rdkit_writer_cases import RootedRandomCase
+from tests.helpers.rdkit_rooted_random import PinnedRootedRandomCase
 from tests.helpers.rdkit_writer_membership import PinnedWriterMembershipCase
 
 
@@ -213,7 +213,10 @@ def assert_exact_writer_case_in_grimace_support(
     test_case.assertIn(rdkit_out, support)
 
 
-def assert_rooted_random_case_in_grimace_support(test_case, case: RootedRandomCase) -> None:
+def assert_rooted_random_case_in_grimace_support(
+    test_case,
+    case: PinnedRootedRandomCase,
+) -> None:
     mol = Chem.MolFromSmiles(case.smiles)
     test_case.assertEqual(mol.GetNumAtoms(), len(case.rooted_outputs))
 

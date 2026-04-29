@@ -35,6 +35,21 @@ def normalized_unique_sorted_strings(
     return normalized
 
 
+def required_string_tuple(
+    values: list[object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> tuple[str, ...]:
+    if not values or not all(type(value) is str for value in values):
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonempty "
+            f"{field_name} as strings; got {values!r}"
+        )
+    return tuple(values)
+
+
 def optional_positive_int(
     raw_case: dict[str, object],
     *,

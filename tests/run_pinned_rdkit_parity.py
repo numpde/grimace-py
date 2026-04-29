@@ -8,11 +8,14 @@ from rdkit import rdBase
 
 PINNED_RDKIT_PARITY_MODULES: tuple[str, ...] = (
     "tests.rdkit_serialization.test_exact_small_support",
+    "tests.rdkit_serialization.test_rooted_random.RDKITRootedRandomWriterTests."
+    "test_rdkit_rooted_random_generation_cases_are_in_grimace_support",
     "tests.rdkit_serialization.test_serializer_regressions",
     "tests.rdkit_serialization.test_writer_membership",
 )
 PINNED_RDKIT_FIXTURE_ROOTS: tuple[Path, ...] = (
     Path(__file__).resolve().parent / "fixtures" / "rdkit_exact_small_support",
+    Path(__file__).resolve().parent / "fixtures" / "rdkit_rooted_random",
     Path(__file__).resolve().parent / "fixtures" / "rdkit_serializer_regressions",
     Path(__file__).resolve().parent / "fixtures" / "rdkit_writer_membership",
 )

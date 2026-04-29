@@ -169,6 +169,7 @@ def rdkit_exact_writer_output(case: ExactWriterCase) -> str:
 def assert_exact_writer_case_in_grimace_support(test_case, case: ExactWriterCase) -> None:
     mol = Chem.MolFromSmiles(case.smiles)
     rdkit_out = rdkit_exact_writer_output(case)
+    test_case.assertEqual(case.expected, rdkit_out)
 
     if case.isomeric_smiles and mol.GetNumAtoms() > 35:
         sampled = sample_rdkit_random_support(

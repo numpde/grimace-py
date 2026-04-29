@@ -173,7 +173,7 @@ WRITER_FLAG_CASES: tuple[ExactWriterCase, ...] = (
     ),
     ExactWriterCase(
         smiles="F/C=N/Cl",
-        expected="C(\\F)=N/Cl",
+        expected="C(/F)=N\\Cl",
         isomeric_smiles=True,
         rooted_at_atom=1,
     ),
@@ -203,7 +203,7 @@ DATASET_REGRESSION_CASES: tuple[ExactWriterCase, ...] = (
         ),
         expected=(
             "c1ccc2/c3[n-]/c(c2c1)=N\\c1c2c(c([n-]1)/N=c1\\[n-]/c(c4c1cccc4)"
-            "=N\\c1c4c(c([n-]1)/N=3)cccc4)cccc2.[Cu]"
+            "=N\\c1c4c(c([n-]1)\\N=3)cccc4)cccc2.[Cu]"
         ),
         isomeric_smiles=True,
         rooted_at_atom=0,

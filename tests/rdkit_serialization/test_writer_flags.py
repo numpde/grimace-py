@@ -81,7 +81,7 @@ class RDKITWriterFlagTests(unittest.TestCase):
             ExactWriterCase(
                 smiles="C/C(=C(/C)\\c1ccccc1)/c1ccccc1",
                 expected=(
-                    "[C](\\[CH3])(=[C](/[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)"
+                    "[C](/[CH3])(=[C](\\[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)"
                     "-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1"
                 ),
                 isomeric_smiles=True,
@@ -93,7 +93,7 @@ class RDKITWriterFlagTests(unittest.TestCase):
             ExactWriterCase(
                 smiles="C/C(=C(/C)\\c1ccccc1)/c1ccccc1",
                 expected=(
-                    "[C](=[C](/[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)(\\[CH3])"
+                    "[C](=[C](\\[CH3])-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1)(/[CH3])"
                     "-[c]1:[cH]:[cH]:[cH]:[cH]:[cH]:1"
                 ),
                 isomeric_smiles=True,

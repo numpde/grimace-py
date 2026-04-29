@@ -127,7 +127,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 339,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2257_writing_cxsmiles",
@@ -138,15 +138,15 @@
         "CXSmiles"
       ],
       "name": "github #2257: writing cxsmiles",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": null,
       "snippet_sha256": "97840dd9be3d19100b641e4002612ef7657f740b91f16443c93573109768de67",
       "start_line": 169,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 175,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__basics",
@@ -157,15 +157,15 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "f977158170fbd4dfd8fc5627a8db68fff7e91485fb1ac1f5e68c66983ac2e929",
       "start_line": 170,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 185,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_labels",
@@ -176,15 +176,15 @@
         "CXSmiles"
       ],
       "name": "atom labels",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "fbaa3918ef0ca3f93218f481751c013bf4a6339affd904ca9ccc553bf208ffb2",
       "start_line": 176,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 197,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_ordering",
@@ -195,15 +195,15 @@
         "CXSmiles"
       ],
       "name": "atom ordering",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "ed0efe61379a4f20353655b225c34f9484c58d1927feefd181ba5885d3243dc9",
       "start_line": 186,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 207,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_values",
@@ -214,15 +214,15 @@
         "CXSmiles"
       ],
       "name": "atom values",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "b69826042e63a57b0c60c6170438b04c203cc23219dbbd6adcf33eed8038e210",
       "start_line": 198,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 218,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__radicals",
@@ -233,15 +233,15 @@
         "CXSmiles"
       ],
       "name": "radicals",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "3e0d9b9e373d70350520a525cf468c3d433cbc5419ce25130e79eef2aa366799",
       "start_line": 209,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 228,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__radicals2",
@@ -252,15 +252,15 @@
         "CXSmiles"
       ],
       "name": "radicals2",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "f6b5e891c9fa967631d5f306268129695aa5598b036ba59a50a3acb099c539c9",
       "start_line": 219,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 236,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__coordinates",
@@ -271,15 +271,15 @@
         "CXSmiles"
       ],
       "name": "coordinates",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "93b077f5be58ee4314ce22ebc4a58bc4487d8a94b2c027b6e84c31ac976d7cd6",
       "start_line": 229,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 244,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__coordinates3d",
@@ -290,15 +290,15 @@
         "CXSmiles"
       ],
       "name": "coordinates3d",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "25863411e1bf6073720dfe6ca986148c5b337978049ba25052ef50f07461f60e",
       "start_line": 237,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 260,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_props",
@@ -309,15 +309,15 @@
         "CXSmiles"
       ],
       "name": "atom props",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "b8473080f7d4faa00c31bf0cfd2e96e270c8bc09b0e0cb33216a7b9e02fe2217",
       "start_line": 245,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 267,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__atom_props_and_values",
@@ -328,15 +328,15 @@
         "CXSmiles"
       ],
       "name": "atom props and values",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "70c17a9a820050ecc9ffc2b7d689370eb57bd1a519a256673128ad8cc3052c2f",
       "start_line": 261,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 273,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_1",
@@ -347,15 +347,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo 1",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "12c2e926f9c719beefcef985bbb25cf5f0b1a815ef0b20ff7b73281f1b755aca",
       "start_line": 268,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 280,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_2",
@@ -366,15 +366,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo 2",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "fbf5e5fbe086caa8ccc2656a3efcdae29d30919ab784cebe216396e2f50b9cde",
       "start_line": 275,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 290,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_3",
@@ -385,15 +385,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo 3",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "5008648cfe041f67731994405e1da8867f7f339379fd5487bf15c4d791fc855f",
       "start_line": 282,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 297,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_4",
@@ -404,15 +404,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo 4",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "e1a01cde7b27e2ca26a53294994b0b06f08aa0c30c758bc392a75f50c4606f79",
       "start_line": 292,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 304,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__enhanced_stereo_with_other_properties",
@@ -423,15 +423,15 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo with other properties",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "faf476f0acc9b7e54b39627c9ae829280e7093be8197218573979bd326912879",
       "start_line": 299,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 314,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments1",
@@ -441,15 +441,15 @@
         "CXSmiles"
       ],
       "name": "mol fragments1",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "b82925ad484f47a342fcb503c1423c3e8a5c29225d146af76d440293a9edcf91",
       "start_line": 306,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 326,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments2",
@@ -459,15 +459,15 @@
         "CXSmiles"
       ],
       "name": "mol fragments2",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "5038e3c957f6466fb8cbe5fafa94b3cc835eb2803c53a702d3b3ed8fb3896dce",
       "start_line": 315,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-serialization",
       "end_line": 338,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2257_writing_cxsmiles__mol_fragments3",
@@ -477,11 +477,11 @@
         "CXSmiles"
       ],
       "name": "mol fragments3",
-      "notes": "",
+      "notes": "GitHub #2257 exercises CXSMILES extension serialization: atom labels, atom values/properties, radicals, coordinates, enhanced stereo groups, and fragment CX metadata. Grimace currently targets plain SMILES support and decoding, not CXSMILES extension output.",
       "parent": "github #2257: writing cxsmiles",
       "snippet_sha256": "29bf0446152cf54562561d2cfebf92245e905b3964dfb4a3afde6062168cb325",
       "start_line": 328,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

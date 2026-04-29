@@ -3093,7 +3093,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smiles-bond-output-order-property",
       "end_line": 1409,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__details",
@@ -3104,15 +3104,15 @@
         "SmilesWriteParams"
       ],
       "name": "details",
-      "notes": "",
+      "notes": "GitHub #6315 details section checks RDKit private _smilesBondOutputOrder side-effect state after MolToSmiles, not Grimace writer output parity.",
       "parent": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
       "snippet_sha256": "5de3fb2779d29f6a9c7f7a0745098a9d22bbcfc9c18c8068f4bb0cc1d271b92d",
       "start_line": 1400,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "smiles-bond-output-order-property",
       "end_line": 1424,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__bond_ordering_is_actually_correct",
@@ -3123,11 +3123,11 @@
         "SmilesWriteParams"
       ],
       "name": "bond ordering is actually correct",
-      "notes": "",
+      "notes": "GitHub #6315 bond-ordering section validates RDKit private _smilesBondOutputOrder ordering, which Grimace does not expose.",
       "parent": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
       "snippet_sha256": "478e16ed143f877cd19daeabdd629d22b5cdc86fbfd5e3147f990068cccfb8f7",
       "start_line": 1411,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {

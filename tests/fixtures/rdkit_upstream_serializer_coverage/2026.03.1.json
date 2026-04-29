@@ -521,7 +521,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 521,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_2667_moltocxsmiles_generates_error_for_empty_molecule",
@@ -532,15 +532,15 @@
         "CXSmiles"
       ],
       "name": "github #2667: MolToCXSmiles generates error for empty molecule",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": null,
       "snippet_sha256": "3d6612d8149907c3ed4efbb7fc9a44742dc24a29fa94d11535f3764e6d137717",
       "start_line": 513,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 520,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_2667_moltocxsmiles_generates_error_for_empty_molecule__basics",
@@ -551,11 +551,11 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "github #2667: MolToCXSmiles generates error for empty molecule",
       "snippet_sha256": "e1ac82c559571ac8948c2726d4150f8f82d97be90c62d586fbd6f6b1629291ca",
       "start_line": 515,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -643,7 +643,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 738,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_3197_molecule_constructed_from_cxsmiles_cannot_be_translated_to",
@@ -654,15 +654,15 @@
         "CXSmiles"
       ],
       "name": "github #3197: Molecule constructed from CXSMILES cannot be translated to ",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": null,
       "snippet_sha256": "1857d076568717566e943ac021e2fe3a917ae4eef534aa65328075ff544b9a42",
       "start_line": 702,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 737,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_3197_molecule_constructed_from_cxsmiles_cannot_be_translated_to__serialization",
@@ -673,11 +673,11 @@
         "CXSmiles"
       ],
       "name": "serialization",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "github #3197: Molecule constructed from CXSMILES cannot be translated to ",
       "snippet_sha256": "c7b714661630c4b07521a3d080a1354db2357a407156d22e045539f5e2ba1f03",
       "start_line": 717,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -807,7 +807,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 1096,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4233_data_groups_in_cxsmiles_neither_parsed_nor_written",
@@ -818,15 +818,15 @@
         "CXSmiles"
       ],
       "name": "Github #4233: data groups in CXSMILES neither parsed nor written",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": null,
       "snippet_sha256": "275cbb9f59f7c56254324d2ebb8536e6afd7a517035b14bd0ee1e2b6ebc20be9",
       "start_line": 1013,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 1095,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4233_data_groups_in_cxsmiles_neither_parsed_nor_written__basics",
@@ -837,11 +837,11 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "Github #4233: data groups in CXSMILES neither parsed nor written",
       "snippet_sha256": "c0c7755975ac811e9bdec456af2ae9187b2f59cfaa72a1f2e7feb16d65ce374f",
       "start_line": 1014,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1434,7 +1434,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1987,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__empty_atom_label_block",
@@ -1445,15 +1445,15 @@
         "CXSmiles"
       ],
       "name": "empty atom label block",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": null,
       "snippet_sha256": "603804cc079bd397a9baa5c5a49efdf563d597b072be8654b9b577cfbe12ba57",
       "start_line": 1958,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1986,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__empty_atom_label_block__basics",
@@ -1464,11 +1464,11 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": "empty atom label block",
       "snippet_sha256": "52396c46cbb7781b7cf7b1368939ee35d9aa65d974f05c7c8c1ed8c5cb8aa630",
       "start_line": 1959,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1528,7 +1528,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 2023,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_5466_writing_floating_point_atom_props_cxsmiles",
@@ -1539,15 +1539,15 @@
         "CXSmiles"
       ],
       "name": "github #5466 writing floating point atom props cxsmiles",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": null,
       "snippet_sha256": "5709e3eefd3d36f6eafef6120572b9fe7a6118cd1bede1da4ab84e49f4a4f825",
       "start_line": 2000,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 2014,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5466_writing_floating_point_atom_props_cxsmiles__simple",
@@ -1558,15 +1558,15 @@
         "CXSmiles"
       ],
       "name": "simple",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "github #5466 writing floating point atom props cxsmiles",
       "snippet_sha256": "4e4a208beec94c4aaf4eff876c1fb8565618f56b1aaf7be143594d54c3670fe1",
       "start_line": 2002,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 2022,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_5466_writing_floating_point_atom_props_cxsmiles__label_with",
@@ -1577,11 +1577,11 @@
         "CXSmiles"
       ],
       "name": "label with .",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "github #5466 writing floating point atom props cxsmiles",
       "snippet_sha256": "e5d7ba598992f250292db1d914e5cb7785092a504c38fed184d3fbcd0f821aa8",
       "start_line": 2015,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1843,7 +1843,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 2615,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__ensure_unused_features_are_not_used",
@@ -1856,11 +1856,11 @@
         "CXSmiles"
       ],
       "name": "ensure unused features are not used",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": null,
       "snippet_sha256": "4150843645be6da3f868f0117b26f0d626c1ff28f93913a2d676d8aa487fece8",
       "start_line": 2520,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1921,7 +1921,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 2605,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__ensure_unused_features_are_not_used__enhanced_stereo",
@@ -1934,11 +1934,11 @@
         "CXSmiles"
       ],
       "name": "enhanced stereo",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata behavior. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "ensure unused features are not used",
       "snippet_sha256": "154c509d4edb2a7803e0f4aafe8bef08c70eae65c59c5744bf95246b1738dd7a",
       "start_line": 2581,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2322,7 +2322,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-api",
       "end_line": 2990,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__remove_cx_extension_from_smiles",
@@ -2333,15 +2333,15 @@
         "CXSmiles"
       ],
       "name": "Remove CX extension from SMILES",
-      "notes": "",
+      "notes": "This upstream block checks RDKit CXSMILES extension parsing or extension helper APIs. Grimace does not expose CXSMILES extensions.",
       "parent": null,
       "snippet_sha256": "3d45a277439a216202c70a504014d3d5f73e37c8b6033e24aeb73629e984c7ab",
       "start_line": 2978,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-api",
       "end_line": 2989,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__remove_cx_extension_from_smiles__basics",
@@ -2352,11 +2352,11 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block checks RDKit CXSMILES extension parsing or extension helper APIs. Grimace does not expose CXSMILES extensions.",
       "parent": "Remove CX extension from SMILES",
       "snippet_sha256": "ed432f1af64889dd5f07f9984c7a1a20e224dc03817773829ffeaae0781a9bf0",
       "start_line": 2979,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2416,7 +2416,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 3073,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_7340",
@@ -2427,15 +2427,15 @@
         "CXSmiles"
       ],
       "name": "Github #7340",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": null,
       "snippet_sha256": "3a14ced509279000853d9f7aedec2a7047dcc1f5edd3423fa2cc9cc93378f986",
       "start_line": 3026,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-api",
       "end_line": 3053,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7340__test_getcxextensions_with_a_vector",
@@ -2446,15 +2446,15 @@
         "CXSmiles"
       ],
       "name": "Test getCXExtensions with a Vector",
-      "notes": "",
+      "notes": "This upstream block checks RDKit CXSMILES extension parsing or extension helper APIs. Grimace does not expose CXSMILES extensions.",
       "parent": "Github #7340",
       "snippet_sha256": "8dd13f31b34016ff01b4dec851f8074be18c9aab557b6f1f814033d888f26da4",
       "start_line": 3027,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 3072,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_7340__expects_an_error",
@@ -2464,11 +2464,11 @@
         "CXSmiles"
       ],
       "name": "Expects an error",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "Github #7340",
       "snippet_sha256": "22f1bc04c98713912cf0f1289607d3759252e1f8e59e26ab0640f0e5636c24a6",
       "start_line": 3055,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2715,7 +2715,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-api",
       "end_line": 3256,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__zob_cx_smiles_extension",
@@ -2726,15 +2726,15 @@
         "CXSmiles"
       ],
       "name": "ZOB cx smiles extension",
-      "notes": "",
+      "notes": "This upstream block checks RDKit CXSMILES extension parsing or extension helper APIs. Grimace does not expose CXSMILES extensions.",
       "parent": null,
       "snippet_sha256": "aa318e0bad834e13c160b79b263302384840c38421ac1cce561905e62da74eb7",
       "start_line": 3225,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-api",
       "end_line": 3240,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__zob_cx_smiles_extension__basics",
@@ -2745,15 +2745,15 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block checks RDKit CXSMILES extension parsing or extension helper APIs. Grimace does not expose CXSMILES extensions.",
       "parent": "ZOB cx smiles extension",
       "snippet_sha256": "2dd81ac54dbe770b0537877d5e81a529901547350c2759b191b72909600e26f7",
       "start_line": 3226,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-extension-api",
       "end_line": 3255,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__zob_cx_smiles_extension__reverse",
@@ -2764,11 +2764,11 @@
         "CXSmiles"
       ],
       "name": "Reverse",
-      "notes": "",
+      "notes": "This upstream block checks RDKit CXSMILES extension parsing or extension helper APIs. Grimace does not expose CXSMILES extensions.",
       "parent": "ZOB cx smiles extension",
       "snippet_sha256": "919245d187272a8a563b25b4f40d80053c69523774d11ef7fe2f2b043f9958e7",
       "start_line": 3241,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -2993,7 +2993,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-canonicalization",
       "end_line": 1360,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__smiles_canonicalization",
@@ -3004,15 +3004,15 @@
         "CXSmiles"
       ],
       "name": "SMILES CANONICALIZATION",
-      "notes": "",
+      "notes": "This upstream block checks RDKit canonicalization through MolToCXSmiles. Grimace does not expose canonical CXSMILES serialization.",
       "parent": null,
       "snippet_sha256": "019becb19f969099b0b2c99858c78f1a33c74455e47e9c8a84085b685f737deb",
       "start_line": 1307,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-canonicalization",
       "end_line": 1359,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__smiles_canonicalization__other_compounds",
@@ -3023,11 +3023,11 @@
         "CXSmiles"
       ],
       "name": "Other Compounds",
-      "notes": "",
+      "notes": "This upstream block checks RDKit canonicalization through MolToCXSmiles. Grimace does not expose canonical CXSMILES serialization.",
       "parent": "SMILES CANONICALIZATION",
       "snippet_sha256": "f88820fd690e788aae05d57e6c33fe886ca25e10f0ffa7bff9249f2940e624dc",
       "start_line": 1326,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -3051,7 +3051,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-smiles-bond-output-order-property",
       "end_line": 1425,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property",
@@ -3064,15 +3064,15 @@
         "CXSmiles"
       ],
       "name": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
-      "notes": "",
+      "notes": "This upstream block checks RDKit bookkeeping of the _smilesBondOutputOrder property for later CXSMILES output. Grimace does not expose RDKit CXSMILES property-order machinery.",
       "parent": null,
       "snippet_sha256": "786f983922377c8e21da3005ca60234558f57bdd38a1df1fc9a157cb8960e07e",
       "start_line": 1386,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-smiles-bond-output-order-property",
       "end_line": 1398,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6315_moltosmiles_canonical_false_creates_the_wrong_smilesbondoutputorder_property__initial_report",
@@ -3085,11 +3085,11 @@
         "CXSmiles"
       ],
       "name": "initial report",
-      "notes": "",
+      "notes": "This upstream block checks RDKit bookkeeping of the _smilesBondOutputOrder property for later CXSMILES output. Grimace does not expose RDKit CXSMILES property-order machinery.",
       "parent": "Github #6315: MolToSmiles(canonical=False) creates the wrong _smilesBondOutputOrder property",
       "snippet_sha256": "09b85d95fbf1618a0b4d450c3b1c85ea16e6e650fa3919503ca53bfbc5c29276",
       "start_line": 1391,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -3207,7 +3207,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1474,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_6309_cxsmiles_atom_with_labels_should_not_also_have_dummylabel_property_set",
@@ -3218,15 +3218,15 @@
         "CXSmiles"
       ],
       "name": "Github #6309: CXSMILES: atom with labels should not also have dummyLabel property set",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": null,
       "snippet_sha256": "1a067f79259157c4e9e86b5579b83b5b2c69ca7080938e5249d0d920768aa74e",
       "start_line": 1461,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1473,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_6309_cxsmiles_atom_with_labels_should_not_also_have_dummylabel_property_set__as_reported",
@@ -3237,15 +3237,15 @@
         "CXSmiles"
       ],
       "name": "as-reported",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": "Github #6309: CXSMILES: atom with labels should not also have dummyLabel property set",
       "snippet_sha256": "e7996f54911c9be08b5a86fc1b6daa5f735bda4ba752696c2f3aa37e22ccdc7b",
       "start_line": 1463,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1482,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__write_attachment_points",
@@ -3256,15 +3256,15 @@
         "CXSmiles"
       ],
       "name": "write attachment points",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": null,
       "snippet_sha256": "1c5ccf59bb687159cc8752e3fcb3d73a422bce7d1f55e0a2acaae0c754e81458",
       "start_line": 1476,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-conformer-metadata",
       "end_line": 1492,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_7414_cxsmiles_writer_does_not_use_default_conformer_id",
@@ -3275,15 +3275,15 @@
         "CXSmiles"
       ],
       "name": "github #7414: CXSmiles writer does not use default conformer ID",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES conformer-coordinate selection. Grimace does not expose conformer/CX coordinate metadata.",
       "parent": null,
       "snippet_sha256": "56b41a341cb03e1766bcab945616258605839e20ba94210207701a8536e75a06",
       "start_line": 1484,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-conformer-metadata",
       "end_line": 1491,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7414_cxsmiles_writer_does_not_use_default_conformer_id__basics",
@@ -3294,15 +3294,15 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES conformer-coordinate selection. Grimace does not expose conformer/CX coordinate metadata.",
       "parent": "github #7414: CXSmiles writer does not use default conformer ID",
       "snippet_sha256": "1e0e37b6bbc6fd2275e8e3841cc295ee6023a73a4bb44668db6e34cdde16acfc",
       "start_line": 1485,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-include-dative-bonds-option",
       "end_line": 1526,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__github_7372_smiles_output_option_to_disable_dative_bonds",
@@ -3314,15 +3314,15 @@
         "CXSmiles"
       ],
       "name": "Github #7372: SMILES output option to disable dative bonds",
-      "notes": "",
+      "notes": "This upstream block checks RDKit includeDativeBonds behavior through MolToCXSmiles. Grimace does not expose MolToCXSmiles or the includeDativeBonds writer option.",
       "parent": null,
       "snippet_sha256": "e03cc829d3242dd22ee567b9b87b48180f2f46c103da8a23a9389566884b8da4",
       "start_line": 1494,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-include-dative-bonds-option",
       "end_line": 1507,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__basics",
@@ -3334,15 +3334,15 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block checks RDKit includeDativeBonds behavior through MolToCXSmiles. Grimace does not expose MolToCXSmiles or the includeDativeBonds writer option.",
       "parent": "Github #7372: SMILES output option to disable dative bonds",
       "snippet_sha256": "682858b4ad7654d6ebcd246e54a3d54a368586d734941b94125004897e2c48e0",
       "start_line": 1495,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-include-dative-bonds-option",
       "end_line": 1519,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__github_7372_smiles_output_option_to_disable_dative_bonds__two_dative_bonds",
@@ -3353,11 +3353,11 @@
         "CXSmiles"
       ],
       "name": "two dative bonds",
-      "notes": "",
+      "notes": "This upstream block checks RDKit includeDativeBonds behavior through MolToCXSmiles. Grimace does not expose MolToCXSmiles or the includeDativeBonds writer option.",
       "parent": "Github #7372: SMILES output option to disable dative bonds",
       "snippet_sha256": "623c43bacbf061648adf8cfe92d30c3296c7807ab5da604afe121b8593007f0c",
       "start_line": 1514,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -3507,7 +3507,7 @@
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1734,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_test_case__atom_maps_and_dummy_labels_in_cxsmiles",
@@ -3518,15 +3518,15 @@
         "CXSmiles"
       ],
       "name": "atom maps and dummy labels in CXSMILES",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": null,
       "snippet_sha256": "47e035f968ddfaacf2d34d0a81813324f1004a9f37337c9c955807d8f91c5443",
       "start_line": 1724,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-atom-label-metadata",
       "end_line": 1733,
       "grimace_links": [],
       "id": "code_graphmol_smilesparse_cxsmiles_test__cpp_section__atom_maps_and_dummy_labels_in_cxsmiles__basics",
@@ -3537,11 +3537,11 @@
         "CXSmiles"
       ],
       "name": "basics",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES atom labels, dummy labels, atom maps, or attachment-point metadata. Grimace does not emit CX atom metadata.",
       "parent": "atom maps and dummy labels in CXSMILES",
       "snippet_sha256": "dfa8fe44321287d7ef0ff8156ada31e1e6a374049dad032ede226d5b25fd2ff9",
       "start_line": 1725,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/SmilesParse/cxsmiles_test.cpp"
     },
     {
@@ -4180,7 +4180,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-api-surface",
       "end_line": 4938,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testwritecxsmiles",
@@ -4191,11 +4191,11 @@
         "CXSmiles"
       ],
       "name": "testWriteCXSmiles",
-      "notes": "",
+      "notes": "This upstream block exercises RDKit CXSMILES parsing or writing APIs. Grimace currently targets plain SMILES exact support/decoding, not CXSMILES output.",
       "parent": "TestCase",
       "snippet_sha256": "5646b54385e1d99dc87200abe38afd84b076b93d00ad7e0caf98ae95ac75ebe7",
       "start_line": 4923,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4338,7 +4338,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 5780,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testforwardenhancedstereogroupids",
@@ -4349,11 +4349,11 @@
         "CXSmiles"
       ],
       "name": "testForwardEnhancedStereoGroupIds",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata behavior. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "TestCase",
       "snippet_sha256": "32fefcdeb05795eac535571182e8677fa8e3ae40b6b58f6da9a76f0ff785a690",
       "start_line": 5745,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4412,7 +4412,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-png-metadata",
       "end_line": 6885,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testmoltopng",
@@ -4422,11 +4422,11 @@
         "CXSmiles"
       ],
       "name": "testMolToPNG",
-      "notes": "",
+      "notes": "This upstream block uses CXSMILES as metadata embedded in PNG/mol metadata workflows. Grimace does not cover RDKit PNG metadata APIs.",
       "parent": "TestCase",
       "snippet_sha256": "c31c4e729acea04ffe0bf6e953e829ace3c39386cf8addf217b578eeb7aa06af",
       "start_line": 6786,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4554,7 +4554,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-validation-api",
       "end_line": 7572,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testvalidationsmiles",
@@ -4566,11 +4566,11 @@
         "CXSmiles"
       ],
       "name": "testValidationSmiles",
-      "notes": "",
+      "notes": "This upstream block validates RDKit CXSMILES validation APIs. Grimace does not expose CXSMILES validation.",
       "parent": "TestCase",
       "snippet_sha256": "17c25745c76a140f33901b75048f470889c2f2f199d46b0c9aafe294d9b80c6d",
       "start_line": 7547,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4628,7 +4628,7 @@
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-3d-chirality-metadata",
       "end_line": 7899,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralmolfile",
@@ -4639,15 +4639,15 @@
         "CXSmiles"
       ],
       "name": "test3dChiralMolFile",
-      "notes": "",
+      "notes": "This upstream block checks 3D chirality and CXSMILES/CX molfile metadata behavior. Grimace covers plain SMILES support, not CX/3D metadata serialization.",
       "parent": "TestCase",
       "snippet_sha256": "0b0d6513b7c5d139d8b43aa48e174027752bbf2a97350a48fbf711cc5b92b7f8",
       "start_line": 7852,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-3d-chirality-metadata",
       "end_line": 7952,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralmrvfile",
@@ -4658,15 +4658,15 @@
         "CXSmiles"
       ],
       "name": "test3dChiralMrvFile",
-      "notes": "",
+      "notes": "This upstream block checks 3D chirality and CXSMILES/CX molfile metadata behavior. Grimace covers plain SMILES support, not CX/3D metadata serialization.",
       "parent": "TestCase",
       "snippet_sha256": "4ccdbd1592494d3f296cb258add5966c275138ac23e3b3c545fb15ea03d7f7b5",
       "start_line": 7901,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-3d-chirality-metadata",
       "end_line": 7995,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test3dchiralcxsmiles",
@@ -4677,15 +4677,15 @@
         "CXSmiles"
       ],
       "name": "test3dChiralCxsmiles",
-      "notes": "",
+      "notes": "This upstream block checks 3D chirality and CXSMILES/CX molfile metadata behavior. Grimace covers plain SMILES support, not CX/3D metadata serialization.",
       "parent": "TestCase",
       "snippet_sha256": "24c8fd8f5e553ee3ad1e11f0ee5d8fcb6ab5aae31d4fa00b3944a7ec6ce3ddb7",
       "start_line": 7954,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-bond-configuration",
       "end_line": 8098,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testatropisomerwedging",
@@ -4697,15 +4697,15 @@
         "CXSmiles"
       ],
       "name": "testAtropisomerWedging",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES bond-configuration or atropisomer metadata. Grimace does not model CX bond metadata serialization.",
       "parent": "TestCase",
       "snippet_sha256": "2a41b42f5ffb1fc604218e77a25e64dd3f3d7c41414ca03daec3db3c041b94d4",
       "start_line": 8054,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 8123,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testatropisomerwedgingrigorousenhancedstereo",
@@ -4717,15 +4717,15 @@
         "CXSmiles"
       ],
       "name": "testAtropisomerWedgingRigorousEnhancedStereo",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata behavior. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "TestCase",
       "snippet_sha256": "c68b41e37fbc56f72bfa33d2f5290d248daac8370b537549523999ba8c9cbf26",
       "start_line": 8100,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 8152,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testenhancedstereoexceedslimit",
@@ -4737,15 +4737,15 @@
         "CXSmiles"
       ],
       "name": "testEnhancedStereoExceedsLimit",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata behavior. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "TestCase",
       "snippet_sha256": "edfc85a44b4a0029056b43f98a290641b19943d300064c99558e09b52123bb0e",
       "start_line": 8125,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
-      "claim": "needs-triage",
+      "claim": "cxsmiles-enhanced-stereo-metadata",
       "end_line": 8186,
       "grimace_links": [],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testenhancedstereodoesnotexceedslimit",
@@ -4757,11 +4757,11 @@
         "CXSmiles"
       ],
       "name": "testEnhancedStereoDoesNotExceedsLimit",
-      "notes": "",
+      "notes": "This upstream block validates CXSMILES enhanced-stereo metadata behavior. Grimace supports plain isomeric SMILES surfaces, not CX enhanced-stereo annotations.",
       "parent": "TestCase",
       "snippet_sha256": "692dcb6349a8deed4f705100da30980ae56748d925def3448ff03e451ea37c9e",
       "start_line": 8154,
-      "status": "unreviewed",
+      "status": "out-of-scope",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

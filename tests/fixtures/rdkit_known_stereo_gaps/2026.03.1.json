@@ -1,0 +1,68 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "github3967_part2_directional_ring_closure_canonical",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 continued github #3967 part 2",
+      "smiles": "C1=CC/C=C2C3=C/CC=CC=CC\\3C\\2C=C1",
+      "expected": "C1=CC/C=C2\\C3=C\\CC=CC=CC3C2C=C1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_difficult_cis_cis",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoDifficultCase",
+      "smiles": "CC/C=C\\C(CO)=C(/C)CC",
+      "expected": "CC/C=C\\C(CO)=C(/C)CC",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_difficult_cis_trans",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoDifficultCase",
+      "smiles": "CC/C=C\\C(CO)=C(\\C)CC",
+      "expected": "CC/C=C\\C(CO)=C(\\C)CC",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_difficult_trans_cis",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoDifficultCase",
+      "smiles": "CC/C=C/C(CO)=C(\\C)CC",
+      "expected": "CC/C=C/C(CO)=C(\\C)CC",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_difficult_trans_trans",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoDifficultCase",
+      "smiles": "CC/C=C/C(CO)=C(/C)CC",
+      "expected": "CC/C=C/C(CO)=C(/C)CC",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_atoms_missing_surface_01",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoAtoms",
+      "smiles": "CC\\C=C/C(/C=C/CC)=C(/CC)CO",
+      "expected": "CC\\C=C/C(/C=C/CC)=C(/CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_atoms_missing_surface_02",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoAtoms",
+      "smiles": "CC\\C=C/C(/C=C/CC)=C(\\CC)CO",
+      "expected": "CC\\C=C/C(/C=C/CC)=C(\\CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    }
+  ]
+}

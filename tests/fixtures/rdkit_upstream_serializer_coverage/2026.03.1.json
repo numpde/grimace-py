@@ -1349,7 +1349,15 @@
     {
       "claim": "random-double-bond-ring-closure-molblock",
       "end_line": 1727,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "molblock_github4582_chembl409450_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/40_molblock_writer.json",
+          "note": "Partial coverage: the deterministic CHEMBL409450 canonical output is pinned; the 100-seed random-output loop still exposes directional ring-closure support gaps."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_double_bonds_and_ring_closures",
       "kind": "cpp_test_case",
       "language": "cpp",
@@ -1415,7 +1423,22 @@
     {
       "claim": "double-bond-ring-closure-smiles-and-molblock",
       "end_line": 1881,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "molblock_github4582_small_ring_closure_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/40_molblock_writer.json",
+          "note": "Partial coverage: the small molblock-backed canonical output is pinned."
+        },
+        {
+          "cases": [
+            "github3967_part1_directional_ring_closure_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/70_ring_closure_writer.json",
+          "note": "Partial coverage: GitHub #3967 part 1 deterministic canonical output is pinned; part 2 and CHEMBL3623347 remain blocked by coupled directional ring-closure parity gaps."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_continued_double_bonds_and_ring_closures",
       "kind": "cpp_test_case",
       "language": "cpp",

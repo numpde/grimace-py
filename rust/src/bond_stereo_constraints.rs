@@ -312,6 +312,13 @@ fn enumerate_domain_assignments(side_domains: &[StereoSideChoiceDomain]) -> Vec<
     out
 }
 
+fn side_has_neighbor(side_infos: &[StereoSideInfo], side_idx: usize, neighbor_idx: usize) -> bool {
+    side_infos
+        .get(side_idx)
+        .map(|side_info| side_info.candidate_neighbors.contains(&neighbor_idx))
+        .unwrap_or(false)
+}
+
 fn local_writer_allowed_assignments(
     side_ids: &[usize],
     side_domains: &[StereoSideChoiceDomain],
@@ -397,6 +404,18 @@ pub(crate) fn stereo_constraint_model(
 
     let mut component_parents = (0..side_ids_by_component.len()).collect::<Vec<_>>();
     for hazard in local_hazards {
+        if hazard.left_side_idx == hazard.right_side_idx {
+            return Err(PyValueError::new_err(
+                "local hazard cannot use the same side twice",
+            ));
+        }
+        if !side_has_neighbor(side_infos, hazard.left_side_idx, hazard.left_neighbor_idx)
+            || !side_has_neighbor(side_infos, hazard.right_side_idx, hazard.right_neighbor_idx)
+        {
+            return Err(PyValueError::new_err(
+                "local hazard references a neighbor outside the side domain",
+            ));
+        }
         let Some(left_component_idx) = input_side_to_component
             .get(hazard.left_side_idx)
             .and_then(|value| *value)
@@ -1169,6 +1188,49 @@ mod tests {
                 },
             ],
         ));
+    }
+
+    #[test]
+    fn constraint_model_rejects_malformed_local_hazards() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![3],
+                candidate_base_tokens: vec!["/".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 1,
+                endpoint_atom_idx: 5,
+                other_endpoint_atom_idx: 6,
+                candidate_neighbors: vec![4],
+                candidate_base_tokens: vec!["\\".to_owned()],
+            },
+        ];
+
+        assert!(stereo_constraint_model(
+            &side_infos,
+            &[vec![0], vec![1]],
+            &[StereoLocalHazard {
+                left_side_idx: 0,
+                left_neighbor_idx: 99,
+                right_side_idx: 1,
+                right_neighbor_idx: 4,
+            }],
+        )
+        .is_err());
+        assert!(stereo_constraint_model(
+            &side_infos,
+            &[vec![0], vec![1]],
+            &[StereoLocalHazard {
+                left_side_idx: 0,
+                left_neighbor_idx: 3,
+                right_side_idx: 0,
+                right_neighbor_idx: 3,
+            }],
+        )
+        .is_err());
     }
 
     #[test]

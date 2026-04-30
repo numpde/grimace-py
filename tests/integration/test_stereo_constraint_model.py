@@ -24,6 +24,19 @@ SUPPORTED_STEREO_FLAGS = _runtime.MolToSmilesFlags(
 )
 
 
+def _effective_layer_assignment_count(
+    *,
+    layer: dict[str, object],
+    semantic_assignment_count: int,
+) -> int:
+    assignment_count = layer["assignment_count"]
+    if assignment_count is None:
+        return semantic_assignment_count
+    if type(assignment_count) is not int:
+        raise AssertionError(f"unexpected layer assignment count: {assignment_count!r}")
+    return assignment_count
+
+
 class StereoConstraintModelFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -66,25 +79,33 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     math.prod(case.expected_component_domain_assignment_counts),
                 )
                 layers_by_name = {
-                    layer["layer"]: layer for component in summary["components"]
+                    layer["layer"]: layer
+                    for component in summary["components"]
                     for layer in component["layers"]
                 }
-                if (
-                    case.expected_rdkit_local_writer_assignment_count
-                    < case.expected_semantic_assignment_count
-                ):
-                    self.assertEqual(
-                        case.expected_rdkit_local_writer_assignment_count,
-                        layers_by_name["rdkit_local_writer"]["assignment_count"],
+                self.assertEqual(
+                    case.expected_rdkit_local_writer_assignment_count,
+                    _effective_layer_assignment_count(
+                        layer=layers_by_name["rdkit_local_writer"],
+                        semantic_assignment_count=case.expected_semantic_assignment_count,
                     )
+                )
+                modeled_traversal_count = _effective_layer_assignment_count(
+                    layer=layers_by_name["rdkit_traversal_writer"],
+                    semantic_assignment_count=case.expected_semantic_assignment_count,
+                )
                 if (
                     case.expected_rdkit_traversal_writer_assignment_count
                     == case.expected_rdkit_local_writer_assignment_count
-                    < case.expected_semantic_assignment_count
                 ):
                     self.assertEqual(
                         case.expected_rdkit_traversal_writer_assignment_count,
-                        layers_by_name["rdkit_traversal_writer"]["assignment_count"],
+                        modeled_traversal_count,
+                    )
+                else:
+                    self.assertEqual(
+                        case.expected_rdkit_local_writer_assignment_count,
+                        modeled_traversal_count,
                     )
 
     def test_pinned_layer_counts_are_ordered_by_contract_strength(self) -> None:

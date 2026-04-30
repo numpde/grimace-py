@@ -2420,8 +2420,8 @@ fn stereo_constraint_layer_name(layer: StereoConstraintLayer) -> &'static str {
     }
 }
 
-#[pyfunction]
-pub fn stereo_constraint_model_summary(
+#[pyfunction(name = "_stereo_constraint_model_summary")]
+pub fn internal_stereo_constraint_model_summary(
     py: Python<'_>,
     graph: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyDict>> {
@@ -2430,7 +2430,7 @@ pub fn stereo_constraint_model_summary(
     let model = &runtime.constraint_model;
 
     let summary = PyDict::new(py);
-    summary.set_item("component_count", model.components.len())?;
+    summary.set_item("component_count", model.component_count())?;
     summary.set_item("side_count", runtime.side_infos.len())?;
     summary.set_item(
         "component_sizes",

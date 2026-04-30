@@ -39,7 +39,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         for case in self.cases:
             mol = parse_smiles(case.smiles)
             prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
-            summary = _core.stereo_constraint_model_summary(prepared)
+            summary = _core._stereo_constraint_model_summary(prepared)
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(
@@ -47,6 +47,13 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     summary["component_count"],
                 )
                 self.assertEqual(case.expected_side_count, summary["side_count"])
+                self.assertEqual(
+                    case.expected_component_side_domain_sizes,
+                    tuple(
+                        tuple(component["side_domain_sizes"])
+                        for component in summary["components"]
+                    ),
+                )
                 self.assertEqual(
                     case.expected_component_domain_assignment_counts,
                     tuple(

@@ -1,29 +1,45 @@
 {
   "cases": [
     {
-      "expected_component_domain_assignment_counts": [
-        2,
-        2
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ]
       ],
       "expected_rdkit_local_writer_assignment_count": 3,
       "expected_rdkit_traversal_writer_assignment_count": 3,
       "expected_semantic_assignment_count": 4,
-      "expected_side_count": 4,
       "id": "minimal_nonstereo_double_hazard",
       "smiles": "C/N=C1C=C/C(=N/C)[N-]/1",
       "source": "tmp/exploration/stereo_assignment/027_investigate_rdkit_bond_dir_policy.py"
     },
     {
-      "expected_component_domain_assignment_counts": [
-        2,
-        2,
-        2,
-        2
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          1
+        ]
       ],
       "expected_rdkit_local_writer_assignment_count": 16,
       "expected_rdkit_traversal_writer_assignment_count": 12,
       "expected_semantic_assignment_count": 16,
-      "expected_side_count": 8,
       "id": "reduced_porphyrin_traversal_coupling",
       "smiles": "c1cc2[n-]c1/N=c1/cc/c([n-]1)=N/c1ccc([n-]1)/N=c1/cc/c([n-]1)=N/2",
       "source": "tmp/exploration/stereo_assignment/028_investigate_rdkit_traversal_coupling.py"

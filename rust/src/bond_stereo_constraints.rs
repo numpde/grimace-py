@@ -73,6 +73,7 @@ pub(crate) struct StereoComponentConstraintModel {
     pub(crate) layer_assignments: Vec<StereoLayerAssignments>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StereoConstraintFact {
     CarrierSelected {
@@ -338,6 +339,7 @@ impl StereoConstraintModel {
         self.components.len()
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn has_completion(
         &self,
         component_idx: usize,

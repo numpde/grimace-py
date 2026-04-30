@@ -77,6 +77,19 @@ def _serializer_case(case_id: str, **overrides: object) -> dict[str, object]:
     return case
 
 
+def _stereo_constraint_model_case(case_id: str, **overrides: object) -> dict[str, object]:
+    case = {
+        **_base_case(case_id),
+        "smiles": "C/C=C/C",
+        "expected_component_side_domain_sizes": [[1, 1]],
+        "expected_semantic_assignment_count": 1,
+        "expected_rdkit_local_writer_assignment_count": 1,
+        "expected_rdkit_traversal_writer_assignment_count": 1,
+    }
+    case.update(overrides)
+    return case
+
+
 class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
     def test_single_file_fixture_loads_cases(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -243,6 +256,63 @@ class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
                     RDKIT_VERSION,
                     fixture_root=root,
                 )
+
+
+class StereoConstraintModelFixtureLoaderTest(unittest.TestCase):
+    def test_stereo_constraint_model_fixture_derives_component_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "case_a",
+                        expected_component_side_domain_sizes=[[1, 2], [2, 1]],
+                        expected_semantic_assignment_count=4,
+                    )
+                ),
+            )
+
+            cases = load_pinned_stereo_constraint_model_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
+
+        self.assertEqual(1, len(cases))
+        self.assertEqual(2, cases[0].expected_component_count)
+        self.assertEqual(4, cases[0].expected_side_count)
+        self.assertEqual((2, 2), cases[0].expected_component_domain_assignment_counts)
+
+    def test_stereo_constraint_model_fixture_rejects_bad_domain_sizes(self) -> None:
+        invalid_cases = (
+            _stereo_constraint_model_case(
+                "missing_domain_sizes",
+                expected_component_side_domain_sizes=[],
+            ),
+            _stereo_constraint_model_case(
+                "non_list_component",
+                expected_component_side_domain_sizes=[1],
+            ),
+            _stereo_constraint_model_case(
+                "non_int_domain_size",
+                expected_component_side_domain_sizes=[["2"]],
+            ),
+            _stereo_constraint_model_case(
+                "zero_domain_size",
+                expected_component_side_domain_sizes=[[0]],
+            ),
+        )
+        for case in invalid_cases:
+            with self.subTest(case_id=case["id"]):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    _write_json(root / f"{RDKIT_VERSION}.json", _base_payload(case))
+
+                    with self.assertRaises(ValueError):
+                        load_pinned_stereo_constraint_model_cases(
+                            RDKIT_VERSION,
+                            fixture_root=root,
+                        )
 
 
 class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):

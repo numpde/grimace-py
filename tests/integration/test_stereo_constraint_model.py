@@ -198,6 +198,12 @@ def _ordered_markers_from_slots(
     return tuple(marker.marker for marker in markers)
 
 
+def _marker_slot_pairs(
+    markers: tuple[_DirectionMarkerSlot, ...],
+) -> tuple[tuple[int, str], ...]:
+    return tuple((marker.slot, marker.marker) for marker in markers)
+
+
 def _smiles_from_direction_marker_slots(
     skeleton: str,
     markers: tuple[_DirectionMarkerSlot, ...],
@@ -581,6 +587,12 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 summary["direction_erased_skeleton"]: tuple(summary["ordered_markers"])
                 for summary in rdkit_summaries
             }
+            rdkit_marker_slots_by_skeleton = {
+                skeleton: slots
+                for skeleton, slots in (
+                    _direction_marker_slots(smiles) for smiles in rdkit_sampled_outputs
+                )
+            }
             same_marker_sequence_skeletons = frozenset(
                 skeleton
                 for skeleton, marker_sequence in current_marker_sequences_by_skeleton.items()
@@ -632,6 +644,28 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
             )
+            residual_slot_transitions = tuple(
+                sorted(
+                    (
+                        skeleton,
+                        _marker_slot_pairs(
+                            _rdkit_ring_closure_marker_slots(skeleton, marker_slots)
+                        ),
+                        _marker_slot_pairs(rdkit_marker_slots_by_skeleton[skeleton]),
+                    )
+                    for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
+                    if _rdkit_ring_closure_marker_slots(skeleton, marker_slots)
+                    != rdkit_marker_slots_by_skeleton[skeleton]
+                )
+            )
+            expected_residual_slot_transitions = tuple(
+                (
+                    transition.direction_erased_skeleton,
+                    transition.transformed_marker_slots,
+                    transition.rdkit_marker_slots,
+                )
+                for transition in case.expected_ring_closure_marker_transform_residual_slot_transitions
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
@@ -672,6 +706,10 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     case.expected_ring_closure_marker_transform_outside_rdkit_count,
                     len(transformed_exact_support - rdkit_sampled_outputs),
+                )
+                self.assertEqual(
+                    expected_residual_slot_transitions,
+                    residual_slot_transitions,
                 )
 
 

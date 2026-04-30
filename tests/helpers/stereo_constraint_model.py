@@ -32,6 +32,10 @@ class PinnedStereoConstraintModelCase:
     expected_rdkit_sampled_outside_current_exact_support_count: int | None
     expected_rdkit_sampled_outside_current_exact_identity_equivalent_count: int | None
     expected_rdkit_sampled_outside_current_exact_parse_failure_count: int | None
+    expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count: (
+        int | None
+    )
+    expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count: int | None
 
     @property
     def expected_component_count(self) -> int:
@@ -149,6 +153,26 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
+        expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count = (
+            optional_nonnegative_int(
+                raw_case,
+                field_name=(
+                    "expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count"
+                ),
+                fixture_path=fixture_case.fixture_path,
+                case_id=fixture_case.case_id,
+            )
+        )
+        expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count = (
+            optional_nonnegative_int(
+                raw_case,
+                field_name=(
+                    "expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count"
+                ),
+                fixture_path=fixture_case.fixture_path,
+                case_id=fixture_case.case_id,
+            )
+        )
         rdkit_sampled_expectations = (
             expected_rdkit_sampled_support_count,
             expected_rdkit_sampled_exact_support_overlap_count,
@@ -156,6 +180,8 @@ def load_pinned_stereo_constraint_model_cases(
             expected_rdkit_sampled_outside_current_exact_support_count,
             expected_rdkit_sampled_outside_current_exact_identity_equivalent_count,
             expected_rdkit_sampled_outside_current_exact_parse_failure_count,
+            expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count,
+            expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count,
         )
         if any(value is not None for value in rdkit_sampled_expectations) and not all(
             value is not None for value in rdkit_sampled_expectations
@@ -214,6 +240,12 @@ def load_pinned_stereo_constraint_model_cases(
                 ),
                 expected_rdkit_sampled_outside_current_exact_parse_failure_count=(
                     expected_rdkit_sampled_outside_current_exact_parse_failure_count
+                ),
+                expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count=(
+                    expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count
+                ),
+                expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count=(
+                    expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count
                 ),
             )
         )

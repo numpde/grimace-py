@@ -48,6 +48,27 @@ def _canonical_isomeric_smiles(smiles: str) -> str | None:
     return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
 
 
+def _erase_direction_markers(smiles: str) -> str:
+    return smiles.replace("/", "").replace("\\", "")
+
+
+def _erase_ring_digit_adjacent_direction_markers(smiles: str) -> str:
+    out = []
+    for idx, char in enumerate(smiles):
+        if char in ("/", "\\"):
+            previous_char = smiles[idx - 1] if idx > 0 else ""
+            next_char = smiles[idx + 1] if idx + 1 < len(smiles) else ""
+            if (
+                previous_char.isdigit()
+                or previous_char == "%"
+                or next_char.isdigit()
+                or next_char == "%"
+            ):
+                continue
+        out.append(char)
+    return "".join(out)
+
+
 class StereoConstraintModelFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -227,6 +248,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 _canonical_isomeric_smiles(smiles)
                 for smiles in sampled_outside_current_exact_support
             )
+            ring_digit_direction_erased_current_keys = frozenset(
+                _erase_ring_digit_adjacent_direction_markers(smiles)
+                for smiles in current_exact_support
+            )
+            direction_erased_current_keys = frozenset(
+                _erase_direction_markers(smiles)
+                for smiles in current_exact_support
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(
@@ -255,6 +284,21 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     case.expected_rdkit_sampled_outside_current_exact_parse_failure_count,
                     sampled_outside_current_exact_identities.count(None),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count,
+                    sum(
+                        _erase_ring_digit_adjacent_direction_markers(smiles)
+                        in ring_digit_direction_erased_current_keys
+                        for smiles in sampled_outside_current_exact_support
+                    ),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count,
+                    sum(
+                        _erase_direction_markers(smiles) in direction_erased_current_keys
+                        for smiles in sampled_outside_current_exact_support
+                    ),
                 )
 
 

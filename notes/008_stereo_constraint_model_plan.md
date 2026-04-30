@@ -12,6 +12,36 @@ oracle for discovering and checking the constraint language. Production code
 should use a compact native representation that can answer online completion
 queries cheaply.
 
+## Long Game
+
+The long-term target is to make bond-stereo handling an explicit constraint
+problem instead of a collection of walker-local heuristics.
+
+At startup, the molecule should decompose into independent stereo components.
+Each component should carry a compact native model over carrier choices,
+direction-token orientation, shared carrier edges, and eventually traversal
+facts such as tree edges, ring closures, and branch context. During online
+enumeration or decoding, the walker should not repair a completed SMILES and
+should not guess from scattered special cases. It should emit facts as the
+walk proceeds and ask the model whether the partial assignment still has a
+completion under the selected contract.
+
+The selected contract must remain explicit:
+
+- semantic SMILES validity and stereo preservation
+- RDKit local writer cleanup behavior
+- full RDKit writer parity, including traversal and ring-closure policy
+
+This separation is the point. RDKit-specific behavior can then be mirrored
+where the public API requires RDKit writer support, while still remaining
+visibly separate from principled SMILES/chemistry semantics. If Grimace later
+exposes a broader semantic-support mode, it should be a distinct mode, not an
+accidental byproduct of RDKit parity logic.
+
+The first milestone is intentionally modest: create the model boundary, build
+it at runtime, and prove current walker choices are accepted. Only after that
+should suspicious heuristics be replaced one rule at a time.
+
 ## Correctness Layers
 
 Keep these layers explicit in names, fixtures, and tests:
@@ -151,6 +181,29 @@ Keep the test layers separate:
   - live under `tmp/exploration/`
   - generate evidence, not CI requirements
 
+## Proceeding Strategy
+
+Every change should be either behavior-preserving or justified by a pinned
+witness. The model exists to make the rules explicit; it should not become a
+new place to hide untested special cases.
+
+Proceed in this order:
+
+1. Commit planning and terminology before implementation.
+2. Add the native model scaffold without pruning runtime behavior.
+3. Add fast unit tests for model shape and mechanics.
+4. Build the model in runtime as a no-op field.
+5. Add debug/test-only validation that current walker choices are accepted.
+6. Add pinned model fixtures from the exploration witnesses.
+7. Replace only the local non-stereo-double hazard first.
+8. Re-run full parity tests and compare known witnesses.
+9. Tackle traversal/cycle policy only after its rule is stated in graph and
+   traversal terms.
+
+Do not make a runtime pruning change until the model can explain that case in
+a small test. If a rule cannot be stated as a constraint with clear inputs and
+an expected projection, leave it in `tmp/exploration/` until it can.
+
 ## Immediate First Step
 
 Add a behavior-preserving `StereoConstraintModel` scaffold with enough shape to
@@ -165,4 +218,3 @@ represent:
 The first implementation may return broad acceptance for all current runtime
 facts. The important part is to land the stable API and tests for the model
 shape before replacing heuristics.
-

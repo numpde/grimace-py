@@ -62,7 +62,7 @@ pub(crate) struct StereoLayerAssignments {
     pub(crate) layer: StereoConstraintLayer,
     // `None` currently means "all domain-valid assignments are allowed". Later
     // phases will fill this with generated allowed tuples per component.
-    pub(crate) allowed_assignments: Option<Vec<Vec<usize>>>,
+    pub(crate) allowed_neighbor_assignments: Option<Vec<Vec<usize>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -309,7 +309,7 @@ pub(crate) fn stereo_constraint_model(
             .into_iter()
             .map(|layer| StereoLayerAssignments {
                 layer,
-                allowed_assignments: None,
+                allowed_neighbor_assignments: None,
             })
             .collect::<Vec<_>>();
 
@@ -319,6 +319,12 @@ pub(crate) fn stereo_constraint_model(
             side_domains,
             layer_assignments,
         });
+    }
+
+    if side_to_component.iter().any(Option::is_none) {
+        return Err(PyValueError::new_err(
+            "stereo constraint side missing from component mapping",
+        ));
     }
 
     Ok(StereoConstraintModel {
@@ -385,20 +391,22 @@ impl StereoConstraintModel {
             }
         }
 
-        match &layer_assignments.allowed_assignments {
+        match &layer_assignments.allowed_neighbor_assignments {
             None => true,
-            Some(allowed_assignments) => allowed_assignments.iter().any(|assignment| {
-                selected_neighbors.iter().all(|(&side_idx, &neighbor_idx)| {
-                    let Some(position) = component
-                        .side_ids
-                        .iter()
-                        .position(|&component_side_idx| component_side_idx == side_idx)
-                    else {
-                        return false;
-                    };
-                    assignment.get(position).copied() == Some(neighbor_idx)
+            Some(allowed_neighbor_assignments) => {
+                allowed_neighbor_assignments.iter().any(|assignment| {
+                    selected_neighbors.iter().all(|(&side_idx, &neighbor_idx)| {
+                        let Some(position) = component
+                            .side_ids
+                            .iter()
+                            .position(|&component_side_idx| component_side_idx == side_idx)
+                        else {
+                            return false;
+                        };
+                        assignment.get(position).copied() == Some(neighbor_idx)
+                    })
                 })
-            }),
+            }
         }
     }
 }
@@ -867,5 +875,18 @@ mod tests {
         }];
 
         assert!(stereo_constraint_model(&side_infos, &[vec![0]]).is_err());
+    }
+
+    #[test]
+    fn constraint_model_rejects_missing_side_mapping() {
+        let side_infos = vec![StereoSideInfo {
+            component_idx: 0,
+            endpoint_atom_idx: 1,
+            other_endpoint_atom_idx: 2,
+            candidate_neighbors: vec![0],
+            candidate_base_tokens: vec!["/".to_owned()],
+        }];
+
+        assert!(stereo_constraint_model(&side_infos, &[vec![]]).is_err());
     }
 }

@@ -1,3 +1,4 @@
+mod bond_stereo_constraints;
 mod frontier;
 mod prepared_graph;
 mod rooted_nonstereo;

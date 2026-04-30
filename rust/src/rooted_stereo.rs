@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
@@ -8,6 +8,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use rustc_hash::FxHashMap;
 
+use crate::bond_stereo_constraints::{
+    ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
+    is_stereo_double_bond, stereo_component_ids, stereo_side_infos, AmbiguousSharedEdgeGroup,
+    StereoSideInfo, StereoSideInfoBuild, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+};
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
     take_choice_or_err, take_grouped_choices_or_err, take_transition_or_err, DecoderChoice,
@@ -32,8 +37,6 @@ const SUPPORTED_CHIRAL_TAGS: &[&str] = &[
     "CHI_TETRAHEDRAL_CCW",
     "CHI_TETRAHEDRAL_CW",
 ];
-const CIS_STEREO_BOND_KINDS: &[&str] = &["STEREOCIS", "STEREOZ"];
-const TRANS_STEREO_BOND_KINDS: &[&str] = &["STEREOE", "STEREOTRANS"];
 
 const ELEMENT_SYMBOLS: [&str; 119] = [
     "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S",
@@ -105,11 +108,6 @@ struct TakenPendingRings {
     rings: Vec<PendingRing>,
 }
 
-struct StereoSideInfoBuild {
-    side_infos: Vec<StereoSideInfo>,
-    edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
-}
-
 struct StereoProcessChildrenContext<'a> {
     runtime: &'a StereoWalkerRuntimeData,
     graph: &'a PreparedSmilesGraphData,
@@ -148,15 +146,6 @@ struct ExactAtomStereoExpansionInput<'a> {
     closures_here: Vec<PendingRing>,
     ordered_groups: Vec<Vec<usize>>,
     is_chiral_atom: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct StereoSideInfo {
-    component_idx: usize,
-    endpoint_atom_idx: usize,
-    other_endpoint_atom_idx: usize,
-    candidate_neighbors: Vec<usize>,
-    candidate_base_tokens: Vec<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -334,14 +323,6 @@ impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
 }
 
 type StereoCompletionCache = FxHashMap<StereoCompletionKey, bool>;
-
-#[derive(Clone, Debug)]
-struct AmbiguousSharedEdgeGroup {
-    left_side_idx: usize,
-    right_side_idx: usize,
-    left_shared_neighbor: usize,
-    right_shared_neighbor: usize,
-}
 
 #[derive(Clone, Debug)]
 struct StereoWalkerRuntimeData {
@@ -1024,16 +1005,6 @@ fn drain_exact_linear_atom_stereo_actions(state: &mut RootedConnectedStereoExact
     }
 }
 
-fn flip_direction_token(token: &str) -> PyResult<String> {
-    match token {
-        "/" => Ok("\\".to_owned()),
-        "\\" => Ok("/".to_owned()),
-        _ => Err(PyValueError::new_err(format!(
-            "Unsupported directional token: {token:?}"
-        ))),
-    }
-}
-
 fn format_hydrogen_count(count: usize) -> String {
     if count == 0 {
         String::new()
@@ -1366,159 +1337,6 @@ fn allocate_label(free_labels: &mut Vec<usize>, next_label: &mut usize) -> usize
     }
 }
 
-fn canonical_edge(begin_idx: usize, end_idx: usize) -> (usize, usize) {
-    if begin_idx < end_idx {
-        (begin_idx, end_idx)
-    } else {
-        (end_idx, begin_idx)
-    }
-}
-
-fn is_stereo_double_bond(graph: &PreparedSmilesGraphData, bond_idx: usize) -> bool {
-    if graph.bond_kinds[bond_idx] != "DOUBLE" {
-        return false;
-    }
-    let stereo_kind = graph.bond_stereo_kinds[bond_idx].as_str();
-    CIS_STEREO_BOND_KINDS.contains(&stereo_kind) || TRANS_STEREO_BOND_KINDS.contains(&stereo_kind)
-}
-
-fn rdkit_selected_stereo_seed_token(
-    graph: &PreparedSmilesGraphData,
-    bond_idx: usize,
-    component_idx: usize,
-    isolated_components: &[bool],
-    all_single_candidate_components: &[bool],
-    endpoint_idx: usize,
-    neighbor_idx: usize,
-) -> PyResult<Option<String>> {
-    if !isolated_components
-        .get(component_idx)
-        .copied()
-        .unwrap_or(false)
-        || !all_single_candidate_components
-            .get(component_idx)
-            .copied()
-            .unwrap_or(false)
-        || !is_stereo_double_bond(graph, bond_idx)
-    {
-        return Ok(None);
-    }
-
-    let stored_begin_idx = graph.bond_begin_atom_indices[bond_idx];
-    let stored_end_idx = graph.bond_end_atom_indices[bond_idx];
-    let (stereo_begin_atom, stereo_end_atom) = graph.bond_stereo_atoms[bond_idx];
-    if endpoint_idx == stored_begin_idx
-        && stereo_begin_atom >= 0
-        && neighbor_idx == stereo_begin_atom as usize
-    {
-        return Ok(Some("\\".to_owned()));
-    }
-    if endpoint_idx == stored_end_idx
-        && stereo_end_atom >= 0
-        && neighbor_idx == stereo_end_atom as usize
-    {
-        let stereo_kind = graph.bond_stereo_kinds[bond_idx].as_str();
-        if CIS_STEREO_BOND_KINDS.contains(&stereo_kind) {
-            return Ok(Some("\\".to_owned()));
-        }
-        if TRANS_STEREO_BOND_KINDS.contains(&stereo_kind) {
-            return Ok(Some("/".to_owned()));
-        }
-        return Err(PyValueError::new_err(format!(
-            "Unsupported stereo bond kind: {stereo_kind}"
-        )));
-    }
-    Ok(None)
-}
-
-fn stereo_component_ids(graph: &PreparedSmilesGraphData) -> Vec<isize> {
-    let stereo_bond_indices = (0..graph.bond_count)
-        .filter(|&bond_idx| is_stereo_double_bond(graph, bond_idx))
-        .collect::<Vec<_>>();
-    if stereo_bond_indices.is_empty() {
-        return vec![-1; graph.bond_count];
-    }
-
-    let mut parents = stereo_bond_indices
-        .iter()
-        .map(|&bond_idx| (bond_idx, bond_idx))
-        .collect::<BTreeMap<_, _>>();
-
-    fn find(parents: &mut BTreeMap<usize, usize>, bond_idx: usize) -> usize {
-        let mut root = bond_idx;
-        while parents[&root] != root {
-            root = parents[&root];
-        }
-        let mut current = bond_idx;
-        while parents[&current] != current {
-            let next_idx = parents[&current];
-            parents.insert(current, root);
-            current = next_idx;
-        }
-        root
-    }
-
-    fn union(parents: &mut BTreeMap<usize, usize>, left_idx: usize, right_idx: usize) {
-        let left_root = find(parents, left_idx);
-        let right_root = find(parents, right_idx);
-        if left_root != right_root {
-            parents.insert(right_root, left_root);
-        }
-    }
-
-    let mut edge_to_bonds = BTreeMap::<(usize, usize), Vec<usize>>::new();
-    for &bond_idx in &stereo_bond_indices {
-        let stored_begin_idx = graph.bond_begin_atom_indices[bond_idx];
-        let stored_end_idx = graph.bond_end_atom_indices[bond_idx];
-        let (stereo_begin_atom, stereo_end_atom) = graph.bond_stereo_atoms[bond_idx];
-        if stereo_begin_atom >= 0 {
-            edge_to_bonds
-                .entry(canonical_edge(stored_begin_idx, stereo_begin_atom as usize))
-                .or_default()
-                .push(bond_idx);
-        }
-        if stereo_end_atom >= 0 {
-            edge_to_bonds
-                .entry(canonical_edge(stored_end_idx, stereo_end_atom as usize))
-                .or_default()
-                .push(bond_idx);
-        }
-    }
-
-    for connected_bonds in edge_to_bonds.values() {
-        let head_idx = connected_bonds[0];
-        for &other_idx in &connected_bonds[1..] {
-            union(&mut parents, head_idx, other_idx);
-        }
-    }
-
-    let mut component_lookup = BTreeMap::<usize, isize>::new();
-    let mut component_ids = vec![-1; graph.bond_count];
-    let mut next_component_id = 0isize;
-    for &bond_idx in &stereo_bond_indices {
-        let root_idx = find(&mut parents, bond_idx);
-        let component_id = *component_lookup.entry(root_idx).or_insert_with(|| {
-            let current = next_component_id;
-            next_component_id += 1;
-            current
-        });
-        component_ids[bond_idx] = component_id;
-    }
-
-    component_ids
-}
-
-fn component_sizes(stereo_component_ids: &[isize]) -> Vec<usize> {
-    let component_count = stereo_component_ids.iter().copied().max().unwrap_or(-1) + 1;
-    let mut counts = vec![0usize; component_count as usize];
-    for &component_idx in stereo_component_ids {
-        if component_idx >= 0 {
-            counts[component_idx as usize] += 1;
-        }
-    }
-    counts
-}
-
 fn with_component_phase(
     component_phases: &[i8],
     component_idx: usize,
@@ -1756,6 +1574,9 @@ fn eager_begin_side_child_order_state(
     )
 }
 
+// Suspicious current model:
+// Defers a coupled-component phase from a ring-opening edge before the
+// traversal has resolved which side should carry the visible token.
 fn defer_coupled_component_phase_if_begin_side_is_unresolved(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -1801,6 +1622,9 @@ fn defer_coupled_component_phase_if_begin_side_is_unresolved(
     Ok((updated_phases, updated_begin_atoms))
 }
 
+// Suspicious current model:
+// Commits the deferred coupled-component phase from the first later token that
+// happens to resolve it. This should become an explicit deferred constraint.
 fn commit_coupled_component_phase_from_deferred_part(
     runtime: &StereoWalkerRuntimeData,
     component_phases: &[i8],
@@ -1835,278 +1659,6 @@ fn commit_coupled_component_phase_from_deferred_part(
     with_component_phase(component_phases, component_idx, phase)
 }
 
-fn stereo_side_infos(
-    graph: &PreparedSmilesGraphData,
-    stereo_component_ids: &[isize],
-) -> PyResult<StereoSideInfoBuild> {
-    let isolated_components = component_sizes(stereo_component_ids)
-        .into_iter()
-        .map(|size| size == 1)
-        .collect::<Vec<_>>();
-    let mut side_candidates = Vec::<(usize, usize, usize, Vec<usize>)>::new();
-    let mut oriented_nodes = BTreeSet::<(usize, usize)>::new();
-    let mut parity_edges = BTreeMap::<(usize, usize), Vec<((usize, usize), bool)>>::new();
-    let mut seed_tokens = BTreeMap::<(usize, usize), String>::new();
-    let mut seed_nodes = Vec::<(usize, usize, (usize, usize))>::new();
-
-    for (bond_idx, &component_idx) in stereo_component_ids
-        .iter()
-        .enumerate()
-        .take(graph.bond_count)
-    {
-        if component_idx < 0 || !is_stereo_double_bond(graph, bond_idx) {
-            continue;
-        }
-
-        let begin_idx = graph.bond_begin_atom_indices[bond_idx];
-        let end_idx = graph.bond_end_atom_indices[bond_idx];
-        for (endpoint_idx, other_idx) in [(begin_idx, end_idx), (end_idx, begin_idx)] {
-            let candidate_neighbors = graph
-                .neighbors_of(endpoint_idx)
-                .iter()
-                .copied()
-                .filter(|&neighbor_idx| {
-                    neighbor_idx != other_idx
-                        && graph
-                            .bond_index(endpoint_idx, neighbor_idx)
-                            .map(|bond_idx| {
-                                matches!(graph.bond_kinds[bond_idx].as_str(), "SINGLE" | "AROMATIC")
-                            })
-                            .unwrap_or(false)
-                })
-                .collect::<Vec<_>>();
-            if candidate_neighbors.is_empty() {
-                continue;
-            }
-            if candidate_neighbors.len() > 2 {
-                return Err(PyValueError::new_err(
-                    "Unsupported stereo endpoint with more than two eligible carrier edges",
-                ));
-            }
-
-            side_candidates.push((
-                component_idx as usize,
-                endpoint_idx,
-                other_idx,
-                candidate_neighbors.clone(),
-            ));
-
-            let oriented_for_side = candidate_neighbors
-                .iter()
-                .map(|&neighbor_idx| (endpoint_idx, neighbor_idx))
-                .collect::<Vec<_>>();
-            for node in &oriented_for_side {
-                oriented_nodes.insert(*node);
-            }
-
-            if oriented_for_side.len() == 2 {
-                let left_node = oriented_for_side[0];
-                let right_node = oriented_for_side[1];
-                parity_edges
-                    .entry(left_node)
-                    .or_default()
-                    .push((right_node, true));
-                parity_edges
-                    .entry(right_node)
-                    .or_default()
-                    .push((left_node, true));
-            }
-
-            for node in oriented_for_side {
-                let reverse_node = (node.1, node.0);
-                if oriented_nodes.contains(&reverse_node) {
-                    parity_edges
-                        .entry(node)
-                        .or_default()
-                        .push((reverse_node, true));
-                    parity_edges
-                        .entry(reverse_node)
-                        .or_default()
-                        .push((node, true));
-                }
-
-                seed_nodes.push((bond_idx, component_idx as usize, node));
-            }
-        }
-    }
-
-    let mut all_single_candidate_components = vec![true; isolated_components.len()];
-    for (component_idx, _endpoint_idx, _other_idx, candidate_neighbors) in &side_candidates {
-        if candidate_neighbors.len() != 1 {
-            all_single_candidate_components[*component_idx] = false;
-        }
-    }
-
-    for (bond_idx, component_idx, node) in seed_nodes {
-        let stored_token = rdkit_selected_stereo_seed_token(
-            graph,
-            bond_idx,
-            component_idx,
-            &isolated_components,
-            &all_single_candidate_components,
-            node.0,
-            node.1,
-        )?
-        .unwrap_or(graph.directed_bond_token(node.0, node.1)?);
-        if stored_token == "/" || stored_token == "\\" {
-            if let Some(existing) = seed_tokens.get(&node) {
-                if existing != &stored_token {
-                    return Err(PyValueError::new_err(
-                        "Inconsistent stored directional token assignment",
-                    ));
-                }
-            } else {
-                seed_tokens.insert(node, stored_token);
-            }
-        }
-    }
-
-    for (_, endpoint_idx, _other_idx, candidate_neighbors) in &side_candidates {
-        if candidate_neighbors.len() != 2 {
-            continue;
-        }
-        let known_neighbors = candidate_neighbors
-            .iter()
-            .copied()
-            .filter(|neighbor_idx| seed_tokens.contains_key(&(*endpoint_idx, *neighbor_idx)))
-            .collect::<Vec<_>>();
-        if known_neighbors.len() == 1 {
-            let known_neighbor = known_neighbors[0];
-            let other_neighbor = if candidate_neighbors[1] == known_neighbor {
-                candidate_neighbors[0]
-            } else {
-                candidate_neighbors[1]
-            };
-            let known_token = seed_tokens
-                .get(&(*endpoint_idx, known_neighbor))
-                .cloned()
-                .ok_or_else(|| PyKeyError::new_err("Missing stereo carrier seed token"))?;
-            seed_tokens.insert(
-                (*endpoint_idx, other_neighbor),
-                flip_direction_token(&known_token)?,
-            );
-        }
-    }
-
-    let mut assignments = BTreeMap::<(usize, usize), String>::new();
-    let mut queue = seed_tokens.keys().copied().collect::<VecDeque<_>>();
-    while let Some(node) = queue.pop_front() {
-        let token = seed_tokens
-            .get(&node)
-            .cloned()
-            .ok_or_else(|| PyKeyError::new_err("Missing stereo carrier token"))?;
-        if let Some(assigned) = assignments.get(&node) {
-            if assigned != &token {
-                return Err(PyValueError::new_err(
-                    "Conflicting stereo carrier token constraints",
-                ));
-            }
-            continue;
-        }
-        assignments.insert(node, token.clone());
-        if let Some(entries) = parity_edges.get(&node) {
-            for &(other_node, flipped) in entries {
-                let other_token = if flipped {
-                    flip_direction_token(&token)?
-                } else {
-                    token.clone()
-                };
-                if let Some(existing) = seed_tokens.get(&other_node) {
-                    if existing != &other_token {
-                        return Err(PyValueError::new_err(
-                            "Conflicting stereo carrier token propagation",
-                        ));
-                    }
-                } else {
-                    seed_tokens.insert(other_node, other_token);
-                    queue.push_back(other_node);
-                }
-            }
-        }
-    }
-
-    for &node in &oriented_nodes {
-        if assignments.contains_key(&node) {
-            continue;
-        }
-        seed_tokens.insert(node, "/".to_owned());
-        queue.push_back(node);
-        while let Some(current_node) = queue.pop_front() {
-            let current_token = seed_tokens
-                .get(&current_node)
-                .cloned()
-                .ok_or_else(|| PyKeyError::new_err("Missing stereo carrier token"))?;
-            if let Some(assigned) = assignments.get(&current_node) {
-                if assigned != &current_token {
-                    return Err(PyValueError::new_err(
-                        "Conflicting stereo carrier token constraints",
-                    ));
-                }
-                continue;
-            }
-            assignments.insert(current_node, current_token.clone());
-            if let Some(entries) = parity_edges.get(&current_node) {
-                for &(other_node, flipped) in entries {
-                    let other_token = if flipped {
-                        flip_direction_token(&current_token)?
-                    } else {
-                        current_token.clone()
-                    };
-                    if let Some(existing) = seed_tokens.get(&other_node) {
-                        if existing != &other_token {
-                            return Err(PyValueError::new_err(
-                                "Conflicting stereo carrier token propagation",
-                            ));
-                        }
-                    } else {
-                        seed_tokens.insert(other_node, other_token);
-                        queue.push_back(other_node);
-                    }
-                }
-            }
-        }
-    }
-
-    let side_infos = side_candidates
-        .into_iter()
-        .map(
-            |(component_idx, endpoint_idx, other_idx, candidate_neighbors)| {
-                let candidate_base_tokens = candidate_neighbors
-                    .iter()
-                    .map(|&neighbor_idx| {
-                        assignments
-                            .get(&(endpoint_idx, neighbor_idx))
-                            .cloned()
-                            .ok_or_else(|| PyKeyError::new_err("Missing stereo carrier assignment"))
-                    })
-                    .collect::<PyResult<Vec<_>>>()?;
-                Ok(StereoSideInfo {
-                    component_idx,
-                    endpoint_atom_idx: endpoint_idx,
-                    other_endpoint_atom_idx: other_idx,
-                    candidate_neighbors,
-                    candidate_base_tokens,
-                })
-            },
-        )
-        .collect::<PyResult<Vec<_>>>()?;
-
-    let mut edge_to_side_ids = BTreeMap::<(usize, usize), Vec<usize>>::new();
-    for (side_idx, side_info) in side_infos.iter().enumerate() {
-        for &neighbor_idx in &side_info.candidate_neighbors {
-            edge_to_side_ids
-                .entry(canonical_edge(side_info.endpoint_atom_idx, neighbor_idx))
-                .or_default()
-                .push(side_idx);
-        }
-    }
-
-    Ok(StereoSideInfoBuild {
-        side_infos,
-        edge_to_side_ids,
-    })
-}
-
 fn candidate_base_token(side_info: &StereoSideInfo, neighbor_idx: usize) -> PyResult<String> {
     for (offset, &candidate_neighbor) in side_info.candidate_neighbors.iter().enumerate() {
         if candidate_neighbor == neighbor_idx {
@@ -2135,62 +1687,9 @@ fn emitted_candidate_token(
     ))
 }
 
-fn ambiguous_shared_edge_groups(
-    side_infos: &[StereoSideInfo],
-    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
-    isolated_components: &[bool],
-) -> Vec<AmbiguousSharedEdgeGroup> {
-    let mut seen_edges = BTreeSet::new();
-    let mut groups = Vec::new();
-
-    for side_info in side_infos {
-        if isolated_components[side_info.component_idx] || side_info.candidate_neighbors.len() != 2
-        {
-            continue;
-        }
-        for &neighbor_idx in &side_info.candidate_neighbors {
-            let edge = canonical_edge(side_info.endpoint_atom_idx, neighbor_idx);
-            if seen_edges.contains(&edge) {
-                continue;
-            }
-            let two_candidate_side_ids = edge_to_side_ids
-                .get(&edge)
-                .into_iter()
-                .flatten()
-                .copied()
-                .filter(|&other_side_idx| {
-                    side_infos[other_side_idx].component_idx == side_info.component_idx
-                        && side_infos[other_side_idx].candidate_neighbors.len() == 2
-                })
-                .collect::<Vec<_>>();
-            if two_candidate_side_ids.len() != 2 {
-                continue;
-            }
-            seen_edges.insert(edge);
-            let left_side_idx = two_candidate_side_ids[0];
-            let right_side_idx = two_candidate_side_ids[1];
-            let left_shared_neighbor = if side_infos[left_side_idx].endpoint_atom_idx == edge.0 {
-                edge.1
-            } else {
-                edge.0
-            };
-            let right_shared_neighbor = if side_infos[right_side_idx].endpoint_atom_idx == edge.0 {
-                edge.1
-            } else {
-                edge.0
-            };
-            groups.push(AmbiguousSharedEdgeGroup {
-                left_side_idx,
-                right_side_idx,
-                left_shared_neighbor,
-                right_shared_neighbor,
-            });
-        }
-    }
-
-    groups
-}
-
+// Suspicious current model:
+// Hard-codes one terminal-neighbor ambiguity shape instead of representing the
+// unresolved carrier choice as part of the online constraint state.
 fn should_defer_unknown_two_candidate_side_commit(
     graph: &PreparedSmilesGraphData,
     side_info: &StereoSideInfo,
@@ -2215,6 +1714,9 @@ fn should_defer_unknown_two_candidate_side_commit(
     terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
 }
 
+// Suspicious current model:
+// Forces a shared candidate edge through local heuristics. This is one of the
+// main places to replace with a principled deferred carrier-choice constraint.
 fn forced_shared_candidate_neighbor(
     side_infos: &[StereoSideInfo],
     edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
@@ -2330,6 +1832,9 @@ fn deferred_edge_part(
     }))
 }
 
+// Suspicious current model:
+// Interleaves carrier selection, token deferral, and local ambiguity heuristics
+// during edge emission. This should be split into explicit online constraints.
 fn emitted_edge_part_generic(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
@@ -2424,6 +1929,9 @@ fn emitted_edge_part_generic(
     ))
 }
 
+// Suspicious current model:
+// Contains isolated-component token repair logic for aromatic begin sides. Keep
+// this isolated until it can be replaced by deferred token-choice constraints.
 fn emitted_isolated_edge_part(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
@@ -2798,6 +2306,10 @@ fn process_children_terminal_successors(
     }
 }
 
+// Suspicious current model:
+// Resolves ambiguous shared-edge selections after the fact by forcing both
+// sides to the shared edge. This is the clearest candidate for replacement by
+// a first-class deferred shared-edge constraint.
 fn resolved_selected_neighbors_from_fields(
     runtime: &StereoWalkerRuntimeData,
     selected_neighbors: &[isize],
@@ -2984,6 +2496,9 @@ fn part_to_action(part: Part) -> Option<WalkerAction> {
     }
 }
 
+// Suspicious current model:
+// Encodes RDKit-observed root/first-emission token flip adjustments as a local
+// post-hoc correction instead of deriving them from the active constraints.
 fn rdkit_component_token_flip_adjustment(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -3076,6 +2591,9 @@ fn provisional_phase_from_selected_side(
     )))
 }
 
+// Suspicious current model:
+// Infers one component-wide token flip from partially resolved side selections.
+// This mixes state normalization with semantic constraint solving.
 fn inferred_component_token_flip(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -3202,6 +2720,9 @@ fn inferred_component_token_flip(
     }))
 }
 
+// Suspicious current model:
+// Performs consistency repair/checking after successor construction. A cleaner
+// design should make token-flip commitments explicit transition constraints.
 fn normalize_component_token_flips(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,

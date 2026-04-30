@@ -51,6 +51,8 @@ behavioral checks against the installed RDKit build.
   upstream file, line range, parser kind, matched terms, and snippet hash.
   Reviewed fields map each upstream block to a coverage status and, when
   covered, `grimace_links` pointing at concrete fixture files and case IDs.
+  See [rdkit-serializer-coverage.md](rdkit-serializer-coverage.md) for the
+  current reviewed counts and status policy.
 
 ## Reference Dataset Fixtures
 

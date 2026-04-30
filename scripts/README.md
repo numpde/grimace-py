@@ -181,3 +181,5 @@ python scripts/report_rdkit_serializer_coverage.py --fail-untriaged
 
 Entries with `known-gap` status have a pinned fixture and an executable test, but
 the current Grimace implementation intentionally fails that parity check.
+See `docs/rdkit-serializer-coverage.md` for the reviewed status policy and
+current counts.

@@ -69,6 +69,31 @@ def _erase_ring_digit_adjacent_direction_markers(smiles: str) -> str:
     return "".join(out)
 
 
+def _directional_spelling_summary(smiles: str) -> dict[str, int]:
+    ring_digit_adjacent_count = 0
+    total_count = 0
+    for idx, char in enumerate(smiles):
+        if char not in ("/", "\\"):
+            continue
+        total_count += 1
+
+        previous_char = smiles[idx - 1] if idx > 0 else ""
+        next_char = smiles[idx + 1] if idx + 1 < len(smiles) else ""
+        if (
+            previous_char.isdigit()
+            or previous_char == "%"
+            or next_char.isdigit()
+            or next_char == "%"
+        ):
+            ring_digit_adjacent_count += 1
+
+    return {
+        "total": total_count,
+        "ring_digit_adjacent": ring_digit_adjacent_count,
+        "non_ring": total_count - ring_digit_adjacent_count,
+    }
+
+
 class StereoConstraintModelFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -205,6 +230,13 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             },
         )
+        self.assertTrue(
+            all(
+                row["directional_spelling"]
+                == _directional_spelling_summary(row["smiles"])
+                for row in rows
+            )
+        )
 
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(
@@ -256,6 +288,18 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 _erase_direction_markers(smiles)
                 for smiles in current_exact_support
             )
+            current_exact_outputs_with_ring_digit_direction = sum(
+                row["directional_spelling"]["ring_digit_adjacent"] > 0
+                for row in {row["smiles"]: row for row in rows}.values()
+            )
+            rdkit_sampled_outputs_with_ring_digit_direction = sum(
+                _directional_spelling_summary(smiles)["ring_digit_adjacent"] > 0
+                for smiles in rdkit_sampled_outputs
+            )
+            sampled_outside_current_exact_with_ring_digit_direction = sum(
+                _directional_spelling_summary(smiles)["ring_digit_adjacent"] > 0
+                for smiles in sampled_outside_current_exact_support
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(
@@ -299,6 +343,18 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         _erase_direction_markers(smiles) in direction_erased_current_keys
                         for smiles in sampled_outside_current_exact_support
                     ),
+                )
+                self.assertEqual(
+                    case.expected_grimace_runtime_outputs_with_ring_digit_direction_count,
+                    current_exact_outputs_with_ring_digit_direction,
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outputs_with_ring_digit_direction_count,
+                    rdkit_sampled_outputs_with_ring_digit_direction,
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count,
+                    sampled_outside_current_exact_with_ring_digit_direction,
                 )
 
 

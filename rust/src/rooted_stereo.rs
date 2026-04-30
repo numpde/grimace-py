@@ -2568,6 +2568,34 @@ fn selected_neighbors_layer_completions_to_py(
     Ok(completions.unbind())
 }
 
+fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<Py<PyDict>> {
+    let mut total_count = 0usize;
+    let mut ring_digit_adjacent_count = 0usize;
+
+    let chars = smiles.chars().collect::<Vec<_>>();
+    for (idx, &ch) in chars.iter().enumerate() {
+        if ch != '/' && ch != '\\' {
+            continue;
+        }
+        total_count += 1;
+
+        let previous_char = idx.checked_sub(1).and_then(|offset| chars.get(offset));
+        let next_char = chars.get(idx + 1);
+        let ring_digit_adjacent = previous_char
+            .is_some_and(|value| value.is_ascii_digit() || *value == '%')
+            || next_char.is_some_and(|value| value.is_ascii_digit() || *value == '%');
+        if ring_digit_adjacent {
+            ring_digit_adjacent_count += 1;
+        }
+    }
+
+    let summary = PyDict::new(py);
+    summary.set_item("total", total_count)?;
+    summary.set_item("ring_digit_adjacent", ring_digit_adjacent_count)?;
+    summary.set_item("non_ring", total_count - ring_digit_adjacent_count)?;
+    Ok(summary.unbind())
+}
+
 fn stereo_output_fact_row_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -2579,6 +2607,10 @@ fn stereo_output_fact_row_to_py(
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
     row.set_item("smiles", state.prefix.as_ref())?;
+    row.set_item(
+        "directional_spelling",
+        directional_spelling_summary_to_py(py, state.prefix.as_ref())?,
+    )?;
     row.set_item(
         "raw_facts",
         selected_neighbor_facts_to_py(py, runtime, raw_selected_neighbors)?,

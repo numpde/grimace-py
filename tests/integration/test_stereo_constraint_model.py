@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import unittest
+from collections import Counter
 from dataclasses import dataclass
 
 from rdkit import Chem
@@ -88,12 +89,14 @@ def _directional_spelling_summary(smiles: str) -> dict[str, object]:
     total_count = 0
     ordered_markers = []
     direction_erased_skeleton = []
+    marker_slots = []
     for idx, char in enumerate(smiles):
         if char not in ("/", "\\"):
             direction_erased_skeleton.append(char)
             continue
         total_count += 1
         ordered_markers.append(char)
+        slot = len(direction_erased_skeleton)
 
         previous_char = smiles[idx - 1] if idx > 0 else ""
         next_char = smiles[idx + 1] if idx + 1 < len(smiles) else ""
@@ -104,6 +107,16 @@ def _directional_spelling_summary(smiles: str) -> dict[str, object]:
             or next_char == "%"
         ):
             ring_digit_adjacent_count += 1
+        marker_slots.append(
+            {
+                "slot": slot,
+                "marker": char,
+                "after_ring_label": previous_char.isdigit() or previous_char == "%",
+                "before_ring_label": next_char.isdigit() or next_char == "%",
+                "before_bracket_atom": next_char == "[",
+                "after_branch_open": previous_char == "(",
+            }
+        )
 
     return {
         "total": total_count,
@@ -111,6 +124,7 @@ def _directional_spelling_summary(smiles: str) -> dict[str, object]:
         "non_ring": total_count - ring_digit_adjacent_count,
         "direction_erased_skeleton": "".join(direction_erased_skeleton),
         "ordered_markers": ordered_markers,
+        "marker_slots": marker_slots,
     }
 
 
@@ -123,6 +137,18 @@ def _direction_marker_slots(smiles: str) -> tuple[str, tuple[_DirectionMarkerSlo
         else:
             skeleton.append(char)
     return "".join(skeleton), tuple(markers)
+
+
+def _direction_marker_slots_from_summary(
+    summary: dict[str, object],
+) -> tuple[str, tuple[_DirectionMarkerSlot, ...]]:
+    return (
+        str(summary["direction_erased_skeleton"]),
+        tuple(
+            _DirectionMarkerSlot(slot=int(marker["slot"]), marker=str(marker["marker"]))
+            for marker in summary["marker_slots"]
+        ),
+    )
 
 
 def _ring_label_spans(skeleton: str) -> tuple[_RingLabelSpan, ...]:
@@ -202,6 +228,25 @@ def _marker_slot_pairs(
     markers: tuple[_DirectionMarkerSlot, ...],
 ) -> tuple[tuple[int, str], ...]:
     return tuple((marker.slot, marker.marker) for marker in markers)
+
+
+def _marker_slots_by_slot(
+    marker_slots: object,
+) -> dict[int, dict[str, object]]:
+    return {int(marker["slot"]): marker for marker in marker_slots}
+
+
+def _target_slot_context(skeleton: str, slot: int) -> tuple[str, ...]:
+    context = []
+    if slot < len(skeleton) and skeleton[slot] == "[":
+        context.append("before_bracket_atom")
+    if slot < len(skeleton) and (skeleton[slot].isdigit() or skeleton[slot] == "%"):
+        context.append("before_ring_label")
+    if slot > 0 and skeleton[slot - 1] == "(":
+        context.append("after_branch_open")
+    if slot > 0 and (skeleton[slot - 1].isdigit() or skeleton[slot - 1] == "%"):
+        context.append("after_ring_label")
+    return tuple(context)
 
 
 def _smiles_from_direction_marker_slots(
@@ -572,13 +617,19 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             }
             current_marker_slots_by_skeleton = {}
+            current_marker_contexts_by_skeleton = {}
             for row in rows:
-                skeleton, slots = _direction_marker_slots(row["smiles"])
+                skeleton, slots = _direction_marker_slots_from_summary(
+                    row["directional_spelling"]
+                )
                 self.assertEqual(
                     row["directional_spelling"]["direction_erased_skeleton"],
                     skeleton,
                 )
                 current_marker_slots_by_skeleton[skeleton] = slots
+                current_marker_contexts_by_skeleton[skeleton] = _marker_slots_by_slot(
+                    row["directional_spelling"]["marker_slots"]
+                )
             rdkit_summaries = tuple(
                 _directional_spelling_summary(smiles)
                 for smiles in rdkit_sampled_outputs
@@ -666,6 +717,34 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 for transition in case.expected_ring_closure_marker_transform_residual_slot_transitions
             )
+            residual_context_counts = Counter()
+            for skeleton, transformed_slots, rdkit_slots in residual_slot_transitions:
+                transformed_slots_by_slot = dict(transformed_slots)
+                rdkit_slots_by_slot = dict(rdkit_slots)
+                removed_slots = tuple(
+                    slot
+                    for slot, marker in transformed_slots
+                    if rdkit_slots_by_slot.get(slot) != marker
+                )
+                added_slots = tuple(
+                    slot
+                    for slot, marker in rdkit_slots
+                    if transformed_slots_by_slot.get(slot) != marker
+                )
+                self.assertEqual(len(removed_slots), len(added_slots))
+                for removed_slot, added_slot in zip(
+                    removed_slots, added_slots, strict=True
+                ):
+                    removed_context = current_marker_contexts_by_skeleton[skeleton][
+                        removed_slot
+                    ]
+                    residual_context_counts[
+                        (
+                            bool(removed_context["after_ring_label"]),
+                            bool(removed_context["after_branch_open"]),
+                            _target_slot_context(skeleton, added_slot),
+                        )
+                    ] += 1
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
@@ -710,6 +789,19 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     expected_residual_slot_transitions,
                     residual_slot_transitions,
+                )
+                self.assertEqual(
+                    Counter(
+                        {
+                            (False, False, ("before_ring_label",)): 2,
+                            (False, True, ("before_ring_label",)): 2,
+                            (False, False, ("before_bracket_atom",)): 1,
+                            (False, False, ("before_bracket_atom", "after_branch_open")): 1,
+                            (True, False, ("before_bracket_atom",)): 2,
+                            (True, False, ("before_bracket_atom", "after_branch_open")): 2,
+                        }
+                    ),
+                    residual_context_counts,
                 )
 
 

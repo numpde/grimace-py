@@ -2573,10 +2573,12 @@ fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<
     let mut ring_digit_adjacent_count = 0usize;
     let mut direction_erased_skeleton = String::with_capacity(smiles.len());
     let mut ordered_markers = Vec::<String>::new();
+    let mut marker_slots = Vec::<Py<PyDict>>::new();
 
     let chars = smiles.chars().collect::<Vec<_>>();
     for (idx, &ch) in chars.iter().enumerate() {
         if ch == '/' || ch == '\\' {
+            let slot = direction_erased_skeleton.chars().count();
             total_count += 1;
             ordered_markers.push(ch.to_string());
 
@@ -2588,6 +2590,21 @@ fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<
             if ring_digit_adjacent {
                 ring_digit_adjacent_count += 1;
             }
+
+            let marker_slot = PyDict::new(py);
+            marker_slot.set_item("slot", slot)?;
+            marker_slot.set_item("marker", ch.to_string())?;
+            marker_slot.set_item(
+                "after_ring_label",
+                previous_char.is_some_and(|value| value.is_ascii_digit() || *value == '%'),
+            )?;
+            marker_slot.set_item(
+                "before_ring_label",
+                next_char.is_some_and(|value| value.is_ascii_digit() || *value == '%'),
+            )?;
+            marker_slot.set_item("before_bracket_atom", next_char == Some(&'['))?;
+            marker_slot.set_item("after_branch_open", previous_char == Some(&'('))?;
+            marker_slots.push(marker_slot.unbind());
             continue;
         }
         direction_erased_skeleton.push(ch);
@@ -2599,6 +2616,7 @@ fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<
     summary.set_item("non_ring", total_count - ring_digit_adjacent_count)?;
     summary.set_item("direction_erased_skeleton", direction_erased_skeleton)?;
     summary.set_item("ordered_markers", ordered_markers)?;
+    summary.set_item("marker_slots", marker_slots)?;
     Ok(summary.unbind())
 }
 

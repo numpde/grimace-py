@@ -8,7 +8,6 @@ from rdkit import Chem, rdBase
 
 from tests.helpers.fixture_paths import checked_in_fixture_path
 from tests.helpers.rdkit_writer_membership import (
-    PinnedWriterMembershipCase,
     load_pinned_writer_membership_cases,
 )
 from tests.rdkit_serialization._support import (
@@ -32,7 +31,8 @@ class KnownStereoGapCase:
     rooted_at_atom: int | None
     isomeric_smiles: bool
     rdkit_canonical: bool
-    rdkit_random_seed: int | None
+    rdkit_random_vector_seed: int | None
+    rdkit_random_vector_index: int | None
     check_grimace_support: bool
 
 
@@ -72,7 +72,8 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 rooted_at_atom=raw_case["rooted_at_atom"],
                 isomeric_smiles=raw_case["isomeric_smiles"],
                 rdkit_canonical=raw_case["rdkit_canonical"],
-                rdkit_random_seed=raw_case.get("rdkit_random_seed"),
+                rdkit_random_vector_seed=raw_case.get("rdkit_random_vector_seed"),
+                rdkit_random_vector_index=raw_case.get("rdkit_random_vector_index"),
                 check_grimace_support=raw_case.get("check_grimace_support", True),
             )
         )
@@ -104,38 +105,71 @@ class KnownStereoGapTests(unittest.TestCase):
             return mol_from_pinned_source(writer_case)
         return mol_from_pinned_source(case)
 
+    def _molecule_source_key(self, case: KnownStereoGapCase) -> str:
+        if case.writer_membership_case_id is not None:
+            return f"writer-membership:{case.writer_membership_case_id}"
+        if case.smiles is not None:
+            return f"smiles:{case.smiles}"
+        return f"molblock:{case.case_id}"
+
+    def _rdkit_output(self, mol: Chem.Mol, case: KnownStereoGapCase) -> str:
+        if case.rdkit_random_vector_seed is not None:
+            if case.rdkit_random_vector_index is None:
+                raise ValueError(
+                    f"{case.case_id}: rdkit_random_vector_seed requires "
+                    "rdkit_random_vector_index"
+                )
+            random_outputs = Chem.MolToRandomSmilesVect(
+                Chem.Mol(mol),
+                case.rdkit_random_vector_index + 1,
+                randomSeed=case.rdkit_random_vector_seed,
+                isomericSmiles=case.isomeric_smiles,
+            )
+            return random_outputs[case.rdkit_random_vector_index]
+        if case.rdkit_random_vector_index is not None:
+            raise ValueError(
+                f"{case.case_id}: rdkit_random_vector_index requires "
+                "rdkit_random_vector_seed"
+            )
+        return Chem.MolToSmiles(
+            Chem.Mol(mol),
+            **rdkit_mol_to_smiles_kwargs_from_options(
+                rooted_at_atom=case.rooted_at_atom,
+                isomeric_smiles=case.isomeric_smiles,
+                canonical=case.rdkit_canonical,
+                do_random=False,
+            ),
+        )
+
     def test_pinned_rdkit_stereo_gap_outputs_are_in_grimace_support(self) -> None:
+        support_cache: dict[tuple[str, int | None, bool], set[str]] = {}
         for case in self.cases:
             with self.subTest(case_id=case.case_id, source=case.source):
                 mol = self._mol_from_case(case)
-                do_random = case.rdkit_random_seed is not None
-                if case.rdkit_random_seed is not None:
-                    rdBase.SeedRandomNumberGenerator(case.rdkit_random_seed)
-
-                rdkit_output = Chem.MolToSmiles(
-                    Chem.Mol(mol),
-                    **rdkit_mol_to_smiles_kwargs_from_options(
-                        rooted_at_atom=case.rooted_at_atom,
-                        isomeric_smiles=case.isomeric_smiles,
-                        canonical=case.rdkit_canonical,
-                        do_random=do_random,
-                    ),
-                )
+                rdkit_output = self._rdkit_output(mol, case)
                 self.assertEqual(case.expected, rdkit_output)
                 if not case.check_grimace_support:
                     continue
 
-                try:
-                    support = grimace_support(
-                        mol,
-                        rooted_at_atom=case.rooted_at_atom,
-                        isomeric_smiles=case.isomeric_smiles,
-                    )
-                except Exception as exc:
-                    self.fail(
-                        f"{case.case_id}: Grimace support enumeration failed with "
-                        f"{type(exc).__name__}: {exc}"
-                    )
+                support_key = (
+                    self._molecule_source_key(case),
+                    case.rooted_at_atom,
+                    case.isomeric_smiles,
+                )
+                support = support_cache.get(support_key)
+                if support is None:
+                    try:
+                        support = grimace_support(
+                            mol,
+                            rooted_at_atom=case.rooted_at_atom,
+                            isomeric_smiles=case.isomeric_smiles,
+                        )
+                    except Exception as exc:
+                        self.fail(
+                            f"{case.case_id}: Grimace support enumeration failed "
+                            f"with {type(exc).__name__}: {exc}"
+                        )
+                    support_cache[support_key] = support
                 self.assertTrue(
                     case.expected in support,
                     f"{case.case_id}: missing RDKit output {case.expected!r} "

@@ -9,6 +9,7 @@ from tests.helpers.fixture_paths import CHECKED_IN_FIXTURE_ROOT, checked_in_fixt
 from tests.helpers.rdkit_serializer_coverage import (
     COVERAGE_FIELDS,
     COVERAGE_STATUS_COVERED,
+    COVERAGE_STATUS_KNOWN_GAP,
     COVERAGE_STATUS_NEEDS_FIXTURE,
     COVERAGE_STATUSES,
     ENTRY_FIELDS,
@@ -146,7 +147,7 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
     ) -> None:
         links = entry["grimace_links"]
         self.assertIs(type(links), list, "grimace_links")
-        if entry["status"] == COVERAGE_STATUS_COVERED:
+        if entry["status"] in {COVERAGE_STATUS_COVERED, COVERAGE_STATUS_KNOWN_GAP}:
             self.assertTrue(links, entry["id"])
         elif entry["status"] != COVERAGE_STATUS_NEEDS_FIXTURE:
             self.assertFalse(links, entry["id"])

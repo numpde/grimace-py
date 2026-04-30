@@ -1508,7 +1508,15 @@
     {
       "claim": "double-bond-ring-closure-smiles",
       "end_line": 1775,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "github3967_part2_directional_ring_closure_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
+          "note": "Known-gap fixture pins the deterministic RDKit canonical output as an executable red parity test; current Grimace support enumeration fails with a stereo carrier-token conflict."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__github_3967_part_2",
       "kind": "cpp_section",
       "language": "cpp",
@@ -1516,17 +1524,28 @@
         "MolToSmiles"
       ],
       "name": "github #3967 part 2",
-      "notes": "GitHub #3967 part 2 directional ring-closure SMILES writer output is not yet represented by a Grimace fixture. Local probing currently hits a stereo carrier-token conflict in Grimace, so this needs runtime parity work before pinning as a passing fixture.",
+      "notes": "GitHub #3967 part 2 directional ring-closure SMILES writer output is represented by an executable known-gap fixture. Local probing currently hits a stereo carrier-token conflict in Grimace, so this needs runtime parity work before moving to a passing fixture.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "450c01cbf17469589f7ad9b7c5fae7ec974578d65e6289df95e54bccc00604b1",
       "start_line": 1769,
-      "status": "needs-fixture",
+      "status": "known-gap",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
       "claim": "large-double-bond-ring-closure-molblock",
       "end_line": 1879,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "manual_bond_stereo_difficult_cis_cis",
+            "manual_bond_stereo_difficult_cis_trans",
+            "manual_bond_stereo_difficult_trans_cis",
+            "manual_bond_stereo_difficult_trans_trans"
+          ],
+          "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
+          "note": "Known-gap fixture pins the four deterministic RDKit generated strings as executable red parity tests; all are currently outside Grimace support."
+        }
+      ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__chembl3623347",
       "kind": "cpp_section",
       "language": "cpp",
@@ -3944,7 +3963,18 @@
     {
       "claim": "manual-bond-stereo-isomeric-smiles",
       "end_line": 1860,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "manual_bond_stereo_difficult_cis_cis",
+            "manual_bond_stereo_difficult_cis_trans",
+            "manual_bond_stereo_difficult_trans_cis",
+            "manual_bond_stereo_difficult_trans_trans"
+          ],
+          "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
+          "note": "Known-gap fixture pins the four deterministic RDKit generated strings as executable red parity tests; all are currently outside Grimace support."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereodifficultcase",
       "kind": "python_test",
       "language": "python",
@@ -3953,11 +3983,11 @@
         "isomericSmiles"
       ],
       "name": "testBondSetStereoDifficultCase",
-      "notes": "Manual multi-double-bond stereo generated isomers are not yet represented by Grimace fixtures. Local RDKit 2026.03.1 probing found the four deterministic generated strings outside current Grimace support, so this needs coupled directional-stereo parity work before pinning.",
+      "notes": "Manual multi-double-bond stereo generated isomers are represented by executable known-gap fixtures. Local RDKit 2026.03.1 probing found the four deterministic generated strings outside current Grimace support, so this needs coupled directional-stereo parity work before moving to passing fixtures.",
       "parent": "TestCase",
       "snippet_sha256": "2c2ae1f369b3aafde6d84f76f6dedfb317cd3aed1ac2704e0f9f27e741ab1a56",
       "start_line": 1830,
-      "status": "needs-fixture",
+      "status": "known-gap",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {
@@ -4000,6 +4030,14 @@
           ],
           "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/60_manual_stereo_writer.json",
           "note": "Partial coverage: two unique generated canonical surfaces are in Grimace support; two other unique canonical surfaces remain outside support."
+        },
+        {
+          "cases": [
+            "manual_bond_stereo_atoms_missing_surface_01",
+            "manual_bond_stereo_atoms_missing_surface_02"
+          ],
+          "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
+          "note": "Known-gap fixture pins the two missing deterministic RDKit surfaces as executable red parity tests."
         }
       ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
@@ -4009,11 +4047,11 @@
         "MolToSmiles"
       ],
       "name": "testBondSetStereoAtoms",
-      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Partial writer-membership fixtures pin the two unique generated canonical surfaces currently in Grimace support. Two other unique canonical surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, remain outside current Grimace support, so the upstream method stays needs-fixture.",
+      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Passing writer-membership fixtures pin the two unique generated canonical surfaces currently in Grimace support; known-gap fixtures pin two other unique canonical surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, that remain outside current Grimace support.",
       "parent": "TestCase",
       "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
       "start_line": 1983,
-      "status": "needs-fixture",
+      "status": "known-gap",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

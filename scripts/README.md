@@ -178,3 +178,6 @@ Once triage is expected to be complete, make remaining `unreviewed` or
 ```bash
 python scripts/report_rdkit_serializer_coverage.py --fail-untriaged
 ```
+
+Entries with `known-gap` status have a pinned fixture and an executable test, but
+the current Grimace implementation intentionally fails that parity check.

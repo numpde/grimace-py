@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import unittest
+from dataclasses import dataclass
 
 from rdkit import Chem
 from rdkit import rdBase
@@ -10,7 +11,6 @@ from grimace import _core, _runtime
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 from tests.helpers.stereo_constraint_model import (
-    PinnedStereoMarkerSequenceTransition,
     load_pinned_stereo_constraint_model_cases,
 )
 
@@ -27,6 +27,19 @@ SUPPORTED_STEREO_FLAGS = _runtime.MolToSmilesFlags(
 )
 RDKIT_SAMPLE_DRAW_COUNT = 128
 RDKIT_SAMPLE_SEED = 1
+
+
+@dataclass(frozen=True, slots=True)
+class _DirectionMarkerSlot:
+    slot: int
+    marker: str
+
+
+@dataclass(frozen=True, slots=True)
+class _RingLabelSpan:
+    label: str
+    start_slot: int
+    end_slot: int
 
 
 def _effective_layer_assignment_count(
@@ -101,6 +114,90 @@ def _directional_spelling_summary(smiles: str) -> dict[str, object]:
     }
 
 
+def _direction_marker_slots(smiles: str) -> tuple[str, tuple[_DirectionMarkerSlot, ...]]:
+    skeleton = []
+    markers = []
+    for char in smiles:
+        if char in ("/", "\\"):
+            markers.append(_DirectionMarkerSlot(slot=len(skeleton), marker=char))
+        else:
+            skeleton.append(char)
+    return "".join(skeleton), tuple(markers)
+
+
+def _ring_label_spans(skeleton: str) -> tuple[_RingLabelSpan, ...]:
+    spans = []
+    idx = 0
+    while idx < len(skeleton):
+        char = skeleton[idx]
+        if char.isdigit():
+            spans.append(_RingLabelSpan(label=char, start_slot=idx, end_slot=idx + 1))
+            idx += 1
+            continue
+        if (
+            char == "%"
+            and idx + 2 < len(skeleton)
+            and skeleton[idx + 1].isdigit()
+            and skeleton[idx + 2].isdigit()
+        ):
+            spans.append(
+                _RingLabelSpan(
+                    label=skeleton[idx : idx + 3],
+                    start_slot=idx,
+                    end_slot=idx + 3,
+                )
+            )
+            idx += 3
+            continue
+        idx += 1
+    return tuple(spans)
+
+
+def _rdkit_ring_closure_marker_slots(
+    skeleton: str,
+    markers: tuple[_DirectionMarkerSlot, ...],
+) -> tuple[_DirectionMarkerSlot, ...]:
+    """Model RDKit's sampled spelling move for ring-carrier direction markers.
+
+    This is still a test-side candidate, not runtime behavior: for the pinned
+    witness, RDKit moves a direction marker from just after the ring-opening
+    label to just before the matching ring-closure label.
+    """
+
+    markers_by_slot = {marker.slot: marker for marker in markers}
+    moved_slots = set()
+    rewritten = []
+    spans_by_label = {}
+    for span in _ring_label_spans(skeleton):
+        spans_by_label.setdefault(span.label, []).append(span)
+
+    for spans in spans_by_label.values():
+        for left, right in zip(spans, spans[1:], strict=False):
+            marker = markers_by_slot.get(left.end_slot)
+            closure_is_bracket_atom = (
+                right.start_slot > 0 and skeleton[right.start_slot - 1] == "]"
+            )
+            if (
+                marker is None
+                or right.start_slot in markers_by_slot
+                or not closure_is_bracket_atom
+            ):
+                continue
+            moved_slots.add(marker.slot)
+            rewritten.append(
+                _DirectionMarkerSlot(slot=right.start_slot, marker=marker.marker)
+            )
+
+    rewritten.extend(marker for marker in markers if marker.slot not in moved_slots)
+    return tuple(sorted(rewritten, key=lambda marker: marker.slot))
+
+
+def _ordered_markers_from_slots(
+    markers: tuple[_DirectionMarkerSlot, ...],
+) -> tuple[str, ...]:
+    return tuple(marker.marker for marker in markers)
+
+
 def _rdkit_sampled_outputs(mol: Chem.Mol) -> frozenset[str]:
     return frozenset(
         Chem.MolToRandomSmilesVect(
@@ -123,21 +220,6 @@ def _rdkit_respelling_family(smileses: frozenset[str]) -> frozenset[str]:
             raise AssertionError(f"candidate output does not parse with RDKit: {smiles!r}")
         rewritten.update(_rdkit_sampled_outputs(mol))
     return frozenset(rewritten)
-
-
-def _apply_pinned_marker_sequence_transition(
-    *,
-    skeleton: str,
-    markers: tuple[str, ...],
-    transitions: tuple[PinnedStereoMarkerSequenceTransition, ...],
-) -> tuple[str, ...]:
-    for transition in transitions:
-        if (
-            transition.direction_erased_skeleton == skeleton
-            and transition.grimace_ordered_markers == markers
-        ):
-            return transition.rdkit_ordered_markers
-    return markers
 
 
 class StereoConstraintModelFixtureTests(unittest.TestCase):
@@ -467,6 +549,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 for row in rows
             }
+            current_marker_slots_by_skeleton = {}
+            for row in rows:
+                skeleton, slots = _direction_marker_slots(row["smiles"])
+                self.assertEqual(
+                    row["directional_spelling"]["direction_erased_skeleton"],
+                    skeleton,
+                )
+                current_marker_slots_by_skeleton[skeleton] = slots
             rdkit_summaries = tuple(
                 _directional_spelling_summary(smiles)
                 for smiles in rdkit_sampled_outputs
@@ -502,13 +592,23 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for transition in case.expected_marker_sequence_transitions
             )
             transformed_marker_sequences_by_skeleton = {
-                skeleton: _apply_pinned_marker_sequence_transition(
-                    skeleton=skeleton,
-                    markers=marker_sequence,
-                    transitions=case.expected_marker_sequence_transitions,
+                skeleton: _ordered_markers_from_slots(
+                    _rdkit_ring_closure_marker_slots(
+                        skeleton,
+                        marker_slots,
+                    )
                 )
-                for skeleton, marker_sequence in current_marker_sequences_by_skeleton.items()
+                for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
             }
+            transformed_skeletons = frozenset(
+                skeleton
+                for skeleton, marker_sequence in transformed_marker_sequences_by_skeleton.items()
+                if marker_sequence != current_marker_sequences_by_skeleton[skeleton]
+            )
+            expected_transformed_skeletons = frozenset(
+                transition.direction_erased_skeleton
+                for transition in case.expected_marker_sequence_transitions
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
@@ -533,6 +633,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     same_marker_sequence_skeletons | different_marker_sequence_skeletons,
                 )
                 self.assertEqual(expected_transitions, actual_transitions)
+                self.assertEqual(expected_transformed_skeletons, transformed_skeletons)
                 self.assertEqual(
                     rdkit_marker_sequences_by_skeleton,
                     transformed_marker_sequences_by_skeleton,

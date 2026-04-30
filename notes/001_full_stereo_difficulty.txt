@@ -3,7 +3,7 @@ Full-stereo rooted enumeration: what was difficult
 Context
 
 The reference enumerator in
-`python/smiles_next_token/reference/rooted/connected_stereo.py`
+`python/grimace/_reference/rooted/connected_stereo.py`
 has three constraints that make stereo harder than in an ordinary batch SMILES
 writer:
 
@@ -136,6 +136,49 @@ and the full current reference status is:
 
 - `tests/contracts`: passing
 - `tests/reference`: passing
+
+Known remaining coupled-component gap
+
+The remaining RDKit serializer-ledger `needs-fixture` entries are now dominated
+by coupled directional double-bond systems, not by missing data fixtures.  The
+smallest concrete reproducer is RDKit GitHub #3967 part 2:
+
+- input: `C1=CC/C=C2C3=C/CC=CC=CC\3C\2C=C1`
+- RDKit 2026.03.1 canonical output:
+  `C1=CC/C=C2\C3=C\CC=CC=CC3C2C=C1`
+- current Grimace behavior: `Conflicting stereo carrier token propagation`
+
+Local experiments confirmed that this is not safely fixed by weakening the
+existing carrier-token consistency checks.  If reverse-orientation parity or
+shared-edge conflicts are simply ignored, the internal exception disappears but
+the emitted signs still do not match RDKit.  For example, the output family
+contains variants with the wrong sign on the `C3=C\CC` carrier.
+
+The useful implementation target is therefore RDKit's traversal-order-aware
+double-bond direction canonicalization, not another static precomputed carrier
+token rule.  RDKit first builds a traversal stack, then calls
+`canonicalizeDoubleBonds()` using:
+
+- atom visit order
+- bond visit order
+- whether a carrier bond is a traversal ring-closure bond
+- per-bond and per-atom direction usage counts
+- same-side and across-double-bond conflict repair
+
+That means coupled components need writer-state that is closer to RDKit's
+post-traversal direction pass.  A promising Grimace shape is:
+
+- keep the rooted DFS/search as the source of atom and bond visit order
+- record whether each emitted carrier is a tree edge or ring-closure edge
+- defer coupled-component directional tokens until a result is complete
+- resolve the coupled component with RDKit-equivalent `canonicalizeDoubleBonds`
+  logic over the selected traversal order
+- only then compare the resolved string against RDKit pinned fixtures such as
+  #3967 part 2 and the remaining manual multi-double-bond stereo cases
+
+Until that state exists, pinning those remaining `needs-fixture` entries as
+passing fixtures would either fail or only test RDKit deterministic output
+without proving Grimace support.
 
 Practical lesson
 

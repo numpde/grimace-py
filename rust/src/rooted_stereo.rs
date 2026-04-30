@@ -8,6 +8,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
 use rustc_hash::FxHashMap;
 
+#[cfg(debug_assertions)]
+use crate::bond_stereo_constraints::StereoConstraintFact;
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, stereo_component_ids, stereo_constraint_model, stereo_side_infos,
@@ -2537,6 +2539,83 @@ fn validate_stereo_state_shape(
             "walker state is not compatible with this PreparedSmilesGraph",
         ));
     }
+    #[cfg(debug_assertions)]
+    validate_stereo_state_against_constraint_model(runtime, state)?;
+    Ok(())
+}
+
+#[cfg(debug_assertions)]
+fn selected_neighbor_facts_by_component(
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+) -> Vec<Vec<StereoConstraintFact>> {
+    let mut facts_by_component = vec![Vec::new(); runtime.constraint_model.component_count()];
+    for (side_idx, &neighbor_idx) in selected_neighbors.iter().enumerate() {
+        if neighbor_idx < 0 {
+            continue;
+        }
+        let side_info = &runtime.side_infos[side_idx];
+        facts_by_component[side_info.component_idx].push(StereoConstraintFact::CarrierSelected {
+            side_idx,
+            neighbor_idx: neighbor_idx as usize,
+        });
+    }
+    facts_by_component
+}
+
+#[cfg(debug_assertions)]
+fn validate_selected_neighbors_against_constraint_model(
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+    view_name: &str,
+) -> PyResult<()> {
+    let facts_by_component = selected_neighbor_facts_by_component(runtime, selected_neighbors);
+    for (component_idx, facts) in facts_by_component.iter().enumerate() {
+        for layer in [
+            StereoConstraintLayer::Semantic,
+            StereoConstraintLayer::RdkitLocalWriter,
+            StereoConstraintLayer::RdkitTraversalWriter,
+        ] {
+            if !runtime
+                .constraint_model
+                .has_completion(component_idx, layer, facts)
+            {
+                return Err(PyValueError::new_err(format!(
+                    "walker stereo state violates {view_name} constraint model for component {component_idx}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(debug_assertions)]
+fn validate_stereo_state_against_constraint_model(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<()> {
+    validate_selected_neighbors_against_constraint_model(
+        runtime,
+        &state.stereo_selected_neighbors,
+        "raw carrier-selection",
+    )?;
+    validate_selected_neighbors_against_constraint_model(
+        runtime,
+        &resolved_selected_neighbors(runtime, state),
+        "resolved carrier-selection",
+    )
+}
+
+#[cfg(debug_assertions)]
+fn validate_stereo_successors_against_constraint_model(
+    runtime: &StereoWalkerRuntimeData,
+    successors: &BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>,
+) -> PyResult<()> {
+    for states in successors.values() {
+        for state in states {
+            validate_stereo_state_against_constraint_model(runtime, state)?;
+        }
+    }
     Ok(())
 }
 
@@ -4306,6 +4385,8 @@ fn successors_by_token_stereo_impl(
         }
     }
     let successors = finalize_linear_structural_transitions(expanded);
+    #[cfg(debug_assertions)]
+    validate_stereo_successors_against_constraint_model(runtime, &successors)?;
     if require_completable && runtime.side_infos.is_empty() {
         Ok(successors)
     } else if require_completable {
@@ -5133,6 +5214,7 @@ impl PyRootedConnectedStereoDecoder {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::sync::Arc;
 
     use pyo3::types::{PyAnyMethods, PyDictMethods};
     use pyo3::Python;
@@ -5142,7 +5224,7 @@ mod tests {
         check_supported_stereo_writer_surface, choices_for_stereo_state,
         enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
         initial_stereo_state_for_root, is_terminal_stereo_state,
-        next_token_support_for_stereo_state, validate_root_idx,
+        next_token_support_for_stereo_state, validate_root_idx, validate_stereo_state_shape,
     };
     use crate::bond_stereo_constraints::{StereoConstraintFact, StereoConstraintLayer};
     use crate::prepared_graph::{
@@ -5416,6 +5498,20 @@ mod tests {
                 neighbor_idx: side_info.candidate_neighbors[0],
             }],
         ));
+    }
+
+    #[test]
+    fn stereo_state_validation_checks_constraint_model_domain() {
+        Python::initialize();
+        let graph = sample_stereo_graph();
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        let side_info = &runtime.side_infos[0];
+
+        state.stereo_selected_neighbors =
+            Arc::new(vec![side_info.other_endpoint_atom_idx as isize]);
+
+        validate_stereo_state_shape(&runtime, &graph, &state)
+            .expect_err("invalid selected carrier should fail validation");
     }
 
     #[test]

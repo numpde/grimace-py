@@ -25,6 +25,18 @@ Today, that public runtime is intentionally narrow: exact support and decoding
 for RDKit's `canonical=False, doRandom=True` writer regime under the current
 stable writer convention.
 
+There are two separate correctness ideas in this project:
+
+- principled SMILES/chemistry semantics: emitted strings should be valid and
+  parse back to the intended graph and stereo assignment
+- RDKit writer parity: emitted strings should match RDKit's actual writer
+  support for the supported regime
+
+The current public API is an RDKit writer-parity API. Some SMILES strings may
+be semantically valid and parse to the same molecule while still not belonging
+to RDKit's writer support. Those cases must be documented and tested as a
+separate semantic layer, not silently mixed into RDKit-parity claims.
+
 The reason this library exists is that RDKit does not provide either:
 
 - an exact rooted SMILES enumeration routine
@@ -390,6 +402,13 @@ RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest tests.perf.tes
 The public API keeps RDKit `MolToSmiles` flag names, but it does not aim for
 full RDKit writer-surface parity yet.
 
+For terminology and test policy, see
+[Correctness contracts](docs/correctness-contracts.md). In short: RDKit
+writer-matching behavior is intentionally separate from the principled
+SMILES/chemistry semantics layer. RDKit-specific traversal and directional-bond
+placement rules belong to the writer-parity layer, not the generic semantic
+layer.
+
 Current public runtime contract:
 
 - `canonical=False`
@@ -424,6 +443,7 @@ Disconnected molecules are supported by the public APIs.
 
 - [Docs index](docs/README.md)
 - [Python API](docs/api/python.md)
+- [Correctness contracts](docs/correctness-contracts.md)
 - [Testing fixtures](docs/testing-fixtures.md)
 
 ## License

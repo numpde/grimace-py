@@ -27,6 +27,12 @@ subset.
 ## Rules
 
 - Performance assertions do not belong in correctness suites.
+- Keep principled semantic checks separate from RDKit writer-parity checks.
+  Parsed-object equivalence is useful evidence, but it must not silently
+  replace exact string equality in RDKit-parity tests.
+- RDKit-specific traversal, rooting, fragment-order, and directional-bond
+  placement behavior should be named as RDKit writer behavior, not generic
+  SMILES semantics.
 - Kernel parity tests belong under `tests/parity/`, not `tests/reference/`.
 - Dataset-backed kernel contract checks belong under `tests/integration/` once they stop being cross-language parity checks.
 - RDKit-derived writer expectations belong under `tests/rdkit_serialization/`, not scattered through smoke tests.
@@ -37,6 +43,8 @@ subset.
   fixtures under `tests/fixtures/rdkit_writer_membership/`.
 - Deterministic RDKit rooted random-writer cases belong in version-keyed
   fixtures under `tests/fixtures/rdkit_rooted_random/`.
+- Isolated RDKit behaviors that are unusual but still may need to be mirrored
+  belong in version-keyed fixtures under `tests/fixtures/rdkit_known_quirks/`.
 - RDKit disconnected sampling input suites belong under
   `tests/fixtures/rdkit_disconnected_sampling/`.
 - Large pinned RDKit fixture corpora may use `VERSION/*.json` shards under the

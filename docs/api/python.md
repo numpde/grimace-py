@@ -8,6 +8,11 @@ The public runtime is intentionally narrow: exact support and decoding for
 RDKit's `canonical=False, doRandom=True` writer regime under the current
 stable writer convention.
 
+This is an RDKit writer-parity API, not a general "all semantically equivalent
+SMILES" API. A SMILES string can be valid and parse to the same molecule while
+still being outside RDKit's writer support. The project keeps those ideas
+separate; see [Correctness contracts](../correctness-contracts.md).
+
 The public signatures keep RDKit-like defaults for surface compatibility, but
 those defaults are not currently supported. Pass `canonical=False` and
 `doRandom=True` explicitly.
@@ -290,6 +295,17 @@ The test suite is layered:
 2. Python integration tests for the public API
 3. Python parity tests for cross-language regression checks
 4. RDKit-backed reference checks
+
+Correctness claims are also layered:
+
+- principled semantic correctness asks whether emitted SMILES are valid and
+  parse to the intended molecular graph and stereo assignment
+- RDKit writer parity asks whether emitted strings match RDKit's pinned writer
+  support for the supported regime
+
+The current public functions expose the RDKit writer-parity contract. Semantic
+equivalence checks are useful evidence, but they do not replace string equality
+for RDKit writer support or token-level decoder behavior.
 
 ## Internal modules
 

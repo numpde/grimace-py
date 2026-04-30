@@ -45,6 +45,7 @@ SUPPORTED_STEREO_BOND_DIRS = {
 }
 
 ORGANIC_SUBSET = {
+    "*",
     "B",
     "C",
     "N",
@@ -77,21 +78,30 @@ AROMATIC_UNBRACKETED_SUBSET = {
     "s",
 }
 
-UNBRACKETED_NEIGHBOR_ATOMIC_NUMS = {
+RDKIT_NON_METAL_ATOMIC_NUMS = {
+    0,   # *
+    1,   # H
+    2,   # He
     5,   # B
     6,   # C
     7,   # N
     8,   # O
     9,   # F
+    10,  # Ne
     14,  # Si
     15,  # P
     16,  # S
     17,  # Cl
+    18,  # Ar
     33,  # As
     34,  # Se
     35,  # Br
+    36,  # Kr
     52,  # Te
     53,  # I
+    54,  # Xe
+    85,  # At
+    86,  # Rn
 }
 
 
@@ -217,7 +227,7 @@ def atom_requires_brackets(atom: Chem.Atom, sampling: dict[str, object]) -> bool
 
     symbol = atom_symbol(atom, sampling)
     if any(
-        neighbor.GetAtomicNum() not in UNBRACKETED_NEIGHBOR_ATOMIC_NUMS
+        neighbor.GetAtomicNum() not in RDKIT_NON_METAL_ATOMIC_NUMS
         for neighbor in atom.GetNeighbors()
     ):
         return True

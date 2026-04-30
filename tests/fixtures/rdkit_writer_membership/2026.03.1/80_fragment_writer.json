@@ -1,0 +1,32 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "fragment_on_bonds_default_dummy_labels",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test87FragmentOnBonds default dummy labels",
+      "smiles": "*C1CC([4*])C1[6*].[1*]C.[3*]O.[5*]CC[8*].[7*]C1CC1",
+      "expected": "*C1CC([4*])C1[6*].[1*]C.[3*]O.[5*]CC[8*].[7*]C1CC1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "fragment_on_bonds_custom_dummy_labels",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test87FragmentOnBonds custom dummy labels",
+      "smiles": "[1*]C.[1*]CC[1*].[1*]O.[10*]C1CC([10*])C1[10*].[10*]C1CC1",
+      "expected": "[1*]C.[1*]CC[1*].[1*]O.[10*]C1CC([10*])C1[10*].[10*]C1CC1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "fragment_on_bonds_double_bond_dummies",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:test87FragmentOnBonds double bond dummy labels",
+      "smiles": "[2*]=O.[3*]=C(CC)CC(=[6*])C.[5*]=O",
+      "expected": "[2*]=O.[3*]=C(CC)CC(=[6*])C.[5*]=O",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    }
+  ]
+}

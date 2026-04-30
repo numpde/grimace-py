@@ -4310,7 +4310,17 @@
     {
       "claim": "fragment-dummy-label-smiles",
       "end_line": 3578,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "fragment_on_bonds_default_dummy_labels",
+            "fragment_on_bonds_custom_dummy_labels",
+            "fragment_on_bonds_double_bond_dummies"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/80_fragment_writer.json",
+          "note": "Pinned writer-membership cases cover the three asserted MolToSmiles outputs after FragmentOnBonds."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__test87fragmentonbonds",
       "kind": "python_test",
       "language": "python",
@@ -4318,11 +4328,11 @@
         "MolToSmiles"
       ],
       "name": "test87FragmentOnBonds",
-      "notes": "FragmentOnBonds products with dummy labels and bond types are not yet represented in Grimace fixtures. Local probes of the asserted fragmented surfaces found exact-support mismatches, so this needs dummy-label/fragment serialization parity work before pinning.",
+      "notes": "FragmentOnBonds products with default dummy labels, custom dummy labels, and double-bond dummy labels are represented by pinned writer-membership fixtures.",
       "parent": "TestCase",
       "snippet_sha256": "76d3cfc592c5ed3f5b8663ad54eddbc901ebc00e96e8d4c5fc1c1236990e5f35",
       "start_line": 3535,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

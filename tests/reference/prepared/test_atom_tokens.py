@@ -75,6 +75,18 @@ class RootedAtomTokenTests(unittest.TestCase):
         self.assertEqual(("[NH3]", "[Cu]"), prepared.atom_tokens)
         self.assertEqual((("->",), ("<-",)), prepared.neighbor_bond_tokens)
 
+    def test_dummy_neighbors_do_not_force_organic_atom_brackets(self) -> None:
+        for smiles, expected_tokens in [
+            ("*C", ("*", "C")),
+            ("[1*]C", ("[1*]", "C")),
+            ("[2*]=O", ("[2*]", "O")),
+        ]:
+            with self.subTest(smiles=smiles):
+                mol = parse_smiles(smiles)
+                prepared = prepare_smiles_graph(mol, self.policy)
+                self.assertEqual(rdkit_fragment_tokens(mol, self.policy), prepared.atom_tokens)
+                self.assertEqual(expected_tokens, prepared.atom_tokens)
+
     def test_local_atom_tokens_match_rdkit_on_dataset_slice(self) -> None:
         cases = load_default_connected_nonstereo_molecule_cases(limit=120, max_smiles_length=20)
         self.assertEqual(120, len(cases))

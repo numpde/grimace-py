@@ -16,7 +16,7 @@ use crate::rooted_nonstereo::{
     PyRootedConnectedNonStereoWalkerState,
 };
 use crate::rooted_stereo::{
-    PyRootedConnectedStereoDecoder, PyRootedConnectedStereoWalker,
+    stereo_constraint_model_summary, PyRootedConnectedStereoDecoder, PyRootedConnectedStereoWalker,
     PyRootedConnectedStereoWalkerState,
 };
 
@@ -31,5 +31,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyRootedConnectedStereoWalkerState>()?;
     m.add_function(wrap_pyfunction!(prepared_smiles_graph_schema_version, m)?)?;
     m.add_function(wrap_pyfunction!(mol_to_smiles_support, m)?)?;
+    m.add_function(wrap_pyfunction!(stereo_constraint_model_summary, m)?)?;
     Ok(())
 }

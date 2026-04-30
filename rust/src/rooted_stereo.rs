@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyAny, PyDict};
 use rustc_hash::FxHashMap;
 
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, stereo_component_ids, stereo_constraint_model, stereo_side_infos,
-    AmbiguousSharedEdgeGroup, StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild,
-    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    AmbiguousSharedEdgeGroup, StereoConstraintLayer, StereoConstraintModel, StereoSideInfo,
+    StereoSideInfoBuild, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2410,6 +2410,110 @@ fn build_walker_runtime(
         ambiguous_shared_edge_groups,
         constraint_model,
     })
+}
+
+fn stereo_constraint_layer_name(layer: StereoConstraintLayer) -> &'static str {
+    match layer {
+        StereoConstraintLayer::Semantic => "semantic",
+        StereoConstraintLayer::RdkitLocalWriter => "rdkit_local_writer",
+        StereoConstraintLayer::RdkitTraversalWriter => "rdkit_traversal_writer",
+    }
+}
+
+#[pyfunction]
+pub fn stereo_constraint_model_summary(
+    py: Python<'_>,
+    graph: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyDict>> {
+    let graph = PreparedSmilesGraphData::from_any(graph)?;
+    let runtime = build_walker_runtime(&graph, 0)?;
+    let model = &runtime.constraint_model;
+
+    let summary = PyDict::new(py);
+    summary.set_item("component_count", model.components.len())?;
+    summary.set_item("side_count", runtime.side_infos.len())?;
+    summary.set_item(
+        "component_sizes",
+        component_sizes(&runtime.stereo_component_ids),
+    )?;
+
+    let components = model
+        .components
+        .iter()
+        .map(|component| {
+            let component_dict = PyDict::new(py);
+            component_dict.set_item("component_idx", component.component_idx)?;
+            component_dict.set_item("side_ids", component.side_ids.clone())?;
+            component_dict.set_item(
+                "side_domain_sizes",
+                component
+                    .side_domains
+                    .iter()
+                    .map(|domain| domain.choices.len())
+                    .collect::<Vec<_>>(),
+            )?;
+            component_dict.set_item(
+                "domain_assignment_count",
+                component
+                    .side_domains
+                    .iter()
+                    .map(|domain| domain.choices.len())
+                    .product::<usize>(),
+            )?;
+
+            let side_domains = component
+                .side_domains
+                .iter()
+                .map(|domain| {
+                    let domain_dict = PyDict::new(py);
+                    domain_dict.set_item("side_idx", domain.side_idx)?;
+                    domain_dict.set_item("component_idx", domain.component_idx)?;
+                    domain_dict.set_item("endpoint_atom_idx", domain.endpoint_atom_idx)?;
+                    let choices = domain
+                        .choices
+                        .iter()
+                        .map(|choice| {
+                            let choice_dict = PyDict::new(py);
+                            choice_dict.set_item("neighbor_idx", choice.neighbor_idx)?;
+                            choice_dict.set_item("base_token", &choice.base_token)?;
+                            Ok(choice_dict)
+                        })
+                        .collect::<PyResult<Vec<_>>>()?;
+                    domain_dict.set_item("choices", choices)?;
+                    Ok(domain_dict)
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            component_dict.set_item("side_domains", side_domains)?;
+
+            let layers = component
+                .layer_assignments
+                .iter()
+                .map(|assignments| {
+                    let layer_dict = PyDict::new(py);
+                    layer_dict
+                        .set_item("layer", stereo_constraint_layer_name(assignments.layer))?;
+                    layer_dict.set_item(
+                        "assignment_count",
+                        assignments
+                            .allowed_neighbor_assignments
+                            .as_ref()
+                            .map(Vec::len),
+                    )?;
+                    layer_dict.set_item(
+                        "is_unrestricted",
+                        assignments.allowed_neighbor_assignments.is_none(),
+                    )?;
+                    Ok(layer_dict)
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            component_dict.set_item("layers", layers)?;
+
+            Ok(component_dict)
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    summary.set_item("components", components)?;
+
+    Ok(summary.unbind())
 }
 
 fn validate_stereo_state_shape(

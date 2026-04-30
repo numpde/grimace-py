@@ -12,6 +12,7 @@ from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_ROOTED_RANDOM,
     PINNED_RDKIT_SERIALIZER_REGRESSIONS,
     PINNED_RDKIT_WRITER_MEMBERSHIP,
+    PINNED_STEREO_CONSTRAINT_MODEL,
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_root,
     pinned_rdkit_fixture_versions,
@@ -30,6 +31,9 @@ from tests.helpers.rdkit_stereo_regressions import (
     load_steroid_ring_coupled_component_regression,
 )
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
+from tests.helpers.stereo_constraint_model import (
+    load_pinned_stereo_constraint_model_cases,
+)
 
 
 RDKIT_VERSION = "2099.01.1"
@@ -302,6 +306,28 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
         self.assertEqual(2, len({case.case_id for case in cases}))
         self.assertTrue(all(case.rooted_at_atom == 0 for case in cases))
         self.assertEqual([True, False], [case.validate_support for case in cases])
+
+    def test_stereo_constraint_model_fixture_loads(self) -> None:
+        fixture_root = pinned_rdkit_fixture_root(PINNED_STEREO_CONSTRAINT_MODEL)
+        versions = pinned_rdkit_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_stereo_constraint_model_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+
+                self.assertTrue(cases)
+                self.assertTrue(
+                    all(
+                        case.expected_rdkit_traversal_writer_assignment_count
+                        <= case.expected_rdkit_local_writer_assignment_count
+                        <= case.expected_semantic_assignment_count
+                        for case in cases
+                    )
+                )
 
 
 class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):

@@ -12,6 +12,7 @@ PINNED_RDKIT_KNOWN_QUIRKS = "rdkit_known_quirks"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
 PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
 PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
+PINNED_STEREO_CONSTRAINT_MODEL = "stereo_constraint_model"
 PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (
         PINNED_RDKIT_EXACT_SMALL_SUPPORT,
@@ -147,6 +148,42 @@ def required_int(
             f"{field_name}; got {raw_value!r}"
         )
     return raw_value
+
+
+def required_positive_int(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> int:
+    value = required_int(
+        raw_case,
+        field_name=field_name,
+        fixture_path=fixture_path,
+        case_id=case_id,
+    )
+    if value <= 0:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define positive "
+            f"integer {field_name}; got {value!r}"
+        )
+    return value
+
+
+def required_int_tuple(
+    values: list[object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> tuple[int, ...]:
+    if not values or not all(type(value) is int for value in values):
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonempty "
+            f"{field_name} as integers; got {values!r}"
+        )
+    return tuple(values)
 
 
 def optional_int(

@@ -13,6 +13,68 @@
       "expected_direction_erased_skeletons_with_same_marker_sequence_count": 24,
       "expected_grimace_runtime_outputs_with_ring_digit_direction_count": 18,
       "expected_grimace_runtime_support_count": 28,
+      "expected_marker_sequence_transitions": [
+        {
+          "direction_erased_skeleton": "N(=C1C=CC(=NC)[N-]1)C",
+          "grimace_ordered_markers": [
+            "\\",
+            "/",
+            "/",
+            "/"
+          ],
+          "rdkit_ordered_markers": [
+            "/",
+            "/",
+            "\\",
+            "/"
+          ]
+        },
+        {
+          "direction_erased_skeleton": "N(=C1C=CC([N-]1)=NC)C",
+          "grimace_ordered_markers": [
+            "\\",
+            "/",
+            "/",
+            "/"
+          ],
+          "rdkit_ordered_markers": [
+            "/",
+            "\\",
+            "/",
+            "/"
+          ]
+        },
+        {
+          "direction_erased_skeleton": "N(C)=C1C=CC(=NC)[N-]1",
+          "grimace_ordered_markers": [
+            "/",
+            "\\",
+            "/",
+            "/"
+          ],
+          "rdkit_ordered_markers": [
+            "/",
+            "/",
+            "/",
+            "\\"
+          ]
+        },
+        {
+          "direction_erased_skeleton": "N(C)=C1C=CC([N-]1)=NC",
+          "grimace_ordered_markers": [
+            "/",
+            "\\",
+            "/",
+            "/"
+          ],
+          "rdkit_ordered_markers": [
+            "/",
+            "/",
+            "\\",
+            "/"
+          ]
+        }
+      ],
       "expected_rdkit_local_writer_assignment_count": 3,
       "expected_rdkit_sampled_outputs_with_ring_digit_direction_count": 18,
       "expected_rdkit_sampled_exact_local_invalid_overlap_count": 0,

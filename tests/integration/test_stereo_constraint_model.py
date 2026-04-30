@@ -10,6 +10,7 @@ from grimace import _core, _runtime
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 from tests.helpers.stereo_constraint_model import (
+    PinnedStereoMarkerSequenceTransition,
     load_pinned_stereo_constraint_model_cases,
 )
 
@@ -122,6 +123,21 @@ def _rdkit_respelling_family(smileses: frozenset[str]) -> frozenset[str]:
             raise AssertionError(f"candidate output does not parse with RDKit: {smiles!r}")
         rewritten.update(_rdkit_sampled_outputs(mol))
     return frozenset(rewritten)
+
+
+def _apply_pinned_marker_sequence_transition(
+    *,
+    skeleton: str,
+    markers: tuple[str, ...],
+    transitions: tuple[PinnedStereoMarkerSequenceTransition, ...],
+) -> tuple[str, ...]:
+    for transition in transitions:
+        if (
+            transition.direction_erased_skeleton == skeleton
+            and transition.grimace_ordered_markers == markers
+        ):
+            return transition.rdkit_ordered_markers
+    return markers
 
 
 class StereoConstraintModelFixtureTests(unittest.TestCase):
@@ -467,6 +483,32 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             different_marker_sequence_skeletons = (
                 current_skeletons - same_marker_sequence_skeletons
             )
+            actual_transitions = tuple(
+                sorted(
+                    (
+                        skeleton,
+                        current_marker_sequences_by_skeleton[skeleton],
+                        rdkit_marker_sequences_by_skeleton[skeleton],
+                    )
+                    for skeleton in different_marker_sequence_skeletons
+                )
+            )
+            expected_transitions = tuple(
+                (
+                    transition.direction_erased_skeleton,
+                    transition.grimace_ordered_markers,
+                    transition.rdkit_ordered_markers,
+                )
+                for transition in case.expected_marker_sequence_transitions
+            )
+            transformed_marker_sequences_by_skeleton = {
+                skeleton: _apply_pinned_marker_sequence_transition(
+                    skeleton=skeleton,
+                    markers=marker_sequence,
+                    transitions=case.expected_marker_sequence_transitions,
+                )
+                for skeleton, marker_sequence in current_marker_sequences_by_skeleton.items()
+            }
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
@@ -489,6 +531,11 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     current_skeletons,
                     same_marker_sequence_skeletons | different_marker_sequence_skeletons,
+                )
+                self.assertEqual(expected_transitions, actual_transitions)
+                self.assertEqual(
+                    rdkit_marker_sequences_by_skeleton,
+                    transformed_marker_sequences_by_skeleton,
                 )
 
 

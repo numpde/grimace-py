@@ -10,8 +10,9 @@ use rustc_hash::FxHashMap;
 
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
-    is_stereo_double_bond, stereo_component_ids, stereo_side_infos, AmbiguousSharedEdgeGroup,
-    StereoSideInfo, StereoSideInfoBuild, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    is_stereo_double_bond, stereo_component_ids, stereo_constraint_model, stereo_side_infos,
+    AmbiguousSharedEdgeGroup, StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild,
+    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -333,6 +334,7 @@ struct StereoWalkerRuntimeData {
     edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
     side_ids_by_component: Vec<Vec<usize>>,
     ambiguous_shared_edge_groups: Vec<AmbiguousSharedEdgeGroup>,
+    constraint_model: StereoConstraintModel,
 }
 
 #[derive(Clone)]
@@ -2397,6 +2399,7 @@ fn build_walker_runtime(
     }
     let ambiguous_shared_edge_groups =
         ambiguous_shared_edge_groups(&side_infos, &edge_to_side_ids, &isolated_components);
+    let constraint_model = stereo_constraint_model(&side_infos, &side_ids_by_component)?;
     Ok(StereoWalkerRuntimeData {
         root_idx,
         stereo_component_ids,
@@ -2405,6 +2408,7 @@ fn build_walker_runtime(
         edge_to_side_ids,
         side_ids_by_component,
         ambiguous_shared_edge_groups,
+        constraint_model,
     })
 }
 
@@ -5036,6 +5040,7 @@ mod tests {
         initial_stereo_state_for_root, is_terminal_stereo_state,
         next_token_support_for_stereo_state, validate_root_idx,
     };
+    use crate::bond_stereo_constraints::{StereoConstraintFact, StereoConstraintLayer};
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
@@ -5287,6 +5292,26 @@ mod tests {
         let graph = sample_stereo_graph();
         let support = stereo_support_set(&graph, 0);
         assert_eq!(BTreeSet::from(["F/[CH]=[CH]\\Cl".to_owned()]), support);
+    }
+
+    #[test]
+    fn stereo_runtime_builds_noop_constraint_model() {
+        let graph = sample_stereo_graph();
+        let (runtime, _state) = stereo_runtime_and_state(&graph, 0);
+
+        assert_eq!(
+            runtime.side_ids_by_component.len(),
+            runtime.constraint_model.component_count(),
+        );
+        let side_info = &runtime.side_infos[0];
+        assert!(runtime.constraint_model.has_completion(
+            side_info.component_idx,
+            StereoConstraintLayer::Semantic,
+            &[StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: side_info.candidate_neighbors[0],
+            }],
+        ));
     }
 
     #[test]

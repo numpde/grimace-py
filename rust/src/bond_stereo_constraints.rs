@@ -28,6 +28,65 @@ pub(crate) struct StereoSideInfoBuild {
     pub(crate) edge_to_side_ids: BTreeMap<(usize, usize), Vec<usize>>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum StereoConstraintLayer {
+    Semantic,
+    RdkitLocalWriter,
+    RdkitTraversalWriter,
+}
+
+impl StereoConstraintLayer {
+    const ALL: [Self; 3] = [
+        Self::Semantic,
+        Self::RdkitLocalWriter,
+        Self::RdkitTraversalWriter,
+    ];
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoCarrierChoice {
+    pub(crate) neighbor_idx: usize,
+    pub(crate) base_token: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoSideChoiceDomain {
+    pub(crate) side_idx: usize,
+    pub(crate) component_idx: usize,
+    pub(crate) endpoint_atom_idx: usize,
+    pub(crate) choices: Vec<StereoCarrierChoice>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoLayerAssignments {
+    pub(crate) layer: StereoConstraintLayer,
+    // `None` currently means "all domain-valid assignments are allowed". Later
+    // phases will fill this with generated allowed tuples per component.
+    pub(crate) allowed_assignments: Option<Vec<Vec<usize>>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoComponentConstraintModel {
+    pub(crate) component_idx: usize,
+    pub(crate) side_ids: Vec<usize>,
+    pub(crate) side_domains: Vec<StereoSideChoiceDomain>,
+    pub(crate) layer_assignments: Vec<StereoLayerAssignments>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum StereoConstraintFact {
+    CarrierSelected {
+        side_idx: usize,
+        neighbor_idx: usize,
+    },
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct StereoConstraintModel {
+    pub(crate) components: Vec<StereoComponentConstraintModel>,
+    side_to_component: Vec<Option<usize>>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AmbiguousSharedEdgeGroup {
     pub(crate) left_side_idx: usize,
@@ -197,6 +256,151 @@ pub(crate) fn component_sizes(stereo_component_ids: &[isize]) -> Vec<usize> {
         }
     }
     counts
+}
+
+pub(crate) fn stereo_constraint_model(
+    side_infos: &[StereoSideInfo],
+    side_ids_by_component: &[Vec<usize>],
+) -> PyResult<StereoConstraintModel> {
+    let mut side_to_component = vec![None; side_infos.len()];
+    let mut components = Vec::with_capacity(side_ids_by_component.len());
+
+    for (component_idx, side_ids) in side_ids_by_component.iter().enumerate() {
+        let mut side_domains = Vec::with_capacity(side_ids.len());
+        for &side_idx in side_ids {
+            let side_info = side_infos.get(side_idx).ok_or_else(|| {
+                PyValueError::new_err("stereo constraint side index out of range")
+            })?;
+            if side_info.component_idx != component_idx {
+                return Err(PyValueError::new_err(
+                    "stereo constraint side component mismatch",
+                ));
+            }
+            if side_to_component[side_idx].replace(component_idx).is_some() {
+                return Err(PyValueError::new_err(
+                    "stereo constraint side assigned to multiple components",
+                ));
+            }
+            if side_info.candidate_neighbors.len() != side_info.candidate_base_tokens.len() {
+                return Err(PyValueError::new_err(
+                    "stereo constraint side candidate/token length mismatch",
+                ));
+            }
+
+            let choices = side_info
+                .candidate_neighbors
+                .iter()
+                .copied()
+                .zip(side_info.candidate_base_tokens.iter().cloned())
+                .map(|(neighbor_idx, base_token)| StereoCarrierChoice {
+                    neighbor_idx,
+                    base_token,
+                })
+                .collect::<Vec<_>>();
+            side_domains.push(StereoSideChoiceDomain {
+                side_idx,
+                component_idx,
+                endpoint_atom_idx: side_info.endpoint_atom_idx,
+                choices,
+            });
+        }
+
+        let layer_assignments = StereoConstraintLayer::ALL
+            .into_iter()
+            .map(|layer| StereoLayerAssignments {
+                layer,
+                allowed_assignments: None,
+            })
+            .collect::<Vec<_>>();
+
+        components.push(StereoComponentConstraintModel {
+            component_idx,
+            side_ids: side_ids.clone(),
+            side_domains,
+            layer_assignments,
+        });
+    }
+
+    Ok(StereoConstraintModel {
+        components,
+        side_to_component,
+    })
+}
+
+impl StereoConstraintModel {
+    pub(crate) fn component_count(&self) -> usize {
+        self.components.len()
+    }
+
+    pub(crate) fn has_completion(
+        &self,
+        component_idx: usize,
+        layer: StereoConstraintLayer,
+        facts: &[StereoConstraintFact],
+    ) -> bool {
+        let Some(component) = self.components.get(component_idx) else {
+            return false;
+        };
+        let Some(layer_assignments) = component
+            .layer_assignments
+            .iter()
+            .find(|assignments| assignments.layer == layer)
+        else {
+            return false;
+        };
+
+        let mut selected_neighbors = BTreeMap::<usize, usize>::new();
+        for fact in facts {
+            let StereoConstraintFact::CarrierSelected {
+                side_idx,
+                neighbor_idx,
+            } = *fact;
+            if self
+                .side_to_component
+                .get(side_idx)
+                .and_then(|value| *value)
+                != Some(component_idx)
+            {
+                return false;
+            }
+            let Some(domain) = component
+                .side_domains
+                .iter()
+                .find(|domain| domain.side_idx == side_idx)
+            else {
+                return false;
+            };
+            if !domain
+                .choices
+                .iter()
+                .any(|choice| choice.neighbor_idx == neighbor_idx)
+            {
+                return false;
+            }
+            if selected_neighbors
+                .insert(side_idx, neighbor_idx)
+                .is_some_and(|existing_neighbor_idx| existing_neighbor_idx != neighbor_idx)
+            {
+                return false;
+            }
+        }
+
+        match &layer_assignments.allowed_assignments {
+            None => true,
+            Some(allowed_assignments) => allowed_assignments.iter().any(|assignment| {
+                selected_neighbors.iter().all(|(&side_idx, &neighbor_idx)| {
+                    let Some(position) = component
+                        .side_ids
+                        .iter()
+                        .position(|&component_side_idx| component_side_idx == side_idx)
+                    else {
+                        return false;
+                    };
+                    assignment.get(position).copied() == Some(neighbor_idx)
+                })
+            }),
+        }
+    }
 }
 
 // Suspicious current model:
@@ -534,4 +738,134 @@ pub(crate) fn ambiguous_shared_edge_groups(
     }
 
     groups
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        stereo_constraint_model, StereoConstraintFact, StereoConstraintLayer, StereoSideInfo,
+    };
+
+    #[test]
+    fn constraint_model_accepts_empty_no_stereo_shape() {
+        let model = stereo_constraint_model(&[], &[]).expect("empty model should build");
+
+        assert_eq!(0, model.component_count());
+        assert!(!model.has_completion(0, StereoConstraintLayer::Semantic, &[]));
+    }
+
+    #[test]
+    fn constraint_model_builds_component_side_domains() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 1,
+                other_endpoint_atom_idx: 2,
+                candidate_neighbors: vec![0, 3],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![4],
+                candidate_base_tokens: vec!["/".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 1,
+                endpoint_atom_idx: 7,
+                other_endpoint_atom_idx: 8,
+                candidate_neighbors: vec![6],
+                candidate_base_tokens: vec!["\\".to_owned()],
+            },
+        ];
+
+        let model = stereo_constraint_model(&side_infos, &[vec![0, 1], vec![2]])
+            .expect("model should build");
+
+        assert_eq!(2, model.component_count());
+        assert_eq!(vec![0, 1], model.components[0].side_ids);
+        assert_eq!(vec![2], model.components[1].side_ids);
+        assert_eq!(2, model.components[0].side_domains[0].choices.len());
+        assert_eq!(1, model.components[0].side_domains[1].choices.len());
+        assert_eq!(1, model.components[1].side_domains[0].choices.len());
+    }
+
+    #[test]
+    fn constraint_model_completion_query_validates_domain_facts() {
+        let side_infos = vec![StereoSideInfo {
+            component_idx: 0,
+            endpoint_atom_idx: 1,
+            other_endpoint_atom_idx: 2,
+            candidate_neighbors: vec![0, 3],
+            candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+        }];
+        let model = stereo_constraint_model(&side_infos, &[vec![0]]).expect("model should build");
+
+        assert!(model.has_completion(
+            0,
+            StereoConstraintLayer::RdkitLocalWriter,
+            &[StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 3,
+            }],
+        ));
+        assert!(model.has_completion(
+            0,
+            StereoConstraintLayer::RdkitTraversalWriter,
+            &[
+                StereoConstraintFact::CarrierSelected {
+                    side_idx: 0,
+                    neighbor_idx: 3,
+                },
+                StereoConstraintFact::CarrierSelected {
+                    side_idx: 0,
+                    neighbor_idx: 3,
+                },
+            ],
+        ));
+        assert!(!model.has_completion(
+            0,
+            StereoConstraintLayer::Semantic,
+            &[StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 99,
+            }],
+        ));
+        assert!(!model.has_completion(
+            1,
+            StereoConstraintLayer::Semantic,
+            &[StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 3,
+            }],
+        ));
+        assert!(!model.has_completion(
+            0,
+            StereoConstraintLayer::Semantic,
+            &[
+                StereoConstraintFact::CarrierSelected {
+                    side_idx: 0,
+                    neighbor_idx: 0,
+                },
+                StereoConstraintFact::CarrierSelected {
+                    side_idx: 0,
+                    neighbor_idx: 3,
+                },
+            ],
+        ));
+    }
+
+    #[test]
+    fn constraint_model_rejects_inconsistent_component_mapping() {
+        let side_infos = vec![StereoSideInfo {
+            component_idx: 1,
+            endpoint_atom_idx: 1,
+            other_endpoint_atom_idx: 2,
+            candidate_neighbors: vec![0],
+            candidate_base_tokens: vec!["/".to_owned()],
+        }];
+
+        assert!(stereo_constraint_model(&side_infos, &[vec![0]]).is_err());
+    }
 }

@@ -9,6 +9,7 @@
           1
         ]
       ],
+      "expected_grimace_runtime_support_count": 28,
       "expected_rdkit_local_writer_assignment_count": 3,
       "expected_rdkit_traversal_writer_assignment_count": 3,
       "expected_semantic_assignment_count": 4,
@@ -35,6 +36,7 @@
           1
         ]
       ],
+      "expected_grimace_runtime_support_count": 2816,
       "expected_rdkit_local_writer_assignment_count": 16,
       "expected_rdkit_traversal_writer_assignment_count": 12,
       "expected_semantic_assignment_count": 16,

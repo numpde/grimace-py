@@ -23,6 +23,7 @@ class PinnedStereoConstraintModelCase:
     expected_semantic_assignment_count: int
     expected_rdkit_local_writer_assignment_count: int
     expected_rdkit_traversal_writer_assignment_count: int
+    expected_grimace_runtime_support_count: int
 
     @property
     def expected_component_count(self) -> int:
@@ -126,6 +127,12 @@ def load_pinned_stereo_constraint_model_cases(
                 expected_rdkit_traversal_writer_assignment_count=required_positive_int(
                     raw_case,
                     field_name="expected_rdkit_traversal_writer_assignment_count",
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                ),
+                expected_grimace_runtime_support_count=required_positive_int(
+                    raw_case,
+                    field_name="expected_grimace_runtime_support_count",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),

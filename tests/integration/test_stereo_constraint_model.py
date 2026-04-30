@@ -7,6 +7,7 @@ from rdkit import rdBase
 
 from grimace import _core, _runtime
 from tests.helpers.mols import parse_smiles
+from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 from tests.helpers.stereo_constraint_model import (
     load_pinned_stereo_constraint_model_cases,
 )
@@ -118,6 +119,24 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertLessEqual(
                     case.expected_rdkit_traversal_writer_assignment_count,
                     case.expected_rdkit_local_writer_assignment_count,
+                )
+
+    def test_current_runtime_support_count_matches_pinned_witnesses(self) -> None:
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(
+                    case.expected_grimace_runtime_support_count,
+                    len(
+                        public_enum_support(
+                            mol,
+                            **supported_public_kwargs(
+                                isomericSmiles=True,
+                                rootedAtAtom=-1,
+                            ),
+                        )
+                    ),
                 )
 
 

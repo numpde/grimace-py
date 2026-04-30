@@ -85,6 +85,7 @@ def _stereo_constraint_model_case(case_id: str, **overrides: object) -> dict[str
         "expected_semantic_assignment_count": 1,
         "expected_rdkit_local_writer_assignment_count": 1,
         "expected_rdkit_traversal_writer_assignment_count": 1,
+        "expected_grimace_runtime_support_count": 1,
     }
     case.update(overrides)
     return case

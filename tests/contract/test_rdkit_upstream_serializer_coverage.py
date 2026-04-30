@@ -17,6 +17,7 @@ from tests.helpers.rdkit_serializer_coverage import (
     KIND_LANGUAGES,
     RDKIT_SERIALIZER_COVERAGE_ROOT,
     RDKIT_SERIALIZER_SOURCE_ROOT,
+    UNTRIAGED_COVERAGE_STATUSES,
     VALID_ENTRY_KINDS,
     VALID_ENTRY_LANGUAGES,
 )
@@ -39,6 +40,20 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         for fixture_path in fixture_paths:
             with self.subTest(fixture=fixture_path.name):
                 self._assert_coverage_fixture(fixture_path)
+
+    def test_coverage_inventory_has_no_untriaged_entries(self) -> None:
+        fixture_paths = tuple(sorted(RDKIT_SERIALIZER_COVERAGE_ROOT.glob("*.json")))
+        self.assertTrue(fixture_paths)
+
+        for fixture_path in fixture_paths:
+            coverage = json.loads(fixture_path.read_text())
+            untriaged_ids = [
+                entry["id"]
+                for entry in coverage["entries"]
+                if entry["status"] in UNTRIAGED_COVERAGE_STATUSES
+            ]
+            with self.subTest(fixture=fixture_path.name):
+                self.assertEqual([], untriaged_ids)
 
     def _assert_coverage_fixture(self, fixture_path: Path) -> None:
         coverage = json.loads(fixture_path.read_text())

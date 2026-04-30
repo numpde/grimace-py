@@ -41,6 +41,13 @@ def _effective_layer_assignment_count(
     return assignment_count
 
 
+def _canonical_isomeric_smiles(smiles: str) -> str | None:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+    return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
+
+
 class StereoConstraintModelFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -188,6 +195,11 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
 
         for case in cases_with_sampled_expectations:
             mol = parse_smiles(case.smiles)
+            source_identity = Chem.MolToSmiles(
+                Chem.Mol(mol),
+                canonical=True,
+                isomericSmiles=True,
+            )
             prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
 
             rows = _core._stereo_constraint_output_facts(prepared)
@@ -208,6 +220,13 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     allHsExplicit=False,
                 )
             )
+            sampled_outside_current_exact_support = (
+                rdkit_sampled_outputs - current_exact_support
+            )
+            sampled_outside_current_exact_identities = tuple(
+                _canonical_isomeric_smiles(smiles)
+                for smiles in sampled_outside_current_exact_support
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(
@@ -224,7 +243,18 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     case.expected_rdkit_sampled_outside_current_exact_support_count,
-                    len(rdkit_sampled_outputs - current_exact_support),
+                    len(sampled_outside_current_exact_support),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_identity_equivalent_count,
+                    sum(
+                        identity == source_identity
+                        for identity in sampled_outside_current_exact_identities
+                    ),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_parse_failure_count,
+                    sampled_outside_current_exact_identities.count(None),
                 )
 
 

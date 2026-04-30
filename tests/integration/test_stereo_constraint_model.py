@@ -451,12 +451,22 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 for row in rows
             }
-            rdkit_marker_sequences_by_skeleton = {
-                _directional_spelling_summary(smiles)["direction_erased_skeleton"]: tuple(
-                    _directional_spelling_summary(smiles)["ordered_markers"]
-                )
+            rdkit_summaries = tuple(
+                _directional_spelling_summary(smiles)
                 for smiles in rdkit_sampled_outputs
+            )
+            rdkit_marker_sequences_by_skeleton = {
+                summary["direction_erased_skeleton"]: tuple(summary["ordered_markers"])
+                for summary in rdkit_summaries
             }
+            same_marker_sequence_skeletons = frozenset(
+                skeleton
+                for skeleton, marker_sequence in current_marker_sequences_by_skeleton.items()
+                if rdkit_marker_sequences_by_skeleton[skeleton] == marker_sequence
+            )
+            different_marker_sequence_skeletons = (
+                current_skeletons - same_marker_sequence_skeletons
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
@@ -468,9 +478,17 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     case.expected_rdkit_sampled_outside_current_exact_support_count,
                     len(rdkit_sampled_outside_current_skeletons),
                 )
-                self.assertNotEqual(
-                    current_marker_sequences_by_skeleton,
-                    rdkit_marker_sequences_by_skeleton,
+                self.assertEqual(
+                    case.expected_direction_erased_skeletons_with_same_marker_sequence_count,
+                    len(same_marker_sequence_skeletons),
+                )
+                self.assertEqual(
+                    case.expected_direction_erased_skeletons_with_different_marker_sequence_count,
+                    len(different_marker_sequence_skeletons),
+                )
+                self.assertEqual(
+                    current_skeletons,
+                    same_marker_sequence_skeletons | different_marker_sequence_skeletons,
                 )
 
 

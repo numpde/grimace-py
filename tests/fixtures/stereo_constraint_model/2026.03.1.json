@@ -9,6 +9,8 @@
           1
         ]
       ],
+      "expected_direction_erased_skeletons_with_different_marker_sequence_count": 4,
+      "expected_direction_erased_skeletons_with_same_marker_sequence_count": 24,
       "expected_grimace_runtime_outputs_with_ring_digit_direction_count": 18,
       "expected_grimace_runtime_support_count": 28,
       "expected_rdkit_local_writer_assignment_count": 3,

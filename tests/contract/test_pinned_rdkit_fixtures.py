@@ -315,6 +315,25 @@ class StereoConstraintModelFixtureLoaderTest(unittest.TestCase):
                             fixture_root=root,
                         )
 
+    def test_stereo_constraint_model_fixture_rejects_partial_sampled_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "partial_sampled_counts",
+                        expected_rdkit_sampled_support_count=10,
+                    )
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "all RDKit sampled diagnostic counts"):
+                load_pinned_stereo_constraint_model_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
+
 
 class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
     def test_all_checked_in_pinned_rdkit_fixtures_load(self) -> None:

@@ -8,6 +8,8 @@ from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_STEREO_CONSTRAINT_MODEL,
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_root,
+    optional_nonnegative_int,
+    optional_positive_int,
     required_int_tuple,
     required_positive_int,
     required_string,
@@ -24,6 +26,10 @@ class PinnedStereoConstraintModelCase:
     expected_rdkit_local_writer_assignment_count: int
     expected_rdkit_traversal_writer_assignment_count: int
     expected_grimace_runtime_support_count: int
+    expected_rdkit_sampled_support_count: int | None
+    expected_rdkit_sampled_exact_support_overlap_count: int | None
+    expected_rdkit_sampled_exact_local_invalid_overlap_count: int | None
+    expected_rdkit_sampled_outside_current_exact_support_count: int | None
 
     @property
     def expected_component_count(self) -> int:
@@ -101,6 +107,43 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
+        expected_rdkit_sampled_support_count = optional_positive_int(
+            raw_case,
+            field_name="expected_rdkit_sampled_support_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        expected_rdkit_sampled_exact_support_overlap_count = optional_nonnegative_int(
+            raw_case,
+            field_name="expected_rdkit_sampled_exact_support_overlap_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        expected_rdkit_sampled_exact_local_invalid_overlap_count = optional_nonnegative_int(
+            raw_case,
+            field_name="expected_rdkit_sampled_exact_local_invalid_overlap_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        expected_rdkit_sampled_outside_current_exact_support_count = optional_nonnegative_int(
+            raw_case,
+            field_name="expected_rdkit_sampled_outside_current_exact_support_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        rdkit_sampled_expectations = (
+            expected_rdkit_sampled_support_count,
+            expected_rdkit_sampled_exact_support_overlap_count,
+            expected_rdkit_sampled_exact_local_invalid_overlap_count,
+            expected_rdkit_sampled_outside_current_exact_support_count,
+        )
+        if any(value is not None for value in rdkit_sampled_expectations) and not all(
+            value is not None for value in rdkit_sampled_expectations
+        ):
+            raise ValueError(
+                f"fixture {fixture_case.fixture_path} case {fixture_case.case_id!r} "
+                "must define all RDKit sampled diagnostic counts or none of them"
+            )
         cases.append(
             PinnedStereoConstraintModelCase(
                 case_id=fixture_case.case_id,
@@ -135,6 +178,16 @@ def load_pinned_stereo_constraint_model_cases(
                     field_name="expected_grimace_runtime_support_count",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
+                ),
+                expected_rdkit_sampled_support_count=expected_rdkit_sampled_support_count,
+                expected_rdkit_sampled_exact_support_overlap_count=(
+                    expected_rdkit_sampled_exact_support_overlap_count
+                ),
+                expected_rdkit_sampled_exact_local_invalid_overlap_count=(
+                    expected_rdkit_sampled_exact_local_invalid_overlap_count
+                ),
+                expected_rdkit_sampled_outside_current_exact_support_count=(
+                    expected_rdkit_sampled_outside_current_exact_support_count
                 ),
             )
         )

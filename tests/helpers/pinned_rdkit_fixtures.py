@@ -134,6 +134,24 @@ def optional_positive_int(
     return raw_value
 
 
+def optional_nonnegative_int(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> int | None:
+    raw_value = raw_case.get(field_name)
+    if raw_value is None:
+        return None
+    if type(raw_value) is not int or raw_value < 0:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define nonnegative "
+            f"integer {field_name}; got {raw_value!r}"
+        )
+    return raw_value
+
+
 def required_int(
     raw_case: dict[str, object],
     *,

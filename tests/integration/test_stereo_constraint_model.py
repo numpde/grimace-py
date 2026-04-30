@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
+from rdkit import Chem
 from rdkit import rdBase
 
 from grimace import _core, _runtime
@@ -23,6 +24,8 @@ SUPPORTED_STEREO_FLAGS = _runtime.MolToSmilesFlags(
     do_random=True,
     ignore_atom_map_numbers=False,
 )
+RDKIT_SAMPLE_DRAW_COUNT = 128
+RDKIT_SAMPLE_SEED = 1
 
 
 def _effective_layer_assignment_count(
@@ -174,6 +177,55 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             },
         )
+
+    def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
+        cases_with_sampled_expectations = tuple(
+            case
+            for case in self.cases
+            if case.expected_rdkit_sampled_support_count is not None
+        )
+        self.assertTrue(cases_with_sampled_expectations)
+
+        for case in cases_with_sampled_expectations:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+            rows = _core._stereo_constraint_output_facts(prepared)
+            current_exact_support = frozenset(row["smiles"] for row in rows)
+            local_invalid_exact_outputs = frozenset(
+                row["smiles"]
+                for row in rows
+                if not row["resolved_layer_completions"]["rdkit_local_writer"]
+            )
+            rdkit_sampled_outputs = frozenset(
+                Chem.MolToRandomSmilesVect(
+                    mol,
+                    RDKIT_SAMPLE_DRAW_COUNT,
+                    randomSeed=RDKIT_SAMPLE_SEED,
+                    isomericSmiles=True,
+                    kekuleSmiles=False,
+                    allBondsExplicit=False,
+                    allHsExplicit=False,
+                )
+            )
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(
+                    case.expected_rdkit_sampled_support_count,
+                    len(rdkit_sampled_outputs),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_exact_support_overlap_count,
+                    len(rdkit_sampled_outputs & current_exact_support),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_exact_local_invalid_overlap_count,
+                    len(rdkit_sampled_outputs & local_invalid_exact_outputs),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_support_count,
+                    len(rdkit_sampled_outputs - current_exact_support),
+                )
 
 
 if __name__ == "__main__":

@@ -69,13 +69,17 @@ def _erase_ring_digit_adjacent_direction_markers(smiles: str) -> str:
     return "".join(out)
 
 
-def _directional_spelling_summary(smiles: str) -> dict[str, int]:
+def _directional_spelling_summary(smiles: str) -> dict[str, object]:
     ring_digit_adjacent_count = 0
     total_count = 0
+    ordered_markers = []
+    direction_erased_skeleton = []
     for idx, char in enumerate(smiles):
         if char not in ("/", "\\"):
+            direction_erased_skeleton.append(char)
             continue
         total_count += 1
+        ordered_markers.append(char)
 
         previous_char = smiles[idx - 1] if idx > 0 else ""
         next_char = smiles[idx + 1] if idx + 1 < len(smiles) else ""
@@ -91,6 +95,8 @@ def _directional_spelling_summary(smiles: str) -> dict[str, int]:
         "total": total_count,
         "ring_digit_adjacent": ring_digit_adjacent_count,
         "non_ring": total_count - ring_digit_adjacent_count,
+        "direction_erased_skeleton": "".join(direction_erased_skeleton),
+        "ordered_markers": ordered_markers,
     }
 
 
@@ -408,6 +414,63 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         _canonical_isomeric_smiles(smiles) == source_identity
                         for smiles in candidate_respelling_family
                     )
+                )
+
+    def test_direction_erased_skeleton_family_covers_sampled_spelling_family(self) -> None:
+        cases_with_sampled_expectations = tuple(
+            case
+            for case in self.cases
+            if case.expected_rdkit_sampled_support_count is not None
+        )
+        self.assertTrue(cases_with_sampled_expectations)
+
+        for case in cases_with_sampled_expectations:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+
+            current_skeletons = frozenset(
+                row["directional_spelling"]["direction_erased_skeleton"]
+                for row in rows
+            )
+            rdkit_sampled_outputs = _rdkit_sampled_outputs(mol)
+            rdkit_sampled_skeletons = frozenset(
+                _directional_spelling_summary(smiles)["direction_erased_skeleton"]
+                for smiles in rdkit_sampled_outputs
+            )
+            rdkit_sampled_outside_current = rdkit_sampled_outputs - frozenset(
+                row["smiles"] for row in rows
+            )
+            rdkit_sampled_outside_current_skeletons = frozenset(
+                _directional_spelling_summary(smiles)["direction_erased_skeleton"]
+                for smiles in rdkit_sampled_outside_current
+            )
+            current_marker_sequences_by_skeleton = {
+                row["directional_spelling"]["direction_erased_skeleton"]: tuple(
+                    row["directional_spelling"]["ordered_markers"]
+                )
+                for row in rows
+            }
+            rdkit_marker_sequences_by_skeleton = {
+                _directional_spelling_summary(smiles)["direction_erased_skeleton"]: tuple(
+                    _directional_spelling_summary(smiles)["ordered_markers"]
+                )
+                for smiles in rdkit_sampled_outputs
+            }
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
+                self.assertEqual(
+                    case.expected_rdkit_sampled_support_count,
+                    len(rdkit_sampled_skeletons),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_support_count,
+                    len(rdkit_sampled_outside_current_skeletons),
+                )
+                self.assertNotEqual(
+                    current_marker_sequences_by_skeleton,
+                    rdkit_marker_sequences_by_skeleton,
                 )
 
 

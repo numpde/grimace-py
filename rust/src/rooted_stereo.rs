@@ -2571,28 +2571,34 @@ fn selected_neighbors_layer_completions_to_py(
 fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<Py<PyDict>> {
     let mut total_count = 0usize;
     let mut ring_digit_adjacent_count = 0usize;
+    let mut direction_erased_skeleton = String::with_capacity(smiles.len());
+    let mut ordered_markers = Vec::<String>::new();
 
     let chars = smiles.chars().collect::<Vec<_>>();
     for (idx, &ch) in chars.iter().enumerate() {
-        if ch != '/' && ch != '\\' {
+        if ch == '/' || ch == '\\' {
+            total_count += 1;
+            ordered_markers.push(ch.to_string());
+
+            let previous_char = idx.checked_sub(1).and_then(|offset| chars.get(offset));
+            let next_char = chars.get(idx + 1);
+            let ring_digit_adjacent = previous_char
+                .is_some_and(|value| value.is_ascii_digit() || *value == '%')
+                || next_char.is_some_and(|value| value.is_ascii_digit() || *value == '%');
+            if ring_digit_adjacent {
+                ring_digit_adjacent_count += 1;
+            }
             continue;
         }
-        total_count += 1;
-
-        let previous_char = idx.checked_sub(1).and_then(|offset| chars.get(offset));
-        let next_char = chars.get(idx + 1);
-        let ring_digit_adjacent = previous_char
-            .is_some_and(|value| value.is_ascii_digit() || *value == '%')
-            || next_char.is_some_and(|value| value.is_ascii_digit() || *value == '%');
-        if ring_digit_adjacent {
-            ring_digit_adjacent_count += 1;
-        }
+        direction_erased_skeleton.push(ch);
     }
 
     let summary = PyDict::new(py);
     summary.set_item("total", total_count)?;
     summary.set_item("ring_digit_adjacent", ring_digit_adjacent_count)?;
     summary.set_item("non_ring", total_count - ring_digit_adjacent_count)?;
+    summary.set_item("direction_erased_skeleton", direction_erased_skeleton)?;
+    summary.set_item("ordered_markers", ordered_markers)?;
     Ok(summary.unbind())
 }
 

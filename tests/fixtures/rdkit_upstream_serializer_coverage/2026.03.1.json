@@ -1537,13 +1537,10 @@
       "grimace_links": [
         {
           "cases": [
-            "manual_bond_stereo_difficult_cis_cis",
-            "manual_bond_stereo_difficult_cis_trans",
-            "manual_bond_stereo_difficult_trans_cis",
-            "manual_bond_stereo_difficult_trans_trans"
+            "github4582_chembl3623347_canonical"
           ],
           "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
-          "note": "Known-gap fixture pins the four deterministic RDKit generated strings as executable red parity tests; all are currently outside Grimace support."
+          "note": "Pinned RDKit deterministic canonical output only; all-roots Grimace support enumeration is too large for the normal unit suite, so this remains needs-fixture for a practical parity assertion."
         }
       ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__chembl3623347",
@@ -1553,7 +1550,7 @@
         "MolToSmiles"
       ],
       "name": "CHEMBL3623347",
-      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is not yet represented by a Grimace fixture. Local RDKit 2026.03.1 probing confirmed the asserted canonical output, but it was absent from a 2,000-draw RDKit random sample, so the current writer-membership drift guard would not provide a meaningful Grimace-support assertion for this case.",
+      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is pinned as a deterministic RDKit output fixture. Local RDKit 2026.03.1 probing confirmed the asserted canonical output, but it was absent from a 2,000-draw RDKit random sample and all-roots Grimace support enumeration is too large for the normal unit suite, so this still needs a practical parity fixture or runtime work.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "2a65afa36b90e9d45ca512a1f2a7fb5ff21eb099819910a8ad47d680fcba1aad",
       "start_line": 1776,

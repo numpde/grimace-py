@@ -9,6 +9,7 @@ from rdkit import Chem, rdBase
 from tests.helpers.fixture_paths import checked_in_fixture_path
 from tests.rdkit_serialization._support import (
     grimace_support,
+    mol_from_pinned_source,
     rdkit_mol_to_smiles_kwargs_from_options,
 )
 
@@ -20,11 +21,13 @@ FIXTURE_ROOT = checked_in_fixture_path("rdkit_known_stereo_gaps")
 class KnownStereoGapCase:
     case_id: str
     source: str
-    smiles: str
+    smiles: str | None
+    molblock: str | None
     expected: str
     rooted_at_atom: int | None
     isomeric_smiles: bool
     rdkit_canonical: bool
+    check_grimace_support: bool
 
 
 def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase, ...]:
@@ -40,15 +43,24 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
 
     cases = []
     for raw_case in payload["cases"]:
+        smiles = raw_case.get("smiles")
+        molblock = raw_case.get("molblock")
+        if (smiles is None) == (molblock is None):
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} must define exactly one "
+                "of 'smiles' or 'molblock'"
+            )
         cases.append(
             KnownStereoGapCase(
                 case_id=raw_case["id"],
                 source=raw_case["source"],
-                smiles=raw_case["smiles"],
+                smiles=smiles,
+                molblock=molblock,
                 expected=raw_case["expected"],
                 rooted_at_atom=raw_case["rooted_at_atom"],
                 isomeric_smiles=raw_case["isomeric_smiles"],
                 rdkit_canonical=raw_case["rdkit_canonical"],
+                check_grimace_support=raw_case.get("check_grimace_support", True),
             )
         )
     return tuple(cases)
@@ -74,9 +86,7 @@ class KnownStereoGapTests(unittest.TestCase):
     def test_rdkit_deterministic_coupled_stereo_outputs_are_in_grimace_support(self) -> None:
         for case in self.cases:
             with self.subTest(case_id=case.case_id, source=case.source):
-                mol = Chem.MolFromSmiles(case.smiles)
-                self.assertIsNotNone(mol, case.smiles)
-                assert mol is not None
+                mol = mol_from_pinned_source(case)
 
                 rdkit_output = Chem.MolToSmiles(
                     Chem.Mol(mol),
@@ -88,6 +98,8 @@ class KnownStereoGapTests(unittest.TestCase):
                     ),
                 )
                 self.assertEqual(case.expected, rdkit_output)
+                if not case.check_grimace_support:
+                    continue
 
                 try:
                     support = grimace_support(

@@ -94,6 +94,30 @@ def _directional_spelling_summary(smiles: str) -> dict[str, int]:
     }
 
 
+def _rdkit_sampled_outputs(mol: Chem.Mol) -> frozenset[str]:
+    return frozenset(
+        Chem.MolToRandomSmilesVect(
+            mol,
+            RDKIT_SAMPLE_DRAW_COUNT,
+            randomSeed=RDKIT_SAMPLE_SEED,
+            isomericSmiles=True,
+            kekuleSmiles=False,
+            allBondsExplicit=False,
+            allHsExplicit=False,
+        )
+    )
+
+
+def _rdkit_respelling_family(smileses: frozenset[str]) -> frozenset[str]:
+    rewritten = set()
+    for smiles in smileses:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise AssertionError(f"candidate output does not parse with RDKit: {smiles!r}")
+        rewritten.update(_rdkit_sampled_outputs(mol))
+    return frozenset(rewritten)
+
+
 class StereoConstraintModelFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -262,17 +286,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
                 if not row["resolved_layer_completions"]["rdkit_local_writer"]
             )
-            rdkit_sampled_outputs = frozenset(
-                Chem.MolToRandomSmilesVect(
-                    mol,
-                    RDKIT_SAMPLE_DRAW_COUNT,
-                    randomSeed=RDKIT_SAMPLE_SEED,
-                    isomericSmiles=True,
-                    kekuleSmiles=False,
-                    allBondsExplicit=False,
-                    allHsExplicit=False,
-                )
-            )
+            rdkit_sampled_outputs = _rdkit_sampled_outputs(mol)
             sampled_outside_current_exact_support = (
                 rdkit_sampled_outputs - current_exact_support
             )
@@ -355,6 +369,45 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     case.expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count,
                     sampled_outside_current_exact_with_ring_digit_direction,
+                )
+
+    def test_rdkit_respelling_candidate_covers_sampled_spelling_family(self) -> None:
+        cases_with_sampled_expectations = tuple(
+            case
+            for case in self.cases
+            if case.expected_rdkit_sampled_support_count is not None
+        )
+        self.assertTrue(cases_with_sampled_expectations)
+
+        for case in cases_with_sampled_expectations:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+
+            current_exact_support = frozenset(row["smiles"] for row in rows)
+            candidate_respelling_family = _rdkit_respelling_family(current_exact_support)
+            rdkit_sampled_outputs = _rdkit_sampled_outputs(mol)
+            source_identity = Chem.MolToSmiles(
+                Chem.Mol(mol),
+                canonical=True,
+                isomericSmiles=True,
+            )
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(rdkit_sampled_outputs, candidate_respelling_family)
+                self.assertEqual(
+                    case.expected_rdkit_sampled_support_count,
+                    len(candidate_respelling_family),
+                )
+                self.assertEqual(
+                    case.expected_rdkit_sampled_outside_current_exact_support_count,
+                    len(candidate_respelling_family - current_exact_support),
+                )
+                self.assertTrue(
+                    all(
+                        _canonical_isomeric_smiles(smiles) == source_identity
+                        for smiles in candidate_respelling_family
+                    )
                 )
 
 

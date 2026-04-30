@@ -2571,17 +2571,14 @@ fn validate_selected_neighbors_against_constraint_model(
 ) -> PyResult<()> {
     let facts_by_component = selected_neighbor_facts_by_component(runtime, selected_neighbors);
     for (component_idx, facts) in facts_by_component.iter().enumerate() {
-        for layer in [
-            StereoConstraintLayer::Semantic,
-            StereoConstraintLayer::RdkitLocalWriter,
-            StereoConstraintLayer::RdkitTraversalWriter,
-        ] {
+        for layer in StereoConstraintLayer::ALL {
             if !runtime
                 .constraint_model
                 .has_completion(component_idx, layer, facts)
             {
                 return Err(PyValueError::new_err(format!(
-                    "walker stereo state violates {view_name} constraint model for component {component_idx}"
+                    "walker stereo state violates {view_name} {} constraint model for component {component_idx}",
+                    stereo_constraint_layer_name(layer),
                 )));
             }
         }

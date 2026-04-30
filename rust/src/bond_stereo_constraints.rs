@@ -36,7 +36,7 @@ pub(crate) enum StereoConstraintLayer {
 }
 
 impl StereoConstraintLayer {
-    const ALL: [Self; 3] = [
+    pub(crate) const ALL: [Self; 3] = [
         Self::Semantic,
         Self::RdkitLocalWriter,
         Self::RdkitTraversalWriter,

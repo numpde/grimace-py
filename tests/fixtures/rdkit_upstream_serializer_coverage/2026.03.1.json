@@ -1355,7 +1355,21 @@
             "molblock_github4582_chembl409450_canonical"
           ],
           "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/40_molblock_writer.json",
-          "note": "Partial coverage: the deterministic CHEMBL409450 canonical output is pinned; the 100-seed random-output loop still exposes directional ring-closure support gaps."
+          "note": "Passing fixture pins the deterministic CHEMBL409450 canonical output checked by the basic section."
+        },
+        {
+          "cases": [
+            "github4582_chembl409450_random_vector_seed1_index0",
+            "github4582_chembl409450_random_vector_seed1_index2",
+            "github4582_chembl409450_random_vector_seed1_index3",
+            "github4582_chembl409450_random_vector_seed1_index5",
+            "github4582_chembl409450_random_vector_seed1_index6",
+            "github4582_chembl409450_random_vector_seed1_index7",
+            "github4582_chembl409450_random_vector_seed1_index8",
+            "github4582_chembl409450_random_vector_seed1_index9"
+          ],
+          "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
+          "note": "Known-gap fixture pins representative deterministic random-vector outputs from the same molblock; these currently miss Grimace support."
         }
       ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_double_bonds_and_ring_closures",
@@ -1367,11 +1381,11 @@
         "doRandom"
       ],
       "name": "Github #4582: double bonds and ring closures",
-      "notes": "Molblock regression checks a canonical double-bond/ring-closure output and then round-trips 100 seeded random outputs to that canonical SMILES. The deterministic canonical output is pinned. Local RDKit 2026.03.1 probing reproduced 99 unique seeded random outputs, all RDKit-canonical round-tripping correctly, with 78 outside current Grimace support; the bulk loop therefore needs directional ring-closure parity work before it can become a passing fixture.",
+      "notes": "Molblock regression checks a canonical double-bond/ring-closure output and then round-trips 100 random outputs to that canonical SMILES. The deterministic canonical output is covered, and representative random-vector outputs are executable known-gap tests; broader directional ring-closure parity still needs runtime work.",
       "parent": null,
       "snippet_sha256": "bae01c5910c81fe671e0155e66a6f9c1497e1a75437c5558672fafe838ae40da",
       "start_line": 1635,
-      "status": "needs-fixture",
+      "status": "known-gap",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

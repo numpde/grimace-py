@@ -27,6 +27,24 @@
       "rooted_at_atom": null,
       "isomeric_smiles": true,
       "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_atoms_passing_surface_01",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoAtoms generated isomer surface",
+      "smiles": "CC/C=C/C(/C=C/CC)=C(/CC)CO",
+      "expected": "CC/C=C/C(/C=C/CC)=C(CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
+    },
+    {
+      "id": "manual_bond_stereo_atoms_passing_surface_02",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoAtoms generated isomer surface",
+      "smiles": "CC\\C=C/C(/C=C\\CC)=C(/CC)CO",
+      "expected": "CC/C=C\\C(/C=C\\CC)=C(CC)CO",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": true
     }
   ]
 }

@@ -3969,7 +3969,16 @@
     {
       "claim": "manual-mutated-bond-stereo-writer",
       "end_line": 2026,
-      "grimace_links": [],
+      "grimace_links": [
+        {
+          "cases": [
+            "manual_bond_stereo_atoms_passing_surface_01",
+            "manual_bond_stereo_atoms_passing_surface_02"
+          ],
+          "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/60_manual_stereo_writer.json",
+          "note": "Partial coverage: two unique generated canonical surfaces are in Grimace support; two other unique canonical surfaces remain outside support."
+        }
+      ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
       "kind": "python_test",
       "language": "python",
@@ -3977,7 +3986,7 @@
         "MolToSmiles"
       ],
       "name": "testBondSetStereoAtoms",
-      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Local RDKit 2026.03.1 probing found that four of the six generated isomer surfaces match Grimace exactly, while the two remaining stable round-tripped directional surfaces produce RDKit random outputs outside current Grimace support; this needs coupled directional-stereo parity work before pinning as a complete passing fixture.",
+      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Partial writer-membership fixtures pin the two unique generated canonical surfaces currently in Grimace support. Two other unique canonical surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, remain outside current Grimace support, so the upstream method stays needs-fixture.",
       "parent": "TestCase",
       "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
       "start_line": 1983,

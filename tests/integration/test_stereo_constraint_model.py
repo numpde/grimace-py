@@ -198,6 +198,22 @@ def _ordered_markers_from_slots(
     return tuple(marker.marker for marker in markers)
 
 
+def _smiles_from_direction_marker_slots(
+    skeleton: str,
+    markers: tuple[_DirectionMarkerSlot, ...],
+) -> str:
+    markers_by_slot: dict[int, list[str]] = {}
+    for marker in markers:
+        markers_by_slot.setdefault(marker.slot, []).append(marker.marker)
+
+    out = []
+    for slot in range(len(skeleton) + 1):
+        out.extend(markers_by_slot.get(slot, ()))
+        if slot < len(skeleton):
+            out.append(skeleton[slot])
+    return "".join(out)
+
+
 def _rdkit_sampled_outputs(mol: Chem.Mol) -> frozenset[str]:
     return frozenset(
         Chem.MolToRandomSmilesVect(
@@ -609,6 +625,13 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 transition.direction_erased_skeleton
                 for transition in case.expected_marker_sequence_transitions
             )
+            transformed_exact_support = frozenset(
+                _smiles_from_direction_marker_slots(
+                    skeleton,
+                    _rdkit_ring_closure_marker_slots(skeleton, marker_slots),
+                )
+                for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertEqual(current_skeletons, rdkit_sampled_skeletons)
@@ -637,6 +660,18 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     rdkit_marker_sequences_by_skeleton,
                     transformed_marker_sequences_by_skeleton,
+                )
+                self.assertEqual(
+                    case.expected_ring_closure_marker_transform_support_count,
+                    len(transformed_exact_support),
+                )
+                self.assertEqual(
+                    case.expected_ring_closure_marker_transform_exact_overlap_count,
+                    len(transformed_exact_support & rdkit_sampled_outputs),
+                )
+                self.assertEqual(
+                    case.expected_ring_closure_marker_transform_outside_rdkit_count,
+                    len(transformed_exact_support - rdkit_sampled_outputs),
                 )
 
 

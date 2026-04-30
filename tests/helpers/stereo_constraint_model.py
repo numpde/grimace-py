@@ -48,6 +48,9 @@ class PinnedStereoConstraintModelCase:
     expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count: int | None
     expected_direction_erased_skeletons_with_same_marker_sequence_count: int | None
     expected_direction_erased_skeletons_with_different_marker_sequence_count: int | None
+    expected_ring_closure_marker_transform_support_count: int | None
+    expected_ring_closure_marker_transform_exact_overlap_count: int | None
+    expected_ring_closure_marker_transform_outside_rdkit_count: int | None
     expected_marker_sequence_transitions: tuple[PinnedStereoMarkerSequenceTransition, ...]
 
     @property
@@ -306,6 +309,24 @@ def load_pinned_stereo_constraint_model_cases(
                 case_id=fixture_case.case_id,
             )
         )
+        expected_ring_closure_marker_transform_support_count = optional_nonnegative_int(
+            raw_case,
+            field_name="expected_ring_closure_marker_transform_support_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        expected_ring_closure_marker_transform_exact_overlap_count = optional_nonnegative_int(
+            raw_case,
+            field_name="expected_ring_closure_marker_transform_exact_overlap_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
+        expected_ring_closure_marker_transform_outside_rdkit_count = optional_nonnegative_int(
+            raw_case,
+            field_name="expected_ring_closure_marker_transform_outside_rdkit_count",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
         rdkit_sampled_expectations = (
             expected_rdkit_sampled_support_count,
             expected_rdkit_sampled_exact_support_overlap_count,
@@ -320,6 +341,9 @@ def load_pinned_stereo_constraint_model_cases(
             expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count,
             expected_direction_erased_skeletons_with_same_marker_sequence_count,
             expected_direction_erased_skeletons_with_different_marker_sequence_count,
+            expected_ring_closure_marker_transform_support_count,
+            expected_ring_closure_marker_transform_exact_overlap_count,
+            expected_ring_closure_marker_transform_outside_rdkit_count,
         )
         if any(value is not None for value in rdkit_sampled_expectations) and not all(
             value is not None for value in rdkit_sampled_expectations
@@ -404,6 +428,15 @@ def load_pinned_stereo_constraint_model_cases(
                 ),
                 expected_direction_erased_skeletons_with_different_marker_sequence_count=(
                     expected_direction_erased_skeletons_with_different_marker_sequence_count
+                ),
+                expected_ring_closure_marker_transform_support_count=(
+                    expected_ring_closure_marker_transform_support_count
+                ),
+                expected_ring_closure_marker_transform_exact_overlap_count=(
+                    expected_ring_closure_marker_transform_exact_overlap_count
+                ),
+                expected_ring_closure_marker_transform_outside_rdkit_count=(
+                    expected_ring_closure_marker_transform_outside_rdkit_count
                 ),
                 expected_marker_sequence_transitions=expected_marker_sequence_transitions,
             )

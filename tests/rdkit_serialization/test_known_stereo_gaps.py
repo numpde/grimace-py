@@ -7,6 +7,7 @@ import unittest
 from rdkit import Chem, rdBase
 
 from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.public_runtime import make_determinized_decoder
 from tests.helpers.rdkit_writer_membership import (
     load_pinned_writer_membership_cases,
 )
@@ -14,6 +15,7 @@ from tests.rdkit_serialization._support import (
     grimace_support,
     mol_from_pinned_source,
     rdkit_mol_to_smiles_kwargs_from_options,
+    supported_public_kwargs_from_rdkit_options,
 )
 
 
@@ -33,6 +35,7 @@ class KnownStereoGapCase:
     rdkit_canonical: bool
     rdkit_random_vector_seed: int | None
     rdkit_random_vector_index: int | None
+    check_grimace_decoder_path: bool
     check_grimace_support: bool
 
 
@@ -74,6 +77,9 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 rdkit_canonical=raw_case["rdkit_canonical"],
                 rdkit_random_vector_seed=raw_case.get("rdkit_random_vector_seed"),
                 rdkit_random_vector_index=raw_case.get("rdkit_random_vector_index"),
+                check_grimace_decoder_path=raw_case.get(
+                    "check_grimace_decoder_path", False
+                ),
                 check_grimace_support=raw_case.get("check_grimace_support", True),
             )
         )
@@ -141,6 +147,39 @@ class KnownStereoGapTests(unittest.TestCase):
             ),
         )
 
+    def _assert_determinized_decoder_accepts(
+        self,
+        mol: Chem.Mol,
+        case: KnownStereoGapCase,
+    ) -> None:
+        decoder = make_determinized_decoder(
+            mol,
+            **supported_public_kwargs_from_rdkit_options(
+                rooted_at_atom=case.rooted_at_atom,
+                isomeric_smiles=case.isomeric_smiles,
+            ),
+        )
+        pos = 0
+        while pos < len(case.expected):
+            choice = next(
+                (
+                    choice
+                    for choice in decoder.next_choices
+                    if case.expected.startswith(choice.text, pos)
+                ),
+                None,
+            )
+            if choice is None:
+                choices = tuple(choice.text for choice in decoder.next_choices)
+                self.fail(
+                    f"{case.case_id}: decoder rejected RDKit output at offset "
+                    f"{pos}; prefix={case.expected[:pos]!r}; "
+                    f"next={case.expected[pos:pos + 24]!r}; choices={choices!r}"
+                )
+            decoder = choice.next_state
+            pos += len(choice.text)
+        self.assertTrue(decoder.is_terminal, case.case_id)
+
     def test_pinned_rdkit_stereo_gap_outputs_are_in_grimace_support(self) -> None:
         support_cache: dict[tuple[str, int | None, bool], set[str]] = {}
         for case in self.cases:
@@ -148,6 +187,8 @@ class KnownStereoGapTests(unittest.TestCase):
                 mol = self._mol_from_case(case)
                 rdkit_output = self._rdkit_output(mol, case)
                 self.assertEqual(case.expected, rdkit_output)
+                if case.check_grimace_decoder_path:
+                    self._assert_determinized_decoder_accepts(mol, case)
                 if not case.check_grimace_support:
                     continue
 

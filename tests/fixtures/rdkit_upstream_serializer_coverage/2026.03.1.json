@@ -1458,14 +1458,22 @@
             "molblock_github4582_small_ring_closure_canonical"
           ],
           "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/40_molblock_writer.json",
-          "note": "Partial coverage: the small molblock-backed canonical output is pinned."
+          "note": "Passing writer-membership fixture pins the small molblock-backed canonical output."
         },
         {
           "cases": [
             "github3967_part1_directional_ring_closure_canonical"
           ],
           "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/70_ring_closure_writer.json",
-          "note": "Partial coverage: GitHub #3967 part 1 deterministic canonical output is pinned; part 2 and CHEMBL3623347 remain blocked by coupled directional ring-closure parity gaps."
+          "note": "Passing writer-membership fixture pins GitHub #3967 part 1 deterministic canonical output."
+        },
+        {
+          "cases": [
+            "github3967_part2_directional_ring_closure_canonical",
+            "github4582_chembl3623347_canonical"
+          ],
+          "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
+          "note": "Known-gap fixture pins GitHub #3967 part 2 as an executable red support-membership test and CHEMBL3623347 as a passing determinized decoder-path membership check."
         }
       ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_test_case__github_4582_continued_double_bonds_and_ring_closures",
@@ -1475,11 +1483,11 @@
         "MolToSmiles"
       ],
       "name": "Github #4582 continued: double bonds and ring closures",
-      "notes": "Aggregate continued #4582 test contains several SMILES/molblock double-bond ring-closure writer regressions. The small deterministic molblock output and #3967 part 1 deterministic output are covered; #3967 part 2, CHEMBL3623347, and exact directional ring-closure parity gaps still need fixtures or runtime work.",
+      "notes": "Aggregate continued #4582 test contains SMILES/molblock double-bond ring-closure writer regressions. The small molblock output, #3967 part 1, and CHEMBL3623347 are covered by passing writer/decoder-path checks; #3967 part 2 remains an executable known support gap blocked by coupled directional ring-closure parity.",
       "parent": null,
       "snippet_sha256": "1cdbc245ae04260b9f7967bf787d91435176dec501d302475d03c986b7fced8a",
       "start_line": 1729,
-      "status": "needs-fixture",
+      "status": "known-gap",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {
@@ -1569,7 +1577,7 @@
             "github4582_chembl3623347_canonical"
           ],
           "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
-          "note": "Pinned RDKit deterministic canonical output only; all-roots Grimace support enumeration is too large for the normal unit suite, so this remains needs-fixture for a practical parity assertion."
+          "note": "Pinned RDKit deterministic canonical output with a passing determinized decoder-path membership check; all-roots enumeration remains intentionally avoided for unit-test cost."
         }
       ],
       "id": "code_graphmol_smilesparse_catch_tests__cpp_section__github_4582_continued_double_bonds_and_ring_closures__chembl3623347",
@@ -1579,11 +1587,11 @@
         "MolToSmiles"
       ],
       "name": "CHEMBL3623347",
-      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is pinned as a deterministic RDKit output fixture. Local RDKit 2026.03.1 probing confirmed the asserted canonical output, but it was absent from a 2,000-draw RDKit random sample and all-roots Grimace support enumeration is too large for the normal unit suite, so this still needs a practical parity fixture or runtime work.",
+      "notes": "Large CHEMBL3623347 molblock-backed directional ring-closure writer output is pinned as a deterministic RDKit output fixture and accepted by the Grimace determinized decoder path. Full all-roots enumeration remains too large for the normal unit suite, so this is covered by decoder-path membership rather than set materialization.",
       "parent": "Github #4582 continued: double bonds and ring closures",
       "snippet_sha256": "2a65afa36b90e9d45ca512a1f2a7fb5ff21eb099819910a8ad47d680fcba1aad",
       "start_line": 1776,
-      "status": "needs-fixture",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/SmilesParse/catch_tests.cpp"
     },
     {

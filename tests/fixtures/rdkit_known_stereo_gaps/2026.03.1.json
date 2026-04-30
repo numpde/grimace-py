@@ -72,8 +72,9 @@
       "rooted_at_atom": null,
       "isomeric_smiles": true,
       "rdkit_canonical": true,
+      "check_grimace_decoder_path": true,
       "check_grimace_support": false,
-      "note": "Pinned as RDKit deterministic output only; all-roots Grimace support enumeration is too large for the normal unit suite."
+      "note": "Pinned with a determinized decoder-path membership check; all-roots Grimace support enumeration is too large for the normal unit suite."
     },
     {
       "id": "github4582_chembl409450_random_vector_seed1_index0",

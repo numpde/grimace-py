@@ -4,9 +4,7 @@
       "expected_component_side_domain_sizes": [
         [
           1,
-          2
-        ],
-        [
+          2,
           2,
           1
         ]

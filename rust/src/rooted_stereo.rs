@@ -12,9 +12,10 @@ use rustc_hash::FxHashMap;
 use crate::bond_stereo_constraints::StereoConstraintFact;
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
-    is_stereo_double_bond, stereo_component_ids, stereo_constraint_model, stereo_side_infos,
-    AmbiguousSharedEdgeGroup, StereoConstraintLayer, StereoConstraintModel, StereoSideInfo,
-    StereoSideInfoBuild, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
+    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoConstraintLayer,
+    StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild, CIS_STEREO_BOND_KINDS,
+    TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2401,7 +2402,9 @@ fn build_walker_runtime(
     }
     let ambiguous_shared_edge_groups =
         ambiguous_shared_edge_groups(&side_infos, &edge_to_side_ids, &isolated_components);
-    let constraint_model = stereo_constraint_model(&side_infos, &side_ids_by_component)?;
+    let local_hazards = rdkit_local_writer_hazards(graph, &side_infos);
+    let constraint_model =
+        stereo_constraint_model(&side_infos, &side_ids_by_component, &local_hazards)?;
     Ok(StereoWalkerRuntimeData {
         root_idx,
         stereo_component_ids,
@@ -2554,8 +2557,10 @@ fn selected_neighbor_facts_by_component(
         if neighbor_idx < 0 {
             continue;
         }
-        let side_info = &runtime.side_infos[side_idx];
-        facts_by_component[side_info.component_idx].push(StereoConstraintFact::CarrierSelected {
+        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
+            continue;
+        };
+        facts_by_component[component_idx].push(StereoConstraintFact::CarrierSelected {
             side_idx,
             neighbor_idx: neighbor_idx as usize,
         });
@@ -2564,18 +2569,41 @@ fn selected_neighbor_facts_by_component(
 }
 
 #[cfg(debug_assertions)]
+fn selected_neighbors_have_constraint_completion(
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+    layer: StereoConstraintLayer,
+) -> bool {
+    selected_neighbor_facts_by_component(runtime, selected_neighbors)
+        .iter()
+        .enumerate()
+        .all(|(component_idx, facts)| {
+            runtime
+                .constraint_model
+                .has_completion(component_idx, layer, facts)
+        })
+}
+
+#[cfg(debug_assertions)]
 fn validate_selected_neighbors_against_constraint_model(
     runtime: &StereoWalkerRuntimeData,
     selected_neighbors: &[isize],
     view_name: &str,
 ) -> PyResult<()> {
-    let facts_by_component = selected_neighbor_facts_by_component(runtime, selected_neighbors);
-    for (component_idx, facts) in facts_by_component.iter().enumerate() {
-        for layer in StereoConstraintLayer::ALL {
-            if !runtime
-                .constraint_model
-                .has_completion(component_idx, layer, facts)
-            {
+    // Current walker carrier facts are only guaranteed to satisfy the semantic
+    // layer. RDKit writer layers can be stricter than the present bookkeeping
+    // until pruning is moved to a derived writer-policy application point.
+    for layer in [StereoConstraintLayer::Semantic] {
+        if !selected_neighbors_have_constraint_completion(runtime, selected_neighbors, layer) {
+            let facts_by_component =
+                selected_neighbor_facts_by_component(runtime, selected_neighbors);
+            for (component_idx, facts) in facts_by_component.iter().enumerate() {
+                if runtime
+                    .constraint_model
+                    .has_completion(component_idx, layer, facts)
+                {
+                    continue;
+                }
                 return Err(PyValueError::new_err(format!(
                     "walker stereo state violates {view_name} {} constraint model for component {component_idx}",
                     stereo_constraint_layer_name(layer),

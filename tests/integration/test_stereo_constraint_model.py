@@ -65,6 +65,27 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     case.expected_semantic_assignment_count,
                     math.prod(case.expected_component_domain_assignment_counts),
                 )
+                layers_by_name = {
+                    layer["layer"]: layer for component in summary["components"]
+                    for layer in component["layers"]
+                }
+                if (
+                    case.expected_rdkit_local_writer_assignment_count
+                    < case.expected_semantic_assignment_count
+                ):
+                    self.assertEqual(
+                        case.expected_rdkit_local_writer_assignment_count,
+                        layers_by_name["rdkit_local_writer"]["assignment_count"],
+                    )
+                if (
+                    case.expected_rdkit_traversal_writer_assignment_count
+                    == case.expected_rdkit_local_writer_assignment_count
+                    < case.expected_semantic_assignment_count
+                ):
+                    self.assertEqual(
+                        case.expected_rdkit_traversal_writer_assignment_count,
+                        layers_by_name["rdkit_traversal_writer"]["assignment_count"],
+                    )
 
     def test_pinned_layer_counts_are_ordered_by_contract_strength(self) -> None:
         for case in self.cases:

@@ -8,6 +8,7 @@ from tests.helpers.fixture_paths import checked_in_fixture_path
 
 
 PINNED_RDKIT_EXACT_SMALL_SUPPORT = "rdkit_exact_small_support"
+PINNED_RDKIT_KNOWN_QUIRKS = "rdkit_known_quirks"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
 PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
 PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"

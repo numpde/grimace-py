@@ -1,0 +1,19 @@
+{
+  "rdkit_version": "2026.03.1",
+  "cases": [
+    {
+      "id": "dative_carbonyl_stereo_annotation_drops_on_smiles_roundtrip",
+      "source": "RDKit 2026.03.1 catch_tests.cpp, Dative bond in cxsmiles double double def; isolated as observed RDKit behavior, not an out-of-scope marker",
+      "category": "dative-carbonyl-stereo-roundtrip",
+      "smiles": "C1CCC2=[N]1[Fe](\\[O]=C(\\C)/C=C/C1CCCC1)[N]1=C(CCC1)C2",
+      "canonical_smiles": "CC(/C=C/C1CCCC1)=[O]->[Fe]1<-[N]2=C(CC3=[N]->1CCC3)CCC2",
+      "source_stereo_double_bonds": [
+        "C=C STEREOE via C(SINGLE),C(SINGLE)",
+        "O=C STEREOE via Fe(DATIVE),C(SINGLE)"
+      ],
+      "roundtrip_stereo_double_bonds": [
+        "C=C STEREOE via C(SINGLE),C(SINGLE)"
+      ]
+    }
+  ]
+}

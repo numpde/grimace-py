@@ -3,6 +3,11 @@
 Grimace keeps RDKit-derived test data in JSON fixtures instead of inline
 Python constants when the data is part of the correctness evidence.
 
+Fixture claims follow the separation in
+[Correctness contracts](correctness-contracts.md): exact RDKit writer-parity
+fixtures are string-level RDKit-version claims, while semantic equivalence and
+known RDKit quirks should be classified separately.
+
 The source of truth for fixture validity is not this page.  Fixture validity is
 enforced by typed loader helpers under `tests/helpers/` and their contract
 tests under `tests/contract/`.  This page only explains why the fixture
@@ -23,6 +28,11 @@ evidence only for that RDKit build.
   support-equality claims.
 - `tests/fixtures/rdkit_rooted_random/`: deterministic rooted outputs from
   RDKit rooted writer tests.
+- `tests/fixtures/rdkit_known_quirks/`: neutral, version-pinned observations
+  of RDKit behavior that need to stay isolated for later discussion or
+  implementation work.  "Known quirk" does not mean Grimace is allowed to
+  diverge; it means RDKit does this in the pinned version and the behavior is
+  unusual enough to keep separate from ordinary parity fixtures.
 
 Large pinned corpora may use `VERSION/*.json` shards under their fixture root.
 Shard names should keep review order stable by source area or serializer

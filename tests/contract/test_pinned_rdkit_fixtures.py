@@ -7,6 +7,7 @@ import unittest
 
 from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_EXACT_SMALL_SUPPORT,
+    PINNED_RDKIT_KNOWN_QUIRKS,
     PINNED_RDKIT_PARITY_FIXTURE_FAMILIES,
     PINNED_RDKIT_ROOTED_RANDOM,
     PINNED_RDKIT_SERIALIZER_REGRESSIONS,
@@ -19,6 +20,7 @@ from tests.helpers.rdkit_disconnected_sampling import load_disconnected_root_zer
 from tests.helpers.rdkit_exact_small_support import (
     load_pinned_exact_small_support_cases,
 )
+from tests.helpers.rdkit_known_quirks import load_pinned_rdkit_known_quirk_cases
 from tests.helpers.rdkit_rooted_random import load_pinned_rooted_random_cases
 from tests.helpers.rdkit_serializer_regressions import (
     load_pinned_serializer_regression_cases,
@@ -263,6 +265,21 @@ class CheckedInPinnedRdkitFixtureTest(unittest.TestCase):
 
 
 class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
+    def test_known_quirks_fixture_loads(self) -> None:
+        fixture_root = pinned_rdkit_fixture_root(PINNED_RDKIT_KNOWN_QUIRKS)
+        versions = pinned_rdkit_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_rdkit_known_quirk_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+
+                self.assertTrue(cases)
+                self.assertTrue(all(case.category for case in cases))
+
     def test_disconnected_root_zero_fixture_loads(self) -> None:
         cases = load_disconnected_root_zero_smiles()
 

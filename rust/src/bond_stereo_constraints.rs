@@ -519,7 +519,6 @@ impl StereoConstraintModel {
         self.components.len()
     }
 
-    #[cfg(debug_assertions)]
     pub(crate) fn component_for_side(&self, side_idx: usize) -> Option<usize> {
         self.side_to_component
             .get(side_idx)

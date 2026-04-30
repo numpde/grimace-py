@@ -139,6 +139,42 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     ),
                 )
 
+    def test_output_fact_diagnostic_maps_minimal_witness_to_runtime_support(self) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "minimal_nonstereo_double_hazard"
+        )
+        mol = parse_smiles(case.smiles)
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+        rows = _core._stereo_constraint_output_facts(prepared)
+        diagnostic_outputs = frozenset(row["smiles"] for row in rows)
+        runtime_outputs = public_enum_support(
+            mol,
+            **supported_public_kwargs(
+                isomericSmiles=True,
+                rootedAtAtom=-1,
+            ),
+        )
+
+        self.assertEqual(runtime_outputs, diagnostic_outputs)
+        self.assertEqual(
+            case.expected_grimace_runtime_support_count,
+            len(diagnostic_outputs),
+        )
+        self.assertGreater(len(rows), len(diagnostic_outputs))
+        self.assertTrue(
+            all(row["resolved_layer_completions"]["semantic"] for row in rows)
+        )
+        self.assertEqual(
+            {False, True},
+            {
+                row["resolved_layer_completions"]["rdkit_local_writer"]
+                for row in rows
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

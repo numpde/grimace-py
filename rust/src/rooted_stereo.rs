@@ -5,17 +5,15 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict};
+use pyo3::types::{PyAny, PyDict, PyList};
 use rustc_hash::FxHashMap;
 
-#[cfg(debug_assertions)]
-use crate::bond_stereo_constraints::StereoConstraintFact;
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
-    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoConstraintLayer,
-    StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild, CIS_STEREO_BOND_KINDS,
-    TRANS_STEREO_BOND_KINDS,
+    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoConstraintFact,
+    StereoConstraintLayer, StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild,
+    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2521,6 +2519,141 @@ pub fn internal_stereo_constraint_model_summary(
     Ok(summary.unbind())
 }
 
+fn selected_neighbor_fact_rows(
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+) -> Vec<(usize, usize, usize)> {
+    let mut rows = Vec::new();
+    for (side_idx, &neighbor_idx) in selected_neighbors.iter().enumerate() {
+        if neighbor_idx < 0 {
+            continue;
+        }
+        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
+            continue;
+        };
+        rows.push((component_idx, side_idx, neighbor_idx as usize));
+    }
+    rows
+}
+
+fn selected_neighbor_facts_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+) -> PyResult<Vec<Py<PyDict>>> {
+    selected_neighbor_fact_rows(runtime, selected_neighbors)
+        .into_iter()
+        .map(|(component_idx, side_idx, neighbor_idx)| {
+            let fact = PyDict::new(py);
+            fact.set_item("component_idx", component_idx)?;
+            fact.set_item("side_idx", side_idx)?;
+            fact.set_item("neighbor_idx", neighbor_idx)?;
+            Ok(fact.unbind())
+        })
+        .collect()
+}
+
+fn selected_neighbors_layer_completions_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+) -> PyResult<Py<PyDict>> {
+    let completions = PyDict::new(py);
+    for layer in StereoConstraintLayer::ALL {
+        completions.set_item(
+            stereo_constraint_layer_name(layer),
+            selected_neighbors_have_constraint_completion(runtime, selected_neighbors, layer),
+        )?;
+    }
+    Ok(completions.unbind())
+}
+
+fn stereo_output_fact_row_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Py<PyDict>> {
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+
+    let row = PyDict::new(py);
+    row.set_item("root_idx", runtime.root_idx)?;
+    row.set_item("smiles", state.prefix.as_ref())?;
+    row.set_item(
+        "raw_facts",
+        selected_neighbor_facts_to_py(py, runtime, raw_selected_neighbors)?,
+    )?;
+    row.set_item(
+        "resolved_facts",
+        selected_neighbor_facts_to_py(py, runtime, &resolved_selected_neighbors)?,
+    )?;
+    row.set_item(
+        "raw_layer_completions",
+        selected_neighbors_layer_completions_to_py(py, runtime, raw_selected_neighbors)?,
+    )?;
+    row.set_item(
+        "resolved_layer_completions",
+        selected_neighbors_layer_completions_to_py(py, runtime, &resolved_selected_neighbors)?,
+    )?;
+    Ok(row.unbind())
+}
+
+fn collect_stereo_output_fact_rows(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    mut state: RootedConnectedStereoWalkerStateData,
+    rows: &Bound<'_, PyList>,
+) -> PyResult<()> {
+    drain_exact_linear_stereo_actions(&mut state);
+    if state.action_stack.is_empty() {
+        if is_complete_terminal_stereo_state(graph, &state) {
+            rows.append(stereo_output_fact_row_to_py(py, runtime, &state)?)?;
+        }
+        return Ok(());
+    }
+
+    let successors = flatten_exact_stereo_successor_groups(successors_by_token_stereo_raw(
+        runtime, graph, &state,
+    )?);
+    for successor in successors {
+        collect_stereo_output_fact_rows(py, runtime, graph, successor, rows)?;
+    }
+    Ok(())
+}
+
+#[pyfunction(name = "_stereo_constraint_output_facts", signature = (graph, root_idx=-1))]
+pub fn internal_stereo_constraint_output_facts(
+    py: Python<'_>,
+    graph: &Bound<'_, PyAny>,
+    root_idx: isize,
+) -> PyResult<Py<PyList>> {
+    let graph = PreparedSmilesGraphData::from_any(graph)?;
+    let root_indices = if root_idx == -1 {
+        (0..graph.atom_count()).collect::<Vec<_>>()
+    } else {
+        vec![validate_root_idx(&graph, root_idx)?]
+    };
+
+    let rows = PyList::empty(py);
+    for root_idx in root_indices {
+        let runtime = build_walker_runtime(&graph, root_idx)?;
+        if runtime.side_infos.is_empty() {
+            return Err(PyValueError::new_err(
+                "stereo constraint output facts require bond-stereo side metadata",
+            ));
+        }
+        collect_stereo_output_fact_rows(
+            py,
+            &runtime,
+            &graph,
+            initial_stereo_state_for_root(&runtime, &graph, runtime.root_idx),
+            &rows,
+        )?;
+    }
+    Ok(rows.unbind())
+}
+
 fn validate_stereo_state_shape(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -2547,28 +2680,22 @@ fn validate_stereo_state_shape(
     Ok(())
 }
 
-#[cfg(debug_assertions)]
 fn selected_neighbor_facts_by_component(
     runtime: &StereoWalkerRuntimeData,
     selected_neighbors: &[isize],
 ) -> Vec<Vec<StereoConstraintFact>> {
     let mut facts_by_component = vec![Vec::new(); runtime.constraint_model.component_count()];
-    for (side_idx, &neighbor_idx) in selected_neighbors.iter().enumerate() {
-        if neighbor_idx < 0 {
-            continue;
-        }
-        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
-            continue;
-        };
+    for (component_idx, side_idx, neighbor_idx) in
+        selected_neighbor_fact_rows(runtime, selected_neighbors)
+    {
         facts_by_component[component_idx].push(StereoConstraintFact::CarrierSelected {
             side_idx,
-            neighbor_idx: neighbor_idx as usize,
+            neighbor_idx,
         });
     }
     facts_by_component
 }
 
-#[cfg(debug_assertions)]
 fn selected_neighbors_have_constraint_completion(
     runtime: &StereoWalkerRuntimeData,
     selected_neighbors: &[isize],

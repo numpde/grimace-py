@@ -74,6 +74,36 @@
       "rdkit_canonical": true,
       "check_grimace_support": false,
       "note": "Pinned as RDKit deterministic output only; all-roots Grimace support enumeration is too large for the normal unit suite."
+    },
+    {
+      "id": "github4582_chembl409450_random_seed_1",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 bulk random output order seed 1",
+      "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
+      "expected": "c1cc2/C(C(Nc2cc1Br)=O)=C1\\C(c2c(cccc2)N1)=N\\O",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false,
+      "rdkit_random_seed": 1
+    },
+    {
+      "id": "github4582_chembl409450_random_seed_2",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 bulk random output order seed 2",
+      "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
+      "expected": "c12ccc(cc2NC(=O)/C1=C1/C(=N/O)c2ccccc2N1)Br",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false,
+      "rdkit_random_seed": 2
+    },
+    {
+      "id": "github4582_chembl409450_random_seed_3",
+      "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 bulk random output order seed 3",
+      "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
+      "expected": "c12c(NC(/C1=C1/C(c3c(N1)cccc3)=N/O)=O)cc(Br)cc2",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false,
+      "rdkit_random_seed": 3
     }
   ]
 }

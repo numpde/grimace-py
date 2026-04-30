@@ -7,6 +7,10 @@ import unittest
 from rdkit import Chem, rdBase
 
 from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.rdkit_writer_membership import (
+    PinnedWriterMembershipCase,
+    load_pinned_writer_membership_cases,
+)
 from tests.rdkit_serialization._support import (
     grimace_support,
     mol_from_pinned_source,
@@ -23,10 +27,12 @@ class KnownStereoGapCase:
     source: str
     smiles: str | None
     molblock: str | None
+    writer_membership_case_id: str | None
     expected: str
     rooted_at_atom: int | None
     isomeric_smiles: bool
     rdkit_canonical: bool
+    rdkit_random_seed: int | None
     check_grimace_support: bool
 
 
@@ -45,10 +51,15 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
     for raw_case in payload["cases"]:
         smiles = raw_case.get("smiles")
         molblock = raw_case.get("molblock")
-        if (smiles is None) == (molblock is None):
+        writer_membership_case_id = raw_case.get("writer_membership_case_id")
+        molecule_source_count = sum(
+            value is not None
+            for value in (smiles, molblock, writer_membership_case_id)
+        )
+        if molecule_source_count != 1:
             raise ValueError(
-                f"known stereo-gap case {raw_case['id']!r} must define exactly one "
-                "of 'smiles' or 'molblock'"
+                f"known stereo-gap case {raw_case['id']!r} must define exactly "
+                "one of 'smiles', 'molblock', or 'writer_membership_case_id'"
             )
         cases.append(
             KnownStereoGapCase(
@@ -56,10 +67,12 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 source=raw_case["source"],
                 smiles=smiles,
                 molblock=molblock,
+                writer_membership_case_id=writer_membership_case_id,
                 expected=raw_case["expected"],
                 rooted_at_atom=raw_case["rooted_at_atom"],
                 isomeric_smiles=raw_case["isomeric_smiles"],
                 rdkit_canonical=raw_case["rdkit_canonical"],
+                rdkit_random_seed=raw_case.get("rdkit_random_seed"),
                 check_grimace_support=raw_case.get("check_grimace_support", True),
             )
         )
@@ -78,15 +91,26 @@ class KnownStereoGapTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         try:
             cls.cases = _load_known_stereo_gap_cases(rdBase.rdkitVersion)
+            writer_cases = load_pinned_writer_membership_cases(rdBase.rdkitVersion)
         except FileNotFoundError:
             raise unittest.SkipTest(
                 f"no pinned known stereo-gap corpus for RDKit {rdBase.rdkitVersion}"
             )
+        cls.writer_cases_by_id = {case.case_id: case for case in writer_cases}
 
-    def test_rdkit_deterministic_coupled_stereo_outputs_are_in_grimace_support(self) -> None:
+    def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
+        if case.writer_membership_case_id is not None:
+            writer_case = self.writer_cases_by_id[case.writer_membership_case_id]
+            return mol_from_pinned_source(writer_case)
+        return mol_from_pinned_source(case)
+
+    def test_pinned_rdkit_stereo_gap_outputs_are_in_grimace_support(self) -> None:
         for case in self.cases:
             with self.subTest(case_id=case.case_id, source=case.source):
-                mol = mol_from_pinned_source(case)
+                mol = self._mol_from_case(case)
+                do_random = case.rdkit_random_seed is not None
+                if case.rdkit_random_seed is not None:
+                    rdBase.SeedRandomNumberGenerator(case.rdkit_random_seed)
 
                 rdkit_output = Chem.MolToSmiles(
                     Chem.Mol(mol),
@@ -94,7 +118,7 @@ class KnownStereoGapTests(unittest.TestCase):
                         rooted_at_atom=case.rooted_at_atom,
                         isomeric_smiles=case.isomeric_smiles,
                         canonical=case.rdkit_canonical,
-                        do_random=False,
+                        do_random=do_random,
                     ),
                 )
                 self.assertEqual(case.expected, rdkit_output)

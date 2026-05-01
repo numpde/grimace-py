@@ -249,6 +249,19 @@ def _target_slot_context(skeleton: str, slot: int) -> tuple[str, ...]:
     return tuple(context)
 
 
+def _slot_local_role(skeleton: str, slot: int) -> str:
+    context = _target_slot_context(skeleton, slot)
+    if "after_ring_label" in context:
+        return "after_ring_label"
+    if "before_ring_label" in context:
+        return "before_ring_label"
+    if "after_branch_open" in context:
+        return "branch_edge"
+    if "before_bracket_atom" in context:
+        return "before_bracket_atom"
+    return "tree_or_chain_edge"
+
+
 def _smiles_from_direction_marker_slots(
     skeleton: str,
     markers: tuple[_DirectionMarkerSlot, ...],
@@ -618,6 +631,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             }
             current_marker_slots_by_skeleton = {}
             current_marker_contexts_by_skeleton = {}
+            current_marker_provenance_by_skeleton = {}
             for row in rows:
                 skeleton, slots = _direction_marker_slots_from_summary(
                     row["directional_spelling"]
@@ -630,6 +644,27 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 current_marker_contexts_by_skeleton[skeleton] = _marker_slots_by_slot(
                     row["directional_spelling"]["marker_slots"]
                 )
+                provenance = tuple(row["directional_marker_provenance"])
+                self.assertEqual(len(slots), len(provenance))
+                self.assertEqual(
+                    _marker_slot_pairs(slots),
+                    tuple(
+                        (int(marker["slot"]), str(marker["marker"]))
+                        for marker in provenance
+                    ),
+                )
+                self.assertTrue(
+                    all(
+                        "component_idx" in marker
+                        and "side_idx" in marker
+                        and "bond_idx" in marker
+                        and "canonical_edge" in marker
+                        for marker in provenance
+                    )
+                )
+                current_marker_provenance_by_skeleton[skeleton] = {
+                    int(marker["slot"]): marker for marker in provenance
+                }
             rdkit_summaries = tuple(
                 _directional_spelling_summary(smiles)
                 for smiles in rdkit_sampled_outputs
@@ -735,9 +770,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for removed_slot, added_slot in zip(
                     removed_slots, added_slots, strict=True
                 ):
-                    removed_context = current_marker_contexts_by_skeleton[skeleton][
+                    removed_context = current_marker_contexts_by_skeleton[skeleton][removed_slot]
+                    removed_provenance = current_marker_provenance_by_skeleton[skeleton][
                         removed_slot
                     ]
+                    self.assertEqual(
+                        removed_provenance["local_role"],
+                        _slot_local_role(skeleton, removed_slot),
+                    )
                     residual_context_counts[
                         (
                             bool(removed_context["after_ring_label"]),

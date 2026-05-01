@@ -2620,8 +2620,83 @@ fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<
     Ok(summary.unbind())
 }
 
+fn marker_local_role(previous_char: Option<&char>, next_char: Option<&char>) -> &'static str {
+    if previous_char.is_some_and(|value| value.is_ascii_digit() || *value == '%') {
+        "after_ring_label"
+    } else if next_char.is_some_and(|value| value.is_ascii_digit() || *value == '%') {
+        "before_ring_label"
+    } else if previous_char == Some(&'(') {
+        "branch_edge"
+    } else if next_char == Some(&'[') {
+        "before_bracket_atom"
+    } else {
+        "tree_or_chain_edge"
+    }
+}
+
+fn directional_marker_provenance_to_py(
+    py: Python<'_>,
+    graph: &PreparedSmilesGraphData,
+    runtime: &StereoWalkerRuntimeData,
+    smiles: &str,
+    selected_neighbors: &[isize],
+) -> PyResult<Vec<Py<PyDict>>> {
+    let selected_rows = selected_neighbor_fact_rows(runtime, selected_neighbors);
+    let chars = smiles.chars().collect::<Vec<_>>();
+    let mut skeleton_slot = 0usize;
+    let mut marker_idx = 0usize;
+    let mut provenance = Vec::<Py<PyDict>>::new();
+
+    for (smiles_offset, &ch) in chars.iter().enumerate() {
+        if ch != '/' && ch != '\\' {
+            skeleton_slot += 1;
+            continue;
+        }
+
+        let previous_char = smiles_offset
+            .checked_sub(1)
+            .and_then(|offset| chars.get(offset));
+        let next_char = chars.get(smiles_offset + 1);
+        let row = PyDict::new(py);
+        row.set_item("marker_idx", marker_idx)?;
+        row.set_item("slot", skeleton_slot)?;
+        row.set_item("marker", ch.to_string())?;
+        row.set_item("local_role", marker_local_role(previous_char, next_char))?;
+
+        if let Some((component_idx, side_idx, neighbor_idx)) =
+            selected_rows.get(marker_idx).copied()
+        {
+            let side_info = &runtime.side_infos[side_idx];
+            let endpoint_idx = side_info.endpoint_atom_idx;
+            let canonical = canonical_edge(endpoint_idx, neighbor_idx);
+            row.set_item("component_idx", component_idx)?;
+            row.set_item("side_idx", side_idx)?;
+            row.set_item("endpoint_atom_idx", endpoint_idx)?;
+            row.set_item("selected_neighbor_idx", neighbor_idx)?;
+            row.set_item("edge_begin_idx", endpoint_idx)?;
+            row.set_item("edge_end_idx", neighbor_idx)?;
+            row.set_item("canonical_edge", canonical)?;
+            row.set_item("bond_idx", graph.bond_index(endpoint_idx, neighbor_idx))?;
+            row.set_item(
+                "edge_side_ids",
+                runtime
+                    .edge_to_side_ids
+                    .get(&canonical)
+                    .cloned()
+                    .unwrap_or_default(),
+            )?;
+        }
+
+        provenance.push(row.unbind());
+        marker_idx += 1;
+    }
+
+    Ok(provenance)
+}
+
 fn stereo_output_fact_row_to_py(
     py: Python<'_>,
+    graph: &PreparedSmilesGraphData,
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Py<PyDict>> {
@@ -2634,6 +2709,16 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "directional_spelling",
         directional_spelling_summary_to_py(py, state.prefix.as_ref())?,
+    )?;
+    row.set_item(
+        "directional_marker_provenance",
+        directional_marker_provenance_to_py(
+            py,
+            graph,
+            runtime,
+            state.prefix.as_ref(),
+            &resolved_selected_neighbors,
+        )?,
     )?;
     row.set_item(
         "raw_facts",
@@ -2664,7 +2749,7 @@ fn collect_stereo_output_fact_rows(
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
         if is_complete_terminal_stereo_state(graph, &state) {
-            rows.append(stereo_output_fact_row_to_py(py, runtime, &state)?)?;
+            rows.append(stereo_output_fact_row_to_py(py, graph, runtime, &state)?)?;
         }
         return Ok(());
     }

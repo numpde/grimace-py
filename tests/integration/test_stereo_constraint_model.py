@@ -262,6 +262,20 @@ def _slot_local_role(skeleton: str, slot: int) -> str:
     return "tree_or_chain_edge"
 
 
+def _residual_marker_provenance_class(
+    *,
+    source_role: str,
+    target_context: tuple[str, ...],
+) -> str:
+    if "before_ring_label" in target_context:
+        target_role = "before_ring_label"
+    elif "before_bracket_atom" in target_context:
+        target_role = "before_bracket_atom"
+    else:
+        target_role = "other"
+    return f"{source_role}_to_{target_role}"
+
+
 def _smiles_from_direction_marker_slots(
     skeleton: str,
     markers: tuple[_DirectionMarkerSlot, ...],
@@ -753,6 +767,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for transition in case.expected_ring_closure_marker_transform_residual_slot_transitions
             )
             residual_context_counts = Counter()
+            residual_provenance_classes = Counter()
             for skeleton, transformed_slots, rdkit_slots in residual_slot_transitions:
                 transformed_slots_by_slot = dict(transformed_slots)
                 rdkit_slots_by_slot = dict(rdkit_slots)
@@ -774,15 +789,23 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     removed_provenance = current_marker_provenance_by_skeleton[skeleton][
                         removed_slot
                     ]
+                    source_role = str(removed_provenance["local_role"])
+                    target_context = _target_slot_context(skeleton, added_slot)
                     self.assertEqual(
-                        removed_provenance["local_role"],
+                        source_role,
                         _slot_local_role(skeleton, removed_slot),
                     )
+                    residual_provenance_classes[
+                        _residual_marker_provenance_class(
+                            source_role=source_role,
+                            target_context=target_context,
+                        )
+                    ] += 1
                     residual_context_counts[
                         (
                             bool(removed_context["after_ring_label"]),
                             bool(removed_context["after_branch_open"]),
-                            _target_slot_context(skeleton, added_slot),
+                            target_context,
                         )
                     ] += 1
 
@@ -829,6 +852,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     expected_residual_slot_transitions,
                     residual_slot_transitions,
+                )
+                self.assertEqual(
+                    Counter(
+                        dict(
+                            case.expected_ring_closure_marker_transform_residual_provenance_classes
+                        )
+                    ),
+                    residual_provenance_classes,
                 )
                 self.assertEqual(
                     Counter(

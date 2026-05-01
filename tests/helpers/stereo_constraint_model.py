@@ -58,6 +58,9 @@ class PinnedStereoConstraintModelCase:
     expected_ring_closure_marker_transform_support_count: int | None
     expected_ring_closure_marker_transform_exact_overlap_count: int | None
     expected_ring_closure_marker_transform_outside_rdkit_count: int | None
+    expected_ring_closure_marker_transform_residual_provenance_classes: (
+        tuple[tuple[str, int], ...]
+    )
     expected_marker_sequence_transitions: tuple[PinnedStereoMarkerSequenceTransition, ...]
     expected_ring_closure_marker_transform_residual_slot_transitions: tuple[
         PinnedStereoMarkerSlotTransition, ...
@@ -294,6 +297,32 @@ def _optional_marker_slot_transitions(
     return parsed
 
 
+def _optional_string_int_counts(
+    raw_case: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> tuple[tuple[str, int], ...]:
+    raw_counts = raw_case.get(field_name)
+    if raw_counts is None:
+        return ()
+    if not isinstance(raw_counts, dict) or not raw_counts:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define {field_name} "
+            "as a nonempty object"
+        )
+    parsed = []
+    for key, value in raw_counts.items():
+        if not isinstance(key, str) or not key or type(value) is not int or value < 0:
+            raise ValueError(
+                f"fixture {fixture_path} case {case_id!r} must define {field_name} "
+                "as string keys with nonnegative integer values"
+            )
+        parsed.append((key, value))
+    return tuple(sorted(parsed))
+
+
 def load_pinned_stereo_constraint_model_cases(
     rdkit_version: str,
     *,
@@ -433,6 +462,16 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
+        expected_ring_closure_marker_transform_residual_provenance_classes = (
+            _optional_string_int_counts(
+                raw_case,
+                field_name=(
+                    "expected_ring_closure_marker_transform_residual_provenance_classes"
+                ),
+                fixture_path=fixture_case.fixture_path,
+                case_id=fixture_case.case_id,
+            )
+        )
         rdkit_sampled_expectations = (
             expected_rdkit_sampled_support_count,
             expected_rdkit_sampled_exact_support_overlap_count,
@@ -550,6 +589,9 @@ def load_pinned_stereo_constraint_model_cases(
                 ),
                 expected_ring_closure_marker_transform_outside_rdkit_count=(
                     expected_ring_closure_marker_transform_outside_rdkit_count
+                ),
+                expected_ring_closure_marker_transform_residual_provenance_classes=(
+                    expected_ring_closure_marker_transform_residual_provenance_classes
                 ),
                 expected_marker_sequence_transitions=expected_marker_sequence_transitions,
                 expected_ring_closure_marker_transform_residual_slot_transitions=(

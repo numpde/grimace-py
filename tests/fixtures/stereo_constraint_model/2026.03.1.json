@@ -89,6 +89,12 @@
       "expected_rdkit_traversal_writer_assignment_count": 3,
       "expected_ring_closure_marker_transform_exact_overlap_count": 18,
       "expected_ring_closure_marker_transform_outside_rdkit_count": 10,
+      "expected_ring_closure_marker_transform_residual_provenance_classes": {
+        "branch_edge_to_before_ring_label": 2,
+        "after_ring_label_to_before_bracket_atom": 4,
+        "tree_or_chain_edge_to_before_bracket_atom": 2,
+        "tree_or_chain_edge_to_before_ring_label": 2
+      },
       "expected_ring_closure_marker_transform_residual_slot_transitions": [
         {
           "direction_erased_skeleton": "C1(=NC)C=CC(=NC)[N-]1",

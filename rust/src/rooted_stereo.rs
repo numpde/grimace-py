@@ -13,7 +13,8 @@ use crate::bond_stereo_constraints::{
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
     stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
     StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel, StereoSideInfo,
-    StereoSideInfoBuild, StereoTraversalRole, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    StereoSideInfoBuild, StereoTokenFlip, StereoTraversalRole, CIS_STEREO_BOND_KINDS,
+    TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2572,6 +2573,21 @@ fn component_token_flip_name(value: i8) -> &'static str {
     }
 }
 
+fn model_token_flip_from_component_value(value: i8) -> Option<StereoTokenFlip> {
+    match value {
+        STORED_COMPONENT_TOKEN_FLIP => Some(StereoTokenFlip::Stored),
+        FLIPPED_COMPONENT_TOKEN_FLIP => Some(StereoTokenFlip::Flipped),
+        _ => None,
+    }
+}
+
+fn model_token_flip_name(value: StereoTokenFlip) -> &'static str {
+    match value {
+        StereoTokenFlip::Stored => "stored",
+        StereoTokenFlip::Flipped => "flipped",
+    }
+}
+
 #[pyfunction(name = "_stereo_constraint_model_summary")]
 pub fn internal_stereo_constraint_model_summary(
     py: Python<'_>,
@@ -2982,6 +2998,8 @@ fn component_token_phase_diagnostics_to_py(
                 .map(Vec::len)
                 .unwrap_or(0);
             let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;
+            let inferred_model_token_flip =
+                inferred.and_then(model_token_flip_from_component_value);
             let state_token_flip = state.stereo_component_token_flips[component_idx];
             let state_known = state_token_flip != UNKNOWN_COMPONENT_TOKEN_FLIP;
             let inferred_matches_state =
@@ -2992,6 +3010,40 @@ fn component_token_phase_diagnostics_to_py(
                 resolved_selected_neighbors,
                 component_idx,
             );
+            let remaining_neighbor_assignment_ids = model_component_idx
+                .and_then(|idx| assignment_state.remaining_by_component.get(idx))
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let token_phase_assignment_ids_before_token = model_component_idx
+                .map(|idx| {
+                    runtime
+                        .constraint_model
+                        .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                            idx,
+                            remaining_neighbor_assignment_ids,
+                            None,
+                        )
+                })
+                .unwrap_or_default();
+            let token_phase_assignment_ids_after_token = model_component_idx
+                .map(|idx| {
+                    runtime
+                        .constraint_model
+                        .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                            idx,
+                            remaining_neighbor_assignment_ids,
+                            inferred_model_token_flip,
+                        )
+                })
+                .unwrap_or_default();
+            let forced_model_token_flip = model_component_idx.and_then(|idx| {
+                runtime
+                    .constraint_model
+                    .forced_token_flip_for_token_phase_assignment_ids(
+                        idx,
+                        &token_phase_assignment_ids_after_token,
+                    )
+            });
 
             let row = PyDict::new(py);
             row.set_item("component_idx", component_idx)?;
@@ -3030,6 +3082,18 @@ fn component_token_phase_diagnostics_to_py(
             row.set_item("inferred_matches_state", inferred_matches_state)?;
             row.set_item("remaining_assignment_count", remaining_assignment_count)?;
             row.set_item(
+                "token_phase_assignment_count_before_token",
+                token_phase_assignment_ids_before_token.len(),
+            )?;
+            row.set_item(
+                "token_phase_assignment_count_after_token",
+                token_phase_assignment_ids_after_token.len(),
+            )?;
+            row.set_item(
+                "forced_model_token_flip",
+                forced_model_token_flip.map(model_token_flip_name),
+            )?;
+            row.set_item(
                 "carrier_assignment_singleton",
                 remaining_assignment_count == 1,
             )?;
@@ -3038,6 +3102,12 @@ fn component_token_phase_diagnostics_to_py(
                 inferred.is_some()
                     && model_component_idx.is_some()
                     && remaining_assignment_count == 1,
+            )?;
+            row.set_item(
+                "token_phase_dimension_explains_inferred_flip",
+                inferred_model_token_flip.is_some()
+                    && token_phase_assignment_ids_after_token.len() == remaining_assignment_count
+                    && forced_model_token_flip == inferred_model_token_flip,
             )?;
             Ok(row.unbind())
         })

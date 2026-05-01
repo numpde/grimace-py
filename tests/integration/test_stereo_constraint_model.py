@@ -585,6 +585,21 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         self.assertTrue(component["inferred_matches_state"])
                         self.assertIsNotNone(component["inferred_token_flip"])
                         self.assertEqual(
+                            2 * component["remaining_assignment_count"],
+                            component["token_phase_assignment_count_before_token"],
+                        )
+                        self.assertEqual(
+                            component["remaining_assignment_count"],
+                            component["token_phase_assignment_count_after_token"],
+                        )
+                        self.assertEqual(
+                            component["inferred_token_flip"],
+                            component["forced_model_token_flip"],
+                        )
+                        self.assertTrue(
+                            component["token_phase_dimension_explains_inferred_flip"]
+                        )
+                        self.assertEqual(
                             component["state_token_flip"],
                             component["inferred_token_flip"],
                         )

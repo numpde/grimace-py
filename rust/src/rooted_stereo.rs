@@ -2770,6 +2770,62 @@ fn traversal_constraint_layer_completions_to_py(
     Ok(completions.unbind())
 }
 
+fn assignment_state_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    facts_by_component: &[Vec<StereoConstraintFact>],
+) -> PyResult<Py<PyDict>> {
+    let state_by_layer = PyDict::new(py);
+    let empty_facts = Vec::new();
+    for layer in StereoConstraintLayer::ALL {
+        let components = runtime
+            .constraint_model
+            .components
+            .iter()
+            .map(|component| {
+                let component_idx = component.component_idx;
+                let facts = facts_by_component
+                    .get(component_idx)
+                    .unwrap_or(&empty_facts);
+                let remaining_assignment_ids =
+                    runtime
+                        .constraint_model
+                        .remaining_assignment_ids(component_idx, layer, facts);
+                let forced_neighbors = component
+                    .side_ids
+                    .iter()
+                    .filter_map(|&side_idx| {
+                        let neighbor_idx = runtime
+                            .constraint_model
+                            .forced_neighbor_for_assignment_ids(
+                                component_idx,
+                                side_idx,
+                                &remaining_assignment_ids,
+                            )?;
+                        Some((side_idx, neighbor_idx))
+                    })
+                    .map(|(side_idx, neighbor_idx)| {
+                        let row = PyDict::new(py);
+                        row.set_item("side_idx", side_idx)?;
+                        row.set_item("neighbor_idx", neighbor_idx)?;
+                        Ok(row.unbind())
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
+
+                let row = PyDict::new(py);
+                row.set_item("component_idx", component_idx)?;
+                row.set_item("side_ids", component.side_ids.clone())?;
+                row.set_item("remaining_assignment_ids", remaining_assignment_ids.clone())?;
+                row.set_item("remaining_count", remaining_assignment_ids.len())?;
+                row.set_item("forced_neighbors", forced_neighbors)?;
+                Ok(row.unbind())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
+    }
+    Ok(state_by_layer.unbind())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DirectionalMarkerSlot {
     slot: usize,
@@ -3086,6 +3142,12 @@ fn stereo_output_fact_row_to_py(
 ) -> PyResult<Py<PyDict>> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let raw_facts_by_component =
+        selected_neighbor_facts_by_component(runtime, raw_selected_neighbors);
+    let resolved_facts_by_component =
+        selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
+    let traversal_facts_by_component =
+        traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3130,6 +3192,18 @@ fn stereo_output_fact_row_to_py(
             state,
             &resolved_selected_neighbors,
         )?,
+    )?;
+    row.set_item(
+        "raw_assignment_state",
+        assignment_state_to_py(py, runtime, &raw_facts_by_component)?,
+    )?;
+    row.set_item(
+        "resolved_assignment_state",
+        assignment_state_to_py(py, runtime, &resolved_facts_by_component)?,
+    )?;
+    row.set_item(
+        "traversal_assignment_state",
+        assignment_state_to_py(py, runtime, &traversal_facts_by_component)?,
     )?;
     Ok(row.unbind())
 }

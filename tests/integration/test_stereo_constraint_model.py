@@ -464,6 +464,27 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(
             all(row["traversal_layer_completions"]["semantic"] for row in rows)
         )
+        self.assertTrue(
+            all(
+                all(
+                    component["remaining_count"] > 0
+                    for component in row["traversal_assignment_state"]["semantic"]
+                )
+                for row in rows
+            )
+        )
+        self.assertTrue(
+            all(
+                row["traversal_layer_completions"]["rdkit_traversal_writer"]
+                == all(
+                    component["remaining_count"] > 0
+                    for component in row["traversal_assignment_state"][
+                        "rdkit_traversal_writer"
+                    ]
+                )
+                for row in rows
+            )
+        )
         self.assertEqual(
             {False, True},
             {
@@ -734,6 +755,19 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         for fact in traversal_facts
                     ),
                 )
+                for layer in (
+                    "semantic",
+                    "rdkit_local_writer",
+                    "rdkit_traversal_writer",
+                ):
+                    layer_state = row["traversal_assignment_state"][layer]
+                    self.assertEqual(1, len(layer_state))
+                    component_state = layer_state[0]
+                    self.assertEqual([0, 1, 2, 3], component_state["side_ids"])
+                    self.assertEqual(
+                        component_state["remaining_count"],
+                        len(component_state["remaining_assignment_ids"]),
+                    )
                 projection = row["ring_closure_marker_projection"]
                 projected_slots = tuple(
                     _DirectionMarkerSlot(

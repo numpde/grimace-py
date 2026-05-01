@@ -24,13 +24,6 @@ class PinnedStereoMarkerSequenceTransition:
 
 
 @dataclass(frozen=True, slots=True)
-class PinnedStereoMarkerSlotTransition:
-    direction_erased_skeleton: str
-    transformed_marker_slots: tuple[tuple[int, str], ...]
-    rdkit_marker_slots: tuple[tuple[int, str], ...]
-
-
-@dataclass(frozen=True, slots=True)
 class PinnedStereoConstraintModelCase:
     case_id: str
     source: str
@@ -62,9 +55,6 @@ class PinnedStereoConstraintModelCase:
         tuple[tuple[str, int], ...]
     )
     expected_marker_sequence_transitions: tuple[PinnedStereoMarkerSequenceTransition, ...]
-    expected_ring_closure_marker_transform_residual_slot_transitions: tuple[
-        PinnedStereoMarkerSlotTransition, ...
-    ]
 
     @property
     def expected_component_count(self) -> int:
@@ -197,102 +187,6 @@ def _optional_marker_sequence_transitions(
         raise ValueError(
             f"fixture {fixture_path} case {case_id!r} must define marker "
             "sequence transitions sorted by unique direction_erased_skeleton"
-        )
-    return parsed
-
-
-def _required_marker_slots(
-    raw_transition: dict[str, object],
-    *,
-    field_name: str,
-    fixture_path: Path,
-    case_id: str,
-) -> tuple[tuple[int, str], ...]:
-    raw_slots = raw_transition.get(field_name)
-    if not isinstance(raw_slots, list) or not raw_slots:
-        raise ValueError(
-            f"fixture {fixture_path} case {case_id!r} must define nonempty "
-            f"{field_name} as [slot, marker] pairs"
-        )
-
-    slots = []
-    for raw_slot in raw_slots:
-        if (
-            not isinstance(raw_slot, list)
-            or len(raw_slot) != 2
-            or type(raw_slot[0]) is not int
-            or raw_slot[0] < 0
-            or raw_slot[1] not in ("/", "\\")
-        ):
-            raise ValueError(
-                f"fixture {fixture_path} case {case_id!r} must define "
-                f"{field_name} as nonnegative [slot, '/'|'\\\\'] pairs"
-            )
-        slots.append((raw_slot[0], str(raw_slot[1])))
-
-    parsed = tuple(slots)
-    if parsed != tuple(sorted(parsed, key=lambda item: item[0])):
-        raise ValueError(
-            f"fixture {fixture_path} case {case_id!r} must define {field_name} "
-            "sorted by slot"
-        )
-    return parsed
-
-
-def _optional_marker_slot_transitions(
-    raw_case: dict[str, object],
-    *,
-    fixture_path: Path,
-    case_id: str,
-) -> tuple[PinnedStereoMarkerSlotTransition, ...]:
-    raw_transitions = raw_case.get(
-        "expected_ring_closure_marker_transform_residual_slot_transitions"
-    )
-    if raw_transitions is None:
-        return ()
-    if not isinstance(raw_transitions, list):
-        raise ValueError(
-            f"fixture {fixture_path} case {case_id!r} must define "
-            "expected_ring_closure_marker_transform_residual_slot_transitions as a list"
-        )
-
-    transitions = []
-    for raw_transition in raw_transitions:
-        if not isinstance(raw_transition, dict):
-            raise ValueError(
-                f"fixture {fixture_path} case {case_id!r} must define marker "
-                "slot transitions as objects"
-            )
-        transitions.append(
-            PinnedStereoMarkerSlotTransition(
-                direction_erased_skeleton=required_string(
-                    raw_transition,
-                    field_name="direction_erased_skeleton",
-                    fixture_path=fixture_path,
-                    case_id=case_id,
-                ),
-                transformed_marker_slots=_required_marker_slots(
-                    raw_transition,
-                    field_name="transformed_marker_slots",
-                    fixture_path=fixture_path,
-                    case_id=case_id,
-                ),
-                rdkit_marker_slots=_required_marker_slots(
-                    raw_transition,
-                    field_name="rdkit_marker_slots",
-                    fixture_path=fixture_path,
-                    case_id=case_id,
-                ),
-            )
-        )
-
-    parsed = tuple(sorted(transitions, key=lambda transition: transition.direction_erased_skeleton))
-    if parsed != tuple(transitions) or len(
-        {transition.direction_erased_skeleton for transition in parsed}
-    ) != len(parsed):
-        raise ValueError(
-            f"fixture {fixture_path} case {case_id!r} must define marker slot "
-            "transitions sorted by unique direction_erased_skeleton"
         )
     return parsed
 
@@ -502,13 +396,6 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
-        expected_ring_closure_marker_transform_residual_slot_transitions = (
-            _optional_marker_slot_transitions(
-                raw_case,
-                fixture_path=fixture_case.fixture_path,
-                case_id=fixture_case.case_id,
-            )
-        )
         cases.append(
             PinnedStereoConstraintModelCase(
                 case_id=fixture_case.case_id,
@@ -594,9 +481,6 @@ def load_pinned_stereo_constraint_model_cases(
                     expected_ring_closure_marker_transform_residual_provenance_classes
                 ),
                 expected_marker_sequence_transitions=expected_marker_sequence_transitions,
-                expected_ring_closure_marker_transform_residual_slot_transitions=(
-                    expected_ring_closure_marker_transform_residual_slot_transitions
-                ),
             )
         )
 

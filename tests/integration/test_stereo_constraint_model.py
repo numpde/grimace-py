@@ -562,6 +562,29 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for component in row["component_token_phase"]
             )
         )
+        self.assertEqual(
+            {2},
+            {
+                component["model_token_phase_component_count"]
+                for row in rows
+                for component in row["component_token_phase"]
+            },
+        )
+        self.assertEqual(
+            {
+                ("stored", "stored"),
+                ("stored", "flipped"),
+                ("flipped", "stored"),
+                ("flipped", "flipped"),
+            },
+            {
+                tuple(
+                    component["inferred_token_flip"]
+                    for component in row["component_token_phase"]
+                )
+                for row in rows
+            },
+        )
 
     def test_component_token_phase_is_separate_from_carrier_assignment(self) -> None:
         saw_stored_token_flip = False
@@ -584,13 +607,18 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         self.assertGreater(component["remaining_assignment_count"], 0)
                         self.assertTrue(component["inferred_matches_state"])
                         self.assertIsNotNone(component["inferred_token_flip"])
+                        token_phase_component_count = component[
+                            "model_token_phase_component_count"
+                        ]
+                        self.assertGreater(token_phase_component_count, 0)
                         self.assertEqual(
-                            2 * component["remaining_assignment_count"],
+                            component["remaining_assignment_count"]
+                            * (2**token_phase_component_count),
                             component["token_phase_assignment_count_before_token"],
                         )
                         self.assertEqual(
-                            component["remaining_assignment_count"],
-                            component["token_phase_assignment_count_after_token"],
+                            component["token_phase_assignment_count_before_token"],
+                            2 * component["token_phase_assignment_count_after_token"],
                         )
                         self.assertEqual(
                             component["inferred_token_flip"],

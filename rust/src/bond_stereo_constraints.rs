@@ -74,12 +74,13 @@ pub(crate) enum StereoTokenFlip {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoTokenPhaseAssignment {
     pub(crate) neighbor_assignment_id: usize,
-    pub(crate) token_flip: StereoTokenFlip,
+    pub(crate) token_flips: Vec<StereoTokenFlip>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoComponentConstraintModel {
     pub(crate) component_idx: usize,
+    pub(crate) runtime_component_ids: Vec<usize>,
     pub(crate) side_ids: Vec<usize>,
     pub(crate) side_domains: Vec<StereoSideChoiceDomain>,
     pub(crate) all_neighbor_assignments: Vec<Vec<usize>>,
@@ -355,23 +356,46 @@ fn enumerate_domain_assignments(side_domains: &[StereoSideChoiceDomain]) -> Vec<
 
 fn enumerate_token_phase_assignments(
     neighbor_assignments: &[Vec<usize>],
+    runtime_component_count: usize,
 ) -> Vec<StereoTokenPhaseAssignment> {
-    neighbor_assignments
-        .iter()
-        .enumerate()
-        .flat_map(|(neighbor_assignment_id, _)| {
-            [
-                StereoTokenPhaseAssignment {
-                    neighbor_assignment_id,
-                    token_flip: StereoTokenFlip::Stored,
-                },
-                StereoTokenPhaseAssignment {
-                    neighbor_assignment_id,
-                    token_flip: StereoTokenFlip::Flipped,
-                },
-            ]
-        })
-        .collect()
+    fn rec(
+        neighbor_assignment_id: usize,
+        runtime_component_count: usize,
+        offset: usize,
+        current: &mut Vec<StereoTokenFlip>,
+        out: &mut Vec<StereoTokenPhaseAssignment>,
+    ) {
+        if offset == runtime_component_count {
+            out.push(StereoTokenPhaseAssignment {
+                neighbor_assignment_id,
+                token_flips: current.clone(),
+            });
+            return;
+        }
+        for token_flip in [StereoTokenFlip::Stored, StereoTokenFlip::Flipped] {
+            current.push(token_flip);
+            rec(
+                neighbor_assignment_id,
+                runtime_component_count,
+                offset + 1,
+                current,
+                out,
+            );
+            current.pop();
+        }
+    }
+
+    let mut out = Vec::new();
+    for (neighbor_assignment_id, _) in neighbor_assignments.iter().enumerate() {
+        rec(
+            neighbor_assignment_id,
+            runtime_component_count,
+            0,
+            &mut Vec::new(),
+            &mut out,
+        );
+    }
+    out
 }
 
 fn side_has_neighbor(side_infos: &[StereoSideInfo], side_idx: usize, neighbor_idx: usize) -> bool {
@@ -526,6 +550,12 @@ pub(crate) fn stereo_constraint_model(
 
     let mut components = Vec::with_capacity(side_ids_by_model_component.len());
     for (component_idx, side_ids) in side_ids_by_model_component.iter().enumerate() {
+        let runtime_component_ids = side_ids
+            .iter()
+            .map(|&side_idx| side_infos[side_idx].component_idx)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
         let side_domains = side_ids
             .iter()
             .map(|&side_idx| {
@@ -565,10 +595,12 @@ pub(crate) fn stereo_constraint_model(
 
         components.push(StereoComponentConstraintModel {
             component_idx,
+            runtime_component_ids: runtime_component_ids.clone(),
             side_ids: side_ids.clone(),
             side_domains,
             all_token_phase_assignments: enumerate_token_phase_assignments(
                 &all_neighbor_assignments,
+                runtime_component_ids.len(),
             ),
             all_neighbor_assignments,
             layer_assignments,
@@ -761,7 +793,7 @@ impl StereoConstraintModel {
         &self,
         component_idx: usize,
         neighbor_assignment_ids: &[usize],
-        token_flip: Option<StereoTokenFlip>,
+        token_flip_constraints: &[(usize, StereoTokenFlip)],
     ) -> Vec<usize> {
         let Some(component) = self.components.get(component_idx) else {
             return Vec::new();
@@ -770,13 +802,25 @@ impl StereoConstraintModel {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
+        let token_flip_positions = token_flip_constraints
+            .iter()
+            .filter_map(|&(runtime_component_idx, token_flip)| {
+                component
+                    .runtime_component_ids
+                    .iter()
+                    .position(|&idx| idx == runtime_component_idx)
+                    .map(|position| (position, token_flip))
+            })
+            .collect::<Vec<_>>();
         component
             .all_token_phase_assignments
             .iter()
             .enumerate()
             .filter_map(|(assignment_id, assignment)| {
                 (neighbor_assignment_ids.contains(&assignment.neighbor_assignment_id)
-                    && token_flip.is_none_or(|value| value == assignment.token_flip))
+                    && token_flip_positions.iter().all(|&(position, token_flip)| {
+                        assignment.token_flips.get(position).copied() == Some(token_flip)
+                    }))
                 .then_some(assignment_id)
             })
             .collect()
@@ -785,14 +829,20 @@ impl StereoConstraintModel {
     pub(crate) fn forced_token_flip_for_token_phase_assignment_ids(
         &self,
         component_idx: usize,
+        runtime_component_idx: usize,
         assignment_ids: &[usize],
     ) -> Option<StereoTokenFlip> {
         let component = self.components.get(component_idx)?;
+        let position = component
+            .runtime_component_ids
+            .iter()
+            .position(|&idx| idx == runtime_component_idx)?;
         let mut values = assignment_ids.iter().filter_map(|&assignment_id| {
             component
                 .all_token_phase_assignments
                 .get(assignment_id)
-                .map(|assignment| assignment.token_flip)
+                .and_then(|assignment| assignment.token_flips.get(position))
+                .copied()
         });
         let first = values.next()?;
         values.all(|value| value == first).then_some(first)
@@ -1439,7 +1489,7 @@ mod tests {
             model.token_phase_assignment_ids_for_neighbor_assignment_ids(
                 0,
                 &unconstrained.remaining_by_component[0],
-                None,
+                &[],
             ),
         );
 
@@ -1461,16 +1511,16 @@ mod tests {
             model.token_phase_assignment_ids_for_neighbor_assignment_ids(
                 0,
                 &constrained.remaining_by_component[0],
-                Some(StereoTokenFlip::Stored),
+                &[(0, StereoTokenFlip::Stored)],
             ),
         );
         assert_eq!(
             Some(StereoTokenFlip::Stored),
-            model.forced_token_flip_for_token_phase_assignment_ids(0, &[4, 6]),
+            model.forced_token_flip_for_token_phase_assignment_ids(0, 0, &[4, 6]),
         );
         assert_eq!(
             None,
-            model.forced_token_flip_for_token_phase_assignment_ids(0, &[4, 5]),
+            model.forced_token_flip_for_token_phase_assignment_ids(0, 0, &[4, 5]),
         );
 
         let narrowed_again = constrained.filter_facts_by_component(
@@ -1489,7 +1539,7 @@ mod tests {
             model.token_phase_assignment_ids_for_neighbor_assignment_ids(
                 0,
                 &narrowed_again.remaining_by_component[0],
-                None,
+                &[],
             ),
         );
         assert_eq!(
@@ -1497,7 +1547,7 @@ mod tests {
             model.token_phase_assignment_ids_for_neighbor_assignment_ids(
                 0,
                 &narrowed_again.remaining_by_component[0],
-                Some(StereoTokenFlip::Flipped),
+                &[(0, StereoTokenFlip::Flipped)],
             ),
         );
 
@@ -1599,7 +1649,38 @@ mod tests {
         .expect("model should build");
 
         assert_eq!(1, model.component_count());
+        assert_eq!(vec![0, 1], model.components[0].runtime_component_ids);
         assert_eq!(vec![0, 1], model.components[0].side_ids);
+        assert_eq!(
+            16,
+            model
+                .token_phase_assignment_ids_for_neighbor_assignment_ids(0, &[0, 1, 2, 3], &[],)
+                .len(),
+        );
+        let runtime_zero_stored = model.token_phase_assignment_ids_for_neighbor_assignment_ids(
+            0,
+            &[0, 1, 2, 3],
+            &[(0, StereoTokenFlip::Stored)],
+        );
+        assert_eq!(8, runtime_zero_stored.len());
+        assert_eq!(
+            Some(StereoTokenFlip::Stored),
+            model.forced_token_flip_for_token_phase_assignment_ids(0, 0, &runtime_zero_stored),
+        );
+        assert_eq!(
+            None,
+            model.forced_token_flip_for_token_phase_assignment_ids(0, 1, &runtime_zero_stored),
+        );
+        assert_eq!(
+            4,
+            model
+                .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                    0,
+                    &[0, 1, 2, 3],
+                    &[(0, StereoTokenFlip::Stored), (1, StereoTokenFlip::Flipped),],
+                )
+                .len(),
+        );
         assert_eq!(
             vec![0, 1, 2, 3],
             model.remaining_assignment_ids(0, StereoConstraintLayer::Semantic, &[]),

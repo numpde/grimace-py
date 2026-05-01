@@ -2570,6 +2570,19 @@ pub fn internal_stereo_constraint_model_summary(
         "component_sizes",
         component_sizes(&runtime.stereo_component_ids),
     )?;
+    let shared_carrier_groups = runtime
+        .ambiguous_shared_edge_groups
+        .iter()
+        .map(|group| {
+            let row = PyDict::new(py);
+            row.set_item("left_side_idx", group.left_side_idx)?;
+            row.set_item("right_side_idx", group.right_side_idx)?;
+            row.set_item("left_shared_neighbor", group.left_shared_neighbor)?;
+            row.set_item("right_shared_neighbor", group.right_shared_neighbor)?;
+            Ok(row.unbind())
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    summary.set_item("shared_carrier_groups", shared_carrier_groups)?;
 
     let components = model
         .components
@@ -2824,6 +2837,88 @@ fn assignment_state_to_py(
         state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
     }
     Ok(state_by_layer.unbind())
+}
+
+fn shared_carrier_resolution_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    raw_selected_neighbors: &[isize],
+    resolved_selected_neighbors: &[isize],
+    assignment_state: &StereoAssignmentState,
+) -> PyResult<Vec<Py<PyDict>>> {
+    runtime
+        .ambiguous_shared_edge_groups
+        .iter()
+        .map(|group| {
+            let left_component_idx = runtime
+                .constraint_model
+                .component_for_side(group.left_side_idx);
+            let right_component_idx = runtime
+                .constraint_model
+                .component_for_side(group.right_side_idx);
+            let left_forced_neighbor = left_component_idx.and_then(|component_idx| {
+                assignment_state.forced_neighbor(
+                    &runtime.constraint_model,
+                    component_idx,
+                    group.left_side_idx,
+                )
+            });
+            let right_forced_neighbor = right_component_idx.and_then(|component_idx| {
+                assignment_state.forced_neighbor(
+                    &runtime.constraint_model,
+                    component_idx,
+                    group.right_side_idx,
+                )
+            });
+            let left_changed = raw_selected_neighbors[group.left_side_idx]
+                != resolved_selected_neighbors[group.left_side_idx];
+            let right_changed = raw_selected_neighbors[group.right_side_idx]
+                != resolved_selected_neighbors[group.right_side_idx];
+
+            let row = PyDict::new(py);
+            row.set_item("left_side_idx", group.left_side_idx)?;
+            row.set_item("right_side_idx", group.right_side_idx)?;
+            row.set_item("left_component_idx", left_component_idx)?;
+            row.set_item("right_component_idx", right_component_idx)?;
+            row.set_item("left_shared_neighbor", group.left_shared_neighbor)?;
+            row.set_item("right_shared_neighbor", group.right_shared_neighbor)?;
+            row.set_item(
+                "left_raw_neighbor",
+                raw_selected_neighbors[group.left_side_idx],
+            )?;
+            row.set_item(
+                "right_raw_neighbor",
+                raw_selected_neighbors[group.right_side_idx],
+            )?;
+            row.set_item(
+                "left_resolved_neighbor",
+                resolved_selected_neighbors[group.left_side_idx],
+            )?;
+            row.set_item(
+                "right_resolved_neighbor",
+                resolved_selected_neighbors[group.right_side_idx],
+            )?;
+            row.set_item("left_changed", left_changed)?;
+            row.set_item("right_changed", right_changed)?;
+            row.set_item("left_forced_neighbor", left_forced_neighbor)?;
+            row.set_item("right_forced_neighbor", right_forced_neighbor)?;
+            row.set_item(
+                "left_change_explained_by_assignment_state",
+                !left_changed
+                    || left_forced_neighbor == Some(group.left_shared_neighbor)
+                        && resolved_selected_neighbors[group.left_side_idx]
+                            == group.left_shared_neighbor as isize,
+            )?;
+            row.set_item(
+                "right_change_explained_by_assignment_state",
+                !right_changed
+                    || right_forced_neighbor == Some(group.right_shared_neighbor)
+                        && resolved_selected_neighbors[group.right_side_idx]
+                            == group.right_shared_neighbor as isize,
+            )?;
+            Ok(row.unbind())
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3148,6 +3243,11 @@ fn stereo_output_fact_row_to_py(
         selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
     let traversal_facts_by_component =
         traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
+    let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
+        &runtime.constraint_model,
+        StereoConstraintLayer::Semantic,
+        &raw_facts_by_component,
+    );
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3204,6 +3304,16 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "traversal_assignment_state",
         assignment_state_to_py(py, runtime, &traversal_facts_by_component)?,
+    )?;
+    row.set_item(
+        "shared_carrier_resolution",
+        shared_carrier_resolution_to_py(
+            py,
+            runtime,
+            raw_selected_neighbors,
+            &resolved_selected_neighbors,
+            &raw_semantic_assignment_state,
+        )?,
     )?;
     Ok(row.unbind())
 }

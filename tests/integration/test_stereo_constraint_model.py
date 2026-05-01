@@ -415,6 +415,39 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     case.expected_rdkit_local_writer_assignment_count,
                 )
 
+    def test_shared_carrier_resolution_is_assignment_state_explained(self) -> None:
+        saw_shared_group = False
+        saw_changed_resolution = False
+
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            summary = _core._stereo_constraint_model_summary(prepared)
+            rows = _core._stereo_constraint_output_facts(prepared)
+            saw_shared_group |= bool(summary["shared_carrier_groups"])
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                for row in rows:
+                    self.assertEqual(
+                        len(summary["shared_carrier_groups"]),
+                        len(row["shared_carrier_resolution"]),
+                    )
+                    for group in row["shared_carrier_resolution"]:
+                        changed = group["left_changed"] or group["right_changed"]
+                        saw_changed_resolution |= changed
+                        self.assertTrue(
+                            group["left_change_explained_by_assignment_state"]
+                        )
+                        self.assertTrue(
+                            group["right_change_explained_by_assignment_state"]
+                        )
+
+        # Current pinned witnesses exercise other traversal coupling, but not
+        # this older ambiguous-shared-edge repair hook. Keep that explicit so
+        # the next witness that hits it is reviewed deliberately.
+        self.assertFalse(saw_shared_group)
+        self.assertFalse(saw_changed_resolution)
+
     def test_current_runtime_support_count_matches_pinned_witnesses(self) -> None:
         for case in self.cases:
             mol = parse_smiles(case.smiles)

@@ -734,6 +734,7 @@ impl StereoConstraintModel {
 }
 
 impl StereoAssignmentState {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn from_model(model: &StereoConstraintModel, layer: StereoConstraintLayer) -> Self {
         Self::from_facts_by_component(model, layer, &[])
     }
@@ -759,6 +760,7 @@ impl StereoAssignmentState {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn filter_facts_by_component(
         &self,
         model: &StereoConstraintModel,
@@ -783,6 +785,7 @@ impl StereoAssignmentState {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn is_empty(&self, component_idx: usize) -> bool {
         self.remaining_by_component
             .get(component_idx)

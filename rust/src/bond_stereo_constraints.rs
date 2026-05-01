@@ -74,7 +74,7 @@ pub(crate) struct StereoComponentConstraintModel {
 }
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum StereoTraversalRole {
     TreeOrChain,
     Branch,

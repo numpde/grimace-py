@@ -695,6 +695,25 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         for marker in provenance
                     )
                 )
+                self.assertTrue(
+                    all(
+                        int(marker["component_idx"]) >= 0
+                        and int(marker["side_idx"]) >= 0
+                        and int(marker["bond_idx"]) >= 0
+                        for marker in provenance
+                    )
+                )
+                self.assertTrue(
+                    all(
+                        marker["trace_role"]
+                        == {
+                            "after_ring_label": "ring_open",
+                            "before_ring_label": "ring_close",
+                            "branch_edge": "branch",
+                        }.get(marker["local_role"], "tree_or_chain")
+                        for marker in provenance
+                    )
+                )
                 current_marker_provenance_by_skeleton[skeleton] = {
                     int(marker["slot"]): marker for marker in provenance
                 }
@@ -819,10 +838,10 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     removed_provenance = current_marker_provenance_by_skeleton[skeleton][
                         removed_slot
                     ]
-                    source_role = str(removed_provenance["local_role"])
+                    source_role = str(removed_provenance["trace_role"])
                     target_context = _target_slot_context(skeleton, added_slot)
                     self.assertEqual(
-                        source_role,
+                        str(removed_provenance["local_role"]),
                         _slot_local_role(skeleton, removed_slot),
                     )
                     residual_provenance_classes[

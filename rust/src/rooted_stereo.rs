@@ -13,7 +13,7 @@ use crate::bond_stereo_constraints::{
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
     stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoConstraintFact,
     StereoConstraintLayer, StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild,
-    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    StereoTraversalRole, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -63,6 +63,19 @@ struct DeferredDirectionalToken {
     stored_token: String,
     begin_idx: isize,
     end_idx: isize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct DirectionalMarkerTrace {
+    slot: usize,
+    marker: char,
+    component_idx: isize,
+    side_idx: isize,
+    endpoint_atom_idx: isize,
+    selected_neighbor_idx: isize,
+    edge_begin_idx: isize,
+    edge_end_idx: isize,
+    role: StereoTraversalRole,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -270,6 +283,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     stereo_first_emitted_candidates: Arc<Vec<isize>>,
     stereo_component_begin_atoms: Arc<Vec<isize>>,
     stereo_component_token_flips: Arc<Vec<i8>>,
+    directional_marker_traces: Arc<Vec<DirectionalMarkerTrace>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -609,6 +623,7 @@ fn stereo_exact_state_from_full(
         stereo_first_emitted_candidates,
         stereo_component_begin_atoms,
         stereo_component_token_flips,
+        directional_marker_traces,
         action_stack,
     } = state;
     debug_assert!(stereo_component_phases.is_empty());
@@ -617,6 +632,7 @@ fn stereo_exact_state_from_full(
     debug_assert!(stereo_first_emitted_candidates.is_empty());
     debug_assert!(stereo_component_begin_atoms.is_empty());
     debug_assert!(stereo_component_token_flips.is_empty());
+    debug_assert!(directional_marker_traces.is_empty());
     RootedConnectedStereoExactStateData {
         prefix,
         dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
@@ -678,6 +694,112 @@ fn push_char_token(prefix: &mut Arc<str>, ch: char) {
     next.push_str(prefix.as_ref());
     next.push(ch);
     *prefix = Arc::<str>::from(next);
+}
+
+fn direction_erased_slot(prefix: &str) -> usize {
+    prefix.chars().filter(|&ch| ch != '/' && ch != '\\').count()
+}
+
+fn stereo_traversal_role_name(role: StereoTraversalRole) -> &'static str {
+    match role {
+        StereoTraversalRole::TreeOrChain => "tree_or_chain",
+        StereoTraversalRole::Branch => "branch",
+        StereoTraversalRole::RingOpen => "ring_open",
+        StereoTraversalRole::RingClose => "ring_close",
+        StereoTraversalRole::Deferred => "deferred",
+    }
+}
+
+fn directional_token_role(prefix: &str, next_action: Option<&WalkerAction>) -> StereoTraversalRole {
+    if matches!(next_action, Some(WalkerAction::EmitRingLabel(_))) {
+        StereoTraversalRole::RingClose
+    } else if prefix.ends_with(|ch: char| ch.is_ascii_digit()) {
+        StereoTraversalRole::RingOpen
+    } else if prefix.ends_with('(') {
+        StereoTraversalRole::Branch
+    } else {
+        StereoTraversalRole::TreeOrChain
+    }
+}
+
+fn active_directional_marker_side(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    begin_idx: usize,
+    end_idx: usize,
+) -> Option<(usize, usize, usize)> {
+    let edge = canonical_edge(begin_idx, end_idx);
+    let selected_neighbors = resolved_selected_neighbors(runtime, state);
+    runtime
+        .edge_to_side_ids
+        .get(&edge)?
+        .iter()
+        .copied()
+        .find_map(|side_idx| {
+            let side_info = &runtime.side_infos[side_idx];
+            let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+                end_idx
+            } else if end_idx == side_info.endpoint_atom_idx {
+                begin_idx
+            } else {
+                return None;
+            };
+            (selected_neighbors[side_idx] == edge_neighbor_idx as isize).then_some((
+                side_info.component_idx,
+                side_idx,
+                edge_neighbor_idx,
+            ))
+        })
+}
+
+fn record_directional_marker_trace(
+    runtime: &StereoWalkerRuntimeData,
+    state: &mut RootedConnectedStereoWalkerStateData,
+    begin_idx: isize,
+    end_idx: isize,
+    marker_token: &str,
+    role: StereoTraversalRole,
+) {
+    let mut chars = marker_token.chars();
+    let Some(marker) = chars.next() else {
+        return;
+    };
+    if chars.next().is_some() || (marker != '/' && marker != '\\') {
+        return;
+    }
+
+    let (component_idx, side_idx, endpoint_atom_idx, selected_neighbor_idx) =
+        if begin_idx >= 0 && end_idx >= 0 {
+            let begin = begin_idx as usize;
+            let end = end_idx as usize;
+            if let Some((component_idx, side_idx, selected_neighbor_idx)) =
+                active_directional_marker_side(runtime, state, begin, end)
+            {
+                let endpoint_atom_idx = runtime.side_infos[side_idx].endpoint_atom_idx;
+                (
+                    component_idx as isize,
+                    side_idx as isize,
+                    endpoint_atom_idx as isize,
+                    selected_neighbor_idx as isize,
+                )
+            } else {
+                (-1, -1, -1, -1)
+            }
+        } else {
+            (-1, -1, -1, -1)
+        };
+
+    Arc::make_mut(&mut state.directional_marker_traces).push(DirectionalMarkerTrace {
+        slot: direction_erased_slot(state.prefix.as_ref()),
+        marker,
+        component_idx,
+        side_idx,
+        endpoint_atom_idx,
+        selected_neighbor_idx,
+        edge_begin_idx: begin_idx,
+        edge_end_idx: end_idx,
+        role,
+    });
 }
 
 fn push_ring_label(prefix: &mut Arc<str>, label: usize) {
@@ -2288,6 +2410,15 @@ fn process_children_terminal_successors(
                     }
                     continue;
                 }
+                let role = directional_token_role(successor.prefix.as_ref(), None);
+                record_directional_marker_trace(
+                    context.runtime,
+                    &mut successor,
+                    deferred.begin_idx,
+                    deferred.end_idx,
+                    &token,
+                    role,
+                );
                 push_literal_token(&mut successor.prefix, &token);
                 successor.action_stack.push(WalkerAction::EnterAtom {
                     atom_idx: step.child_idx,
@@ -2638,14 +2769,12 @@ fn directional_marker_provenance_to_py(
     py: Python<'_>,
     graph: &PreparedSmilesGraphData,
     runtime: &StereoWalkerRuntimeData,
-    smiles: &str,
-    selected_neighbors: &[isize],
+    state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<Py<PyDict>>> {
-    let selected_rows = selected_neighbor_fact_rows(runtime, selected_neighbors);
+    let smiles = state.prefix.as_ref();
     let chars = smiles.chars().collect::<Vec<_>>();
     let mut skeleton_slot = 0usize;
-    let mut marker_idx = 0usize;
-    let mut provenance = Vec::<Py<PyDict>>::new();
+    let mut local_roles = BTreeMap::<usize, &'static str>::new();
 
     for (smiles_offset, &ch) in chars.iter().enumerate() {
         if ch != '/' && ch != '\\' {
@@ -2657,26 +2786,36 @@ fn directional_marker_provenance_to_py(
             .checked_sub(1)
             .and_then(|offset| chars.get(offset));
         let next_char = chars.get(smiles_offset + 1);
+        local_roles.insert(skeleton_slot, marker_local_role(previous_char, next_char));
+    }
+
+    let mut provenance = Vec::<Py<PyDict>>::new();
+    for (marker_idx, trace) in state.directional_marker_traces.iter().enumerate() {
         let row = PyDict::new(py);
         row.set_item("marker_idx", marker_idx)?;
-        row.set_item("slot", skeleton_slot)?;
-        row.set_item("marker", ch.to_string())?;
-        row.set_item("local_role", marker_local_role(previous_char, next_char))?;
+        row.set_item("slot", trace.slot)?;
+        row.set_item("marker", trace.marker.to_string())?;
+        row.set_item(
+            "local_role",
+            local_roles
+                .get(&trace.slot)
+                .copied()
+                .unwrap_or("unknown_marker_slot"),
+        )?;
+        row.set_item("trace_role", stereo_traversal_role_name(trace.role))?;
+        row.set_item("component_idx", trace.component_idx)?;
+        row.set_item("side_idx", trace.side_idx)?;
+        row.set_item("endpoint_atom_idx", trace.endpoint_atom_idx)?;
+        row.set_item("selected_neighbor_idx", trace.selected_neighbor_idx)?;
+        row.set_item("edge_begin_idx", trace.edge_begin_idx)?;
+        row.set_item("edge_end_idx", trace.edge_end_idx)?;
 
-        if let Some((component_idx, side_idx, neighbor_idx)) =
-            selected_rows.get(marker_idx).copied()
-        {
-            let side_info = &runtime.side_infos[side_idx];
-            let endpoint_idx = side_info.endpoint_atom_idx;
-            let canonical = canonical_edge(endpoint_idx, neighbor_idx);
-            row.set_item("component_idx", component_idx)?;
-            row.set_item("side_idx", side_idx)?;
-            row.set_item("endpoint_atom_idx", endpoint_idx)?;
-            row.set_item("selected_neighbor_idx", neighbor_idx)?;
-            row.set_item("edge_begin_idx", endpoint_idx)?;
-            row.set_item("edge_end_idx", neighbor_idx)?;
+        if trace.edge_begin_idx >= 0 && trace.edge_end_idx >= 0 {
+            let begin_idx = trace.edge_begin_idx as usize;
+            let end_idx = trace.edge_end_idx as usize;
+            let canonical = canonical_edge(begin_idx, end_idx);
             row.set_item("canonical_edge", canonical)?;
-            row.set_item("bond_idx", graph.bond_index(endpoint_idx, neighbor_idx))?;
+            row.set_item("bond_idx", graph.bond_index(begin_idx, end_idx))?;
             row.set_item(
                 "edge_side_ids",
                 runtime
@@ -2686,9 +2825,7 @@ fn directional_marker_provenance_to_py(
                     .unwrap_or_default(),
             )?;
         }
-
         provenance.push(row.unbind());
-        marker_idx += 1;
     }
 
     Ok(provenance)
@@ -2712,13 +2849,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "directional_marker_provenance",
-        directional_marker_provenance_to_py(
-            py,
-            graph,
-            runtime,
-            state.prefix.as_ref(),
-            &resolved_selected_neighbors,
-        )?,
+        directional_marker_provenance_to_py(py, graph, runtime, state)?,
     )?;
     row.set_item(
         "raw_facts",
@@ -2946,6 +3077,7 @@ fn initial_stereo_state_for_root(
             UNKNOWN_COMPONENT_TOKEN_FLIP;
             runtime.isolated_components.len()
         ]),
+        directional_marker_traces: Arc::new(Vec::new()),
         action_stack,
     }
 }
@@ -3626,6 +3758,7 @@ fn enter_atom_successors_by_token(
                             stereo_component_token_flips: base_state
                                 .stereo_component_token_flips
                                 .clone(),
+                            directional_marker_traces: base_state.directional_marker_traces.clone(),
                             action_stack: base_state.action_stack.clone(),
                         };
                         if !child_order.is_empty() {
@@ -3787,6 +3920,7 @@ fn enter_atom_successors_without_bond_stereo(
                             stereo_component_token_flips: base_state
                                 .stereo_component_token_flips
                                 .clone(),
+                            directional_marker_traces: base_state.directional_marker_traces.clone(),
                             action_stack: base_state.action_stack.clone(),
                         };
                         if !child_order.is_empty() {
@@ -4308,6 +4442,7 @@ fn process_children_successors_without_bond_stereo(
             stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
             stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
             stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            directional_marker_traces: state.directional_marker_traces.clone(),
             action_stack: {
                 let extra = 2
                     + usize::from(next_branch_index + 1 < child_order.len())
@@ -4610,6 +4745,18 @@ fn successors_by_token_stereo_impl(
                     }
                     continue;
                 }
+                let role = directional_token_role(
+                    successor.prefix.as_ref(),
+                    successor.action_stack.last(),
+                );
+                record_directional_marker_trace(
+                    runtime,
+                    &mut successor,
+                    deferred.begin_idx,
+                    deferred.end_idx,
+                    &token,
+                    role,
+                );
                 push_literal_token(&mut successor.prefix, &token);
                 out.entry(token).or_default().push(successor);
             }

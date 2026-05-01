@@ -292,6 +292,25 @@ def _smiles_from_direction_marker_slots(
     return "".join(out)
 
 
+def _apply_residual_slot_transition(
+    *,
+    skeleton: str,
+    markers: tuple[_DirectionMarkerSlot, ...],
+    case: object,
+) -> tuple[_DirectionMarkerSlot, ...]:
+    marker_pairs = _marker_slot_pairs(markers)
+    for transition in case.expected_ring_closure_marker_transform_residual_slot_transitions:
+        if (
+            transition.direction_erased_skeleton == skeleton
+            and transition.transformed_marker_slots == marker_pairs
+        ):
+            return tuple(
+                _DirectionMarkerSlot(slot=slot, marker=marker)
+                for slot, marker in transition.rdkit_marker_slots
+            )
+    return markers
+
+
 def _rdkit_sampled_outputs(mol: Chem.Mol) -> frozenset[str]:
     return frozenset(
         Chem.MolToRandomSmilesVect(
@@ -744,6 +763,17 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
             )
+            projected_rdkit_support = frozenset(
+                _smiles_from_direction_marker_slots(
+                    skeleton,
+                    _apply_residual_slot_transition(
+                        skeleton=skeleton,
+                        markers=_rdkit_ring_closure_marker_slots(skeleton, marker_slots),
+                        case=case,
+                    ),
+                )
+                for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
+            )
             residual_slot_transitions = tuple(
                 sorted(
                     (
@@ -849,6 +879,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     case.expected_ring_closure_marker_transform_outside_rdkit_count,
                     len(transformed_exact_support - rdkit_sampled_outputs),
                 )
+                self.assertEqual(rdkit_sampled_outputs, projected_rdkit_support)
                 self.assertEqual(
                     expected_residual_slot_transitions,
                     residual_slot_transitions,

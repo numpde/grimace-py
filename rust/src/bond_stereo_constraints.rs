@@ -73,12 +73,34 @@ pub(crate) struct StereoComponentConstraintModel {
     pub(crate) layer_assignments: Vec<StereoLayerAssignments>,
 }
 
+#[allow(dead_code)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum StereoTraversalRole {
+    TreeOrChain,
+    Branch,
+    RingOpen,
+    RingClose,
+    Deferred,
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StereoConstraintFact {
     CarrierSelected {
         side_idx: usize,
         neighbor_idx: usize,
+    },
+    CarrierEdgeEmitted {
+        side_idx: usize,
+        begin_idx: usize,
+        end_idx: usize,
+        role: StereoTraversalRole,
+    },
+    DirectionalMarkerPlaced {
+        side_idx: usize,
+        slot: usize,
+        marker: char,
+        role: StereoTraversalRole,
     },
 }
 
@@ -545,10 +567,42 @@ impl StereoConstraintModel {
 
         let mut selected_neighbors = BTreeMap::<usize, usize>::new();
         for fact in facts {
-            let StereoConstraintFact::CarrierSelected {
-                side_idx,
-                neighbor_idx,
-            } = *fact;
+            let (side_idx, selected_neighbor) = match *fact {
+                StereoConstraintFact::CarrierSelected {
+                    side_idx,
+                    neighbor_idx,
+                } => (side_idx, Some(neighbor_idx)),
+                StereoConstraintFact::CarrierEdgeEmitted {
+                    side_idx,
+                    begin_idx,
+                    end_idx,
+                    role: _,
+                } => {
+                    let Some(domain) = component
+                        .side_domains
+                        .iter()
+                        .find(|domain| domain.side_idx == side_idx)
+                    else {
+                        return false;
+                    };
+                    if begin_idx != domain.endpoint_atom_idx && end_idx != domain.endpoint_atom_idx
+                    {
+                        return false;
+                    }
+                    (side_idx, None)
+                }
+                StereoConstraintFact::DirectionalMarkerPlaced {
+                    side_idx,
+                    slot: _,
+                    marker,
+                    role: _,
+                } => {
+                    if marker != '/' && marker != '\\' {
+                        return false;
+                    }
+                    (side_idx, None)
+                }
+            };
             if self
                 .side_to_component
                 .get(side_idx)
@@ -564,18 +618,18 @@ impl StereoConstraintModel {
             else {
                 return false;
             };
-            if !domain
-                .choices
-                .iter()
-                .any(|choice| choice.neighbor_idx == neighbor_idx)
-            {
+            if !domain.choices.iter().any(|choice| {
+                selected_neighbor.is_none_or(|neighbor_idx| choice.neighbor_idx == neighbor_idx)
+            }) {
                 return false;
             }
-            if selected_neighbors
-                .insert(side_idx, neighbor_idx)
-                .is_some_and(|existing_neighbor_idx| existing_neighbor_idx != neighbor_idx)
-            {
-                return false;
+            if let Some(neighbor_idx) = selected_neighbor {
+                if selected_neighbors
+                    .insert(side_idx, neighbor_idx)
+                    .is_some_and(|existing_neighbor_idx| existing_neighbor_idx != neighbor_idx)
+                {
+                    return false;
+                }
             }
         }
 
@@ -999,7 +1053,7 @@ pub(crate) fn ambiguous_shared_edge_groups(
 mod tests {
     use super::{
         stereo_constraint_model, StereoConstraintFact, StereoConstraintLayer, StereoLocalHazard,
-        StereoSideInfo,
+        StereoSideInfo, StereoTraversalRole,
     };
 
     #[test]
@@ -1110,6 +1164,62 @@ mod tests {
                     neighbor_idx: 3,
                 },
             ],
+        ));
+    }
+
+    #[test]
+    fn constraint_model_accepts_traversal_writer_facts() {
+        let side_infos = vec![StereoSideInfo {
+            component_idx: 0,
+            endpoint_atom_idx: 1,
+            other_endpoint_atom_idx: 2,
+            candidate_neighbors: vec![0, 3],
+            candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+        }];
+        let model =
+            stereo_constraint_model(&side_infos, &[vec![0]], &[]).expect("model should build");
+
+        assert!(model.has_completion(
+            0,
+            StereoConstraintLayer::RdkitTraversalWriter,
+            &[
+                StereoConstraintFact::CarrierSelected {
+                    side_idx: 0,
+                    neighbor_idx: 3,
+                },
+                StereoConstraintFact::CarrierEdgeEmitted {
+                    side_idx: 0,
+                    begin_idx: 1,
+                    end_idx: 3,
+                    role: StereoTraversalRole::RingClose,
+                },
+                StereoConstraintFact::DirectionalMarkerPlaced {
+                    side_idx: 0,
+                    slot: 12,
+                    marker: '/',
+                    role: StereoTraversalRole::RingClose,
+                },
+            ],
+        ));
+        assert!(!model.has_completion(
+            0,
+            StereoConstraintLayer::RdkitTraversalWriter,
+            &[StereoConstraintFact::CarrierEdgeEmitted {
+                side_idx: 0,
+                begin_idx: 7,
+                end_idx: 8,
+                role: StereoTraversalRole::TreeOrChain,
+            }],
+        ));
+        assert!(!model.has_completion(
+            0,
+            StereoConstraintLayer::RdkitTraversalWriter,
+            &[StereoConstraintFact::DirectionalMarkerPlaced {
+                side_idx: 0,
+                slot: 12,
+                marker: '-',
+                role: StereoTraversalRole::TreeOrChain,
+            }],
         ));
     }
 

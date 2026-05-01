@@ -2684,6 +2684,61 @@ fn selected_neighbor_facts_to_py(
         .collect()
 }
 
+fn marker_trace_facts_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    selected_neighbors: &[isize],
+) -> PyResult<Vec<Py<PyDict>>> {
+    let mut rows = Vec::new();
+    for (component_idx, facts) in
+        marker_trace_facts_by_component(runtime, state, selected_neighbors)
+            .into_iter()
+            .enumerate()
+    {
+        for fact in facts {
+            let row = PyDict::new(py);
+            row.set_item("component_idx", component_idx)?;
+            match fact {
+                StereoConstraintFact::CarrierSelected {
+                    side_idx,
+                    neighbor_idx,
+                } => {
+                    row.set_item("fact", "carrier_selected")?;
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("neighbor_idx", neighbor_idx)?;
+                }
+                StereoConstraintFact::CarrierEdgeEmitted {
+                    side_idx,
+                    begin_idx,
+                    end_idx,
+                    role,
+                } => {
+                    row.set_item("fact", "carrier_edge_emitted")?;
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("begin_idx", begin_idx)?;
+                    row.set_item("end_idx", end_idx)?;
+                    row.set_item("role", stereo_traversal_role_name(role))?;
+                }
+                StereoConstraintFact::DirectionalMarkerPlaced {
+                    side_idx,
+                    slot,
+                    marker,
+                    role,
+                } => {
+                    row.set_item("fact", "directional_marker_placed")?;
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("slot", slot)?;
+                    row.set_item("marker", marker.to_string())?;
+                    row.set_item("role", stereo_traversal_role_name(role))?;
+                }
+            }
+            rows.push(row.unbind());
+        }
+    }
+    Ok(rows)
+}
+
 fn selected_neighbors_layer_completions_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -2694,6 +2749,22 @@ fn selected_neighbors_layer_completions_to_py(
         completions.set_item(
             stereo_constraint_layer_name(layer),
             selected_neighbors_have_constraint_completion(runtime, selected_neighbors, layer),
+        )?;
+    }
+    Ok(completions.unbind())
+}
+
+fn marker_trace_layer_completions_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    selected_neighbors: &[isize],
+) -> PyResult<Py<PyDict>> {
+    let completions = PyDict::new(py);
+    for layer in StereoConstraintLayer::ALL {
+        completions.set_item(
+            stereo_constraint_layer_name(layer),
+            marker_trace_has_constraint_completion(runtime, state, selected_neighbors, layer),
         )?;
     }
     Ok(completions.unbind())
@@ -2860,12 +2931,20 @@ fn stereo_output_fact_row_to_py(
         selected_neighbor_facts_to_py(py, runtime, &resolved_selected_neighbors)?,
     )?;
     row.set_item(
+        "traversal_facts",
+        marker_trace_facts_to_py(py, runtime, state, &resolved_selected_neighbors)?,
+    )?;
+    row.set_item(
         "raw_layer_completions",
         selected_neighbors_layer_completions_to_py(py, runtime, raw_selected_neighbors)?,
     )?;
     row.set_item(
         "resolved_layer_completions",
         selected_neighbors_layer_completions_to_py(py, runtime, &resolved_selected_neighbors)?,
+    )?;
+    row.set_item(
+        "traversal_layer_completions",
+        marker_trace_layer_completions_to_py(py, runtime, state, &resolved_selected_neighbors)?,
     )?;
     Ok(row.unbind())
 }
@@ -2968,12 +3047,58 @@ fn selected_neighbor_facts_by_component(
     facts_by_component
 }
 
+fn marker_trace_facts_by_component(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    selected_neighbors: &[isize],
+) -> Vec<Vec<StereoConstraintFact>> {
+    let mut facts_by_component = selected_neighbor_facts_by_component(runtime, selected_neighbors);
+    for trace in state.directional_marker_traces.iter() {
+        if trace.side_idx < 0 || trace.edge_begin_idx < 0 || trace.edge_end_idx < 0 {
+            continue;
+        }
+        let side_idx = trace.side_idx as usize;
+        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
+            continue;
+        };
+        facts_by_component[component_idx].push(StereoConstraintFact::CarrierEdgeEmitted {
+            side_idx,
+            begin_idx: trace.edge_begin_idx as usize,
+            end_idx: trace.edge_end_idx as usize,
+            role: trace.role,
+        });
+        facts_by_component[component_idx].push(StereoConstraintFact::DirectionalMarkerPlaced {
+            side_idx,
+            slot: trace.slot,
+            marker: trace.marker,
+            role: trace.role,
+        });
+    }
+    facts_by_component
+}
+
 fn selected_neighbors_have_constraint_completion(
     runtime: &StereoWalkerRuntimeData,
     selected_neighbors: &[isize],
     layer: StereoConstraintLayer,
 ) -> bool {
     selected_neighbor_facts_by_component(runtime, selected_neighbors)
+        .iter()
+        .enumerate()
+        .all(|(component_idx, facts)| {
+            runtime
+                .constraint_model
+                .has_completion(component_idx, layer, facts)
+        })
+}
+
+fn marker_trace_has_constraint_completion(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    selected_neighbors: &[isize],
+    layer: StereoConstraintLayer,
+) -> bool {
+    marker_trace_facts_by_component(runtime, state, selected_neighbors)
         .iter()
         .enumerate()
         .all(|(component_idx, facts)| {

@@ -461,6 +461,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(
             all(row["resolved_layer_completions"]["semantic"] for row in rows)
         )
+        self.assertTrue(
+            all(row["traversal_layer_completions"]["semantic"] for row in rows)
+        )
         self.assertEqual(
             {False, True},
             {
@@ -675,6 +678,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     row["directional_spelling"]["marker_slots"]
                 )
                 provenance = tuple(row["directional_marker_provenance"])
+                traversal_facts = tuple(row["traversal_facts"])
                 self.assertEqual(len(slots), len(provenance))
                 self.assertEqual(
                     _marker_slot_pairs(slots),
@@ -710,6 +714,24 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         }.get(marker["local_role"], "tree_or_chain")
                         for marker in provenance
                     )
+                )
+                self.assertEqual(
+                    len(row["resolved_facts"]) + 2 * len(provenance),
+                    len(traversal_facts),
+                )
+                self.assertEqual(
+                    len(provenance),
+                    sum(
+                        fact["fact"] == "carrier_edge_emitted"
+                        for fact in traversal_facts
+                    ),
+                )
+                self.assertEqual(
+                    len(provenance),
+                    sum(
+                        fact["fact"] == "directional_marker_placed"
+                        for fact in traversal_facts
+                    ),
                 )
                 current_marker_provenance_by_skeleton[skeleton] = {
                     int(marker["slot"]): marker for marker in provenance

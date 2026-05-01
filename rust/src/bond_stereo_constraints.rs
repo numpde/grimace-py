@@ -111,6 +111,11 @@ pub(crate) struct StereoConstraintModel {
     side_to_component: Vec<Option<usize>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoAssignmentState {
+    pub(crate) remaining_by_component: Vec<Vec<usize>>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AmbiguousSharedEdgeGroup {
     pub(crate) left_side_idx: usize,
@@ -728,6 +733,49 @@ impl StereoConstraintModel {
     }
 }
 
+impl StereoAssignmentState {
+    pub(crate) fn from_model(model: &StereoConstraintModel, layer: StereoConstraintLayer) -> Self {
+        Self::from_facts_by_component(model, layer, &[])
+    }
+
+    pub(crate) fn from_facts_by_component(
+        model: &StereoConstraintModel,
+        layer: StereoConstraintLayer,
+        facts_by_component: &[Vec<StereoConstraintFact>],
+    ) -> Self {
+        let empty_facts = Vec::new();
+        let remaining_by_component = model
+            .components
+            .iter()
+            .map(|component| {
+                let facts = facts_by_component
+                    .get(component.component_idx)
+                    .unwrap_or(&empty_facts);
+                model.remaining_assignment_ids(component.component_idx, layer, facts)
+            })
+            .collect();
+        Self {
+            remaining_by_component,
+        }
+    }
+
+    pub(crate) fn is_empty(&self, component_idx: usize) -> bool {
+        self.remaining_by_component
+            .get(component_idx)
+            .is_none_or(Vec::is_empty)
+    }
+
+    pub(crate) fn forced_neighbor(
+        &self,
+        model: &StereoConstraintModel,
+        component_idx: usize,
+        side_idx: usize,
+    ) -> Option<usize> {
+        let assignment_ids = self.remaining_by_component.get(component_idx)?;
+        model.forced_neighbor_for_assignment_ids(component_idx, side_idx, assignment_ids)
+    }
+}
+
 // Suspicious current model:
 // This precomputes component-wide carrier-token phases before the online
 // traversal has established visit order, ring-closure status, and selected
@@ -1255,6 +1303,46 @@ mod tests {
                 },
             ],
         ));
+    }
+
+    #[test]
+    fn assignment_state_tracks_remaining_ids_and_forced_neighbors() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 1,
+                other_endpoint_atom_idx: 2,
+                candidate_neighbors: vec![0, 3],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![4, 5],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+        ];
+        let model =
+            stereo_constraint_model(&side_infos, &[vec![0, 1]], &[]).expect("model should build");
+        let unconstrained =
+            super::StereoAssignmentState::from_model(&model, StereoConstraintLayer::Semantic);
+        assert_eq!(vec![vec![0, 1, 2, 3]], unconstrained.remaining_by_component);
+        assert_eq!(None, unconstrained.forced_neighbor(&model, 0, 0));
+
+        let facts_by_component = vec![vec![StereoConstraintFact::CarrierSelected {
+            side_idx: 0,
+            neighbor_idx: 3,
+        }]];
+        let constrained = super::StereoAssignmentState::from_facts_by_component(
+            &model,
+            StereoConstraintLayer::Semantic,
+            &facts_by_component,
+        );
+        assert_eq!(vec![vec![2, 3]], constrained.remaining_by_component);
+        assert_eq!(false, constrained.is_empty(0));
+        assert_eq!(Some(3), constrained.forced_neighbor(&model, 0, 0));
+        assert_eq!(None, constrained.forced_neighbor(&model, 0, 1));
     }
 
     #[test]

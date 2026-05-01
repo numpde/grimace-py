@@ -11,9 +11,9 @@ use rustc_hash::FxHashMap;
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
-    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoConstraintFact,
-    StereoConstraintLayer, StereoConstraintModel, StereoSideInfo, StereoSideInfoBuild,
-    StereoTraversalRole, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
+    StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel, StereoSideInfo,
+    StereoSideInfoBuild, StereoTraversalRole, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2776,32 +2776,32 @@ fn assignment_state_to_py(
     facts_by_component: &[Vec<StereoConstraintFact>],
 ) -> PyResult<Py<PyDict>> {
     let state_by_layer = PyDict::new(py);
-    let empty_facts = Vec::new();
     for layer in StereoConstraintLayer::ALL {
+        let assignment_state = StereoAssignmentState::from_facts_by_component(
+            &runtime.constraint_model,
+            layer,
+            facts_by_component,
+        );
         let components = runtime
             .constraint_model
             .components
             .iter()
             .map(|component| {
                 let component_idx = component.component_idx;
-                let facts = facts_by_component
+                let remaining_assignment_ids = assignment_state
+                    .remaining_by_component
                     .get(component_idx)
-                    .unwrap_or(&empty_facts);
-                let remaining_assignment_ids =
-                    runtime
-                        .constraint_model
-                        .remaining_assignment_ids(component_idx, layer, facts);
+                    .cloned()
+                    .unwrap_or_default();
                 let forced_neighbors = component
                     .side_ids
                     .iter()
                     .filter_map(|&side_idx| {
-                        let neighbor_idx = runtime
-                            .constraint_model
-                            .forced_neighbor_for_assignment_ids(
-                                component_idx,
-                                side_idx,
-                                &remaining_assignment_ids,
-                            )?;
+                        let neighbor_idx = assignment_state.forced_neighbor(
+                            &runtime.constraint_model,
+                            component_idx,
+                            side_idx,
+                        )?;
                         Some((side_idx, neighbor_idx))
                     })
                     .map(|(side_idx, neighbor_idx)| {

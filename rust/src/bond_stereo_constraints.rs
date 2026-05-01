@@ -759,6 +759,30 @@ impl StereoAssignmentState {
         }
     }
 
+    pub(crate) fn filter_facts_by_component(
+        &self,
+        model: &StereoConstraintModel,
+        layer: StereoConstraintLayer,
+        facts_by_component: &[Vec<StereoConstraintFact>],
+    ) -> Self {
+        let filtered = Self::from_facts_by_component(model, layer, facts_by_component);
+        let remaining_by_component = self
+            .remaining_by_component
+            .iter()
+            .zip(filtered.remaining_by_component.iter())
+            .map(|(current_ids, filtered_ids)| {
+                current_ids
+                    .iter()
+                    .copied()
+                    .filter(|assignment_id| filtered_ids.contains(assignment_id))
+                    .collect()
+            })
+            .collect();
+        Self {
+            remaining_by_component,
+        }
+    }
+
     pub(crate) fn is_empty(&self, component_idx: usize) -> bool {
         self.remaining_by_component
             .get(component_idx)
@@ -1343,6 +1367,28 @@ mod tests {
         assert_eq!(false, constrained.is_empty(0));
         assert_eq!(Some(3), constrained.forced_neighbor(&model, 0, 0));
         assert_eq!(None, constrained.forced_neighbor(&model, 0, 1));
+
+        let narrowed_again = constrained.filter_facts_by_component(
+            &model,
+            StereoConstraintLayer::Semantic,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 1,
+                neighbor_idx: 5,
+            }]],
+        );
+        assert_eq!(vec![vec![3]], narrowed_again.remaining_by_component);
+        assert_eq!(Some(3), narrowed_again.forced_neighbor(&model, 0, 0));
+        assert_eq!(Some(5), narrowed_again.forced_neighbor(&model, 0, 1));
+
+        let contradictory = constrained.filter_facts_by_component(
+            &model,
+            StereoConstraintLayer::Semantic,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 0,
+            }]],
+        );
+        assert!(contradictory.is_empty(0));
     }
 
     #[test]

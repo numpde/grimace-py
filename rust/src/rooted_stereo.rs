@@ -2554,6 +2554,24 @@ fn stereo_constraint_layer_name(layer: StereoConstraintLayer) -> &'static str {
     }
 }
 
+fn component_phase_name(value: i8) -> &'static str {
+    match value {
+        UNKNOWN_COMPONENT_PHASE => "unknown",
+        STORED_COMPONENT_PHASE => "stored",
+        FLIPPED_COMPONENT_PHASE => "flipped",
+        _ => "invalid",
+    }
+}
+
+fn component_token_flip_name(value: i8) -> &'static str {
+    match value {
+        UNKNOWN_COMPONENT_TOKEN_FLIP => "unknown",
+        STORED_COMPONENT_TOKEN_FLIP => "stored",
+        FLIPPED_COMPONENT_TOKEN_FLIP => "flipped",
+        _ => "invalid",
+    }
+}
+
 #[pyfunction(name = "_stereo_constraint_model_summary")]
 pub fn internal_stereo_constraint_model_summary(
     py: Python<'_>,
@@ -2921,6 +2939,111 @@ fn shared_carrier_resolution_to_py(
         .collect()
 }
 
+fn component_token_phase_diagnostics_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+    assignment_state: &StereoAssignmentState,
+) -> PyResult<Vec<Py<PyDict>>> {
+    (0..runtime.isolated_components.len())
+        .map(|component_idx| {
+            let side_ids = &runtime.side_ids_by_component[component_idx];
+            let selected_side_count = side_ids
+                .iter()
+                .filter(|&&side_idx| resolved_selected_neighbors[side_idx] >= 0)
+                .count();
+            let mut model_component_idx = None;
+            let mut model_component_is_consistent = true;
+            for &side_idx in side_ids {
+                let Some(current_component_idx) =
+                    runtime.constraint_model.component_for_side(side_idx)
+                else {
+                    model_component_is_consistent = false;
+                    break;
+                };
+                match model_component_idx {
+                    None => model_component_idx = Some(current_component_idx),
+                    Some(existing_component_idx)
+                        if existing_component_idx == current_component_idx => {}
+                    Some(_) => {
+                        model_component_is_consistent = false;
+                        break;
+                    }
+                }
+            }
+            if !model_component_is_consistent {
+                model_component_idx = None;
+            }
+            let remaining_assignment_count = assignment_state
+                .remaining_by_component
+                .get(model_component_idx.unwrap_or(usize::MAX))
+                .map(Vec::len)
+                .unwrap_or(0);
+            let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;
+            let state_token_flip = state.stereo_component_token_flips[component_idx];
+            let state_known = state_token_flip != UNKNOWN_COMPONENT_TOKEN_FLIP;
+            let inferred_matches_state =
+                inferred.is_none_or(|inferred| !state_known || inferred == state_token_flip);
+            let adjustment = rdkit_component_token_flip_adjustment(
+                runtime,
+                state,
+                resolved_selected_neighbors,
+                component_idx,
+            );
+
+            let row = PyDict::new(py);
+            row.set_item("component_idx", component_idx)?;
+            row.set_item("model_component_idx", model_component_idx)?;
+            row.set_item(
+                "model_component_is_consistent",
+                model_component_is_consistent,
+            )?;
+            row.set_item("side_ids", side_ids.clone())?;
+            row.set_item("side_count", side_ids.len())?;
+            row.set_item("selected_side_count", selected_side_count)?;
+            row.set_item("is_isolated", runtime.isolated_components[component_idx])?;
+            row.set_item(
+                "component_phase",
+                component_phase_name(state.stereo_component_phases[component_idx]),
+            )?;
+            row.set_item(
+                "component_phase_value",
+                state.stereo_component_phases[component_idx],
+            )?;
+            row.set_item(
+                "component_begin_atom_idx",
+                state.stereo_component_begin_atoms[component_idx],
+            )?;
+            row.set_item("rdkit_token_flip_adjustment", adjustment)?;
+            row.set_item(
+                "state_token_flip",
+                component_token_flip_name(state_token_flip),
+            )?;
+            row.set_item("state_token_flip_value", state_token_flip)?;
+            row.set_item(
+                "inferred_token_flip",
+                inferred.map(component_token_flip_name),
+            )?;
+            row.set_item("inferred_token_flip_value", inferred)?;
+            row.set_item("inferred_matches_state", inferred_matches_state)?;
+            row.set_item("remaining_assignment_count", remaining_assignment_count)?;
+            row.set_item(
+                "carrier_assignment_singleton",
+                remaining_assignment_count == 1,
+            )?;
+            row.set_item(
+                "needs_token_phase_assignment_dimension",
+                inferred.is_some()
+                    && model_component_idx.is_some()
+                    && remaining_assignment_count == 1,
+            )?;
+            Ok(row.unbind())
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DirectionalMarkerSlot {
     slot: usize,
@@ -3248,6 +3371,11 @@ fn stereo_output_fact_row_to_py(
         StereoConstraintLayer::Semantic,
         &raw_facts_by_component,
     );
+    let resolved_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
+        &runtime.constraint_model,
+        StereoConstraintLayer::Semantic,
+        &resolved_facts_by_component,
+    );
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3313,6 +3441,17 @@ fn stereo_output_fact_row_to_py(
             raw_selected_neighbors,
             &resolved_selected_neighbors,
             &raw_semantic_assignment_state,
+        )?,
+    )?;
+    row.set_item(
+        "component_token_phase",
+        component_token_phase_diagnostics_to_py(
+            py,
+            runtime,
+            graph,
+            state,
+            &resolved_selected_neighbors,
+            &resolved_semantic_assignment_state,
         )?,
     )?;
     Ok(row.unbind())

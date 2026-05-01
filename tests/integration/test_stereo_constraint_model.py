@@ -532,6 +532,83 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             )
         )
+        self.assertEqual(
+            {0, 1},
+            {
+                component["component_idx"]
+                for row in rows
+                for component in row["component_token_phase"]
+            },
+        )
+        self.assertEqual(
+            {0},
+            {
+                component["model_component_idx"]
+                for row in rows
+                for component in row["component_token_phase"]
+            },
+        )
+        self.assertTrue(
+            all(
+                component["model_component_is_consistent"]
+                for row in rows
+                for component in row["component_token_phase"]
+            )
+        )
+        self.assertTrue(
+            all(
+                component["carrier_assignment_singleton"]
+                for row in rows
+                for component in row["component_token_phase"]
+            )
+        )
+
+    def test_component_token_phase_is_separate_from_carrier_assignment(self) -> None:
+        saw_stored_token_flip = False
+        saw_flipped_token_flip = False
+        saw_rdkit_token_flip_adjustment = False
+        saw_phase_dimension_needed = False
+
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertTrue(rows)
+                for row in rows:
+                    self.assertTrue(row["component_token_phase"])
+                    for component in row["component_token_phase"]:
+                        self.assertTrue(component["model_component_is_consistent"])
+                        self.assertIsNotNone(component["model_component_idx"])
+                        self.assertGreater(component["remaining_assignment_count"], 0)
+                        self.assertTrue(component["inferred_matches_state"])
+                        self.assertIsNotNone(component["inferred_token_flip"])
+                        self.assertEqual(
+                            component["state_token_flip"],
+                            component["inferred_token_flip"],
+                        )
+                        self.assertEqual(
+                            component["needs_token_phase_assignment_dimension"],
+                            component["carrier_assignment_singleton"],
+                        )
+                        saw_stored_token_flip |= (
+                            component["inferred_token_flip"] == "stored"
+                        )
+                        saw_flipped_token_flip |= (
+                            component["inferred_token_flip"] == "flipped"
+                        )
+                        saw_rdkit_token_flip_adjustment |= component[
+                            "rdkit_token_flip_adjustment"
+                        ]
+                        saw_phase_dimension_needed |= component[
+                            "needs_token_phase_assignment_dimension"
+                        ]
+
+        self.assertTrue(saw_stored_token_flip)
+        self.assertTrue(saw_flipped_token_flip)
+        self.assertTrue(saw_rdkit_token_flip_adjustment)
+        self.assertTrue(saw_phase_dimension_needed)
 
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(

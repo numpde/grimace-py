@@ -2684,7 +2684,7 @@ fn selected_neighbor_facts_to_py(
         .collect()
 }
 
-fn marker_trace_facts_to_py(
+fn traversal_constraint_facts_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -2692,7 +2692,7 @@ fn marker_trace_facts_to_py(
 ) -> PyResult<Vec<Py<PyDict>>> {
     let mut rows = Vec::new();
     for (component_idx, facts) in
-        marker_trace_facts_by_component(runtime, state, selected_neighbors)
+        traversal_constraint_facts_by_component(runtime, state, selected_neighbors)
             .into_iter()
             .enumerate()
     {
@@ -2754,7 +2754,7 @@ fn selected_neighbors_layer_completions_to_py(
     Ok(completions.unbind())
 }
 
-fn marker_trace_layer_completions_to_py(
+fn traversal_constraint_layer_completions_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -2764,7 +2764,7 @@ fn marker_trace_layer_completions_to_py(
     for layer in StereoConstraintLayer::ALL {
         completions.set_item(
             stereo_constraint_layer_name(layer),
-            marker_trace_has_constraint_completion(runtime, state, selected_neighbors, layer),
+            traversal_constraint_has_completion(runtime, state, selected_neighbors, layer),
         )?;
     }
     Ok(completions.unbind())
@@ -2932,7 +2932,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "traversal_facts",
-        marker_trace_facts_to_py(py, runtime, state, &resolved_selected_neighbors)?,
+        traversal_constraint_facts_to_py(py, runtime, state, &resolved_selected_neighbors)?,
     )?;
     row.set_item(
         "raw_layer_completions",
@@ -2944,7 +2944,12 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "traversal_layer_completions",
-        marker_trace_layer_completions_to_py(py, runtime, state, &resolved_selected_neighbors)?,
+        traversal_constraint_layer_completions_to_py(
+            py,
+            runtime,
+            state,
+            &resolved_selected_neighbors,
+        )?,
     )?;
     Ok(row.unbind())
 }
@@ -3047,7 +3052,7 @@ fn selected_neighbor_facts_by_component(
     facts_by_component
 }
 
-fn marker_trace_facts_by_component(
+fn traversal_constraint_facts_by_component(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     selected_neighbors: &[isize],
@@ -3092,13 +3097,13 @@ fn selected_neighbors_have_constraint_completion(
         })
 }
 
-fn marker_trace_has_constraint_completion(
+fn traversal_constraint_has_completion(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     selected_neighbors: &[isize],
     layer: StereoConstraintLayer,
 ) -> bool {
-    marker_trace_facts_by_component(runtime, state, selected_neighbors)
+    traversal_constraint_facts_by_component(runtime, state, selected_neighbors)
         .iter()
         .enumerate()
         .all(|(component_idx, facts)| {
@@ -5787,11 +5792,16 @@ mod tests {
     use super::{
         advance_stereo_choice_state, advance_stereo_token_state, build_walker_runtime,
         check_supported_stereo_writer_surface, choices_for_stereo_state,
-        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
-        initial_stereo_state_for_root, is_terminal_stereo_state,
-        next_token_support_for_stereo_state, validate_root_idx, validate_stereo_state_shape,
+        drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
+        enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
+        initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
+        next_token_support_for_stereo_state, resolved_selected_neighbors,
+        successors_by_token_stereo_raw, traversal_constraint_facts_by_component,
+        traversal_constraint_has_completion, validate_root_idx, validate_stereo_state_shape,
     };
-    use crate::bond_stereo_constraints::{StereoConstraintFact, StereoConstraintLayer};
+    use crate::bond_stereo_constraints::{
+        StereoConstraintFact, StereoConstraintLayer, StereoTraversalRole,
+    };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
@@ -5834,6 +5844,29 @@ mod tests {
             }
         }
         observed
+    }
+
+    fn terminal_stereo_states(
+        runtime: &super::StereoWalkerRuntimeData,
+        graph: &PreparedSmilesGraphData,
+        mut state: super::RootedConnectedStereoWalkerStateData,
+        out: &mut Vec<super::RootedConnectedStereoWalkerStateData>,
+    ) {
+        drain_exact_linear_stereo_actions(&mut state);
+        if state.action_stack.is_empty() {
+            if is_complete_terminal_stereo_state(graph, &state) {
+                out.push(state);
+            }
+            return;
+        }
+
+        let successors = flatten_exact_stereo_successor_groups(
+            successors_by_token_stereo_raw(runtime, graph, &state)
+                .expect("successors should enumerate"),
+        );
+        for successor in successors {
+            terminal_stereo_states(runtime, graph, successor, out);
+        }
     }
 
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
@@ -6063,6 +6096,77 @@ mod tests {
                 neighbor_idx: side_info.candidate_neighbors[0],
             }],
         ));
+    }
+
+    #[test]
+    fn traversal_constraint_facts_include_marker_emissions() {
+        let graph = sample_stereo_graph();
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let mut states = Vec::new();
+        terminal_stereo_states(&runtime, &graph, initial_state, &mut states);
+
+        assert_eq!(1, states.len());
+        let state = &states[0];
+        assert_eq!("F/[CH]=[CH]\\Cl", state.prefix.as_ref());
+
+        let selected_neighbors = resolved_selected_neighbors(&runtime, state);
+        let facts_by_component =
+            traversal_constraint_facts_by_component(&runtime, state, &selected_neighbors);
+        let facts = &facts_by_component[0];
+
+        assert_eq!(
+            2,
+            facts
+                .iter()
+                .filter(|fact| matches!(fact, StereoConstraintFact::DirectionalMarkerPlaced { .. }))
+                .count()
+        );
+        assert!(facts.iter().any(|fact| matches!(
+            fact,
+            StereoConstraintFact::CarrierEdgeEmitted {
+                side_idx: 0,
+                begin_idx: 0,
+                end_idx: 1,
+                role: StereoTraversalRole::TreeOrChain,
+            }
+        )));
+        assert!(traversal_constraint_has_completion(
+            &runtime,
+            state,
+            &selected_neighbors,
+            StereoConstraintLayer::RdkitTraversalWriter,
+        ));
+    }
+
+    #[test]
+    fn traversal_constraint_facts_classify_minimal_witness() {
+        let Some(graph) = prepared_graph_from_smiles("C/N=C1C=C/C(=N/C)[N-]/1") else {
+            return;
+        };
+        let mut accepted = 0usize;
+        let mut rejected = 0usize;
+
+        for root_idx in 0..graph.atom_count {
+            let (runtime, initial_state) = stereo_runtime_and_state(&graph, root_idx);
+            let mut states = Vec::new();
+            terminal_stereo_states(&runtime, &graph, initial_state, &mut states);
+            for state in states {
+                let selected_neighbors = resolved_selected_neighbors(&runtime, &state);
+                if traversal_constraint_has_completion(
+                    &runtime,
+                    &state,
+                    &selected_neighbors,
+                    StereoConstraintLayer::RdkitTraversalWriter,
+                ) {
+                    accepted += 1;
+                } else {
+                    rejected += 1;
+                }
+            }
+        }
+
+        assert_eq!(36, accepted);
+        assert_eq!(20, rejected);
     }
 
     #[test]

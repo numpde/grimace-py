@@ -663,6 +663,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             }
             current_marker_slots_by_skeleton = {}
+            projected_marker_slots_by_skeleton = {}
             current_marker_contexts_by_skeleton = {}
             current_marker_provenance_by_skeleton = {}
             for row in rows:
@@ -733,6 +734,24 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         for fact in traversal_facts
                     ),
                 )
+                projection = row["ring_closure_marker_projection"]
+                projected_slots = tuple(
+                    _DirectionMarkerSlot(
+                        slot=int(marker["slot"]),
+                        marker=str(marker["marker"]),
+                    )
+                    for marker in projection["marker_slots"]
+                )
+                self.assertEqual(skeleton, projection["direction_erased_skeleton"])
+                self.assertEqual(
+                    _rdkit_ring_closure_marker_slots(skeleton, slots),
+                    projected_slots,
+                )
+                self.assertEqual(
+                    projection["smiles"],
+                    _smiles_from_direction_marker_slots(skeleton, projected_slots),
+                )
+                projected_marker_slots_by_skeleton[skeleton] = projected_slots
                 current_marker_provenance_by_skeleton[skeleton] = {
                     int(marker["slot"]): marker for marker in provenance
                 }
@@ -778,12 +797,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             )
             transformed_marker_sequences_by_skeleton = {
                 skeleton: _ordered_markers_from_slots(
-                    _rdkit_ring_closure_marker_slots(
-                        skeleton,
-                        marker_slots,
-                    )
+                    projected_marker_slots_by_skeleton[skeleton]
                 )
-                for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
+                for skeleton in current_marker_slots_by_skeleton
             }
             transformed_skeletons = frozenset(
                 skeleton
@@ -797,21 +813,19 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             transformed_exact_support = frozenset(
                 _smiles_from_direction_marker_slots(
                     skeleton,
-                    _rdkit_ring_closure_marker_slots(skeleton, marker_slots),
+                    projected_marker_slots_by_skeleton[skeleton],
                 )
-                for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
+                for skeleton in current_marker_slots_by_skeleton
             )
             residual_slot_transitions = tuple(
                 sorted(
                     (
                         skeleton,
-                        _marker_slot_pairs(
-                            _rdkit_ring_closure_marker_slots(skeleton, marker_slots)
-                        ),
+                        _marker_slot_pairs(projected_marker_slots_by_skeleton[skeleton]),
                         _marker_slot_pairs(rdkit_marker_slots_by_skeleton[skeleton]),
                     )
-                    for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
-                    if _rdkit_ring_closure_marker_slots(skeleton, marker_slots)
+                    for skeleton in current_marker_slots_by_skeleton
+                    if projected_marker_slots_by_skeleton[skeleton]
                     != rdkit_marker_slots_by_skeleton[skeleton]
                 )
             )
@@ -828,11 +842,11 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     skeleton,
                     _apply_residual_slot_transition(
                         skeleton=skeleton,
-                        markers=_rdkit_ring_closure_marker_slots(skeleton, marker_slots),
+                        markers=projected_marker_slots_by_skeleton[skeleton],
                         residual_slot_transition_map=residual_slot_transition_map,
                     ),
                 )
-                for skeleton, marker_slots in current_marker_slots_by_skeleton.items()
+                for skeleton in current_marker_slots_by_skeleton
             )
             residual_context_counts = Counter()
             residual_provenance_classes = Counter()

@@ -2770,6 +2770,182 @@ fn traversal_constraint_layer_completions_to_py(
     Ok(completions.unbind())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DirectionalMarkerSlot {
+    slot: usize,
+    marker: char,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RingLabelSpan {
+    label: String,
+    start_slot: usize,
+    end_slot: usize,
+}
+
+fn direction_marker_slots(smiles: &str) -> (String, Vec<DirectionalMarkerSlot>) {
+    let mut skeleton = String::with_capacity(smiles.len());
+    let mut markers = Vec::new();
+    for ch in smiles.chars() {
+        if ch == '/' || ch == '\\' {
+            markers.push(DirectionalMarkerSlot {
+                slot: skeleton.chars().count(),
+                marker: ch,
+            });
+        } else {
+            skeleton.push(ch);
+        }
+    }
+    (skeleton, markers)
+}
+
+fn ring_label_spans(skeleton: &str) -> Vec<RingLabelSpan> {
+    let chars = skeleton.chars().collect::<Vec<_>>();
+    let mut spans = Vec::new();
+    let mut idx = 0usize;
+    while idx < chars.len() {
+        let ch = chars[idx];
+        if ch.is_ascii_digit() {
+            spans.push(RingLabelSpan {
+                label: ch.to_string(),
+                start_slot: idx,
+                end_slot: idx + 1,
+            });
+            idx += 1;
+            continue;
+        }
+        if ch == '%'
+            && idx + 2 < chars.len()
+            && chars[idx + 1].is_ascii_digit()
+            && chars[idx + 2].is_ascii_digit()
+        {
+            spans.push(RingLabelSpan {
+                label: chars[idx..idx + 3].iter().collect(),
+                start_slot: idx,
+                end_slot: idx + 3,
+            });
+            idx += 3;
+            continue;
+        }
+        idx += 1;
+    }
+    spans
+}
+
+fn smiles_from_direction_marker_slots(skeleton: &str, markers: &[DirectionalMarkerSlot]) -> String {
+    let mut markers_by_slot = BTreeMap::<usize, Vec<char>>::new();
+    for marker in markers {
+        markers_by_slot
+            .entry(marker.slot)
+            .or_default()
+            .push(marker.marker);
+    }
+
+    let chars = skeleton.chars().collect::<Vec<_>>();
+    let mut out = String::with_capacity(skeleton.len() + markers.len());
+    for slot in 0..=chars.len() {
+        for marker in markers_by_slot.get(&slot).into_iter().flatten() {
+            out.push(*marker);
+        }
+        if let Some(ch) = chars.get(slot) {
+            out.push(*ch);
+        }
+    }
+    out
+}
+
+fn rdkit_ring_closure_projected_marker_slots(
+    state: &RootedConnectedStereoWalkerStateData,
+) -> (String, Vec<DirectionalMarkerSlot>) {
+    let (skeleton, markers) = direction_marker_slots(state.prefix.as_ref());
+    let markers_by_slot = markers
+        .iter()
+        .map(|marker| (marker.slot, marker.marker))
+        .collect::<BTreeMap<_, _>>();
+    let trace_roles_by_slot = state
+        .directional_marker_traces
+        .iter()
+        .map(|trace| (trace.slot, trace.role))
+        .collect::<BTreeMap<_, _>>();
+    let skeleton_chars = skeleton.chars().collect::<Vec<_>>();
+    let mut moved_slots = BTreeSet::<usize>::new();
+    let mut rewritten = Vec::<DirectionalMarkerSlot>::new();
+    let mut spans_by_label = BTreeMap::<String, Vec<RingLabelSpan>>::new();
+    for span in ring_label_spans(&skeleton) {
+        spans_by_label
+            .entry(span.label.clone())
+            .or_default()
+            .push(span);
+    }
+
+    for spans in spans_by_label.values() {
+        for pair in spans.windows(2) {
+            let left = &pair[0];
+            let right = &pair[1];
+            let Some(&marker) = markers_by_slot.get(&left.end_slot) else {
+                continue;
+            };
+            if trace_roles_by_slot.get(&left.end_slot) != Some(&StereoTraversalRole::RingOpen) {
+                continue;
+            }
+            let closure_is_bracket_atom = right
+                .start_slot
+                .checked_sub(1)
+                .and_then(|slot| skeleton_chars.get(slot))
+                == Some(&']');
+            if !closure_is_bracket_atom || markers_by_slot.contains_key(&right.start_slot) {
+                continue;
+            }
+            moved_slots.insert(left.end_slot);
+            rewritten.push(DirectionalMarkerSlot {
+                slot: right.start_slot,
+                marker,
+            });
+        }
+    }
+
+    rewritten.extend(
+        markers
+            .into_iter()
+            .filter(|marker| !moved_slots.contains(&marker.slot)),
+    );
+    rewritten.sort_by_key(|marker| marker.slot);
+    (skeleton, rewritten)
+}
+
+fn directional_marker_slots_to_py(
+    py: Python<'_>,
+    markers: &[DirectionalMarkerSlot],
+) -> PyResult<Vec<Py<PyDict>>> {
+    markers
+        .iter()
+        .map(|marker| {
+            let row = PyDict::new(py);
+            row.set_item("slot", marker.slot)?;
+            row.set_item("marker", marker.marker.to_string())?;
+            Ok(row.unbind())
+        })
+        .collect()
+}
+
+fn ring_closure_marker_projection_to_py(
+    py: Python<'_>,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Py<PyDict>> {
+    let (skeleton, marker_slots) = rdkit_ring_closure_projected_marker_slots(state);
+    let projection = PyDict::new(py);
+    projection.set_item("direction_erased_skeleton", &skeleton)?;
+    projection.set_item(
+        "marker_slots",
+        directional_marker_slots_to_py(py, &marker_slots)?,
+    )?;
+    projection.set_item(
+        "smiles",
+        smiles_from_direction_marker_slots(&skeleton, &marker_slots),
+    )?;
+    Ok(projection.unbind())
+}
+
 fn directional_spelling_summary_to_py(py: Python<'_>, smiles: &str) -> PyResult<Py<PyDict>> {
     let mut total_count = 0usize;
     let mut ring_digit_adjacent_count = 0usize;
@@ -2921,6 +3097,10 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "directional_marker_provenance",
         directional_marker_provenance_to_py(py, graph, runtime, state)?,
+    )?;
+    row.set_item(
+        "ring_closure_marker_projection",
+        ring_closure_marker_projection_to_py(py, state)?,
     )?;
     row.set_item(
         "raw_facts",
@@ -5795,7 +5975,8 @@ mod tests {
         drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
         enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
         initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
-        next_token_support_for_stereo_state, resolved_selected_neighbors,
+        next_token_support_for_stereo_state, rdkit_ring_closure_projected_marker_slots,
+        resolved_selected_neighbors, smiles_from_direction_marker_slots,
         successors_by_token_stereo_raw, traversal_constraint_facts_by_component,
         traversal_constraint_has_completion, validate_root_idx, validate_stereo_state_shape,
     };
@@ -6167,6 +6348,32 @@ mod tests {
 
         assert_eq!(36, accepted);
         assert_eq!(20, rejected);
+    }
+
+    #[test]
+    fn ring_closure_projection_moves_minimal_witness_marker() {
+        let Some(graph) = prepared_graph_from_smiles("C/N=C1C=C/C(=N/C)[N-]/1") else {
+            return;
+        };
+
+        for root_idx in 0..graph.atom_count {
+            let (runtime, initial_state) = stereo_runtime_and_state(&graph, root_idx);
+            let mut states = Vec::new();
+            terminal_stereo_states(&runtime, &graph, initial_state, &mut states);
+            for state in states {
+                if state.prefix.as_ref() != "C/N=C1/C=C/C(=N/C)[N-]1" {
+                    continue;
+                }
+                let (skeleton, projected_slots) = rdkit_ring_closure_projected_marker_slots(&state);
+                assert_eq!(
+                    "C/N=C1C=C/C(=N/C)[N-]/1",
+                    smiles_from_direction_marker_slots(&skeleton, &projected_slots),
+                );
+                return;
+            }
+        }
+
+        panic!("minimal witness state with ring-open marker was not enumerated");
     }
 
     #[test]

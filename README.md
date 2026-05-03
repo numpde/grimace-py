@@ -409,6 +409,24 @@ SMILES/chemistry semantics layer. RDKit-specific traversal and directional-bond
 placement rules belong to the writer-parity layer, not the generic semantic
 layer.
 
+Known stereo writer-parity work in progress:
+
+- `minimal_nonstereo_double_hazard`
+  (`C/N=C1C=C/C(=N/C)[N-]/1`) currently has the same direction-erased
+  skeleton support as RDKit, but some slash/backslash markers are placed in
+  different writer positions.
+- `reduced_porphyrin_traversal_coupling` currently exercises a larger
+  traversal-coupling gap where RDKit's writer policy narrows the traversal
+  assignment support beyond the semantic carrier choices.
+- A separate RDKit-known quirk,
+  `dative_carbonyl_stereo_annotation_drops_on_smiles_roundtrip`, is tracked as
+  observed RDKit behavior rather than a generic SMILES semantics rule.
+
+This work is active on the `stereo-constraint-model` branch and is not yet in
+the released mainline runtime. The goal is exact RDKit writer support for the
+documented runtime subset, without mixing RDKit-specific spelling quirks into
+the generic semantic layer.
+
 Current public runtime contract:
 
 - `canonical=False`

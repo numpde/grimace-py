@@ -72,3 +72,21 @@ After the state boundary exists:
 4. Add marker obligations as first-class online facts.
 5. Collapse old walker stereo fields once all decisions are explained by the
    state.
+
+## Progress
+
+Implemented so far:
+
+- `StereoConstraintState` combines carrier assignment state and token-phase
+  assignment state.
+- Token-flip facts are typed and validated strictly.
+- Diagnostics expose `resolved_constraint_state`.
+- `normalize_component_token_flips` now checks, in shadow mode, that known
+  token flips are forced by the fact-log state before falling back to the old
+  procedural validation.
+
+Next target:
+
+- Move deferred-token support itself onto `StereoConstraintState`: when a
+  deferred token is queried, compute available token flips from the remaining
+  token-phase assignments instead of calling old token inference directly.

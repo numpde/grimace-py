@@ -2893,6 +2893,94 @@ fn token_flip_facts_from_state(
     Ok(facts)
 }
 
+fn known_or_inferred_token_flip_facts_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<StereoTokenFlipFact>> {
+    let mut facts = Vec::new();
+    for component_idx in 0..runtime.isolated_components.len() {
+        let known = model_token_flip_from_component_value(
+            state.stereo_component_token_flips[component_idx],
+        );
+        let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?
+            .and_then(model_token_flip_from_component_value);
+        let Some(token_flip) = known.or(inferred) else {
+            continue;
+        };
+        facts.push(StereoTokenFlipFact {
+            runtime_component_idx: component_idx,
+            token_flip,
+        });
+    }
+    Ok(facts)
+}
+
+fn resolved_constraint_state_from_walker_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    layer: StereoConstraintLayer,
+) -> PyResult<StereoConstraintState> {
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let resolved_facts_by_component =
+        selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
+    let token_flip_facts = known_or_inferred_token_flip_facts_from_state(runtime, graph, state)?;
+    StereoConstraintState::from_facts(
+        &runtime.constraint_model,
+        layer,
+        &resolved_facts_by_component,
+        &token_flip_facts,
+    )
+}
+
+fn assert_token_flips_explained_by_constraint_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<()> {
+    let constraint_state = resolved_constraint_state_from_walker_state(
+        runtime,
+        graph,
+        state,
+        StereoConstraintLayer::Semantic,
+    )?;
+    for component_idx in 0..state.stereo_component_token_flips.len() {
+        let known = state.stereo_component_token_flips[component_idx];
+        if known == UNKNOWN_COMPONENT_TOKEN_FLIP {
+            continue;
+        }
+        let Some(model_component_idx) = runtime
+            .constraint_model
+            .component_for_runtime_component(component_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "Known token flip references unknown runtime component",
+            ));
+        };
+        if constraint_state.is_empty(model_component_idx) {
+            return Err(PyValueError::new_err(
+                "Known token flip leaves no compatible stereo assignment",
+            ));
+        }
+        let Some(forced) = constraint_state.forced_token_flip(
+            &runtime.constraint_model,
+            model_component_idx,
+            component_idx,
+        ) else {
+            return Err(PyValueError::new_err(
+                "Known token flip is not forced by stereo constraint state",
+            ));
+        };
+        if Some(forced) != model_token_flip_from_component_value(known) {
+            return Err(PyValueError::new_err(
+                "Known token flip disagrees with stereo constraint state",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn constraint_state_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -4183,6 +4271,7 @@ fn normalize_component_token_flips(
     graph: &PreparedSmilesGraphData,
     state: &mut RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
+    assert_token_flips_explained_by_constraint_state(runtime, graph, state)?;
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     for component_idx in 0..state.stereo_component_token_flips.len() {
         let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;

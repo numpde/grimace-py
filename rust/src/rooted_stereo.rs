@@ -4421,6 +4421,8 @@ fn deferred_token_support(
     let model_support =
         deferred_token_support_from_constraint_state(runtime, graph, state, deferred, &raw_token)?;
 
+    // Compatibility check while the old procedural token inference is being
+    // retired. The returned support below is model-derived.
     let known_flip = if state.stereo_component_token_flips[deferred.component_idx]
         != UNKNOWN_COMPONENT_TOKEN_FLIP
     {
@@ -4442,7 +4444,7 @@ fn deferred_token_support(
         }
     };
     if old_support == model_support {
-        Ok(old_support)
+        Ok(model_support)
     } else {
         Err(PyValueError::new_err(format!(
             "Deferred token support disagrees with stereo constraint state: \

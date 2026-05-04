@@ -84,11 +84,11 @@ Implemented so far:
 - `normalize_component_token_flips` now checks, in shadow mode, that known
   token flips are forced by the fact-log state before falling back to the old
   procedural validation.
-- `deferred_token_support` now computes model-derived token choices from
-  `StereoConstraintState` and asserts they match the old procedural choices.
+- `deferred_token_support` now returns model-derived token choices from
+  `StereoConstraintState`, while keeping the old procedural choices as a
+  compatibility assertion.
 
 Next target:
 
-- Switch `deferred_token_support` to return the model-derived choices after the
-  shadow assertion has enough coverage, then start shrinking old procedural
-  token inference.
+- Shrink old procedural token inference now that deferred token branching is
+  model-derived.

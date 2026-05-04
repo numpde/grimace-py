@@ -65,7 +65,7 @@ pub(crate) struct StereoLayerAssignments {
     pub(crate) allowed_neighbor_assignments: Option<Vec<Vec<usize>>>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum StereoTokenFlip {
     Stored,
     Flipped,
@@ -1070,6 +1070,42 @@ impl StereoConstraintState {
             assignment_ids,
         )
     }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn available_token_flips(
+        &self,
+        model: &StereoConstraintModel,
+        component_idx: usize,
+        runtime_component_idx: usize,
+    ) -> Vec<StereoTokenFlip> {
+        let Some(component) = model.components.get(component_idx) else {
+            return Vec::new();
+        };
+        let Some(position) = component
+            .runtime_component_ids
+            .iter()
+            .position(|&idx| idx == runtime_component_idx)
+        else {
+            return Vec::new();
+        };
+        let mut flips = self
+            .token_phase_remaining_by_component
+            .get(component_idx)
+            .into_iter()
+            .flatten()
+            .filter_map(|&assignment_id| {
+                component
+                    .all_token_phase_assignments
+                    .get(assignment_id)
+                    .and_then(|assignment| assignment.token_flips.get(position))
+                    .copied()
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        flips.sort();
+        flips
+    }
 }
 
 // Suspicious current model:
@@ -1774,6 +1810,14 @@ mod tests {
             Some(StereoTokenFlip::Stored),
             state.forced_token_flip(&model, 0, 0),
         );
+        assert_eq!(
+            vec![StereoTokenFlip::Stored],
+            state.available_token_flips(&model, 0, 0),
+        );
+        assert_eq!(
+            vec![StereoTokenFlip::Stored, StereoTokenFlip::Flipped],
+            state.available_token_flips(&model, 0, 1),
+        );
         assert_eq!(None, state.forced_token_flip(&model, 0, 1));
         assert!(!state.is_empty(0));
 
@@ -1797,6 +1841,10 @@ mod tests {
         )
         .expect("contradictory token facts should create an empty state");
         assert!(contradictory.is_empty(0));
+        assert_eq!(
+            Vec::<StereoTokenFlip>::new(),
+            contradictory.available_token_flips(&model, 0, 0),
+        );
         assert_eq!(
             vec![Vec::<usize>::new()],
             contradictory.token_phase_remaining_by_component

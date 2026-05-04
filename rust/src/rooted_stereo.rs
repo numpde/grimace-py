@@ -4303,6 +4303,13 @@ fn token_from_stored_with_flip(stored_token: &str, token_flip: i8) -> PyResult<S
     }
 }
 
+fn token_from_model_flip(stored_token: &str, token_flip: StereoTokenFlip) -> PyResult<String> {
+    match token_flip {
+        StereoTokenFlip::Stored => Ok(stored_token.to_owned()),
+        StereoTokenFlip::Flipped => flip_direction_token(stored_token),
+    }
+}
+
 fn raw_token_for_deferred_edge(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -4347,6 +4354,46 @@ fn raw_token_for_deferred_edge(
     Ok(Some(raw_token))
 }
 
+fn deferred_token_support_from_constraint_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    raw_token: &str,
+) -> PyResult<Vec<String>> {
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(deferred.component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Deferred token references unknown runtime component",
+        ));
+    };
+    let constraint_state = resolved_constraint_state_from_walker_state(
+        runtime,
+        graph,
+        state,
+        StereoConstraintLayer::Semantic,
+    )?;
+    if constraint_state.is_empty(model_component_idx) {
+        return Err(PyValueError::new_err(
+            "Deferred token has no compatible stereo assignment",
+        ));
+    }
+    let mut out = constraint_state
+        .available_token_flips(
+            &runtime.constraint_model,
+            model_component_idx,
+            deferred.component_idx,
+        )
+        .into_iter()
+        .map(|token_flip| token_from_model_flip(raw_token, token_flip))
+        .collect::<PyResult<Vec<_>>>()?;
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
 fn deferred_token_support(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4371,6 +4418,8 @@ fn deferred_token_support(
     let Some(raw_token) = raw_token_for_deferred_edge(runtime, state, deferred)? else {
         return Ok(vec![literal_token.unwrap_or_default()]);
     };
+    let model_support =
+        deferred_token_support_from_constraint_state(runtime, graph, state, deferred, &raw_token)?;
 
     let known_flip = if state.stereo_component_token_flips[deferred.component_idx]
         != UNKNOWN_COMPONENT_TOKEN_FLIP
@@ -4379,17 +4428,26 @@ fn deferred_token_support(
     } else {
         inferred_component_token_flip(runtime, state, graph, deferred.component_idx)?
     };
-    if let Some(token_flip) = known_flip {
-        return Ok(vec![token_from_stored_with_flip(&raw_token, token_flip)?]);
-    }
-    let flipped = flip_direction_token(&raw_token)?;
-    if flipped == raw_token {
-        Ok(vec![raw_token])
+    let old_support = if let Some(token_flip) = known_flip {
+        vec![token_from_stored_with_flip(&raw_token, token_flip)?]
     } else {
-        let mut out = vec![raw_token, flipped];
-        out.sort();
-        out.dedup();
-        Ok(out)
+        let flipped = flip_direction_token(&raw_token)?;
+        if flipped == raw_token {
+            vec![raw_token.clone()]
+        } else {
+            let mut out = vec![raw_token.clone(), flipped];
+            out.sort();
+            out.dedup();
+            out
+        }
+    };
+    if old_support == model_support {
+        Ok(old_support)
+    } else {
+        Err(PyValueError::new_err(format!(
+            "Deferred token support disagrees with stereo constraint state: \
+             old={old_support:?}, model={model_support:?}"
+        )))
     }
 }
 

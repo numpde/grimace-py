@@ -85,8 +85,8 @@ Implemented so far:
   token flips are forced by the fact-log state before falling back to the old
   procedural validation.
 - `deferred_token_support` now returns model-derived token choices from
-  `StereoConstraintState`, while keeping the old procedural choices as a
-  compatibility assertion.
+  `StereoConstraintState`; the old procedural deferred-token support path has
+  been deleted.
 
 Next target:
 

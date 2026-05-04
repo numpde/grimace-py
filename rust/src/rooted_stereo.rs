@@ -12,9 +12,9 @@ use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
     stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
-    StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel, StereoSideInfo,
-    StereoSideInfoBuild, StereoTokenFlip, StereoTraversalRole, CIS_STEREO_BOND_KINDS,
-    TRANS_STEREO_BOND_KINDS,
+    StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel, StereoConstraintState,
+    StereoSideInfo, StereoSideInfoBuild, StereoTokenFlip, StereoTokenFlipFact, StereoTraversalRole,
+    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2873,6 +2873,122 @@ fn assignment_state_to_py(
     Ok(state_by_layer.unbind())
 }
 
+fn token_flip_facts_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<StereoTokenFlipFact>> {
+    let mut facts = Vec::new();
+    for component_idx in 0..runtime.isolated_components.len() {
+        let Some(token_flip) = inferred_component_token_flip(runtime, state, graph, component_idx)?
+            .and_then(model_token_flip_from_component_value)
+        else {
+            continue;
+        };
+        facts.push(StereoTokenFlipFact {
+            runtime_component_idx: component_idx,
+            token_flip,
+        });
+    }
+    Ok(facts)
+}
+
+fn constraint_state_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    facts_by_component: &[Vec<StereoConstraintFact>],
+    token_flip_facts: &[StereoTokenFlipFact],
+) -> PyResult<Py<PyDict>> {
+    let state_by_layer = PyDict::new(py);
+    for layer in StereoConstraintLayer::ALL {
+        let constraint_state = StereoConstraintState::from_facts(
+            &runtime.constraint_model,
+            layer,
+            facts_by_component,
+            token_flip_facts,
+        )?;
+        let components = runtime
+            .constraint_model
+            .components
+            .iter()
+            .map(|component| {
+                let component_idx = component.component_idx;
+                let carrier_assignment_ids = constraint_state
+                    .carrier_assignment_state
+                    .remaining_by_component
+                    .get(component_idx)
+                    .cloned()
+                    .unwrap_or_default();
+                let token_phase_assignment_ids = constraint_state
+                    .token_phase_remaining_by_component
+                    .get(component_idx)
+                    .cloned()
+                    .unwrap_or_default();
+                let forced_neighbors = component
+                    .side_ids
+                    .iter()
+                    .filter_map(|&side_idx| {
+                        let neighbor_idx = constraint_state.forced_neighbor(
+                            &runtime.constraint_model,
+                            component_idx,
+                            side_idx,
+                        )?;
+                        Some((side_idx, neighbor_idx))
+                    })
+                    .map(|(side_idx, neighbor_idx)| {
+                        let row = PyDict::new(py);
+                        row.set_item("side_idx", side_idx)?;
+                        row.set_item("neighbor_idx", neighbor_idx)?;
+                        Ok(row.unbind())
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
+                let forced_token_flips = component
+                    .runtime_component_ids
+                    .iter()
+                    .filter_map(|&runtime_component_idx| {
+                        let token_flip = constraint_state.forced_token_flip(
+                            &runtime.constraint_model,
+                            component_idx,
+                            runtime_component_idx,
+                        )?;
+                        Some((runtime_component_idx, token_flip))
+                    })
+                    .map(|(runtime_component_idx, token_flip)| {
+                        let row = PyDict::new(py);
+                        row.set_item("runtime_component_idx", runtime_component_idx)?;
+                        row.set_item("token_flip", model_token_flip_name(token_flip))?;
+                        Ok(row.unbind())
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
+
+                let row = PyDict::new(py);
+                row.set_item("component_idx", component_idx)?;
+                row.set_item(
+                    "runtime_component_ids",
+                    component.runtime_component_ids.clone(),
+                )?;
+                row.set_item("side_ids", component.side_ids.clone())?;
+                row.set_item("is_empty", constraint_state.is_empty(component_idx))?;
+                row.set_item("carrier_assignment_ids", carrier_assignment_ids.clone())?;
+                row.set_item("carrier_assignment_count", carrier_assignment_ids.len())?;
+                row.set_item(
+                    "token_phase_assignment_ids",
+                    token_phase_assignment_ids.clone(),
+                )?;
+                row.set_item(
+                    "token_phase_assignment_count",
+                    token_phase_assignment_ids.len(),
+                )?;
+                row.set_item("forced_neighbors", forced_neighbors)?;
+                row.set_item("forced_token_flips", forced_token_flips)?;
+                Ok(row.unbind())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
+    }
+    Ok(state_by_layer.unbind())
+}
+
 fn shared_carrier_resolution_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -3014,31 +3130,36 @@ fn component_token_phase_diagnostics_to_py(
                 .and_then(|idx| assignment_state.remaining_by_component.get(idx))
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
-            let token_phase_assignment_ids_before_token = model_component_idx
-                .map(|idx| {
-                    runtime
-                        .constraint_model
-                        .token_phase_assignment_ids_for_neighbor_assignment_ids(
-                            idx,
-                            remaining_neighbor_assignment_ids,
-                            &[],
-                        )
-                })
-                .unwrap_or_default();
+            let token_phase_assignment_ids_before_token = if let Some(idx) = model_component_idx {
+                runtime
+                    .constraint_model
+                    .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                        idx,
+                        remaining_neighbor_assignment_ids,
+                        &[],
+                    )?
+            } else {
+                Vec::new()
+            };
             let token_flip_constraints = inferred_model_token_flip
-                .map(|token_flip| vec![(component_idx, token_flip)])
-                .unwrap_or_default();
-            let token_phase_assignment_ids_after_token = model_component_idx
-                .map(|idx| {
-                    runtime
-                        .constraint_model
-                        .token_phase_assignment_ids_for_neighbor_assignment_ids(
-                            idx,
-                            remaining_neighbor_assignment_ids,
-                            &token_flip_constraints,
-                        )
+                .map(|token_flip| {
+                    vec![StereoTokenFlipFact {
+                        runtime_component_idx: component_idx,
+                        token_flip,
+                    }]
                 })
                 .unwrap_or_default();
+            let token_phase_assignment_ids_after_token = if let Some(idx) = model_component_idx {
+                runtime
+                    .constraint_model
+                    .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                        idx,
+                        remaining_neighbor_assignment_ids,
+                        &token_flip_constraints,
+                    )?
+            } else {
+                Vec::new()
+            };
             let forced_model_token_flip = model_component_idx.and_then(|idx| {
                 runtime
                     .constraint_model
@@ -3460,6 +3581,7 @@ fn stereo_output_fact_row_to_py(
         StereoConstraintLayer::Semantic,
         &resolved_facts_by_component,
     );
+    let token_flip_facts = token_flip_facts_from_state(runtime, graph, state)?;
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3516,6 +3638,10 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "traversal_assignment_state",
         assignment_state_to_py(py, runtime, &traversal_facts_by_component)?,
+    )?;
+    row.set_item(
+        "resolved_constraint_state",
+        constraint_state_to_py(py, runtime, &resolved_facts_by_component, &token_flip_facts)?,
     )?;
     row.set_item(
         "shared_carrier_resolution",

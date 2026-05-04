@@ -585,6 +585,25 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             },
         )
+        self.assertTrue(
+            all(
+                len(row["resolved_constraint_state"]["semantic"]) == 1
+                and row["resolved_constraint_state"]["semantic"][0][
+                    "runtime_component_ids"
+                ]
+                == [0, 1]
+                and row["resolved_constraint_state"]["semantic"][0]["is_empty"] is False
+                and row["resolved_constraint_state"]["semantic"][0][
+                    "carrier_assignment_count"
+                ]
+                == 1
+                and row["resolved_constraint_state"]["semantic"][0][
+                    "token_phase_assignment_count"
+                ]
+                == 1
+                for row in rows
+            )
+        )
 
     def test_component_token_phase_is_separate_from_carrier_assignment(self) -> None:
         saw_stored_token_flip = False
@@ -600,6 +619,19 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertTrue(rows)
                 for row in rows:
+                    forced_token_flips = {
+                        forced["runtime_component_idx"]: forced["token_flip"]
+                        for component in row["resolved_constraint_state"]["semantic"]
+                        for forced in component["forced_token_flips"]
+                    }
+                    self.assertTrue(
+                        all(
+                            not component["is_empty"]
+                            and component["carrier_assignment_count"] > 0
+                            and component["token_phase_assignment_count"] > 0
+                            for component in row["resolved_constraint_state"]["semantic"]
+                        )
+                    )
                     self.assertTrue(row["component_token_phase"])
                     for component in row["component_token_phase"]:
                         self.assertTrue(component["model_component_is_consistent"])
@@ -623,6 +655,10 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         self.assertEqual(
                             component["inferred_token_flip"],
                             component["forced_model_token_flip"],
+                        )
+                        self.assertEqual(
+                            component["inferred_token_flip"],
+                            forced_token_flips[component["component_idx"]],
                         )
                         self.assertTrue(
                             component["token_phase_dimension_explains_inferred_flip"]

@@ -77,6 +77,12 @@ pub(crate) struct StereoTokenPhaseAssignment {
     pub(crate) token_flips: Vec<StereoTokenFlip>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoTokenFlipFact {
+    pub(crate) runtime_component_idx: usize,
+    pub(crate) token_flip: StereoTokenFlip,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoComponentConstraintModel {
     pub(crate) component_idx: usize,
@@ -123,11 +129,18 @@ pub(crate) enum StereoConstraintFact {
 pub(crate) struct StereoConstraintModel {
     pub(crate) components: Vec<StereoComponentConstraintModel>,
     side_to_component: Vec<Option<usize>>,
+    runtime_component_to_component: Vec<Option<usize>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoAssignmentState {
     pub(crate) remaining_by_component: Vec<Vec<usize>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoConstraintState {
+    pub(crate) carrier_assignment_state: StereoAssignmentState,
+    pub(crate) token_phase_remaining_by_component: Vec<Vec<usize>>,
 }
 
 #[derive(Clone, Debug)]
@@ -548,6 +561,15 @@ pub(crate) fn stereo_constraint_model(
         side_ids_by_model_component[model_component_idx].push(side_idx);
     }
 
+    let mut runtime_component_to_component = vec![
+        None;
+        side_infos
+            .iter()
+            .map(|side_info| side_info.component_idx)
+            .max()
+            .map(|max_idx| max_idx + 1)
+            .unwrap_or(0)
+    ];
     let mut components = Vec::with_capacity(side_ids_by_model_component.len());
     for (component_idx, side_ids) in side_ids_by_model_component.iter().enumerate() {
         let runtime_component_ids = side_ids
@@ -556,6 +578,16 @@ pub(crate) fn stereo_constraint_model(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
+        for &runtime_component_idx in &runtime_component_ids {
+            if runtime_component_to_component[runtime_component_idx]
+                .replace(component_idx)
+                .is_some()
+            {
+                return Err(PyValueError::new_err(
+                    "runtime stereo component assigned to multiple model components",
+                ));
+            }
+        }
         let side_domains = side_ids
             .iter()
             .map(|&side_idx| {
@@ -610,6 +642,7 @@ pub(crate) fn stereo_constraint_model(
     Ok(StereoConstraintModel {
         components,
         side_to_component,
+        runtime_component_to_component,
     })
 }
 
@@ -621,6 +654,15 @@ impl StereoConstraintModel {
     pub(crate) fn component_for_side(&self, side_idx: usize) -> Option<usize> {
         self.side_to_component
             .get(side_idx)
+            .and_then(|value| *value)
+    }
+
+    pub(crate) fn component_for_runtime_component(
+        &self,
+        runtime_component_idx: usize,
+    ) -> Option<usize> {
+        self.runtime_component_to_component
+            .get(runtime_component_idx)
             .and_then(|value| *value)
     }
 
@@ -793,37 +835,48 @@ impl StereoConstraintModel {
         &self,
         component_idx: usize,
         neighbor_assignment_ids: &[usize],
-        token_flip_constraints: &[(usize, StereoTokenFlip)],
-    ) -> Vec<usize> {
+        token_flip_facts: &[StereoTokenFlipFact],
+    ) -> PyResult<Vec<usize>> {
         let Some(component) = self.components.get(component_idx) else {
-            return Vec::new();
+            return Err(PyValueError::new_err(
+                "token phase query component index out of range",
+            ));
         };
         let neighbor_assignment_ids = neighbor_assignment_ids
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
-        let token_flip_positions = token_flip_constraints
-            .iter()
-            .filter_map(|&(runtime_component_idx, token_flip)| {
-                component
-                    .runtime_component_ids
-                    .iter()
-                    .position(|&idx| idx == runtime_component_idx)
-                    .map(|position| (position, token_flip))
-            })
-            .collect::<Vec<_>>();
-        component
+        let mut token_flip_positions = BTreeMap::<usize, StereoTokenFlip>::new();
+        for fact in token_flip_facts {
+            let Some(position) = component
+                .runtime_component_ids
+                .iter()
+                .position(|&idx| idx == fact.runtime_component_idx)
+            else {
+                return Err(PyValueError::new_err(
+                    "token flip fact runtime component outside model component",
+                ));
+            };
+            if token_flip_positions
+                .insert(position, fact.token_flip)
+                .is_some_and(|existing| existing != fact.token_flip)
+            {
+                return Ok(Vec::new());
+            }
+        }
+        let assignment_ids = component
             .all_token_phase_assignments
             .iter()
             .enumerate()
             .filter_map(|(assignment_id, assignment)| {
                 (neighbor_assignment_ids.contains(&assignment.neighbor_assignment_id)
-                    && token_flip_positions.iter().all(|&(position, token_flip)| {
+                    && token_flip_positions.iter().all(|(&position, &token_flip)| {
                         assignment.token_flips.get(position).copied() == Some(token_flip)
                     }))
                 .then_some(assignment_id)
             })
-            .collect()
+            .collect();
+        Ok(assignment_ids)
     }
 
     pub(crate) fn forced_token_flip_for_token_phase_assignment_ids(
@@ -928,6 +981,94 @@ impl StereoAssignmentState {
     ) -> Option<usize> {
         let assignment_ids = self.remaining_by_component.get(component_idx)?;
         model.forced_neighbor_for_assignment_ids(component_idx, side_idx, assignment_ids)
+    }
+}
+
+impl StereoConstraintState {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn from_facts(
+        model: &StereoConstraintModel,
+        layer: StereoConstraintLayer,
+        facts_by_component: &[Vec<StereoConstraintFact>],
+        token_flip_facts: &[StereoTokenFlipFact],
+    ) -> PyResult<Self> {
+        for fact in token_flip_facts {
+            if model
+                .component_for_runtime_component(fact.runtime_component_idx)
+                .is_none()
+            {
+                return Err(PyValueError::new_err(
+                    "token flip fact references unknown runtime component",
+                ));
+            }
+        }
+
+        let carrier_assignment_state =
+            StereoAssignmentState::from_facts_by_component(model, layer, facts_by_component);
+        let token_phase_remaining_by_component = model
+            .components
+            .iter()
+            .map(|component| {
+                let component_token_flip_facts = token_flip_facts
+                    .iter()
+                    .copied()
+                    .filter(|fact| {
+                        model.component_for_runtime_component(fact.runtime_component_idx)
+                            == Some(component.component_idx)
+                    })
+                    .collect::<Vec<_>>();
+                let remaining_neighbor_assignment_ids = carrier_assignment_state
+                    .remaining_by_component
+                    .get(component.component_idx)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                model.token_phase_assignment_ids_for_neighbor_assignment_ids(
+                    component.component_idx,
+                    remaining_neighbor_assignment_ids,
+                    &component_token_flip_facts,
+                )
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        Ok(Self {
+            carrier_assignment_state,
+            token_phase_remaining_by_component,
+        })
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn is_empty(&self, component_idx: usize) -> bool {
+        self.carrier_assignment_state.is_empty(component_idx)
+            || self
+                .token_phase_remaining_by_component
+                .get(component_idx)
+                .is_none_or(Vec::is_empty)
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn forced_neighbor(
+        &self,
+        model: &StereoConstraintModel,
+        component_idx: usize,
+        side_idx: usize,
+    ) -> Option<usize> {
+        self.carrier_assignment_state
+            .forced_neighbor(model, component_idx, side_idx)
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn forced_token_flip(
+        &self,
+        model: &StereoConstraintModel,
+        component_idx: usize,
+        runtime_component_idx: usize,
+    ) -> Option<StereoTokenFlip> {
+        let assignment_ids = self.token_phase_remaining_by_component.get(component_idx)?;
+        model.forced_token_flip_for_token_phase_assignment_ids(
+            component_idx,
+            runtime_component_idx,
+            assignment_ids,
+        )
     }
 }
 
@@ -1331,7 +1472,7 @@ pub(crate) fn ambiguous_shared_edge_groups(
 mod tests {
     use super::{
         stereo_constraint_model, StereoConstraintFact, StereoConstraintLayer, StereoLocalHazard,
-        StereoSideInfo, StereoTokenFlip, StereoTraversalRole,
+        StereoSideInfo, StereoTokenFlip, StereoTokenFlipFact, StereoTraversalRole,
     };
 
     #[test]
@@ -1486,11 +1627,13 @@ mod tests {
         assert_eq!(None, unconstrained.forced_neighbor(&model, 0, 0));
         assert_eq!(
             vec![0, 1, 2, 3, 4, 5, 6, 7],
-            model.token_phase_assignment_ids_for_neighbor_assignment_ids(
-                0,
-                &unconstrained.remaining_by_component[0],
-                &[],
-            ),
+            model
+                .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                    0,
+                    &unconstrained.remaining_by_component[0],
+                    &[],
+                )
+                .expect("token phase query should be valid"),
         );
 
         let facts_by_component = vec![vec![StereoConstraintFact::CarrierSelected {
@@ -1508,11 +1651,16 @@ mod tests {
         assert_eq!(None, constrained.forced_neighbor(&model, 0, 1));
         assert_eq!(
             vec![4, 6],
-            model.token_phase_assignment_ids_for_neighbor_assignment_ids(
-                0,
-                &constrained.remaining_by_component[0],
-                &[(0, StereoTokenFlip::Stored)],
-            ),
+            model
+                .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                    0,
+                    &constrained.remaining_by_component[0],
+                    &[StereoTokenFlipFact {
+                        runtime_component_idx: 0,
+                        token_flip: StereoTokenFlip::Stored,
+                    }],
+                )
+                .expect("token phase query should be valid"),
         );
         assert_eq!(
             Some(StereoTokenFlip::Stored),
@@ -1536,19 +1684,26 @@ mod tests {
         assert_eq!(Some(5), narrowed_again.forced_neighbor(&model, 0, 1));
         assert_eq!(
             vec![6, 7],
-            model.token_phase_assignment_ids_for_neighbor_assignment_ids(
-                0,
-                &narrowed_again.remaining_by_component[0],
-                &[],
-            ),
+            model
+                .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                    0,
+                    &narrowed_again.remaining_by_component[0],
+                    &[],
+                )
+                .expect("token phase query should be valid"),
         );
         assert_eq!(
             vec![7],
-            model.token_phase_assignment_ids_for_neighbor_assignment_ids(
-                0,
-                &narrowed_again.remaining_by_component[0],
-                &[(0, StereoTokenFlip::Flipped)],
-            ),
+            model
+                .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                    0,
+                    &narrowed_again.remaining_by_component[0],
+                    &[StereoTokenFlipFact {
+                        runtime_component_idx: 0,
+                        token_flip: StereoTokenFlip::Flipped,
+                    }],
+                )
+                .expect("token phase query should be valid"),
         );
 
         let contradictory = constrained.filter_facts_by_component(
@@ -1560,6 +1715,138 @@ mod tests {
             }]],
         );
         assert!(contradictory.is_empty(0));
+    }
+
+    #[test]
+    fn constraint_state_filters_carrier_and_token_phase_facts() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![3, 8],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 1,
+                endpoint_atom_idx: 5,
+                other_endpoint_atom_idx: 6,
+                candidate_neighbors: vec![4, 8],
+                candidate_base_tokens: vec!["\\".to_owned(), "/".to_owned()],
+            },
+        ];
+        let model = stereo_constraint_model(
+            &side_infos,
+            &[vec![0], vec![1]],
+            &[StereoLocalHazard {
+                left_side_idx: 0,
+                left_neighbor_idx: 3,
+                right_side_idx: 1,
+                right_neighbor_idx: 4,
+            }],
+        )
+        .expect("model should build");
+
+        let state = super::StereoConstraintState::from_facts(
+            &model,
+            StereoConstraintLayer::RdkitLocalWriter,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 8,
+            }]],
+            &[StereoTokenFlipFact {
+                runtime_component_idx: 0,
+                token_flip: StereoTokenFlip::Stored,
+            }],
+        )
+        .expect("constraint state should build");
+
+        assert_eq!(
+            vec![vec![2, 3]],
+            state.carrier_assignment_state.remaining_by_component,
+        );
+        assert_eq!(
+            vec![vec![8, 9, 12, 13]],
+            state.token_phase_remaining_by_component
+        );
+        assert_eq!(Some(8), state.forced_neighbor(&model, 0, 0));
+        assert_eq!(
+            Some(StereoTokenFlip::Stored),
+            state.forced_token_flip(&model, 0, 0),
+        );
+        assert_eq!(None, state.forced_token_flip(&model, 0, 1));
+        assert!(!state.is_empty(0));
+
+        let contradictory = super::StereoConstraintState::from_facts(
+            &model,
+            StereoConstraintLayer::RdkitLocalWriter,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 8,
+            }]],
+            &[
+                StereoTokenFlipFact {
+                    runtime_component_idx: 0,
+                    token_flip: StereoTokenFlip::Stored,
+                },
+                StereoTokenFlipFact {
+                    runtime_component_idx: 0,
+                    token_flip: StereoTokenFlip::Flipped,
+                },
+            ],
+        )
+        .expect("contradictory token facts should create an empty state");
+        assert!(contradictory.is_empty(0));
+        assert_eq!(
+            vec![Vec::<usize>::new()],
+            contradictory.token_phase_remaining_by_component
+        );
+    }
+
+    #[test]
+    fn token_phase_queries_reject_invalid_runtime_component_facts() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 1,
+                other_endpoint_atom_idx: 2,
+                candidate_neighbors: vec![0],
+                candidate_base_tokens: vec!["/".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 1,
+                endpoint_atom_idx: 5,
+                other_endpoint_atom_idx: 6,
+                candidate_neighbors: vec![4],
+                candidate_base_tokens: vec!["\\".to_owned()],
+            },
+        ];
+        let model = stereo_constraint_model(&side_infos, &[vec![0], vec![1]], &[])
+            .expect("model should build");
+
+        assert_eq!(Some(0), model.component_for_runtime_component(0));
+        assert_eq!(Some(1), model.component_for_runtime_component(1));
+        assert_eq!(None, model.component_for_runtime_component(2));
+        assert!(model
+            .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                0,
+                &[0],
+                &[StereoTokenFlipFact {
+                    runtime_component_idx: 1,
+                    token_flip: StereoTokenFlip::Stored,
+                }],
+            )
+            .is_err());
+        assert!(super::StereoConstraintState::from_facts(
+            &model,
+            StereoConstraintLayer::Semantic,
+            &[],
+            &[StereoTokenFlipFact {
+                runtime_component_idx: 2,
+                token_flip: StereoTokenFlip::Stored,
+            }],
+        )
+        .is_err());
     }
 
     #[test]
@@ -1655,13 +1942,19 @@ mod tests {
             16,
             model
                 .token_phase_assignment_ids_for_neighbor_assignment_ids(0, &[0, 1, 2, 3], &[],)
+                .expect("token phase query should be valid")
                 .len(),
         );
-        let runtime_zero_stored = model.token_phase_assignment_ids_for_neighbor_assignment_ids(
-            0,
-            &[0, 1, 2, 3],
-            &[(0, StereoTokenFlip::Stored)],
-        );
+        let runtime_zero_stored = model
+            .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                0,
+                &[0, 1, 2, 3],
+                &[StereoTokenFlipFact {
+                    runtime_component_idx: 0,
+                    token_flip: StereoTokenFlip::Stored,
+                }],
+            )
+            .expect("token phase query should be valid");
         assert_eq!(8, runtime_zero_stored.len());
         assert_eq!(
             Some(StereoTokenFlip::Stored),
@@ -1677,8 +1970,18 @@ mod tests {
                 .token_phase_assignment_ids_for_neighbor_assignment_ids(
                     0,
                     &[0, 1, 2, 3],
-                    &[(0, StereoTokenFlip::Stored), (1, StereoTokenFlip::Flipped),],
+                    &[
+                        StereoTokenFlipFact {
+                            runtime_component_idx: 0,
+                            token_flip: StereoTokenFlip::Stored,
+                        },
+                        StereoTokenFlipFact {
+                            runtime_component_idx: 1,
+                            token_flip: StereoTokenFlip::Flipped,
+                        },
+                    ],
                 )
+                .expect("token phase query should be valid")
                 .len(),
         );
         assert_eq!(

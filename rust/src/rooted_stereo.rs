@@ -4394,6 +4394,35 @@ fn deferred_token_support_from_constraint_state(
     Ok(out)
 }
 
+fn legacy_deferred_token_support(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    raw_token: &str,
+) -> PyResult<Vec<String>> {
+    let known_flip = if state.stereo_component_token_flips[deferred.component_idx]
+        != UNKNOWN_COMPONENT_TOKEN_FLIP
+    {
+        Some(state.stereo_component_token_flips[deferred.component_idx])
+    } else {
+        inferred_component_token_flip(runtime, state, graph, deferred.component_idx)?
+    };
+    if let Some(token_flip) = known_flip {
+        return Ok(vec![token_from_stored_with_flip(raw_token, token_flip)?]);
+    }
+
+    let flipped = flip_direction_token(raw_token)?;
+    if flipped == raw_token {
+        Ok(vec![raw_token.to_owned()])
+    } else {
+        let mut out = vec![raw_token.to_owned(), flipped];
+        out.sort();
+        out.dedup();
+        Ok(out)
+    }
+}
+
 fn deferred_token_support(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4420,29 +4449,7 @@ fn deferred_token_support(
     };
     let model_support =
         deferred_token_support_from_constraint_state(runtime, graph, state, deferred, &raw_token)?;
-
-    // Compatibility check while the old procedural token inference is being
-    // retired. The returned support below is model-derived.
-    let known_flip = if state.stereo_component_token_flips[deferred.component_idx]
-        != UNKNOWN_COMPONENT_TOKEN_FLIP
-    {
-        Some(state.stereo_component_token_flips[deferred.component_idx])
-    } else {
-        inferred_component_token_flip(runtime, state, graph, deferred.component_idx)?
-    };
-    let old_support = if let Some(token_flip) = known_flip {
-        vec![token_from_stored_with_flip(&raw_token, token_flip)?]
-    } else {
-        let flipped = flip_direction_token(&raw_token)?;
-        if flipped == raw_token {
-            vec![raw_token.clone()]
-        } else {
-            let mut out = vec![raw_token.clone(), flipped];
-            out.sort();
-            out.dedup();
-            out
-        }
-    };
+    let old_support = legacy_deferred_token_support(runtime, graph, state, deferred, &raw_token)?;
     if old_support == model_support {
         Ok(model_support)
     } else {

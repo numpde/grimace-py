@@ -629,6 +629,13 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertTrue(rows)
                 for row in rows:
+                    observation_state_key = (
+                        "resolved_constraint_state_from_supported_token_observations"
+                    )
+                    self.assertEqual(
+                        row["resolved_constraint_state"],
+                        row[observation_state_key],
+                    )
                     forced_token_flips = {
                         forced["runtime_component_idx"]: forced["token_flip"]
                         for component in row["resolved_constraint_state"]["semantic"]

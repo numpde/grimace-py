@@ -2916,6 +2916,28 @@ fn token_flip_facts_from_state(
     Ok(facts)
 }
 
+fn token_observation_facts_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+) -> PyResult<Vec<StereoTokenObservationFact>> {
+    let mut facts = Vec::new();
+    for component_idx in 0..runtime.isolated_components.len() {
+        let inputs = component_token_inference_inputs(
+            runtime,
+            graph,
+            state,
+            resolved_selected_neighbors,
+            component_idx,
+        )?;
+        if let Some(fact) = inputs.isolated_selected_begin_side_observation()? {
+            facts.push(fact);
+        }
+    }
+    Ok(facts)
+}
+
 fn known_or_inferred_token_flip_facts_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -3018,86 +3040,115 @@ fn constraint_state_to_py(
             facts_by_component,
             token_flip_facts,
         )?;
-        let components = runtime
-            .constraint_model
-            .components
-            .iter()
-            .map(|component| {
-                let component_idx = component.component_idx;
-                let carrier_assignment_ids = constraint_state
-                    .carrier_assignment_state
-                    .remaining_by_component
-                    .get(component_idx)
-                    .cloned()
-                    .unwrap_or_default();
-                let token_phase_assignment_ids = constraint_state
-                    .token_phase_remaining_by_component
-                    .get(component_idx)
-                    .cloned()
-                    .unwrap_or_default();
-                let forced_neighbors = component
-                    .side_ids
-                    .iter()
-                    .filter_map(|&side_idx| {
-                        let neighbor_idx = constraint_state.forced_neighbor(
-                            &runtime.constraint_model,
-                            component_idx,
-                            side_idx,
-                        )?;
-                        Some((side_idx, neighbor_idx))
-                    })
-                    .map(|(side_idx, neighbor_idx)| {
-                        let row = PyDict::new(py);
-                        row.set_item("side_idx", side_idx)?;
-                        row.set_item("neighbor_idx", neighbor_idx)?;
-                        Ok(row.unbind())
-                    })
-                    .collect::<PyResult<Vec<_>>>()?;
-                let forced_token_flips = component
-                    .runtime_component_ids
-                    .iter()
-                    .filter_map(|&runtime_component_idx| {
-                        let token_flip = constraint_state.forced_token_flip(
-                            &runtime.constraint_model,
-                            component_idx,
-                            runtime_component_idx,
-                        )?;
-                        Some((runtime_component_idx, token_flip))
-                    })
-                    .map(|(runtime_component_idx, token_flip)| {
-                        let row = PyDict::new(py);
-                        row.set_item("runtime_component_idx", runtime_component_idx)?;
-                        row.set_item("token_flip", model_token_flip_name(token_flip))?;
-                        Ok(row.unbind())
-                    })
-                    .collect::<PyResult<Vec<_>>>()?;
-
-                let row = PyDict::new(py);
-                row.set_item("component_idx", component_idx)?;
-                row.set_item(
-                    "runtime_component_ids",
-                    component.runtime_component_ids.clone(),
-                )?;
-                row.set_item("side_ids", component.side_ids.clone())?;
-                row.set_item("is_empty", constraint_state.is_empty(component_idx))?;
-                row.set_item("carrier_assignment_ids", carrier_assignment_ids.clone())?;
-                row.set_item("carrier_assignment_count", carrier_assignment_ids.len())?;
-                row.set_item(
-                    "token_phase_assignment_ids",
-                    token_phase_assignment_ids.clone(),
-                )?;
-                row.set_item(
-                    "token_phase_assignment_count",
-                    token_phase_assignment_ids.len(),
-                )?;
-                row.set_item("forced_neighbors", forced_neighbors)?;
-                row.set_item("forced_token_flips", forced_token_flips)?;
-                Ok(row.unbind())
-            })
-            .collect::<PyResult<Vec<_>>>()?;
+        let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
         state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
     }
     Ok(state_by_layer.unbind())
+}
+
+fn observation_constraint_state_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    facts_by_component: &[Vec<StereoConstraintFact>],
+    token_observation_facts: &[StereoTokenObservationFact],
+) -> PyResult<Py<PyDict>> {
+    let state_by_layer = PyDict::new(py);
+    for layer in StereoConstraintLayer::ALL {
+        let constraint_state =
+            StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
+                &runtime.constraint_model,
+                layer,
+                facts_by_component,
+                token_observation_facts,
+            )?;
+        let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
+        state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
+    }
+    Ok(state_by_layer.unbind())
+}
+
+fn constraint_state_components_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    constraint_state: &StereoConstraintState,
+) -> PyResult<Vec<Py<PyDict>>> {
+    runtime
+        .constraint_model
+        .components
+        .iter()
+        .map(|component| {
+            let component_idx = component.component_idx;
+            let carrier_assignment_ids = constraint_state
+                .carrier_assignment_state
+                .remaining_by_component
+                .get(component_idx)
+                .cloned()
+                .unwrap_or_default();
+            let token_phase_assignment_ids = constraint_state
+                .token_phase_remaining_by_component
+                .get(component_idx)
+                .cloned()
+                .unwrap_or_default();
+            let forced_neighbors = component
+                .side_ids
+                .iter()
+                .filter_map(|&side_idx| {
+                    let neighbor_idx = constraint_state.forced_neighbor(
+                        &runtime.constraint_model,
+                        component_idx,
+                        side_idx,
+                    )?;
+                    Some((side_idx, neighbor_idx))
+                })
+                .map(|(side_idx, neighbor_idx)| {
+                    let row = PyDict::new(py);
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("neighbor_idx", neighbor_idx)?;
+                    Ok(row.unbind())
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            let forced_token_flips = component
+                .runtime_component_ids
+                .iter()
+                .filter_map(|&runtime_component_idx| {
+                    let token_flip = constraint_state.forced_token_flip(
+                        &runtime.constraint_model,
+                        component_idx,
+                        runtime_component_idx,
+                    )?;
+                    Some((runtime_component_idx, token_flip))
+                })
+                .map(|(runtime_component_idx, token_flip)| {
+                    let row = PyDict::new(py);
+                    row.set_item("runtime_component_idx", runtime_component_idx)?;
+                    row.set_item("token_flip", model_token_flip_name(token_flip))?;
+                    Ok(row.unbind())
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+
+            let row = PyDict::new(py);
+            row.set_item("component_idx", component_idx)?;
+            row.set_item(
+                "runtime_component_ids",
+                component.runtime_component_ids.clone(),
+            )?;
+            row.set_item("side_ids", component.side_ids.clone())?;
+            row.set_item("is_empty", constraint_state.is_empty(component_idx))?;
+            row.set_item("carrier_assignment_ids", carrier_assignment_ids.clone())?;
+            row.set_item("carrier_assignment_count", carrier_assignment_ids.len())?;
+            row.set_item(
+                "token_phase_assignment_ids",
+                token_phase_assignment_ids.clone(),
+            )?;
+            row.set_item(
+                "token_phase_assignment_count",
+                token_phase_assignment_ids.len(),
+            )?;
+            row.set_item("forced_neighbors", forced_neighbors)?;
+            row.set_item("forced_token_flips", forced_token_flips)?;
+            Ok(row.unbind())
+        })
+        .collect()
 }
 
 fn shared_carrier_resolution_to_py(
@@ -3763,6 +3814,8 @@ fn stereo_output_fact_row_to_py(
         &resolved_facts_by_component,
     );
     let token_flip_facts = token_flip_facts_from_state(runtime, graph, state)?;
+    let token_observation_facts =
+        token_observation_facts_from_state(runtime, graph, state, &resolved_selected_neighbors)?;
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3823,6 +3876,15 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "resolved_constraint_state",
         constraint_state_to_py(py, runtime, &resolved_facts_by_component, &token_flip_facts)?,
+    )?;
+    row.set_item(
+        "resolved_constraint_state_from_supported_token_observations",
+        observation_constraint_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &token_observation_facts,
+        )?,
     )?;
     row.set_item(
         "shared_carrier_resolution",

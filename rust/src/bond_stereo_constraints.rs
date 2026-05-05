@@ -1116,6 +1116,57 @@ impl StereoConstraintState {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn from_isolated_selected_begin_side_observation_facts(
+        model: &StereoConstraintModel,
+        layer: StereoConstraintLayer,
+        facts_by_component: &[Vec<StereoConstraintFact>],
+        token_observation_facts: &[StereoTokenObservationFact],
+    ) -> PyResult<Self> {
+        for fact in token_observation_facts {
+            if model
+                .component_for_runtime_component(fact.runtime_component_idx)
+                .is_none()
+            {
+                return Err(PyValueError::new_err(
+                    "token observation fact references unknown runtime component",
+                ));
+            }
+        }
+
+        let carrier_assignment_state =
+            StereoAssignmentState::from_facts_by_component(model, layer, facts_by_component);
+        let token_phase_remaining_by_component = model
+            .components
+            .iter()
+            .map(|component| {
+                let component_token_observation_facts = token_observation_facts
+                    .iter()
+                    .copied()
+                    .filter(|fact| {
+                        model.component_for_runtime_component(fact.runtime_component_idx)
+                            == Some(component.component_idx)
+                    })
+                    .collect::<Vec<_>>();
+                let remaining_neighbor_assignment_ids = carrier_assignment_state
+                    .remaining_by_component
+                    .get(component.component_idx)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                model.token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                    component.component_idx,
+                    remaining_neighbor_assignment_ids,
+                    &component_token_observation_facts,
+                )
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        Ok(Self {
+            carrier_assignment_state,
+            token_phase_remaining_by_component,
+        })
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn is_empty(&self, component_idx: usize) -> bool {
         self.carrier_assignment_state.is_empty(component_idx)
             || self
@@ -1967,6 +2018,25 @@ mod tests {
             vec![vec![8, 9, 12, 13]],
             state.token_phase_remaining_by_component
         );
+
+        let observation_state =
+            super::StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
+                &model,
+                StereoConstraintLayer::RdkitLocalWriter,
+                &[vec![StereoConstraintFact::CarrierSelected {
+                    side_idx: 0,
+                    neighbor_idx: 8,
+                }]],
+                &[StereoTokenObservationFact {
+                    runtime_component_idx: 0,
+                    component_phase: StereoComponentPhase::Stored,
+                    selected_begin_token: StereoDirectionToken::Backslash,
+                    rdkit_token_flip_adjustment: false,
+                }],
+            )
+            .expect("observation constraint state should build");
+        assert_eq!(state, observation_state);
+
         assert_eq!(Some(8), state.forced_neighbor(&model, 0, 0));
         assert_eq!(
             Some(StereoTokenFlip::Stored),
@@ -2071,6 +2141,20 @@ mod tests {
                 }],
             )
             .is_err());
+        assert!(
+            super::StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
+                &model,
+                StereoConstraintLayer::Semantic,
+                &[],
+                &[StereoTokenObservationFact {
+                    runtime_component_idx: 2,
+                    component_phase: StereoComponentPhase::Stored,
+                    selected_begin_token: StereoDirectionToken::Backslash,
+                    rdkit_token_flip_adjustment: false,
+                }],
+            )
+            .is_err()
+        );
         assert!(super::StereoConstraintState::from_facts(
             &model,
             StereoConstraintLayer::Semantic,

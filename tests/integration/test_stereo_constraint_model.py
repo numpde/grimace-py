@@ -646,9 +646,11 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     observation_state_key = (
                         "resolved_constraint_state_from_supported_token_observations"
                     )
-                    if row_token_flip_inference_branches == {
-                        "isolated_selected_begin_side"
-                    }:
+                    supported_observation_branches = {
+                        "isolated_all_single_candidate",
+                        "isolated_selected_begin_side",
+                    }
+                    if row_token_flip_inference_branches <= supported_observation_branches:
                         self.assertEqual(
                             row["resolved_constraint_state"],
                             row[observation_state_key],
@@ -765,7 +767,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             )
                         if (
                             token_flip_inputs["inference_branch"]
-                            == "isolated_selected_begin_side"
+                            in supported_observation_branches
                         ):
                             token_observation_facts = component[
                                 "token_observation_facts"
@@ -787,9 +789,21 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 token_observation["component_phase"],
                             )
                             self.assertEqual(
-                                token_flip_inputs["selected_begin_token"],
-                                token_observation["selected_begin_token"],
+                                token_flip_inputs["inference_branch"],
+                                token_observation["observation_kind"],
                             )
+                            if (
+                                token_flip_inputs["inference_branch"]
+                                == "isolated_all_single_candidate"
+                            ):
+                                self.assertIsNone(
+                                    token_observation["selected_begin_token"]
+                                )
+                            else:
+                                self.assertEqual(
+                                    token_flip_inputs["selected_begin_token"],
+                                    token_observation["selected_begin_token"],
+                                )
                             self.assertEqual(
                                 token_flip_inputs["rdkit_token_flip_adjustment"],
                                 token_observation["rdkit_token_flip_adjustment"],

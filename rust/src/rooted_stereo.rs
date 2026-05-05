@@ -2931,7 +2931,7 @@ fn token_observation_facts_from_state(
             resolved_selected_neighbors,
             component_idx,
         )?;
-        if let Some(fact) = inputs.isolated_selected_begin_side_observation()? {
+        if let Some(fact) = inputs.supported_token_observation()? {
             facts.push(fact);
         }
     }
@@ -3054,13 +3054,12 @@ fn observation_constraint_state_to_py(
 ) -> PyResult<Py<PyDict>> {
     let state_by_layer = PyDict::new(py);
     for layer in StereoConstraintLayer::ALL {
-        let constraint_state =
-            StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
-                &runtime.constraint_model,
-                layer,
-                facts_by_component,
-                token_observation_facts,
-            )?;
+        let constraint_state = StereoConstraintState::from_token_observation_facts(
+            &runtime.constraint_model,
+            layer,
+            facts_by_component,
+            token_observation_facts,
+        )?;
         let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
         state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
     }
@@ -3336,15 +3335,14 @@ fn component_token_phase_diagnostics_to_py(
                 .and_then(|idx| runtime.constraint_model.components.get(idx))
                 .map(|component| component.runtime_component_ids.len())
                 .unwrap_or(0);
-            let token_observation_fact =
-                token_inference_inputs.isolated_selected_begin_side_observation()?;
+            let token_observation_fact = token_inference_inputs.supported_token_observation()?;
             let token_observation_facts = token_observation_fact
                 .into_iter()
                 .collect::<Vec<StereoTokenObservationFact>>();
             let token_observation_assignment_ids_after_token = match model_component_idx {
                 Some(idx) => runtime
                     .constraint_model
-                    .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                    .token_phase_assignment_ids_for_token_observation_facts(
                         idx,
                         remaining_neighbor_assignment_ids,
                         &token_observation_facts,
@@ -3362,6 +3360,7 @@ fn component_token_phase_diagnostics_to_py(
             });
             let token_observation_unsupported_reason = if token_observation_facts.is_empty() {
                 Some(match token_inference_inputs.inference_branch {
+                    "isolated_all_single_candidate" => "missing_required_observation_inputs",
                     "isolated_selected_begin_side" => "missing_required_observation_inputs",
                     _ => "unsupported_observation_branch",
                 })
@@ -4492,29 +4491,101 @@ fn isolated_selected_begin_side_observation_from_state(
         resolved_selected_neighbors,
         component_idx,
     );
-    Ok(Some(StereoTokenObservationFact {
-        runtime_component_idx: component_idx,
-        component_phase,
-        selected_begin_token: StereoDirectionToken::from_str(&selected_begin_token)?,
-        rdkit_token_flip_adjustment,
-    }))
+    Ok(Some(
+        StereoTokenObservationFact::IsolatedSelectedBeginSide {
+            runtime_component_idx: component_idx,
+            component_phase,
+            selected_begin_token: StereoDirectionToken::from_str(&selected_begin_token)?,
+            rdkit_token_flip_adjustment,
+        },
+    ))
 }
 
-fn isolated_selected_begin_side_token_flip_from_observation_fact(
+fn isolated_all_single_candidate_observation_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    graph: &PreparedSmilesGraphData,
+    resolved_selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Option<StereoTokenObservationFact>> {
+    if !runtime.isolated_components[component_idx] {
+        return Ok(None);
+    }
+    let side_ids = &runtime.side_ids_by_component[component_idx];
+    if side_ids.is_empty()
+        || !side_ids
+            .iter()
+            .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1)
+    {
+        return Ok(None);
+    }
+
+    let mut selected_side_count = 0usize;
+    let mut selected_side_idx = None;
+    for &side_idx in side_ids {
+        if resolved_selected_neighbors[side_idx] >= 0 {
+            selected_side_count += 1;
+            selected_side_idx = Some(side_idx);
+        }
+    }
+
+    let mut phase = state.stereo_component_phases[component_idx];
+    let mut begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
+    if phase == UNKNOWN_COMPONENT_PHASE || begin_atom_idx < 0 {
+        if selected_side_count != 1 {
+            return Ok(None);
+        }
+        let selected_side = &runtime.side_infos[selected_side_idx.expect("counted selected side")];
+        if phase == UNKNOWN_COMPONENT_PHASE {
+            phase = provisional_phase_from_selected_side(graph, selected_side)?;
+        }
+        if begin_atom_idx < 0 {
+            begin_atom_idx = selected_side.endpoint_atom_idx as isize;
+        }
+    }
+    if begin_atom_idx < 0 {
+        return Ok(None);
+    }
+    let Some(component_phase) = model_component_phase_from_value(phase) else {
+        return Ok(None);
+    };
+    let rdkit_token_flip_adjustment = rdkit_component_token_flip_adjustment(
+        runtime,
+        state,
+        resolved_selected_neighbors,
+        component_idx,
+    );
+    Ok(Some(
+        StereoTokenObservationFact::IsolatedAllSingleCandidate {
+            runtime_component_idx: component_idx,
+            component_phase,
+            rdkit_token_flip_adjustment,
+        },
+    ))
+}
+
+fn isolated_token_flip_from_observation_fact(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     graph: &PreparedSmilesGraphData,
     component_idx: usize,
 ) -> PyResult<Option<i8>> {
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    let Some(observation_fact) = isolated_selected_begin_side_observation_from_state(
+    let observation_fact = isolated_all_single_candidate_observation_from_state(
         runtime,
         state,
         graph,
         &resolved_selected_neighbors,
         component_idx,
     )?
-    else {
+    .or(isolated_selected_begin_side_observation_from_state(
+        runtime,
+        state,
+        graph,
+        &resolved_selected_neighbors,
+        component_idx,
+    )?);
+    let Some(observation_fact) = observation_fact else {
         return Ok(None);
     };
     if runtime
@@ -4526,14 +4597,12 @@ fn isolated_selected_begin_side_token_flip_from_observation_fact(
             "Token observation references unknown runtime component",
         ));
     }
-    let model_value = component_token_flip_value_from_model(
-        observation_fact.implied_token_flip_for_isolated_selected_begin_side(),
-    );
+    let model_value = component_token_flip_value_from_model(observation_fact.implied_token_flip());
     let procedural_value =
         procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
     if procedural_value != Some(model_value) {
         return Err(PyValueError::new_err(
-            "Model-derived isolated token flip disagrees with procedural inference",
+            "Observation-derived isolated token flip disagrees with procedural inference",
         ));
     }
     Ok(Some(model_value))
@@ -4545,12 +4614,9 @@ fn inferred_component_token_flip(
     graph: &PreparedSmilesGraphData,
     component_idx: usize,
 ) -> PyResult<Option<i8>> {
-    if let Some(model_value) = isolated_selected_begin_side_token_flip_from_observation_fact(
-        runtime,
-        state,
-        graph,
-        component_idx,
-    )? {
+    if let Some(model_value) =
+        isolated_token_flip_from_observation_fact(runtime, state, graph, component_idx)?
+    {
         return Ok(Some(model_value));
     }
     procedural_inferred_component_token_flip(runtime, state, graph, component_idx)
@@ -4583,24 +4649,36 @@ struct ComponentTokenInferenceInputs {
 }
 
 impl ComponentTokenInferenceInputs {
-    fn isolated_selected_begin_side_observation(
-        &self,
-    ) -> PyResult<Option<StereoTokenObservationFact>> {
-        if self.inference_branch != "isolated_selected_begin_side" || !self.has_required_inputs {
+    fn supported_token_observation(&self) -> PyResult<Option<StereoTokenObservationFact>> {
+        if !self.has_required_inputs {
             return Ok(None);
         }
         let Some(component_phase) = model_component_phase_from_value(self.effective_phase) else {
             return Ok(None);
         };
-        let Some(selected_begin_token) = self.selected_begin_token.as_deref() else {
-            return Ok(None);
-        };
-        Ok(Some(StereoTokenObservationFact {
-            runtime_component_idx: self.component_idx,
-            component_phase,
-            selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
-            rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
-        }))
+        match self.inference_branch {
+            "isolated_all_single_candidate" => Ok(Some(
+                StereoTokenObservationFact::IsolatedAllSingleCandidate {
+                    runtime_component_idx: self.component_idx,
+                    component_phase,
+                    rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
+                },
+            )),
+            "isolated_selected_begin_side" => {
+                let Some(selected_begin_token) = self.selected_begin_token.as_deref() else {
+                    return Ok(None);
+                };
+                Ok(Some(
+                    StereoTokenObservationFact::IsolatedSelectedBeginSide {
+                        runtime_component_idx: self.component_idx,
+                        component_phase,
+                        selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
+                        rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
+                    },
+                ))
+            }
+            _ => Ok(None),
+        }
     }
 }
 
@@ -4839,22 +4917,23 @@ fn token_observation_facts_to_py(
         .iter()
         .map(|fact| {
             let row = PyDict::new(py);
-            row.set_item("runtime_component_idx", fact.runtime_component_idx)?;
+            row.set_item("observation_kind", fact.observation_kind())?;
+            row.set_item("runtime_component_idx", fact.runtime_component_idx())?;
             row.set_item(
                 "component_phase",
-                model_component_phase_name(fact.component_phase),
+                model_component_phase_name(fact.component_phase()),
             )?;
             row.set_item(
                 "selected_begin_token",
-                stereo_direction_token_name(fact.selected_begin_token),
+                fact.selected_begin_token().map(stereo_direction_token_name),
             )?;
             row.set_item(
                 "rdkit_token_flip_adjustment",
-                fact.rdkit_token_flip_adjustment,
+                fact.rdkit_token_flip_adjustment(),
             )?;
             row.set_item(
                 "implied_token_flip",
-                model_token_flip_name(fact.implied_token_flip_for_isolated_selected_begin_side()),
+                model_token_flip_name(fact.implied_token_flip()),
             )?;
             Ok(row.unbind())
         })

@@ -112,27 +112,92 @@ pub(crate) struct StereoTokenFlipFact {
 
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StereoTokenObservationFact {
-    pub(crate) runtime_component_idx: usize,
-    pub(crate) component_phase: StereoComponentPhase,
-    pub(crate) selected_begin_token: StereoDirectionToken,
-    pub(crate) rdkit_token_flip_adjustment: bool,
+pub(crate) enum StereoTokenObservationFact {
+    IsolatedAllSingleCandidate {
+        runtime_component_idx: usize,
+        component_phase: StereoComponentPhase,
+        rdkit_token_flip_adjustment: bool,
+    },
+    IsolatedSelectedBeginSide {
+        runtime_component_idx: usize,
+        component_phase: StereoComponentPhase,
+        selected_begin_token: StereoDirectionToken,
+        rdkit_token_flip_adjustment: bool,
+    },
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
 impl StereoTokenObservationFact {
-    pub(crate) fn implied_token_flip_for_isolated_selected_begin_side(self) -> StereoTokenFlip {
-        let phase_is_flipped = self.component_phase == StereoComponentPhase::Flipped;
-        let selected_token_matches_phase = match self.component_phase {
-            StereoComponentPhase::Stored => {
-                self.selected_begin_token == StereoDirectionToken::Slash
+    pub(crate) fn runtime_component_idx(self) -> usize {
+        match self {
+            Self::IsolatedAllSingleCandidate {
+                runtime_component_idx,
+                ..
             }
-            StereoComponentPhase::Flipped => {
-                self.selected_begin_token == StereoDirectionToken::Backslash
+            | Self::IsolatedSelectedBeginSide {
+                runtime_component_idx,
+                ..
+            } => runtime_component_idx,
+        }
+    }
+
+    pub(crate) fn component_phase(self) -> StereoComponentPhase {
+        match self {
+            Self::IsolatedAllSingleCandidate {
+                component_phase, ..
             }
+            | Self::IsolatedSelectedBeginSide {
+                component_phase, ..
+            } => component_phase,
+        }
+    }
+
+    pub(crate) fn selected_begin_token(self) -> Option<StereoDirectionToken> {
+        match self {
+            Self::IsolatedAllSingleCandidate { .. } => None,
+            Self::IsolatedSelectedBeginSide {
+                selected_begin_token,
+                ..
+            } => Some(selected_begin_token),
+        }
+    }
+
+    pub(crate) fn rdkit_token_flip_adjustment(self) -> bool {
+        match self {
+            Self::IsolatedAllSingleCandidate {
+                rdkit_token_flip_adjustment,
+                ..
+            }
+            | Self::IsolatedSelectedBeginSide {
+                rdkit_token_flip_adjustment,
+                ..
+            } => rdkit_token_flip_adjustment,
+        }
+    }
+
+    pub(crate) fn observation_kind(self) -> &'static str {
+        match self {
+            Self::IsolatedAllSingleCandidate { .. } => "isolated_all_single_candidate",
+            Self::IsolatedSelectedBeginSide { .. } => "isolated_selected_begin_side",
+        }
+    }
+
+    pub(crate) fn implied_token_flip(self) -> StereoTokenFlip {
+        let phase_is_flipped = self.component_phase() == StereoComponentPhase::Flipped;
+        let observation_flip = match self {
+            Self::IsolatedAllSingleCandidate { .. } => false,
+            Self::IsolatedSelectedBeginSide {
+                component_phase,
+                selected_begin_token,
+                ..
+            } => match component_phase {
+                StereoComponentPhase::Stored => selected_begin_token == StereoDirectionToken::Slash,
+                StereoComponentPhase::Flipped => {
+                    selected_begin_token == StereoDirectionToken::Backslash
+                }
+            },
         };
-        let final_flip =
-            phase_is_flipped ^ selected_token_matches_phase ^ self.rdkit_token_flip_adjustment;
+        let final_flip = phase_is_flipped ^ observation_flip ^ self.rdkit_token_flip_adjustment();
         if final_flip {
             StereoTokenFlip::Flipped
         } else {
@@ -938,7 +1003,7 @@ impl StereoConstraintModel {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+    pub(crate) fn token_phase_assignment_ids_for_token_observation_facts(
         &self,
         component_idx: usize,
         neighbor_assignment_ids: &[usize],
@@ -947,8 +1012,8 @@ impl StereoConstraintModel {
         let token_flip_facts = observation_facts
             .iter()
             .map(|fact| StereoTokenFlipFact {
-                runtime_component_idx: fact.runtime_component_idx,
-                token_flip: fact.implied_token_flip_for_isolated_selected_begin_side(),
+                runtime_component_idx: fact.runtime_component_idx(),
+                token_flip: fact.implied_token_flip(),
             })
             .collect::<Vec<_>>();
         self.token_phase_assignment_ids_for_neighbor_assignment_ids(
@@ -1116,7 +1181,7 @@ impl StereoConstraintState {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) fn from_isolated_selected_begin_side_observation_facts(
+    pub(crate) fn from_token_observation_facts(
         model: &StereoConstraintModel,
         layer: StereoConstraintLayer,
         facts_by_component: &[Vec<StereoConstraintFact>],
@@ -1124,7 +1189,7 @@ impl StereoConstraintState {
     ) -> PyResult<Self> {
         for fact in token_observation_facts {
             if model
-                .component_for_runtime_component(fact.runtime_component_idx)
+                .component_for_runtime_component(fact.runtime_component_idx())
                 .is_none()
             {
                 return Err(PyValueError::new_err(
@@ -1143,7 +1208,7 @@ impl StereoConstraintState {
                     .iter()
                     .copied()
                     .filter(|fact| {
-                        model.component_for_runtime_component(fact.runtime_component_idx)
+                        model.component_for_runtime_component(fact.runtime_component_idx())
                             == Some(component.component_idx)
                     })
                     .collect::<Vec<_>>();
@@ -1152,7 +1217,7 @@ impl StereoConstraintState {
                     .get(component.component_idx)
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
-                model.token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                model.token_phase_assignment_ids_for_token_observation_facts(
                     component.component_idx,
                     remaining_neighbor_assignment_ids,
                     &component_token_observation_facts,
@@ -1688,7 +1753,30 @@ mod tests {
     }
 
     #[test]
-    fn token_observation_fact_derives_isolated_selected_begin_side_flip() {
+    fn token_observation_fact_derives_isolated_token_flips() {
+        for (component_phase, adjustment, expected) in [
+            (StereoComponentPhase::Stored, false, StereoTokenFlip::Stored),
+            (
+                StereoComponentPhase::Flipped,
+                false,
+                StereoTokenFlip::Flipped,
+            ),
+            (StereoComponentPhase::Stored, true, StereoTokenFlip::Flipped),
+            (StereoComponentPhase::Flipped, true, StereoTokenFlip::Stored),
+        ] {
+            let observation = StereoTokenObservationFact::IsolatedAllSingleCandidate {
+                runtime_component_idx: 0,
+                component_phase,
+                rdkit_token_flip_adjustment: adjustment,
+            };
+            assert_eq!(expected, observation.implied_token_flip());
+            assert_eq!(
+                "isolated_all_single_candidate",
+                observation.observation_kind()
+            );
+            assert_eq!(None, observation.selected_begin_token());
+        }
+
         let cases = [
             (
                 StereoComponentPhase::Stored,
@@ -1741,16 +1829,13 @@ mod tests {
         ];
 
         for (component_phase, selected_begin_token, adjustment, expected) in cases {
-            let observation = StereoTokenObservationFact {
+            let observation = StereoTokenObservationFact::IsolatedSelectedBeginSide {
                 runtime_component_idx: 0,
                 component_phase,
                 selected_begin_token,
                 rdkit_token_flip_adjustment: adjustment,
             };
-            assert_eq!(
-                expected,
-                observation.implied_token_flip_for_isolated_selected_begin_side(),
-            );
+            assert_eq!(expected, observation.implied_token_flip(),);
         }
     }
 
@@ -2019,22 +2104,21 @@ mod tests {
             state.token_phase_remaining_by_component
         );
 
-        let observation_state =
-            super::StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
-                &model,
-                StereoConstraintLayer::RdkitLocalWriter,
-                &[vec![StereoConstraintFact::CarrierSelected {
-                    side_idx: 0,
-                    neighbor_idx: 8,
-                }]],
-                &[StereoTokenObservationFact {
-                    runtime_component_idx: 0,
-                    component_phase: StereoComponentPhase::Stored,
-                    selected_begin_token: StereoDirectionToken::Backslash,
-                    rdkit_token_flip_adjustment: false,
-                }],
-            )
-            .expect("observation constraint state should build");
+        let observation_state = super::StereoConstraintState::from_token_observation_facts(
+            &model,
+            StereoConstraintLayer::RdkitLocalWriter,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 8,
+            }]],
+            &[StereoTokenObservationFact::IsolatedSelectedBeginSide {
+                runtime_component_idx: 0,
+                component_phase: StereoComponentPhase::Stored,
+                selected_begin_token: StereoDirectionToken::Backslash,
+                rdkit_token_flip_adjustment: false,
+            }],
+        )
+        .expect("observation constraint state should build");
         assert_eq!(state, observation_state);
 
         assert_eq!(Some(8), state.forced_neighbor(&model, 0, 0));
@@ -2118,10 +2202,10 @@ mod tests {
             )
             .is_err());
         assert!(model
-            .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+            .token_phase_assignment_ids_for_token_observation_facts(
                 0,
                 &[0],
-                &[StereoTokenObservationFact {
+                &[StereoTokenObservationFact::IsolatedSelectedBeginSide {
                     runtime_component_idx: 1,
                     component_phase: StereoComponentPhase::Stored,
                     selected_begin_token: StereoDirectionToken::Backslash,
@@ -2130,10 +2214,10 @@ mod tests {
             )
             .is_err());
         assert!(model
-            .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+            .token_phase_assignment_ids_for_token_observation_facts(
                 0,
                 &[0],
-                &[StereoTokenObservationFact {
+                &[StereoTokenObservationFact::IsolatedSelectedBeginSide {
                     runtime_component_idx: 2,
                     component_phase: StereoComponentPhase::Stored,
                     selected_begin_token: StereoDirectionToken::Backslash,
@@ -2141,20 +2225,18 @@ mod tests {
                 }],
             )
             .is_err());
-        assert!(
-            super::StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
-                &model,
-                StereoConstraintLayer::Semantic,
-                &[],
-                &[StereoTokenObservationFact {
-                    runtime_component_idx: 2,
-                    component_phase: StereoComponentPhase::Stored,
-                    selected_begin_token: StereoDirectionToken::Backslash,
-                    rdkit_token_flip_adjustment: false,
-                }],
-            )
-            .is_err()
-        );
+        assert!(super::StereoConstraintState::from_token_observation_facts(
+            &model,
+            StereoConstraintLayer::Semantic,
+            &[],
+            &[StereoTokenObservationFact::IsolatedSelectedBeginSide {
+                runtime_component_idx: 2,
+                component_phase: StereoComponentPhase::Stored,
+                selected_begin_token: StereoDirectionToken::Backslash,
+                rdkit_token_flip_adjustment: false,
+            }],
+        )
+        .is_err());
         assert!(super::StereoConstraintState::from_facts(
             &model,
             StereoConstraintLayer::Semantic,
@@ -2285,10 +2367,10 @@ mod tests {
         assert_eq!(
             runtime_zero_stored,
             model
-                .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                .token_phase_assignment_ids_for_token_observation_facts(
                     0,
                     &[0, 1, 2, 3],
-                    &[StereoTokenObservationFact {
+                    &[StereoTokenObservationFact::IsolatedSelectedBeginSide {
                         runtime_component_idx: 0,
                         component_phase: StereoComponentPhase::Stored,
                         selected_begin_token: StereoDirectionToken::Backslash,
@@ -2318,17 +2400,17 @@ mod tests {
                 .len(),
         );
         let both_observations = model
-            .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+            .token_phase_assignment_ids_for_token_observation_facts(
                 0,
                 &[0, 1, 2, 3],
                 &[
-                    StereoTokenObservationFact {
+                    StereoTokenObservationFact::IsolatedSelectedBeginSide {
                         runtime_component_idx: 0,
                         component_phase: StereoComponentPhase::Stored,
                         selected_begin_token: StereoDirectionToken::Backslash,
                         rdkit_token_flip_adjustment: false,
                     },
-                    StereoTokenObservationFact {
+                    StereoTokenObservationFact::IsolatedSelectedBeginSide {
                         runtime_component_idx: 1,
                         component_phase: StereoComponentPhase::Stored,
                         selected_begin_token: StereoDirectionToken::Slash,
@@ -2349,17 +2431,17 @@ mod tests {
         assert_eq!(
             Vec::<usize>::new(),
             model
-                .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                .token_phase_assignment_ids_for_token_observation_facts(
                     0,
                     &[0, 1, 2, 3],
                     &[
-                        StereoTokenObservationFact {
+                        StereoTokenObservationFact::IsolatedSelectedBeginSide {
                             runtime_component_idx: 0,
                             component_phase: StereoComponentPhase::Stored,
                             selected_begin_token: StereoDirectionToken::Backslash,
                             rdkit_token_flip_adjustment: false,
                         },
-                        StereoTokenObservationFact {
+                        StereoTokenObservationFact::IsolatedSelectedBeginSide {
                             runtime_component_idx: 0,
                             component_phase: StereoComponentPhase::Stored,
                             selected_begin_token: StereoDirectionToken::Slash,

@@ -23,3 +23,5 @@ The most current scripts are:
 - `029_compare_token_flip_replacement_shapes.py`: compares adapter,
   observation-fact, and expanded-row replacement shapes for the remaining
   token-flip inference against current pinned diagnostics.
+- `030_mine_token_inference_branch_witnesses.py`: mines minimal completed-output
+  witnesses for each token-flip inference branch before branch replacement.

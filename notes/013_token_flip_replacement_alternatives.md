@@ -184,6 +184,36 @@ The next implementation slice should:
 This keeps the branch behavior-preserving while moving the source of truth
 from "compute a flip" toward "filter assignments by typed online facts".
 
+## Revised Witness Strategy
+
+After replacing `isolated_selected_begin_side` in runtime, the next
+no-compromise step is not another replacement. It is completed-output witness
+coverage for every remaining branch. Three alternatives were considered:
+
+- Mine completed public-support outputs from real molecules.
+- Instrument transient walker states and pin branches seen before completion.
+- Build synthetic internal model fixtures for branch logic.
+
+The first alternative is the principled default. It exercises the public
+support semantics we are trying to preserve, keeps RDKit parity visible, and
+does not bless internal states that may disappear after the algorithm is
+cleaned up. Transient-state instrumentation is useful only if a branch is
+proved necessary but unreachable in completed outputs. Synthetic model
+fixtures are useful for Rust unit tests, but they must not substitute for real
+SMILES witnesses.
+
+`tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py`
+therefore mines minimal completed-output witnesses:
+
+- `C/C=C/C` covers `isolated_all_single_candidate`.
+- `C/C=C/C=C/C` covers `coupled_one_candidate_begin_side`.
+- `CC/C(C)=C/C=C/C` covers `coupled_two_candidate_begin_side` and also
+  `coupled_one_candidate_begin_side`.
+
+The fixture should pin expected branch-count histograms per witness so tests
+derive branch coverage from the corpus, not from hard-coded assumptions in the
+test body.
+
 ## Empirical Check
 
 `tmp/exploration/stereo_assignment/029_compare_token_flip_replacement_shapes.py`

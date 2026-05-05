@@ -33,6 +33,7 @@ class PinnedStereoConstraintModelCase:
     expected_rdkit_local_writer_assignment_count: int
     expected_rdkit_traversal_writer_assignment_count: int
     expected_grimace_runtime_support_count: int
+    expected_token_flip_inference_branch_counts: tuple[tuple[str, int], ...]
     expected_rdkit_sampled_support_count: int | None
     expected_rdkit_sampled_exact_support_overlap_count: int | None
     expected_rdkit_sampled_exact_local_invalid_overlap_count: int | None
@@ -396,6 +397,12 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
+        expected_token_flip_inference_branch_counts = _optional_string_int_counts(
+            raw_case,
+            field_name="expected_token_flip_inference_branch_counts",
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
         cases.append(
             PinnedStereoConstraintModelCase(
                 case_id=fixture_case.case_id,
@@ -430,6 +437,9 @@ def load_pinned_stereo_constraint_model_cases(
                     field_name="expected_grimace_runtime_support_count",
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
+                ),
+                expected_token_flip_inference_branch_counts=(
+                    expected_token_flip_inference_branch_counts
                 ),
                 expected_rdkit_sampled_support_count=expected_rdkit_sampled_support_count,
                 expected_rdkit_sampled_exact_support_overlap_count=(

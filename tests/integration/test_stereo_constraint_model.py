@@ -625,17 +625,34 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             mol = parse_smiles(case.smiles)
             prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
             rows = _core._stereo_constraint_output_facts(prepared)
+            case_token_flip_inference_branches = Counter(
+                component["token_flip_inference_inputs"]["inference_branch"]
+                for row in rows
+                for component in row["component_token_phase"]
+            )
 
             with self.subTest(case_id=case.case_id, source=case.source):
                 self.assertTrue(rows)
+                if case.expected_token_flip_inference_branch_counts:
+                    self.assertEqual(
+                        dict(case.expected_token_flip_inference_branch_counts),
+                        dict(sorted(case_token_flip_inference_branches.items())),
+                    )
                 for row in rows:
+                    row_token_flip_inference_branches = {
+                        component["token_flip_inference_inputs"]["inference_branch"]
+                        for component in row["component_token_phase"]
+                    }
                     observation_state_key = (
                         "resolved_constraint_state_from_supported_token_observations"
                     )
-                    self.assertEqual(
-                        row["resolved_constraint_state"],
-                        row[observation_state_key],
-                    )
+                    if row_token_flip_inference_branches == {
+                        "isolated_selected_begin_side"
+                    }:
+                        self.assertEqual(
+                            row["resolved_constraint_state"],
+                            row[observation_state_key],
+                        )
                     forced_token_flips = {
                         forced["runtime_component_idx"]: forced["token_flip"]
                         for component in row["resolved_constraint_state"]["semantic"]
@@ -685,6 +702,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             component["inferred_token_flip"],
                         )
                         token_flip_inputs = component["token_flip_inference_inputs"]
+                        seen_token_flip_inference_branches.add(
+                            token_flip_inputs["inference_branch"]
+                        )
                         required_input_facts = frozenset(
                             token_flip_inputs["required_input_facts"]
                         )
@@ -808,9 +828,6 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             component["needs_token_phase_assignment_dimension"],
                             component["carrier_assignment_singleton"],
                         )
-                        seen_token_flip_inference_branches.add(
-                            token_flip_inputs["inference_branch"]
-                        )
                         saw_stored_token_flip |= (
                             component["inferred_token_flip"] == "stored"
                         )
@@ -830,9 +847,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(saw_phase_dimension_needed)
         self.assertTrue(saw_supported_token_observation)
         self.assertTrue(seen_token_flip_inference_branches)
-        self.assertLessEqual(
-            seen_token_flip_inference_branches,
+        self.assertEqual(
             TOKEN_FLIP_INFERENCE_BRANCHES,
+            seen_token_flip_inference_branches,
         )
 
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:

@@ -4,6 +4,65 @@
       "expected_component_side_domain_sizes": [
         [
           1,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 3,
+      "expected_rdkit_local_writer_assignment_count": 1,
+      "expected_rdkit_traversal_writer_assignment_count": 1,
+      "expected_semantic_assignment_count": 1,
+      "expected_token_flip_inference_branch_counts": {
+        "isolated_all_single_candidate": 6
+      },
+      "id": "isolated_single_candidate_alkene",
+      "smiles": "C/C=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 5,
+      "expected_rdkit_local_writer_assignment_count": 1,
+      "expected_rdkit_traversal_writer_assignment_count": 1,
+      "expected_semantic_assignment_count": 1,
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 10
+      },
+      "id": "coupled_single_candidate_diene",
+      "smiles": "C/C=C/C=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          2,
+          1,
+          1,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 28,
+      "expected_rdkit_local_writer_assignment_count": 2,
+      "expected_rdkit_traversal_writer_assignment_count": 2,
+      "expected_semantic_assignment_count": 2,
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 14,
+        "coupled_two_candidate_begin_side": 14
+      },
+      "id": "coupled_two_candidate_branched_diene",
+      "smiles": "CC/C(C)=C/C=C/C",
+      "source": "tmp/exploration/stereo_assignment/030_mine_token_inference_branch_witnesses.py"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
+          1,
           2,
           2,
           1

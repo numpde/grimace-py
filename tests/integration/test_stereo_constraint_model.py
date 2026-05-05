@@ -36,6 +36,10 @@ TOKEN_FLIP_INFERENCE_BRANCHES = frozenset(
         "coupled_two_candidate_begin_side",
     )
 )
+TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH = {
+    "isolated_all_single_candidate": "all_single_candidate",
+    "isolated_selected_begin_side": "selected_begin_side",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -646,10 +650,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     observation_state_key = (
                         "resolved_constraint_state_from_supported_token_observations"
                     )
-                    supported_observation_branches = {
-                        "isolated_all_single_candidate",
-                        "isolated_selected_begin_side",
-                    }
+                    supported_observation_branches = set(
+                        TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH
+                    )
                     if row_token_flip_inference_branches <= supported_observation_branches:
                         self.assertEqual(
                             row["resolved_constraint_state"],
@@ -789,7 +792,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 token_observation["component_phase"],
                             )
                             self.assertEqual(
-                                token_flip_inputs["inference_branch"],
+                                TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH[
+                                    token_flip_inputs["inference_branch"]
+                                ],
                                 token_observation["observation_kind"],
                             )
                             if (

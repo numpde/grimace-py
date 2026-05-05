@@ -4491,14 +4491,12 @@ fn isolated_selected_begin_side_observation_from_state(
         resolved_selected_neighbors,
         component_idx,
     );
-    Ok(Some(
-        StereoTokenObservationFact::IsolatedSelectedBeginSide {
-            runtime_component_idx: component_idx,
-            component_phase,
-            selected_begin_token: StereoDirectionToken::from_str(&selected_begin_token)?,
-            rdkit_token_flip_adjustment,
-        },
-    ))
+    Ok(Some(StereoTokenObservationFact::SelectedBeginSide {
+        runtime_component_idx: component_idx,
+        component_phase,
+        selected_begin_token: StereoDirectionToken::from_str(&selected_begin_token)?,
+        rdkit_token_flip_adjustment,
+    }))
 }
 
 fn isolated_all_single_candidate_observation_from_state(
@@ -4555,13 +4553,11 @@ fn isolated_all_single_candidate_observation_from_state(
         resolved_selected_neighbors,
         component_idx,
     );
-    Ok(Some(
-        StereoTokenObservationFact::IsolatedAllSingleCandidate {
-            runtime_component_idx: component_idx,
-            component_phase,
-            rdkit_token_flip_adjustment,
-        },
-    ))
+    Ok(Some(StereoTokenObservationFact::AllSingleCandidate {
+        runtime_component_idx: component_idx,
+        component_phase,
+        rdkit_token_flip_adjustment,
+    }))
 }
 
 fn isolated_token_flip_from_observation_fact(
@@ -4657,25 +4653,23 @@ impl ComponentTokenInferenceInputs {
             return Ok(None);
         };
         match self.inference_branch {
-            "isolated_all_single_candidate" => Ok(Some(
-                StereoTokenObservationFact::IsolatedAllSingleCandidate {
+            "isolated_all_single_candidate" => {
+                Ok(Some(StereoTokenObservationFact::AllSingleCandidate {
                     runtime_component_idx: self.component_idx,
                     component_phase,
                     rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
-                },
-            )),
+                }))
+            }
             "isolated_selected_begin_side" => {
                 let Some(selected_begin_token) = self.selected_begin_token.as_deref() else {
                     return Ok(None);
                 };
-                Ok(Some(
-                    StereoTokenObservationFact::IsolatedSelectedBeginSide {
-                        runtime_component_idx: self.component_idx,
-                        component_phase,
-                        selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
-                        rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
-                    },
-                ))
+                Ok(Some(StereoTokenObservationFact::SelectedBeginSide {
+                    runtime_component_idx: self.component_idx,
+                    component_phase,
+                    selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
+                    rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
+                }))
             }
             _ => Ok(None),
         }

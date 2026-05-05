@@ -39,6 +39,7 @@ TOKEN_FLIP_INFERENCE_BRANCHES = frozenset(
 TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH = {
     "isolated_all_single_candidate": "all_single_candidate",
     "isolated_selected_begin_side": "selected_begin_side",
+    "coupled_one_candidate_begin_side": "selected_begin_side",
 }
 
 

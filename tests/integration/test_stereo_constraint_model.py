@@ -618,6 +618,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         saw_flipped_token_flip = False
         saw_rdkit_token_flip_adjustment = False
         saw_phase_dimension_needed = False
+        saw_supported_token_observation = False
         seen_token_flip_inference_branches = set()
 
         for case in self.cases:
@@ -735,6 +736,67 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 "first_emitted_candidate_or_adjustment_fallback",
                                 required_input_facts,
                             )
+                        if (
+                            token_flip_inputs["inference_branch"]
+                            == "isolated_selected_begin_side"
+                        ):
+                            token_observation_facts = component[
+                                "token_observation_facts"
+                            ]
+                            self.assertTrue(
+                                component["token_observation_supported_branch"]
+                            )
+                            self.assertIsNone(
+                                component["token_observation_unsupported_reason"]
+                            )
+                            self.assertEqual(1, len(token_observation_facts))
+                            token_observation = token_observation_facts[0]
+                            self.assertEqual(
+                                component["component_idx"],
+                                token_observation["runtime_component_idx"],
+                            )
+                            self.assertEqual(
+                                token_flip_inputs["effective_phase"],
+                                token_observation["component_phase"],
+                            )
+                            self.assertEqual(
+                                token_flip_inputs["selected_begin_token"],
+                                token_observation["selected_begin_token"],
+                            )
+                            self.assertEqual(
+                                token_flip_inputs["rdkit_token_flip_adjustment"],
+                                token_observation["rdkit_token_flip_adjustment"],
+                            )
+                            self.assertEqual(
+                                component["inferred_token_flip"],
+                                token_observation["implied_token_flip"],
+                            )
+                            self.assertEqual(
+                                component["token_phase_assignment_count_before_token"],
+                                component[
+                                    "token_observation_assignment_count_before"
+                                ],
+                            )
+                            self.assertEqual(
+                                component["token_phase_assignment_count_after_token"],
+                                component["token_observation_assignment_count_after"],
+                            )
+                            self.assertEqual(
+                                component["inferred_token_flip"],
+                                component["token_observation_forced_flip"],
+                            )
+                            self.assertTrue(
+                                component["token_observation_matches_inferred_flip"]
+                            )
+                            saw_supported_token_observation = True
+                        else:
+                            self.assertFalse(
+                                component["token_observation_supported_branch"]
+                            )
+                            self.assertEqual([], component["token_observation_facts"])
+                            self.assertIsNotNone(
+                                component["token_observation_unsupported_reason"]
+                            )
                         self.assertEqual(
                             component["needs_token_phase_assignment_dimension"],
                             component["carrier_assignment_singleton"],
@@ -759,6 +821,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(saw_flipped_token_flip)
         self.assertTrue(saw_rdkit_token_flip_adjustment)
         self.assertTrue(saw_phase_dimension_needed)
+        self.assertTrue(saw_supported_token_observation)
         self.assertTrue(seen_token_flip_inference_branches)
         self.assertLessEqual(
             seen_token_flip_inference_branches,

@@ -12,8 +12,9 @@ use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
     stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
-    StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel, StereoConstraintState,
-    StereoSideInfo, StereoSideInfoBuild, StereoTokenFlip, StereoTokenFlipFact, StereoTraversalRole,
+    StereoComponentPhase, StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel,
+    StereoConstraintState, StereoDirectionToken, StereoSideInfo, StereoSideInfoBuild,
+    StereoTokenFlip, StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
     CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
@@ -2588,6 +2589,28 @@ fn model_token_flip_name(value: StereoTokenFlip) -> &'static str {
     }
 }
 
+fn model_component_phase_from_value(value: i8) -> Option<StereoComponentPhase> {
+    match value {
+        STORED_COMPONENT_PHASE => Some(StereoComponentPhase::Stored),
+        FLIPPED_COMPONENT_PHASE => Some(StereoComponentPhase::Flipped),
+        _ => None,
+    }
+}
+
+fn model_component_phase_name(value: StereoComponentPhase) -> &'static str {
+    match value {
+        StereoComponentPhase::Stored => "stored",
+        StereoComponentPhase::Flipped => "flipped",
+    }
+}
+
+fn stereo_direction_token_name(value: StereoDirectionToken) -> &'static str {
+    match value {
+        StereoDirectionToken::Slash => "/",
+        StereoDirectionToken::Backslash => "\\",
+    }
+}
+
 #[pyfunction(name = "_stereo_constraint_model_summary")]
 pub fn internal_stereo_constraint_model_summary(
     py: Python<'_>,
@@ -3201,19 +3224,20 @@ fn component_token_phase_diagnostics_to_py(
                 .get(model_component_idx.unwrap_or(usize::MAX))
                 .map(Vec::len)
                 .unwrap_or(0);
-            let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;
+            let token_inference_inputs = component_token_inference_inputs(
+                runtime,
+                graph,
+                state,
+                resolved_selected_neighbors,
+                component_idx,
+            )?;
+            let inferred = token_inference_inputs.inferred;
             let inferred_model_token_flip =
                 inferred.and_then(model_token_flip_from_component_value);
             let state_token_flip = state.stereo_component_token_flips[component_idx];
             let state_known = state_token_flip != UNKNOWN_COMPONENT_TOKEN_FLIP;
             let inferred_matches_state =
                 inferred.is_none_or(|inferred| !state_known || inferred == state_token_flip);
-            let adjustment = rdkit_component_token_flip_adjustment(
-                runtime,
-                state,
-                resolved_selected_neighbors,
-                component_idx,
-            );
             let remaining_neighbor_assignment_ids = model_component_idx
                 .and_then(|idx| assignment_state.remaining_by_component.get(idx))
                 .map(Vec::as_slice)
@@ -3261,6 +3285,40 @@ fn component_token_phase_diagnostics_to_py(
                 .and_then(|idx| runtime.constraint_model.components.get(idx))
                 .map(|component| component.runtime_component_ids.len())
                 .unwrap_or(0);
+            let token_observation_fact =
+                token_inference_inputs.isolated_selected_begin_side_observation()?;
+            let token_observation_facts = token_observation_fact
+                .into_iter()
+                .collect::<Vec<StereoTokenObservationFact>>();
+            let token_observation_assignment_ids_after_token = match model_component_idx {
+                Some(idx) => runtime
+                    .constraint_model
+                    .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                        idx,
+                        remaining_neighbor_assignment_ids,
+                        &token_observation_facts,
+                    )?,
+                None => Vec::new(),
+            };
+            let token_observation_forced_model_token_flip = model_component_idx.and_then(|idx| {
+                runtime
+                    .constraint_model
+                    .forced_token_flip_for_token_phase_assignment_ids(
+                        idx,
+                        component_idx,
+                        &token_observation_assignment_ids_after_token,
+                    )
+            });
+            let token_observation_unsupported_reason = if token_observation_facts.is_empty() {
+                Some(match token_inference_inputs.inference_branch {
+                    "isolated_selected_begin_side" => "missing_required_observation_inputs",
+                    _ => "unsupported_observation_branch",
+                })
+            } else {
+                None
+            };
+            let token_observation_matches_inferred_flip = !token_observation_facts.is_empty()
+                && token_observation_forced_model_token_flip == inferred_model_token_flip;
 
             let row = PyDict::new(py);
             row.set_item("component_idx", component_idx)?;
@@ -3285,7 +3343,10 @@ fn component_token_phase_diagnostics_to_py(
                 "component_begin_atom_idx",
                 state.stereo_component_begin_atoms[component_idx],
             )?;
-            row.set_item("rdkit_token_flip_adjustment", adjustment)?;
+            row.set_item(
+                "rdkit_token_flip_adjustment",
+                token_inference_inputs.rdkit_token_flip_adjustment,
+            )?;
             row.set_item(
                 "state_token_flip",
                 component_token_flip_name(state_token_flip),
@@ -3315,6 +3376,34 @@ fn component_token_phase_diagnostics_to_py(
                 forced_model_token_flip.map(model_token_flip_name),
             )?;
             row.set_item(
+                "token_observation_facts",
+                token_observation_facts_to_py(py, &token_observation_facts)?,
+            )?;
+            row.set_item(
+                "token_observation_supported_branch",
+                !token_observation_facts.is_empty(),
+            )?;
+            row.set_item(
+                "token_observation_unsupported_reason",
+                token_observation_unsupported_reason,
+            )?;
+            row.set_item(
+                "token_observation_assignment_count_before",
+                token_phase_assignment_ids_before_token.len(),
+            )?;
+            row.set_item(
+                "token_observation_assignment_count_after",
+                token_observation_assignment_ids_after_token.len(),
+            )?;
+            row.set_item(
+                "token_observation_forced_flip",
+                token_observation_forced_model_token_flip.map(model_token_flip_name),
+            )?;
+            row.set_item(
+                "token_observation_matches_inferred_flip",
+                token_observation_matches_inferred_flip,
+            )?;
+            row.set_item(
                 "carrier_assignment_singleton",
                 remaining_assignment_count == 1,
             )?;
@@ -3334,14 +3423,7 @@ fn component_token_phase_diagnostics_to_py(
             )?;
             row.set_item(
                 "token_flip_inference_inputs",
-                component_token_inference_inputs_to_py(
-                    py,
-                    runtime,
-                    graph,
-                    state,
-                    resolved_selected_neighbors,
-                    component_idx,
-                )?,
+                component_token_inference_inputs_to_py(py, &token_inference_inputs)?,
             )?;
             Ok(row.unbind())
         })
@@ -4274,15 +4356,61 @@ fn inferred_component_token_flip(
     }))
 }
 
-fn component_token_inference_inputs_to_py(
-    py: Python<'_>,
+struct ComponentTokenInferenceInputs {
+    component_idx: usize,
+    inference_branch: &'static str,
+    has_required_inputs: bool,
+    required_input_facts: Vec<String>,
+    missing_input_facts: Vec<String>,
+    side_ids: Vec<usize>,
+    selected_side_ids: Vec<usize>,
+    is_isolated: bool,
+    all_single_candidate: bool,
+    input_phase: i8,
+    effective_phase: i8,
+    phase_source: &'static str,
+    input_begin_atom_idx: isize,
+    effective_begin_atom_idx: isize,
+    begin_atom_source: &'static str,
+    inferred_selected_side_idx: Option<usize>,
+    begin_side_idx: Option<usize>,
+    begin_side_candidate_count: usize,
+    selected_begin_neighbor_idx: Option<usize>,
+    selected_begin_token: Option<String>,
+    first_emitted_candidate_idx: Option<usize>,
+    rdkit_token_flip_adjustment: bool,
+    inferred: Option<i8>,
+}
+
+impl ComponentTokenInferenceInputs {
+    fn isolated_selected_begin_side_observation(
+        &self,
+    ) -> PyResult<Option<StereoTokenObservationFact>> {
+        if self.inference_branch != "isolated_selected_begin_side" || !self.has_required_inputs {
+            return Ok(None);
+        }
+        let Some(component_phase) = model_component_phase_from_value(self.effective_phase) else {
+            return Ok(None);
+        };
+        let Some(selected_begin_token) = self.selected_begin_token.as_deref() else {
+            return Ok(None);
+        };
+        Ok(Some(StereoTokenObservationFact {
+            runtime_component_idx: self.component_idx,
+            component_phase,
+            selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
+            rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
+        }))
+    }
+}
+
+fn component_token_inference_inputs(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
-) -> PyResult<Py<PyDict>> {
-    let row = PyDict::new(py);
+) -> PyResult<ComponentTokenInferenceInputs> {
     let side_ids = &runtime.side_ids_by_component[component_idx];
     let selected_side_ids = side_ids
         .iter()
@@ -4415,45 +4543,122 @@ fn component_token_inference_inputs_to_py(
     }
     let has_required_inputs = value_branch && missing_input_facts.is_empty();
 
-    row.set_item("component_idx", component_idx)?;
-    row.set_item("inference_branch", inference_branch)?;
-    row.set_item("has_required_inputs", has_required_inputs)?;
-    row.set_item("required_input_facts", required_input_facts)?;
-    row.set_item("missing_input_facts", missing_input_facts)?;
-    row.set_item("side_ids", side_ids.clone())?;
-    row.set_item("selected_side_ids", selected_side_ids)?;
-    row.set_item("is_isolated", runtime.isolated_components[component_idx])?;
-    row.set_item("all_single_candidate", all_single_candidate)?;
-    row.set_item("input_phase", component_phase_name(input_phase))?;
-    row.set_item("input_phase_value", input_phase)?;
-    row.set_item("effective_phase", component_phase_name(effective_phase))?;
-    row.set_item("effective_phase_value", effective_phase)?;
-    row.set_item("phase_source", phase_source)?;
-    row.set_item("input_begin_atom_idx", input_begin_atom_idx)?;
-    row.set_item("effective_begin_atom_idx", effective_begin_atom_idx)?;
-    row.set_item("begin_atom_source", begin_atom_source)?;
-    row.set_item("inferred_selected_side_idx", inferred_selected_side_idx)?;
-    row.set_item("begin_side_idx", begin_side_idx)?;
-    row.set_item(
-        "begin_side_candidate_count",
-        begin_side
+    Ok(ComponentTokenInferenceInputs {
+        component_idx,
+        inference_branch,
+        has_required_inputs,
+        required_input_facts,
+        missing_input_facts,
+        side_ids: side_ids.clone(),
+        selected_side_ids,
+        is_isolated: runtime.isolated_components[component_idx],
+        all_single_candidate,
+        input_phase,
+        effective_phase,
+        phase_source,
+        input_begin_atom_idx,
+        effective_begin_atom_idx,
+        begin_atom_source,
+        inferred_selected_side_idx,
+        begin_side_idx,
+        begin_side_candidate_count: begin_side
             .map(|side_info| side_info.candidate_neighbors.len())
             .unwrap_or(0),
+        selected_begin_neighbor_idx,
+        selected_begin_token,
+        first_emitted_candidate_idx,
+        rdkit_token_flip_adjustment: adjustment,
+        inferred,
+    })
+}
+
+fn component_token_inference_inputs_to_py(
+    py: Python<'_>,
+    inputs: &ComponentTokenInferenceInputs,
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("component_idx", inputs.component_idx)?;
+    row.set_item("inference_branch", inputs.inference_branch)?;
+    row.set_item("has_required_inputs", inputs.has_required_inputs)?;
+    row.set_item("required_input_facts", inputs.required_input_facts.clone())?;
+    row.set_item("missing_input_facts", inputs.missing_input_facts.clone())?;
+    row.set_item("side_ids", inputs.side_ids.clone())?;
+    row.set_item("selected_side_ids", inputs.selected_side_ids.clone())?;
+    row.set_item("is_isolated", inputs.is_isolated)?;
+    row.set_item("all_single_candidate", inputs.all_single_candidate)?;
+    row.set_item("input_phase", component_phase_name(inputs.input_phase))?;
+    row.set_item("input_phase_value", inputs.input_phase)?;
+    row.set_item(
+        "effective_phase",
+        component_phase_name(inputs.effective_phase),
     )?;
-    row.set_item("selected_begin_neighbor_idx", selected_begin_neighbor_idx)?;
-    row.set_item("selected_begin_token", selected_begin_token)?;
-    row.set_item("first_emitted_candidate_idx", first_emitted_candidate_idx)?;
+    row.set_item("effective_phase_value", inputs.effective_phase)?;
+    row.set_item("phase_source", inputs.phase_source)?;
+    row.set_item("input_begin_atom_idx", inputs.input_begin_atom_idx)?;
+    row.set_item("effective_begin_atom_idx", inputs.effective_begin_atom_idx)?;
+    row.set_item("begin_atom_source", inputs.begin_atom_source)?;
+    row.set_item(
+        "inferred_selected_side_idx",
+        inputs.inferred_selected_side_idx,
+    )?;
+    row.set_item("begin_side_idx", inputs.begin_side_idx)?;
+    row.set_item(
+        "begin_side_candidate_count",
+        inputs.begin_side_candidate_count,
+    )?;
+    row.set_item(
+        "selected_begin_neighbor_idx",
+        inputs.selected_begin_neighbor_idx,
+    )?;
+    row.set_item("selected_begin_token", inputs.selected_begin_token.clone())?;
+    row.set_item(
+        "first_emitted_candidate_idx",
+        inputs.first_emitted_candidate_idx,
+    )?;
     row.set_item(
         "first_emitted_candidate_known",
-        first_emitted_candidate_idx.is_some(),
+        inputs.first_emitted_candidate_idx.is_some(),
     )?;
-    row.set_item("rdkit_token_flip_adjustment", adjustment)?;
+    row.set_item(
+        "rdkit_token_flip_adjustment",
+        inputs.rdkit_token_flip_adjustment,
+    )?;
     row.set_item(
         "inferred_token_flip",
-        inferred.map(component_token_flip_name),
+        inputs.inferred.map(component_token_flip_name),
     )?;
-    row.set_item("inferred_token_flip_value", inferred)?;
+    row.set_item("inferred_token_flip_value", inputs.inferred)?;
     Ok(row.unbind())
+}
+
+fn token_observation_facts_to_py(
+    py: Python<'_>,
+    facts: &[StereoTokenObservationFact],
+) -> PyResult<Vec<Py<PyDict>>> {
+    facts
+        .iter()
+        .map(|fact| {
+            let row = PyDict::new(py);
+            row.set_item("runtime_component_idx", fact.runtime_component_idx)?;
+            row.set_item(
+                "component_phase",
+                model_component_phase_name(fact.component_phase),
+            )?;
+            row.set_item(
+                "selected_begin_token",
+                stereo_direction_token_name(fact.selected_begin_token),
+            )?;
+            row.set_item(
+                "rdkit_token_flip_adjustment",
+                fact.rdkit_token_flip_adjustment,
+            )?;
+            row.set_item(
+                "implied_token_flip",
+                model_token_flip_name(fact.implied_token_flip_for_isolated_selected_begin_side()),
+            )?;
+            Ok(row.unbind())
+        })
+        .collect()
 }
 
 // Suspicious current model:

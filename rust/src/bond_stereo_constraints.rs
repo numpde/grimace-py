@@ -937,6 +937,27 @@ impl StereoConstraintModel {
         Ok(assignment_ids)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+        &self,
+        component_idx: usize,
+        neighbor_assignment_ids: &[usize],
+        observation_facts: &[StereoTokenObservationFact],
+    ) -> PyResult<Vec<usize>> {
+        let token_flip_facts = observation_facts
+            .iter()
+            .map(|fact| StereoTokenFlipFact {
+                runtime_component_idx: fact.runtime_component_idx,
+                token_flip: fact.implied_token_flip_for_isolated_selected_begin_side(),
+            })
+            .collect::<Vec<_>>();
+        self.token_phase_assignment_ids_for_neighbor_assignment_ids(
+            component_idx,
+            neighbor_assignment_ids,
+            &token_flip_facts,
+        )
+    }
+
     pub(crate) fn forced_token_flip_for_token_phase_assignment_ids(
         &self,
         component_idx: usize,
@@ -2026,6 +2047,30 @@ mod tests {
                 }],
             )
             .is_err());
+        assert!(model
+            .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                0,
+                &[0],
+                &[StereoTokenObservationFact {
+                    runtime_component_idx: 1,
+                    component_phase: StereoComponentPhase::Stored,
+                    selected_begin_token: StereoDirectionToken::Backslash,
+                    rdkit_token_flip_adjustment: false,
+                }],
+            )
+            .is_err());
+        assert!(model
+            .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                0,
+                &[0],
+                &[StereoTokenObservationFact {
+                    runtime_component_idx: 2,
+                    component_phase: StereoComponentPhase::Stored,
+                    selected_begin_token: StereoDirectionToken::Backslash,
+                    rdkit_token_flip_adjustment: false,
+                }],
+            )
+            .is_err());
         assert!(super::StereoConstraintState::from_facts(
             &model,
             StereoConstraintLayer::Semantic,
@@ -2154,6 +2199,21 @@ mod tests {
             model.forced_token_flip_for_token_phase_assignment_ids(0, 1, &runtime_zero_stored),
         );
         assert_eq!(
+            runtime_zero_stored,
+            model
+                .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                    0,
+                    &[0, 1, 2, 3],
+                    &[StereoTokenObservationFact {
+                        runtime_component_idx: 0,
+                        component_phase: StereoComponentPhase::Stored,
+                        selected_begin_token: StereoDirectionToken::Backslash,
+                        rdkit_token_flip_adjustment: false,
+                    }],
+                )
+                .expect("observation query should be valid"),
+        );
+        assert_eq!(
             4,
             model
                 .token_phase_assignment_ids_for_neighbor_assignment_ids(
@@ -2172,6 +2232,58 @@ mod tests {
                 )
                 .expect("token phase query should be valid")
                 .len(),
+        );
+        let both_observations = model
+            .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                0,
+                &[0, 1, 2, 3],
+                &[
+                    StereoTokenObservationFact {
+                        runtime_component_idx: 0,
+                        component_phase: StereoComponentPhase::Stored,
+                        selected_begin_token: StereoDirectionToken::Backslash,
+                        rdkit_token_flip_adjustment: false,
+                    },
+                    StereoTokenObservationFact {
+                        runtime_component_idx: 1,
+                        component_phase: StereoComponentPhase::Stored,
+                        selected_begin_token: StereoDirectionToken::Slash,
+                        rdkit_token_flip_adjustment: false,
+                    },
+                ],
+            )
+            .expect("observation query should be valid");
+        assert_eq!(4, both_observations.len());
+        assert_eq!(
+            Some(StereoTokenFlip::Stored),
+            model.forced_token_flip_for_token_phase_assignment_ids(0, 0, &both_observations),
+        );
+        assert_eq!(
+            Some(StereoTokenFlip::Flipped),
+            model.forced_token_flip_for_token_phase_assignment_ids(0, 1, &both_observations),
+        );
+        assert_eq!(
+            Vec::<usize>::new(),
+            model
+                .token_phase_assignment_ids_for_isolated_selected_begin_side_observation_facts(
+                    0,
+                    &[0, 1, 2, 3],
+                    &[
+                        StereoTokenObservationFact {
+                            runtime_component_idx: 0,
+                            component_phase: StereoComponentPhase::Stored,
+                            selected_begin_token: StereoDirectionToken::Backslash,
+                            rdkit_token_flip_adjustment: false,
+                        },
+                        StereoTokenObservationFact {
+                            runtime_component_idx: 0,
+                            component_phase: StereoComponentPhase::Stored,
+                            selected_begin_token: StereoDirectionToken::Slash,
+                            rdkit_token_flip_adjustment: false,
+                        },
+                    ],
+                )
+                .expect("conflicting observations should empty the query"),
         );
         assert_eq!(
             vec![0, 1, 2, 3],

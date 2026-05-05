@@ -40,6 +40,7 @@ TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH = {
     "isolated_all_single_candidate": "all_single_candidate",
     "isolated_selected_begin_side": "selected_begin_side",
     "coupled_one_candidate_begin_side": "selected_begin_side",
+    "coupled_two_candidate_begin_side": "two_candidate_begin_side",
 }
 
 
@@ -809,6 +810,35 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 self.assertEqual(
                                     token_flip_inputs["selected_begin_token"],
                                     token_observation["selected_begin_token"],
+                                )
+                            if (
+                                token_flip_inputs["inference_branch"]
+                                == "coupled_two_candidate_begin_side"
+                            ):
+                                expected_selected_is_first = None
+                                if (
+                                    token_flip_inputs["first_emitted_candidate_idx"]
+                                    is not None
+                                ):
+                                    expected_selected_is_first = (
+                                        token_flip_inputs[
+                                            "first_emitted_candidate_idx"
+                                        ]
+                                        == token_flip_inputs[
+                                            "selected_begin_neighbor_idx"
+                                        ]
+                                    )
+                                self.assertEqual(
+                                    expected_selected_is_first,
+                                    token_observation[
+                                        "selected_begin_neighbor_is_first_emitted"
+                                    ],
+                                )
+                            else:
+                                self.assertIsNone(
+                                    token_observation[
+                                        "selected_begin_neighbor_is_first_emitted"
+                                    ]
                                 )
                             self.assertEqual(
                                 token_flip_inputs["rdkit_token_flip_adjustment"],

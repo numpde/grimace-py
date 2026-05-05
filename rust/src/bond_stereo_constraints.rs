@@ -124,6 +124,13 @@ pub(crate) enum StereoTokenObservationFact {
         selected_begin_token: StereoDirectionToken,
         rdkit_token_flip_adjustment: bool,
     },
+    TwoCandidateBeginSide {
+        runtime_component_idx: usize,
+        component_phase: StereoComponentPhase,
+        selected_begin_token: StereoDirectionToken,
+        selected_begin_neighbor_is_first_emitted: Option<bool>,
+        rdkit_token_flip_adjustment: bool,
+    },
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -137,6 +144,10 @@ impl StereoTokenObservationFact {
             | Self::SelectedBeginSide {
                 runtime_component_idx,
                 ..
+            }
+            | Self::TwoCandidateBeginSide {
+                runtime_component_idx,
+                ..
             } => runtime_component_idx,
         }
     }
@@ -147,6 +158,9 @@ impl StereoTokenObservationFact {
                 component_phase, ..
             }
             | Self::SelectedBeginSide {
+                component_phase, ..
+            }
+            | Self::TwoCandidateBeginSide {
                 component_phase, ..
             } => component_phase,
         }
@@ -159,6 +173,20 @@ impl StereoTokenObservationFact {
                 selected_begin_token,
                 ..
             } => Some(selected_begin_token),
+            Self::TwoCandidateBeginSide {
+                selected_begin_token,
+                ..
+            } => Some(selected_begin_token),
+        }
+    }
+
+    pub(crate) fn selected_begin_neighbor_is_first_emitted(self) -> Option<bool> {
+        match self {
+            Self::AllSingleCandidate { .. } | Self::SelectedBeginSide { .. } => None,
+            Self::TwoCandidateBeginSide {
+                selected_begin_neighbor_is_first_emitted,
+                ..
+            } => selected_begin_neighbor_is_first_emitted,
         }
     }
 
@@ -171,6 +199,10 @@ impl StereoTokenObservationFact {
             | Self::SelectedBeginSide {
                 rdkit_token_flip_adjustment,
                 ..
+            }
+            | Self::TwoCandidateBeginSide {
+                rdkit_token_flip_adjustment,
+                ..
             } => rdkit_token_flip_adjustment,
         }
     }
@@ -179,25 +211,46 @@ impl StereoTokenObservationFact {
         match self {
             Self::AllSingleCandidate { .. } => "all_single_candidate",
             Self::SelectedBeginSide { .. } => "selected_begin_side",
+            Self::TwoCandidateBeginSide { .. } => "two_candidate_begin_side",
         }
     }
 
     pub(crate) fn implied_token_flip(self) -> StereoTokenFlip {
         let phase_is_flipped = self.component_phase() == StereoComponentPhase::Flipped;
-        let observation_flip = match self {
-            Self::AllSingleCandidate { .. } => false,
+        let final_flip = match self {
+            Self::AllSingleCandidate { .. } => {
+                phase_is_flipped ^ self.rdkit_token_flip_adjustment()
+            }
             Self::SelectedBeginSide {
                 component_phase,
                 selected_begin_token,
+                rdkit_token_flip_adjustment,
                 ..
-            } => match component_phase {
-                StereoComponentPhase::Stored => selected_begin_token == StereoDirectionToken::Slash,
-                StereoComponentPhase::Flipped => {
-                    selected_begin_token == StereoDirectionToken::Backslash
+            } => {
+                let observation_flip = match component_phase {
+                    StereoComponentPhase::Stored => {
+                        selected_begin_token == StereoDirectionToken::Slash
+                    }
+                    StereoComponentPhase::Flipped => {
+                        selected_begin_token == StereoDirectionToken::Backslash
+                    }
+                };
+                phase_is_flipped ^ observation_flip ^ rdkit_token_flip_adjustment
+            }
+            Self::TwoCandidateBeginSide {
+                selected_begin_token,
+                selected_begin_neighbor_is_first_emitted,
+                rdkit_token_flip_adjustment,
+                ..
+            } => {
+                if let Some(selected_is_first) = selected_begin_neighbor_is_first_emitted {
+                    (selected_is_first == (selected_begin_token == StereoDirectionToken::Slash))
+                        ^ rdkit_token_flip_adjustment
+                } else {
+                    phase_is_flipped ^ rdkit_token_flip_adjustment
                 }
-            },
+            }
         };
-        let final_flip = phase_is_flipped ^ observation_flip ^ self.rdkit_token_flip_adjustment();
         if final_flip {
             StereoTokenFlip::Flipped
         } else {
@@ -1753,7 +1806,7 @@ mod tests {
     }
 
     #[test]
-    fn token_observation_fact_derives_isolated_token_flips() {
+    fn token_observation_fact_derives_token_flips() {
         for (component_phase, adjustment, expected) in [
             (StereoComponentPhase::Stored, false, StereoTokenFlip::Stored),
             (
@@ -1833,6 +1886,85 @@ mod tests {
                 rdkit_token_flip_adjustment: adjustment,
             };
             assert_eq!(expected, observation.implied_token_flip(),);
+        }
+
+        let two_candidate_known_order_cases = [
+            (
+                StereoDirectionToken::Slash,
+                Some(true),
+                false,
+                StereoTokenFlip::Flipped,
+            ),
+            (
+                StereoDirectionToken::Slash,
+                Some(false),
+                false,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoDirectionToken::Backslash,
+                Some(true),
+                false,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoDirectionToken::Backslash,
+                Some(false),
+                false,
+                StereoTokenFlip::Flipped,
+            ),
+            (
+                StereoDirectionToken::Slash,
+                Some(true),
+                true,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoDirectionToken::Backslash,
+                Some(false),
+                true,
+                StereoTokenFlip::Stored,
+            ),
+        ];
+
+        for (selected_begin_token, selected_is_first, adjustment, expected) in
+            two_candidate_known_order_cases
+        {
+            for component_phase in [StereoComponentPhase::Stored, StereoComponentPhase::Flipped] {
+                let observation = StereoTokenObservationFact::TwoCandidateBeginSide {
+                    runtime_component_idx: 0,
+                    component_phase,
+                    selected_begin_token,
+                    selected_begin_neighbor_is_first_emitted: selected_is_first,
+                    rdkit_token_flip_adjustment: adjustment,
+                };
+                assert_eq!(expected, observation.implied_token_flip());
+                assert_eq!("two_candidate_begin_side", observation.observation_kind());
+                assert_eq!(
+                    selected_is_first,
+                    observation.selected_begin_neighbor_is_first_emitted()
+                );
+            }
+        }
+
+        for (component_phase, adjustment, expected) in [
+            (StereoComponentPhase::Stored, false, StereoTokenFlip::Stored),
+            (
+                StereoComponentPhase::Flipped,
+                false,
+                StereoTokenFlip::Flipped,
+            ),
+            (StereoComponentPhase::Stored, true, StereoTokenFlip::Flipped),
+            (StereoComponentPhase::Flipped, true, StereoTokenFlip::Stored),
+        ] {
+            let observation = StereoTokenObservationFact::TwoCandidateBeginSide {
+                runtime_component_idx: 0,
+                component_phase,
+                selected_begin_token: StereoDirectionToken::Slash,
+                selected_begin_neighbor_is_first_emitted: None,
+                rdkit_token_flip_adjustment: adjustment,
+            };
+            assert_eq!(expected, observation.implied_token_flip());
         }
     }
 

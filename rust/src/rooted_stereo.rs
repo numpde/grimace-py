@@ -3363,6 +3363,7 @@ fn component_token_phase_diagnostics_to_py(
                     "isolated_all_single_candidate" => "missing_required_observation_inputs",
                     "isolated_selected_begin_side" => "missing_required_observation_inputs",
                     "coupled_one_candidate_begin_side" => "missing_required_observation_inputs",
+                    "coupled_two_candidate_begin_side" => "missing_required_observation_inputs",
                     _ => "unsupported_observation_branch",
                 })
             } else {
@@ -4561,12 +4562,20 @@ fn isolated_all_single_candidate_observation_from_state(
     }))
 }
 
-fn coupled_one_candidate_begin_side_observation_from_state(
+struct CoupledSelectedBeginSideObservationContext {
+    component_phase: StereoComponentPhase,
+    begin_side_idx: usize,
+    selected_neighbor_idx: usize,
+    selected_begin_token: String,
+    rdkit_token_flip_adjustment: bool,
+}
+
+fn coupled_selected_begin_side_observation_context_from_state(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
-) -> PyResult<Option<StereoTokenObservationFact>> {
+) -> PyResult<Option<CoupledSelectedBeginSideObservationContext>> {
     if runtime.isolated_components[component_idx] {
         return Ok(None);
     }
@@ -4605,18 +4614,85 @@ fn coupled_one_candidate_begin_side_observation_from_state(
     if selected_neighbor_idx < 0 {
         return Ok(None);
     }
-    let selected_begin_token = candidate_base_token(begin_side, selected_neighbor_idx as usize)?;
+    let selected_neighbor_idx = selected_neighbor_idx as usize;
+    let selected_begin_token = candidate_base_token(begin_side, selected_neighbor_idx)?;
     let rdkit_token_flip_adjustment = rdkit_component_token_flip_adjustment(
         runtime,
         state,
         resolved_selected_neighbors,
         component_idx,
     );
+    Ok(Some(CoupledSelectedBeginSideObservationContext {
+        component_phase,
+        begin_side_idx,
+        selected_neighbor_idx,
+        selected_begin_token,
+        rdkit_token_flip_adjustment,
+    }))
+}
+
+fn coupled_one_candidate_begin_side_observation_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Option<StereoTokenObservationFact>> {
+    let Some(context) = coupled_selected_begin_side_observation_context_from_state(
+        runtime,
+        state,
+        resolved_selected_neighbors,
+        component_idx,
+    )?
+    else {
+        return Ok(None);
+    };
+    if runtime.side_infos[context.begin_side_idx]
+        .candidate_neighbors
+        .len()
+        != 1
+    {
+        return Ok(None);
+    }
     Ok(Some(StereoTokenObservationFact::SelectedBeginSide {
         runtime_component_idx: component_idx,
-        component_phase,
-        selected_begin_token: StereoDirectionToken::from_str(&selected_begin_token)?,
-        rdkit_token_flip_adjustment,
+        component_phase: context.component_phase,
+        selected_begin_token: StereoDirectionToken::from_str(&context.selected_begin_token)?,
+        rdkit_token_flip_adjustment: context.rdkit_token_flip_adjustment,
+    }))
+}
+
+fn coupled_two_candidate_begin_side_observation_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Option<StereoTokenObservationFact>> {
+    let Some(context) = coupled_selected_begin_side_observation_context_from_state(
+        runtime,
+        state,
+        resolved_selected_neighbors,
+        component_idx,
+    )?
+    else {
+        return Ok(None);
+    };
+    if runtime.side_infos[context.begin_side_idx]
+        .candidate_neighbors
+        .len()
+        != 2
+    {
+        return Ok(None);
+    }
+
+    let first_emitted_candidate_idx = state.stereo_first_emitted_candidates[context.begin_side_idx];
+    let selected_begin_neighbor_is_first_emitted = (first_emitted_candidate_idx >= 0)
+        .then_some(first_emitted_candidate_idx as usize == context.selected_neighbor_idx);
+    Ok(Some(StereoTokenObservationFact::TwoCandidateBeginSide {
+        runtime_component_idx: component_idx,
+        component_phase: context.component_phase,
+        selected_begin_token: StereoDirectionToken::from_str(&context.selected_begin_token)?,
+        selected_begin_neighbor_is_first_emitted,
+        rdkit_token_flip_adjustment: context.rdkit_token_flip_adjustment,
     }))
 }
 
@@ -4645,6 +4721,14 @@ fn token_flip_from_supported_observation_fact(
     }
     if observation_fact.is_none() {
         observation_fact = coupled_one_candidate_begin_side_observation_from_state(
+            runtime,
+            state,
+            &resolved_selected_neighbors,
+            component_idx,
+        )?;
+    }
+    if observation_fact.is_none() {
+        observation_fact = coupled_two_candidate_begin_side_observation_from_state(
             runtime,
             state,
             &resolved_selected_neighbors,
@@ -4738,6 +4822,23 @@ impl ComponentTokenInferenceInputs {
                     runtime_component_idx: self.component_idx,
                     component_phase,
                     selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
+                    rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
+                }))
+            }
+            "coupled_two_candidate_begin_side" => {
+                let Some(selected_begin_token) = self.selected_begin_token.as_deref() else {
+                    return Ok(None);
+                };
+                let Some(selected_begin_neighbor_idx) = self.selected_begin_neighbor_idx else {
+                    return Ok(None);
+                };
+                Ok(Some(StereoTokenObservationFact::TwoCandidateBeginSide {
+                    runtime_component_idx: self.component_idx,
+                    component_phase,
+                    selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
+                    selected_begin_neighbor_is_first_emitted: self
+                        .first_emitted_candidate_idx
+                        .map(|first_idx| first_idx == selected_begin_neighbor_idx),
                     rdkit_token_flip_adjustment: self.rdkit_token_flip_adjustment,
                 }))
             }
@@ -4990,6 +5091,10 @@ fn token_observation_facts_to_py(
             row.set_item(
                 "selected_begin_token",
                 fact.selected_begin_token().map(stereo_direction_token_name),
+            )?;
+            row.set_item(
+                "selected_begin_neighbor_is_first_emitted",
+                fact.selected_begin_neighbor_is_first_emitted(),
             )?;
             row.set_item(
                 "rdkit_token_flip_adjustment",

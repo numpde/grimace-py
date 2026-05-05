@@ -71,6 +71,33 @@ pub(crate) enum StereoTokenFlip {
     Flipped,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum StereoComponentPhase {
+    Stored,
+    Flipped,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum StereoDirectionToken {
+    Slash,
+    Backslash,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl StereoDirectionToken {
+    pub(crate) fn from_str(token: &str) -> PyResult<Self> {
+        match token {
+            "/" => Ok(Self::Slash),
+            "\\" => Ok(Self::Backslash),
+            _ => Err(PyValueError::new_err(format!(
+                "Unsupported directional token observation: {token:?}"
+            ))),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoTokenPhaseAssignment {
     pub(crate) neighbor_assignment_id: usize,
@@ -81,6 +108,37 @@ pub(crate) struct StereoTokenPhaseAssignment {
 pub(crate) struct StereoTokenFlipFact {
     pub(crate) runtime_component_idx: usize,
     pub(crate) token_flip: StereoTokenFlip,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoTokenObservationFact {
+    pub(crate) runtime_component_idx: usize,
+    pub(crate) component_phase: StereoComponentPhase,
+    pub(crate) selected_begin_token: StereoDirectionToken,
+    pub(crate) rdkit_token_flip_adjustment: bool,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl StereoTokenObservationFact {
+    pub(crate) fn implied_token_flip_for_isolated_selected_begin_side(self) -> StereoTokenFlip {
+        let phase_is_flipped = self.component_phase == StereoComponentPhase::Flipped;
+        let selected_token_matches_phase = match self.component_phase {
+            StereoComponentPhase::Stored => {
+                self.selected_begin_token == StereoDirectionToken::Slash
+            }
+            StereoComponentPhase::Flipped => {
+                self.selected_begin_token == StereoDirectionToken::Backslash
+            }
+        };
+        let final_flip =
+            phase_is_flipped ^ selected_token_matches_phase ^ self.rdkit_token_flip_adjustment;
+        if final_flip {
+            StereoTokenFlip::Flipped
+        } else {
+            StereoTokenFlip::Stored
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1507,8 +1565,9 @@ pub(crate) fn ambiguous_shared_edge_groups(
 #[cfg(test)]
 mod tests {
     use super::{
-        stereo_constraint_model, StereoConstraintFact, StereoConstraintLayer, StereoLocalHazard,
-        StereoSideInfo, StereoTokenFlip, StereoTokenFlipFact, StereoTraversalRole,
+        stereo_constraint_model, StereoComponentPhase, StereoConstraintFact, StereoConstraintLayer,
+        StereoDirectionToken, StereoLocalHazard, StereoSideInfo, StereoTokenFlip,
+        StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
     };
 
     #[test]
@@ -1554,6 +1613,88 @@ mod tests {
         assert_eq!(2, model.components[0].side_domains[0].choices.len());
         assert_eq!(1, model.components[0].side_domains[1].choices.len());
         assert_eq!(1, model.components[1].side_domains[0].choices.len());
+    }
+
+    #[test]
+    fn token_observation_fact_derives_isolated_selected_begin_side_flip() {
+        let cases = [
+            (
+                StereoComponentPhase::Stored,
+                StereoDirectionToken::Slash,
+                false,
+                StereoTokenFlip::Flipped,
+            ),
+            (
+                StereoComponentPhase::Stored,
+                StereoDirectionToken::Backslash,
+                false,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoComponentPhase::Flipped,
+                StereoDirectionToken::Slash,
+                false,
+                StereoTokenFlip::Flipped,
+            ),
+            (
+                StereoComponentPhase::Flipped,
+                StereoDirectionToken::Backslash,
+                false,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoComponentPhase::Stored,
+                StereoDirectionToken::Slash,
+                true,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoComponentPhase::Stored,
+                StereoDirectionToken::Backslash,
+                true,
+                StereoTokenFlip::Flipped,
+            ),
+            (
+                StereoComponentPhase::Flipped,
+                StereoDirectionToken::Slash,
+                true,
+                StereoTokenFlip::Stored,
+            ),
+            (
+                StereoComponentPhase::Flipped,
+                StereoDirectionToken::Backslash,
+                true,
+                StereoTokenFlip::Flipped,
+            ),
+        ];
+
+        for (component_phase, selected_begin_token, adjustment, expected) in cases {
+            let observation = StereoTokenObservationFact {
+                runtime_component_idx: 0,
+                component_phase,
+                selected_begin_token,
+                rdkit_token_flip_adjustment: adjustment,
+            };
+            assert_eq!(
+                expected,
+                observation.implied_token_flip_for_isolated_selected_begin_side(),
+            );
+        }
+    }
+
+    #[test]
+    fn stereo_direction_token_parser_rejects_invalid_tokens() {
+        assert_eq!(
+            StereoDirectionToken::Slash,
+            StereoDirectionToken::from_str("/").expect("slash token should parse"),
+        );
+        assert_eq!(
+            StereoDirectionToken::Backslash,
+            StereoDirectionToken::from_str("\\").expect("backslash token should parse"),
+        );
+        assert!(StereoDirectionToken::from_str("").is_err());
+        assert!(StereoDirectionToken::from_str("-").is_err());
+        assert!(StereoDirectionToken::from_str("=").is_err());
     }
 
     #[test]

@@ -215,6 +215,182 @@ token-phase table already has the needed final flip dimension. The missing
 piece is a principled fact-to-filter query that derives the final flip from
 named observations instead of from `inferred_component_token_flip`.
 
+## Implementation Plan
+
+Target: introduce token-observation filtering in shadow mode. This should not
+change runtime support yet.
+
+### Commit 1: Model-Side Observation Types
+
+Files:
+
+- `rust/src/bond_stereo_constraints.rs`
+
+Work:
+
+- Add `StereoTokenObservationFact` beside `StereoTokenFlipFact`.
+- Start with the observed stable shape:
+  - runtime component id;
+  - component phase as stored/flipped;
+  - selected begin-side token `/` or `\`;
+  - RDKit token-flip adjustment as a named boolean fact.
+- Keep the type intentionally minimal. Do not encode molecule names, case ids,
+  or branch names.
+- Add helper conversion that maps one complete observation fact to the implied
+  `StereoTokenFlip` for the current `isolated_selected_begin_side` branch.
+
+Tests:
+
+- Rust unit tests for stored/flipped phase, `/`/`\` selected token, and
+  adjustment true/false.
+- Rust unit tests that invalid token strings are rejected.
+
+Exit criteria:
+
+- The model has a typed representation of the currently observed token
+  inference input shape.
+- No runtime code uses it yet.
+
+### Commit 2: Token-Phase Filtering Query
+
+Files:
+
+- `rust/src/bond_stereo_constraints.rs`
+
+Work:
+
+- Add a query parallel to
+  `token_phase_assignment_ids_for_neighbor_assignment_ids`, for example
+  `token_phase_assignment_ids_for_observation_facts`.
+- The query should:
+  - validate that every observation references a runtime component inside the
+    queried model component;
+  - convert each observation to an implied token flip;
+  - reuse the existing token-flip filtering machinery rather than duplicating
+    row filtering.
+- Conflicting observations for the same runtime component should return an
+  empty assignment set.
+- Unknown runtime components should be an explicit error, matching
+  `StereoTokenFlipFact` validation.
+
+Tests:
+
+- Existing fixture-like two-runtime-component token-phase unit tests should
+  cover:
+  - one observation forces one runtime component;
+  - two observations force both runtime components;
+  - conflicting observations empty the state;
+  - out-of-component observations error.
+
+Exit criteria:
+
+- Observation facts can filter token-phase rows without calling
+  `inferred_component_token_flip`.
+
+### Commit 3: Diagnostic Fact Extraction
+
+Files:
+
+- `rust/src/rooted_stereo.rs`
+
+Work:
+
+- Add a helper that emits `StereoTokenObservationFact`s from
+  `token_flip_inference_inputs` for rows whose branch is currently
+  `isolated_selected_begin_side`.
+- Keep unsupported branches explicit: emit no observation fact and expose a
+  diagnostic reason such as `unsupported_observation_branch`.
+- Add Python diagnostic fields under each `component_token_phase` row:
+  - `token_observation_facts`;
+  - `token_observation_assignment_count_before`;
+  - `token_observation_assignment_count_after`;
+  - `token_observation_forced_flip`;
+  - `token_observation_matches_inferred_flip`.
+- Do not route runtime behavior through these fields yet.
+
+Tests:
+
+- Extend `tests/integration/test_stereo_constraint_model.py`:
+  - every current inferred row has one observation fact;
+  - observation-filtered forced flip equals legacy inferred flip;
+  - before/after assignment counts match the existing 2x reduction;
+  - branch coverage remains explicit, currently only
+    `isolated_selected_begin_side`.
+
+Exit criteria:
+
+- Diagnostics prove the observation path explains all current completed-output
+  inferred flips.
+
+### Commit 4: State Boundary Adapter
+
+Files:
+
+- `rust/src/bond_stereo_constraints.rs`
+- `rust/src/rooted_stereo.rs`
+
+Work:
+
+- Add a `StereoConstraintState::from_observation_facts` or equivalent adapter
+  that accepts carrier facts plus token-observation facts.
+- In diagnostics, show both:
+  - state from legacy token-flip facts;
+  - state from token-observation facts.
+- Assert equivalence in tests for current pinned witnesses.
+
+Tests:
+
+- Integration tests should compare forced token flips and remaining
+  token-phase assignment ids between legacy-fact state and observation-fact
+  state.
+
+Exit criteria:
+
+- There is a model-state construction path that does not require
+  `StereoTokenFlipFact`s from the legacy inferred helper for the current
+  branch.
+
+### Commit 5: Replace One Branch Internally
+
+Files:
+
+- `rust/src/rooted_stereo.rs`
+
+Work:
+
+- For `isolated_selected_begin_side`, replace direct procedural flip
+  calculation with:
+  - construct typed observation fact;
+  - query model;
+  - read forced token flip.
+- Keep the old calculation in shadow mode for this branch and error if it
+  disagrees.
+- Leave other branches untouched.
+
+Tests:
+
+- Full Rust tests.
+- `tests.integration.test_stereo_constraint_model`.
+- Pinned RDKit parity target used on this branch.
+
+Exit criteria:
+
+- One current production branch is model-derived while behavior remains
+  unchanged.
+
+## Risks And Boundaries
+
+- Current completed-output fixtures exercise only one branch. Do not claim the
+  whole token inference helper has been replaced until tests hit the coupled
+  and all-single branches.
+- `rdkit_component_token_flip_adjustment` remains suspicious. In this plan it
+  becomes a named observation fact first; deriving or replacing it is a later
+  slice.
+- Component phase and begin atom are still walker fields. This plan observes
+  them, but does not yet replace their source of truth.
+- If the observation fact enum grows to mirror the old helper branch for
+  branch, stop and reconsider Alternative C.
+
 ## Guardrails
 
 - Do not add molecule-specific or fixture-specific branches.

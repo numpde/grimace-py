@@ -4292,7 +4292,7 @@ fn provisional_phase_from_selected_side(
 // Suspicious current model:
 // Infers one component-wide token flip from partially resolved side selections.
 // This mixes state normalization with semantic constraint solving.
-fn inferred_component_token_flip(
+fn procedural_inferred_component_token_flip(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     graph: &PreparedSmilesGraphData,
@@ -4418,6 +4418,90 @@ fn inferred_component_token_flip(
     }))
 }
 
+fn component_token_flip_value_from_model(value: StereoTokenFlip) -> i8 {
+    match value {
+        StereoTokenFlip::Stored => STORED_COMPONENT_TOKEN_FLIP,
+        StereoTokenFlip::Flipped => FLIPPED_COMPONENT_TOKEN_FLIP,
+    }
+}
+
+fn isolated_selected_begin_side_token_flip_from_constraint_state(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    graph: &PreparedSmilesGraphData,
+    component_idx: usize,
+) -> PyResult<Option<i8>> {
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let inputs = component_token_inference_inputs(
+        runtime,
+        graph,
+        state,
+        &resolved_selected_neighbors,
+        component_idx,
+    )?;
+    if inputs.inference_branch != "isolated_selected_begin_side" {
+        return Ok(None);
+    }
+    let Some(observation_fact) = inputs.isolated_selected_begin_side_observation()? else {
+        return Ok(None);
+    };
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Token observation references unknown runtime component",
+        ));
+    };
+    let facts_by_component =
+        selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
+    let constraint_state =
+        StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
+            &runtime.constraint_model,
+            StereoConstraintLayer::Semantic,
+            &facts_by_component,
+            &[observation_fact],
+        )?;
+    if constraint_state.is_empty(model_component_idx) {
+        return Err(PyValueError::new_err(
+            "Token observation leaves no compatible stereo assignment",
+        ));
+    }
+    let Some(forced_token_flip) = constraint_state.forced_token_flip(
+        &runtime.constraint_model,
+        model_component_idx,
+        component_idx,
+    ) else {
+        return Err(PyValueError::new_err(
+            "Token observation does not force component token flip",
+        ));
+    };
+    let model_value = component_token_flip_value_from_model(forced_token_flip);
+    if inputs.inferred != Some(model_value) {
+        return Err(PyValueError::new_err(
+            "Model-derived isolated token flip disagrees with procedural inference",
+        ));
+    }
+    Ok(Some(model_value))
+}
+
+fn inferred_component_token_flip(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    graph: &PreparedSmilesGraphData,
+    component_idx: usize,
+) -> PyResult<Option<i8>> {
+    if let Some(model_value) = isolated_selected_begin_side_token_flip_from_constraint_state(
+        runtime,
+        state,
+        graph,
+        component_idx,
+    )? {
+        return Ok(Some(model_value));
+    }
+    procedural_inferred_component_token_flip(runtime, state, graph, component_idx)
+}
+
 struct ComponentTokenInferenceInputs {
     component_idx: usize,
     inference_branch: &'static str,
@@ -4540,7 +4624,7 @@ fn component_token_inference_inputs(
         resolved_selected_neighbors,
         component_idx,
     );
-    let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;
+    let inferred = procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
     let inference_branch = if side_ids.is_empty() {
         "no_sides"
     } else if !runtime.isolated_components[component_idx] && selected_side_ids.len() < 2 {

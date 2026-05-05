@@ -4425,59 +4425,113 @@ fn component_token_flip_value_from_model(value: StereoTokenFlip) -> i8 {
     }
 }
 
-fn isolated_selected_begin_side_token_flip_from_constraint_state(
+fn isolated_selected_begin_side_observation_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    graph: &PreparedSmilesGraphData,
+    resolved_selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Option<StereoTokenObservationFact>> {
+    if !runtime.isolated_components[component_idx] {
+        return Ok(None);
+    }
+    let side_ids = &runtime.side_ids_by_component[component_idx];
+    if side_ids.is_empty()
+        || side_ids
+            .iter()
+            .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1)
+    {
+        return Ok(None);
+    }
+
+    let mut selected_side_count = 0usize;
+    let mut selected_side_idx = None;
+    for &side_idx in side_ids {
+        if resolved_selected_neighbors[side_idx] >= 0 {
+            selected_side_count += 1;
+            selected_side_idx = Some(side_idx);
+        }
+    }
+
+    let mut phase = state.stereo_component_phases[component_idx];
+    let mut begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
+    if phase == UNKNOWN_COMPONENT_PHASE || begin_atom_idx < 0 {
+        if selected_side_count != 1 {
+            return Ok(None);
+        }
+        let selected_side = &runtime.side_infos[selected_side_idx.expect("counted selected side")];
+        if phase == UNKNOWN_COMPONENT_PHASE {
+            phase = provisional_phase_from_selected_side(graph, selected_side)?;
+        }
+        if begin_atom_idx < 0 {
+            begin_atom_idx = selected_side.endpoint_atom_idx as isize;
+        }
+    }
+    if begin_atom_idx < 0 {
+        return Ok(None);
+    }
+    let Some(component_phase) = model_component_phase_from_value(phase) else {
+        return Ok(None);
+    };
+    let Some(begin_side_idx) = side_ids.iter().copied().find(|&side_idx| {
+        runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx as usize
+    }) else {
+        return Ok(None);
+    };
+    let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
+    if selected_neighbor_idx < 0 {
+        return Ok(None);
+    }
+    let selected_begin_token = candidate_base_token(
+        &runtime.side_infos[begin_side_idx],
+        selected_neighbor_idx as usize,
+    )?;
+    let rdkit_token_flip_adjustment = rdkit_component_token_flip_adjustment(
+        runtime,
+        state,
+        resolved_selected_neighbors,
+        component_idx,
+    );
+    Ok(Some(StereoTokenObservationFact {
+        runtime_component_idx: component_idx,
+        component_phase,
+        selected_begin_token: StereoDirectionToken::from_str(&selected_begin_token)?,
+        rdkit_token_flip_adjustment,
+    }))
+}
+
+fn isolated_selected_begin_side_token_flip_from_observation_fact(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     graph: &PreparedSmilesGraphData,
     component_idx: usize,
 ) -> PyResult<Option<i8>> {
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    let inputs = component_token_inference_inputs(
+    let Some(observation_fact) = isolated_selected_begin_side_observation_from_state(
         runtime,
-        graph,
         state,
+        graph,
         &resolved_selected_neighbors,
         component_idx,
-    )?;
-    if inputs.inference_branch != "isolated_selected_begin_side" {
-        return Ok(None);
-    }
-    let Some(observation_fact) = inputs.isolated_selected_begin_side_observation()? else {
+    )?
+    else {
         return Ok(None);
     };
-    let Some(model_component_idx) = runtime
+    if runtime
         .constraint_model
         .component_for_runtime_component(component_idx)
-    else {
+        .is_none()
+    {
         return Err(PyValueError::new_err(
             "Token observation references unknown runtime component",
         ));
-    };
-    let facts_by_component =
-        selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
-    let constraint_state =
-        StereoConstraintState::from_isolated_selected_begin_side_observation_facts(
-            &runtime.constraint_model,
-            StereoConstraintLayer::Semantic,
-            &facts_by_component,
-            &[observation_fact],
-        )?;
-    if constraint_state.is_empty(model_component_idx) {
-        return Err(PyValueError::new_err(
-            "Token observation leaves no compatible stereo assignment",
-        ));
     }
-    let Some(forced_token_flip) = constraint_state.forced_token_flip(
-        &runtime.constraint_model,
-        model_component_idx,
-        component_idx,
-    ) else {
-        return Err(PyValueError::new_err(
-            "Token observation does not force component token flip",
-        ));
-    };
-    let model_value = component_token_flip_value_from_model(forced_token_flip);
-    if inputs.inferred != Some(model_value) {
+    let model_value = component_token_flip_value_from_model(
+        observation_fact.implied_token_flip_for_isolated_selected_begin_side(),
+    );
+    let procedural_value =
+        procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
+    if procedural_value != Some(model_value) {
         return Err(PyValueError::new_err(
             "Model-derived isolated token flip disagrees with procedural inference",
         ));
@@ -4491,7 +4545,7 @@ fn inferred_component_token_flip(
     graph: &PreparedSmilesGraphData,
     component_idx: usize,
 ) -> PyResult<Option<i8>> {
-    if let Some(model_value) = isolated_selected_begin_side_token_flip_from_constraint_state(
+    if let Some(model_value) = isolated_selected_begin_side_token_flip_from_observation_fact(
         runtime,
         state,
         graph,

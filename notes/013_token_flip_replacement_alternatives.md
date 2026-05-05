@@ -184,6 +184,37 @@ The next implementation slice should:
 This keeps the branch behavior-preserving while moving the source of truth
 from "compute a flip" toward "filter assignments by typed online facts".
 
+## Empirical Check
+
+`tmp/exploration/stereo_assignment/029_compare_token_flip_replacement_shapes.py`
+compares the alternatives against current pinned stereo-constraint diagnostics
+for RDKit 2026.03.1.
+
+Current result:
+
+- 45,168 output-component observations have inferred token flips.
+- All observed rows come from two pinned cases:
+  `minimal_nonstereo_double_hazard` and
+  `reduced_porphyrin_traversal_coupling`.
+- The only completed-output branch currently exercised is
+  `isolated_selected_begin_side`.
+- The adapter shape is internally consistent: the model forced flip matches
+  the adapter-produced inferred flip in 45,168/45,168 rows.
+- The existing token-phase dimension is sufficient for these witnesses:
+  token-phase rows reduce exactly 2x after the inferred token constraint in
+  45,168/45,168 rows.
+- The required observation shape is stable in current fixtures:
+  component phase, component begin atom, begin side, selected begin neighbor,
+  selected begin token, and RDKit token-flip adjustment.
+
+Interpretation:
+
+The current fixtures do not justify expanding startup token-phase rows yet.
+They justify adding typed token-observation facts first, because the existing
+token-phase table already has the needed final flip dimension. The missing
+piece is a principled fact-to-filter query that derives the final flip from
+named observations instead of from `inferred_component_token_flip`.
+
 ## Guardrails
 
 - Do not add molecule-specific or fixture-specific branches.

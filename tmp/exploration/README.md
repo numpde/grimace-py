@@ -20,4 +20,6 @@ The most current scripts are:
   constraints with RDKit's local non-stereo-double cleanup behavior.
 - `028_investigate_rdkit_traversal_coupling.py`: inspects the reduced
   porphyrin 16-vs-12 discrepancy using RDKit output-order metadata.
-
+- `029_compare_token_flip_replacement_shapes.py`: compares adapter,
+  observation-fact, and expanded-row replacement shapes for the remaining
+  token-flip inference against current pinned diagnostics.

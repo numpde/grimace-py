@@ -3332,6 +3332,17 @@ fn component_token_phase_diagnostics_to_py(
                         == token_phase_assignment_ids_before_token.len()
                     && forced_model_token_flip == inferred_model_token_flip,
             )?;
+            row.set_item(
+                "token_flip_inference_inputs",
+                component_token_inference_inputs_to_py(
+                    py,
+                    runtime,
+                    graph,
+                    state,
+                    resolved_selected_neighbors,
+                    component_idx,
+                )?,
+            )?;
             Ok(row.unbind())
         })
         .collect()
@@ -4261,6 +4272,188 @@ fn inferred_component_token_flip(
     } else {
         STORED_COMPONENT_TOKEN_FLIP
     }))
+}
+
+fn component_token_inference_inputs_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    let side_ids = &runtime.side_ids_by_component[component_idx];
+    let selected_side_ids = side_ids
+        .iter()
+        .copied()
+        .filter(|&side_idx| resolved_selected_neighbors[side_idx] >= 0)
+        .collect::<Vec<_>>();
+
+    let input_phase = state.stereo_component_phases[component_idx];
+    let input_begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
+    let mut effective_phase = input_phase;
+    let mut effective_begin_atom_idx = input_begin_atom_idx;
+    let mut phase_source = if input_phase == UNKNOWN_COMPONENT_PHASE {
+        "missing"
+    } else {
+        "state"
+    };
+    let mut begin_atom_source = if input_begin_atom_idx < 0 {
+        "missing"
+    } else {
+        "state"
+    };
+    let mut inferred_selected_side_idx = None;
+    if effective_phase == UNKNOWN_COMPONENT_PHASE || effective_begin_atom_idx < 0 {
+        if selected_side_ids.len() == 1 {
+            let selected_side_idx = selected_side_ids[0];
+            let selected_side = &runtime.side_infos[selected_side_idx];
+            inferred_selected_side_idx = Some(selected_side_idx);
+            if effective_phase == UNKNOWN_COMPONENT_PHASE {
+                effective_phase = provisional_phase_from_selected_side(graph, selected_side)?;
+                phase_source = "provisional_selected_side";
+            }
+            if effective_begin_atom_idx < 0 {
+                effective_begin_atom_idx = selected_side.endpoint_atom_idx as isize;
+                begin_atom_source = "selected_side";
+            }
+        }
+    }
+
+    let begin_side_idx = if effective_begin_atom_idx >= 0 {
+        side_ids.iter().copied().find(|&side_idx| {
+            runtime.side_infos[side_idx].endpoint_atom_idx == effective_begin_atom_idx as usize
+        })
+    } else {
+        None
+    };
+    let begin_side = begin_side_idx.map(|side_idx| &runtime.side_infos[side_idx]);
+    let all_single_candidate = side_ids
+        .iter()
+        .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1);
+    let selected_begin_neighbor_idx = begin_side_idx.and_then(|side_idx| {
+        let neighbor_idx = resolved_selected_neighbors[side_idx];
+        (neighbor_idx >= 0).then_some(neighbor_idx as usize)
+    });
+    let selected_begin_token = begin_side
+        .zip(selected_begin_neighbor_idx)
+        .map(|(side_info, neighbor_idx)| candidate_base_token(side_info, neighbor_idx))
+        .transpose()?;
+    let first_emitted_candidate_idx = begin_side_idx
+        .map(|side_idx| state.stereo_first_emitted_candidates[side_idx])
+        .filter(|&neighbor_idx| neighbor_idx >= 0)
+        .map(|neighbor_idx| neighbor_idx as usize);
+    let adjustment = rdkit_component_token_flip_adjustment(
+        runtime,
+        state,
+        resolved_selected_neighbors,
+        component_idx,
+    );
+    let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;
+    let inference_branch = if side_ids.is_empty() {
+        "no_sides"
+    } else if !runtime.isolated_components[component_idx] && selected_side_ids.len() < 2 {
+        "insufficient_coupled_selection"
+    } else if effective_phase == UNKNOWN_COMPONENT_PHASE {
+        "missing_phase"
+    } else if effective_begin_atom_idx < 0 || begin_side_idx.is_none() {
+        "missing_begin_side"
+    } else if runtime.isolated_components[component_idx] && all_single_candidate {
+        "isolated_all_single_candidate"
+    } else if runtime.isolated_components[component_idx] {
+        "isolated_selected_begin_side"
+    } else if begin_side
+        .map(|side_info| side_info.candidate_neighbors.len() == 1)
+        .unwrap_or(false)
+    {
+        "coupled_one_candidate_begin_side"
+    } else if begin_side
+        .map(|side_info| side_info.candidate_neighbors.len() == 2)
+        .unwrap_or(false)
+    {
+        "coupled_two_candidate_begin_side"
+    } else {
+        "unsupported_begin_side_domain"
+    };
+    let value_branch = matches!(
+        inference_branch,
+        "isolated_all_single_candidate"
+            | "isolated_selected_begin_side"
+            | "coupled_one_candidate_begin_side"
+            | "coupled_two_candidate_begin_side"
+    );
+    let mut required_input_facts = Vec::<String>::new();
+    let mut missing_input_facts = Vec::<String>::new();
+    if value_branch {
+        required_input_facts.push("component_phase".to_owned());
+        if effective_phase == UNKNOWN_COMPONENT_PHASE {
+            missing_input_facts.push("component_phase".to_owned());
+        }
+        required_input_facts.push("component_begin_atom".to_owned());
+        if effective_begin_atom_idx < 0 {
+            missing_input_facts.push("component_begin_atom".to_owned());
+        }
+        required_input_facts.push("begin_side".to_owned());
+        if begin_side_idx.is_none() {
+            missing_input_facts.push("begin_side".to_owned());
+        }
+        if inference_branch != "isolated_all_single_candidate" {
+            required_input_facts.push("selected_begin_neighbor".to_owned());
+            if selected_begin_neighbor_idx.is_none() {
+                missing_input_facts.push("selected_begin_neighbor".to_owned());
+            }
+            required_input_facts.push("selected_begin_token".to_owned());
+            if selected_begin_token.is_none() {
+                missing_input_facts.push("selected_begin_token".to_owned());
+            }
+        }
+        if inference_branch == "coupled_two_candidate_begin_side" {
+            required_input_facts.push("first_emitted_candidate_or_adjustment_fallback".to_owned());
+        }
+        required_input_facts.push("rdkit_token_flip_adjustment".to_owned());
+    }
+    let has_required_inputs = value_branch && missing_input_facts.is_empty();
+
+    row.set_item("component_idx", component_idx)?;
+    row.set_item("inference_branch", inference_branch)?;
+    row.set_item("has_required_inputs", has_required_inputs)?;
+    row.set_item("required_input_facts", required_input_facts)?;
+    row.set_item("missing_input_facts", missing_input_facts)?;
+    row.set_item("side_ids", side_ids.clone())?;
+    row.set_item("selected_side_ids", selected_side_ids)?;
+    row.set_item("is_isolated", runtime.isolated_components[component_idx])?;
+    row.set_item("all_single_candidate", all_single_candidate)?;
+    row.set_item("input_phase", component_phase_name(input_phase))?;
+    row.set_item("input_phase_value", input_phase)?;
+    row.set_item("effective_phase", component_phase_name(effective_phase))?;
+    row.set_item("effective_phase_value", effective_phase)?;
+    row.set_item("phase_source", phase_source)?;
+    row.set_item("input_begin_atom_idx", input_begin_atom_idx)?;
+    row.set_item("effective_begin_atom_idx", effective_begin_atom_idx)?;
+    row.set_item("begin_atom_source", begin_atom_source)?;
+    row.set_item("inferred_selected_side_idx", inferred_selected_side_idx)?;
+    row.set_item("begin_side_idx", begin_side_idx)?;
+    row.set_item(
+        "begin_side_candidate_count",
+        begin_side
+            .map(|side_info| side_info.candidate_neighbors.len())
+            .unwrap_or(0),
+    )?;
+    row.set_item("selected_begin_neighbor_idx", selected_begin_neighbor_idx)?;
+    row.set_item("selected_begin_token", selected_begin_token)?;
+    row.set_item("first_emitted_candidate_idx", first_emitted_candidate_idx)?;
+    row.set_item(
+        "first_emitted_candidate_known",
+        first_emitted_candidate_idx.is_some(),
+    )?;
+    row.set_item("rdkit_token_flip_adjustment", adjustment)?;
+    row.set_item(
+        "inferred_token_flip",
+        inferred.map(component_token_flip_name),
+    )?;
+    row.set_item("inferred_token_flip_value", inferred)?;
+    Ok(row.unbind())
 }
 
 // Suspicious current model:

@@ -28,6 +28,14 @@ SUPPORTED_STEREO_FLAGS = _runtime.MolToSmilesFlags(
 )
 RDKIT_SAMPLE_DRAW_COUNT = 128
 RDKIT_SAMPLE_SEED = 1
+TOKEN_FLIP_INFERENCE_BRANCHES = frozenset(
+    (
+        "isolated_all_single_candidate",
+        "isolated_selected_begin_side",
+        "coupled_one_candidate_begin_side",
+        "coupled_two_candidate_begin_side",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,6 +618,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         saw_flipped_token_flip = False
         saw_rdkit_token_flip_adjustment = False
         saw_phase_dimension_needed = False
+        seen_token_flip_inference_branches = set()
 
         for case in self.cases:
             mol = parse_smiles(case.smiles)
@@ -667,9 +676,71 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             component["state_token_flip"],
                             component["inferred_token_flip"],
                         )
+                        token_flip_inputs = component["token_flip_inference_inputs"]
+                        required_input_facts = frozenset(
+                            token_flip_inputs["required_input_facts"]
+                        )
+                        self.assertEqual(
+                            component["component_idx"],
+                            token_flip_inputs["component_idx"],
+                        )
+                        self.assertEqual(
+                            component["inferred_token_flip"],
+                            token_flip_inputs["inferred_token_flip"],
+                        )
+                        self.assertIn(
+                            token_flip_inputs["inference_branch"],
+                            TOKEN_FLIP_INFERENCE_BRANCHES,
+                        )
+                        self.assertTrue(token_flip_inputs["has_required_inputs"])
+                        self.assertEqual([], token_flip_inputs["missing_input_facts"])
+                        self.assertLessEqual(
+                            {
+                                "component_phase",
+                                "component_begin_atom",
+                                "begin_side",
+                                "rdkit_token_flip_adjustment",
+                            },
+                            required_input_facts,
+                        )
+                        self.assertIn(
+                            token_flip_inputs["effective_phase"],
+                            ("stored", "flipped"),
+                        )
+                        self.assertGreaterEqual(
+                            token_flip_inputs["effective_begin_atom_idx"],
+                            0,
+                        )
+                        self.assertIsNotNone(token_flip_inputs["begin_side_idx"])
+                        if (
+                            token_flip_inputs["inference_branch"]
+                            != "isolated_all_single_candidate"
+                        ):
+                            self.assertLessEqual(
+                                {"selected_begin_neighbor", "selected_begin_token"},
+                                required_input_facts,
+                            )
+                            self.assertIsNotNone(
+                                token_flip_inputs["selected_begin_neighbor_idx"]
+                            )
+                            self.assertIn(
+                                token_flip_inputs["selected_begin_token"],
+                                ("/", "\\"),
+                            )
+                        if (
+                            token_flip_inputs["inference_branch"]
+                            == "coupled_two_candidate_begin_side"
+                        ):
+                            self.assertIn(
+                                "first_emitted_candidate_or_adjustment_fallback",
+                                required_input_facts,
+                            )
                         self.assertEqual(
                             component["needs_token_phase_assignment_dimension"],
                             component["carrier_assignment_singleton"],
+                        )
+                        seen_token_flip_inference_branches.add(
+                            token_flip_inputs["inference_branch"]
                         )
                         saw_stored_token_flip |= (
                             component["inferred_token_flip"] == "stored"
@@ -688,6 +759,11 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(saw_flipped_token_flip)
         self.assertTrue(saw_rdkit_token_flip_adjustment)
         self.assertTrue(saw_phase_dimension_needed)
+        self.assertTrue(seen_token_flip_inference_branches)
+        self.assertLessEqual(
+            seen_token_flip_inference_branches,
+            TOKEN_FLIP_INFERENCE_BRANCHES,
+        )
 
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(

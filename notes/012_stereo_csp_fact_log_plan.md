@@ -87,8 +87,11 @@ Implemented so far:
 - `deferred_token_support` now returns model-derived token choices from
   `StereoConstraintState`; the old procedural deferred-token support path has
   been deleted.
+- Diagnostics now expose the input facts and branch name used by the remaining
+  procedural token-flip inference. Integration tests assert that every inferred
+  output token flip is backed by named required facts.
 
 Next target:
 
-- Shrink old procedural token inference now that deferred token branching is
-  model-derived.
+- Replace old procedural token inference branch by branch with queries over the
+  typed state, starting from the branch classes now visible in diagnostics.

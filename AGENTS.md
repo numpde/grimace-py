@@ -133,6 +133,24 @@ Testing rules:
 - Do not commit generated run outputs, plot/perf output directories, or
   unrelated untracked artifacts unless explicitly requested.
 
+## Notion Task Workflow
+
+- The active task table is `Grimace-py x Codex`.
+- Before starting a task from that table, set its `Status` to `Doing`.
+- Keep `Commits` and `Notes` empty while implementation is still in progress.
+- When the task is implemented, tested, and committed, set `Status` to
+  `In review`.
+- Populate `Commits` with the full commit hash or hashes that implement the
+  task.
+- Populate `Notes` with a concise summary of what changed, what was verified,
+  and any remaining known failures or caveats.
+- Do not mark a task `Done`; leave review/acceptance transitions to the user
+  unless explicitly instructed otherwise.
+- If there is pre-existing unrelated dirty work, leave it untouched and mention
+  only the files/commits relevant to the Notion task.
+- If a task cannot be committed cleanly, keep it `Doing` and write the blocker
+  plainly in the user-facing update rather than filling `Commits`.
+
 ## Release And Packaging Notes
 
 - The PyPI distribution is `grimace-py`; the import package is `grimace`.

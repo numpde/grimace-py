@@ -5,14 +5,16 @@ Branch: `stereo-constraint-model`
 ## Context
 
 The current branch has a useful boundary: deferred token support is now
-answered by `StereoConstraintState`, and diagnostics expose the input facts
-used by the remaining procedural `inferred_component_token_flip` helper.
+answered by `StereoConstraintState`. Runtime token constraints are classified
+once per component as a known committed token flip, an inferred token
+observation, or no token constraint.
 
 The remaining problem is narrower than before. The model can already consume
-token-flip facts and filter token-phase assignments. It cannot yet derive
-those token-flip facts from online traversal observations. That derivation is
-still procedural and uses component phase, begin atom, selected begin side,
-first emitted candidate, selected token, and RDKit token-adjustment rules.
+explicit token-flip facts and inferred token-observation facts to filter
+token-phase assignments. Inferred runtime values now come from those typed
+observations. The old procedural branch calculation remains only as a legacy
+shadow oracle: observation-derived flips must match it for the current
+supported branch shapes.
 
 The next design question is where that derivation should live.
 
@@ -39,11 +41,24 @@ Implemented:
 - Diagnostics still expose pure observation-backed and mixed observation-backed
   states, and integration tests assert equivalence against the previous
   resolved state for the current pinned witnesses.
+- `ComponentTokenConstraint` is the single classifier for token constraints:
+  it returns a known committed token flip, an inferred token observation, or no
+  token constraint.
+- `inferred_component_token_flip` now returns the observation-derived value.
+  The old procedural implementation has been renamed
+  `legacy_procedural_inferred_component_token_flip` and is used only for
+  shadow adapter facts and equivalence assertions.
+- The duplicate state-based observation-producer functions were removed; the
+  runtime and diagnostics now consume the same `ComponentTokenConstraint`
+  classification.
+- Shadow adapter diagnostics are gated under `shadow_debug`, not exposed as a
+  first-class runtime state.
 
 Still deliberately not done:
 
-- `procedural_inferred_component_token_flip` has not been deleted. It remains
-  an equivalence oracle inside observation extraction and diagnostics.
+- `legacy_procedural_inferred_component_token_flip` has not been deleted. It
+  still contains historical branch logic, but only as an equivalence oracle for
+  the observation path.
 - `rdkit_component_token_flip_adjustment` is still an explicit RDKit writer
   adjustment input, not a derived model fact.
 - Component phase, component begin atom, and first-emitted candidate remain
@@ -424,8 +439,7 @@ Work:
 - Superseded by the 2026-05-16 route: all currently observed token-flip
   branches now construct typed observation facts, and runtime state uses
   `StereoConstraintState::from_facts_and_token_observations`.
-- The old procedural calculation remains only as an equivalence oracle and
-  unsupported-branch detector.
+- The old procedural calculation remains only as a legacy equivalence oracle.
 
 Tests:
 
@@ -463,13 +477,15 @@ Exit criteria:
 
 ## Next Cleanup Slice
 
-- Rename diagnostics so `resolved_constraint_state` is clearly the mixed
-  observation-backed runtime state.
-- Keep one explicit shadow comparison payload for the older token-flip fact
-  adapter until the procedural helper is deleted.
-- Move repeated observation extraction logic behind one small helper that
-  returns either `KnownTokenFlip` or `InferredTokenObservation` per runtime
-  component.
-- After that, shrink `procedural_inferred_component_token_flip` branch by
-  branch, keeping it test-only or diagnostic-only until no runtime code depends
-  on it.
+- Decide whether the shadow adapter state is still useful after one more round
+  of corpus expansion. If not, remove
+  `shadow_inferred_token_flip_facts_from_state`.
+- Break `legacy_procedural_inferred_component_token_flip` into branch-specific
+  assertions or delete it once observation-derived fixtures cover the relevant
+  branch shapes directly.
+- Promote component phase, component begin atom, and first-emitted candidate
+  from walker fields into explicit facts or typed observations.
+- Split `rdkit_component_token_flip_adjustment` into a named writer-adjustment
+  fact, or prove it can be derived from less RDKit-specific model facts.
+- Keep expanding fixtures only where they exercise distinct observation
+  shapes; do not grow the legacy oracle as a parallel implementation.

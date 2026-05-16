@@ -2896,7 +2896,7 @@ fn assignment_state_to_py(
     Ok(state_by_layer.unbind())
 }
 
-fn token_flip_facts_from_state(
+fn shadow_inferred_token_flip_facts_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -2959,8 +2959,8 @@ fn inferred_token_observation_facts_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
 ) -> PyResult<Vec<StereoTokenObservationFact>> {
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let mut facts = Vec::new();
     for component_idx in 0..runtime.isolated_components.len() {
         if model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx])
@@ -2999,8 +2999,12 @@ fn resolved_constraint_state_from_walker_state(
     let resolved_facts_by_component =
         selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
     let known_token_flip_facts = known_token_flip_facts_from_state(state);
-    let token_observation_facts =
-        inferred_token_observation_facts_from_state(runtime, graph, state)?;
+    let token_observation_facts = inferred_token_observation_facts_from_state(
+        runtime,
+        graph,
+        state,
+        &resolved_selected_neighbors,
+    )?;
     StereoConstraintState::from_facts_and_token_observations(
         &runtime.constraint_model,
         layer,
@@ -3867,7 +3871,8 @@ fn stereo_output_fact_row_to_py(
         StereoConstraintLayer::Semantic,
         &resolved_facts_by_component,
     );
-    let token_flip_facts = token_flip_facts_from_state(runtime, graph, state)?;
+    let shadow_inferred_token_flip_facts =
+        shadow_inferred_token_flip_facts_from_state(runtime, graph, state)?;
     let known_token_flip_facts = known_token_flip_facts_from_state(state);
     let token_observation_facts = supported_token_observation_facts_from_state(
         runtime,
@@ -3934,7 +3939,22 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "resolved_constraint_state",
-        constraint_state_to_py(py, runtime, &resolved_facts_by_component, &token_flip_facts)?,
+        mixed_constraint_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &token_observation_facts,
+        )?,
+    )?;
+    row.set_item(
+        "shadow_resolved_constraint_state_from_inferred_token_flip_facts",
+        constraint_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &shadow_inferred_token_flip_facts,
+        )?,
     )?;
     row.set_item(
         "resolved_constraint_state_from_supported_token_observations",

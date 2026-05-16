@@ -655,6 +655,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     mixed_observation_state_key = (
                         "resolved_constraint_state_from_known_token_flips_and_supported_token_observations"
                     )
+                    shadow_token_flip_state_key = (
+                        "shadow_resolved_constraint_state_from_inferred_token_flip_facts"
+                    )
                     supported_observation_branches = set(
                         TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH
                     )
@@ -666,6 +669,10 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         self.assertEqual(
                             row["resolved_constraint_state"],
                             row[mixed_observation_state_key],
+                        )
+                        self.assertEqual(
+                            row["resolved_constraint_state"],
+                            row[shadow_token_flip_state_key],
                         )
                     forced_token_flips = {
                         forced["runtime_component_idx"]: forced["token_flip"]

@@ -53,6 +53,11 @@ Implemented:
   classification.
 - Shadow adapter diagnostics are gated under `shadow_debug`, not exposed as a
   first-class runtime state.
+- `ComponentTokenObservationInputs` now names the walker-derived inputs used to
+  build token observations: component phase, component begin atom, begin side,
+  selected begin token, first-emitted candidate, and RDKit token-flip
+  adjustment. Diagnostics expose these as `input_observation_facts` and tests
+  assert they mirror the legacy scalar diagnostic keys.
 
 Still deliberately not done:
 
@@ -61,8 +66,10 @@ Still deliberately not done:
   the observation path.
 - `rdkit_component_token_flip_adjustment` is still an explicit RDKit writer
   adjustment input, not a derived model fact.
-- Component phase, component begin atom, and first-emitted candidate remain
-  walker-state observations. They are not yet owned by the constraint model.
+- Component phase, component begin atom, selected begin token, first-emitted
+  candidate, and RDKit token-flip adjustment are named observations, but they
+  are still extracted from walker state. They are not yet owned by the
+  constraint model.
 
 ## Alternative A: Keep A Token-Flip Fact Adapter
 
@@ -483,8 +490,8 @@ Exit criteria:
 - Break `legacy_procedural_inferred_component_token_flip` into branch-specific
   assertions or delete it once observation-derived fixtures cover the relevant
   branch shapes directly.
-- Promote component phase, component begin atom, and first-emitted candidate
-  from walker fields into explicit facts or typed observations.
+- Decide which named token-observation inputs should become constraint-model
+  facts versus remaining runtime traversal observations.
 - Split `rdkit_component_token_flip_adjustment` into a named writer-adjustment
   fact, or prove it can be derived from less RDKit-specific model facts.
 - Keep expanding fixtures only where they exercise distinct observation

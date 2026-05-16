@@ -756,6 +756,89 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             component["component_idx"],
                             token_flip_inputs["component_idx"],
                         )
+                        input_observation_facts = {
+                            fact["fact"]: fact
+                            for fact in token_flip_inputs["input_observation_facts"]
+                        }
+                        self.assertEqual(
+                            {
+                                "component_phase",
+                                "component_begin_atom",
+                                "begin_side",
+                                "selected_begin_token",
+                                "first_emitted_candidate",
+                                "rdkit_token_flip_adjustment",
+                            },
+                            set(input_observation_facts),
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["input_phase"],
+                            input_observation_facts["component_phase"][
+                                "input_phase"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["effective_phase"],
+                            input_observation_facts["component_phase"][
+                                "effective_phase"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["phase_source"],
+                            input_observation_facts["component_phase"]["source"],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["input_begin_atom_idx"],
+                            input_observation_facts["component_begin_atom"][
+                                "input_atom_idx"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["effective_begin_atom_idx"],
+                            input_observation_facts["component_begin_atom"][
+                                "effective_atom_idx"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["begin_atom_source"],
+                            input_observation_facts["component_begin_atom"][
+                                "source"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["begin_side_idx"],
+                            input_observation_facts["begin_side"]["side_idx"],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["begin_side_candidate_count"],
+                            input_observation_facts["begin_side"][
+                                "candidate_count"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["selected_begin_neighbor_idx"],
+                            input_observation_facts["selected_begin_token"][
+                                "neighbor_idx"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["selected_begin_token"],
+                            input_observation_facts["selected_begin_token"][
+                                "token"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["first_emitted_candidate_idx"],
+                            input_observation_facts["first_emitted_candidate"][
+                                "neighbor_idx"
+                            ],
+                        )
+                        self.assertEqual(
+                            token_flip_inputs["rdkit_token_flip_adjustment"],
+                            input_observation_facts["rdkit_token_flip_adjustment"][
+                                "value"
+                            ],
+                        )
                         self.assertEqual(
                             component["inferred_token_flip"],
                             token_flip_inputs["inferred_token_flip"],

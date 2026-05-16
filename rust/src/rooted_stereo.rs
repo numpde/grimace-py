@@ -3159,6 +3159,52 @@ fn marker_event_facts_to_py(
     Ok(rows)
 }
 
+fn slot_coalesced_marker_event_facts_by_component(
+    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+) -> Vec<Vec<StereoMarkerEventFact>> {
+    marker_event_facts_by_component
+        .iter()
+        .map(|facts| {
+            let future_marker_slots_by_target = facts
+                .iter()
+                .filter_map(|&fact| match fact {
+                    StereoMarkerEventFact::MarkerPlaced {
+                        side_idx,
+                        slot,
+                        begin_idx,
+                        end_idx,
+                        ..
+                    } => Some(((side_idx, canonical_edge(begin_idx, end_idx)), slot)),
+                    StereoMarkerEventFact::NoMarker { .. } => None,
+                })
+                .fold(
+                    BTreeMap::<(usize, (usize, usize)), BTreeSet<usize>>::new(),
+                    |mut acc, (target, slot)| {
+                        acc.entry(target).or_default().insert(slot);
+                        acc
+                    },
+                );
+
+            facts
+                .iter()
+                .copied()
+                .filter(|&fact| match fact {
+                    StereoMarkerEventFact::MarkerPlaced { .. } => true,
+                    StereoMarkerEventFact::NoMarker {
+                        side_idx,
+                        slot,
+                        begin_idx,
+                        end_idx,
+                        ..
+                    } => !future_marker_slots_by_target
+                        .get(&(side_idx, canonical_edge(begin_idx, end_idx)))
+                        .is_some_and(|slots| slots.iter().any(|&future_slot| future_slot > slot)),
+                })
+                .collect()
+        })
+        .collect()
+}
+
 fn selected_neighbors_layer_completions_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -4401,6 +4447,10 @@ fn stereo_output_fact_row_to_py(
         traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
     let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
     let shadow_marker_events_by_component = shadow_marker_event_facts_by_component(runtime, state)?;
+    let marker_obligation_events_by_component =
+        slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
+    let shadow_marker_obligation_events_by_component =
+        slot_coalesced_marker_event_facts_by_component(&shadow_marker_events_by_component);
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
         &runtime.constraint_model,
         StereoConstraintLayer::Semantic,
@@ -4455,6 +4505,10 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "marker_event_facts",
         marker_event_facts_to_py(py, &marker_events_by_component)?,
+    )?;
+    row.set_item(
+        "marker_obligation_facts",
+        marker_event_facts_to_py(py, &marker_obligation_events_by_component)?,
     )?;
     row.set_item(
         "raw_layer_completions",
@@ -4518,6 +4572,10 @@ fn stereo_output_fact_row_to_py(
         marker_event_facts_to_py(py, &shadow_marker_events_by_component)?,
     )?;
     shadow_debug.set_item(
+        "marker_obligation_facts",
+        marker_event_facts_to_py(py, &shadow_marker_obligation_events_by_component)?,
+    )?;
+    shadow_debug.set_item(
         "marker_placement_state",
         marker_placement_state_to_py(
             py,
@@ -4526,6 +4584,17 @@ fn stereo_output_fact_row_to_py(
             &known_token_flip_facts,
             &inferred_token_observation_facts,
             &shadow_marker_events_by_component,
+        )?,
+    )?;
+    shadow_debug.set_item(
+        "marker_obligation_state",
+        marker_placement_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
+            &shadow_marker_obligation_events_by_component,
         )?,
     )?;
     row.set_item("shadow_debug", shadow_debug)?;
@@ -4565,6 +4634,17 @@ fn stereo_output_fact_row_to_py(
             &known_token_flip_facts,
             &inferred_token_observation_facts,
             &marker_events_by_component,
+        )?,
+    )?;
+    row.set_item(
+        "marker_obligation_state",
+        marker_placement_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
+            &marker_obligation_events_by_component,
         )?,
     )?;
     row.set_item(

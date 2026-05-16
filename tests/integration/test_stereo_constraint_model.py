@@ -1241,6 +1241,16 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             for event in shadow_debug["marker_event_facts"]
                         )
                     )
+                    self.assertLessEqual(
+                        len(shadow_debug["marker_obligation_facts"]),
+                        len(shadow_debug["marker_event_facts"]),
+                    )
+                    self.assertTrue(
+                        all(
+                            isinstance(event["slot"], int)
+                            for event in shadow_debug["marker_obligation_facts"]
+                        )
+                    )
 
                     for components in shadow_debug["marker_placement_state"].values():
                         for component in components:
@@ -1248,6 +1258,20 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 shadow_marker_event_counts[component["component_idx"]],
                                 component["marker_event_count"],
                             )
+                            self.assertEqual(
+                                component["row_count_after_marker_events"],
+                                len(component["rows_after_marker_events"]),
+                            )
+                            self.assertLessEqual(
+                                component["row_count_after_marker_events"],
+                                component["row_count_before_marker_events"],
+                            )
+                            self.assertEqual(
+                                component["is_empty_after_marker_events"],
+                                component["row_count_after_marker_events"] == 0,
+                            )
+                    for components in shadow_debug["marker_obligation_state"].values():
+                        for component in components:
                             self.assertEqual(
                                 component["row_count_after_marker_events"],
                                 len(component["rows_after_marker_events"]),
@@ -1308,6 +1332,16 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             },
             dict(shadow_empty_counts),
         )
+        shadow_obligation_empty_counts = Counter(
+            layer_name
+            for row in rows
+            for layer_name, components in row["shadow_debug"][
+                "marker_obligation_state"
+            ].items()
+            for component in components
+            if component["is_empty_after_marker_events"]
+        )
+        self.assertFalse(shadow_obligation_empty_counts)
 
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(

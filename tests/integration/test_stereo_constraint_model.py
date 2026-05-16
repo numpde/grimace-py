@@ -653,7 +653,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         "resolved_constraint_state_from_supported_token_observations"
                     )
                     mixed_observation_state_key = (
-                        "resolved_constraint_state_from_known_token_flips_and_supported_token_observations"
+                        "resolved_constraint_state_from_known_token_flips_and_inferred_token_observations"
                     )
                     shadow_token_flip_state_key = (
                         "resolved_constraint_state_from_inferred_token_flip_facts"
@@ -674,6 +674,21 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             row["resolved_constraint_state"],
                             row["shadow_debug"][shadow_token_flip_state_key],
                         )
+                    runtime_token_constraint_facts = row[
+                        "runtime_token_constraint_facts"
+                    ]
+                    runtime_known_token_flip_facts = runtime_token_constraint_facts[
+                        "known_token_flip_facts"
+                    ]
+                    runtime_inferred_token_observation_facts = (
+                        runtime_token_constraint_facts[
+                            "inferred_token_observation_facts"
+                        ]
+                    )
+                    self.assertEqual(
+                        row["resolved_constraint_state"],
+                        row[mixed_observation_state_key],
+                    )
                     forced_token_flips = {
                         forced["runtime_component_idx"]: forced["token_flip"]
                         for component in row["resolved_constraint_state"]["semantic"]
@@ -688,6 +703,41 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         )
                     )
                     self.assertTrue(row["component_token_phase"])
+                    known_component_ids = {
+                        component["component_idx"]
+                        for component in row["component_token_phase"]
+                        if component["token_constraint_kind"] == "known_token_flip"
+                    }
+                    inferred_component_ids = {
+                        component["component_idx"]
+                        for component in row["component_token_phase"]
+                        if component["token_constraint_kind"]
+                        == "inferred_token_observation"
+                    }
+                    self.assertEqual(
+                        known_component_ids,
+                        {
+                            fact["runtime_component_idx"]
+                            for fact in runtime_known_token_flip_facts
+                        },
+                    )
+                    self.assertEqual(
+                        inferred_component_ids,
+                        {
+                            fact["runtime_component_idx"]
+                            for fact in runtime_inferred_token_observation_facts
+                        },
+                    )
+                    self.assertEqual(
+                        len(known_component_ids),
+                        runtime_token_constraint_facts["known_token_flip_count"],
+                    )
+                    self.assertEqual(
+                        len(inferred_component_ids),
+                        runtime_token_constraint_facts[
+                            "inferred_token_observation_count"
+                        ],
+                    )
                     for component in row["component_token_phase"]:
                         self.assertTrue(component["model_component_is_consistent"])
                         self.assertIsNotNone(component["model_component_idx"])
@@ -707,10 +757,28 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 "known_token_flip",
                                 component["token_constraint_kind"],
                             )
+                            self.assertEqual(
+                                [],
+                                [
+                                    fact
+                                    for fact in runtime_inferred_token_observation_facts
+                                    if fact["runtime_component_idx"]
+                                    == component["component_idx"]
+                                ],
+                            )
                         elif component["inferred_token_flip"] is not None:
                             self.assertEqual(
                                 "inferred_token_observation",
                                 component["token_constraint_kind"],
+                            )
+                            self.assertEqual(
+                                [],
+                                [
+                                    fact
+                                    for fact in runtime_known_token_flip_facts
+                                    if fact["runtime_component_idx"]
+                                    == component["component_idx"]
+                                ],
                             )
                         token_phase_component_count = component[
                             "model_token_phase_component_count"
@@ -905,6 +973,33 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             )
                             self.assertEqual(1, len(token_observation_facts))
                             token_observation = token_observation_facts[0]
+                            if (
+                                component["token_constraint_kind"]
+                                == "inferred_token_observation"
+                            ):
+                                self.assertEqual(
+                                    [token_observation],
+                                    [
+                                        fact
+                                        for fact in runtime_inferred_token_observation_facts
+                                        if fact["runtime_component_idx"]
+                                        == component["component_idx"]
+                                    ],
+                                )
+                            else:
+                                self.assertEqual(
+                                    "known_token_flip",
+                                    component["token_constraint_kind"],
+                                )
+                                self.assertEqual(
+                                    [],
+                                    [
+                                        fact
+                                        for fact in runtime_inferred_token_observation_facts
+                                        if fact["runtime_component_idx"]
+                                        == component["component_idx"]
+                                    ],
+                                )
                             self.assertEqual(
                                 component["component_idx"],
                                 token_observation["runtime_component_idx"],

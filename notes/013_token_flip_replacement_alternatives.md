@@ -58,6 +58,12 @@ Implemented:
   selected begin token, first-emitted candidate, and RDKit token-flip
   adjustment. Diagnostics expose these as `input_observation_facts` and tests
   assert they mirror the legacy scalar diagnostic keys.
+- Runtime diagnostics now expose `runtime_token_constraint_facts`, split into
+  known committed token-flip facts and inferred token-observation facts. Tests
+  assert that unknown committed token flips route through exactly one typed
+  observation per inferred branch, while known committed token flips route as
+  `StereoTokenFlipFact`s and do not duplicate observations in the runtime
+  constraint input.
 
 Still deliberately not done:
 

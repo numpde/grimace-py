@@ -3044,6 +3044,28 @@ fn supported_token_observation_facts_from_constraints(
     Ok(facts)
 }
 
+fn runtime_token_constraint_facts_to_py(
+    py: Python<'_>,
+    known_token_flip_facts: &[StereoTokenFlipFact],
+    inferred_token_observation_facts: &[StereoTokenObservationFact],
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item(
+        "known_token_flip_facts",
+        token_flip_facts_to_py(py, known_token_flip_facts)?,
+    )?;
+    row.set_item(
+        "inferred_token_observation_facts",
+        token_observation_facts_to_py(py, inferred_token_observation_facts)?,
+    )?;
+    row.set_item("known_token_flip_count", known_token_flip_facts.len())?;
+    row.set_item(
+        "inferred_token_observation_count",
+        inferred_token_observation_facts.len(),
+    )?;
+    Ok(row.unbind())
+}
+
 fn resolved_constraint_state_from_walker_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4040,13 +4062,21 @@ fn stereo_output_fact_row_to_py(
         )?,
     )?;
     row.set_item(
-        "resolved_constraint_state_from_known_token_flips_and_supported_token_observations",
+        "resolved_constraint_state_from_known_token_flips_and_inferred_token_observations",
         mixed_constraint_state_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
             &known_token_flip_facts,
-            &supported_token_observation_facts,
+            &inferred_token_observation_facts,
+        )?,
+    )?;
+    row.set_item(
+        "runtime_token_constraint_facts",
+        runtime_token_constraint_facts_to_py(
+            py,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
         )?,
     )?;
     row.set_item(
@@ -5074,6 +5104,21 @@ fn component_token_observation_inputs_to_py(
         first_emitted_candidate.unbind(),
         rdkit_adjustment.unbind(),
     ])
+}
+
+fn token_flip_facts_to_py(
+    py: Python<'_>,
+    facts: &[StereoTokenFlipFact],
+) -> PyResult<Vec<Py<PyDict>>> {
+    facts
+        .iter()
+        .map(|fact| {
+            let row = PyDict::new(py);
+            row.set_item("runtime_component_idx", fact.runtime_component_idx)?;
+            row.set_item("token_flip", model_token_flip_name(fact.token_flip))?;
+            Ok(row.unbind())
+        })
+        .collect()
 }
 
 fn token_observation_facts_to_py(
@@ -7460,16 +7505,21 @@ mod tests {
     use super::{
         advance_stereo_choice_state, advance_stereo_token_state, build_walker_runtime,
         check_supported_stereo_writer_surface, choices_for_stereo_state,
-        drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
-        enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
+        component_token_constraints_from_state, drain_exact_linear_stereo_actions,
+        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
+        flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
         initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
-        next_token_support_for_stereo_state, rdkit_ring_closure_projected_marker_slots,
-        resolved_selected_neighbors, smiles_from_direction_marker_slots,
-        successors_by_token_stereo_raw, traversal_constraint_facts_by_component,
-        traversal_constraint_has_completion, validate_root_idx, validate_stereo_state_shape,
+        known_token_flip_facts_from_constraints, next_token_support_for_stereo_state,
+        rdkit_ring_closure_projected_marker_slots, resolved_constraint_state_from_walker_state,
+        resolved_selected_neighbors, selected_neighbor_facts_by_component,
+        smiles_from_direction_marker_slots, successors_by_token_stereo_raw,
+        supported_token_observation_facts_from_constraints,
+        traversal_constraint_facts_by_component, traversal_constraint_has_completion,
+        validate_root_idx, validate_stereo_state_shape, ComponentTokenConstraintFact,
+        UNKNOWN_COMPONENT_TOKEN_FLIP,
     };
     use crate::bond_stereo_constraints::{
-        StereoConstraintFact, StereoConstraintLayer, StereoTraversalRole,
+        StereoConstraintFact, StereoConstraintLayer, StereoConstraintState, StereoTraversalRole,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -7536,6 +7586,19 @@ mod tests {
         for successor in successors {
             terminal_stereo_states(runtime, graph, successor, out);
         }
+    }
+
+    fn first_terminal_stereo_state(
+        runtime: &super::StereoWalkerRuntimeData,
+        graph: &PreparedSmilesGraphData,
+        state: super::RootedConnectedStereoWalkerStateData,
+    ) -> super::RootedConnectedStereoWalkerStateData {
+        let mut states = Vec::new();
+        terminal_stereo_states(runtime, graph, state, &mut states);
+        states
+            .into_iter()
+            .next()
+            .expect("at least one terminal stereo state should be reachable")
     }
 
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
@@ -7876,6 +7939,109 @@ mod tests {
 
         validate_stereo_state_shape(&runtime, &graph, &state)
             .expect_err("invalid selected carrier should fail validation");
+    }
+
+    #[test]
+    fn unknown_token_flips_route_as_observations_not_token_flip_facts() {
+        let graph = sample_stereo_graph();
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let mut state = first_terminal_stereo_state(&runtime, &graph, initial_state);
+        Arc::make_mut(&mut state.stereo_component_token_flips).fill(UNKNOWN_COMPONENT_TOKEN_FLIP);
+
+        let selected_neighbors = resolved_selected_neighbors(&runtime, &state);
+        let constraints =
+            component_token_constraints_from_state(&runtime, &graph, &state, &selected_neighbors)
+                .expect("token constraints should classify");
+        assert!(constraints.iter().all(|constraint| matches!(
+            constraint.fact,
+            ComponentTokenConstraintFact::InferredTokenObservation(_)
+        )));
+
+        let known_token_flip_facts = known_token_flip_facts_from_constraints(&constraints);
+        let inferred_token_observation_facts =
+            inferred_token_observation_facts_from_constraints(&constraints);
+        let supported_token_observation_facts =
+            supported_token_observation_facts_from_constraints(&constraints)
+                .expect("supported observations should build");
+        assert!(known_token_flip_facts.is_empty());
+        assert_eq!(
+            runtime.isolated_components.len(),
+            inferred_token_observation_facts.len()
+        );
+        assert_eq!(
+            supported_token_observation_facts,
+            inferred_token_observation_facts
+        );
+
+        let facts_by_component =
+            selected_neighbor_facts_by_component(&runtime, &selected_neighbors);
+        let runtime_state = resolved_constraint_state_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            StereoConstraintLayer::Semantic,
+        )
+        .expect("runtime constraint state should build");
+        let observation_state = StereoConstraintState::from_facts_and_token_observations(
+            &runtime.constraint_model,
+            StereoConstraintLayer::Semantic,
+            &facts_by_component,
+            &[],
+            &inferred_token_observation_facts,
+        )
+        .expect("observation-backed constraint state should build");
+        assert_eq!(observation_state, runtime_state);
+    }
+
+    #[test]
+    fn known_token_flips_override_observations_without_runtime_duplication() {
+        let graph = sample_stereo_graph();
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let state = first_terminal_stereo_state(&runtime, &graph, initial_state);
+
+        let selected_neighbors = resolved_selected_neighbors(&runtime, &state);
+        let constraints =
+            component_token_constraints_from_state(&runtime, &graph, &state, &selected_neighbors)
+                .expect("token constraints should classify");
+        assert!(constraints.iter().all(|constraint| matches!(
+            constraint.fact,
+            ComponentTokenConstraintFact::KnownTokenFlip(_)
+        )));
+
+        let known_token_flip_facts = known_token_flip_facts_from_constraints(&constraints);
+        let inferred_token_observation_facts =
+            inferred_token_observation_facts_from_constraints(&constraints);
+        let supported_token_observation_facts =
+            supported_token_observation_facts_from_constraints(&constraints)
+                .expect("supported observations should still be derivable");
+        assert_eq!(
+            runtime.isolated_components.len(),
+            known_token_flip_facts.len()
+        );
+        assert!(inferred_token_observation_facts.is_empty());
+        assert_eq!(
+            runtime.isolated_components.len(),
+            supported_token_observation_facts.len()
+        );
+
+        let facts_by_component =
+            selected_neighbor_facts_by_component(&runtime, &selected_neighbors);
+        let runtime_state = resolved_constraint_state_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            StereoConstraintLayer::Semantic,
+        )
+        .expect("runtime constraint state should build");
+        let known_only_state = StereoConstraintState::from_facts_and_token_observations(
+            &runtime.constraint_model,
+            StereoConstraintLayer::Semantic,
+            &facts_by_component,
+            &known_token_flip_facts,
+            &[],
+        )
+        .expect("known-token constraint state should build");
+        assert_eq!(known_only_state, runtime_state);
     }
 
     #[test]

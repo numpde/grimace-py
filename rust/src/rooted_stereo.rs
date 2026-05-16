@@ -2916,7 +2916,24 @@ fn token_flip_facts_from_state(
     Ok(facts)
 }
 
-fn token_observation_facts_from_state(
+fn known_token_flip_facts_from_state(
+    state: &RootedConnectedStereoWalkerStateData,
+) -> Vec<StereoTokenFlipFact> {
+    let mut facts = Vec::new();
+    for (component_idx, &token_flip_value) in state.stereo_component_token_flips.iter().enumerate()
+    {
+        let Some(token_flip) = model_token_flip_from_component_value(token_flip_value) else {
+            continue;
+        };
+        facts.push(StereoTokenFlipFact {
+            runtime_component_idx: component_idx,
+            token_flip,
+        });
+    }
+    facts
+}
+
+fn supported_token_observation_facts_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -3039,6 +3056,28 @@ fn constraint_state_to_py(
             layer,
             facts_by_component,
             token_flip_facts,
+        )?;
+        let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
+        state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
+    }
+    Ok(state_by_layer.unbind())
+}
+
+fn mixed_constraint_state_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    facts_by_component: &[Vec<StereoConstraintFact>],
+    token_flip_facts: &[StereoTokenFlipFact],
+    token_observation_facts: &[StereoTokenObservationFact],
+) -> PyResult<Py<PyDict>> {
+    let state_by_layer = PyDict::new(py);
+    for layer in StereoConstraintLayer::ALL {
+        let constraint_state = StereoConstraintState::from_facts_and_token_observations(
+            &runtime.constraint_model,
+            layer,
+            facts_by_component,
+            token_flip_facts,
+            token_observation_facts,
         )?;
         let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
         state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
@@ -3815,8 +3854,13 @@ fn stereo_output_fact_row_to_py(
         &resolved_facts_by_component,
     );
     let token_flip_facts = token_flip_facts_from_state(runtime, graph, state)?;
-    let token_observation_facts =
-        token_observation_facts_from_state(runtime, graph, state, &resolved_selected_neighbors)?;
+    let known_token_flip_facts = known_token_flip_facts_from_state(state);
+    let token_observation_facts = supported_token_observation_facts_from_state(
+        runtime,
+        graph,
+        state,
+        &resolved_selected_neighbors,
+    )?;
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3884,6 +3928,16 @@ fn stereo_output_fact_row_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
+            &token_observation_facts,
+        )?,
+    )?;
+    row.set_item(
+        "resolved_constraint_state_from_known_token_flips_and_supported_token_observations",
+        mixed_constraint_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
             &token_observation_facts,
         )?,
     )?;

@@ -257,6 +257,13 @@ impl StereoTokenObservationFact {
             StereoTokenFlip::Stored
         }
     }
+
+    pub(crate) fn token_flip_fact(self) -> StereoTokenFlipFact {
+        StereoTokenFlipFact {
+            runtime_component_idx: self.runtime_component_idx(),
+            token_flip: self.implied_token_flip(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1064,10 +1071,7 @@ impl StereoConstraintModel {
     ) -> PyResult<Vec<usize>> {
         let token_flip_facts = observation_facts
             .iter()
-            .map(|fact| StereoTokenFlipFact {
-                runtime_component_idx: fact.runtime_component_idx(),
-                token_flip: fact.implied_token_flip(),
-            })
+            .map(|fact| fact.token_flip_fact())
             .collect::<Vec<_>>();
         self.token_phase_assignment_ids_for_neighbor_assignment_ids(
             component_idx,
@@ -1282,6 +1286,44 @@ impl StereoConstraintState {
             carrier_assignment_state,
             token_phase_remaining_by_component,
         })
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn from_facts_and_token_observations(
+        model: &StereoConstraintModel,
+        layer: StereoConstraintLayer,
+        facts_by_component: &[Vec<StereoConstraintFact>],
+        token_flip_facts: &[StereoTokenFlipFact],
+        token_observation_facts: &[StereoTokenObservationFact],
+    ) -> PyResult<Self> {
+        for fact in token_flip_facts {
+            if model
+                .component_for_runtime_component(fact.runtime_component_idx)
+                .is_none()
+            {
+                return Err(PyValueError::new_err(
+                    "token flip fact references unknown runtime component",
+                ));
+            }
+        }
+        for fact in token_observation_facts {
+            if model
+                .component_for_runtime_component(fact.runtime_component_idx())
+                .is_none()
+            {
+                return Err(PyValueError::new_err(
+                    "token observation fact references unknown runtime component",
+                ));
+            }
+        }
+
+        let mut combined_token_flip_facts = token_flip_facts.to_vec();
+        combined_token_flip_facts.extend(
+            token_observation_facts
+                .iter()
+                .map(|fact| fact.token_flip_fact()),
+        );
+        Self::from_facts(model, layer, facts_by_component, &combined_token_flip_facts)
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -2250,6 +2292,24 @@ mod tests {
         .expect("observation constraint state should build");
         assert_eq!(state, observation_state);
 
+        let mixed_state = super::StereoConstraintState::from_facts_and_token_observations(
+            &model,
+            StereoConstraintLayer::RdkitLocalWriter,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 8,
+            }]],
+            &[],
+            &[StereoTokenObservationFact::SelectedBeginSide {
+                runtime_component_idx: 0,
+                component_phase: StereoComponentPhase::Stored,
+                selected_begin_token: StereoDirectionToken::Backslash,
+                rdkit_token_flip_adjustment: false,
+            }],
+        )
+        .expect("mixed observation constraint state should build");
+        assert_eq!(state, mixed_state);
+
         assert_eq!(Some(8), state.forced_neighbor(&model, 0, 0));
         assert_eq!(
             Some(StereoTokenFlip::Stored),
@@ -2294,6 +2354,27 @@ mod tests {
             vec![Vec::<usize>::new()],
             contradictory.token_phase_remaining_by_component
         );
+
+        let mixed_contradictory = super::StereoConstraintState::from_facts_and_token_observations(
+            &model,
+            StereoConstraintLayer::RdkitLocalWriter,
+            &[vec![StereoConstraintFact::CarrierSelected {
+                side_idx: 0,
+                neighbor_idx: 8,
+            }]],
+            &[StereoTokenFlipFact {
+                runtime_component_idx: 0,
+                token_flip: StereoTokenFlip::Flipped,
+            }],
+            &[StereoTokenObservationFact::SelectedBeginSide {
+                runtime_component_idx: 0,
+                component_phase: StereoComponentPhase::Stored,
+                selected_begin_token: StereoDirectionToken::Backslash,
+                rdkit_token_flip_adjustment: false,
+            }],
+        )
+        .expect("contradictory mixed facts should create an empty state");
+        assert!(mixed_contradictory.is_empty(0));
     }
 
     #[test]
@@ -2376,6 +2457,21 @@ mod tests {
             }],
         )
         .is_err());
+        assert!(
+            super::StereoConstraintState::from_facts_and_token_observations(
+                &model,
+                StereoConstraintLayer::Semantic,
+                &[],
+                &[],
+                &[StereoTokenObservationFact::SelectedBeginSide {
+                    runtime_component_idx: 2,
+                    component_phase: StereoComponentPhase::Stored,
+                    selected_begin_token: StereoDirectionToken::Backslash,
+                    rdkit_token_flip_adjustment: false,
+                }],
+            )
+            .is_err()
+        );
     }
 
     #[test]

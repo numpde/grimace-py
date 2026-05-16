@@ -320,6 +320,7 @@ pub(crate) enum StereoConstraintFact {
 pub(crate) enum StereoMarkerEventFact {
     MarkerPlaced {
         side_idx: usize,
+        slot: usize,
         begin_idx: usize,
         end_idx: usize,
         marker: StereoDirectionToken,
@@ -327,6 +328,7 @@ pub(crate) enum StereoMarkerEventFact {
     },
     NoMarker {
         side_idx: usize,
+        slot: usize,
         begin_idx: usize,
         end_idx: usize,
         role: StereoTraversalRole,
@@ -2292,6 +2294,7 @@ mod tests {
                 &all_row_ids,
                 &[StereoMarkerEventFact::MarkerPlaced {
                     side_idx: 0,
+                    slot: 12,
                     begin_idx: 1,
                     end_idx: 3,
                     marker: StereoDirectionToken::Slash,
@@ -2310,6 +2313,7 @@ mod tests {
                 &marker_on_side_zero_neighbor_three,
                 &[StereoMarkerEventFact::NoMarker {
                     side_idx: 0,
+                    slot: 13,
                     begin_idx: 0,
                     end_idx: 1,
                     role: StereoTraversalRole::Branch,
@@ -2324,6 +2328,7 @@ mod tests {
                 &marker_on_side_zero_neighbor_three,
                 &[StereoMarkerEventFact::NoMarker {
                     side_idx: 0,
+                    slot: 14,
                     begin_idx: 1,
                     end_idx: 3,
                     role: StereoTraversalRole::Branch,
@@ -2338,6 +2343,7 @@ mod tests {
                 &all_row_ids,
                 &[StereoMarkerEventFact::NoMarker {
                     side_idx: 1,
+                    slot: 15,
                     begin_idx: 2,
                     end_idx: 4,
                     role: StereoTraversalRole::RingClose,
@@ -2369,6 +2375,7 @@ mod tests {
                     &all_row_ids,
                     &[StereoMarkerEventFact::NoMarker {
                         side_idx: 0,
+                        slot: 12,
                         begin_idx: 7,
                         end_idx: 8,
                         role: StereoTraversalRole::Deferred,
@@ -2382,6 +2389,7 @@ mod tests {
                 &all_row_ids,
                 &[StereoMarkerEventFact::MarkerPlaced {
                     side_idx: 0,
+                    slot: 12,
                     begin_idx: 7,
                     end_idx: 8,
                     marker: StereoDirectionToken::Backslash,
@@ -2403,6 +2411,7 @@ mod tests {
                 &all_row_ids,
                 &[StereoMarkerEventFact::NoMarker {
                     side_idx: 99,
+                    slot: 12,
                     begin_idx: 1,
                     end_idx: 0,
                     role: StereoTraversalRole::TreeOrChain,

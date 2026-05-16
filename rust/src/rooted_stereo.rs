@@ -3062,6 +3062,7 @@ fn marker_event_facts_by_component(
         let marker = StereoDirectionToken::from_str(trace.marker.encode_utf8(&mut marker_buf))?;
         facts_by_component[component_idx].push(StereoMarkerEventFact::MarkerPlaced {
             side_idx,
+            slot: trace.slot,
             begin_idx: trace.edge_begin_idx as usize,
             end_idx: trace.edge_end_idx as usize,
             marker,
@@ -3090,6 +3091,7 @@ fn shadow_marker_event_facts_by_component(
                 let marker = StereoDirectionToken::from_str(marker.encode_utf8(&mut marker_buf))?;
                 StereoMarkerEventFact::MarkerPlaced {
                     side_idx,
+                    slot: trace.slot,
                     begin_idx: trace.edge_begin_idx as usize,
                     end_idx: trace.edge_end_idx as usize,
                     marker,
@@ -3098,6 +3100,7 @@ fn shadow_marker_event_facts_by_component(
             }
             None => StereoMarkerEventFact::NoMarker {
                 side_idx,
+                slot: trace.slot,
                 begin_idx: trace.edge_begin_idx as usize,
                 end_idx: trace.edge_end_idx as usize,
                 role: trace.role,
@@ -3120,6 +3123,7 @@ fn marker_event_facts_to_py(
             match fact {
                 StereoMarkerEventFact::MarkerPlaced {
                     side_idx,
+                    slot,
                     begin_idx,
                     end_idx,
                     marker,
@@ -3127,6 +3131,7 @@ fn marker_event_facts_to_py(
                 } => {
                     row.set_item("event", "marker_placed")?;
                     row.set_item("side_idx", side_idx)?;
+                    row.set_item("slot", slot)?;
                     row.set_item("begin_idx", begin_idx)?;
                     row.set_item("end_idx", end_idx)?;
                     row.set_item("marker", stereo_direction_token_name(marker))?;
@@ -3134,12 +3139,14 @@ fn marker_event_facts_to_py(
                 }
                 StereoMarkerEventFact::NoMarker {
                     side_idx,
+                    slot,
                     begin_idx,
                     end_idx,
                     role,
                 } => {
                     row.set_item("event", "no_marker")?;
                     row.set_item("side_idx", side_idx)?;
+                    row.set_item("slot", slot)?;
                     row.set_item("begin_idx", begin_idx)?;
                     row.set_item("end_idx", end_idx)?;
                     row.set_item("marker", Option::<&str>::None)?;

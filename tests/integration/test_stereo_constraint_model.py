@@ -1217,6 +1217,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     self.assertTrue(
                         all(
                             event["event"] == "marker_placed"
+                            and isinstance(event["slot"], int)
                             for event in row["marker_event_facts"]
                         )
                     )
@@ -1233,6 +1234,12 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     saw_shadow_no_marker_event |= any(
                         event["event"] == "no_marker"
                         for event in shadow_debug["marker_event_facts"]
+                    )
+                    self.assertTrue(
+                        all(
+                            isinstance(event["slot"], int)
+                            for event in shadow_debug["marker_event_facts"]
+                        )
                     )
 
                     for components in shadow_debug["marker_placement_state"].values():

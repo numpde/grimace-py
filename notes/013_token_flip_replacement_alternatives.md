@@ -16,6 +16,39 @@ first emitted candidate, selected token, and RDKit token-adjustment rules.
 
 The next design question is where that derivation should live.
 
+## Status As Of 2026-05-16
+
+The branch has moved past the original one-branch replacement target.
+
+Implemented:
+
+- `StereoTokenObservationFact` covers all token-flip inference branches seen in
+  the current pinned witnesses:
+  - `isolated_all_single_candidate`;
+  - `isolated_selected_begin_side`;
+  - `coupled_one_candidate_begin_side`;
+  - `coupled_two_candidate_begin_side`.
+- `StereoConstraintState::from_facts_and_token_observations` accepts explicit
+  committed token-flip facts plus inferred token-observation facts.
+- `resolved_constraint_state_from_walker_state` now routes unknown/inferred
+  token flips through token-observation facts. Explicitly committed token flips
+  remain direct `StereoTokenFlipFact`s.
+- Runtime state construction errors if a future branch has a procedural
+  inferred token flip but no supported observation fact. This prevents silent
+  support widening.
+- Diagnostics still expose pure observation-backed and mixed observation-backed
+  states, and integration tests assert equivalence against the previous
+  resolved state for the current pinned witnesses.
+
+Still deliberately not done:
+
+- `procedural_inferred_component_token_flip` has not been deleted. It remains
+  an equivalence oracle inside observation extraction and diagnostics.
+- `rdkit_component_token_flip_adjustment` is still an explicit RDKit writer
+  adjustment input, not a derived model fact.
+- Component phase, component begin atom, and first-emitted candidate remain
+  walker-state observations. They are not yet owned by the constraint model.
+
 ## Alternative A: Keep A Token-Flip Fact Adapter
 
 Shape:
@@ -380,7 +413,7 @@ Exit criteria:
   `StereoTokenFlipFact`s from the legacy inferred helper for the current
   branch.
 
-### Commit 5: Replace One Branch Internally
+### Historical Commit 5: Replace One Branch Internally
 
 Files:
 
@@ -388,14 +421,11 @@ Files:
 
 Work:
 
-- For `isolated_selected_begin_side`, replace direct procedural flip
-  calculation with:
-  - construct typed observation fact;
-  - query model;
-  - read forced token flip.
-- Keep the old calculation in shadow mode for this branch and error if it
-  disagrees.
-- Leave other branches untouched.
+- Superseded by the 2026-05-16 route: all currently observed token-flip
+  branches now construct typed observation facts, and runtime state uses
+  `StereoConstraintState::from_facts_and_token_observations`.
+- The old procedural calculation remains only as an equivalence oracle and
+  unsupported-branch detector.
 
 Tests:
 
@@ -405,14 +435,14 @@ Tests:
 
 Exit criteria:
 
-- One current production branch is model-derived while behavior remains
-  unchanged.
+- Current production branches are model-derived from observations while
+  behavior remains unchanged on the passing pinned parity target.
 
 ## Risks And Boundaries
 
-- Current completed-output fixtures exercise only one branch. Do not claim the
-  whole token inference helper has been replaced until tests hit the coupled
-  and all-single branches.
+- Current completed-output fixtures exercise isolated selected-begin,
+  isolated all-single, coupled one-candidate, and coupled two-candidate token
+  branches. Do not claim full generality beyond those observed branch shapes.
 - `rdkit_component_token_flip_adjustment` remains suspicious. In this plan it
   becomes a named observation fact first; deriving or replacing it is a later
   slice.
@@ -430,3 +460,16 @@ Exit criteria:
 - Do not make Z3 a runtime or CI dependency.
 - Keep old procedural inference only as an equivalence oracle while the new
   observation path is being introduced.
+
+## Next Cleanup Slice
+
+- Rename diagnostics so `resolved_constraint_state` is clearly the mixed
+  observation-backed runtime state.
+- Keep one explicit shadow comparison payload for the older token-flip fact
+  adapter until the procedural helper is deleted.
+- Move repeated observation extraction logic behind one small helper that
+  returns either `KnownTokenFlip` or `InferredTokenObservation` per runtime
+  component.
+- After that, shrink `procedural_inferred_component_token_flip` branch by
+  branch, keeping it test-only or diagnostic-only until no runtime code depends
+  on it.

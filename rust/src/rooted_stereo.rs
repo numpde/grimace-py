@@ -60,9 +60,14 @@ struct PendingRing {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct DeferredDirectionalToken {
+struct DeferredDirectionalComponentToken {
     component_idx: usize,
     stored_token: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct DeferredDirectionalToken {
+    component_tokens: Arc<[DeferredDirectionalComponentToken]>,
     begin_idx: isize,
     end_idx: isize,
 }
@@ -1762,28 +1767,32 @@ fn commit_coupled_component_phase_from_deferred_part(
     let Part::Deferred(deferred) = part else {
         return Ok(component_phases.to_vec());
     };
-    let component_idx = deferred.component_idx;
-    if runtime.isolated_components[component_idx]
-        || component_phases[component_idx] != UNKNOWN_COMPONENT_PHASE
-        || component_begin_atoms
-            .get(component_idx)
-            .copied()
-            .unwrap_or(-1)
-            != begin_idx as isize
-    {
-        return Ok(component_phases.to_vec());
-    }
-
-    let phase = match deferred.stored_token.as_str() {
-        "/" => STORED_COMPONENT_PHASE,
-        "\\" => FLIPPED_COMPONENT_PHASE,
-        token => {
-            return Err(PyValueError::new_err(format!(
-                "Unsupported deferred directional token: {token:?}"
-            )));
+    let mut updated_phases = component_phases.to_vec();
+    for component_token in deferred.component_tokens.iter() {
+        let component_idx = component_token.component_idx;
+        if runtime.isolated_components[component_idx]
+            || updated_phases[component_idx] != UNKNOWN_COMPONENT_PHASE
+            || component_begin_atoms
+                .get(component_idx)
+                .copied()
+                .unwrap_or(-1)
+                != begin_idx as isize
+        {
+            continue;
         }
-    };
-    with_component_phase(component_phases, component_idx, phase)
+
+        let phase = match component_token.stored_token.as_str() {
+            "/" => STORED_COMPONENT_PHASE,
+            "\\" => FLIPPED_COMPONENT_PHASE,
+            token => {
+                return Err(PyValueError::new_err(format!(
+                    "Unsupported deferred directional token: {token:?}"
+                )));
+            }
+        };
+        updated_phases = with_component_phase(&updated_phases, component_idx, phase)?;
+    }
+    Ok(updated_phases)
 }
 
 fn candidate_base_token(side_info: &StereoSideInfo, neighbor_idx: usize) -> PyResult<String> {
@@ -1936,24 +1945,29 @@ fn deferred_edge_part(
     begin_idx: usize,
     end_idx: usize,
 ) -> PyResult<Part> {
-    let component_idx = stored_tokens[0].0;
-    let stored_token = stored_tokens[0].1.clone();
-    for (other_component_idx, other_stored_token) in &stored_tokens[1..] {
-        if *other_component_idx != component_idx {
-            return Err(PyValueError::new_err(
-                "Carrier edge unexpectedly spans multiple stereo components",
-            ));
-        }
-        if *other_stored_token != stored_token {
+    let mut component_tokens = Vec::<DeferredDirectionalComponentToken>::new();
+    for (component_idx, stored_token) in stored_tokens {
+        if component_tokens.iter().any(|existing| {
+            existing.component_idx == *component_idx && existing.stored_token != *stored_token
+        }) {
             return Err(PyValueError::new_err(
                 "Carrier edge received conflicting stereo token assignments",
             ));
         }
+        if component_tokens
+            .iter()
+            .any(|existing| existing.component_idx == *component_idx)
+        {
+            continue;
+        }
+        component_tokens.push(DeferredDirectionalComponentToken {
+            component_idx: *component_idx,
+            stored_token: stored_token.clone(),
+        });
     }
 
     Ok(Part::Deferred(DeferredDirectionalToken {
-        component_idx,
-        stored_token,
+        component_tokens: Arc::from(component_tokens),
         begin_idx: begin_idx as isize,
         end_idx: end_idx as isize,
     }))
@@ -2236,8 +2250,10 @@ fn emitted_edge_part(
         }
         Ok(edge_result_with_part(
             Part::Deferred(DeferredDirectionalToken {
-                component_idx,
-                stored_token,
+                component_tokens: Arc::from(vec![DeferredDirectionalComponentToken {
+                    component_idx,
+                    stored_token,
+                }]),
                 begin_idx: begin_idx as isize,
                 end_idx: end_idx as isize,
             }),
@@ -5186,11 +5202,17 @@ fn normalize_component_token_flips(
     Ok(())
 }
 
-fn token_from_model_flip(stored_token: &str, token_flip: StereoTokenFlip) -> PyResult<String> {
-    match token_flip {
-        StereoTokenFlip::Stored => Ok(stored_token.to_owned()),
-        StereoTokenFlip::Flipped => flip_direction_token(stored_token),
+fn model_token_flip_for_chosen_token(
+    stored_token: &str,
+    chosen_token: &str,
+) -> PyResult<Option<StereoTokenFlip>> {
+    if chosen_token == stored_token {
+        return Ok(Some(StereoTokenFlip::Stored));
     }
+    if chosen_token == flip_direction_token(stored_token)? {
+        return Ok(Some(StereoTokenFlip::Flipped));
+    }
+    Ok(None)
 }
 
 fn raw_token_for_deferred_edge(
@@ -5199,7 +5221,10 @@ fn raw_token_for_deferred_edge(
     deferred: &DeferredDirectionalToken,
 ) -> PyResult<Option<String>> {
     if deferred.begin_idx < 0 || deferred.end_idx < 0 {
-        return Ok(Some(deferred.stored_token.clone()));
+        return Ok(deferred
+            .component_tokens
+            .first()
+            .map(|component_token| component_token.stored_token.clone()));
     }
 
     let begin_idx = deferred.begin_idx as usize;
@@ -5242,38 +5267,107 @@ fn deferred_token_support_from_constraint_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
-    raw_token: &str,
 ) -> PyResult<Vec<String>> {
-    let Some(model_component_idx) = runtime
-        .constraint_model
-        .component_for_runtime_component(deferred.component_idx)
-    else {
-        return Err(PyValueError::new_err(
-            "Deferred token references unknown runtime component",
-        ));
-    };
+    if deferred.component_tokens.len() == 1 {
+        let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
+            Some(
+                graph
+                    .bond_token(deferred.begin_idx as usize, deferred.end_idx as usize)
+                    .ok_or_else(|| {
+                        PyKeyError::new_err(format!(
+                            "No bond between atoms {} and {}",
+                            deferred.begin_idx, deferred.end_idx
+                        ))
+                    })?
+                    .to_owned(),
+            )
+        } else {
+            None
+        };
+        let Some(raw_token) = raw_token_for_deferred_edge(runtime, state, deferred)? else {
+            return Ok(vec![literal_token.unwrap_or_default()]);
+        };
+        let component_token = &deferred.component_tokens[0];
+        let Some(model_component_idx) = runtime
+            .constraint_model
+            .component_for_runtime_component(component_token.component_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "Deferred token references unknown runtime component",
+            ));
+        };
+        let constraint_state = resolved_constraint_state_from_walker_state(
+            runtime,
+            graph,
+            state,
+            StereoConstraintLayer::Semantic,
+        )?;
+        if constraint_state.is_empty(model_component_idx) {
+            return Err(PyValueError::new_err(
+                "Deferred token has no compatible stereo assignment",
+            ));
+        }
+        let mut out = constraint_state
+            .available_token_flips(
+                &runtime.constraint_model,
+                model_component_idx,
+                component_token.component_idx,
+            )
+            .into_iter()
+            .map(|token_flip| match token_flip {
+                StereoTokenFlip::Stored => Ok(raw_token.clone()),
+                StereoTokenFlip::Flipped => flip_direction_token(&raw_token),
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        out.sort();
+        out.dedup();
+        return Ok(out);
+    }
+
     let constraint_state = resolved_constraint_state_from_walker_state(
         runtime,
         graph,
         state,
         StereoConstraintLayer::Semantic,
     )?;
-    if constraint_state.is_empty(model_component_idx) {
-        return Err(PyValueError::new_err(
-            "Deferred token has no compatible stereo assignment",
-        ));
+    let mut out = Vec::new();
+    for candidate_token in ["/", "\\"] {
+        let mut compatible = true;
+        for component_token in deferred.component_tokens.iter() {
+            let Some(model_component_idx) = runtime
+                .constraint_model
+                .component_for_runtime_component(component_token.component_idx)
+            else {
+                return Err(PyValueError::new_err(
+                    "Deferred token references unknown runtime component",
+                ));
+            };
+            if constraint_state.is_empty(model_component_idx) {
+                compatible = false;
+                break;
+            }
+            let Some(implied_token_flip) =
+                model_token_flip_for_chosen_token(&component_token.stored_token, candidate_token)?
+            else {
+                compatible = false;
+                break;
+            };
+            if !constraint_state
+                .available_token_flips(
+                    &runtime.constraint_model,
+                    model_component_idx,
+                    component_token.component_idx,
+                )
+                .contains(&implied_token_flip)
+            {
+                compatible = false;
+                break;
+            }
+        }
+        if compatible {
+            out.push(candidate_token.to_owned());
+        }
     }
-    let mut out = constraint_state
-        .available_token_flips(
-            &runtime.constraint_model,
-            model_component_idx,
-            deferred.component_idx,
-        )
-        .into_iter()
-        .map(|token_flip| token_from_model_flip(raw_token, token_flip))
-        .collect::<PyResult<Vec<_>>>()?;
-    out.sort();
-    out.dedup();
     Ok(out)
 }
 
@@ -5283,6 +5377,9 @@ fn deferred_token_support(
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
 ) -> PyResult<Vec<String>> {
+    if !deferred.component_tokens.is_empty() {
+        return deferred_token_support_from_constraint_state(runtime, graph, state, deferred);
+    }
     let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
         Some(
             graph
@@ -5298,10 +5395,7 @@ fn deferred_token_support(
     } else {
         None
     };
-    let Some(raw_token) = raw_token_for_deferred_edge(runtime, state, deferred)? else {
-        return Ok(vec![literal_token.unwrap_or_default()]);
-    };
-    deferred_token_support_from_constraint_state(runtime, graph, state, deferred, &raw_token)
+    Ok(vec![literal_token.unwrap_or_default()])
 }
 
 fn commit_deferred_token_choice(
@@ -5311,8 +5405,7 @@ fn commit_deferred_token_choice(
     deferred: &DeferredDirectionalToken,
     chosen_token: &str,
 ) -> PyResult<()> {
-    let raw_token = raw_token_for_deferred_edge(runtime, state, deferred)?;
-    let Some(raw_token) = raw_token else {
+    if deferred.component_tokens.is_empty() {
         let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
             graph
                 .bond_token(deferred.begin_idx as usize, deferred.end_idx as usize)
@@ -5331,26 +5424,70 @@ fn commit_deferred_token_choice(
             )));
         }
         return normalize_component_token_flips(runtime, graph, state);
-    };
+    }
 
-    let flipped = flip_direction_token(&raw_token)?;
-    let chosen_flip = if chosen_token == raw_token {
-        STORED_COMPONENT_TOKEN_FLIP
-    } else if chosen_token == flipped {
-        FLIPPED_COMPONENT_TOKEN_FLIP
-    } else {
-        return Err(PyKeyError::new_err(format!(
-            "Token {chosen_token:?} is not available for deferred stereo token"
-        )));
-    };
-    let existing = state.stereo_component_token_flips[deferred.component_idx];
-    if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
-        Arc::make_mut(&mut state.stereo_component_token_flips)[deferred.component_idx] =
-            chosen_flip;
-    } else if existing != chosen_flip {
-        return Err(PyValueError::new_err(
-            "Stereo deferred token was committed inconsistently",
-        ));
+    if deferred.component_tokens.len() == 1 {
+        let raw_token = raw_token_for_deferred_edge(runtime, state, deferred)?;
+        let Some(raw_token) = raw_token else {
+            let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
+                graph
+                    .bond_token(deferred.begin_idx as usize, deferred.end_idx as usize)
+                    .ok_or_else(|| {
+                        PyKeyError::new_err(format!(
+                            "No bond between atoms {} and {}",
+                            deferred.begin_idx, deferred.end_idx
+                        ))
+                    })?
+            } else {
+                ""
+            };
+            if chosen_token != literal_token {
+                return Err(PyKeyError::new_err(format!(
+                    "Token {chosen_token:?} is not available for deferred stereo token"
+                )));
+            }
+            return normalize_component_token_flips(runtime, graph, state);
+        };
+        let flipped = flip_direction_token(&raw_token)?;
+        let chosen_flip = if chosen_token == raw_token {
+            STORED_COMPONENT_TOKEN_FLIP
+        } else if chosen_token == flipped {
+            FLIPPED_COMPONENT_TOKEN_FLIP
+        } else {
+            return Err(PyKeyError::new_err(format!(
+                "Token {chosen_token:?} is not available for deferred stereo token"
+            )));
+        };
+        let component_idx = deferred.component_tokens[0].component_idx;
+        let existing = state.stereo_component_token_flips[component_idx];
+        if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
+            Arc::make_mut(&mut state.stereo_component_token_flips)[component_idx] = chosen_flip;
+        } else if existing != chosen_flip {
+            return Err(PyValueError::new_err(
+                "Stereo deferred token was committed inconsistently",
+            ));
+        }
+        return normalize_component_token_flips(runtime, graph, state);
+    }
+
+    for component_token in deferred.component_tokens.iter() {
+        let Some(chosen_model_flip) =
+            model_token_flip_for_chosen_token(&component_token.stored_token, chosen_token)?
+        else {
+            return Err(PyKeyError::new_err(format!(
+                "Token {chosen_token:?} is not available for deferred stereo token"
+            )));
+        };
+        let chosen_flip = component_token_flip_value_from_model(chosen_model_flip);
+        let existing = state.stereo_component_token_flips[component_token.component_idx];
+        if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
+            Arc::make_mut(&mut state.stereo_component_token_flips)[component_token.component_idx] =
+                chosen_flip;
+        } else if existing != chosen_flip {
+            return Err(PyValueError::new_err(
+                "Stereo deferred token was committed inconsistently",
+            ));
+        }
     }
     normalize_component_token_flips(runtime, graph, state)
 }

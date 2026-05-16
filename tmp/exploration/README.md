@@ -25,3 +25,6 @@ The most current scripts are:
   token-flip inference against current pinned diagnostics.
 - `030_mine_token_inference_branch_witnesses.py`: mines minimal completed-output
   witnesses for each token-flip inference branch before branch replacement.
+- `031_inspect_shared_bridge_token_basis.py`: inspects the small manual
+  difficult diene witnesses where one physical bridge marker is read against
+  different endpoint-oriented token bases by adjacent stereo components.

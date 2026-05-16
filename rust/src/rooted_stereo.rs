@@ -3494,14 +3494,6 @@ fn component_token_phase_diagnostics_to_py(
                 token_phase_assignment_ids_before_token.len(),
             )?;
             row.set_item(
-                "shadow_token_flip_assignment_count_after_token",
-                shadow_token_flip_assignment_ids_after_token.len(),
-            )?;
-            row.set_item(
-                "shadow_token_flip_forced_flip",
-                shadow_token_flip_forced_model_token_flip.map(model_token_flip_name),
-            )?;
-            row.set_item(
                 "token_observation_facts",
                 token_observation_facts_to_py(py, &token_observation_facts)?,
             )?;
@@ -3547,13 +3539,23 @@ fn component_token_phase_diagnostics_to_py(
                         == token_phase_assignment_ids_before_token.len()
                     && token_observation_forced_model_token_flip == inferred_model_token_flip,
             )?;
-            row.set_item(
-                "shadow_token_flip_matches_observation_backed_state",
+            let shadow_debug = PyDict::new(py);
+            shadow_debug.set_item(
+                "token_flip_assignment_count_after_token",
+                shadow_token_flip_assignment_ids_after_token.len(),
+            )?;
+            shadow_debug.set_item(
+                "token_flip_forced_flip",
+                shadow_token_flip_forced_model_token_flip.map(model_token_flip_name),
+            )?;
+            shadow_debug.set_item(
+                "token_flip_matches_observation_backed_state",
                 shadow_token_flip_assignment_ids_after_token
                     == token_observation_assignment_ids_after_token
                     && shadow_token_flip_forced_model_token_flip
                         == token_observation_forced_model_token_flip,
             )?;
+            row.set_item("shadow_debug", shadow_debug)?;
             row.set_item(
                 "token_flip_inference_inputs",
                 component_token_inference_inputs_to_py(py, &token_inference_inputs)?,
@@ -3971,8 +3973,9 @@ fn stereo_output_fact_row_to_py(
             &token_observation_facts,
         )?,
     )?;
-    row.set_item(
-        "shadow_resolved_constraint_state_from_inferred_token_flip_facts",
+    let shadow_debug = PyDict::new(py);
+    shadow_debug.set_item(
+        "resolved_constraint_state_from_inferred_token_flip_facts",
         constraint_state_to_py(
             py,
             runtime,
@@ -3980,6 +3983,7 @@ fn stereo_output_fact_row_to_py(
             &shadow_inferred_token_flip_facts,
         )?,
     )?;
+    row.set_item("shadow_debug", shadow_debug)?;
     row.set_item(
         "resolved_constraint_state_from_supported_token_observations",
         observation_constraint_state_to_py(

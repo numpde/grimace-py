@@ -656,7 +656,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         "resolved_constraint_state_from_known_token_flips_and_supported_token_observations"
                     )
                     shadow_token_flip_state_key = (
-                        "shadow_resolved_constraint_state_from_inferred_token_flip_facts"
+                        "resolved_constraint_state_from_inferred_token_flip_facts"
                     )
                     supported_observation_branches = set(
                         TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH
@@ -672,7 +672,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         )
                         self.assertEqual(
                             row["resolved_constraint_state"],
-                            row[shadow_token_flip_state_key],
+                            row["shadow_debug"][shadow_token_flip_state_key],
                         )
                     forced_token_flips = {
                         forced["runtime_component_idx"]: forced["token_flip"]
@@ -719,7 +719,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             component["token_phase_dimension_explains_inferred_flip"]
                         )
                         self.assertTrue(
-                            component["shadow_token_flip_matches_observation_backed_state"]
+                            component["shadow_debug"][
+                                "token_flip_matches_observation_backed_state"
+                            ]
                         )
                         self.assertEqual(
                             component["state_token_flip"],
@@ -872,8 +874,8 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 ],
                             )
                             self.assertEqual(
-                                component[
-                                    "shadow_token_flip_assignment_count_after_token"
+                                component["shadow_debug"][
+                                    "token_flip_assignment_count_after_token"
                                 ],
                                 component["token_observation_assignment_count_after"],
                             )

@@ -2955,25 +2955,36 @@ fn supported_token_observation_facts_from_state(
     Ok(facts)
 }
 
-fn known_or_inferred_token_flip_facts_from_state(
+fn inferred_token_observation_facts_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-) -> PyResult<Vec<StereoTokenFlipFact>> {
+) -> PyResult<Vec<StereoTokenObservationFact>> {
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let mut facts = Vec::new();
     for component_idx in 0..runtime.isolated_components.len() {
-        let known = model_token_flip_from_component_value(
-            state.stereo_component_token_flips[component_idx],
-        );
-        let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?
-            .and_then(model_token_flip_from_component_value);
-        let Some(token_flip) = known.or(inferred) else {
+        if model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx])
+            .is_some()
+        {
             continue;
-        };
-        facts.push(StereoTokenFlipFact {
-            runtime_component_idx: component_idx,
-            token_flip,
-        });
+        }
+        let inputs = component_token_inference_inputs(
+            runtime,
+            graph,
+            state,
+            &resolved_selected_neighbors,
+            component_idx,
+        )?;
+        match inputs.supported_token_observation()? {
+            Some(fact) => facts.push(fact),
+            None if inputs.inferred.is_some() => {
+                return Err(PyValueError::new_err(format!(
+                    "Inferred token flip has no supported observation fact for branch {}",
+                    inputs.inference_branch
+                )));
+            }
+            None => {}
+        }
     }
     Ok(facts)
 }
@@ -2987,12 +2998,15 @@ fn resolved_constraint_state_from_walker_state(
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let resolved_facts_by_component =
         selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
-    let token_flip_facts = known_or_inferred_token_flip_facts_from_state(runtime, graph, state)?;
-    StereoConstraintState::from_facts(
+    let known_token_flip_facts = known_token_flip_facts_from_state(state);
+    let token_observation_facts =
+        inferred_token_observation_facts_from_state(runtime, graph, state)?;
+    StereoConstraintState::from_facts_and_token_observations(
         &runtime.constraint_model,
         layer,
         &resolved_facts_by_component,
-        &token_flip_facts,
+        &known_token_flip_facts,
+        &token_observation_facts,
     )
 }
 

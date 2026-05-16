@@ -1,0 +1,163 @@
+Random subset enumeration
+=========================
+
+Context
+-------
+
+`MolToSmilesEnum(...)` currently computes exact support: every SMILES string
+reachable under the selected writer surface. For large supports, users may want
+only a random subset.
+
+The important design point is that "random subset" is ambiguous. We should not
+ship an API that hides the sampling semantics.
+
+Possible semantics
+------------------
+
+1. Random walks until `k` unique terminal strings.
+
+   Start a decoder, repeatedly choose one available logical choice uniformly,
+   walk to a terminal prefix, add that SMILES to a set, and repeat until `k`
+   unique strings or an attempt cap is reached.
+
+   Properties:
+   - online
+   - easy to implement
+   - does not need exact support size
+   - biased by decoder tree shape
+   - can spend many attempts rediscovering common outputs
+
+   This is best described as sampled writer trajectories, not a uniform subset
+   of support.
+
+2. Randomized depth-first enumeration with an output cap.
+
+   At each frontier, shuffle outgoing choices, recurse, and stop after `k`
+   terminal strings.
+
+   Properties:
+   - still avoids materializing full support
+   - deterministic with a seed
+   - cheap and simple in the existing enum walker
+   - biased by traversal structure
+   - gives a random-looking prefix of a shuffled traversal, not uniform support
+     sampling
+
+   This is a practical "give me some examples" mode.
+
+3. Count-weighted sampling from support.
+
+   First compute, memoize, or lazily compute the number of terminal strings
+   below each frontier. To sample one string, choose each outgoing choice with
+   probability proportional to the number of terminals below it. To sample
+   without replacement, allocate sample counts to children from their subtree
+   counts and recurse.
+
+   Properties:
+   - can produce an actual uniform sample from support
+   - does not need to materialize all terminal strings
+   - needs reliable frontier identity and count memoization
+   - counts may require `u128` or larger for very large supports
+   - more invasive than the first two options
+
+   This is the principled version if "random subset" means statistically
+   uniform over exact support.
+
+Recommended API split
+---------------------
+
+Do not overload `MolToSmilesEnum(...)` with vague random behavior.
+
+Add a separate API whose name and arguments expose the semantics, for example:
+
+- `MolToSmilesSample(...)`
+  - returns sampled writer trajectories
+  - biased unless otherwise stated
+  - requires `limit`
+  - supports `seed`
+  - supports `max_attempts`
+
+- later: `MolToSmilesUniformSample(...)`
+  - count-weighted support sampling
+  - requires subtree counts
+  - can document whether sampling is with or without replacement
+
+Implementation sketch: random walks
+-----------------------------------
+
+The simplest first implementation can live mostly in Python over the public
+choice-based decoder:
+
+1. Construct a decoder.
+2. While not terminal, choose uniformly from `decoder.next_choices`.
+3. Replace the decoder with `choice.next_state`.
+4. Add the terminal `decoder.prefix` to a set.
+5. Repeat until the set has `limit` outputs or attempts exceed `max_attempts`.
+
+This reuses the same semantics as the decoder. It also preserves logical choice
+identity: two choices with the same visible `text` remain distinct choices.
+
+Implementation sketch: randomized DFS cap
+-----------------------------------------
+
+The enum walker can grow a capped traversal helper:
+
+1. Compute outgoing choices/frontier transitions for the current frontier.
+2. Shuffle the choices using a seeded RNG.
+3. Recurse through each shuffled successor.
+4. Stop as soon as `limit` terminal outputs have been inserted.
+
+This should be implemented in the same layer that currently owns exact frontier
+enumeration:
+
+- nonstereo: `rust/src/rooted_nonstereo.rs`
+- stereo: `rust/src/rooted_stereo.rs`
+- shared helper candidates: `rust/src/frontier.rs`
+
+The output should be deduplicated, because different logical paths can lead to
+the same terminal string.
+
+Implementation sketch: uniform support sampling
+-----------------------------------------------
+
+Uniform sampling needs subtree counts:
+
+```text
+count(frontier) =
+  1, if frontier is terminal
+  sum(count(next_frontier) for each outgoing logical choice), otherwise
+```
+
+For correctness, the count key must be an exact normalized frontier identity,
+not just the visible prefix. If terminal strings can be reached by multiple
+logical paths, counts over logical choices are not the same thing as counts over
+unique SMILES strings. Sampling unique strings uniformly may require a stronger
+deduplication model than sampling logical paths uniformly.
+
+Open questions
+--------------
+
+1. Do users want random writer trajectories or a uniform subset of unique SMILES
+   strings?
+2. Should duplicate terminal strings from distinct logical choices be collapsed
+   during sampling?
+3. Should the first public feature be implemented in Python over the decoder,
+   or directly in Rust for speed?
+4. Should sampled output preserve generation order, or return a sorted tuple for
+   reproducibility?
+5. What should happen if `limit` exceeds exact support size and the sampler is
+   biased/random-walk based?
+
+Near-term recommendation
+------------------------
+
+Start with a clearly named biased sampler over the choice-based decoder:
+
+- `MolToSmilesSample(...)`
+- `limit`
+- `seed`
+- `maxAttempts`
+- documented as random writer trajectories
+
+Then benchmark whether users actually need a Rust implementation or a uniform
+count-weighted sampler.

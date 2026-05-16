@@ -140,7 +140,7 @@ Testing rules:
 - Keep `Commits` and `Notes` empty while implementation is still in progress.
 - When the task is implemented, tested, and committed, set `Status` to
   `In review`.
-- Populate `Commits` with the full commit hash or hashes that implement the
+- Populate `Commits` with the short commit hash or hashes that implement the
   task.
 - Populate `Notes` with a concise summary of what changed, what was verified,
   and any remaining known failures or caveats.

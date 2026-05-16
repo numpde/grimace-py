@@ -107,7 +107,7 @@ pub(crate) struct StereoTokenPhaseAssignment {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoMarkerPlacementRow {
     pub(crate) token_phase_assignment_id: usize,
-    pub(crate) marker_neighbors: Vec<usize>,
+    pub(crate) marker_neighbor_sets: Vec<Vec<usize>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -653,26 +653,44 @@ fn marker_neighbor_domain(domain: &StereoSideChoiceDomain) -> Vec<usize> {
     neighbors
 }
 
+fn marker_neighbor_set_domain(domain: &StereoSideChoiceDomain) -> Vec<Vec<usize>> {
+    let neighbors = marker_neighbor_domain(domain);
+    if neighbors.is_empty() {
+        return Vec::new();
+    }
+    (1usize..(1usize << neighbors.len()))
+        .map(|mask| {
+            neighbors
+                .iter()
+                .enumerate()
+                .filter_map(|(offset, &neighbor_idx)| {
+                    ((mask & (1usize << offset)) != 0).then_some(neighbor_idx)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 fn enumerate_marker_placement_rows(
     side_domains: &[StereoSideChoiceDomain],
     token_phase_assignments: &[StereoTokenPhaseAssignment],
 ) -> Vec<StereoMarkerPlacementRow> {
     fn rec(
-        marker_domains: &[Vec<usize>],
+        marker_domains: &[Vec<Vec<usize>>],
         token_phase_assignment_id: usize,
         offset: usize,
-        current: &mut Vec<usize>,
+        current: &mut Vec<Vec<usize>>,
         out: &mut Vec<StereoMarkerPlacementRow>,
     ) {
         if offset == marker_domains.len() {
             out.push(StereoMarkerPlacementRow {
                 token_phase_assignment_id,
-                marker_neighbors: current.clone(),
+                marker_neighbor_sets: current.clone(),
             });
             return;
         }
-        for &neighbor_idx in &marker_domains[offset] {
-            current.push(neighbor_idx);
+        for neighbor_set in &marker_domains[offset] {
+            current.push(neighbor_set.clone());
             rec(
                 marker_domains,
                 token_phase_assignment_id,
@@ -686,7 +704,7 @@ fn enumerate_marker_placement_rows(
 
     let marker_domains = side_domains
         .iter()
-        .map(marker_neighbor_domain)
+        .map(marker_neighbor_set_domain)
         .collect::<Vec<_>>();
     if marker_domains.iter().any(Vec::is_empty) {
         return Vec::new();
@@ -698,7 +716,7 @@ fn enumerate_marker_placement_rows(
             &marker_domains,
             token_phase_assignment_id,
             0,
-            &mut Vec::new(),
+            &mut Vec::<Vec<usize>>::new(),
             &mut out,
         );
     }
@@ -1297,11 +1315,11 @@ impl StereoConstraintModel {
         else {
             return Ok(!event.is_marker_placed());
         };
-        let row_neighbor_idx = row.marker_neighbors.get(side_position).copied();
+        let row_neighbor_set = row.marker_neighbor_sets.get(side_position);
         if event.is_marker_placed() {
-            Ok(row_neighbor_idx == Some(event_neighbor_idx))
+            Ok(row_neighbor_set.is_some_and(|neighbors| neighbors.contains(&event_neighbor_idx)))
         } else {
-            Ok(row_neighbor_idx != Some(event_neighbor_idx))
+            Ok(!row_neighbor_set.is_some_and(|neighbors| neighbors.contains(&event_neighbor_idx)))
         }
     }
 
@@ -2108,15 +2126,22 @@ mod tests {
 
         assert_eq!(2, component.all_neighbor_assignments.len());
         assert_eq!(4, component.all_token_phase_assignments.len());
-        assert_eq!(8, component.all_marker_placement_rows.len());
+        assert_eq!(12, component.all_marker_placement_rows.len());
 
         let first_token_phase_rows = component
             .all_marker_placement_rows
             .iter()
             .filter(|row| row.token_phase_assignment_id == 0)
-            .map(|row| row.marker_neighbors.clone())
+            .map(|row| row.marker_neighbor_sets.clone())
             .collect::<Vec<_>>();
-        assert_eq!(vec![vec![0, 4], vec![3, 4]], first_token_phase_rows);
+        assert_eq!(
+            vec![
+                vec![vec![0], vec![4]],
+                vec![vec![3], vec![4]],
+                vec![vec![0, 3], vec![4]]
+            ],
+            first_token_phase_rows,
+        );
 
         for row in &component.all_marker_placement_rows {
             let token_phase_assignment =
@@ -2125,12 +2150,16 @@ mod tests {
                 token_phase_assignment.neighbor_assignment_id
                     < component.all_neighbor_assignments.len()
             );
-            assert_eq!(component.side_ids.len(), row.marker_neighbors.len());
-            for (side_position, &marker_neighbor_idx) in row.marker_neighbors.iter().enumerate() {
-                assert!(component.side_domains[side_position]
-                    .choices
-                    .iter()
-                    .any(|choice| choice.neighbor_idx == marker_neighbor_idx));
+            assert_eq!(component.side_ids.len(), row.marker_neighbor_sets.len());
+            for (side_position, marker_neighbor_set) in row.marker_neighbor_sets.iter().enumerate()
+            {
+                assert!(!marker_neighbor_set.is_empty());
+                for &marker_neighbor_idx in marker_neighbor_set {
+                    assert!(component.side_domains[side_position]
+                        .choices
+                        .iter()
+                        .any(|choice| choice.neighbor_idx == marker_neighbor_idx));
+                }
             }
         }
     }
@@ -2169,16 +2198,26 @@ mod tests {
         assert_eq!(vec![0, 1], component.runtime_component_ids);
         assert_eq!(4, component.all_neighbor_assignments.len());
         assert_eq!(16, component.all_token_phase_assignments.len());
-        assert_eq!(64, component.all_marker_placement_rows.len());
+        assert_eq!(144, component.all_marker_placement_rows.len());
 
         let first_token_phase_rows = component
             .all_marker_placement_rows
             .iter()
             .filter(|row| row.token_phase_assignment_id == 0)
-            .map(|row| row.marker_neighbors.clone())
+            .map(|row| row.marker_neighbor_sets.clone())
             .collect::<Vec<_>>();
         assert_eq!(
-            vec![vec![3, 4], vec![3, 8], vec![8, 4], vec![8, 8]],
+            vec![
+                vec![vec![3], vec![4]],
+                vec![vec![3], vec![8]],
+                vec![vec![3], vec![4, 8]],
+                vec![vec![8], vec![4]],
+                vec![vec![8], vec![8]],
+                vec![vec![8], vec![4, 8]],
+                vec![vec![3, 8], vec![4]],
+                vec![vec![3, 8], vec![8]],
+                vec![vec![3, 8], vec![4, 8]]
+            ],
             first_token_phase_rows,
         );
     }
@@ -2205,13 +2244,13 @@ mod tests {
             stereo_constraint_model(&side_infos, &[vec![0, 1]], &[]).expect("model should build");
 
         assert_eq!(
-            vec![0, 1],
+            vec![0, 1, 2],
             model
                 .marker_placement_row_ids_for_token_phase_assignment_ids(0, &[0])
                 .expect("marker placement query should be valid"),
         );
         assert_eq!(
-            vec![2, 3, 6, 7],
+            vec![3, 4, 5, 9, 10, 11],
             model
                 .marker_placement_row_ids_for_token_phase_assignment_ids(0, &[1, 3])
                 .expect("marker placement query should be valid"),
@@ -2260,9 +2299,12 @@ mod tests {
                 }],
             )
             .expect("marker event query should be valid");
-        assert_eq!(vec![1, 3, 5, 7], marker_on_side_zero_neighbor_three);
+        assert_eq!(
+            vec![1, 2, 4, 5, 7, 8, 10, 11],
+            marker_on_side_zero_neighbor_three
+        );
 
-        let still_neighbor_three = model
+        let only_neighbor_three = model
             .filter_marker_placement_row_ids_for_marker_event_facts(
                 0,
                 &marker_on_side_zero_neighbor_three,
@@ -2274,7 +2316,7 @@ mod tests {
                 }],
             )
             .expect("marker event query should be valid");
-        assert_eq!(marker_on_side_zero_neighbor_three, still_neighbor_three);
+        assert_eq!(vec![1, 4, 7, 10], only_neighbor_three);
 
         let contradicted = model
             .filter_marker_placement_row_ids_for_marker_event_facts(

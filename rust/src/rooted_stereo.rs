@@ -2758,7 +2758,7 @@ fn marker_placement_row_to_py(
     let row_dict = PyDict::new(py);
     row_dict.set_item("row_idx", row_idx)?;
     row_dict.set_item("token_phase_assignment_id", row.token_phase_assignment_id)?;
-    row_dict.set_item("marker_neighbors", row.marker_neighbors.clone())?;
+    row_dict.set_item("marker_neighbor_sets", row.marker_neighbor_sets.clone())?;
     if let Some(token_phase_assignment) = component
         .all_token_phase_assignments
         .get(row.token_phase_assignment_id)
@@ -2838,6 +2838,22 @@ pub fn internal_stereo_constraint_model_summary(
                     .iter()
                     .map(|domain| domain.choices.len())
                     .product::<usize>(),
+            )?;
+            component_dict.set_item(
+                "marker_placement_domain_sizes",
+                component
+                    .side_domains
+                    .iter()
+                    .map(|domain| {
+                        let unique_neighbors = domain
+                            .choices
+                            .iter()
+                            .map(|choice| choice.neighbor_idx)
+                            .collect::<BTreeSet<_>>()
+                            .len();
+                        (1usize << unique_neighbors) - 1
+                    })
+                    .collect::<Vec<_>>(),
             )?;
             component_dict.set_item(
                 "token_phase_assignment_count",

@@ -423,7 +423,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         component["token_phase_assignment_count"]
-                        * component["domain_assignment_count"],
+                        * math.prod(component["marker_placement_domain_sizes"]),
                         component["marker_placement_row_count"],
                     )
                     for row in component["marker_placement_rows"]:
@@ -437,7 +437,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         )
                         self.assertEqual(
                             len(component["side_ids"]),
-                            len(row["marker_neighbors"]),
+                            len(row["marker_neighbor_sets"]),
                         )
 
     def test_pinned_layer_counts_are_ordered_by_contract_strength(self) -> None:

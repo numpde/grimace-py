@@ -2680,6 +2680,14 @@ pub fn internal_stereo_constraint_model_summary(
                     .map(|domain| domain.choices.len())
                     .product::<usize>(),
             )?;
+            component_dict.set_item(
+                "token_phase_assignment_count",
+                component.all_token_phase_assignments.len(),
+            )?;
+            component_dict.set_item(
+                "marker_placement_row_count",
+                component.all_marker_placement_rows.len(),
+            )?;
 
             let side_domains = component
                 .side_domains
@@ -2704,6 +2712,45 @@ pub fn internal_stereo_constraint_model_summary(
                 })
                 .collect::<PyResult<Vec<_>>>()?;
             component_dict.set_item("side_domains", side_domains)?;
+
+            let marker_placement_rows = component
+                .all_marker_placement_rows
+                .iter()
+                .enumerate()
+                .map(|(row_idx, row)| {
+                    let row_dict = PyDict::new(py);
+                    row_dict.set_item("row_idx", row_idx)?;
+                    row_dict
+                        .set_item("token_phase_assignment_id", row.token_phase_assignment_id)?;
+                    row_dict.set_item("marker_neighbors", row.marker_neighbors.clone())?;
+                    if let Some(token_phase_assignment) = component
+                        .all_token_phase_assignments
+                        .get(row.token_phase_assignment_id)
+                    {
+                        row_dict.set_item(
+                            "neighbor_assignment_id",
+                            token_phase_assignment.neighbor_assignment_id,
+                        )?;
+                        row_dict.set_item(
+                            "token_flips",
+                            token_phase_assignment
+                                .token_flips
+                                .iter()
+                                .copied()
+                                .map(model_token_flip_name)
+                                .collect::<Vec<_>>(),
+                        )?;
+                        if let Some(carrier_neighbors) = component
+                            .all_neighbor_assignments
+                            .get(token_phase_assignment.neighbor_assignment_id)
+                        {
+                            row_dict.set_item("carrier_neighbors", carrier_neighbors.clone())?;
+                        }
+                    }
+                    Ok(row_dict)
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            component_dict.set_item("marker_placement_rows", marker_placement_rows)?;
 
             let layers = component
                 .layer_assignments

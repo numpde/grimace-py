@@ -416,6 +416,29 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         case.expected_rdkit_local_writer_assignment_count,
                         modeled_traversal_count,
                     )
+                for component in summary["components"]:
+                    self.assertEqual(
+                        component["marker_placement_row_count"],
+                        len(component["marker_placement_rows"]),
+                    )
+                    self.assertEqual(
+                        component["token_phase_assignment_count"]
+                        * component["domain_assignment_count"],
+                        component["marker_placement_row_count"],
+                    )
+                    for row in component["marker_placement_rows"]:
+                        self.assertLess(
+                            row["token_phase_assignment_id"],
+                            component["token_phase_assignment_count"],
+                        )
+                        self.assertEqual(
+                            len(component["side_ids"]),
+                            len(row["carrier_neighbors"]),
+                        )
+                        self.assertEqual(
+                            len(component["side_ids"]),
+                            len(row["marker_neighbors"]),
+                        )
 
     def test_pinned_layer_counts_are_ordered_by_contract_strength(self) -> None:
         for case in self.cases:

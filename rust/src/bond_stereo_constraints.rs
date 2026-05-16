@@ -104,6 +104,12 @@ pub(crate) struct StereoTokenPhaseAssignment {
     pub(crate) token_flips: Vec<StereoTokenFlip>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoMarkerPlacementRow {
+    pub(crate) token_phase_assignment_id: usize,
+    pub(crate) marker_neighbors: Vec<usize>,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct StereoTokenFlipFact {
     pub(crate) runtime_component_idx: usize,
@@ -274,6 +280,7 @@ pub(crate) struct StereoComponentConstraintModel {
     pub(crate) side_domains: Vec<StereoSideChoiceDomain>,
     pub(crate) all_neighbor_assignments: Vec<Vec<usize>>,
     pub(crate) all_token_phase_assignments: Vec<StereoTokenPhaseAssignment>,
+    pub(crate) all_marker_placement_rows: Vec<StereoMarkerPlacementRow>,
     pub(crate) layer_assignments: Vec<StereoLayerAssignments>,
 }
 
@@ -594,6 +601,68 @@ fn enumerate_token_phase_assignments(
     out
 }
 
+fn marker_neighbor_domain(domain: &StereoSideChoiceDomain) -> Vec<usize> {
+    let mut neighbors = Vec::new();
+    for choice in &domain.choices {
+        if !neighbors.contains(&choice.neighbor_idx) {
+            neighbors.push(choice.neighbor_idx);
+        }
+    }
+    neighbors
+}
+
+fn enumerate_marker_placement_rows(
+    side_domains: &[StereoSideChoiceDomain],
+    token_phase_assignments: &[StereoTokenPhaseAssignment],
+) -> Vec<StereoMarkerPlacementRow> {
+    fn rec(
+        marker_domains: &[Vec<usize>],
+        token_phase_assignment_id: usize,
+        offset: usize,
+        current: &mut Vec<usize>,
+        out: &mut Vec<StereoMarkerPlacementRow>,
+    ) {
+        if offset == marker_domains.len() {
+            out.push(StereoMarkerPlacementRow {
+                token_phase_assignment_id,
+                marker_neighbors: current.clone(),
+            });
+            return;
+        }
+        for &neighbor_idx in &marker_domains[offset] {
+            current.push(neighbor_idx);
+            rec(
+                marker_domains,
+                token_phase_assignment_id,
+                offset + 1,
+                current,
+                out,
+            );
+            current.pop();
+        }
+    }
+
+    let marker_domains = side_domains
+        .iter()
+        .map(marker_neighbor_domain)
+        .collect::<Vec<_>>();
+    if marker_domains.iter().any(Vec::is_empty) {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    for token_phase_assignment_id in 0..token_phase_assignments.len() {
+        rec(
+            &marker_domains,
+            token_phase_assignment_id,
+            0,
+            &mut Vec::new(),
+            &mut out,
+        );
+    }
+    out
+}
+
 fn side_has_neighbor(side_infos: &[StereoSideInfo], side_idx: usize, neighbor_idx: usize) -> bool {
     side_infos
         .get(side_idx)
@@ -808,15 +877,20 @@ pub(crate) fn stereo_constraint_model(
             })
             .collect::<Vec<_>>();
 
+        let all_token_phase_assignments = enumerate_token_phase_assignments(
+            &all_neighbor_assignments,
+            runtime_component_ids.len(),
+        );
+        let all_marker_placement_rows =
+            enumerate_marker_placement_rows(&side_domains, &all_token_phase_assignments);
+
         components.push(StereoComponentConstraintModel {
             component_idx,
             runtime_component_ids: runtime_component_ids.clone(),
             side_ids: side_ids.clone(),
             side_domains,
-            all_token_phase_assignments: enumerate_token_phase_assignments(
-                &all_neighbor_assignments,
-                runtime_component_ids.len(),
-            ),
+            all_token_phase_assignments,
+            all_marker_placement_rows,
             all_neighbor_assignments,
             layer_assignments,
         });
@@ -1845,6 +1919,105 @@ mod tests {
         assert_eq!(2, model.components[0].side_domains[0].choices.len());
         assert_eq!(1, model.components[0].side_domains[1].choices.len());
         assert_eq!(1, model.components[1].side_domains[0].choices.len());
+    }
+
+    #[test]
+    fn marker_placement_rows_extend_token_phase_rows_with_visible_marker_choices() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 1,
+                other_endpoint_atom_idx: 2,
+                candidate_neighbors: vec![0, 3],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![4],
+                candidate_base_tokens: vec!["/".to_owned()],
+            },
+        ];
+        let model =
+            stereo_constraint_model(&side_infos, &[vec![0, 1]], &[]).expect("model should build");
+        let component = &model.components[0];
+
+        assert_eq!(2, component.all_neighbor_assignments.len());
+        assert_eq!(4, component.all_token_phase_assignments.len());
+        assert_eq!(8, component.all_marker_placement_rows.len());
+
+        let first_token_phase_rows = component
+            .all_marker_placement_rows
+            .iter()
+            .filter(|row| row.token_phase_assignment_id == 0)
+            .map(|row| row.marker_neighbors.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(vec![vec![0, 4], vec![3, 4]], first_token_phase_rows);
+
+        for row in &component.all_marker_placement_rows {
+            let token_phase_assignment =
+                &component.all_token_phase_assignments[row.token_phase_assignment_id];
+            assert!(
+                token_phase_assignment.neighbor_assignment_id
+                    < component.all_neighbor_assignments.len()
+            );
+            assert_eq!(component.side_ids.len(), row.marker_neighbors.len());
+            for (side_position, &marker_neighbor_idx) in row.marker_neighbors.iter().enumerate() {
+                assert!(component.side_domains[side_position]
+                    .choices
+                    .iter()
+                    .any(|choice| choice.neighbor_idx == marker_neighbor_idx));
+            }
+        }
+    }
+
+    #[test]
+    fn marker_placement_rows_preserve_merged_component_token_phase_dimension() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![3, 8],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 1,
+                endpoint_atom_idx: 5,
+                other_endpoint_atom_idx: 6,
+                candidate_neighbors: vec![4, 8],
+                candidate_base_tokens: vec!["\\".to_owned(), "/".to_owned()],
+            },
+        ];
+        let model = stereo_constraint_model(
+            &side_infos,
+            &[vec![0], vec![1]],
+            &[StereoLocalHazard {
+                left_side_idx: 0,
+                left_neighbor_idx: 3,
+                right_side_idx: 1,
+                right_neighbor_idx: 4,
+            }],
+        )
+        .expect("model should build");
+        let component = &model.components[0];
+
+        assert_eq!(vec![0, 1], component.runtime_component_ids);
+        assert_eq!(4, component.all_neighbor_assignments.len());
+        assert_eq!(16, component.all_token_phase_assignments.len());
+        assert_eq!(64, component.all_marker_placement_rows.len());
+
+        let first_token_phase_rows = component
+            .all_marker_placement_rows
+            .iter()
+            .filter(|row| row.token_phase_assignment_id == 0)
+            .map(|row| row.marker_neighbors.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            vec![vec![3, 4], vec![3, 8], vec![8, 4], vec![8, 8]],
+            first_token_phase_rows,
+        );
     }
 
     #[test]

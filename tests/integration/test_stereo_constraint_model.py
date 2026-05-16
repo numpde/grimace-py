@@ -1343,6 +1343,66 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         )
         self.assertFalse(shadow_obligation_empty_counts)
 
+    def test_marker_obligations_do_not_coalesce_different_edges(self) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "minimal_nonstereo_double_hazard"
+        )
+        mol = parse_smiles(case.smiles)
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+        rows = _core._stereo_constraint_output_facts(prepared)
+
+        saw_same_side_different_edge_future_marker = False
+        for row in rows:
+            events = row["shadow_debug"]["marker_event_facts"]
+            obligations = row["shadow_debug"]["marker_obligation_facts"]
+            marker_slots_by_side = {}
+            marker_slots_by_side_edge = {}
+            for event in events:
+                if event["event"] != "marker_placed":
+                    continue
+                edge = tuple(sorted((event["begin_idx"], event["end_idx"])))
+                marker_slots_by_side.setdefault(event["side_idx"], []).append(
+                    (event["slot"], edge)
+                )
+                marker_slots_by_side_edge.setdefault(
+                    (event["side_idx"], edge), []
+                ).append(event["slot"])
+
+            retained_obligations = {
+                (
+                    event["event"],
+                    event["side_idx"],
+                    event["slot"],
+                    tuple(sorted((event["begin_idx"], event["end_idx"]))),
+                )
+                for event in obligations
+            }
+            for event in events:
+                if event["event"] != "no_marker":
+                    continue
+                edge = tuple(sorted((event["begin_idx"], event["end_idx"])))
+                if any(
+                    slot > event["slot"]
+                    for slot in marker_slots_by_side_edge.get((event["side_idx"], edge), ())
+                ):
+                    continue
+                has_later_marker_on_other_edge = any(
+                    slot > event["slot"] and marker_edge != edge
+                    for slot, marker_edge in marker_slots_by_side.get(event["side_idx"], ())
+                )
+                if not has_later_marker_on_other_edge:
+                    continue
+
+                saw_same_side_different_edge_future_marker = True
+                self.assertIn(
+                    ("no_marker", event["side_idx"], event["slot"], edge),
+                    retained_obligations,
+                )
+
+        self.assertTrue(saw_same_side_different_edge_future_marker)
+
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(
             case

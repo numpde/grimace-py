@@ -12,10 +12,11 @@ use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
     stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
-    StereoComponentPhase, StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel,
-    StereoConstraintState, StereoDirectionToken, StereoSideInfo, StereoSideInfoBuild,
-    StereoTokenFlip, StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
-    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    StereoComponentConstraintModel, StereoComponentPhase, StereoConstraintFact,
+    StereoConstraintLayer, StereoConstraintModel, StereoConstraintState, StereoDirectionToken,
+    StereoMarkerEventFact, StereoSideInfo, StereoSideInfoBuild, StereoTokenFlip,
+    StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole, CIS_STEREO_BOND_KINDS,
+    TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -2627,6 +2628,47 @@ fn stereo_direction_token_name(value: StereoDirectionToken) -> &'static str {
     }
 }
 
+fn marker_placement_row_to_py(
+    py: Python<'_>,
+    component: &StereoComponentConstraintModel,
+    row_idx: usize,
+) -> PyResult<Py<PyDict>> {
+    let Some(row) = component.all_marker_placement_rows.get(row_idx) else {
+        return Err(PyValueError::new_err(
+            "marker placement diagnostic row index out of range",
+        ));
+    };
+    let row_dict = PyDict::new(py);
+    row_dict.set_item("row_idx", row_idx)?;
+    row_dict.set_item("token_phase_assignment_id", row.token_phase_assignment_id)?;
+    row_dict.set_item("marker_neighbors", row.marker_neighbors.clone())?;
+    if let Some(token_phase_assignment) = component
+        .all_token_phase_assignments
+        .get(row.token_phase_assignment_id)
+    {
+        row_dict.set_item(
+            "neighbor_assignment_id",
+            token_phase_assignment.neighbor_assignment_id,
+        )?;
+        row_dict.set_item(
+            "token_flips",
+            token_phase_assignment
+                .token_flips
+                .iter()
+                .copied()
+                .map(model_token_flip_name)
+                .collect::<Vec<_>>(),
+        )?;
+        if let Some(carrier_neighbors) = component
+            .all_neighbor_assignments
+            .get(token_phase_assignment.neighbor_assignment_id)
+        {
+            row_dict.set_item("carrier_neighbors", carrier_neighbors.clone())?;
+        }
+    }
+    Ok(row_dict.unbind())
+}
+
 #[pyfunction(name = "_stereo_constraint_model_summary")]
 pub fn internal_stereo_constraint_model_summary(
     py: Python<'_>,
@@ -2717,38 +2759,7 @@ pub fn internal_stereo_constraint_model_summary(
                 .all_marker_placement_rows
                 .iter()
                 .enumerate()
-                .map(|(row_idx, row)| {
-                    let row_dict = PyDict::new(py);
-                    row_dict.set_item("row_idx", row_idx)?;
-                    row_dict
-                        .set_item("token_phase_assignment_id", row.token_phase_assignment_id)?;
-                    row_dict.set_item("marker_neighbors", row.marker_neighbors.clone())?;
-                    if let Some(token_phase_assignment) = component
-                        .all_token_phase_assignments
-                        .get(row.token_phase_assignment_id)
-                    {
-                        row_dict.set_item(
-                            "neighbor_assignment_id",
-                            token_phase_assignment.neighbor_assignment_id,
-                        )?;
-                        row_dict.set_item(
-                            "token_flips",
-                            token_phase_assignment
-                                .token_flips
-                                .iter()
-                                .copied()
-                                .map(model_token_flip_name)
-                                .collect::<Vec<_>>(),
-                        )?;
-                        if let Some(carrier_neighbors) = component
-                            .all_neighbor_assignments
-                            .get(token_phase_assignment.neighbor_assignment_id)
-                        {
-                            row_dict.set_item("carrier_neighbors", carrier_neighbors.clone())?;
-                        }
-                    }
-                    Ok(row_dict)
-                })
+                .map(|(row_idx, _)| marker_placement_row_to_py(py, component, row_idx))
                 .collect::<PyResult<Vec<_>>>()?;
             component_dict.set_item("marker_placement_rows", marker_placement_rows)?;
 
@@ -2863,6 +2874,76 @@ fn traversal_constraint_facts_to_py(
                     row.set_item("side_idx", side_idx)?;
                     row.set_item("slot", slot)?;
                     row.set_item("marker", marker.to_string())?;
+                    row.set_item("role", stereo_traversal_role_name(role))?;
+                }
+            }
+            rows.push(row.unbind());
+        }
+    }
+    Ok(rows)
+}
+
+fn marker_event_facts_by_component(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<Vec<StereoMarkerEventFact>>> {
+    let mut facts_by_component = vec![Vec::new(); runtime.constraint_model.component_count()];
+    for trace in state.directional_marker_traces.iter() {
+        if trace.side_idx < 0 || trace.edge_begin_idx < 0 || trace.edge_end_idx < 0 {
+            continue;
+        }
+        let side_idx = trace.side_idx as usize;
+        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
+            continue;
+        };
+        let mut marker_buf = [0; 4];
+        let marker = StereoDirectionToken::from_str(trace.marker.encode_utf8(&mut marker_buf))?;
+        facts_by_component[component_idx].push(StereoMarkerEventFact::MarkerPlaced {
+            side_idx,
+            begin_idx: trace.edge_begin_idx as usize,
+            end_idx: trace.edge_end_idx as usize,
+            marker,
+            role: trace.role,
+        });
+    }
+    Ok(facts_by_component)
+}
+
+fn marker_event_facts_to_py(
+    py: Python<'_>,
+    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+) -> PyResult<Vec<Py<PyDict>>> {
+    let mut rows = Vec::new();
+    for (component_idx, facts) in marker_event_facts_by_component.iter().enumerate() {
+        for &fact in facts {
+            let row = PyDict::new(py);
+            row.set_item("component_idx", component_idx)?;
+            match fact {
+                StereoMarkerEventFact::MarkerPlaced {
+                    side_idx,
+                    begin_idx,
+                    end_idx,
+                    marker,
+                    role,
+                } => {
+                    row.set_item("event", "marker_placed")?;
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("begin_idx", begin_idx)?;
+                    row.set_item("end_idx", end_idx)?;
+                    row.set_item("marker", stereo_direction_token_name(marker))?;
+                    row.set_item("role", stereo_traversal_role_name(role))?;
+                }
+                StereoMarkerEventFact::NoMarker {
+                    side_idx,
+                    begin_idx,
+                    end_idx,
+                    role,
+                } => {
+                    row.set_item("event", "no_marker")?;
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("begin_idx", begin_idx)?;
+                    row.set_item("end_idx", end_idx)?;
+                    row.set_item("marker", Option::<&str>::None)?;
                     row.set_item("role", stereo_traversal_role_name(role))?;
                 }
             }
@@ -3240,6 +3321,102 @@ fn mixed_constraint_state_to_py(
             token_observation_facts,
         )?;
         let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
+        state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
+    }
+    Ok(state_by_layer.unbind())
+}
+
+fn marker_placement_state_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    facts_by_component: &[Vec<StereoConstraintFact>],
+    token_flip_facts: &[StereoTokenFlipFact],
+    token_observation_facts: &[StereoTokenObservationFact],
+    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+) -> PyResult<Py<PyDict>> {
+    let state_by_layer = PyDict::new(py);
+    for layer in StereoConstraintLayer::ALL {
+        let constraint_state = StereoConstraintState::from_facts_and_token_observations(
+            &runtime.constraint_model,
+            layer,
+            facts_by_component,
+            token_flip_facts,
+            token_observation_facts,
+        )?;
+        let components = runtime
+            .constraint_model
+            .components
+            .iter()
+            .map(|component| {
+                let component_idx = component.component_idx;
+                let token_phase_assignment_ids = constraint_state
+                    .token_phase_remaining_by_component
+                    .get(component_idx)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let row_ids_before_marker_events = runtime
+                    .constraint_model
+                    .marker_placement_row_ids_for_token_phase_assignment_ids(
+                        component_idx,
+                        token_phase_assignment_ids,
+                    )?;
+                let marker_event_facts = marker_event_facts_by_component
+                    .get(component_idx)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let row_ids_after_marker_events = runtime
+                    .constraint_model
+                    .filter_marker_placement_row_ids_for_marker_event_facts(
+                        component_idx,
+                        &row_ids_before_marker_events,
+                        marker_event_facts,
+                    )?;
+                let rows_after_marker_events = row_ids_after_marker_events
+                    .iter()
+                    .copied()
+                    .map(|row_idx| marker_placement_row_to_py(py, component, row_idx))
+                    .collect::<PyResult<Vec<_>>>()?;
+
+                let row = PyDict::new(py);
+                row.set_item("component_idx", component_idx)?;
+                row.set_item(
+                    "runtime_component_ids",
+                    component.runtime_component_ids.clone(),
+                )?;
+                row.set_item("side_ids", component.side_ids.clone())?;
+                row.set_item(
+                    "token_phase_assignment_ids",
+                    token_phase_assignment_ids.to_vec(),
+                )?;
+                row.set_item(
+                    "token_phase_assignment_count",
+                    token_phase_assignment_ids.len(),
+                )?;
+                row.set_item(
+                    "row_ids_before_marker_events",
+                    row_ids_before_marker_events.clone(),
+                )?;
+                row.set_item(
+                    "row_count_before_marker_events",
+                    row_ids_before_marker_events.len(),
+                )?;
+                row.set_item("marker_event_count", marker_event_facts.len())?;
+                row.set_item(
+                    "row_ids_after_marker_events",
+                    row_ids_after_marker_events.clone(),
+                )?;
+                row.set_item(
+                    "row_count_after_marker_events",
+                    row_ids_after_marker_events.len(),
+                )?;
+                row.set_item(
+                    "is_empty_after_marker_events",
+                    row_ids_after_marker_events.is_empty(),
+                )?;
+                row.set_item("rows_after_marker_events", rows_after_marker_events)?;
+                Ok(row.unbind())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
         state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
     }
     Ok(state_by_layer.unbind())
@@ -4014,6 +4191,7 @@ fn stereo_output_fact_row_to_py(
         selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
     let traversal_facts_by_component =
         traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
+    let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
         &runtime.constraint_model,
         StereoConstraintLayer::Semantic,
@@ -4064,6 +4242,10 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "traversal_facts",
         traversal_constraint_facts_to_py(py, runtime, state, &resolved_selected_neighbors)?,
+    )?;
+    row.set_item(
+        "marker_event_facts",
+        marker_event_facts_to_py(py, &marker_events_by_component)?,
     )?;
     row.set_item(
         "raw_layer_completions",
@@ -4140,6 +4322,17 @@ fn stereo_output_fact_row_to_py(
             py,
             &known_token_flip_facts,
             &inferred_token_observation_facts,
+        )?,
+    )?;
+    row.set_item(
+        "marker_placement_state",
+        marker_placement_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
+            &marker_events_by_component,
         )?,
     )?;
     row.set_item(

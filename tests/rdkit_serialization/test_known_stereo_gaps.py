@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import json
 import unittest
 
 from rdkit import Chem, rdBase
 
+from grimace import _core, _runtime
 from tests.helpers.fixture_paths import checked_in_fixture_path
 from tests.helpers.public_runtime import make_determinized_decoder
 from tests.helpers.rdkit_writer_membership import (
@@ -20,6 +22,16 @@ from tests.rdkit_serialization._support import (
 
 
 FIXTURE_ROOT = checked_in_fixture_path("rdkit_known_stereo_gaps")
+SUPPORTED_STEREO_DIAGNOSTIC_FLAGS = _runtime.MolToSmilesFlags(
+    isomeric_smiles=True,
+    kekule_smiles=False,
+    rooted_at_atom=-1,
+    canonical=False,
+    all_bonds_explicit=False,
+    all_hs_explicit=False,
+    do_random=True,
+    ignore_atom_map_numbers=False,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +228,43 @@ class KnownStereoGapTests(unittest.TestCase):
                     f"{case.case_id}: missing RDKit output {case.expected!r} "
                     f"from Grimace support of size {len(support)}",
                 )
+
+    def test_manual_difficult_cases_keep_nonempty_marker_row_state(self) -> None:
+        cases = tuple(
+            case
+            for case in self.cases
+            if case.case_id.startswith("manual_bond_stereo_difficult_")
+        )
+        self.assertEqual(4, len(cases))
+
+        for case in cases:
+            with self.subTest(case_id=case.case_id, source=case.source):
+                mol = self._mol_from_case(case)
+                prepared = _runtime.prepare_smiles_graph(
+                    mol,
+                    flags=SUPPORTED_STEREO_DIAGNOSTIC_FLAGS,
+                )
+                rows = _core._stereo_constraint_output_facts(prepared)
+                self.assertTrue(rows)
+
+                for row in rows:
+                    marker_event_counts = Counter(
+                        event["component_idx"] for event in row["marker_event_facts"]
+                    )
+                    self.assertTrue(marker_event_counts)
+                    for component in row["marker_placement_state"]["semantic"]:
+                        self.assertEqual(
+                            marker_event_counts[component["component_idx"]],
+                            component["marker_event_count"],
+                        )
+                        self.assertGreater(
+                            component["row_count_after_marker_events"],
+                            0,
+                        )
+                        self.assertEqual(
+                            component["row_count_after_marker_events"],
+                            len(component["rows_after_marker_events"]),
+                        )
 
 
 if __name__ == "__main__":

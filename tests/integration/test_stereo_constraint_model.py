@@ -1142,6 +1142,49 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             seen_token_flip_inference_branches,
         )
 
+    def test_marker_placement_state_filters_marker_events(self) -> None:
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertTrue(rows)
+                for row in rows:
+                    marker_event_counts = Counter(
+                        event["component_idx"] for event in row["marker_event_facts"]
+                    )
+                    for layer_name, components in row["marker_placement_state"].items():
+                        for component in components:
+                            self.assertEqual(
+                                marker_event_counts[component["component_idx"]],
+                                component["marker_event_count"],
+                            )
+                            self.assertEqual(
+                                component["row_count_after_marker_events"],
+                                len(component["rows_after_marker_events"]),
+                            )
+                            self.assertLessEqual(
+                                component["row_count_after_marker_events"],
+                                component["row_count_before_marker_events"],
+                            )
+                            self.assertEqual(
+                                component["is_empty_after_marker_events"],
+                                component["row_count_after_marker_events"] == 0,
+                            )
+                            if component["token_phase_assignment_count"] == 0:
+                                self.assertEqual(
+                                    0,
+                                    component["row_count_before_marker_events"],
+                                    layer_name,
+                                )
+                    self.assertTrue(
+                        all(
+                            component["row_count_after_marker_events"] > 0
+                            for component in row["marker_placement_state"]["semantic"]
+                        )
+                    )
+
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(
             case

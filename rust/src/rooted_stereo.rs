@@ -86,6 +86,19 @@ struct DirectionalMarkerTrace {
     role: StereoTraversalRole,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct MarkerEventTrace {
+    slot: usize,
+    marker: Option<char>,
+    component_idx: isize,
+    side_idx: isize,
+    endpoint_atom_idx: isize,
+    edge_neighbor_idx: isize,
+    edge_begin_idx: isize,
+    edge_end_idx: isize,
+    role: StereoTraversalRole,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Part {
     Literal(String),
@@ -292,6 +305,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     stereo_component_begin_atoms: Arc<Vec<isize>>,
     stereo_component_token_flips: Arc<Vec<i8>>,
     directional_marker_traces: Arc<Vec<DirectionalMarkerTrace>>,
+    marker_event_traces: Arc<Vec<MarkerEventTrace>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -632,6 +646,7 @@ fn stereo_exact_state_from_full(
         stereo_component_begin_atoms,
         stereo_component_token_flips,
         directional_marker_traces,
+        marker_event_traces,
         action_stack,
     } = state;
     debug_assert!(stereo_component_phases.is_empty());
@@ -641,6 +656,7 @@ fn stereo_exact_state_from_full(
     debug_assert!(stereo_component_begin_atoms.is_empty());
     debug_assert!(stereo_component_token_flips.is_empty());
     debug_assert!(directional_marker_traces.is_empty());
+    debug_assert!(marker_event_traces.is_empty());
     RootedConnectedStereoExactStateData {
         prefix,
         dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
@@ -760,6 +776,88 @@ fn active_directional_marker_side(
         })
 }
 
+fn marker_event_trace_rows_for_edge(
+    runtime: &StereoWalkerRuntimeData,
+    begin_idx: usize,
+    end_idx: usize,
+) -> Vec<(usize, usize, usize, usize)> {
+    let edge = canonical_edge(begin_idx, end_idx);
+    runtime
+        .edge_to_side_ids
+        .get(&edge)
+        .into_iter()
+        .flatten()
+        .filter_map(|&side_idx| {
+            let side_info = &runtime.side_infos[side_idx];
+            let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+                end_idx
+            } else if end_idx == side_info.endpoint_atom_idx {
+                begin_idx
+            } else {
+                return None;
+            };
+            Some((
+                side_info.component_idx,
+                side_idx,
+                side_info.endpoint_atom_idx,
+                edge_neighbor_idx,
+            ))
+        })
+        .collect()
+}
+
+fn append_marker_event_traces_for_edge(
+    runtime: &StereoWalkerRuntimeData,
+    prefix: &str,
+    marker_event_traces: &mut Vec<MarkerEventTrace>,
+    begin_idx: isize,
+    end_idx: isize,
+    marker: Option<char>,
+    role: StereoTraversalRole,
+) {
+    if begin_idx < 0 || end_idx < 0 {
+        return;
+    }
+    let begin = begin_idx as usize;
+    let end = end_idx as usize;
+    let slot = direction_erased_slot(prefix);
+    for (component_idx, side_idx, endpoint_atom_idx, edge_neighbor_idx) in
+        marker_event_trace_rows_for_edge(runtime, begin, end)
+    {
+        marker_event_traces.push(MarkerEventTrace {
+            slot,
+            marker,
+            component_idx: component_idx as isize,
+            side_idx: side_idx as isize,
+            endpoint_atom_idx: endpoint_atom_idx as isize,
+            edge_neighbor_idx: edge_neighbor_idx as isize,
+            edge_begin_idx: begin_idx,
+            edge_end_idx: end_idx,
+            role,
+        });
+    }
+}
+
+fn record_marker_event_traces_for_edge(
+    runtime: &StereoWalkerRuntimeData,
+    state: &mut RootedConnectedStereoWalkerStateData,
+    begin_idx: isize,
+    end_idx: isize,
+    marker: Option<char>,
+    role: StereoTraversalRole,
+) {
+    let prefix = state.prefix.clone();
+    append_marker_event_traces_for_edge(
+        runtime,
+        prefix.as_ref(),
+        Arc::make_mut(&mut state.marker_event_traces),
+        begin_idx,
+        end_idx,
+        marker,
+        role,
+    );
+}
+
 fn record_directional_marker_trace(
     runtime: &StereoWalkerRuntimeData,
     state: &mut RootedConnectedStereoWalkerStateData,
@@ -808,6 +906,7 @@ fn record_directional_marker_trace(
         edge_end_idx: end_idx,
         role,
     });
+    record_marker_event_traces_for_edge(runtime, state, begin_idx, end_idx, Some(marker), role);
 }
 
 fn push_ring_label(prefix: &mut Arc<str>, label: usize) {
@@ -2391,6 +2490,15 @@ fn process_children_terminal_successors(
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     match step.edge_part {
         Part::Literal(token) if token.is_empty() => {
+            let role = directional_token_role(base_state.prefix.as_ref(), None);
+            record_marker_event_traces_for_edge(
+                context.runtime,
+                &mut base_state,
+                step.parent_idx as isize,
+                step.child_idx as isize,
+                None,
+                role,
+            );
             base_state.action_stack.push(WalkerAction::EnterAtom {
                 atom_idx: step.child_idx,
                 parent_idx: Some(step.parent_idx),
@@ -2404,6 +2512,15 @@ fn process_children_terminal_successors(
             )
         }
         Part::Literal(token) => {
+            let role = directional_token_role(base_state.prefix.as_ref(), None);
+            record_marker_event_traces_for_edge(
+                context.runtime,
+                &mut base_state,
+                step.parent_idx as isize,
+                step.child_idx as isize,
+                None,
+                role,
+            );
             push_literal_token(&mut base_state.prefix, &token);
             base_state.action_stack.push(WalkerAction::EnterAtom {
                 atom_idx: step.child_idx,
@@ -2905,6 +3022,43 @@ fn marker_event_facts_by_component(
             marker,
             role: trace.role,
         });
+    }
+    Ok(facts_by_component)
+}
+
+fn shadow_marker_event_facts_by_component(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<Vec<StereoMarkerEventFact>>> {
+    let mut facts_by_component = vec![Vec::new(); runtime.constraint_model.component_count()];
+    for trace in state.marker_event_traces.iter() {
+        if trace.side_idx < 0 || trace.edge_begin_idx < 0 || trace.edge_end_idx < 0 {
+            continue;
+        }
+        let side_idx = trace.side_idx as usize;
+        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
+            continue;
+        };
+        let fact = match trace.marker {
+            Some(marker) => {
+                let mut marker_buf = [0; 4];
+                let marker = StereoDirectionToken::from_str(marker.encode_utf8(&mut marker_buf))?;
+                StereoMarkerEventFact::MarkerPlaced {
+                    side_idx,
+                    begin_idx: trace.edge_begin_idx as usize,
+                    end_idx: trace.edge_end_idx as usize,
+                    marker,
+                    role: trace.role,
+                }
+            }
+            None => StereoMarkerEventFact::NoMarker {
+                side_idx,
+                begin_idx: trace.edge_begin_idx as usize,
+                end_idx: trace.edge_end_idx as usize,
+                role: trace.role,
+            },
+        };
+        facts_by_component[component_idx].push(fact);
     }
     Ok(facts_by_component)
 }
@@ -4192,6 +4346,7 @@ fn stereo_output_fact_row_to_py(
     let traversal_facts_by_component =
         traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
     let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
+    let shadow_marker_events_by_component = shadow_marker_event_facts_by_component(runtime, state)?;
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
         &runtime.constraint_model,
         StereoConstraintLayer::Semantic,
@@ -4294,6 +4449,21 @@ fn stereo_output_fact_row_to_py(
             runtime,
             &resolved_facts_by_component,
             &shadow_inferred_token_flip_facts,
+        )?,
+    )?;
+    shadow_debug.set_item(
+        "marker_event_facts",
+        marker_event_facts_to_py(py, &shadow_marker_events_by_component)?,
+    )?;
+    shadow_debug.set_item(
+        "marker_placement_state",
+        marker_placement_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
+            &shadow_marker_events_by_component,
         )?,
     )?;
     row.set_item("shadow_debug", shadow_debug)?;
@@ -4613,6 +4783,7 @@ fn initial_stereo_state_for_root(
             runtime.isolated_components.len()
         ]),
         directional_marker_traces: Arc::new(Vec::new()),
+        marker_event_traces: Arc::new(Vec::new()),
         action_stack,
     }
 }
@@ -5847,6 +6018,8 @@ fn enter_atom_successors_by_token(
                     Arc::unwrap_or_clone(base_state.stereo_first_emitted_candidates.clone());
                 let mut current_component_begin_atoms =
                     Arc::unwrap_or_clone(base_state.stereo_component_begin_atoms.clone());
+                let mut current_marker_event_traces =
+                    Arc::unwrap_or_clone(base_state.marker_event_traces.clone());
                 let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
                     closures_here.len() * 2 + opening_target_count,
                 );
@@ -5874,6 +6047,17 @@ fn enter_atom_successors_by_token(
                                 atom_idx,
                                 closure.other_atom_idx,
                             )?;
+                            if matches!(bond_part, Part::Literal(_)) {
+                                append_marker_event_traces_for_edge(
+                                    runtime,
+                                    base_state.prefix.as_ref(),
+                                    &mut current_marker_event_traces,
+                                    atom_idx as isize,
+                                    closure.other_atom_idx as isize,
+                                    None,
+                                    StereoTraversalRole::RingClose,
+                                );
+                            }
                             current_selected_neighbors = updated_neighbors;
                             current_selected_orientations = updated_orientations;
                             current_first_emitted_candidates = updated_first_candidates;
@@ -5889,6 +6073,15 @@ fn enter_atom_successors_by_token(
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
                             current_ring_actions.push(WalkerAction::EmitRingLabel(label));
+                            append_marker_event_traces_for_edge(
+                                runtime,
+                                base_state.prefix.as_ref(),
+                                &mut current_marker_event_traces,
+                                atom_idx as isize,
+                                target_idx as isize,
+                                None,
+                                StereoTraversalRole::RingOpen,
+                            );
                             let (updated_phases, updated_begin_atoms) =
                                 component_phases_after_edge(
                                     graph,
@@ -5979,6 +6172,7 @@ fn enter_atom_successors_by_token(
                                 .stereo_component_token_flips
                                 .clone(),
                             directional_marker_traces: base_state.directional_marker_traces.clone(),
+                            marker_event_traces: Arc::new(current_marker_event_traces.clone()),
                             action_stack: base_state.action_stack.clone(),
                         };
                         if !child_order.is_empty() {
@@ -6141,6 +6335,7 @@ fn enter_atom_successors_without_bond_stereo(
                                 .stereo_component_token_flips
                                 .clone(),
                             directional_marker_traces: base_state.directional_marker_traces.clone(),
+                            marker_event_traces: base_state.marker_event_traces.clone(),
                             action_stack: base_state.action_stack.clone(),
                         };
                         if !child_order.is_empty() {
@@ -6580,6 +6775,17 @@ fn process_children_successors_by_token(
         successor.stereo_first_emitted_candidates = Arc::new(first_emitted_candidates);
         successor.stereo_component_phases = Arc::new(component_phases);
         successor.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
+        if matches!(edge_part, Part::Literal(_)) {
+            let role = directional_token_role(successor.prefix.as_ref(), None);
+            record_marker_event_traces_for_edge(
+                context.runtime,
+                &mut successor,
+                parent_idx as isize,
+                child_idx as isize,
+                None,
+                role,
+            );
+        }
         push_process_children_branch_actions(
             &mut successor.action_stack,
             parent_idx,
@@ -6663,6 +6869,7 @@ fn process_children_successors_without_bond_stereo(
             stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
             stereo_component_token_flips: state.stereo_component_token_flips.clone(),
             directional_marker_traces: state.directional_marker_traces.clone(),
+            marker_event_traces: state.marker_event_traces.clone(),
             action_stack: {
                 let extra = 2
                     + usize::from(next_branch_index + 1 < child_order.len())

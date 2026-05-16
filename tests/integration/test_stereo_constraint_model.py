@@ -1185,6 +1185,61 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         )
                     )
 
+    def test_shadow_marker_placement_state_tracks_no_marker_events(self) -> None:
+        saw_shadow_marker_event = False
+        saw_shadow_no_marker_event = False
+
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertTrue(rows)
+                for row in rows:
+                    self.assertTrue(
+                        all(
+                            event["event"] == "marker_placed"
+                            for event in row["marker_event_facts"]
+                        )
+                    )
+
+                    shadow_debug = row["shadow_debug"]
+                    shadow_marker_event_counts = Counter(
+                        event["component_idx"]
+                        for event in shadow_debug["marker_event_facts"]
+                    )
+                    saw_shadow_marker_event |= any(
+                        event["event"] == "marker_placed"
+                        for event in shadow_debug["marker_event_facts"]
+                    )
+                    saw_shadow_no_marker_event |= any(
+                        event["event"] == "no_marker"
+                        for event in shadow_debug["marker_event_facts"]
+                    )
+
+                    for components in shadow_debug["marker_placement_state"].values():
+                        for component in components:
+                            self.assertEqual(
+                                shadow_marker_event_counts[component["component_idx"]],
+                                component["marker_event_count"],
+                            )
+                            self.assertEqual(
+                                component["row_count_after_marker_events"],
+                                len(component["rows_after_marker_events"]),
+                            )
+                            self.assertLessEqual(
+                                component["row_count_after_marker_events"],
+                                component["row_count_before_marker_events"],
+                            )
+                            self.assertEqual(
+                                component["is_empty_after_marker_events"],
+                                component["row_count_after_marker_events"] == 0,
+                            )
+
+        self.assertTrue(saw_shadow_marker_event)
+        self.assertTrue(saw_shadow_no_marker_event)
+
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(
             case

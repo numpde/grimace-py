@@ -29,7 +29,7 @@ class ComponentObservation:
     case_id: str
     branch: str
     inferred_token_flip: str
-    forced_model_token_flip: str
+    observation_forced_token_flip: str
     required_input_facts: tuple[str, ...]
     phase_source: str
     begin_atom_source: str
@@ -51,7 +51,7 @@ def component_observations() -> tuple[ComponentObservation, ...]:
             for component in row["component_token_phase"]:
                 inputs = component["token_flip_inference_inputs"]
                 inferred = component["inferred_token_flip"]
-                forced = component["forced_model_token_flip"]
+                forced = component["token_observation_forced_flip"]
                 if inferred is None:
                     continue
                 out.append(
@@ -59,7 +59,7 @@ def component_observations() -> tuple[ComponentObservation, ...]:
                         case_id=case.case_id,
                         branch=str(inputs["inference_branch"]),
                         inferred_token_flip=str(inferred),
-                        forced_model_token_flip=str(forced),
+                        observation_forced_token_flip=str(forced),
                         required_input_facts=tuple(inputs["required_input_facts"]),
                         phase_source=str(inputs["phase_source"]),
                         begin_atom_source=str(inputs["begin_atom_source"]),
@@ -77,7 +77,7 @@ def component_observations() -> tuple[ComponentObservation, ...]:
                             component["token_phase_assignment_count_before_token"]
                         ),
                         after_count=int(
-                            component["token_phase_assignment_count_after_token"]
+                            component["token_observation_assignment_count_after"]
                         ),
                         model_explains_inferred=bool(
                             component["token_phase_dimension_explains_inferred_flip"]
@@ -100,7 +100,7 @@ def summarize_adapter_shape(observations: tuple[ComponentObservation, ...]) -> N
     print(f"  emitted final token-flip facts: {len(observations)}")
     print(
         "  model forced flip matches adapter fact: "
-        f"{sum(obs.inferred_token_flip == obs.forced_model_token_flip for obs in observations)}"
+        f"{sum(obs.inferred_token_flip == obs.observation_forced_token_flip for obs in observations)}"
         f"/{len(observations)}"
     )
     print(

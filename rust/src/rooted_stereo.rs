@@ -3376,7 +3376,7 @@ fn component_token_phase_diagnostics_to_py(
             } else {
                 Vec::new()
             };
-            let token_flip_constraints = inferred_model_token_flip
+            let shadow_inferred_token_flip_constraints = inferred_model_token_flip
                 .map(|token_flip| {
                     vec![StereoTokenFlipFact {
                         runtime_component_idx: component_idx,
@@ -3384,24 +3384,25 @@ fn component_token_phase_diagnostics_to_py(
                     }]
                 })
                 .unwrap_or_default();
-            let token_phase_assignment_ids_after_token = if let Some(idx) = model_component_idx {
-                runtime
-                    .constraint_model
-                    .token_phase_assignment_ids_for_neighbor_assignment_ids(
-                        idx,
-                        remaining_neighbor_assignment_ids,
-                        &token_flip_constraints,
-                    )?
-            } else {
-                Vec::new()
-            };
-            let forced_model_token_flip = model_component_idx.and_then(|idx| {
+            let shadow_token_flip_assignment_ids_after_token =
+                if let Some(idx) = model_component_idx {
+                    runtime
+                        .constraint_model
+                        .token_phase_assignment_ids_for_neighbor_assignment_ids(
+                            idx,
+                            remaining_neighbor_assignment_ids,
+                            &shadow_inferred_token_flip_constraints,
+                        )?
+                } else {
+                    Vec::new()
+                };
+            let shadow_token_flip_forced_model_token_flip = model_component_idx.and_then(|idx| {
                 runtime
                     .constraint_model
                     .forced_token_flip_for_token_phase_assignment_ids(
                         idx,
                         component_idx,
-                        &token_phase_assignment_ids_after_token,
+                        &shadow_token_flip_assignment_ids_after_token,
                     )
             });
             let model_token_phase_component_count = model_component_idx
@@ -3493,12 +3494,12 @@ fn component_token_phase_diagnostics_to_py(
                 token_phase_assignment_ids_before_token.len(),
             )?;
             row.set_item(
-                "token_phase_assignment_count_after_token",
-                token_phase_assignment_ids_after_token.len(),
+                "shadow_token_flip_assignment_count_after_token",
+                shadow_token_flip_assignment_ids_after_token.len(),
             )?;
             row.set_item(
-                "forced_model_token_flip",
-                forced_model_token_flip.map(model_token_flip_name),
+                "shadow_token_flip_forced_flip",
+                shadow_token_flip_forced_model_token_flip.map(model_token_flip_name),
             )?;
             row.set_item(
                 "token_observation_facts",
@@ -3542,9 +3543,16 @@ fn component_token_phase_diagnostics_to_py(
                 "token_phase_dimension_explains_inferred_flip",
                 inferred_model_token_flip.is_some()
                     && model_token_phase_component_count > 0
-                    && token_phase_assignment_ids_after_token.len() * 2
+                    && token_observation_assignment_ids_after_token.len() * 2
                         == token_phase_assignment_ids_before_token.len()
-                    && forced_model_token_flip == inferred_model_token_flip,
+                    && token_observation_forced_model_token_flip == inferred_model_token_flip,
+            )?;
+            row.set_item(
+                "shadow_token_flip_matches_observation_backed_state",
+                shadow_token_flip_assignment_ids_after_token
+                    == token_observation_assignment_ids_after_token
+                    && shadow_token_flip_forced_model_token_flip
+                        == token_observation_forced_model_token_flip,
             )?;
             row.set_item(
                 "token_flip_inference_inputs",

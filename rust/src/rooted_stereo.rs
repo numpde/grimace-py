@@ -2576,10 +2576,39 @@ fn process_children_terminal_successors(
     }
 }
 
+fn resolved_selected_neighbors_from_assignment_state(
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+) -> Vec<isize> {
+    let mut resolved_neighbors = selected_neighbors.to_vec();
+    let facts_by_component = selected_neighbor_facts_by_component(runtime, selected_neighbors);
+    let assignment_state = StereoAssignmentState::from_facts_by_component(
+        &runtime.constraint_model,
+        StereoConstraintLayer::Semantic,
+        &facts_by_component,
+    );
+    for component in &runtime.constraint_model.components {
+        for &side_idx in &component.side_ids {
+            if resolved_neighbors[side_idx] >= 0 {
+                continue;
+            }
+            if let Some(neighbor_idx) = assignment_state.forced_neighbor(
+                &runtime.constraint_model,
+                component.component_idx,
+                side_idx,
+            ) {
+                resolved_neighbors[side_idx] = neighbor_idx as isize;
+            }
+        }
+    }
+
+    resolved_neighbors
+}
+
 // Suspicious current model:
 // Resolves ambiguous shared-edge selections after the fact by forcing both
-// sides to the shared edge. This is the clearest candidate for replacement by
-// a first-class deferred shared-edge constraint.
+// sides to the shared edge. This remains runtime behavior until carrier-choice
+// row state can cover the coupled diene witnesses without reducing support.
 fn resolved_selected_neighbors_from_fields(
     runtime: &StereoWalkerRuntimeData,
     selected_neighbors: &[isize],
@@ -4355,6 +4384,8 @@ fn stereo_output_fact_row_to_py(
 ) -> PyResult<Py<PyDict>> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let assignment_state_resolved_selected_neighbors =
+        resolved_selected_neighbors_from_assignment_state(runtime, raw_selected_neighbors);
     let raw_facts_by_component =
         selected_neighbor_facts_by_component(runtime, raw_selected_neighbors);
     let resolved_facts_by_component =
@@ -4458,6 +4489,14 @@ fn stereo_output_fact_row_to_py(
         )?,
     )?;
     let shadow_debug = PyDict::new(py);
+    shadow_debug.set_item(
+        "resolved_selected_neighbors_from_assignment_state",
+        assignment_state_resolved_selected_neighbors.clone(),
+    )?;
+    shadow_debug.set_item(
+        "assignment_state_resolution_matches_runtime",
+        assignment_state_resolved_selected_neighbors == resolved_selected_neighbors,
+    )?;
     shadow_debug.set_item(
         "resolved_constraint_state_from_inferred_token_flip_facts",
         constraint_state_to_py(

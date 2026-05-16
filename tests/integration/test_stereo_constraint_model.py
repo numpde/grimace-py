@@ -485,6 +485,23 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertFalse(saw_shared_group)
         self.assertFalse(saw_changed_resolution)
 
+    def test_terminal_carrier_resolution_has_assignment_state_shadow(self) -> None:
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertTrue(rows)
+                for row in rows:
+                    self.assertIn(
+                        "resolved_selected_neighbors_from_assignment_state",
+                        row["shadow_debug"],
+                    )
+                    self.assertTrue(
+                        row["shadow_debug"]["assignment_state_resolution_matches_runtime"]
+                    )
+
     def test_current_runtime_support_count_matches_pinned_witnesses(self) -> None:
         for case in self.cases:
             mol = parse_smiles(case.smiles)

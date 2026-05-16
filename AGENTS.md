@@ -136,20 +136,30 @@ Testing rules:
 ## Notion Task Workflow
 
 - The active task table is `Grimace-py x Codex`.
-- Before starting a task from that table, set its `Status` to `Doing`.
-- Keep `Commits` and `Notes` empty while implementation is still in progress.
-- When the task is implemented, tested, and committed, set `Status` to
-  `In review`.
+- Before starting a task from that table, set its `Status` to `Doing`. Only use
+  `Doing` for work that is actively in progress in the current session.
+- Keep `Commits` and `Notes` empty while a task is actively in progress.
+- Do not leave a task in `Doing` when pausing, switching tasks, or ending the
+  current work session. Either finish it or close the current slice explicitly.
+- When the task or current coherent slice is implemented, tested, and
+  committed, set `Status` to `In review`.
 - Populate `Commits` with the short commit hash or hashes that implement the
-  task.
+  reviewed slice.
 - Populate `Notes` with a concise summary of what changed, what was verified,
   and any remaining known failures or caveats.
+- If the original task was only partially completed, say so plainly in
+  `Notes`, describe the remaining scope, and create one or more new Backlog
+  tasks for the unfinished work.
+- If investigation shows the task is too large or incorrectly scoped, commit
+  any useful reviewed slice, mark the current task `In review` with that scope
+  and caveat, and open smaller follow-up Backlog tasks.
 - Do not mark a task `Done`; leave review/acceptance transitions to the user
   unless explicitly instructed otherwise.
 - If there is pre-existing unrelated dirty work, leave it untouched and mention
   only the files/commits relevant to the Notion task.
-- If a task cannot be committed cleanly, keep it `Doing` and write the blocker
-  plainly in the user-facing update rather than filling `Commits`.
+- If a task produces no commit, do not populate `Commits`. Mark it `In review`
+  only if there is a reviewable written outcome in `Notes`; otherwise return it
+  to `Backlog` with a clear note or open a better-scoped replacement task.
 
 ## Release And Packaging Notes
 

@@ -315,6 +315,48 @@ pub(crate) enum StereoConstraintFact {
     },
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum StereoMarkerEventFact {
+    MarkerPlaced {
+        side_idx: usize,
+        begin_idx: usize,
+        end_idx: usize,
+        marker: StereoDirectionToken,
+        role: StereoTraversalRole,
+    },
+    NoMarker {
+        side_idx: usize,
+        begin_idx: usize,
+        end_idx: usize,
+        role: StereoTraversalRole,
+    },
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl StereoMarkerEventFact {
+    pub(crate) fn side_idx(self) -> usize {
+        match self {
+            Self::MarkerPlaced { side_idx, .. } | Self::NoMarker { side_idx, .. } => side_idx,
+        }
+    }
+
+    pub(crate) fn edge(self) -> (usize, usize) {
+        match self {
+            Self::MarkerPlaced {
+                begin_idx, end_idx, ..
+            }
+            | Self::NoMarker {
+                begin_idx, end_idx, ..
+            } => (begin_idx, end_idx),
+        }
+    }
+
+    pub(crate) fn is_marker_placed(self) -> bool {
+        matches!(self, Self::MarkerPlaced { .. })
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct StereoConstraintModel {
     pub(crate) components: Vec<StereoComponentConstraintModel>,
@@ -1177,6 +1219,127 @@ impl StereoConstraintModel {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn marker_placement_row_ids_for_token_phase_assignment_ids(
+        &self,
+        component_idx: usize,
+        token_phase_assignment_ids: &[usize],
+    ) -> PyResult<Vec<usize>> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Err(PyValueError::new_err(
+                "marker placement query component index out of range",
+            ));
+        };
+        for &assignment_id in token_phase_assignment_ids {
+            if assignment_id >= component.all_token_phase_assignments.len() {
+                return Err(PyValueError::new_err(
+                    "marker placement query token phase assignment index out of range",
+                ));
+            }
+        }
+        let token_phase_assignment_ids = token_phase_assignment_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        Ok(component
+            .all_marker_placement_rows
+            .iter()
+            .enumerate()
+            .filter_map(|(row_id, row)| {
+                token_phase_assignment_ids
+                    .contains(&row.token_phase_assignment_id)
+                    .then_some(row_id)
+            })
+            .collect())
+    }
+
+    fn marker_event_target(
+        component: &StereoComponentConstraintModel,
+        event: StereoMarkerEventFact,
+    ) -> PyResult<Option<(usize, usize)>> {
+        let side_idx = event.side_idx();
+        let Some(side_position) = component
+            .side_ids
+            .iter()
+            .position(|&component_side_idx| component_side_idx == side_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "marker event side outside model component",
+            ));
+        };
+        let domain = &component.side_domains[side_position];
+        let (begin_idx, end_idx) = event.edge();
+        let neighbor_idx = if begin_idx == domain.endpoint_atom_idx {
+            end_idx
+        } else if end_idx == domain.endpoint_atom_idx {
+            begin_idx
+        } else {
+            return Ok(None);
+        };
+        if domain
+            .choices
+            .iter()
+            .any(|choice| choice.neighbor_idx == neighbor_idx)
+        {
+            Ok(Some((side_position, neighbor_idx)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn marker_placement_row_matches_event(
+        component: &StereoComponentConstraintModel,
+        row: &StereoMarkerPlacementRow,
+        event: StereoMarkerEventFact,
+    ) -> PyResult<bool> {
+        let Some((side_position, event_neighbor_idx)) =
+            Self::marker_event_target(component, event)?
+        else {
+            return Ok(!event.is_marker_placed());
+        };
+        let row_neighbor_idx = row.marker_neighbors.get(side_position).copied();
+        if event.is_marker_placed() {
+            Ok(row_neighbor_idx == Some(event_neighbor_idx))
+        } else {
+            Ok(row_neighbor_idx != Some(event_neighbor_idx))
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn filter_marker_placement_row_ids_for_marker_event_facts(
+        &self,
+        component_idx: usize,
+        row_ids: &[usize],
+        marker_event_facts: &[StereoMarkerEventFact],
+    ) -> PyResult<Vec<usize>> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Err(PyValueError::new_err(
+                "marker placement query component index out of range",
+            ));
+        };
+
+        let mut filtered_row_ids = Vec::new();
+        for &row_id in row_ids {
+            let Some(row) = component.all_marker_placement_rows.get(row_id) else {
+                return Err(PyValueError::new_err(
+                    "marker placement row index out of range",
+                ));
+            };
+            let mut keep = true;
+            for &event in marker_event_facts {
+                if !Self::marker_placement_row_matches_event(component, row, event)? {
+                    keep = false;
+                    break;
+                }
+            }
+            if keep {
+                filtered_row_ids.push(row_id);
+            }
+        }
+        Ok(filtered_row_ids)
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn has_completion(
         &self,
         component_idx: usize,
@@ -1872,8 +2035,8 @@ pub(crate) fn ambiguous_shared_edge_groups(
 mod tests {
     use super::{
         stereo_constraint_model, StereoComponentPhase, StereoConstraintFact, StereoConstraintLayer,
-        StereoDirectionToken, StereoLocalHazard, StereoSideInfo, StereoTokenFlip,
-        StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
+        StereoDirectionToken, StereoLocalHazard, StereoMarkerEventFact, StereoSideInfo,
+        StereoTokenFlip, StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
     };
 
     #[test]
@@ -2018,6 +2181,192 @@ mod tests {
             vec![vec![3, 4], vec![3, 8], vec![8, 4], vec![8, 8]],
             first_token_phase_rows,
         );
+    }
+
+    #[test]
+    fn marker_placement_row_query_filters_by_token_phase_assignment_ids() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 1,
+                other_endpoint_atom_idx: 2,
+                candidate_neighbors: vec![0, 3],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![4],
+                candidate_base_tokens: vec!["/".to_owned()],
+            },
+        ];
+        let model =
+            stereo_constraint_model(&side_infos, &[vec![0, 1]], &[]).expect("model should build");
+
+        assert_eq!(
+            vec![0, 1],
+            model
+                .marker_placement_row_ids_for_token_phase_assignment_ids(0, &[0])
+                .expect("marker placement query should be valid"),
+        );
+        assert_eq!(
+            vec![2, 3, 6, 7],
+            model
+                .marker_placement_row_ids_for_token_phase_assignment_ids(0, &[1, 3])
+                .expect("marker placement query should be valid"),
+        );
+        assert!(model
+            .marker_placement_row_ids_for_token_phase_assignment_ids(1, &[0])
+            .is_err());
+        assert!(model
+            .marker_placement_row_ids_for_token_phase_assignment_ids(0, &[4])
+            .is_err());
+    }
+
+    #[test]
+    fn marker_placement_event_filter_handles_positive_and_negative_events() {
+        let side_infos = vec![
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 1,
+                other_endpoint_atom_idx: 2,
+                candidate_neighbors: vec![0, 3],
+                candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+            },
+            StereoSideInfo {
+                component_idx: 0,
+                endpoint_atom_idx: 2,
+                other_endpoint_atom_idx: 1,
+                candidate_neighbors: vec![4],
+                candidate_base_tokens: vec!["/".to_owned()],
+            },
+        ];
+        let model =
+            stereo_constraint_model(&side_infos, &[vec![0, 1]], &[]).expect("model should build");
+        let component = &model.components[0];
+        let all_row_ids = (0..component.all_marker_placement_rows.len()).collect::<Vec<_>>();
+
+        let marker_on_side_zero_neighbor_three = model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &all_row_ids,
+                &[StereoMarkerEventFact::MarkerPlaced {
+                    side_idx: 0,
+                    begin_idx: 1,
+                    end_idx: 3,
+                    marker: StereoDirectionToken::Slash,
+                    role: StereoTraversalRole::TreeOrChain,
+                }],
+            )
+            .expect("marker event query should be valid");
+        assert_eq!(vec![1, 3, 5, 7], marker_on_side_zero_neighbor_three);
+
+        let still_neighbor_three = model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &marker_on_side_zero_neighbor_three,
+                &[StereoMarkerEventFact::NoMarker {
+                    side_idx: 0,
+                    begin_idx: 0,
+                    end_idx: 1,
+                    role: StereoTraversalRole::Branch,
+                }],
+            )
+            .expect("marker event query should be valid");
+        assert_eq!(marker_on_side_zero_neighbor_three, still_neighbor_three);
+
+        let contradicted = model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &marker_on_side_zero_neighbor_three,
+                &[StereoMarkerEventFact::NoMarker {
+                    side_idx: 0,
+                    begin_idx: 1,
+                    end_idx: 3,
+                    role: StereoTraversalRole::Branch,
+                }],
+            )
+            .expect("marker event query should be valid");
+        assert!(contradicted.is_empty());
+
+        let no_marker_on_single_candidate_side = model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &all_row_ids,
+                &[StereoMarkerEventFact::NoMarker {
+                    side_idx: 1,
+                    begin_idx: 2,
+                    end_idx: 4,
+                    role: StereoTraversalRole::RingClose,
+                }],
+            )
+            .expect("marker event query should be valid");
+        assert!(no_marker_on_single_candidate_side.is_empty());
+    }
+
+    #[test]
+    fn marker_placement_event_filter_validates_routing_without_cloning_rows() {
+        let side_infos = vec![StereoSideInfo {
+            component_idx: 0,
+            endpoint_atom_idx: 1,
+            other_endpoint_atom_idx: 2,
+            candidate_neighbors: vec![0, 3],
+            candidate_base_tokens: vec!["/".to_owned(), "\\".to_owned()],
+        }];
+        let model =
+            stereo_constraint_model(&side_infos, &[vec![0]], &[]).expect("model should build");
+        let all_row_ids =
+            (0..model.components[0].all_marker_placement_rows.len()).collect::<Vec<_>>();
+
+        assert_eq!(
+            all_row_ids,
+            model
+                .filter_marker_placement_row_ids_for_marker_event_facts(
+                    0,
+                    &all_row_ids,
+                    &[StereoMarkerEventFact::NoMarker {
+                        side_idx: 0,
+                        begin_idx: 7,
+                        end_idx: 8,
+                        role: StereoTraversalRole::Deferred,
+                    }],
+                )
+                .expect("noncandidate no-marker event should be a no-op"),
+        );
+        assert!(model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &all_row_ids,
+                &[StereoMarkerEventFact::MarkerPlaced {
+                    side_idx: 0,
+                    begin_idx: 7,
+                    end_idx: 8,
+                    marker: StereoDirectionToken::Backslash,
+                    role: StereoTraversalRole::Deferred,
+                }],
+            )
+            .expect("noncandidate marker event should be contradictory")
+            .is_empty());
+        assert!(model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &[model.components[0].all_marker_placement_rows.len()],
+                &[],
+            )
+            .is_err());
+        assert!(model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &all_row_ids,
+                &[StereoMarkerEventFact::NoMarker {
+                    side_idx: 99,
+                    begin_idx: 1,
+                    end_idx: 0,
+                    role: StereoTraversalRole::TreeOrChain,
+                }],
+            )
+            .is_err());
     }
 
     #[test]

@@ -2916,87 +2916,125 @@ fn shadow_inferred_token_flip_facts_from_state(
     Ok(facts)
 }
 
-fn known_token_flip_facts_from_state(
-    state: &RootedConnectedStereoWalkerStateData,
-) -> Vec<StereoTokenFlipFact> {
-    let mut facts = Vec::new();
-    for (component_idx, &token_flip_value) in state.stereo_component_token_flips.iter().enumerate()
-    {
-        let Some(token_flip) = model_token_flip_from_component_value(token_flip_value) else {
-            continue;
-        };
-        facts.push(StereoTokenFlipFact {
-            runtime_component_idx: component_idx,
-            token_flip,
-        });
-    }
-    facts
+enum ComponentTokenConstraintFact {
+    KnownTokenFlip(StereoTokenFlipFact),
+    InferredTokenObservation(StereoTokenObservationFact),
+    NoTokenConstraint,
 }
 
-fn supported_token_observation_fact_from_state(
+impl ComponentTokenConstraintFact {
+    fn kind_name(&self) -> &'static str {
+        match self {
+            Self::KnownTokenFlip(_) => "known_token_flip",
+            Self::InferredTokenObservation(_) => "inferred_token_observation",
+            Self::NoTokenConstraint => "no_token_constraint",
+        }
+    }
+}
+
+struct ComponentTokenConstraint {
+    fact: ComponentTokenConstraintFact,
+    inputs: ComponentTokenInferenceInputs,
+}
+
+fn component_token_constraint_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
-) -> PyResult<Option<StereoTokenObservationFact>> {
-    component_token_inference_inputs(
+) -> PyResult<ComponentTokenConstraint> {
+    let inputs = component_token_inference_inputs(
         runtime,
         graph,
         state,
         resolved_selected_neighbors,
         component_idx,
-    )?
-    .supported_token_observation()
-}
-
-fn supported_token_observation_facts_from_state(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoWalkerStateData,
-    resolved_selected_neighbors: &[isize],
-) -> PyResult<Vec<StereoTokenObservationFact>> {
-    let mut facts = Vec::new();
-    for component_idx in 0..runtime.isolated_components.len() {
-        if let Some(fact) = supported_token_observation_fact_from_state(
-            runtime,
-            graph,
-            state,
-            resolved_selected_neighbors,
-            component_idx,
-        )? {
-            facts.push(fact);
-        }
+    )?;
+    if let Some(token_flip) =
+        model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx])
+    {
+        return Ok(ComponentTokenConstraint {
+            fact: ComponentTokenConstraintFact::KnownTokenFlip(StereoTokenFlipFact {
+                runtime_component_idx: component_idx,
+                token_flip,
+            }),
+            inputs,
+        });
     }
-    Ok(facts)
+    let fact = match inputs.supported_token_observation()? {
+        Some(observation) => ComponentTokenConstraintFact::InferredTokenObservation(observation),
+        None if inputs.inferred.is_some() => {
+            return Err(PyValueError::new_err(format!(
+                "Inferred token flip has no supported observation fact for branch {}",
+                inputs.inference_branch
+            )));
+        }
+        None => ComponentTokenConstraintFact::NoTokenConstraint,
+    };
+    Ok(ComponentTokenConstraint { fact, inputs })
 }
 
-fn inferred_token_observation_facts_from_state(
+fn component_token_constraints_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
+) -> PyResult<Vec<ComponentTokenConstraint>> {
+    (0..runtime.isolated_components.len())
+        .map(|component_idx| {
+            component_token_constraint_from_state(
+                runtime,
+                graph,
+                state,
+                resolved_selected_neighbors,
+                component_idx,
+            )
+        })
+        .collect()
+}
+
+fn known_token_flip_facts_from_constraints(
+    constraints: &[ComponentTokenConstraint],
+) -> Vec<StereoTokenFlipFact> {
+    constraints
+        .iter()
+        .filter_map(|constraint| match constraint.fact {
+            ComponentTokenConstraintFact::KnownTokenFlip(fact) => Some(fact),
+            ComponentTokenConstraintFact::InferredTokenObservation(_)
+            | ComponentTokenConstraintFact::NoTokenConstraint => None,
+        })
+        .collect()
+}
+
+fn inferred_token_observation_facts_from_constraints(
+    constraints: &[ComponentTokenConstraint],
+) -> Vec<StereoTokenObservationFact> {
+    constraints
+        .iter()
+        .filter_map(|constraint| match constraint.fact {
+            ComponentTokenConstraintFact::InferredTokenObservation(fact) => Some(fact),
+            ComponentTokenConstraintFact::KnownTokenFlip(_)
+            | ComponentTokenConstraintFact::NoTokenConstraint => None,
+        })
+        .collect()
+}
+
+fn supported_token_observation_facts_from_constraints(
+    constraints: &[ComponentTokenConstraint],
 ) -> PyResult<Vec<StereoTokenObservationFact>> {
     let mut facts = Vec::new();
-    for component_idx in 0..runtime.isolated_components.len() {
-        if model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx])
-            .is_some()
-        {
-            continue;
-        }
-        let inputs = component_token_inference_inputs(
-            runtime,
-            graph,
-            state,
-            &resolved_selected_neighbors,
-            component_idx,
-        )?;
-        match inputs.supported_token_observation()? {
+    for constraint in constraints {
+        match constraint.inputs.supported_token_observation()? {
             Some(fact) => facts.push(fact),
-            None if inputs.inferred.is_some() => {
+            None if matches!(
+                constraint.fact,
+                ComponentTokenConstraintFact::InferredTokenObservation(_)
+            ) =>
+            {
                 return Err(PyValueError::new_err(format!(
                     "Inferred token flip has no supported observation fact for branch {}",
-                    inputs.inference_branch
+                    constraint.inputs.inference_branch
                 )));
             }
             None => {}
@@ -3014,13 +3052,15 @@ fn resolved_constraint_state_from_walker_state(
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let resolved_facts_by_component =
         selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
-    let known_token_flip_facts = known_token_flip_facts_from_state(state);
-    let token_observation_facts = inferred_token_observation_facts_from_state(
+    let token_constraints = component_token_constraints_from_state(
         runtime,
         graph,
         state,
         &resolved_selected_neighbors,
     )?;
+    let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
+    let token_observation_facts =
+        inferred_token_observation_facts_from_constraints(&token_constraints);
     StereoConstraintState::from_facts_and_token_observations(
         &runtime.constraint_model,
         layer,
@@ -3308,10 +3348,10 @@ fn shared_carrier_resolution_to_py(
 fn component_token_phase_diagnostics_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     assignment_state: &StereoAssignmentState,
+    token_constraints: &[ComponentTokenConstraint],
 ) -> PyResult<Vec<Py<PyDict>>> {
     (0..runtime.isolated_components.len())
         .map(|component_idx| {
@@ -3347,13 +3387,7 @@ fn component_token_phase_diagnostics_to_py(
                 .get(model_component_idx.unwrap_or(usize::MAX))
                 .map(Vec::len)
                 .unwrap_or(0);
-            let token_inference_inputs = component_token_inference_inputs(
-                runtime,
-                graph,
-                state,
-                resolved_selected_neighbors,
-                component_idx,
-            )?;
+            let token_inference_inputs = &token_constraints[component_idx].inputs;
             let inferred = token_inference_inputs.inferred;
             let inferred_model_token_flip =
                 inferred.and_then(model_token_flip_from_component_value);
@@ -3484,6 +3518,10 @@ fn component_token_phase_diagnostics_to_py(
             )?;
             row.set_item("inferred_token_flip_value", inferred)?;
             row.set_item("inferred_matches_state", inferred_matches_state)?;
+            row.set_item(
+                "token_constraint_kind",
+                token_constraints[component_idx].fact.kind_name(),
+            )?;
             row.set_item("remaining_assignment_count", remaining_assignment_count)?;
             row.set_item(
                 "model_token_phase_component_count",
@@ -3558,7 +3596,7 @@ fn component_token_phase_diagnostics_to_py(
             row.set_item("shadow_debug", shadow_debug)?;
             row.set_item(
                 "token_flip_inference_inputs",
-                component_token_inference_inputs_to_py(py, &token_inference_inputs)?,
+                component_token_inference_inputs_to_py(py, token_inference_inputs)?,
             )?;
             Ok(row.unbind())
         })
@@ -3897,15 +3935,19 @@ fn stereo_output_fact_row_to_py(
         StereoConstraintLayer::Semantic,
         &resolved_facts_by_component,
     );
-    let shadow_inferred_token_flip_facts =
-        shadow_inferred_token_flip_facts_from_state(runtime, graph, state)?;
-    let known_token_flip_facts = known_token_flip_facts_from_state(state);
-    let token_observation_facts = supported_token_observation_facts_from_state(
+    let token_constraints = component_token_constraints_from_state(
         runtime,
         graph,
         state,
         &resolved_selected_neighbors,
     )?;
+    let shadow_inferred_token_flip_facts =
+        shadow_inferred_token_flip_facts_from_state(runtime, graph, state)?;
+    let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
+    let inferred_token_observation_facts =
+        inferred_token_observation_facts_from_constraints(&token_constraints);
+    let supported_token_observation_facts =
+        supported_token_observation_facts_from_constraints(&token_constraints)?;
 
     let row = PyDict::new(py);
     row.set_item("root_idx", runtime.root_idx)?;
@@ -3970,7 +4012,7 @@ fn stereo_output_fact_row_to_py(
             runtime,
             &resolved_facts_by_component,
             &known_token_flip_facts,
-            &token_observation_facts,
+            &inferred_token_observation_facts,
         )?,
     )?;
     let shadow_debug = PyDict::new(py);
@@ -3990,7 +4032,7 @@ fn stereo_output_fact_row_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
-            &token_observation_facts,
+            &supported_token_observation_facts,
         )?,
     )?;
     row.set_item(
@@ -4000,7 +4042,7 @@ fn stereo_output_fact_row_to_py(
             runtime,
             &resolved_facts_by_component,
             &known_token_flip_facts,
-            &token_observation_facts,
+            &supported_token_observation_facts,
         )?,
     )?;
     row.set_item(
@@ -4018,10 +4060,10 @@ fn stereo_output_fact_row_to_py(
         component_token_phase_diagnostics_to_py(
             py,
             runtime,
-            graph,
             state,
             &resolved_selected_neighbors,
             &resolved_semantic_assignment_state,
+            &token_constraints,
         )?,
     )?;
     Ok(row.unbind())

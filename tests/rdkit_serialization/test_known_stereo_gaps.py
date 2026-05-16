@@ -266,6 +266,44 @@ class KnownStereoGapTests(unittest.TestCase):
                             len(component["rows_after_marker_events"]),
                         )
 
+    def test_manual_difficult_cases_identify_row_routing_membership_gap(self) -> None:
+        cases = tuple(
+            case
+            for case in self.cases
+            if case.case_id.startswith("manual_bond_stereo_difficult_")
+        )
+        self.assertEqual(4, len(cases))
+
+        missing_case_ids = set[str]()
+        present_case_ids = set[str]()
+        for case in cases:
+            with self.subTest(case_id=case.case_id, source=case.source):
+                mol = self._mol_from_case(case)
+                support = grimace_support(
+                    mol,
+                    rooted_at_atom=case.rooted_at_atom,
+                    isomeric_smiles=case.isomeric_smiles,
+                )
+                if case.expected in support:
+                    present_case_ids.add(case.case_id)
+                else:
+                    missing_case_ids.add(case.case_id)
+
+        self.assertEqual(
+            {
+                "manual_bond_stereo_difficult_cis_cis",
+                "manual_bond_stereo_difficult_cis_trans",
+            },
+            missing_case_ids,
+        )
+        self.assertEqual(
+            {
+                "manual_bond_stereo_difficult_trans_cis",
+                "manual_bond_stereo_difficult_trans_trans",
+            },
+            present_case_ids,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

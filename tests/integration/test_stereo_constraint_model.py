@@ -1240,6 +1240,51 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(saw_shadow_marker_event)
         self.assertTrue(saw_shadow_no_marker_event)
 
+    def test_reduced_porphyrin_is_marker_obligation_routing_witness(self) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "reduced_porphyrin_traversal_coupling"
+        )
+        mol = parse_smiles(case.smiles)
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+        rows = _core._stereo_constraint_output_facts(prepared)
+
+        shadow_event_counts = Counter(
+            event["event"]
+            for row in rows
+            for event in row["shadow_debug"]["marker_event_facts"]
+        )
+        self.assertGreater(shadow_event_counts["marker_placed"], 0)
+        self.assertGreater(shadow_event_counts["no_marker"], 0)
+
+        top_level_empty_counts = Counter(
+            layer_name
+            for row in rows
+            for layer_name, components in row["marker_placement_state"].items()
+            for component in components
+            if component["is_empty_after_marker_events"]
+        )
+        self.assertFalse(top_level_empty_counts)
+
+        shadow_empty_counts = Counter(
+            layer_name
+            for row in rows
+            for layer_name, components in row["shadow_debug"][
+                "marker_placement_state"
+            ].items()
+            for component in components
+            if component["is_empty_after_marker_events"]
+        )
+        self.assertEqual(
+            {
+                "semantic": 5120,
+                "rdkit_local_writer": 5120,
+                "rdkit_traversal_writer": 5120,
+            },
+            dict(shadow_empty_counts),
+        )
+
     def test_sampled_rdkit_outputs_avoid_local_invalid_exact_spellings(self) -> None:
         cases_with_sampled_expectations = tuple(
             case

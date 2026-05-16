@@ -2933,6 +2933,23 @@ fn known_token_flip_facts_from_state(
     facts
 }
 
+fn supported_token_observation_fact_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Option<StereoTokenObservationFact>> {
+    component_token_inference_inputs(
+        runtime,
+        graph,
+        state,
+        resolved_selected_neighbors,
+        component_idx,
+    )?
+    .supported_token_observation()
+}
+
 fn supported_token_observation_facts_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -2941,14 +2958,13 @@ fn supported_token_observation_facts_from_state(
 ) -> PyResult<Vec<StereoTokenObservationFact>> {
     let mut facts = Vec::new();
     for component_idx in 0..runtime.isolated_components.len() {
-        let inputs = component_token_inference_inputs(
+        if let Some(fact) = supported_token_observation_fact_from_state(
             runtime,
             graph,
             state,
             resolved_selected_neighbors,
             component_idx,
-        )?;
-        if let Some(fact) = inputs.supported_token_observation()? {
+        )? {
             facts.push(fact);
         }
     }

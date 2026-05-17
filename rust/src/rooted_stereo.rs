@@ -144,6 +144,21 @@ struct ComponentBeginAtomFact {
     begin_atom_idx: usize,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct CommittedComponentTokenFlipFact {
+    runtime_component_idx: usize,
+    token_flip: StereoTokenFlip,
+}
+
+impl CommittedComponentTokenFlipFact {
+    fn token_flip_fact(self) -> StereoTokenFlipFact {
+        StereoTokenFlipFact {
+            runtime_component_idx: self.runtime_component_idx,
+            token_flip: self.token_flip,
+        }
+    }
+}
+
 impl DeferredComponentPhaseFact {
     fn begin_atom_fact(self) -> ComponentBeginAtomFact {
         ComponentBeginAtomFact {
@@ -3971,6 +3986,18 @@ struct ComponentTokenConstraint {
     inputs: ComponentTokenInferenceInputs,
 }
 
+fn committed_component_token_flip_fact_from_state(
+    state: &RootedConnectedStereoWalkerStateData,
+    component_idx: usize,
+) -> Option<CommittedComponentTokenFlipFact> {
+    model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx]).map(
+        |token_flip| CommittedComponentTokenFlipFact {
+            runtime_component_idx: component_idx,
+            token_flip,
+        },
+    )
+}
+
 fn component_token_constraint_from_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -3985,14 +4012,11 @@ fn component_token_constraint_from_state(
         resolved_selected_neighbors,
         component_idx,
     )?;
-    if let Some(token_flip) =
-        model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx])
+    if let Some(committed_fact) =
+        committed_component_token_flip_fact_from_state(state, component_idx)
     {
         return Ok(ComponentTokenConstraint {
-            fact: ComponentTokenConstraintFact::KnownTokenFlip(StereoTokenFlipFact {
-                runtime_component_idx: component_idx,
-                token_flip,
-            }),
+            fact: ComponentTokenConstraintFact::KnownTokenFlip(committed_fact.token_flip_fact()),
             inputs,
         });
     }
@@ -6707,6 +6731,8 @@ fn assert_component_token_flip_boundary_invariants(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
+    // Temporary equivalence check while committed token flips are still mirrored
+    // in the walker vector instead of stored only as support-state facts.
     assert_token_flips_explained_by_constraint_state(runtime, graph, state)?;
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     for component_idx in 0..state.stereo_component_token_flips.len() {
@@ -6740,6 +6766,25 @@ fn model_token_flip_for_chosen_token(
         return Ok(Some(StereoTokenFlip::Flipped));
     }
     Ok(None)
+}
+
+fn commit_component_token_flip_fact(
+    state: &mut RootedConnectedStereoWalkerStateData,
+    fact: CommittedComponentTokenFlipFact,
+) -> PyResult<()> {
+    let chosen_flip = component_token_flip_value_from_model(fact.token_flip);
+    let existing = state.stereo_component_token_flips[fact.runtime_component_idx];
+    if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
+        Arc::make_mut(&mut state.stereo_component_token_flips)[fact.runtime_component_idx] =
+            chosen_flip;
+        return Ok(());
+    }
+    if existing != chosen_flip {
+        return Err(PyValueError::new_err(
+            "Stereo deferred token was committed inconsistently",
+        ));
+    }
+    Ok(())
 }
 
 fn raw_token_for_deferred_edge(
@@ -7052,25 +7097,20 @@ fn commit_deferred_token_choice(
             }
             return assert_component_token_flip_boundary_invariants(runtime, graph, state);
         };
-        let flipped = flip_direction_token(&raw_token)?;
-        let chosen_flip = if chosen_token == raw_token {
-            STORED_COMPONENT_TOKEN_FLIP
-        } else if chosen_token == flipped {
-            FLIPPED_COMPONENT_TOKEN_FLIP
-        } else {
+        let Some(chosen_model_flip) = model_token_flip_for_chosen_token(&raw_token, chosen_token)?
+        else {
             return Err(PyKeyError::new_err(format!(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
         };
         let component_idx = deferred.component_tokens[0].component_idx;
-        let existing = state.stereo_component_token_flips[component_idx];
-        if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
-            Arc::make_mut(&mut state.stereo_component_token_flips)[component_idx] = chosen_flip;
-        } else if existing != chosen_flip {
-            return Err(PyValueError::new_err(
-                "Stereo deferred token was committed inconsistently",
-            ));
-        }
+        commit_component_token_flip_fact(
+            state,
+            CommittedComponentTokenFlipFact {
+                runtime_component_idx: component_idx,
+                token_flip: chosen_model_flip,
+            },
+        )?;
         return assert_component_token_flip_boundary_invariants(runtime, graph, state);
     }
 
@@ -7082,16 +7122,13 @@ fn commit_deferred_token_choice(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
         };
-        let chosen_flip = component_token_flip_value_from_model(chosen_model_flip);
-        let existing = state.stereo_component_token_flips[component_token.component_idx];
-        if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
-            Arc::make_mut(&mut state.stereo_component_token_flips)[component_token.component_idx] =
-                chosen_flip;
-        } else if existing != chosen_flip {
-            return Err(PyValueError::new_err(
-                "Stereo deferred token was committed inconsistently",
-            ));
-        }
+        commit_component_token_flip_fact(
+            state,
+            CommittedComponentTokenFlipFact {
+                runtime_component_idx: component_token.component_idx,
+                token_flip: chosen_model_flip,
+            },
+        )?;
     }
     assert_component_token_flip_boundary_invariants(runtime, graph, state)
 }

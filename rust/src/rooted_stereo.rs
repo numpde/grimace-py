@@ -2912,11 +2912,21 @@ fn resolved_selected_neighbors(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> Vec<isize> {
-    resolved_selected_neighbors_from_fields(
+    let mut selected_neighbors = resolved_selected_neighbors_from_fields(
         runtime,
         &state.stereo_selected_neighbors,
         &state.stereo_first_emitted_candidates,
-    )
+    );
+    for constraint in state.deferred_carrier_choice_constraints.iter() {
+        if selected_neighbors
+            .get(constraint.side_idx)
+            .copied()
+            .is_some_and(|neighbor_idx| neighbor_idx == constraint.deferred_neighbor_idx as isize)
+        {
+            selected_neighbors[constraint.side_idx] = -1;
+        }
+    }
+    selected_neighbors
 }
 
 pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
@@ -3284,6 +3294,14 @@ fn traversal_constraint_facts_to_py(
                     neighbor_idx,
                 } => {
                     row.set_item("fact", "carrier_selected")?;
+                    row.set_item("side_idx", side_idx)?;
+                    row.set_item("neighbor_idx", neighbor_idx)?;
+                }
+                StereoConstraintFact::CarrierSelectionBlocked {
+                    side_idx,
+                    neighbor_idx,
+                } => {
+                    row.set_item("fact", "carrier_selection_blocked")?;
                     row.set_item("side_idx", side_idx)?;
                     row.set_item("neighbor_idx", neighbor_idx)?;
                 }
@@ -3879,8 +3897,11 @@ fn resolved_constraint_state_from_walker_state(
     layer: StereoConstraintLayer,
 ) -> PyResult<StereoConstraintState> {
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    let resolved_facts_by_component =
-        selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
+    let resolved_facts_by_component = carrier_facts_by_component_from_state(
+        runtime,
+        &resolved_selected_neighbors,
+        &state.deferred_carrier_choice_constraints,
+    )?;
     let token_constraints = component_token_constraints_from_state(
         runtime,
         graph,
@@ -5315,6 +5336,29 @@ fn selected_neighbor_facts_by_component(
         });
     }
     facts_by_component
+}
+
+fn carrier_facts_by_component_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    selected_neighbors: &[isize],
+    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+) -> PyResult<Vec<Vec<StereoConstraintFact>>> {
+    let mut facts_by_component = selected_neighbor_facts_by_component(runtime, selected_neighbors);
+    for constraint in deferred_carrier_choice_constraints {
+        let Some(component_idx) = runtime
+            .constraint_model
+            .component_for_side(constraint.side_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "deferred carrier-choice constraint references unknown side",
+            ));
+        };
+        facts_by_component[component_idx].push(StereoConstraintFact::CarrierSelectionBlocked {
+            side_idx: constraint.side_idx,
+            neighbor_idx: constraint.deferred_neighbor_idx,
+        });
+    }
+    Ok(facts_by_component)
 }
 
 fn traversal_constraint_facts_by_component(
@@ -8900,10 +8944,11 @@ mod tests {
         successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         traversal_constraint_facts_by_component, traversal_constraint_has_completion,
         validate_root_idx, validate_stereo_state_shape, ComponentTokenConstraintFact,
-        UNKNOWN_COMPONENT_TOKEN_FLIP,
+        DeferredCarrierChoiceConstraint, UNKNOWN_COMPONENT_TOKEN_FLIP,
     };
     use crate::bond_stereo_constraints::{
-        StereoConstraintFact, StereoConstraintLayer, StereoConstraintState, StereoTraversalRole,
+        StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
+        StereoTraversalRole,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -9424,6 +9469,60 @@ mod tests {
         };
         assert_eq!(0, side_idx);
         assert_ne!(assignment_neighbor_idx, runtime_neighbor_idx);
+    }
+
+    #[test]
+    fn deferred_carrier_choice_constraints_filter_resolved_model_state() {
+        let Some(graph) = prepared_graph_from_smiles("C/C=C(/C(=C/C)/c1ccccc1)\\c1ccccc1") else {
+            return;
+        };
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 5);
+        let unconstrained = StereoAssignmentState::from_model(
+            &runtime.constraint_model,
+            StereoConstraintLayer::Semantic,
+        );
+        let (component_idx, side_idx, unconstrained_neighbors) = runtime
+            .side_infos
+            .iter()
+            .enumerate()
+            .filter_map(|(side_idx, _side_info)| {
+                let component_idx = runtime.constraint_model.component_for_side(side_idx)?;
+                let remaining_ids = &unconstrained.remaining_by_component[component_idx];
+                let available_neighbors = runtime
+                    .constraint_model
+                    .available_neighbors_for_assignment_ids(component_idx, side_idx, remaining_ids);
+                (available_neighbors.len() > 1).then_some((
+                    component_idx,
+                    side_idx,
+                    available_neighbors,
+                ))
+            })
+            .next()
+            .expect("fixture should have a multi-candidate carrier side");
+        let blocked_neighbor_idx = unconstrained_neighbors[0];
+        state.deferred_carrier_choice_constraints =
+            Arc::new(vec![DeferredCarrierChoiceConstraint {
+                side_idx,
+                deferred_neighbor_idx: blocked_neighbor_idx,
+                available_neighbors: unconstrained_neighbors.clone(),
+            }]);
+
+        let constraint_state = resolved_constraint_state_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            StereoConstraintLayer::Semantic,
+        )
+        .expect("deferred carrier constraint should be a model fact");
+        let remaining_ids = &constraint_state
+            .carrier_assignment_state
+            .remaining_by_component[component_idx];
+        let available_neighbors = runtime
+            .constraint_model
+            .available_neighbors_for_assignment_ids(component_idx, side_idx, remaining_ids);
+
+        assert!(!available_neighbors.contains(&blocked_neighbor_idx));
+        assert!(!available_neighbors.is_empty());
     }
 
     #[test]

@@ -301,6 +301,10 @@ pub(crate) enum StereoConstraintFact {
         side_idx: usize,
         neighbor_idx: usize,
     },
+    CarrierSelectionBlocked {
+        side_idx: usize,
+        neighbor_idx: usize,
+    },
     CarrierEdgeEmitted {
         side_idx: usize,
         begin_idx: usize,
@@ -375,6 +379,11 @@ pub(crate) struct StereoAssignmentState {
 pub(crate) struct StereoConstraintState {
     pub(crate) carrier_assignment_state: StereoAssignmentState,
     pub(crate) token_phase_remaining_by_component: Vec<Vec<usize>>,
+}
+
+struct StereoCarrierFactConstraints {
+    selected_neighbors: BTreeMap<usize, usize>,
+    blocked_neighbors: BTreeSet<(usize, usize)>,
 }
 
 #[derive(Clone, Debug)]
@@ -985,19 +994,24 @@ impl StereoConstraintModel {
             .and_then(|value| *value)
     }
 
-    fn selected_neighbors_from_facts(
+    fn carrier_constraints_from_facts(
         &self,
         component: &StereoComponentConstraintModel,
         component_idx: usize,
         facts: &[StereoConstraintFact],
-    ) -> Option<BTreeMap<usize, usize>> {
+    ) -> Option<StereoCarrierFactConstraints> {
         let mut selected_neighbors = BTreeMap::<usize, usize>::new();
+        let mut blocked_neighbors = BTreeSet::<(usize, usize)>::new();
         for fact in facts {
-            let (side_idx, selected_neighbor) = match *fact {
+            let (side_idx, selected_neighbor, blocked_neighbor) = match *fact {
                 StereoConstraintFact::CarrierSelected {
                     side_idx,
                     neighbor_idx,
-                } => (side_idx, Some(neighbor_idx)),
+                } => (side_idx, Some(neighbor_idx), None),
+                StereoConstraintFact::CarrierSelectionBlocked {
+                    side_idx,
+                    neighbor_idx,
+                } => (side_idx, None, Some(neighbor_idx)),
                 StereoConstraintFact::CarrierEdgeEmitted {
                     side_idx,
                     begin_idx,
@@ -1015,7 +1029,7 @@ impl StereoConstraintModel {
                     {
                         return None;
                     }
-                    (side_idx, None)
+                    (side_idx, None, None)
                 }
                 StereoConstraintFact::DirectionalMarkerPlaced {
                     side_idx,
@@ -1026,7 +1040,7 @@ impl StereoConstraintModel {
                     if marker != '/' && marker != '\\' {
                         return None;
                     }
-                    (side_idx, None)
+                    (side_idx, None, None)
                 }
             };
             if self
@@ -1044,8 +1058,9 @@ impl StereoConstraintModel {
             else {
                 return None;
             };
+            let constrained_neighbor = selected_neighbor.or(blocked_neighbor);
             if !domain.choices.iter().any(|choice| {
-                selected_neighbor.is_none_or(|neighbor_idx| choice.neighbor_idx == neighbor_idx)
+                constrained_neighbor.is_none_or(|neighbor_idx| choice.neighbor_idx == neighbor_idx)
             }) {
                 return None;
             }
@@ -1057,8 +1072,14 @@ impl StereoConstraintModel {
                     return None;
                 }
             }
+            if let Some(neighbor_idx) = blocked_neighbor {
+                blocked_neighbors.insert((side_idx, neighbor_idx));
+            }
         }
-        Some(selected_neighbors)
+        Some(StereoCarrierFactConstraints {
+            selected_neighbors,
+            blocked_neighbors,
+        })
     }
 
     fn layer_allows_assignment(
@@ -1073,21 +1094,41 @@ impl StereoConstraintModel {
         }
     }
 
-    fn assignment_matches_selected_neighbors(
+    fn assignment_matches_carrier_constraints(
         component: &StereoComponentConstraintModel,
         assignment: &[usize],
-        selected_neighbors: &BTreeMap<usize, usize>,
+        constraints: &StereoCarrierFactConstraints,
     ) -> bool {
-        selected_neighbors.iter().all(|(&side_idx, &neighbor_idx)| {
-            let Some(position) = component
-                .side_ids
+        let selected_match =
+            constraints
+                .selected_neighbors
                 .iter()
-                .position(|&component_side_idx| component_side_idx == side_idx)
-            else {
-                return false;
-            };
-            assignment.get(position).copied() == Some(neighbor_idx)
-        })
+                .all(|(&side_idx, &neighbor_idx)| {
+                    let Some(position) = component
+                        .side_ids
+                        .iter()
+                        .position(|&component_side_idx| component_side_idx == side_idx)
+                    else {
+                        return false;
+                    };
+                    assignment.get(position).copied() == Some(neighbor_idx)
+                });
+        if !selected_match {
+            return false;
+        }
+        constraints
+            .blocked_neighbors
+            .iter()
+            .all(|&(side_idx, neighbor_idx)| {
+                let Some(position) = component
+                    .side_ids
+                    .iter()
+                    .position(|&component_side_idx| component_side_idx == side_idx)
+                else {
+                    return false;
+                };
+                assignment.get(position).copied() != Some(neighbor_idx)
+            })
     }
 
     pub(crate) fn remaining_assignment_ids(
@@ -1106,8 +1147,8 @@ impl StereoConstraintModel {
         else {
             return Vec::new();
         };
-        let Some(selected_neighbors) =
-            self.selected_neighbors_from_facts(component, component_idx, facts)
+        let Some(carrier_constraints) =
+            self.carrier_constraints_from_facts(component, component_idx, facts)
         else {
             return Vec::new();
         };
@@ -1118,10 +1159,10 @@ impl StereoConstraintModel {
             .enumerate()
             .filter_map(|(assignment_id, assignment)| {
                 (Self::layer_allows_assignment(layer_assignments, assignment)
-                    && Self::assignment_matches_selected_neighbors(
+                    && Self::assignment_matches_carrier_constraints(
                         component,
                         assignment,
-                        &selected_neighbors,
+                        &carrier_constraints,
                     ))
                 .then_some(assignment_id)
             })
@@ -2822,6 +2863,52 @@ mod tests {
                 }],
             ),
         );
+        assert_eq!(
+            vec![1],
+            model.remaining_assignment_ids(
+                0,
+                StereoConstraintLayer::Semantic,
+                &[StereoConstraintFact::CarrierSelectionBlocked {
+                    side_idx: 0,
+                    neighbor_idx: 0,
+                }],
+            ),
+        );
+        assert_eq!(
+            vec![0],
+            model.remaining_assignment_ids(
+                0,
+                StereoConstraintLayer::Semantic,
+                &[StereoConstraintFact::CarrierSelectionBlocked {
+                    side_idx: 0,
+                    neighbor_idx: 3,
+                }],
+            ),
+        );
+        assert!(model
+            .remaining_assignment_ids(
+                0,
+                StereoConstraintLayer::Semantic,
+                &[
+                    StereoConstraintFact::CarrierSelected {
+                        side_idx: 0,
+                        neighbor_idx: 3,
+                    },
+                    StereoConstraintFact::CarrierSelectionBlocked {
+                        side_idx: 0,
+                        neighbor_idx: 3,
+                    },
+                ],
+            )
+            .is_empty());
+        assert!(!model.has_completion(
+            0,
+            StereoConstraintLayer::Semantic,
+            &[StereoConstraintFact::CarrierSelectionBlocked {
+                side_idx: 0,
+                neighbor_idx: 99,
+            }],
+        ));
         assert_eq!(
             Some(3),
             model.forced_neighbor_for_assignment_ids(0, 0, &[1]),

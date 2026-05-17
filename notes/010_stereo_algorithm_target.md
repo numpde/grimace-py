@@ -66,6 +66,30 @@ state. Runtime parity may need to mirror that policy exactly, but the code
 should name it as RDKit writer behavior instead of treating it as generic
 OpenSMILES or chemistry logic.
 
+## Production Constraint Boundary
+
+The production abstraction should not be "rows". Rows are one possible storage
+or diagnostic representation. The boundary is a state object that can answer
+support questions from typed facts:
+
+- model variables: per-component carrier choices, token/phase choices, marker
+  obligations, and any RDKit writer-policy dimensions needed for exact parity;
+- static constraints: semantic stereo constraints plus named RDKit writer
+  constraints compiled from the prepared molecule;
+- online facts: traversal observations, selected carrier edges, emitted or
+  skipped marker opportunities, root/fragment context, and committed token
+  observations;
+- state update: consume facts, narrow the remaining feasible assignments or
+  propagated domains, and fail if no feasible state remains;
+- support query: given the current prefix and state, report the legal next
+  tokens or forced emissions without asking traversal code to repair choices.
+
+An implementation may store feasible states as explicit rows, bitsets, compact
+domains with propagators, or a hybrid. That is an engineering choice. The
+invariant is that callers see one online support boundary, and every
+support-shaping decision is either a principled semantic constraint or a named
+RDKit writer-policy constraint.
+
 ## Role of Z3
 
 Z3 is an exploration tool, not the production engine. It is useful for finding

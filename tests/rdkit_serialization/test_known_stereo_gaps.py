@@ -166,8 +166,8 @@ class KnownStereoGapTests(unittest.TestCase):
                 {
                     "decoder_path_only": 1,
                     "support_enumeration_error": 1,
-                    "support_missing": 8,
-                    "support_present": 6,
+                    "support_missing": 6,
+                    "support_present": 8,
                 }
             ),
             status_counts,

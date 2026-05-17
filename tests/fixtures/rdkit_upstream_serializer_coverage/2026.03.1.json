@@ -4063,7 +4063,7 @@
             "manual_bond_stereo_atoms_passing_surface_02"
           ],
           "fixture": "tests/fixtures/rdkit_writer_membership/2026.03.1/60_manual_stereo_writer.json",
-          "note": "Partial coverage: two unique generated canonical surfaces are in Grimace support; two other unique canonical surfaces remain outside support."
+          "note": "Passing writer-membership fixtures pin two generated canonical surfaces already in the main parity corpus."
         },
         {
           "cases": [
@@ -4071,7 +4071,7 @@
             "manual_bond_stereo_atoms_missing_surface_02"
           ],
           "fixture": "tests/fixtures/rdkit_known_stereo_gaps/2026.03.1.json",
-          "note": "Known-gap fixture pins the two missing deterministic RDKit surfaces as executable red parity tests."
+          "note": "Known stereo-gap fixture retains the two newly supported deterministic RDKit surfaces as support-present family guards."
         }
       ],
       "id": "code_graphmol_wrap_rough_test__python_test__testcase__testbondsetstereoatoms",
@@ -4081,11 +4081,11 @@
         "MolToSmiles"
       ],
       "name": "testBondSetStereoAtoms",
-      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Passing writer-membership fixtures pin the two unique generated canonical surfaces currently in Grimace support; known-gap fixtures pin two other unique canonical surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, that remain outside current Grimace support.",
+      "notes": "Manually sets double-bond stereo atoms/states and checks isomeric MolToSmiles surfaces. Passing writer-membership fixtures pin two generated canonical surfaces in the main parity corpus; known-gap fixtures retain two additional deterministic RDKit surfaces, CC\\C=C/C(/C=C/CC)=C(/CC)CO and CC\\C=C/C(/C=C/CC)=C(\\CC)CO, as support-present family guards.",
       "parent": "TestCase",
       "snippet_sha256": "e8abacf16faa586e13dccd9ec28667f6ba779bebba086e88780ca8070c492ef2",
       "start_line": 1983,
-      "status": "known-gap",
+      "status": "covered",
       "upstream_file": "Code/GraphMol/Wrap/rough_test.py"
     },
     {

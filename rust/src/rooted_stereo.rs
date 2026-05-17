@@ -6516,6 +6516,12 @@ fn component_token_observation_inputs(
         .zip(selected_begin_neighbor_idx)
         .map(|(side_info, neighbor_idx)| candidate_base_token(side_info, neighbor_idx))
         .transpose()?;
+    let selected_begin_token = state
+        .stereo_token_basis_facts
+        .get(component_idx)
+        .and_then(|fact| *fact)
+        .map(|fact| stereo_direction_token_name(fact.selected_begin_token).to_owned())
+        .or(selected_begin_token);
     let first_emitted_candidate_idx = begin_side_idx
         .map(|side_idx| state.stereo_first_emitted_candidates[side_idx])
         .filter(|&neighbor_idx| neighbor_idx >= 0)
@@ -6670,7 +6676,12 @@ fn component_token_inference_inputs(
     let observation_inferred = inputs
         .supported_token_observation()?
         .map(|fact| component_token_flip_value_from_model(fact.implied_token_flip()));
-    if assert_legacy_equivalence {
+    let has_token_basis_fact = state
+        .stereo_token_basis_facts
+        .get(component_idx)
+        .and_then(|fact| *fact)
+        .is_some();
+    if assert_legacy_equivalence && !has_token_basis_fact {
         let procedural_inferred =
             legacy_procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
         if procedural_inferred != observation_inferred {
@@ -6977,6 +6988,25 @@ fn assert_component_token_flip_boundary_invariants(
     Ok(())
 }
 
+fn commit_component_token_basis_fact(
+    state: &mut RootedConnectedStereoWalkerStateData,
+    fact: StereoTokenBasisFact,
+) -> PyResult<()> {
+    let fact_slot = &mut Arc::make_mut(&mut state.stereo_token_basis_facts)
+        [fact.runtime_component_idx];
+    if let Some(existing_fact) = fact_slot {
+        if *existing_fact != fact {
+            return Err(PyValueError::new_err(format!(
+                "Conflicting token-basis facts for runtime component {}",
+                fact.runtime_component_idx
+            )));
+        }
+    } else {
+        *fact_slot = Some(fact);
+    }
+    Ok(())
+}
+
 fn model_token_flip_for_chosen_token(
     stored_token: &str,
     chosen_token: &str,
@@ -7206,6 +7236,95 @@ fn accepted_deferred_token_flips(
     Ok(accepted.into_iter().collect())
 }
 
+fn runtime_component_has_multi_candidate_side(
+    runtime: &StereoWalkerRuntimeData,
+    runtime_component_idx: usize,
+) -> bool {
+    runtime
+        .side_ids_by_component
+        .get(runtime_component_idx)
+        .into_iter()
+        .flatten()
+        .any(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() > 1)
+}
+
+fn runtime_component_has_cross_component_carrier_edge(
+    runtime: &StereoWalkerRuntimeData,
+    runtime_component_idx: usize,
+) -> bool {
+    runtime
+        .side_ids_by_component
+        .get(runtime_component_idx)
+        .into_iter()
+        .flatten()
+        .any(|&side_idx| {
+            let side_info = &runtime.side_infos[side_idx];
+            side_info.candidate_neighbors.iter().any(|&neighbor_idx| {
+                runtime
+                    .edge_to_side_ids
+                    .get(&canonical_edge(side_info.endpoint_atom_idx, neighbor_idx))
+                    .into_iter()
+                    .flatten()
+                    .any(|&other_side_idx| {
+                        runtime.side_infos[other_side_idx].component_idx != runtime_component_idx
+                    })
+            })
+        })
+}
+
+fn accepted_single_component_deferred_token_flips(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    raw_token: &str,
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+) -> PyResult<Vec<StereoTokenFlip>> {
+    // Acyclic cross-component carrier coupling can expose a visible marker
+    // before the phase basis is known. Ring components and single-component
+    // diene components stay on the older path until those boundaries are
+    // handled explicitly.
+    if graph.bond_count + 1 == graph.atom_count
+        && runtime_component_has_multi_candidate_side(runtime, component_token.component_idx)
+        && runtime_component_has_cross_component_carrier_edge(
+            runtime,
+            component_token.component_idx,
+        )
+    {
+        return accepted_deferred_token_flips(
+            runtime,
+            state,
+            deferred,
+            component_token,
+            chosen_token,
+            constraint_state,
+            marker_events_by_component,
+        );
+    }
+
+    let Some(implied_token_flip) = model_token_flip_for_chosen_token(raw_token, chosen_token)?
+    else {
+        return Ok(Vec::new());
+    };
+    if rdkit_marker_rows_accept_deferred_token(
+        runtime,
+        state,
+        deferred,
+        component_token,
+        implied_token_flip,
+        chosen_token,
+        constraint_state,
+        marker_events_by_component,
+    )? {
+        Ok(vec![implied_token_flip])
+    } else {
+        Ok(Vec::new())
+    }
+}
+
 fn deferred_token_support_from_constraint_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -7241,21 +7360,19 @@ fn deferred_token_support_from_constraint_state(
         let component_token = &deferred.component_tokens[0];
         let mut out = Vec::new();
         for candidate_token in [raw_token.clone(), flip_direction_token(&raw_token)?] {
-            let Some(implied_token_flip) =
-                model_token_flip_for_chosen_token(&raw_token, &candidate_token)?
-            else {
-                continue;
-            };
-            if rdkit_marker_rows_accept_deferred_token(
+            if !accepted_single_component_deferred_token_flips(
                 runtime,
+                graph,
                 state,
                 deferred,
                 component_token,
-                implied_token_flip,
+                &raw_token,
                 &candidate_token,
                 &constraint_state,
                 &marker_events_by_component,
-            )? {
+            )?
+            .is_empty()
+            {
                 out.push(candidate_token);
             }
         }
@@ -7345,7 +7462,7 @@ fn commit_deferred_token_choice(
 
     if deferred.component_tokens.len() == 1 {
         let raw_token = raw_token_for_deferred_edge(runtime, graph, state, deferred)?;
-        let Some(raw_token) = raw_token else {
+        if raw_token.is_none() {
             let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
                 graph
                     .bond_token(deferred.begin_idx as usize, deferred.end_idx as usize)
@@ -7365,20 +7482,56 @@ fn commit_deferred_token_choice(
             }
             return assert_component_token_flip_boundary_invariants(runtime, graph, state);
         };
-        let Some(chosen_model_flip) = model_token_flip_for_chosen_token(&raw_token, chosen_token)?
-        else {
+        let raw_token = raw_token.expect("checked above");
+        let constraint_state = resolved_constraint_state_from_walker_state(
+            runtime,
+            graph,
+            state,
+            StereoConstraintLayer::Semantic,
+        )?;
+        let marker_events_by_component =
+            rdkit_writer_marker_event_facts_by_component(runtime, state)?;
+        let component_token = &deferred.component_tokens[0];
+        let accepted_flips = accepted_single_component_deferred_token_flips(
+            runtime,
+            graph,
+            state,
+            deferred,
+            component_token,
+            &raw_token,
+            chosen_token,
+            &constraint_state,
+            &marker_events_by_component,
+        )?;
+        if accepted_flips.is_empty() {
             return Err(PyKeyError::new_err(format!(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
         };
-        let component_idx = deferred.component_tokens[0].component_idx;
-        commit_component_token_flip_fact(
-            state,
-            CommittedComponentTokenFlipFact {
-                runtime_component_idx: component_idx,
-                token_flip: chosen_model_flip,
-            },
-        )?;
+        if let [chosen_model_flip] = accepted_flips.as_slice() {
+            commit_component_token_flip_fact(
+                state,
+                CommittedComponentTokenFlipFact {
+                    runtime_component_idx: component_token.component_idx,
+                    token_flip: *chosen_model_flip,
+                },
+            )?;
+        } else {
+            commit_component_token_basis_fact(
+                state,
+                StereoTokenBasisFact {
+                    runtime_component_idx: component_token.component_idx,
+                    selected_begin_token: StereoDirectionToken::from_str(chosen_token)?,
+                },
+            )?;
+            commit_component_token_flip_fact(
+                state,
+                CommittedComponentTokenFlipFact {
+                    runtime_component_idx: component_token.component_idx,
+                    token_flip: StereoTokenFlip::Stored,
+                },
+            )?;
+        }
         return assert_component_token_flip_boundary_invariants(runtime, graph, state);
     }
 
@@ -10187,6 +10340,25 @@ mod tests {
         }
         assert_eq!(expected, state.prefix.as_ref());
         assert!(is_complete_terminal_stereo_state(&graph, &state));
+    }
+
+    #[test]
+    fn acyclic_deferred_marker_basis_keeps_manual_stereo_atoms_surfaces() {
+        for expected in [
+            "CC\\C=C/C(/C=C/CC)=C(/CC)CO",
+            "CC\\C=C/C(/C=C/CC)=C(\\CC)CO",
+        ] {
+            let Some(graph) = prepared_graph_from_smiles(expected) else {
+                return;
+            };
+            let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+            for token in expected.chars().map(|token| token.to_string()) {
+                state = advance_stereo_token_state(&runtime, &graph, &state, &token)
+                    .expect("manual stereo-atoms RDKit surface should stay completable");
+            }
+            assert_eq!(expected, state.prefix.as_ref());
+            assert!(is_complete_terminal_stereo_state(&graph, &state));
+        }
     }
 
     #[test]

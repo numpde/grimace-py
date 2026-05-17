@@ -8,7 +8,7 @@ and `doRandom=True` explicitly.
 from __future__ import annotations
 
 import importlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 try:
@@ -18,6 +18,7 @@ except ImportError as exc:  # pragma: no cover - exercised only in broken instal
     _CORE_IMPORT_ERROR = exc
 else:  # pragma: no cover - exercised in environments with the extension available
     _CORE_IMPORT_ERROR = None
+    _DEVIATION = importlib.import_module("grimace._deviation")
 
 
 def _require_runtime() -> Any:
@@ -129,8 +130,43 @@ def MolToSmilesTokenInventorySuperset(
     )
 
 
+def MolToSmilesDeviation(
+    mol: object,
+    candidate: str | Sequence[str],
+    *,
+    isomericSmiles: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int = -1,
+    canonical: bool = True,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = False,
+    ignoreAtomMapNumbers: bool = False,
+) -> SmilesDeviation | None:
+    """Return the first candidate location outside the molecule's SMILES language.
+
+    A sequence candidate is treated as atomic external tokens: each item must
+    match one legal Grimace decoder token text.
+    """
+
+    _require_runtime()
+    return _DEVIATION.mol_to_smiles_deviation(
+        mol,
+        candidate,
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+    )
+
+
 if _RUNTIME is not None:
     MolToSmilesChoice = _RUNTIME.MolToSmilesChoice
+    SmilesDeviation = _DEVIATION.SmilesDeviation
 
     class _PublicDecoderBase(_RUNTIME._PublicDecoderBase):
         __slots__ = ()
@@ -197,6 +233,13 @@ else:
             _require_runtime()
 
 
+    class SmilesDeviation:  # pragma: no cover - exercised only in broken installs
+        __slots__ = ()
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _require_runtime()
+
+
     class MolToSmilesDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
         pass
 
@@ -209,7 +252,9 @@ __all__ = [
     "MolToSmilesChoice",
     "MolToSmilesDecoder",
     "MolToSmilesDeterminizedDecoder",
+    "MolToSmilesDeviation",
     "MolToSmilesEnum",
     "MolToSmilesTokenInventory",
     "MolToSmilesTokenInventorySuperset",
+    "SmilesDeviation",
 ]

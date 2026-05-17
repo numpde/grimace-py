@@ -2429,6 +2429,46 @@ fn deferred_carrier_choice_constraints_block_neighbor(
     })
 }
 
+enum CarrierCommitmentDecision {
+    Commit,
+    Defer(DeferredCarrierChoiceConstraint),
+    Skip,
+}
+
+fn carrier_commitment_decision_from_support_boundary(
+    context: &StereoEdgeEmissionContext<'_>,
+    state: &StereoEdgeEmissionState<'_>,
+    selected_neighbors: &[isize],
+    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+    side_idx: usize,
+    neighbor_idx: usize,
+) -> CarrierCommitmentDecision {
+    if deferred_carrier_choice_constraints_block_neighbor(
+        deferred_carrier_choice_constraints,
+        side_idx,
+        neighbor_idx,
+    ) {
+        return CarrierCommitmentDecision::Skip;
+    }
+    if row_state_carrier_obligation_neighbor(context, selected_neighbors, side_idx)
+        .is_some_and(|forced_neighbor| forced_neighbor != neighbor_idx)
+    {
+        return CarrierCommitmentDecision::Skip;
+    }
+    if let Some(constraint) = deferred_carrier_choice_constraint_for_row_state(
+        context,
+        state,
+        selected_neighbors,
+        side_idx,
+        neighbor_idx,
+    ) {
+        if should_defer_carrier_commit_for_constraint(&constraint, side_idx, neighbor_idx) {
+            return CarrierCommitmentDecision::Defer(constraint);
+        }
+    }
+    CarrierCommitmentDecision::Commit
+}
+
 fn literal_bond_part(
     graph: &PreparedSmilesGraphData,
     begin_idx: usize,
@@ -2562,34 +2602,26 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
-            if deferred_carrier_choice_constraints_block_neighbor(
+            match carrier_commitment_decision_from_support_boundary(
+                context,
+                state,
+                &updated_neighbors,
                 &deferred_carrier_choice_constraints,
                 side_idx,
                 neighbor_idx,
             ) {
-                continue;
-            }
-            if row_state_carrier_obligation_neighbor(context, &updated_neighbors, side_idx)
-                .is_some_and(|forced_neighbor| forced_neighbor != neighbor_idx)
-            {
-                continue;
-            }
-            if let Some(constraint) = deferred_carrier_choice_constraint_for_row_state(
-                context,
-                state,
-                &updated_neighbors,
-                side_idx,
-                neighbor_idx,
-            ) {
-                if should_defer_carrier_commit_for_constraint(&constraint, side_idx, neighbor_idx) {
+                CarrierCommitmentDecision::Commit => {
+                    updated_neighbors[side_idx] = neighbor_idx as isize;
+                    updated_orientations[side_idx] = edge_orientation;
+                }
+                CarrierCommitmentDecision::Defer(constraint) => {
                     if !deferred_carrier_choice_constraints.contains(&constraint) {
                         deferred_carrier_choice_constraints.push(constraint);
                     }
                     continue;
                 }
+                CarrierCommitmentDecision::Skip => continue,
             }
-            updated_neighbors[side_idx] = neighbor_idx as isize;
-            updated_orientations[side_idx] = edge_orientation;
         }
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor != neighbor_idx as isize {

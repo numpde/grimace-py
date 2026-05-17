@@ -130,7 +130,9 @@ struct DeferredComponentPhaseConstraint {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct IsolatedAromaticBeginSideTokenConstraint {
     begin_side_idx: usize,
+    selected_neighbor_idx: usize,
     selected_token: String,
+    available_begin_neighbors: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2029,7 +2031,7 @@ fn side_has_only_aromatic_carrier_edges(
         })
 }
 
-fn isolated_aromatic_begin_side_token_constraint(
+fn isolated_aromatic_begin_side_token_constraint_from_row_state(
     context: &StereoEdgeEmissionContext<'_>,
     component_begin_atoms: &[isize],
     selected_neighbors: &[isize],
@@ -2067,12 +2069,22 @@ fn isolated_aromatic_begin_side_token_constraint(
     if begin_selected_neighbor < 0 {
         return Ok(None);
     }
+    let Some(available_begin_neighbors) =
+        available_carrier_neighbors_from_row_state(context, selected_neighbors, begin_side_idx)
+    else {
+        return Ok(None);
+    };
+    if !available_begin_neighbors.contains(&(begin_selected_neighbor as usize)) {
+        return Ok(None);
+    }
     Ok(Some(IsolatedAromaticBeginSideTokenConstraint {
         begin_side_idx,
+        selected_neighbor_idx: begin_selected_neighbor as usize,
         selected_token: candidate_base_token(
             &context.side_infos[begin_side_idx],
             begin_selected_neighbor as usize,
         )?,
+        available_begin_neighbors,
     }))
 }
 
@@ -2085,9 +2097,16 @@ fn apply_isolated_aromatic_begin_side_token_constraint(
         return Ok(token);
     };
     let IsolatedAromaticBeginSideTokenConstraint {
-        begin_side_idx: _,
+        begin_side_idx,
+        selected_neighbor_idx,
         selected_token,
+        available_begin_neighbors,
     } = constraint;
+    if !available_begin_neighbors.contains(&selected_neighbor_idx) {
+        return Err(PyValueError::new_err(format!(
+            "Selected aromatic begin-side neighbor {selected_neighbor_idx} is not available for side {begin_side_idx}"
+        )));
+    }
     if emitted_from_endpoint {
         Ok(selected_token)
     } else {
@@ -2451,7 +2470,7 @@ fn emitted_isolated_edge_part(
         }
         let stored_token = apply_isolated_aromatic_begin_side_token_constraint(
             emitted_candidate_token(side_info, begin_idx, end_idx)?,
-            isolated_aromatic_begin_side_token_constraint(
+            isolated_aromatic_begin_side_token_constraint_from_row_state(
                 context,
                 state.component_begin_atoms,
                 &updated_neighbors,

@@ -3765,6 +3765,47 @@ fn marker_placement_state_to_py(
                     .copied()
                     .map(|row_idx| marker_placement_row_to_py(py, component, row_idx))
                     .collect::<PyResult<Vec<_>>>()?;
+                let token_phase_assignment_ids_after_marker_events = runtime
+                    .constraint_model
+                    .token_phase_assignment_ids_for_marker_placement_row_ids(
+                        component_idx,
+                        &row_ids_after_marker_events,
+                    )?;
+                let neighbor_assignment_ids_after_marker_events = runtime
+                    .constraint_model
+                    .neighbor_assignment_ids_for_marker_placement_row_ids(
+                        component_idx,
+                        &row_ids_after_marker_events,
+                    )?;
+                let survivor_side_domains = component
+                    .side_ids
+                    .iter()
+                    .map(|&side_idx| {
+                        let row = PyDict::new(py);
+                        row.set_item("side_idx", side_idx)?;
+                        row.set_item(
+                            "carrier_neighbors",
+                            runtime
+                                .constraint_model
+                                .available_neighbors_for_assignment_ids(
+                                    component_idx,
+                                    side_idx,
+                                    &neighbor_assignment_ids_after_marker_events,
+                                ),
+                        )?;
+                        row.set_item(
+                            "marker_neighbor_sets",
+                            runtime
+                                .constraint_model
+                                .marker_neighbor_sets_for_marker_placement_row_ids(
+                                    component_idx,
+                                    side_idx,
+                                    &row_ids_after_marker_events,
+                                )?,
+                        )?;
+                        Ok(row.unbind())
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
 
                 let row = PyDict::new(py);
                 row.set_item("component_idx", component_idx)?;
@@ -3795,6 +3836,22 @@ fn marker_placement_state_to_py(
                     row_ids_after_marker_events.clone(),
                 )?;
                 row.set_item(
+                    "token_phase_assignment_ids_after_marker_events",
+                    token_phase_assignment_ids_after_marker_events.clone(),
+                )?;
+                row.set_item(
+                    "token_phase_assignment_count_after_marker_events",
+                    token_phase_assignment_ids_after_marker_events.len(),
+                )?;
+                row.set_item(
+                    "neighbor_assignment_ids_after_marker_events",
+                    neighbor_assignment_ids_after_marker_events.clone(),
+                )?;
+                row.set_item(
+                    "neighbor_assignment_count_after_marker_events",
+                    neighbor_assignment_ids_after_marker_events.len(),
+                )?;
+                row.set_item(
                     "row_count_after_marker_events",
                     row_ids_after_marker_events.len(),
                 )?;
@@ -3802,6 +3859,7 @@ fn marker_placement_state_to_py(
                     "is_empty_after_marker_events",
                     row_ids_after_marker_events.is_empty(),
                 )?;
+                row.set_item("survivor_side_domains", survivor_side_domains)?;
                 row.set_item("rows_after_marker_events", rows_after_marker_events)?;
                 Ok(row.unbind())
             })

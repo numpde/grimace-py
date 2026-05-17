@@ -1181,6 +1181,42 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 component["row_count_after_marker_events"],
                                 len(component["rows_after_marker_events"]),
                             )
+                            self.assertEqual(
+                                component[
+                                    "token_phase_assignment_count_after_marker_events"
+                                ],
+                                len(
+                                    component[
+                                        "token_phase_assignment_ids_after_marker_events"
+                                    ]
+                                ),
+                            )
+                            self.assertEqual(
+                                component[
+                                    "neighbor_assignment_count_after_marker_events"
+                                ],
+                                len(
+                                    component[
+                                        "neighbor_assignment_ids_after_marker_events"
+                                    ]
+                                ),
+                            )
+                            self.assertEqual(
+                                set(component["side_ids"]),
+                                {
+                                    domain["side_idx"]
+                                    for domain in component["survivor_side_domains"]
+                                },
+                            )
+                            for domain in component["survivor_side_domains"]:
+                                self.assertIsInstance(
+                                    domain["carrier_neighbors"],
+                                    list,
+                                )
+                                self.assertIsInstance(
+                                    domain["marker_neighbor_sets"],
+                                    list,
+                                )
                             self.assertLessEqual(
                                 component["row_count_after_marker_events"],
                                 component["row_count_before_marker_events"],
@@ -1271,6 +1307,33 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             self.assertEqual(
                                 component["row_count_after_marker_events"],
                                 len(component["rows_after_marker_events"]),
+                            )
+                            self.assertEqual(
+                                component[
+                                    "token_phase_assignment_count_after_marker_events"
+                                ],
+                                len(
+                                    component[
+                                        "token_phase_assignment_ids_after_marker_events"
+                                    ]
+                                ),
+                            )
+                            self.assertEqual(
+                                component[
+                                    "neighbor_assignment_count_after_marker_events"
+                                ],
+                                len(
+                                    component[
+                                        "neighbor_assignment_ids_after_marker_events"
+                                    ]
+                                ),
+                            )
+                            self.assertEqual(
+                                set(component["side_ids"]),
+                                {
+                                    domain["side_idx"]
+                                    for domain in component["survivor_side_domains"]
+                                },
                             )
                             self.assertLessEqual(
                                 component["row_count_after_marker_events"],

@@ -1150,6 +1150,37 @@ impl StereoConstraintModel {
         values.all(|value| value == first).then_some(first)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn available_neighbors_for_assignment_ids(
+        &self,
+        component_idx: usize,
+        side_idx: usize,
+        assignment_ids: &[usize],
+    ) -> Vec<usize> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Vec::new();
+        };
+        let Some(position) = component
+            .side_ids
+            .iter()
+            .position(|&component_side_idx| component_side_idx == side_idx)
+        else {
+            return Vec::new();
+        };
+        assignment_ids
+            .iter()
+            .filter_map(|&assignment_id| {
+                component
+                    .all_neighbor_assignments
+                    .get(assignment_id)
+                    .and_then(|assignment| assignment.get(position))
+                    .copied()
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
     pub(crate) fn token_phase_assignment_ids_for_neighbor_assignment_ids(
         &self,
         component_idx: usize,
@@ -1196,6 +1227,30 @@ impl StereoConstraintModel {
             })
             .collect();
         Ok(assignment_ids)
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn neighbor_assignment_ids_for_token_phase_assignment_ids(
+        &self,
+        component_idx: usize,
+        token_phase_assignment_ids: &[usize],
+    ) -> PyResult<Vec<usize>> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Err(PyValueError::new_err(
+                "token phase query component index out of range",
+            ));
+        };
+
+        let mut neighbor_assignment_ids = BTreeSet::new();
+        for &assignment_id in token_phase_assignment_ids {
+            let Some(assignment) = component.all_token_phase_assignments.get(assignment_id) else {
+                return Err(PyValueError::new_err(
+                    "token phase assignment index out of range",
+                ));
+            };
+            neighbor_assignment_ids.insert(assignment.neighbor_assignment_id);
+        }
+        Ok(neighbor_assignment_ids.into_iter().collect())
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -1271,6 +1326,83 @@ impl StereoConstraintModel {
                     .then_some(row_id)
             })
             .collect())
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn token_phase_assignment_ids_for_marker_placement_row_ids(
+        &self,
+        component_idx: usize,
+        row_ids: &[usize],
+    ) -> PyResult<Vec<usize>> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Err(PyValueError::new_err(
+                "marker placement query component index out of range",
+            ));
+        };
+
+        let mut token_phase_assignment_ids = BTreeSet::new();
+        for &row_id in row_ids {
+            let Some(row) = component.all_marker_placement_rows.get(row_id) else {
+                return Err(PyValueError::new_err(
+                    "marker placement row index out of range",
+                ));
+            };
+            token_phase_assignment_ids.insert(row.token_phase_assignment_id);
+        }
+        Ok(token_phase_assignment_ids.into_iter().collect())
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn neighbor_assignment_ids_for_marker_placement_row_ids(
+        &self,
+        component_idx: usize,
+        row_ids: &[usize],
+    ) -> PyResult<Vec<usize>> {
+        let token_phase_assignment_ids =
+            self.token_phase_assignment_ids_for_marker_placement_row_ids(component_idx, row_ids)?;
+        self.neighbor_assignment_ids_for_token_phase_assignment_ids(
+            component_idx,
+            &token_phase_assignment_ids,
+        )
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn marker_neighbor_sets_for_marker_placement_row_ids(
+        &self,
+        component_idx: usize,
+        side_idx: usize,
+        row_ids: &[usize],
+    ) -> PyResult<Vec<Vec<usize>>> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Err(PyValueError::new_err(
+                "marker placement query component index out of range",
+            ));
+        };
+        let Some(side_position) = component
+            .side_ids
+            .iter()
+            .position(|&component_side_idx| component_side_idx == side_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "marker placement query side outside model component",
+            ));
+        };
+
+        let mut marker_neighbor_sets = BTreeSet::new();
+        for &row_id in row_ids {
+            let Some(row) = component.all_marker_placement_rows.get(row_id) else {
+                return Err(PyValueError::new_err(
+                    "marker placement row index out of range",
+                ));
+            };
+            let Some(neighbor_set) = row.marker_neighbor_sets.get(side_position) else {
+                return Err(PyValueError::new_err(
+                    "marker placement row side index out of range",
+                ));
+            };
+            marker_neighbor_sets.insert(neighbor_set.clone());
+        }
+        Ok(marker_neighbor_sets.into_iter().collect())
     }
 
     fn marker_event_target(
@@ -2321,6 +2453,34 @@ mod tests {
             )
             .expect("marker event query should be valid");
         assert_eq!(vec![1, 4, 7, 10], only_neighbor_three);
+        assert_eq!(
+            vec![0, 1, 2, 3],
+            model
+                .token_phase_assignment_ids_for_marker_placement_row_ids(0, &only_neighbor_three)
+                .expect("marker row token phase query should be valid"),
+        );
+        assert_eq!(
+            vec![0, 1],
+            model
+                .neighbor_assignment_ids_for_marker_placement_row_ids(0, &only_neighbor_three)
+                .expect("marker row neighbor assignment query should be valid"),
+        );
+        assert_eq!(
+            vec![0, 3],
+            model.available_neighbors_for_assignment_ids(0, 0, &[0, 1]),
+        );
+        assert_eq!(
+            vec![vec![3]],
+            model
+                .marker_neighbor_sets_for_marker_placement_row_ids(0, 0, &only_neighbor_three)
+                .expect("marker row marker-neighbor query should be valid"),
+        );
+        assert_eq!(
+            vec![vec![4]],
+            model
+                .marker_neighbor_sets_for_marker_placement_row_ids(0, 1, &only_neighbor_three)
+                .expect("marker row marker-neighbor query should be valid"),
+        );
 
         let contradicted = model
             .filter_marker_placement_row_ids_for_marker_event_facts(

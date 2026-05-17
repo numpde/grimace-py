@@ -6000,10 +6000,10 @@ fn part_to_action(part: Part) -> Option<WalkerAction> {
     }
 }
 
-// RDKit-writer observation, not generic stereo semantics. This remains a
-// descriptive split of the current adjustment while the support-state boundary
-// grows named writer-policy facts for each branch.
-fn rdkit_component_token_flip_adjustment(
+// RDKit-writer observation, not generic stereo semantics. This builder keeps
+// the root-side and adjacent-side reasons named before they become compact
+// support-state facts.
+fn rdkit_token_flip_adjustment_observation_from_state(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
@@ -6160,7 +6160,7 @@ fn legacy_procedural_inferred_component_token_flip(
             begin_atom_idx = selected_side.endpoint_atom_idx as isize;
         }
     }
-    let adjustment = rdkit_component_token_flip_adjustment(
+    let adjustment = rdkit_token_flip_adjustment_observation_from_state(
         runtime,
         state,
         &resolved_selected_neighbors,
@@ -6477,7 +6477,7 @@ fn component_token_observation_inputs(
         .map(|side_idx| state.stereo_first_emitted_candidates[side_idx])
         .filter(|&neighbor_idx| neighbor_idx >= 0)
         .map(|neighbor_idx| neighbor_idx as usize);
-    let adjustment = rdkit_component_token_flip_adjustment(
+    let adjustment = rdkit_token_flip_adjustment_observation_from_state(
         runtime,
         state,
         resolved_selected_neighbors,

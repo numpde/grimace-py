@@ -122,7 +122,7 @@ Adjacent model state:
 
 Code:
 
-- `rust/src/rooted_stereo.rs`: `rdkit_component_token_flip_adjustment`
+- `rust/src/rooted_stereo.rs`: `rdkit_token_flip_adjustment_observation_from_state`
 - `rust/src/rooted_stereo.rs`: `component_token_inference_inputs`
 - `rust/src/rooted_stereo.rs`: `component_token_constraint_from_state`
 - `rust/src/rooted_stereo.rs`: `inferred_component_token_flip`
@@ -136,9 +136,9 @@ Current decision:
 - The legacy procedural inference function remains as an equivalence oracle
   and still encodes the old branch logic for the currently pinned branch
   shapes.
-- `rdkit_component_token_flip_adjustment` is still a local RDKit-observed
-  adjustment input derived from root, begin-side orientation, first-emitted
-  candidate, and adjacent two-candidate context.
+- `rdkit_token_flip_adjustment_observation_from_state` is a local
+  RDKit-observed observation builder derived from root, begin-side orientation,
+  first-emitted candidate, and adjacent two-candidate context.
 
 Adjacent model state:
 
@@ -248,11 +248,12 @@ classification below is about ownership of the support-shaping decision.
 
 Two areas should be treated as decisions before broad implementation:
 
-1. `rdkit_component_token_flip_adjustment`: this is already named as RDKit
-   behavior, but the exact writer-policy rule is still encoded as local logic.
-   Before promoting it, record which pinned witnesses require each branch and
-   whether the adjustment belongs to root policy, first-emitted-candidate
-   policy, adjacent two-candidate policy, or a combined rule.
+1. `rdkit_token_flip_adjustment_observation_from_state`: this is already named
+   as RDKit behavior, but the exact writer-policy rule is still encoded as
+   local observation-building logic. Before promoting it, record which pinned
+   witnesses require each branch and whether the adjustment belongs to root
+   policy, first-emitted-candidate policy, adjacent two-candidate policy, or a
+   combined rule.
 
 2. Marker placement and ring projection: marker-row survivor state is useful,
    but runtime promotion must not blur principled stereo constraints with RDKit

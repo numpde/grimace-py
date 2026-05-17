@@ -4,10 +4,10 @@ Branch: `stereo-constraint-model`
 
 ## Purpose
 
-This note records the decision behind the `rdkit_component_token_flip_adjustment`
-slice. The adjustment is RDKit writer policy, not generic stereo semantics. It
-should be decomposed into named observations before any replacement of the
-current helper.
+This note records the decision behind the
+`rdkit_token_flip_adjustment_observation_from_state` slice. The adjustment is
+RDKit writer policy, not generic stereo semantics. It should be decomposed into
+named observations before any replacement of the current helper.
 
 ## Source References
 
@@ -68,7 +68,7 @@ surface without claiming this is principled chemistry semantics.
 
 ## Next Implementation Rule
 
-Do not promote `rdkit_component_token_flip_adjustment` as one opaque primitive.
-The replacement should consume named RDKit writer-policy observations at the
-support-state boundary, with the current helper retained only as a temporary
-shadow/equivalence oracle.
+Do not promote `rdkit_token_flip_adjustment_observation_from_state` as one
+opaque primitive. The replacement should consume named RDKit writer-policy
+observations at the support-state boundary, with the current helper retained
+only as a temporary shadow/equivalence oracle.

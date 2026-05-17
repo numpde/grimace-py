@@ -16,7 +16,7 @@ still hide RDKit-specific policy.
   `RdkitTraversalWriter` provide the right high-level split. The enum now says
   explicitly which layer is molecule semantics and which layers are RDKit writer
   exclusions.
-- `rdkit_component_token_flip_adjustment` and
+- `rdkit_token_flip_adjustment_observation_from_state` and
   `RdkitTokenFlipAdjustmentObservations` are correctly named as RDKit writer
   policy, not generic stereo chemistry. The pinned witness note in
   `notes/018_rdkit_token_flip_adjustment_witnesses.md` gives this path a source

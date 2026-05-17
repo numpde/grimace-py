@@ -111,8 +111,8 @@ Why later:
 
 ## Explicitly Blocked Until Decision Rows Are Resolved
 
-- `rdkit_component_token_flip_adjustment`: blocked on the RDKit token-flip
-  adjustment policy decision.
+- `rdkit_token_flip_adjustment_observation_from_state`: blocked on the RDKit
+  token-flip adjustment policy decision.
 - `rdkit_ring_closure_projected_marker_slots` and runtime promotion of marker
   placement/ring projection: blocked on the RDKit marker-placement promotion
   policy decision.

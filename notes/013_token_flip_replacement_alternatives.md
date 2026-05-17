@@ -93,8 +93,8 @@ Still deliberately not done:
 - `legacy_procedural_inferred_component_token_flip` has not been deleted. It
   still contains historical branch logic, but only as an equivalence oracle for
   the observation path.
-- `rdkit_component_token_flip_adjustment` is still an explicit RDKit writer
-  adjustment input, not a derived model fact.
+- `rdkit_token_flip_adjustment_observation_from_state` is still an explicit
+  RDKit writer observation builder, not a derived model fact.
 - Component phase, component begin atom, selected begin token, first-emitted
   candidate, and RDKit token-flip adjustment are named observations, but they
   are still extracted from walker state. They are not yet owned by the
@@ -493,9 +493,9 @@ Exit criteria:
 - Current completed-output fixtures exercise isolated selected-begin,
   isolated all-single, coupled one-candidate, and coupled two-candidate token
   branches. Do not claim full generality beyond those observed branch shapes.
-- `rdkit_component_token_flip_adjustment` remains suspicious. In this plan it
-  becomes a named observation fact first; deriving or replacing it is a later
-  slice.
+- `rdkit_token_flip_adjustment_observation_from_state` remains suspicious. In
+  this plan it becomes a named observation fact first; deriving or replacing it
+  is a later slice.
 - Component phase and begin atom are still walker fields. This plan observes
   them, but does not yet replace their source of truth.
 - If the observation fact enum grows to mirror the old helper branch for
@@ -521,7 +521,8 @@ Exit criteria:
   branch shapes directly.
 - Decide which named token-observation inputs should become constraint-model
   facts versus remaining runtime traversal observations.
-- Split `rdkit_component_token_flip_adjustment` into a named writer-adjustment
-  fact, or prove it can be derived from less RDKit-specific model facts.
+- Split `rdkit_token_flip_adjustment_observation_from_state` into a named
+  writer-adjustment fact, or prove it can be derived from less RDKit-specific
+  model facts.
 - Keep expanding fixtures only where they exercise distinct observation
   shapes; do not grow the legacy oracle as a parallel implementation.

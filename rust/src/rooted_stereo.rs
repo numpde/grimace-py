@@ -3715,6 +3715,93 @@ fn mixed_constraint_state_to_py(
     Ok(state_by_layer.unbind())
 }
 
+struct MarkerRowSurvivorSideDomain {
+    side_idx: usize,
+    carrier_neighbors: Vec<usize>,
+    marker_neighbor_sets: Vec<Vec<usize>>,
+}
+
+struct MarkerRowSurvivorComponentState {
+    component_idx: usize,
+    token_phase_assignment_ids: Vec<usize>,
+    row_ids_before_marker_events: Vec<usize>,
+    row_ids_after_marker_events: Vec<usize>,
+    token_phase_assignment_ids_after_marker_events: Vec<usize>,
+    neighbor_assignment_ids_after_marker_events: Vec<usize>,
+    side_domains: Vec<MarkerRowSurvivorSideDomain>,
+}
+
+fn marker_row_survivor_component_state(
+    runtime: &StereoWalkerRuntimeData,
+    component_idx: usize,
+    token_phase_assignment_ids: &[usize],
+    marker_event_facts: &[StereoMarkerEventFact],
+) -> PyResult<MarkerRowSurvivorComponentState> {
+    let Some(component) = runtime.constraint_model.components.get(component_idx) else {
+        return Err(PyValueError::new_err(
+            "marker row survivor component index out of range",
+        ));
+    };
+    let row_ids_before_marker_events = runtime
+        .constraint_model
+        .marker_placement_row_ids_for_token_phase_assignment_ids(
+            component_idx,
+            token_phase_assignment_ids,
+        )?;
+    let row_ids_after_marker_events = runtime
+        .constraint_model
+        .filter_marker_placement_row_ids_for_marker_event_facts(
+            component_idx,
+            &row_ids_before_marker_events,
+            marker_event_facts,
+        )?;
+    let token_phase_assignment_ids_after_marker_events = runtime
+        .constraint_model
+        .token_phase_assignment_ids_for_marker_placement_row_ids(
+            component_idx,
+            &row_ids_after_marker_events,
+        )?;
+    let neighbor_assignment_ids_after_marker_events = runtime
+        .constraint_model
+        .neighbor_assignment_ids_for_marker_placement_row_ids(
+            component_idx,
+            &row_ids_after_marker_events,
+        )?;
+    let side_domains = component
+        .side_ids
+        .iter()
+        .map(|&side_idx| {
+            Ok(MarkerRowSurvivorSideDomain {
+                side_idx,
+                carrier_neighbors: runtime
+                    .constraint_model
+                    .available_neighbors_for_assignment_ids(
+                        component_idx,
+                        side_idx,
+                        &neighbor_assignment_ids_after_marker_events,
+                    ),
+                marker_neighbor_sets: runtime
+                    .constraint_model
+                    .marker_neighbor_sets_for_marker_placement_row_ids(
+                        component_idx,
+                        side_idx,
+                        &row_ids_after_marker_events,
+                    )?,
+            })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    Ok(MarkerRowSurvivorComponentState {
+        component_idx,
+        token_phase_assignment_ids: token_phase_assignment_ids.to_vec(),
+        row_ids_before_marker_events,
+        row_ids_after_marker_events,
+        token_phase_assignment_ids_after_marker_events,
+        neighbor_assignment_ids_after_marker_events,
+        side_domains,
+    })
+}
+
 fn marker_placement_state_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -3743,72 +3830,36 @@ fn marker_placement_state_to_py(
                     .get(component_idx)
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
-                let row_ids_before_marker_events = runtime
-                    .constraint_model
-                    .marker_placement_row_ids_for_token_phase_assignment_ids(
-                        component_idx,
-                        token_phase_assignment_ids,
-                    )?;
                 let marker_event_facts = marker_event_facts_by_component
                     .get(component_idx)
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
-                let row_ids_after_marker_events = runtime
-                    .constraint_model
-                    .filter_marker_placement_row_ids_for_marker_event_facts(
-                        component_idx,
-                        &row_ids_before_marker_events,
-                        marker_event_facts,
-                    )?;
-                let rows_after_marker_events = row_ids_after_marker_events
+                let survivor_state = marker_row_survivor_component_state(
+                    runtime,
+                    component_idx,
+                    token_phase_assignment_ids,
+                    marker_event_facts,
+                )?;
+                let rows_after_marker_events = survivor_state
+                    .row_ids_after_marker_events
                     .iter()
                     .copied()
                     .map(|row_idx| marker_placement_row_to_py(py, component, row_idx))
                     .collect::<PyResult<Vec<_>>>()?;
-                let token_phase_assignment_ids_after_marker_events = runtime
-                    .constraint_model
-                    .token_phase_assignment_ids_for_marker_placement_row_ids(
-                        component_idx,
-                        &row_ids_after_marker_events,
-                    )?;
-                let neighbor_assignment_ids_after_marker_events = runtime
-                    .constraint_model
-                    .neighbor_assignment_ids_for_marker_placement_row_ids(
-                        component_idx,
-                        &row_ids_after_marker_events,
-                    )?;
-                let survivor_side_domains = component
-                    .side_ids
+                let survivor_side_domains = survivor_state
+                    .side_domains
                     .iter()
-                    .map(|&side_idx| {
+                    .map(|domain| {
                         let row = PyDict::new(py);
-                        row.set_item("side_idx", side_idx)?;
-                        row.set_item(
-                            "carrier_neighbors",
-                            runtime
-                                .constraint_model
-                                .available_neighbors_for_assignment_ids(
-                                    component_idx,
-                                    side_idx,
-                                    &neighbor_assignment_ids_after_marker_events,
-                                ),
-                        )?;
-                        row.set_item(
-                            "marker_neighbor_sets",
-                            runtime
-                                .constraint_model
-                                .marker_neighbor_sets_for_marker_placement_row_ids(
-                                    component_idx,
-                                    side_idx,
-                                    &row_ids_after_marker_events,
-                                )?,
-                        )?;
+                        row.set_item("side_idx", domain.side_idx)?;
+                        row.set_item("carrier_neighbors", domain.carrier_neighbors.clone())?;
+                        row.set_item("marker_neighbor_sets", domain.marker_neighbor_sets.clone())?;
                         Ok(row.unbind())
                     })
                     .collect::<PyResult<Vec<_>>>()?;
 
                 let row = PyDict::new(py);
-                row.set_item("component_idx", component_idx)?;
+                row.set_item("component_idx", survivor_state.component_idx)?;
                 row.set_item(
                     "runtime_component_ids",
                     component.runtime_component_ids.clone(),
@@ -3816,48 +3867,56 @@ fn marker_placement_state_to_py(
                 row.set_item("side_ids", component.side_ids.clone())?;
                 row.set_item(
                     "token_phase_assignment_ids",
-                    token_phase_assignment_ids.to_vec(),
+                    survivor_state.token_phase_assignment_ids.clone(),
                 )?;
                 row.set_item(
                     "token_phase_assignment_count",
-                    token_phase_assignment_ids.len(),
+                    survivor_state.token_phase_assignment_ids.len(),
                 )?;
                 row.set_item(
                     "row_ids_before_marker_events",
-                    row_ids_before_marker_events.clone(),
+                    survivor_state.row_ids_before_marker_events.clone(),
                 )?;
                 row.set_item(
                     "row_count_before_marker_events",
-                    row_ids_before_marker_events.len(),
+                    survivor_state.row_ids_before_marker_events.len(),
                 )?;
                 row.set_item("marker_event_count", marker_event_facts.len())?;
                 row.set_item(
                     "row_ids_after_marker_events",
-                    row_ids_after_marker_events.clone(),
+                    survivor_state.row_ids_after_marker_events.clone(),
                 )?;
                 row.set_item(
                     "token_phase_assignment_ids_after_marker_events",
-                    token_phase_assignment_ids_after_marker_events.clone(),
+                    survivor_state
+                        .token_phase_assignment_ids_after_marker_events
+                        .clone(),
                 )?;
                 row.set_item(
                     "token_phase_assignment_count_after_marker_events",
-                    token_phase_assignment_ids_after_marker_events.len(),
+                    survivor_state
+                        .token_phase_assignment_ids_after_marker_events
+                        .len(),
                 )?;
                 row.set_item(
                     "neighbor_assignment_ids_after_marker_events",
-                    neighbor_assignment_ids_after_marker_events.clone(),
+                    survivor_state
+                        .neighbor_assignment_ids_after_marker_events
+                        .clone(),
                 )?;
                 row.set_item(
                     "neighbor_assignment_count_after_marker_events",
-                    neighbor_assignment_ids_after_marker_events.len(),
+                    survivor_state
+                        .neighbor_assignment_ids_after_marker_events
+                        .len(),
                 )?;
                 row.set_item(
                     "row_count_after_marker_events",
-                    row_ids_after_marker_events.len(),
+                    survivor_state.row_ids_after_marker_events.len(),
                 )?;
                 row.set_item(
                     "is_empty_after_marker_events",
-                    row_ids_after_marker_events.is_empty(),
+                    survivor_state.row_ids_after_marker_events.is_empty(),
                 )?;
                 row.set_item("survivor_side_domains", survivor_side_domains)?;
                 row.set_item("rows_after_marker_events", rows_after_marker_events)?;

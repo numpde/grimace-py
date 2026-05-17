@@ -18,6 +18,29 @@ supported branch shapes.
 
 The next design question is where that derivation should live.
 
+## North Star
+
+Rows are not the goal. They are one candidate representation for making finite
+stereo choices inspectable while the online walker narrows support. The larger
+goal is a mathematically clean, online stereo-support enumerator that exactly
+reproduces RDKit's `canonical=False, doRandom=True` writer support, without a
+generate-then-repair phase and without hiding support-shaping decisions in local
+procedural patches.
+
+The target model should separate:
+
+- principled SMILES/chemistry constraints: graph and stereo assignments that
+  emitted strings must preserve when parsed; and
+- RDKit writer policy: traversal, directional-marker placement, token-flip
+  adjustment, fragment/root behavior, and other serializer quirks needed for
+  exact string parity with RDKit.
+
+Rows remain acceptable only if they are the clearest bounded representation of
+that constraint system. If a direct fact/constraint propagator, compact
+automaton, or hybrid representation gives a cleaner online algorithm with the
+same exact support and complexity guarantees, rows should be treated as
+diagnostics or test-oracle scaffolding rather than production architecture.
+
 ## Status As Of 2026-05-16
 
 The branch has moved past the original one-branch replacement target.

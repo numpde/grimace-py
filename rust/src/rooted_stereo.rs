@@ -798,7 +798,10 @@ fn directional_token_role(prefix: &str, next_action: Option<&WalkerAction>) -> S
     }
 }
 
-fn active_directional_marker_side(
+// Compatibility diagnostic for the old selected-carrier marker path. This is
+// deliberately narrower than marker-placement row semantics: a visible marker
+// on a complement/bridge candidate may still be valid RDKit writer output.
+fn selected_carrier_directional_marker_side(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     begin_idx: usize,
@@ -931,7 +934,7 @@ fn record_directional_marker_trace(
             let begin = begin_idx as usize;
             let end = end_idx as usize;
             if let Some((component_idx, side_idx, selected_neighbor_idx)) =
-                active_directional_marker_side(runtime, state, begin, end)
+                selected_carrier_directional_marker_side(runtime, state, begin, end)
             {
                 let endpoint_atom_idx = runtime.side_infos[side_idx].endpoint_atom_idx;
                 (
@@ -6757,6 +6760,10 @@ fn marker_event_for_deferred_component_token(
     let end_idx = deferred.end_idx as usize;
     let edge = canonical_edge(begin_idx, end_idx);
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    // Compatibility path: this treats a visible deferred marker as an event for
+    // the selected carrier edge. Complement-candidate marker placement must
+    // move through marker-placement rows before this can become the runtime
+    // source of truth.
     let Some(side_idx) = runtime
         .edge_to_side_ids
         .get(&edge)

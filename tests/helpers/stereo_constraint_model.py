@@ -33,6 +33,9 @@ class PinnedStereoConstraintModelCase:
     expected_rdkit_local_writer_assignment_count: int
     expected_rdkit_traversal_writer_assignment_count: int
     expected_grimace_runtime_support_count: int
+    expected_shared_carrier_group_count: int
+    expected_shared_carrier_resolution_changed_row_count: int
+    expected_joined_support_boundary_mismatch_count: int
     expected_token_flip_inference_branch_counts: tuple[tuple[str, int], ...]
     expected_token_flip_adjustment_reason_counts: tuple[tuple[str, int], ...]
     expected_rdkit_sampled_support_count: int | None
@@ -445,6 +448,27 @@ def load_pinned_stereo_constraint_model_cases(
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
+                expected_shared_carrier_group_count=optional_nonnegative_int(
+                    raw_case,
+                    field_name="expected_shared_carrier_group_count",
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                )
+                or 0,
+                expected_shared_carrier_resolution_changed_row_count=optional_nonnegative_int(
+                    raw_case,
+                    field_name="expected_shared_carrier_resolution_changed_row_count",
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                )
+                or 0,
+                expected_joined_support_boundary_mismatch_count=optional_nonnegative_int(
+                    raw_case,
+                    field_name="expected_joined_support_boundary_mismatch_count",
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                )
+                or 0,
                 expected_token_flip_inference_branch_counts=(
                     expected_token_flip_inference_branch_counts
                 ),

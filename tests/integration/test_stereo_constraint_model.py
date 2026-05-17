@@ -461,7 +461,6 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
 
     def test_shared_carrier_resolution_is_assignment_state_explained(self) -> None:
         saw_shared_group = False
-        saw_changed_resolution = False
 
         for case in self.cases:
             mol = parse_smiles(case.smiles)
@@ -471,26 +470,39 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             saw_shared_group |= bool(summary["shared_carrier_groups"])
 
             with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(
+                    case.expected_shared_carrier_group_count,
+                    len(summary["shared_carrier_groups"]),
+                )
+                changed_resolution_row_count = 0
+                joined_boundary_mismatch_count = 0
                 for row in rows:
                     self.assertEqual(
                         len(summary["shared_carrier_groups"]),
                         len(row["shared_carrier_resolution"]),
                     )
+                    if not row["shadow_debug"]["joined_support_boundary_matches_runtime"]:
+                        joined_boundary_mismatch_count += 1
                     for group in row["shared_carrier_resolution"]:
                         changed = group["left_changed"] or group["right_changed"]
-                        saw_changed_resolution |= changed
+                        if changed:
+                            changed_resolution_row_count += 1
                         self.assertTrue(
                             group["left_change_explained_by_assignment_state"]
                         )
                         self.assertTrue(
                             group["right_change_explained_by_assignment_state"]
                         )
+                self.assertEqual(
+                    case.expected_shared_carrier_resolution_changed_row_count,
+                    changed_resolution_row_count,
+                )
+                self.assertEqual(
+                    case.expected_joined_support_boundary_mismatch_count,
+                    joined_boundary_mismatch_count,
+                )
 
-        # Current pinned witnesses exercise other traversal coupling, but not
-        # this older ambiguous-shared-edge repair hook. Keep that explicit so
-        # the next witness that hits it is reviewed deliberately.
-        self.assertFalse(saw_shared_group)
-        self.assertFalse(saw_changed_resolution)
+        self.assertTrue(saw_shared_group)
 
     def test_terminal_carrier_resolution_has_assignment_state_shadow(self) -> None:
         for case in self.cases:
@@ -672,6 +684,41 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 for row in rows
             )
         )
+
+    def test_shared_carrier_witness_diagnostics_match_runtime_support(self) -> None:
+        cases = tuple(
+            case
+            for case in self.cases
+            if case.expected_shared_carrier_group_count > 0
+        )
+        self.assertTrue(cases)
+
+        for case in cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+            rows = _core._stereo_constraint_output_facts(prepared)
+            diagnostic_outputs = frozenset(row["smiles"] for row in rows)
+            runtime_outputs = public_enum_support(
+                mol,
+                **supported_public_kwargs(
+                    isomericSmiles=True,
+                    rootedAtAtom=-1,
+                ),
+            )
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(runtime_outputs, diagnostic_outputs)
+                self.assertEqual(
+                    case.expected_grimace_runtime_support_count,
+                    len(runtime_outputs),
+                )
+                self.assertTrue(
+                    all(
+                        row["shadow_debug"]["joined_support_boundary_matches_runtime"]
+                        for row in rows
+                    )
+                )
 
     def test_component_token_phase_is_separate_from_carrier_assignment(self) -> None:
         saw_stored_token_flip = False

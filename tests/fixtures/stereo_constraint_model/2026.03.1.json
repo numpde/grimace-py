@@ -100,6 +100,34 @@
     {
       "expected_component_side_domain_sizes": [
         [
+          2,
+          2,
+          2,
+          1
+        ]
+      ],
+      "expected_grimace_runtime_support_count": 144,
+      "expected_joined_support_boundary_mismatch_count": 0,
+      "expected_rdkit_local_writer_assignment_count": 8,
+      "expected_rdkit_traversal_writer_assignment_count": 8,
+      "expected_semantic_assignment_count": 8,
+      "expected_shared_carrier_group_count": 1,
+      "expected_shared_carrier_resolution_changed_row_count": 0,
+      "expected_token_flip_adjustment_reason_counts": {
+        "root_begin_side_orientation": 64,
+        "value_true": 64
+      },
+      "expected_token_flip_inference_branch_counts": {
+        "coupled_one_candidate_begin_side": 24,
+        "coupled_two_candidate_begin_side": 120
+      },
+      "id": "ambiguous_shared_carrier_substituted_diene",
+      "smiles": "CC/C(C)=C(\\C)C(/C)=C/C",
+      "source": "manual: substituted diene exercising ambiguous_shared_edge_groups"
+    },
+    {
+      "expected_component_side_domain_sizes": [
+        [
           1,
           2,
           2,

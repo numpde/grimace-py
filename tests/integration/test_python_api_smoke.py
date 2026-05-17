@@ -29,6 +29,7 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertTrue(callable(grimace.MolToSmilesChoice))
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
         self.assertTrue(callable(grimace.MolToSmilesDeterminizedDecoder))
+        self.assertTrue(callable(grimace.MolToSmilesDeviation))
         self.assertTrue(callable(grimace.MolToSmilesEnum))
         self.assertTrue(callable(grimace.MolToSmilesTokenInventory))
         self.assertTrue(callable(grimace.MolToSmilesTokenInventorySuperset))

@@ -14,9 +14,9 @@ use crate::bond_stereo_constraints::{
     stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
     StereoComponentConstraintModel, StereoComponentPhase, StereoConstraintFact,
     StereoConstraintLayer, StereoConstraintModel, StereoConstraintState, StereoDirectionToken,
-    StereoMarkerEventFact, StereoSideInfo, StereoSideInfoBuild, StereoTokenFlip,
-    StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole, CIS_STEREO_BOND_KINDS,
-    TRANS_STEREO_BOND_KINDS,
+    StereoMarkerEventFact, StereoSideInfo, StereoSideInfoBuild, StereoTokenBasisFact,
+    StereoTokenFlip, StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
+    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -133,7 +133,7 @@ struct DeferredComponentPhaseConstraint {
 struct IsolatedComponentTokenBasisState {
     begin_side_idx: usize,
     selected_neighbor_idx: usize,
-    selected_token: String,
+    fact: StereoTokenBasisFact,
     available_begin_neighbors: Vec<usize>,
 }
 
@@ -2096,13 +2096,17 @@ fn isolated_component_token_basis_state_from_row_state(
     if !available_begin_neighbors.contains(&(begin_selected_neighbor as usize)) {
         return Ok(None);
     }
+    let selected_token = candidate_base_token(
+        &context.side_infos[begin_side_idx],
+        begin_selected_neighbor as usize,
+    )?;
     Ok(Some(IsolatedComponentTokenBasisState {
         begin_side_idx,
         selected_neighbor_idx: begin_selected_neighbor as usize,
-        selected_token: candidate_base_token(
-            &context.side_infos[begin_side_idx],
-            begin_selected_neighbor as usize,
-        )?,
+        fact: StereoTokenBasisFact {
+            runtime_component_idx: component_idx,
+            selected_begin_token: StereoDirectionToken::from_str(&selected_token)?,
+        },
         available_begin_neighbors,
     }))
 }
@@ -2120,10 +2124,11 @@ fn isolated_component_stored_token_from_basis_state(
             basis_state.selected_neighbor_idx, basis_state.begin_side_idx
         )));
     }
+    let selected_token = basis_state.fact.selected_begin_token.as_str();
     if emitted_from_endpoint {
-        Ok(basis_state.selected_token)
+        Ok(selected_token.to_owned())
     } else {
-        flip_direction_token(&basis_state.selected_token)
+        flip_direction_token(selected_token)
     }
 }
 
@@ -2145,6 +2150,11 @@ fn isolated_component_stored_token_from_token_state(
     else {
         return emitted_candidate_token(side_info, begin_idx, end_idx);
     };
+    if basis_state.fact.runtime_component_idx != side_info.component_idx {
+        return Err(PyValueError::new_err(
+            "isolated token-basis fact references the wrong runtime component",
+        ));
+    }
     isolated_component_stored_token_from_basis_state(basis_state, emitted_from_endpoint)
 }
 

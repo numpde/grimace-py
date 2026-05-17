@@ -96,6 +96,19 @@ impl StereoDirectionToken {
             ))),
         }
     }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Slash => "/",
+            Self::Backslash => "\\",
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StereoTokenBasisFact {
+    pub(crate) runtime_component_idx: usize,
+    pub(crate) selected_begin_token: StereoDirectionToken,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

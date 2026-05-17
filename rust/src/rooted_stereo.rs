@@ -3153,6 +3153,48 @@ fn resolved_selected_neighbors(
     selected_neighbors
 }
 
+fn joined_support_boundary_selected_neighbors(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<isize>> {
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let raw_facts_by_component = carrier_facts_by_component_from_state(
+        runtime,
+        raw_selected_neighbors,
+        &state.deferred_carrier_choice_constraints,
+    )?;
+    let token_constraints =
+        component_token_constraints_from_state(runtime, graph, state, raw_selected_neighbors)?;
+    let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
+    let inferred_token_observation_facts =
+        inferred_token_observation_facts_from_constraints(&token_constraints);
+    let constraint_state = StereoConstraintState::from_facts_and_token_observations(
+        &runtime.constraint_model,
+        StereoConstraintLayer::Semantic,
+        &raw_facts_by_component,
+        &known_token_flip_facts,
+        &inferred_token_observation_facts,
+    )?;
+
+    let mut selected_neighbors = raw_selected_neighbors.to_vec();
+    for component in &runtime.constraint_model.components {
+        for &side_idx in &component.side_ids {
+            if selected_neighbors[side_idx] >= 0 {
+                continue;
+            }
+            if let Some(neighbor_idx) = constraint_state.forced_neighbor(
+                &runtime.constraint_model,
+                component.component_idx,
+                side_idx,
+            ) {
+                selected_neighbors[side_idx] = neighbor_idx as isize;
+            }
+        }
+    }
+    Ok(selected_neighbors)
+}
+
 pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
     graph: &PreparedSmilesGraphData,
     root_idx: isize,
@@ -5279,6 +5321,8 @@ fn stereo_output_fact_row_to_py(
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let assignment_state_resolved_selected_neighbors =
         resolved_selected_neighbors_from_assignment_state(runtime, raw_selected_neighbors);
+    let joined_support_boundary_selected_neighbors =
+        joined_support_boundary_selected_neighbors(runtime, graph, state)?;
     let raw_facts_by_component =
         selected_neighbor_facts_by_component(runtime, raw_selected_neighbors);
     let resolved_facts_by_component =
@@ -5405,6 +5449,14 @@ fn stereo_output_fact_row_to_py(
     shadow_debug.set_item(
         "assignment_state_resolution_matches_runtime",
         assignment_state_resolved_selected_neighbors == resolved_selected_neighbors,
+    )?;
+    shadow_debug.set_item(
+        "joined_support_boundary_selected_neighbors",
+        joined_support_boundary_selected_neighbors.clone(),
+    )?;
+    shadow_debug.set_item(
+        "joined_support_boundary_matches_runtime",
+        joined_support_boundary_selected_neighbors == resolved_selected_neighbors,
     )?;
     shadow_debug.set_item(
         "resolved_constraint_state_from_inferred_token_flip_facts",

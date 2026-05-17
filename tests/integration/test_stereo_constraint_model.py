@@ -505,8 +505,15 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         "resolved_selected_neighbors_from_assignment_state",
                         row["shadow_debug"],
                     )
+                    self.assertIn(
+                        "joined_support_boundary_selected_neighbors",
+                        row["shadow_debug"],
+                    )
                     self.assertTrue(
                         row["shadow_debug"]["assignment_state_resolution_matches_runtime"]
+                    )
+                    self.assertTrue(
+                        row["shadow_debug"]["joined_support_boundary_matches_runtime"]
                     )
 
     def test_current_runtime_support_count_matches_pinned_witnesses(self) -> None:

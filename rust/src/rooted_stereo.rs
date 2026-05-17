@@ -126,9 +126,30 @@ struct ProcessChildrenEdgeUpdate {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-struct DeferredComponentPhaseConstraint {
+struct DeferredComponentPhaseFact {
     component_idx: usize,
     begin_atom_idx: usize,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct ComponentPhaseCommitFact {
+    component_idx: usize,
+    phase: i8,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct ComponentBeginAtomFact {
+    component_idx: usize,
+    begin_atom_idx: usize,
+}
+
+impl DeferredComponentPhaseFact {
+    fn begin_atom_fact(self) -> ComponentBeginAtomFact {
+        ComponentBeginAtomFact {
+            component_idx: self.component_idx,
+            begin_atom_idx: self.begin_atom_idx,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1659,19 +1680,34 @@ fn with_component_begin_atom(
     Ok(updated)
 }
 
-fn apply_deferred_component_phase_constraint(
+fn apply_deferred_component_phase_fact(
     component_phases: &[i8],
     component_begin_atoms: &[isize],
-    constraint: DeferredComponentPhaseConstraint,
+    fact: DeferredComponentPhaseFact,
 ) -> PyResult<(Vec<i8>, Vec<isize>)> {
     let mut updated_phases = component_phases.to_vec();
-    updated_phases[constraint.component_idx] = UNKNOWN_COMPONENT_PHASE;
-    let updated_begin_atoms = with_component_begin_atom(
-        component_begin_atoms,
-        constraint.component_idx,
-        constraint.begin_atom_idx,
-    )?;
+    updated_phases[fact.component_idx] = UNKNOWN_COMPONENT_PHASE;
+    let updated_begin_atoms =
+        apply_component_begin_atom_fact(component_begin_atoms, fact.begin_atom_fact())?;
     Ok((updated_phases, updated_begin_atoms))
+}
+
+fn apply_component_begin_atom_fact(
+    component_begin_atoms: &[isize],
+    fact: ComponentBeginAtomFact,
+) -> PyResult<Vec<isize>> {
+    with_component_begin_atom(
+        component_begin_atoms,
+        fact.component_idx,
+        fact.begin_atom_idx,
+    )
+}
+
+fn apply_component_phase_commit_fact(
+    component_phases: &[i8],
+    fact: ComponentPhaseCommitFact,
+) -> PyResult<Vec<i8>> {
+    with_component_phase(component_phases, fact.component_idx, fact.phase)
 }
 
 fn component_phases_after_edge(
@@ -1872,14 +1908,14 @@ fn eager_begin_side_child_order_state(
     )
 }
 
-fn deferred_component_phase_constraint_for_unresolved_begin_side(
+fn deferred_component_phase_fact_for_unresolved_begin_side(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     component_begin_atoms: &[isize],
     selected_neighbors: &[isize],
     begin_idx: usize,
     end_idx: usize,
-) -> PyResult<Option<DeferredComponentPhaseConstraint>> {
+) -> PyResult<Option<DeferredComponentPhaseFact>> {
     let Some(bond_idx) = graph.bond_index(begin_idx, end_idx) else {
         return Ok(None);
     };
@@ -1909,7 +1945,7 @@ fn deferred_component_phase_constraint_for_unresolved_begin_side(
         return Ok(None);
     }
 
-    Ok(Some(DeferredComponentPhaseConstraint {
+    Ok(Some(DeferredComponentPhaseFact {
         component_idx,
         begin_atom_idx: begin_idx,
     }))
@@ -1924,7 +1960,7 @@ fn defer_component_phase_for_unresolved_begin_side(
     begin_idx: usize,
     end_idx: usize,
 ) -> PyResult<(Vec<i8>, Vec<isize>)> {
-    let Some(constraint) = deferred_component_phase_constraint_for_unresolved_begin_side(
+    let Some(fact) = deferred_component_phase_fact_for_unresolved_begin_side(
         runtime,
         graph,
         component_begin_atoms,
@@ -1935,7 +1971,7 @@ fn defer_component_phase_for_unresolved_begin_side(
     else {
         return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
     };
-    apply_deferred_component_phase_constraint(component_phases, component_begin_atoms, constraint)
+    apply_deferred_component_phase_fact(component_phases, component_begin_atoms, fact)
 }
 
 fn component_phase_from_selected_begin_side_token(token: &str) -> PyResult<i8> {
@@ -1983,7 +2019,66 @@ fn selected_begin_side_component_phase(
     )?))
 }
 
-fn commit_deferred_component_phase_constraints_from_selected_begin_sides(
+fn component_phase_commit_fact_from_selected_begin_side(
+    runtime: &StereoWalkerRuntimeData,
+    component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
+    begin_idx: usize,
+    component_idx: usize,
+) -> PyResult<Option<ComponentPhaseCommitFact>> {
+    if runtime.isolated_components[component_idx]
+        || component_begin_atoms
+            .get(component_idx)
+            .copied()
+            .unwrap_or(-1)
+            != begin_idx as isize
+    {
+        return Ok(None);
+    }
+    Ok(selected_begin_side_component_phase(
+        runtime,
+        component_begin_atoms,
+        selected_neighbors,
+        component_idx,
+    )?
+    .map(|phase| ComponentPhaseCommitFact {
+        component_idx,
+        phase,
+    }))
+}
+
+fn component_phase_commit_facts_from_deferred_part(
+    runtime: &StereoWalkerRuntimeData,
+    component_phases: &[i8],
+    component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
+    begin_idx: usize,
+    part: &Part,
+) -> PyResult<Vec<ComponentPhaseCommitFact>> {
+    let Part::Deferred(deferred) = part else {
+        return Ok(Vec::new());
+    };
+    let mut facts = Vec::new();
+    for component_token in deferred.component_tokens.iter() {
+        let component_idx = component_token.component_idx;
+        if component_phases[component_idx] != UNKNOWN_COMPONENT_PHASE {
+            continue;
+        }
+
+        if let Some(fact) = component_phase_commit_fact_from_selected_begin_side(
+            runtime,
+            component_begin_atoms,
+            selected_neighbors,
+            begin_idx,
+            component_idx,
+        )? {
+            facts.push(fact);
+        }
+    }
+    Ok(facts)
+}
+
+fn commit_deferred_component_phase_facts_from_selected_begin_sides(
     runtime: &StereoWalkerRuntimeData,
     component_phases: &[i8],
     component_begin_atoms: &[isize],
@@ -1991,31 +2086,16 @@ fn commit_deferred_component_phase_constraints_from_selected_begin_sides(
     begin_idx: usize,
     part: &Part,
 ) -> PyResult<Vec<i8>> {
-    let Part::Deferred(deferred) = part else {
-        return Ok(component_phases.to_vec());
-    };
     let mut updated_phases = component_phases.to_vec();
-    for component_token in deferred.component_tokens.iter() {
-        let component_idx = component_token.component_idx;
-        if runtime.isolated_components[component_idx]
-            || updated_phases[component_idx] != UNKNOWN_COMPONENT_PHASE
-            || component_begin_atoms
-                .get(component_idx)
-                .copied()
-                .unwrap_or(-1)
-                != begin_idx as isize
-        {
-            continue;
-        }
-
-        if let Some(phase) = selected_begin_side_component_phase(
-            runtime,
-            component_begin_atoms,
-            selected_neighbors,
-            component_idx,
-        )? {
-            updated_phases = with_component_phase(&updated_phases, component_idx, phase)?;
-        }
+    for fact in component_phase_commit_facts_from_deferred_part(
+        runtime,
+        component_phases,
+        component_begin_atoms,
+        selected_neighbors,
+        begin_idx,
+        part,
+    )? {
+        updated_phases = apply_component_phase_commit_fact(&updated_phases, fact)?;
     }
     Ok(updated_phases)
 }
@@ -2788,7 +2868,7 @@ fn process_children_edge_update(
         parent_idx,
         child_idx,
     )?;
-    let updated_phases = commit_deferred_component_phase_constraints_from_selected_begin_sides(
+    let updated_phases = commit_deferred_component_phase_facts_from_selected_begin_sides(
         runtime,
         &updated_phases,
         &updated_begin_atoms,
@@ -4746,6 +4826,65 @@ fn component_token_phase_diagnostics_to_py(
         .collect()
 }
 
+fn component_phase_boundary_facts_to_py(
+    py: Python<'_>,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Py<PyDict>> {
+    let phase_facts = PyList::empty(py);
+    let begin_atom_facts = PyList::empty(py);
+    for component_idx in 0..state.stereo_component_phases.len() {
+        let phase = state.stereo_component_phases[component_idx];
+        if phase != UNKNOWN_COMPONENT_PHASE {
+            let fact = ComponentPhaseCommitFact {
+                component_idx,
+                phase,
+            };
+            let row = PyDict::new(py);
+            row.set_item("fact", "component_phase")?;
+            row.set_item("component_idx", fact.component_idx)?;
+            row.set_item("phase", component_phase_name(fact.phase))?;
+            row.set_item("phase_value", fact.phase)?;
+            row.set_item("source", "state")?;
+            phase_facts.append(row)?;
+        }
+
+        let begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
+        if begin_atom_idx >= 0 {
+            let fact = ComponentBeginAtomFact {
+                component_idx,
+                begin_atom_idx: begin_atom_idx as usize,
+            };
+            let row = PyDict::new(py);
+            row.set_item("fact", "component_begin_atom")?;
+            row.set_item("component_idx", fact.component_idx)?;
+            row.set_item("begin_atom_idx", fact.begin_atom_idx)?;
+            row.set_item("source", "state")?;
+            begin_atom_facts.append(row)?;
+        }
+    }
+
+    let out = PyDict::new(py);
+    out.set_item("phase_facts", phase_facts)?;
+    out.set_item("begin_atom_facts", begin_atom_facts)?;
+    out.set_item(
+        "phase_fact_count",
+        state
+            .stereo_component_phases
+            .iter()
+            .filter(|&&phase| phase != UNKNOWN_COMPONENT_PHASE)
+            .count(),
+    )?;
+    out.set_item(
+        "begin_atom_fact_count",
+        state
+            .stereo_component_begin_atoms
+            .iter()
+            .filter(|&&begin_atom_idx| begin_atom_idx >= 0)
+            .count(),
+    )?;
+    Ok(out.unbind())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DirectionalMarkerSlot {
     slot: usize,
@@ -5261,6 +5400,10 @@ fn stereo_output_fact_row_to_py(
             &known_token_flip_facts,
             &inferred_token_observation_facts,
         )?,
+    )?;
+    row.set_item(
+        "component_phase_boundary_facts",
+        component_phase_boundary_facts_to_py(py, state)?,
     )?;
     row.set_item(
         "marker_placement_state",
@@ -9021,8 +9164,9 @@ mod tests {
     use pyo3::Python;
 
     use super::{
-        advance_stereo_choice_state, advance_stereo_token_state, build_walker_runtime,
-        check_supported_stereo_writer_surface, choices_for_stereo_state,
+        advance_stereo_choice_state, advance_stereo_token_state, apply_component_begin_atom_fact,
+        apply_component_phase_commit_fact, apply_deferred_component_phase_fact,
+        build_walker_runtime, check_supported_stereo_writer_surface, choices_for_stereo_state,
         component_token_constraints_from_state, drain_exact_linear_stereo_actions,
         enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
         flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
@@ -9033,8 +9177,10 @@ mod tests {
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
         successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         traversal_constraint_facts_by_component, traversal_constraint_has_completion,
-        validate_root_idx, validate_stereo_state_shape, ComponentTokenConstraintFact,
-        DeferredCarrierChoiceConstraint, UNKNOWN_COMPONENT_TOKEN_FLIP,
+        validate_root_idx, validate_stereo_state_shape, ComponentBeginAtomFact,
+        ComponentPhaseCommitFact, ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint,
+        DeferredComponentPhaseFact, FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE,
+        UNKNOWN_COMPONENT_PHASE, UNKNOWN_COMPONENT_TOKEN_FLIP,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -9384,6 +9530,52 @@ mod tests {
                 neighbor_idx: side_info.candidate_neighbors[0],
             }],
         ));
+    }
+
+    #[test]
+    fn deferred_phase_facts_apply_explicitly() {
+        let phases = vec![STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE];
+        let begin_atoms = vec![-1, -1];
+        let deferred_fact = DeferredComponentPhaseFact {
+            component_idx: 1,
+            begin_atom_idx: 2,
+        };
+
+        let (phases, begin_atoms) =
+            apply_deferred_component_phase_fact(&phases, &begin_atoms, deferred_fact)
+                .expect("deferred phase fact should apply");
+
+        assert_eq!(STORED_COMPONENT_PHASE, phases[0]);
+        assert_eq!(UNKNOWN_COMPONENT_PHASE, phases[1]);
+        assert_eq!(-1, begin_atoms[0]);
+        assert_eq!(2, begin_atoms[1]);
+        apply_component_begin_atom_fact(
+            &begin_atoms,
+            ComponentBeginAtomFact {
+                component_idx: 1,
+                begin_atom_idx: 3,
+            },
+        )
+        .expect_err("conflicting begin-atom fact should fail");
+
+        let committed = apply_component_phase_commit_fact(
+            &phases,
+            ComponentPhaseCommitFact {
+                component_idx: 1,
+                phase: FLIPPED_COMPONENT_PHASE,
+            },
+        )
+        .expect("phase commit fact should apply");
+
+        assert_eq!(FLIPPED_COMPONENT_PHASE, committed[1]);
+        apply_component_phase_commit_fact(
+            &committed,
+            ComponentPhaseCommitFact {
+                component_idx: 1,
+                phase: STORED_COMPONENT_PHASE,
+            },
+        )
+        .expect_err("conflicting phase commit fact should fail");
     }
 
     #[test]

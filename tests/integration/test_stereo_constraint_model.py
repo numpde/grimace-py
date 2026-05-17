@@ -717,6 +717,26 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     runtime_token_constraint_facts = row[
                         "runtime_token_constraint_facts"
                     ]
+                    component_phase_boundary_facts = row[
+                        "component_phase_boundary_facts"
+                    ]
+                    self.assertEqual(
+                        component_phase_boundary_facts["phase_fact_count"],
+                        len(component_phase_boundary_facts["phase_facts"]),
+                    )
+                    self.assertEqual(
+                        component_phase_boundary_facts["begin_atom_fact_count"],
+                        len(component_phase_boundary_facts["begin_atom_facts"]),
+                    )
+                    self.assertTrue(
+                        all(
+                            fact["source"] == "state"
+                            for fact in component_phase_boundary_facts[
+                                "phase_facts"
+                            ]
+                            + component_phase_boundary_facts["begin_atom_facts"]
+                        )
+                    )
                     runtime_known_token_flip_facts = runtime_token_constraint_facts[
                         "known_token_flip_facts"
                     ]

@@ -8386,9 +8386,9 @@ mod tests {
         initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
         known_token_flip_facts_from_constraints, next_token_support_for_stereo_state,
         rdkit_ring_closure_projected_marker_slots, resolved_constraint_state_from_walker_state,
-        resolved_selected_neighbors, selected_neighbor_facts_by_component,
-        smiles_from_direction_marker_slots, successors_by_token_stereo_raw,
-        supported_token_observation_facts_from_constraints,
+        resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
+        selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
+        successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         traversal_constraint_facts_by_component, traversal_constraint_has_completion,
         validate_root_idx, validate_stereo_state_shape, ComponentTokenConstraintFact,
         UNKNOWN_COMPONENT_TOKEN_FLIP,
@@ -8438,6 +8438,43 @@ mod tests {
             }
         }
         observed
+    }
+
+    fn first_assignment_state_resolution_gap(
+        graph: &PreparedSmilesGraphData,
+        root_idx: usize,
+    ) -> Option<(usize, isize, isize)> {
+        let (runtime, initial_state) = stereo_runtime_and_state(graph, root_idx);
+        let mut stack = vec![initial_state];
+        while let Some(state) = stack.pop() {
+            let assignment_resolved = resolved_selected_neighbors_from_assignment_state(
+                &runtime,
+                &state.stereo_selected_neighbors,
+            );
+            let runtime_resolved = resolved_selected_neighbors(&runtime, &state);
+            for (side_idx, &assignment_neighbor_idx) in assignment_resolved.iter().enumerate() {
+                if assignment_neighbor_idx < 0 || state.stereo_selected_neighbors[side_idx] >= 0 {
+                    continue;
+                }
+                if runtime_resolved[side_idx] != assignment_neighbor_idx {
+                    return Some((
+                        side_idx,
+                        assignment_neighbor_idx,
+                        runtime_resolved[side_idx],
+                    ));
+                }
+            }
+
+            if is_terminal_stereo_state(&state) {
+                continue;
+            }
+            let successors = flatten_exact_stereo_successor_groups(
+                successors_by_token_stereo_raw(&runtime, graph, &state)
+                    .expect("successors should enumerate"),
+            );
+            stack.extend(successors);
+        }
+        None
     }
 
     fn terminal_stereo_states(
@@ -8866,6 +8903,18 @@ mod tests {
         )
         .expect("observation-backed constraint state should build");
         assert_eq!(observation_state, runtime_state);
+    }
+
+    #[test]
+    fn transition_carrier_resolution_still_has_assignment_state_gap() {
+        let graph = sample_stereo_graph();
+        let Some((side_idx, assignment_neighbor_idx, runtime_neighbor_idx)) =
+            first_assignment_state_resolution_gap(&graph, 0)
+        else {
+            panic!("expected transition-time carrier resolution gap");
+        };
+        assert_eq!(0, side_idx);
+        assert_ne!(assignment_neighbor_idx, runtime_neighbor_idx);
     }
 
     #[test]

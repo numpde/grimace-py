@@ -87,6 +87,8 @@ Main entrypoints:
   Returns an online decoder that merges same-text next choices.
 - `MolToSmilesTokenInventory(...)`
   Returns the exact set of tokens that can appear in one decoder step.
+- `MolToSmilesTokenInventorySuperset(...)`
+  Returns a static conservative token inventory for vocabulary coverage.
 
 Supporting public type:
 
@@ -130,8 +132,9 @@ The most important `rootedAtAtom` semantics are:
   unioned across all root atoms.
 - `rootedAtAtom=-1` for the decoder classes starts from one merged all-roots
   decoder state.
-- `rootedAtAtom=-1` for `MolToSmilesTokenInventory(...)` returns the token
-  inventory unioned across all root atoms.
+- `rootedAtAtom=-1` for `MolToSmilesTokenInventory(...)` and
+  `MolToSmilesTokenInventorySuperset(...)` returns the token inventory unioned
+  across all root atoms.
 - omitting `rootedAtAtom` means the same thing as passing `-1`.
 - other negative integer `rootedAtAtom` values also behave like `-1`, to stay
   close to RDKit's public binding behavior.
@@ -282,6 +285,24 @@ assert "c" in inventory
 
 The result is a sorted tuple of distinct tokens.
 
+For fast dataset vocabulary coverage, use the static inventory:
+
+```python
+vocab_tokens = set()
+for mol in mols:
+    vocab_tokens.update(
+        grimace.MolToSmilesTokenInventorySuperset(
+            mol,
+            rootedAtAtom=-1,
+            isomericSmiles=True,
+            **FLAGS,
+        )
+    )
+```
+
+For the same molecule and flags, the exact inventory is contained in the
+superset inventory.
+
 ### What counts as a token?
 
 A token is one string emitted by one decoder transition. Tokens are defined by
@@ -321,11 +342,8 @@ Current continuously exercised matrix:
 
 - Linux source-tree tests on CPython `3.12`
 - Linux wheel build and smoke tests on CPython `3.12` and `3.13`
-- source distribution build plus `twine check` metadata validation
-
-The published sdist is not currently installed and smoke-tested in CI as an
-artifact. Treat it as a supported source-build path, but with weaker
-continuous evidence than the Linux wheel path.
+- source distribution build, metadata validation, and installed-artifact smoke
+  tests
 
 Other Python versions and non-Linux platforms are expected source-build paths,
 not part of the current release asset or CI matrix.
@@ -336,7 +354,7 @@ GitHub release wheels are also available:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
-| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.9/grimace_py-0.1.9-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.9/grimace_py-0.1.9-cp313-cp313-manylinux_2_28_x86_64.whl) |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.10/grimace_py-0.1.10-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.10/grimace_py-0.1.10-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 The built package depends on `rdkit>=2026.3`.
 
@@ -456,6 +474,8 @@ Disconnected molecules are supported by the public APIs.
   directly.
 - `MolToSmilesTokenInventory(...)` returns the union of fragment inventories
   plus the `"."` separator token.
+- `MolToSmilesTokenInventorySuperset(...)` returns the corresponding static
+  fragment inventory union plus the `"."` separator token.
 
 ## Docs
 

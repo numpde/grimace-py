@@ -18,6 +18,8 @@ from grimace._reference.prepared_graph import (
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
+    prepared_stereo_atom_token,
+    ring_label_text,
 )
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
@@ -973,6 +975,141 @@ def _exact_token_inventory_from_decoder(
     return tuple(sorted(inventory))
 
 
+def _stereo_atom_token_superset_variants(
+    prepared: ReferencePreparedSmilesGraph,
+    atom_idx: int,
+) -> tuple[str, ...]:
+    if not prepared.writer_do_isomeric_smiles:
+        return ()
+
+    chiral_tag = prepared.atom_chiral_tags[atom_idx]
+    if chiral_tag not in {"CHI_TETRAHEDRAL_CCW", "CHI_TETRAHEDRAL_CW"}:
+        return ()
+
+    return tuple(
+        prepared_stereo_atom_token(
+            prepared,
+            atom_idx,
+            stereo_mark=stereo_mark,
+        )
+        for stereo_mark in ("@", "@@")
+    )
+
+
+def _branch_tokens_may_be_reachable(
+    prepared: ReferencePreparedSmilesGraph,
+    *,
+    rooted_at_atom: int,
+) -> bool:
+    if rooted_at_atom < 0:
+        return any(len(row) >= 2 for row in prepared.neighbors)
+    return any(
+        len(row) >= (2 if atom_idx == rooted_at_atom else 3)
+        for atom_idx, row in enumerate(prepared.neighbors)
+    )
+
+
+def _prepared_token_inventory_superset(
+    prepared: ReferencePreparedSmilesGraph,
+    *,
+    rooted_at_atom: int,
+) -> tuple[str, ...]:
+    atom_count = prepared.atom_count
+    if atom_count > 0 and rooted_at_atom >= atom_count:
+        raise IndexError("root_idx out of range")
+
+    tokens = set(prepared.atom_tokens)
+
+    for bond_token_row in prepared.neighbor_bond_tokens:
+        tokens.update(token for token in bond_token_row if token)
+
+    if any(bond_dir != "NONE" for bond_dir in prepared.bond_dirs):
+        tokens.update(("/", "\\"))
+
+    if _branch_tokens_may_be_reachable(prepared, rooted_at_atom=rooted_at_atom):
+        tokens.update(("(", ")"))
+
+    # A connected graph can need no more distinct ring labels than its cycle rank.
+    cycle_rank = max(0, prepared.bond_count - atom_count + 1) if atom_count else 0
+    tokens.update(ring_label_text(label) for label in range(1, cycle_rank + 1))
+
+    if prepared.surface_kind == CONNECTED_STEREO_SURFACE:
+        for atom_idx in range(atom_count):
+            tokens.update(_stereo_atom_token_superset_variants(prepared, atom_idx))
+
+    return tuple(sorted(tokens))
+
+
+def _prepare_reference_graph_for_static_inventory(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> ReferencePreparedSmilesGraph:
+    surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
+    if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
+        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
+        _validate_writer_flags(mol_or_prepared, flags)
+        return mol_or_prepared
+
+    if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
+        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
+        _validate_writer_flags(mol_or_prepared, flags)
+        return ReferencePreparedSmilesGraph.from_dict(mol_or_prepared.to_dict())
+
+    _ensure_singly_connected_molecule(mol_or_prepared)
+    return prepare_smiles_graph_from_mol_to_smiles_kwargs(
+        mol_or_prepared,
+        surface_kind=surface_kind,
+        isomeric_smiles=flags.isomeric_smiles,
+        kekule_smiles=flags.kekule_smiles,
+        all_bonds_explicit=flags.all_bonds_explicit,
+        all_hs_explicit=flags.all_hs_explicit,
+        ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
+    )
+
+
+def _connected_mol_to_smiles_token_inventory_superset(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> tuple[str, ...]:
+    prepared = _prepare_reference_graph_for_static_inventory(
+        mol_or_prepared,
+        flags=flags,
+    )
+    return _prepared_token_inventory_superset(
+        prepared,
+        rooted_at_atom=flags.rooted_at_atom,
+    )
+
+
+def _fragmented_mol_to_smiles_token_inventory_superset(
+    mol: Chem.Mol,
+    *,
+    flags: MolToSmilesFlags,
+) -> tuple[str, ...]:
+    rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
+    inventory: set[str] = set()
+    fragment_plans = _fragment_plans_for_token_inventory(
+        mol,
+        rooted_at_atom=rooted_at_atom,
+    )
+
+    for plan in fragment_plans:
+        fragment_root = -1 if plan.rooted_at_atom is None else plan.rooted_at_atom
+        inventory.update(
+            _connected_mol_to_smiles_token_inventory_superset(
+                plan.mol,
+                flags=flags.with_rooted_at_atom(fragment_root),
+            )
+        )
+
+    if len(fragment_plans) > 1:
+        inventory.add(".")
+
+    return tuple(sorted(inventory))
+
+
 def mol_to_smiles_enum(
     mol_or_prepared: object,
     *,
@@ -1090,6 +1227,42 @@ def mol_to_smiles_token_inventory(
         all_hs_explicit=all_hs_explicit,
         do_random=do_random,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
+
+
+def mol_to_smiles_token_inventory_superset(
+    mol_or_prepared: object,
+    *,
+    isomeric_smiles: bool = True,
+    kekule_smiles: bool = False,
+    rooted_at_atom: int = -1,
+    canonical: bool = True,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    do_random: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> tuple[str, ...]:
+    """Return a conservative static superset of reachable decoder tokens."""
+
+    flags = _make_flags(
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        rooted_at_atom=rooted_at_atom,
+        canonical=canonical,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        do_random=do_random,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
+    _validate_supported_flags(flags)
+    if _is_disconnected_molecule(mol_or_prepared):
+        return _fragmented_mol_to_smiles_token_inventory_superset(
+            cast(Chem.Mol, mol_or_prepared),
+            flags=flags,
+        )
+    return _connected_mol_to_smiles_token_inventory_superset(
+        mol_or_prepared,
+        flags=flags,
     )
 
 

@@ -10,17 +10,14 @@ from rdkit import Chem
 
 from grimace._reference.policy import ReferencePolicy
 from grimace._reference.prepared_graph import (
-    AROMATIC_LOWERCASE_SUBSET,
     CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph,
-    format_charge,
-    format_hydrogen_count,
     prepare_smiles_graph,
+    prepared_stereo_atom_token,
     ring_label_text,
 )
 
 
-_PERIODIC_TABLE = Chem.GetPeriodicTable()
 _HYDROGEN_NEIGHBOR = -1
 _UNKNOWN_COMPONENT_PHASE = -1
 _STORED_COMPONENT_PHASE = 0
@@ -273,15 +270,6 @@ def unique_permutations(items: Iterable[object]) -> Iterator[tuple[object, ...]]
     yield from recurse()
 
 
-def _prepared_atom_symbol(prepared: PreparedSmilesGraph, atom_idx: int) -> str:
-    symbol = _PERIODIC_TABLE.GetElementSymbol(prepared.atom_atomic_numbers[atom_idx])
-    if prepared.atom_is_aromatic[atom_idx] and not prepared.writer_kekule_smiles:
-        lowered = symbol.lower()
-        if lowered in AROMATIC_LOWERCASE_SUBSET:
-            return lowered
-    return symbol
-
-
 def _permutation_parity(reference_order: tuple[int, ...], emitted_order: tuple[int, ...]) -> int:
     if len(reference_order) != len(emitted_order):
         raise ValueError("Stereo neighbor order length mismatch")
@@ -348,20 +336,11 @@ def _stereo_atom_token(
         or (chiral_tag == "CHI_TETRAHEDRAL_CW" and parity == 1)
     )
     stereo_mark = "@" if use_single_at else "@@"
-
-    parts = ["["]
-    isotope = prepared.atom_isotopes[atom_idx]
-    if isotope:
-        parts.append(str(isotope))
-    parts.append(_prepared_atom_symbol(prepared, atom_idx))
-    parts.append(stereo_mark)
-    parts.append(format_hydrogen_count(hydrogen_count))
-    parts.append(format_charge(prepared.atom_formal_charges[atom_idx]))
-    atom_map_number = 0 if prepared.writer_ignore_atom_map_numbers else prepared.atom_map_numbers[atom_idx]
-    if atom_map_number:
-        parts.append(f":{atom_map_number}")
-    parts.append("]")
-    return "".join(parts)
+    return prepared_stereo_atom_token(
+        prepared,
+        atom_idx,
+        stereo_mark=stereo_mark,
+    )
 
 
 def _check_supported_stereo_writer_surface(prepared: PreparedSmilesGraph) -> None:

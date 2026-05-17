@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import grimace
 from rdkit import Chem, rdBase
 
 from tests.helpers.mols import parse_smiles
@@ -54,6 +55,26 @@ class SerializerRegressionTests(unittest.TestCase):
                     all_hs_explicit=case.all_hs_explicit,
                     ignore_atom_map_numbers=case.ignore_atom_map_numbers,
                 )
+
+    def test_fixture_backed_token_inventory_superset_contains_exact_inventory(self) -> None:
+        for case in self.cases:
+            mol = self._parse_fixture_molecule(case)
+            with self.subTest(case_id=case.case_id, source=case.source):
+                superset = set(
+                    grimace.MolToSmilesTokenInventorySuperset(
+                        mol,
+                        rootedAtAtom=case.rooted_at_atom,
+                        isomericSmiles=case.isomeric_smiles,
+                        kekuleSmiles=case.kekule_smiles,
+                        canonical=False,
+                        allBondsExplicit=case.all_bonds_explicit,
+                        allHsExplicit=case.all_hs_explicit,
+                        doRandom=True,
+                        ignoreAtomMapNumbers=case.ignore_atom_map_numbers,
+                    )
+                )
+
+                self.assertLessEqual(set(case.expected_inventory), superset)
 
     def test_fixture_backed_rdkit_sampling_when_declared(self) -> None:
         for case in self.cases:

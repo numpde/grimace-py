@@ -96,6 +96,39 @@ def MolToSmilesTokenInventory(
     )
 
 
+def MolToSmilesTokenInventorySuperset(
+    mol: object,
+    *,
+    isomericSmiles: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int = -1,
+    canonical: bool = True,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = False,
+    ignoreAtomMapNumbers: bool = False,
+) -> tuple[str, ...]:
+    """Return a conservative token inventory superset without decoder walking.
+
+    Pass `canonical=False` and `doRandom=True` explicitly. The RDKit-like
+    default signature is preserved for surface compatibility, not because the
+    defaults are currently implemented.
+    """
+
+    runtime = _require_runtime()
+    return runtime.mol_to_smiles_token_inventory_superset(
+        mol,
+        isomeric_smiles=isomericSmiles,
+        kekule_smiles=kekuleSmiles,
+        rooted_at_atom=rootedAtAtom,
+        canonical=canonical,
+        all_bonds_explicit=allBondsExplicit,
+        all_hs_explicit=allHsExplicit,
+        do_random=doRandom,
+        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+    )
+
+
 if _RUNTIME is not None:
     MolToSmilesChoice = _RUNTIME.MolToSmilesChoice
 
@@ -178,4 +211,5 @@ __all__ = [
     "MolToSmilesDeterminizedDecoder",
     "MolToSmilesEnum",
     "MolToSmilesTokenInventory",
+    "MolToSmilesTokenInventorySuperset",
 ]

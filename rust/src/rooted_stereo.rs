@@ -5770,42 +5770,50 @@ fn part_to_action(part: Part) -> Option<WalkerAction> {
     }
 }
 
-// Suspicious current model:
-// Encodes RDKit-observed root/first-emission token flip adjustments as a local
-// post-hoc correction instead of deriving them from the active constraints.
+// RDKit-writer observation, not generic stereo semantics. This remains a
+// descriptive split of the current adjustment while the support-state boundary
+// grows named writer-policy facts for each branch.
 fn rdkit_component_token_flip_adjustment(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
-) -> bool {
+) -> RdkitTokenFlipAdjustmentObservation {
+    let mut observation = RdkitTokenFlipAdjustmentObservation::default();
     let begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
     if begin_atom_idx < 0 {
-        return false;
+        return observation;
     }
     let begin_atom_idx = begin_atom_idx as usize;
+    observation.begin_atom_is_root = begin_atom_idx == runtime.root_idx;
 
     let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
         .iter()
         .copied()
         .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
     else {
-        return false;
+        return observation;
     };
 
     let begin_side = &runtime.side_infos[begin_side_idx];
-    let mut adjustment = begin_atom_idx == runtime.root_idx
-        && state.stereo_selected_orientations[begin_side_idx] == AFTER_ATOM_EDGE_ORIENTATION;
+    let begin_side_orientation = state.stereo_selected_orientations[begin_side_idx];
+    observation.begin_side_orientation = Some(edge_orientation_name(begin_side_orientation));
+    observation.root_begin_side_adjustment =
+        observation.begin_atom_is_root && begin_side_orientation == AFTER_ATOM_EDGE_ORIENTATION;
+    let mut adjustment = observation.root_begin_side_adjustment;
 
     if runtime.isolated_components[component_idx] || begin_side.candidate_neighbors.len() != 1 {
-        return adjustment;
+        observation.value = adjustment;
+        return observation;
     }
 
     let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
     if selected_neighbor_idx < 0 {
-        return adjustment;
+        observation.value = adjustment;
+        return observation;
     }
     let selected_neighbor_idx = selected_neighbor_idx as usize;
+    observation.selected_neighbor_is_root = Some(selected_neighbor_idx == runtime.root_idx);
 
     let adjacent_two_side_idx = runtime.side_ids_by_component[component_idx]
         .iter()
@@ -5818,17 +5826,35 @@ fn rdkit_component_token_flip_adjustment(
         });
 
     let Some(adjacent_two_side_idx) = adjacent_two_side_idx else {
-        return adjustment;
+        observation.value = adjustment;
+        return observation;
     };
+    observation.adjacent_two_candidate_side_idx = Some(adjacent_two_side_idx);
 
     let first_neighbor_idx = state.stereo_first_emitted_candidates[adjacent_two_side_idx];
-    if selected_neighbor_idx == runtime.root_idx
-        && first_neighbor_idx >= 0
-        && first_neighbor_idx as usize != begin_atom_idx
-    {
+    if first_neighbor_idx >= 0 {
+        let first_neighbor_idx = first_neighbor_idx as usize;
+        observation.adjacent_first_emitted_candidate_idx = Some(first_neighbor_idx);
+        observation.adjacent_first_emitted_is_not_begin =
+            Some(first_neighbor_idx != begin_atom_idx);
+    }
+    observation.adjacent_two_candidate_adjustment = selected_neighbor_idx == runtime.root_idx
+        && observation
+            .adjacent_first_emitted_is_not_begin
+            .unwrap_or(false);
+    if observation.adjacent_two_candidate_adjustment {
         adjustment = !adjustment;
     }
-    adjustment
+    observation.value = adjustment;
+    observation
+}
+
+fn edge_orientation_name(value: i8) -> &'static str {
+    match value {
+        BEFORE_ATOM_EDGE_ORIENTATION => "before_atom",
+        AFTER_ATOM_EDGE_ORIENTATION => "after_atom",
+        _ => "unknown",
+    }
 }
 
 fn provisional_phase_from_selected_side(
@@ -5909,7 +5935,8 @@ fn legacy_procedural_inferred_component_token_flip(
         state,
         &resolved_selected_neighbors,
         component_idx,
-    );
+    )
+    .value;
     if begin_atom_idx < 0 {
         return Ok(None);
     }
@@ -6069,8 +6096,17 @@ struct FirstEmittedCandidateObservation {
     neighbor_idx: Option<usize>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct RdkitTokenFlipAdjustmentObservation {
     value: bool,
+    root_begin_side_adjustment: bool,
+    begin_atom_is_root: bool,
+    begin_side_orientation: Option<&'static str>,
+    adjacent_two_candidate_adjustment: bool,
+    adjacent_two_candidate_side_idx: Option<usize>,
+    selected_neighbor_is_root: Option<bool>,
+    adjacent_first_emitted_candidate_idx: Option<usize>,
+    adjacent_first_emitted_is_not_begin: Option<bool>,
 }
 
 impl ComponentTokenInferenceInputs {
@@ -6226,7 +6262,7 @@ fn component_token_observation_inputs(
         first_emitted_candidate: FirstEmittedCandidateObservation {
             neighbor_idx: first_emitted_candidate_idx,
         },
-        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservation { value: adjustment },
+        rdkit_token_flip_adjustment: adjustment,
     })
 }
 
@@ -6478,6 +6514,52 @@ fn component_token_observation_inputs_to_py(
     let rdkit_adjustment = PyDict::new(py);
     rdkit_adjustment.set_item("fact", "rdkit_token_flip_adjustment")?;
     rdkit_adjustment.set_item("value", observations.rdkit_token_flip_adjustment.value)?;
+    rdkit_adjustment.set_item(
+        "root_begin_side_adjustment",
+        observations
+            .rdkit_token_flip_adjustment
+            .root_begin_side_adjustment,
+    )?;
+    rdkit_adjustment.set_item(
+        "begin_atom_is_root",
+        observations.rdkit_token_flip_adjustment.begin_atom_is_root,
+    )?;
+    rdkit_adjustment.set_item(
+        "begin_side_orientation",
+        observations
+            .rdkit_token_flip_adjustment
+            .begin_side_orientation,
+    )?;
+    rdkit_adjustment.set_item(
+        "adjacent_two_candidate_adjustment",
+        observations
+            .rdkit_token_flip_adjustment
+            .adjacent_two_candidate_adjustment,
+    )?;
+    rdkit_adjustment.set_item(
+        "adjacent_two_candidate_side_idx",
+        observations
+            .rdkit_token_flip_adjustment
+            .adjacent_two_candidate_side_idx,
+    )?;
+    rdkit_adjustment.set_item(
+        "selected_neighbor_is_root",
+        observations
+            .rdkit_token_flip_adjustment
+            .selected_neighbor_is_root,
+    )?;
+    rdkit_adjustment.set_item(
+        "adjacent_first_emitted_candidate_idx",
+        observations
+            .rdkit_token_flip_adjustment
+            .adjacent_first_emitted_candidate_idx,
+    )?;
+    rdkit_adjustment.set_item(
+        "adjacent_first_emitted_is_not_begin",
+        observations
+            .rdkit_token_flip_adjustment
+            .adjacent_first_emitted_is_not_begin,
+    )?;
 
     Ok(vec![
         component_phase.unbind(),

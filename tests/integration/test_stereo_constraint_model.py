@@ -42,6 +42,13 @@ TOKEN_OBSERVATION_KIND_BY_SUPPORTED_BRANCH = {
     "coupled_one_candidate_begin_side": "selected_begin_side",
     "coupled_two_candidate_begin_side": "two_candidate_begin_side",
 }
+TOKEN_FLIP_ADJUSTMENT_REASON_COUNT_KEYS = frozenset(
+    (
+        "value_true",
+        "root_begin_side_orientation",
+        "adjacent_two_candidate_first_emitted",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1178,6 +1185,66 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             TOKEN_FLIP_INFERENCE_BRANCHES,
             seen_token_flip_inference_branches,
         )
+
+    def test_token_flip_adjustment_reason_counts_match_pinned_witnesses(self) -> None:
+        saw_pinned_adjustment_reasons = False
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            rows = _core._stereo_constraint_output_facts(prepared)
+            counts: Counter[str] = Counter()
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                for row in rows:
+                    for component in row["component_token_phase"]:
+                        input_observation_facts = {
+                            fact["fact"]: fact
+                            for fact in component["token_flip_inference_inputs"][
+                                "input_observation_facts"
+                            ]
+                        }
+                        adjustment = input_observation_facts[
+                            "rdkit_token_flip_adjustment"
+                        ]
+                        self.assertEqual(
+                            adjustment["value"],
+                            adjustment["root_begin_side_adjustment"]
+                            ^ adjustment["adjacent_two_candidate_adjustment"],
+                        )
+                        if adjustment["value"]:
+                            counts["value_true"] += 1
+                        if adjustment["root_begin_side_adjustment"]:
+                            counts["root_begin_side_orientation"] += 1
+                            self.assertTrue(adjustment["begin_atom_is_root"])
+                            self.assertEqual(
+                                "after_atom",
+                                adjustment["begin_side_orientation"],
+                            )
+                        if adjustment["adjacent_two_candidate_adjustment"]:
+                            counts["adjacent_two_candidate_first_emitted"] += 1
+                            self.assertIsNotNone(
+                                adjustment["adjacent_two_candidate_side_idx"]
+                            )
+                            self.assertTrue(adjustment["selected_neighbor_is_root"])
+                            self.assertTrue(
+                                adjustment["adjacent_first_emitted_is_not_begin"]
+                            )
+                            self.assertIsNotNone(
+                                adjustment["adjacent_first_emitted_candidate_idx"]
+                            )
+
+                if case.expected_token_flip_adjustment_reason_counts:
+                    saw_pinned_adjustment_reasons = True
+                    self.assertLessEqual(
+                        set(dict(case.expected_token_flip_adjustment_reason_counts)),
+                        TOKEN_FLIP_ADJUSTMENT_REASON_COUNT_KEYS,
+                    )
+                    self.assertEqual(
+                        dict(case.expected_token_flip_adjustment_reason_counts),
+                        dict(sorted(counts.items())),
+                    )
+
+        self.assertTrue(saw_pinned_adjustment_reasons)
 
     def test_marker_placement_state_filters_marker_events(self) -> None:
         for case in self.cases:

@@ -3390,7 +3390,7 @@ fn stereo_direction_token_name(value: StereoDirectionToken) -> &'static str {
     }
 }
 
-fn marker_placement_row_to_py(
+fn rdkit_marker_placement_row_to_py(
     py: Python<'_>,
     component: &StereoComponentConstraintModel,
     row_idx: usize,
@@ -3537,7 +3537,7 @@ pub fn internal_stereo_constraint_model_summary(
                 .all_marker_placement_rows
                 .iter()
                 .enumerate()
-                .map(|(row_idx, _)| marker_placement_row_to_py(py, component, row_idx))
+                .map(|(row_idx, _)| rdkit_marker_placement_row_to_py(py, component, row_idx))
                 .collect::<PyResult<Vec<_>>>()?;
             component_dict.set_item("marker_placement_rows", marker_placement_rows)?;
 
@@ -3606,7 +3606,7 @@ fn selected_neighbor_facts_to_py(
         .collect()
 }
 
-fn traversal_constraint_facts_to_py(
+fn rdkit_traversal_writer_facts_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -3614,7 +3614,7 @@ fn traversal_constraint_facts_to_py(
 ) -> PyResult<Vec<Py<PyDict>>> {
     let mut rows = Vec::new();
     for (component_idx, facts) in
-        traversal_constraint_facts_by_component(runtime, state, selected_neighbors)
+        rdkit_traversal_writer_facts_by_component(runtime, state, selected_neighbors)
             .into_iter()
             .enumerate()
     {
@@ -3669,7 +3669,7 @@ fn traversal_constraint_facts_to_py(
     Ok(rows)
 }
 
-fn marker_event_facts_by_component(
+fn rdkit_writer_selected_marker_event_facts_by_component(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<Vec<StereoMarkerEventFact>>> {
@@ -3737,10 +3737,10 @@ fn rdkit_writer_marker_event_facts_by_component(
 
 fn marker_event_facts_to_py(
     py: Python<'_>,
-    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+    rdkit_writer_marker_events_by_component: &[Vec<StereoMarkerEventFact>],
 ) -> PyResult<Vec<Py<PyDict>>> {
     let mut rows = Vec::new();
-    for (component_idx, facts) in marker_event_facts_by_component.iter().enumerate() {
+    for (component_idx, facts) in rdkit_writer_marker_events_by_component.iter().enumerate() {
         for &fact in facts {
             let row = PyDict::new(py);
             row.set_item("component_idx", component_idx)?;
@@ -3784,14 +3784,14 @@ fn marker_event_facts_to_py(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct MarkerObligationDomain {
+struct RdkitWriterMarkerObligationDomain {
     component_idx: usize,
     no_marker_event: StereoMarkerEventFact,
     same_edge_future_marker_slots: Vec<usize>,
     same_side_other_edge_future_markers: Vec<(usize, (usize, usize))>,
 }
 
-impl MarkerObligationDomain {
+impl RdkitWriterMarkerObligationDomain {
     fn is_deferred(&self) -> bool {
         !self.same_edge_future_marker_slots.is_empty()
     }
@@ -3810,10 +3810,10 @@ impl MarkerObligationDomain {
     }
 }
 
-fn marker_obligation_domains_for_component(
+fn rdkit_writer_marker_obligation_domains_for_component(
     component_idx: usize,
     facts: &[StereoMarkerEventFact],
-) -> Vec<MarkerObligationDomain> {
+) -> Vec<RdkitWriterMarkerObligationDomain> {
     let future_markers_by_side = facts
         .iter()
         .filter_map(|&fact| match fact {
@@ -3867,7 +3867,7 @@ fn marker_obligation_domains_for_component(
                     .collect::<BTreeSet<_>>()
                     .into_iter()
                     .collect();
-                Some(MarkerObligationDomain {
+                Some(RdkitWriterMarkerObligationDomain {
                     component_idx,
                     no_marker_event: fact,
                     same_edge_future_marker_slots,
@@ -3878,19 +3878,21 @@ fn marker_obligation_domains_for_component(
         .collect()
 }
 
-fn marker_obligation_domains_by_component(
-    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
-) -> Vec<Vec<MarkerObligationDomain>> {
-    marker_event_facts_by_component
+fn rdkit_writer_marker_obligation_domains_by_component(
+    rdkit_writer_marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+) -> Vec<Vec<RdkitWriterMarkerObligationDomain>> {
+    rdkit_writer_marker_events_by_component
         .iter()
         .enumerate()
-        .map(|(component_idx, facts)| marker_obligation_domains_for_component(component_idx, facts))
+        .map(|(component_idx, facts)| {
+            rdkit_writer_marker_obligation_domains_for_component(component_idx, facts)
+        })
         .collect()
 }
 
-fn marker_obligation_domains_to_py(
+fn rdkit_writer_marker_obligation_domains_to_py(
     py: Python<'_>,
-    domains_by_component: &[Vec<MarkerObligationDomain>],
+    domains_by_component: &[Vec<RdkitWriterMarkerObligationDomain>],
 ) -> PyResult<Vec<Py<PyDict>>> {
     let mut rows = Vec::new();
     for domains in domains_by_component {
@@ -3935,12 +3937,12 @@ fn marker_obligation_domains_to_py(
     Ok(rows)
 }
 
-fn slot_coalesced_marker_event_facts(
+fn rdkit_writer_slot_coalesced_marker_event_facts(
     component_idx: usize,
     marker_event_facts: &[StereoMarkerEventFact],
 ) -> Vec<StereoMarkerEventFact> {
     let deferred_no_marker_keys =
-        marker_obligation_domains_for_component(component_idx, marker_event_facts)
+        rdkit_writer_marker_obligation_domains_for_component(component_idx, marker_event_facts)
             .into_iter()
             .filter(|domain| domain.is_deferred())
             .filter_map(|domain| domain.no_marker_key())
@@ -3966,13 +3968,15 @@ fn slot_coalesced_marker_event_facts(
         .collect()
 }
 
-fn slot_coalesced_marker_event_facts_by_component(
-    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+fn rdkit_writer_slot_coalesced_marker_event_facts_by_component(
+    rdkit_writer_marker_events_by_component: &[Vec<StereoMarkerEventFact>],
 ) -> Vec<Vec<StereoMarkerEventFact>> {
-    marker_event_facts_by_component
+    rdkit_writer_marker_events_by_component
         .iter()
         .enumerate()
-        .map(|(component_idx, facts)| slot_coalesced_marker_event_facts(component_idx, facts))
+        .map(|(component_idx, facts)| {
+            rdkit_writer_slot_coalesced_marker_event_facts(component_idx, facts)
+        })
         .collect()
 }
 
@@ -3991,7 +3995,7 @@ fn selected_neighbors_layer_completions_to_py(
     Ok(completions.unbind())
 }
 
-fn traversal_constraint_layer_completions_to_py(
+fn rdkit_traversal_writer_layer_completions_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -4001,7 +4005,7 @@ fn traversal_constraint_layer_completions_to_py(
     for layer in StereoConstraintLayer::ALL {
         completions.set_item(
             stereo_constraint_layer_name(layer),
-            traversal_constraint_has_completion(runtime, state, selected_neighbors, layer),
+            rdkit_traversal_writer_has_completion(runtime, state, selected_neighbors, layer),
         )?;
     }
     Ok(completions.unbind())
@@ -4383,28 +4387,28 @@ fn mixed_constraint_state_to_py(
     Ok(state_by_layer.unbind())
 }
 
-struct MarkerRowSurvivorSideDomain {
+struct RdkitMarkerRowSurvivorSideDomain {
     side_idx: usize,
     carrier_neighbors: Vec<usize>,
     marker_neighbor_sets: Vec<Vec<usize>>,
 }
 
-struct MarkerRowSurvivorComponentState {
+struct RdkitMarkerRowSurvivorComponentState {
     component_idx: usize,
     token_phase_assignment_ids: Vec<usize>,
     row_ids_before_marker_events: Vec<usize>,
     row_ids_after_marker_events: Vec<usize>,
     token_phase_assignment_ids_after_marker_events: Vec<usize>,
     neighbor_assignment_ids_after_marker_events: Vec<usize>,
-    side_domains: Vec<MarkerRowSurvivorSideDomain>,
+    side_domains: Vec<RdkitMarkerRowSurvivorSideDomain>,
 }
 
-fn marker_row_survivor_component_state(
+fn rdkit_marker_row_survivor_component_state(
     runtime: &StereoWalkerRuntimeData,
     component_idx: usize,
     token_phase_assignment_ids: &[usize],
     marker_event_facts: &[StereoMarkerEventFact],
-) -> PyResult<MarkerRowSurvivorComponentState> {
+) -> PyResult<RdkitMarkerRowSurvivorComponentState> {
     let Some(component) = runtime.constraint_model.components.get(component_idx) else {
         return Err(PyValueError::new_err(
             "marker row survivor component index out of range",
@@ -4439,7 +4443,7 @@ fn marker_row_survivor_component_state(
         .side_ids
         .iter()
         .map(|&side_idx| {
-            Ok(MarkerRowSurvivorSideDomain {
+            Ok(RdkitMarkerRowSurvivorSideDomain {
                 side_idx,
                 carrier_neighbors: runtime
                     .constraint_model
@@ -4459,7 +4463,7 @@ fn marker_row_survivor_component_state(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    Ok(MarkerRowSurvivorComponentState {
+    Ok(RdkitMarkerRowSurvivorComponentState {
         component_idx,
         token_phase_assignment_ids: token_phase_assignment_ids.to_vec(),
         row_ids_before_marker_events,
@@ -4470,13 +4474,13 @@ fn marker_row_survivor_component_state(
     })
 }
 
-fn marker_placement_state_to_py(
+fn rdkit_marker_placement_state_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
     facts_by_component: &[Vec<StereoConstraintFact>],
     token_flip_facts: &[StereoTokenFlipFact],
     token_observation_facts: &[StereoTokenObservationFact],
-    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+    rdkit_writer_marker_events_by_component: &[Vec<StereoMarkerEventFact>],
 ) -> PyResult<Py<PyDict>> {
     let state_by_layer = PyDict::new(py);
     for layer in StereoConstraintLayer::ALL {
@@ -4498,11 +4502,11 @@ fn marker_placement_state_to_py(
                     .get(component_idx)
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
-                let marker_event_facts = marker_event_facts_by_component
+                let marker_event_facts = rdkit_writer_marker_events_by_component
                     .get(component_idx)
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
-                let survivor_state = marker_row_survivor_component_state(
+                let survivor_state = rdkit_marker_row_survivor_component_state(
                     runtime,
                     component_idx,
                     token_phase_assignment_ids,
@@ -4512,7 +4516,7 @@ fn marker_placement_state_to_py(
                     .row_ids_after_marker_events
                     .iter()
                     .copied()
-                    .map(|row_idx| marker_placement_row_to_py(py, component, row_idx))
+                    .map(|row_idx| rdkit_marker_placement_row_to_py(py, component, row_idx))
                     .collect::<PyResult<Vec<_>>>()?;
                 let survivor_side_domains = survivor_state
                     .side_domains
@@ -5427,18 +5431,21 @@ fn stereo_output_fact_row_to_py(
     let resolved_facts_by_component =
         selected_neighbor_facts_by_component(runtime, &resolved_selected_neighbors);
     let traversal_facts_by_component =
-        traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
-    let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
+        rdkit_traversal_writer_facts_by_component(runtime, state, &resolved_selected_neighbors);
+    let marker_events_by_component =
+        rdkit_writer_selected_marker_event_facts_by_component(runtime, state)?;
     let shadow_marker_events_by_component =
         rdkit_writer_marker_event_facts_by_component(runtime, state)?;
     let marker_obligation_domains =
-        marker_obligation_domains_by_component(&marker_events_by_component);
+        rdkit_writer_marker_obligation_domains_by_component(&marker_events_by_component);
     let shadow_marker_obligation_domains =
-        marker_obligation_domains_by_component(&shadow_marker_events_by_component);
+        rdkit_writer_marker_obligation_domains_by_component(&shadow_marker_events_by_component);
     let marker_obligation_events_by_component =
-        slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
+        rdkit_writer_slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
     let shadow_marker_obligation_events_by_component =
-        slot_coalesced_marker_event_facts_by_component(&shadow_marker_events_by_component);
+        rdkit_writer_slot_coalesced_marker_event_facts_by_component(
+            &shadow_marker_events_by_component,
+        );
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
         &runtime.constraint_model,
         StereoConstraintLayer::Semantic,
@@ -5488,7 +5495,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "traversal_facts",
-        traversal_constraint_facts_to_py(py, runtime, state, &resolved_selected_neighbors)?,
+        rdkit_traversal_writer_facts_to_py(py, runtime, state, &resolved_selected_neighbors)?,
     )?;
     row.set_item(
         "marker_event_facts",
@@ -5500,7 +5507,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "marker_obligation_domains",
-        marker_obligation_domains_to_py(py, &marker_obligation_domains)?,
+        rdkit_writer_marker_obligation_domains_to_py(py, &marker_obligation_domains)?,
     )?;
     row.set_item(
         "raw_layer_completions",
@@ -5512,7 +5519,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "traversal_layer_completions",
-        traversal_constraint_layer_completions_to_py(
+        rdkit_traversal_writer_layer_completions_to_py(
             py,
             runtime,
             state,
@@ -5577,11 +5584,11 @@ fn stereo_output_fact_row_to_py(
     )?;
     shadow_debug.set_item(
         "marker_obligation_domains",
-        marker_obligation_domains_to_py(py, &shadow_marker_obligation_domains)?,
+        rdkit_writer_marker_obligation_domains_to_py(py, &shadow_marker_obligation_domains)?,
     )?;
     shadow_debug.set_item(
         "marker_placement_state",
-        marker_placement_state_to_py(
+        rdkit_marker_placement_state_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
@@ -5592,7 +5599,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     shadow_debug.set_item(
         "marker_obligation_state",
-        marker_placement_state_to_py(
+        rdkit_marker_placement_state_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
@@ -5635,7 +5642,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "marker_placement_state",
-        marker_placement_state_to_py(
+        rdkit_marker_placement_state_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
@@ -5646,7 +5653,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     row.set_item(
         "marker_obligation_state",
-        marker_placement_state_to_py(
+        rdkit_marker_placement_state_to_py(
             py,
             runtime,
             &resolved_facts_by_component,
@@ -5810,7 +5817,7 @@ fn carrier_facts_by_component_from_state(
     Ok(facts_by_component)
 }
 
-fn traversal_constraint_facts_by_component(
+fn rdkit_traversal_writer_facts_by_component(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     selected_neighbors: &[isize],
@@ -5855,13 +5862,13 @@ fn selected_neighbors_have_constraint_completion(
         })
 }
 
-fn traversal_constraint_has_completion(
+fn rdkit_traversal_writer_has_completion(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     selected_neighbors: &[isize],
     layer: StereoConstraintLayer,
 ) -> bool {
-    traversal_constraint_facts_by_component(runtime, state, selected_neighbors)
+    rdkit_traversal_writer_facts_by_component(runtime, state, selected_neighbors)
         .iter()
         .enumerate()
         .all(|(component_idx, facts)| {
@@ -7057,7 +7064,7 @@ fn marker_events_for_deferred_component_token(
     Ok(events)
 }
 
-fn deferred_candidate_survives_marker_rows(
+fn rdkit_marker_rows_accept_deferred_token(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
@@ -7111,8 +7118,9 @@ fn deferred_candidate_survives_marker_rows(
         component_token,
         chosen_token,
     )?);
-    let marker_events = slot_coalesced_marker_event_facts(model_component_idx, &marker_events);
-    let survivor_state = marker_row_survivor_component_state(
+    let marker_events =
+        rdkit_writer_slot_coalesced_marker_event_facts(model_component_idx, &marker_events);
+    let survivor_state = rdkit_marker_row_survivor_component_state(
         runtime,
         model_component_idx,
         &candidate_token_phase_assignment_ids,
@@ -7156,7 +7164,7 @@ fn deferred_token_support_from_constraint_state(
         let component_token = &deferred.component_tokens[0];
         let mut out = Vec::new();
         for candidate_token in [raw_token.clone(), flip_direction_token(&raw_token)?] {
-            if deferred_candidate_survives_marker_rows(
+            if rdkit_marker_rows_accept_deferred_token(
                 runtime,
                 state,
                 deferred,
@@ -7177,7 +7185,7 @@ fn deferred_token_support_from_constraint_state(
     for candidate_token in ["/", "\\"] {
         let mut compatible = true;
         for component_token in deferred.component_tokens.iter() {
-            if !deferred_candidate_survives_marker_rows(
+            if !rdkit_marker_rows_accept_deferred_token(
                 runtime,
                 state,
                 deferred,
@@ -9573,18 +9581,17 @@ mod tests {
         apply_component_phase_commit_fact, apply_deferred_component_phase_fact,
         assert_component_token_flip_boundary_invariants, build_walker_runtime,
         check_supported_stereo_writer_surface, choices_for_stereo_state,
-        component_token_constraints_from_state, deferred_candidate_survives_marker_rows,
-        drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
-        enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
-        inferred_token_observation_facts_from_constraints, initial_stereo_state_for_root,
-        is_complete_terminal_stereo_state, is_terminal_stereo_state,
+        component_token_constraints_from_state, drain_exact_linear_stereo_actions,
+        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
+        flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
+        initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
         known_token_flip_facts_from_constraints, marker_events_for_deferred_component_token,
-        next_token_support_for_stereo_state, rdkit_ring_closure_projected_marker_slots,
-        resolved_constraint_state_from_walker_state, resolved_selected_neighbors,
-        resolved_selected_neighbors_from_assignment_state, selected_neighbor_facts_by_component,
-        smiles_from_direction_marker_slots, successors_by_token_stereo_raw,
-        supported_token_observation_facts_from_constraints,
-        traversal_constraint_facts_by_component, traversal_constraint_has_completion,
+        next_token_support_for_stereo_state, rdkit_marker_rows_accept_deferred_token,
+        rdkit_ring_closure_projected_marker_slots, rdkit_traversal_writer_facts_by_component,
+        rdkit_traversal_writer_has_completion, resolved_constraint_state_from_walker_state,
+        resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
+        selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
+        successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         validate_root_idx, validate_stereo_state_shape, ComponentBeginAtomFact,
         ComponentPhaseCommitFact, ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint,
         DeferredComponentPhaseFact, DeferredDirectionalComponentToken, DeferredDirectionalToken,
@@ -9988,7 +9995,7 @@ mod tests {
     }
 
     #[test]
-    fn traversal_constraint_facts_include_marker_emissions() {
+    fn rdkit_traversal_writer_facts_include_marker_emissions() {
         let graph = sample_stereo_graph();
         let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
         let mut states = Vec::new();
@@ -10000,7 +10007,7 @@ mod tests {
 
         let selected_neighbors = resolved_selected_neighbors(&runtime, state);
         let facts_by_component =
-            traversal_constraint_facts_by_component(&runtime, state, &selected_neighbors);
+            rdkit_traversal_writer_facts_by_component(&runtime, state, &selected_neighbors);
         let facts = &facts_by_component[0];
 
         assert_eq!(
@@ -10019,7 +10026,7 @@ mod tests {
                 role: StereoTraversalRole::TreeOrChain,
             }
         )));
-        assert!(traversal_constraint_has_completion(
+        assert!(rdkit_traversal_writer_has_completion(
             &runtime,
             state,
             &selected_neighbors,
@@ -10028,7 +10035,7 @@ mod tests {
     }
 
     #[test]
-    fn traversal_constraint_facts_classify_minimal_witness() {
+    fn rdkit_traversal_writer_facts_classify_minimal_witness() {
         let Some(graph) = prepared_graph_from_smiles("C/N=C1C=C/C(=N/C)[N-]/1") else {
             return;
         };
@@ -10041,7 +10048,7 @@ mod tests {
             terminal_stereo_states(&runtime, &graph, initial_state, &mut states);
             for state in states {
                 let selected_neighbors = resolved_selected_neighbors(&runtime, &state);
-                if traversal_constraint_has_completion(
+                if rdkit_traversal_writer_has_completion(
                     &runtime,
                     &state,
                     &selected_neighbors,
@@ -10144,7 +10151,7 @@ mod tests {
             role: StereoTraversalRole::TreeOrChain,
         });
 
-        assert!(deferred_candidate_survives_marker_rows(
+        assert!(rdkit_marker_rows_accept_deferred_token(
             &runtime,
             &state,
             &deferred,

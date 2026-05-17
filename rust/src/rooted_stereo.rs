@@ -1924,33 +1924,6 @@ fn emitted_candidate_token(
     ))
 }
 
-// Suspicious current model:
-// Hard-codes one terminal-neighbor ambiguity shape instead of representing the
-// unresolved carrier choice as part of the online constraint state.
-fn should_defer_unknown_two_candidate_side_commit(
-    graph: &PreparedSmilesGraphData,
-    side_info: &StereoSideInfo,
-    component_phases: &[i8],
-    neighbor_idx: usize,
-) -> bool {
-    if side_info.candidate_neighbors.len() != 2
-        || component_phases
-            .get(side_info.component_idx)
-            .copied()
-            .unwrap_or(UNKNOWN_COMPONENT_PHASE)
-            != UNKNOWN_COMPONENT_PHASE
-    {
-        return false;
-    }
-    let terminal_candidates = side_info
-        .candidate_neighbors
-        .iter()
-        .copied()
-        .filter(|&candidate_neighbor| graph.neighbors[candidate_neighbor].len() == 1)
-        .collect::<Vec<_>>();
-    terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
-}
-
 fn row_state_carrier_obligation_neighbor(
     context: &StereoEdgeEmissionContext<'_>,
     selected_neighbors: &[isize],
@@ -1958,32 +1931,8 @@ fn row_state_carrier_obligation_neighbor(
 ) -> Option<usize> {
     let side_info = context.side_infos.get(side_idx)?;
     let component_idx = context.constraint_model.component_for_side(side_idx)?;
-    let component_facts = selected_neighbors
-        .iter()
-        .enumerate()
-        .filter_map(|(selected_side_idx, &neighbor_idx)| {
-            if neighbor_idx < 0
-                || context
-                    .constraint_model
-                    .component_for_side(selected_side_idx)
-                    != Some(component_idx)
-            {
-                return None;
-            }
-            Some(StereoConstraintFact::CarrierSelected {
-                side_idx: selected_side_idx,
-                neighbor_idx: neighbor_idx as usize,
-            })
-        })
-        .collect::<Vec<_>>();
-    let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
-        component_idx,
-        StereoConstraintLayer::Semantic,
-        &component_facts,
-    );
-    let available_neighbors = context
-        .constraint_model
-        .available_neighbors_for_assignment_ids(component_idx, side_idx, &remaining_assignment_ids);
+    let available_neighbors =
+        available_carrier_neighbors_from_row_state(context, selected_neighbors, side_idx)?;
     if available_neighbors.len() == 1 {
         return available_neighbors.first().copied();
     }
@@ -2013,6 +1962,81 @@ fn row_state_carrier_obligation_neighbor(
     } else {
         None
     }
+}
+
+fn available_carrier_neighbors_from_row_state(
+    context: &StereoEdgeEmissionContext<'_>,
+    selected_neighbors: &[isize],
+    side_idx: usize,
+) -> Option<Vec<usize>> {
+    let component_idx = context.constraint_model.component_for_side(side_idx)?;
+    let component_facts = selected_neighbors
+        .iter()
+        .enumerate()
+        .filter_map(|(selected_side_idx, &neighbor_idx)| {
+            if neighbor_idx < 0
+                || context
+                    .constraint_model
+                    .component_for_side(selected_side_idx)
+                    != Some(component_idx)
+            {
+                return None;
+            }
+            Some(StereoConstraintFact::CarrierSelected {
+                side_idx: selected_side_idx,
+                neighbor_idx: neighbor_idx as usize,
+            })
+        })
+        .collect::<Vec<_>>();
+    let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
+        component_idx,
+        StereoConstraintLayer::Semantic,
+        &component_facts,
+    );
+    Some(
+        context
+            .constraint_model
+            .available_neighbors_for_assignment_ids(
+                component_idx,
+                side_idx,
+                &remaining_assignment_ids,
+            ),
+    )
+}
+
+fn should_defer_carrier_commit_for_row_state(
+    context: &StereoEdgeEmissionContext<'_>,
+    state: &StereoEdgeEmissionState<'_>,
+    selected_neighbors: &[isize],
+    side_idx: usize,
+    neighbor_idx: usize,
+) -> bool {
+    let Some(side_info) = context.side_infos.get(side_idx) else {
+        return false;
+    };
+    if state
+        .component_phases
+        .get(side_info.component_idx)
+        .copied()
+        .unwrap_or(UNKNOWN_COMPONENT_PHASE)
+        != UNKNOWN_COMPONENT_PHASE
+    {
+        return false;
+    }
+    let Some(available_neighbors) =
+        available_carrier_neighbors_from_row_state(context, selected_neighbors, side_idx)
+    else {
+        return false;
+    };
+    if available_neighbors.len() <= 1 || !available_neighbors.contains(&neighbor_idx) {
+        return false;
+    }
+    let terminal_candidates = available_neighbors
+        .iter()
+        .copied()
+        .filter(|&candidate_neighbor| context.graph.neighbors[candidate_neighbor].len() == 1)
+        .collect::<Vec<_>>();
+    terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
 }
 
 fn literal_bond_part(
@@ -2142,10 +2166,11 @@ fn emitted_edge_part_generic(
             {
                 continue;
             }
-            if should_defer_unknown_two_candidate_side_commit(
-                context.graph,
-                side_info,
-                state.component_phases,
+            if should_defer_carrier_commit_for_row_state(
+                context,
+                state,
+                &updated_neighbors,
+                side_idx,
                 neighbor_idx,
             ) {
                 continue;

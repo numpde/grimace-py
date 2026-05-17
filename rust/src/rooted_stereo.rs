@@ -11,12 +11,13 @@ use rustc_hash::FxHashMap;
 use crate::bond_stereo_constraints::{
     ambiguous_shared_edge_groups, canonical_edge, component_sizes, flip_direction_token,
     is_stereo_double_bond, rdkit_local_writer_hazards, stereo_component_ids,
-    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup, StereoAssignmentState,
-    StereoComponentConstraintModel, StereoComponentPhase, StereoConstraintFact,
-    StereoConstraintLayer, StereoConstraintModel, StereoConstraintState, StereoDirectionToken,
-    StereoMarkerEventFact, StereoSideInfo, StereoSideInfoBuild, StereoTokenBasisFact,
-    StereoTokenFlip, StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
-    CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
+    stereo_constraint_model, stereo_side_infos, AmbiguousSharedEdgeGroup,
+    RdkitTokenFlipAdjustmentObservations, StereoAssignmentState, StereoComponentConstraintModel,
+    StereoComponentPhase, StereoConstraintFact, StereoConstraintLayer, StereoConstraintModel,
+    StereoConstraintState, StereoDirectionToken, StereoMarkerEventFact, StereoSideInfo,
+    StereoSideInfoBuild, StereoTokenBasisFact, StereoTokenFlip, StereoTokenFlipFact,
+    StereoTokenObservationFact, StereoTraversalRole, CIS_STEREO_BOND_KINDS,
+    TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
     choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
@@ -6109,6 +6110,15 @@ struct RdkitTokenFlipAdjustmentObservation {
     adjacent_first_emitted_is_not_begin: Option<bool>,
 }
 
+impl RdkitTokenFlipAdjustmentObservation {
+    fn support_observations(&self) -> RdkitTokenFlipAdjustmentObservations {
+        RdkitTokenFlipAdjustmentObservations {
+            root_begin_side_orientation: self.root_begin_side_adjustment,
+            adjacent_two_candidate_first_emitted: self.adjacent_two_candidate_adjustment,
+        }
+    }
+}
+
 impl ComponentTokenInferenceInputs {
     fn supported_token_observation(&self) -> PyResult<Option<StereoTokenObservationFact>> {
         if !self.has_required_inputs {
@@ -6125,7 +6135,9 @@ impl ComponentTokenInferenceInputs {
                 Ok(Some(StereoTokenObservationFact::AllSingleCandidate {
                     runtime_component_idx: self.component_idx,
                     component_phase,
-                    rdkit_token_flip_adjustment: observations.rdkit_token_flip_adjustment.value,
+                    rdkit_token_flip_adjustment: observations
+                        .rdkit_token_flip_adjustment
+                        .support_observations(),
                 }))
             }
             "isolated_selected_begin_side" | "coupled_one_candidate_begin_side" => {
@@ -6137,7 +6149,9 @@ impl ComponentTokenInferenceInputs {
                     runtime_component_idx: self.component_idx,
                     component_phase,
                     selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
-                    rdkit_token_flip_adjustment: observations.rdkit_token_flip_adjustment.value,
+                    rdkit_token_flip_adjustment: observations
+                        .rdkit_token_flip_adjustment
+                        .support_observations(),
                 }))
             }
             "coupled_two_candidate_begin_side" => {
@@ -6158,7 +6172,9 @@ impl ComponentTokenInferenceInputs {
                         .first_emitted_candidate
                         .neighbor_idx
                         .map(|first_idx| first_idx == selected_begin_neighbor_idx),
-                    rdkit_token_flip_adjustment: observations.rdkit_token_flip_adjustment.value,
+                    rdkit_token_flip_adjustment: observations
+                        .rdkit_token_flip_adjustment
+                        .support_observations(),
                 }))
             }
             _ => Ok(None),
@@ -6608,9 +6624,23 @@ fn token_observation_facts_to_py(
                 "selected_begin_neighbor_is_first_emitted",
                 fact.selected_begin_neighbor_is_first_emitted(),
             )?;
+            let rdkit_adjustment = fact.rdkit_token_flip_adjustment();
+            row.set_item("rdkit_token_flip_adjustment", rdkit_adjustment.value())?;
             row.set_item(
-                "rdkit_token_flip_adjustment",
-                fact.rdkit_token_flip_adjustment(),
+                "rdkit_token_flip_adjustment_observations",
+                vec![
+                    (
+                        "root_begin_side_orientation",
+                        rdkit_adjustment.root_begin_side_orientation,
+                    ),
+                    (
+                        "adjacent_two_candidate_first_emitted",
+                        rdkit_adjustment.adjacent_two_candidate_first_emitted,
+                    ),
+                ]
+                .into_iter()
+                .filter_map(|(name, present)| present.then_some(name))
+                .collect::<Vec<_>>(),
             )?;
             row.set_item(
                 "implied_token_flip",

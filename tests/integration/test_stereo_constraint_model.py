@@ -1126,6 +1126,24 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 token_flip_inputs["rdkit_token_flip_adjustment"],
                                 token_observation["rdkit_token_flip_adjustment"],
                             )
+                            adjustment_inputs = input_observation_facts[
+                                "rdkit_token_flip_adjustment"
+                            ]
+                            expected_adjustment_observations = []
+                            if adjustment_inputs["root_begin_side_adjustment"]:
+                                expected_adjustment_observations.append(
+                                    "root_begin_side_orientation"
+                                )
+                            if adjustment_inputs["adjacent_two_candidate_adjustment"]:
+                                expected_adjustment_observations.append(
+                                    "adjacent_two_candidate_first_emitted"
+                                )
+                            self.assertEqual(
+                                expected_adjustment_observations,
+                                token_observation[
+                                    "rdkit_token_flip_adjustment_observations"
+                                ],
+                            )
                             self.assertEqual(
                                 component["inferred_token_flip"],
                                 token_observation["implied_token_flip"],

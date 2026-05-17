@@ -129,26 +129,44 @@ pub(crate) struct StereoTokenFlipFact {
     pub(crate) token_flip: StereoTokenFlip,
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct RdkitTokenFlipAdjustmentObservations {
+    pub(crate) root_begin_side_orientation: bool,
+    pub(crate) adjacent_two_candidate_first_emitted: bool,
+}
+
+impl RdkitTokenFlipAdjustmentObservations {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) const NONE: Self = Self {
+        root_begin_side_orientation: false,
+        adjacent_two_candidate_first_emitted: false,
+    };
+
+    pub(crate) fn value(self) -> bool {
+        self.root_begin_side_orientation ^ self.adjacent_two_candidate_first_emitted
+    }
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StereoTokenObservationFact {
     AllSingleCandidate {
         runtime_component_idx: usize,
         component_phase: StereoComponentPhase,
-        rdkit_token_flip_adjustment: bool,
+        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations,
     },
     SelectedBeginSide {
         runtime_component_idx: usize,
         component_phase: StereoComponentPhase,
         selected_begin_token: StereoDirectionToken,
-        rdkit_token_flip_adjustment: bool,
+        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations,
     },
     TwoCandidateBeginSide {
         runtime_component_idx: usize,
         component_phase: StereoComponentPhase,
         selected_begin_token: StereoDirectionToken,
         selected_begin_neighbor_is_first_emitted: Option<bool>,
-        rdkit_token_flip_adjustment: bool,
+        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations,
     },
 }
 
@@ -209,7 +227,7 @@ impl StereoTokenObservationFact {
         }
     }
 
-    pub(crate) fn rdkit_token_flip_adjustment(self) -> bool {
+    pub(crate) fn rdkit_token_flip_adjustment(self) -> RdkitTokenFlipAdjustmentObservations {
         match self {
             Self::AllSingleCandidate {
                 rdkit_token_flip_adjustment,
@@ -236,14 +254,12 @@ impl StereoTokenObservationFact {
 
     pub(crate) fn implied_token_flip(self) -> StereoTokenFlip {
         let phase_is_flipped = self.component_phase() == StereoComponentPhase::Flipped;
+        let rdkit_token_flip_adjustment = self.rdkit_token_flip_adjustment().value();
         let final_flip = match self {
-            Self::AllSingleCandidate { .. } => {
-                phase_is_flipped ^ self.rdkit_token_flip_adjustment()
-            }
+            Self::AllSingleCandidate { .. } => phase_is_flipped ^ rdkit_token_flip_adjustment,
             Self::SelectedBeginSide {
                 component_phase,
                 selected_begin_token,
-                rdkit_token_flip_adjustment,
                 ..
             } => {
                 let observation_flip = match component_phase {
@@ -259,7 +275,6 @@ impl StereoTokenObservationFact {
             Self::TwoCandidateBeginSide {
                 selected_begin_token,
                 selected_begin_neighbor_is_first_emitted,
-                rdkit_token_flip_adjustment,
                 ..
             } => {
                 if let Some(selected_is_first) = selected_begin_neighbor_is_first_emitted {
@@ -2281,10 +2296,22 @@ pub(crate) fn ambiguous_shared_edge_groups(
 #[cfg(test)]
 mod tests {
     use super::{
-        stereo_constraint_model, StereoComponentPhase, StereoConstraintFact, StereoConstraintLayer,
-        StereoDirectionToken, StereoLocalHazard, StereoMarkerEventFact, StereoSideInfo,
-        StereoTokenFlip, StereoTokenFlipFact, StereoTokenObservationFact, StereoTraversalRole,
+        stereo_constraint_model, RdkitTokenFlipAdjustmentObservations, StereoComponentPhase,
+        StereoConstraintFact, StereoConstraintLayer, StereoDirectionToken, StereoLocalHazard,
+        StereoMarkerEventFact, StereoSideInfo, StereoTokenFlip, StereoTokenFlipFact,
+        StereoTokenObservationFact, StereoTraversalRole,
     };
+
+    fn rdkit_adjustment(value: bool) -> RdkitTokenFlipAdjustmentObservations {
+        if value {
+            RdkitTokenFlipAdjustmentObservations {
+                root_begin_side_orientation: true,
+                adjacent_two_candidate_first_emitted: false,
+            }
+        } else {
+            RdkitTokenFlipAdjustmentObservations::NONE
+        }
+    }
 
     #[test]
     fn constraint_model_accepts_empty_no_stereo_shape() {
@@ -2690,7 +2717,7 @@ mod tests {
             let observation = StereoTokenObservationFact::AllSingleCandidate {
                 runtime_component_idx: 0,
                 component_phase,
-                rdkit_token_flip_adjustment: adjustment,
+                rdkit_token_flip_adjustment: rdkit_adjustment(adjustment),
             };
             assert_eq!(expected, observation.implied_token_flip());
             assert_eq!("all_single_candidate", observation.observation_kind());
@@ -2753,7 +2780,7 @@ mod tests {
                 runtime_component_idx: 0,
                 component_phase,
                 selected_begin_token,
-                rdkit_token_flip_adjustment: adjustment,
+                rdkit_token_flip_adjustment: rdkit_adjustment(adjustment),
             };
             assert_eq!(expected, observation.implied_token_flip(),);
         }
@@ -2806,7 +2833,7 @@ mod tests {
                     component_phase,
                     selected_begin_token,
                     selected_begin_neighbor_is_first_emitted: selected_is_first,
-                    rdkit_token_flip_adjustment: adjustment,
+                    rdkit_token_flip_adjustment: rdkit_adjustment(adjustment),
                 };
                 assert_eq!(expected, observation.implied_token_flip());
                 assert_eq!("two_candidate_begin_side", observation.observation_kind());
@@ -2832,7 +2859,7 @@ mod tests {
                 component_phase,
                 selected_begin_token: StereoDirectionToken::Slash,
                 selected_begin_neighbor_is_first_emitted: None,
-                rdkit_token_flip_adjustment: adjustment,
+                rdkit_token_flip_adjustment: rdkit_adjustment(adjustment),
             };
             assert_eq!(expected, observation.implied_token_flip());
         }
@@ -3182,7 +3209,7 @@ mod tests {
                 runtime_component_idx: 0,
                 component_phase: StereoComponentPhase::Stored,
                 selected_begin_token: StereoDirectionToken::Backslash,
-                rdkit_token_flip_adjustment: false,
+                rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
             }],
         )
         .expect("observation constraint state should build");
@@ -3200,7 +3227,7 @@ mod tests {
                 runtime_component_idx: 0,
                 component_phase: StereoComponentPhase::Stored,
                 selected_begin_token: StereoDirectionToken::Backslash,
-                rdkit_token_flip_adjustment: false,
+                rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
             }],
         )
         .expect("mixed observation constraint state should build");
@@ -3266,7 +3293,7 @@ mod tests {
                 runtime_component_idx: 0,
                 component_phase: StereoComponentPhase::Stored,
                 selected_begin_token: StereoDirectionToken::Backslash,
-                rdkit_token_flip_adjustment: false,
+                rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
             }],
         )
         .expect("contradictory mixed facts should create an empty state");
@@ -3315,7 +3342,7 @@ mod tests {
                     runtime_component_idx: 1,
                     component_phase: StereoComponentPhase::Stored,
                     selected_begin_token: StereoDirectionToken::Backslash,
-                    rdkit_token_flip_adjustment: false,
+                    rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                 }],
             )
             .is_err());
@@ -3327,7 +3354,7 @@ mod tests {
                     runtime_component_idx: 2,
                     component_phase: StereoComponentPhase::Stored,
                     selected_begin_token: StereoDirectionToken::Backslash,
-                    rdkit_token_flip_adjustment: false,
+                    rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                 }],
             )
             .is_err());
@@ -3339,7 +3366,7 @@ mod tests {
                 runtime_component_idx: 2,
                 component_phase: StereoComponentPhase::Stored,
                 selected_begin_token: StereoDirectionToken::Backslash,
-                rdkit_token_flip_adjustment: false,
+                rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
             }],
         )
         .is_err());
@@ -3363,7 +3390,7 @@ mod tests {
                     runtime_component_idx: 2,
                     component_phase: StereoComponentPhase::Stored,
                     selected_begin_token: StereoDirectionToken::Backslash,
-                    rdkit_token_flip_adjustment: false,
+                    rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                 }],
             )
             .is_err()
@@ -3495,7 +3522,7 @@ mod tests {
                         runtime_component_idx: 0,
                         component_phase: StereoComponentPhase::Stored,
                         selected_begin_token: StereoDirectionToken::Backslash,
-                        rdkit_token_flip_adjustment: false,
+                        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                     }],
                 )
                 .expect("observation query should be valid"),
@@ -3529,13 +3556,13 @@ mod tests {
                         runtime_component_idx: 0,
                         component_phase: StereoComponentPhase::Stored,
                         selected_begin_token: StereoDirectionToken::Backslash,
-                        rdkit_token_flip_adjustment: false,
+                        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                     },
                     StereoTokenObservationFact::SelectedBeginSide {
                         runtime_component_idx: 1,
                         component_phase: StereoComponentPhase::Stored,
                         selected_begin_token: StereoDirectionToken::Slash,
-                        rdkit_token_flip_adjustment: false,
+                        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                     },
                 ],
             )
@@ -3560,13 +3587,13 @@ mod tests {
                             runtime_component_idx: 0,
                             component_phase: StereoComponentPhase::Stored,
                             selected_begin_token: StereoDirectionToken::Backslash,
-                            rdkit_token_flip_adjustment: false,
+                            rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                         },
                         StereoTokenObservationFact::SelectedBeginSide {
                             runtime_component_idx: 0,
                             component_phase: StereoComponentPhase::Stored,
                             selected_begin_token: StereoDirectionToken::Slash,
-                            rdkit_token_flip_adjustment: false,
+                            rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations::NONE,
                         },
                     ],
                 )

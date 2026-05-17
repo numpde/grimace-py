@@ -410,6 +410,22 @@ impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
 
 type StereoCompletionCache = FxHashMap<StereoCompletionKey, bool>;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum StereoNextTokenCompleteness {
+    Raw,
+    Completable,
+}
+
+impl StereoNextTokenCompleteness {
+    fn from_require_completable(require_completable: bool) -> Self {
+        if require_completable {
+            Self::Completable
+        } else {
+            Self::Raw
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct StereoWalkerRuntimeData {
     root_idx: usize,
@@ -2937,11 +2953,11 @@ fn process_children_terminal_successors(
                 atom_idx: step.child_idx,
                 parent_idx: Some(step.parent_idx),
             });
-            successors_by_token_stereo_impl(
+            stereo_next_token_successors_from_boundary(
                 context.runtime,
                 context.graph,
                 &base_state,
-                context.require_completable,
+                StereoNextTokenCompleteness::from_require_completable(context.require_completable),
                 context.completion_cache,
             )
         }
@@ -8247,7 +8263,13 @@ fn can_complete_from_stereo_state_memo(
         return cached;
     }
 
-    let successors = match successors_by_token_stereo_impl(runtime, graph, state, false, cache) {
+    let successors = match stereo_next_token_successors_from_boundary(
+        runtime,
+        graph,
+        state,
+        StereoNextTokenCompleteness::Raw,
+        cache,
+    ) {
         Ok(successors) => successors,
         Err(_) => {
             cache.insert(key, false);
@@ -8295,11 +8317,15 @@ fn next_token_support_for_stereo_state_impl(
     state: &RootedConnectedStereoWalkerStateData,
     completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<Vec<String>> {
-    Ok(
-        successors_by_token_stereo_impl(runtime, graph, state, true, completion_cache)?
-            .into_keys()
-            .collect(),
-    )
+    Ok(stereo_next_token_successors_from_boundary(
+        runtime,
+        graph,
+        state,
+        StereoNextTokenCompleteness::Completable,
+        completion_cache,
+    )?
+    .into_keys()
+    .collect())
 }
 
 #[cfg(test)]
@@ -8312,13 +8338,19 @@ fn next_token_support_for_stereo_state(
     next_token_support_for_stereo_state_impl(runtime, graph, state, &mut completion_cache)
 }
 
-fn successors_by_token_stereo_impl(
+/// Single internal boundary for online stereo support queries.
+///
+/// The caller supplies the current walker prefix/state and chooses whether to
+/// filter to completable continuations. Row filtering, propagation, and
+/// RDKit-writer policy details stay behind this boundary.
+fn stereo_next_token_successors_from_boundary(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-    require_completable: bool,
+    completeness: StereoNextTokenCompleteness,
     completion_cache: &mut StereoCompletionCache,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
+    let require_completable = completeness == StereoNextTokenCompleteness::Completable;
     let action = match state.action_stack.last() {
         Some(action) => action.clone(),
         None => return Ok(BTreeMap::new()),
@@ -8406,11 +8438,11 @@ fn successors_by_token_stereo_impl(
     for (token, successor_group) in raw_successors {
         if token.is_empty() {
             for successor in successor_group {
-                let nested = successors_by_token_stereo_impl(
+                let nested = stereo_next_token_successors_from_boundary(
                     runtime,
                     graph,
                     &successor,
-                    require_completable,
+                    completeness,
                     completion_cache,
                 );
                 match nested {
@@ -8458,7 +8490,13 @@ fn successors_by_token_stereo(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     let mut completion_cache = FxHashMap::default();
-    successors_by_token_stereo_impl(runtime, graph, state, true, &mut completion_cache)
+    stereo_next_token_successors_from_boundary(
+        runtime,
+        graph,
+        state,
+        StereoNextTokenCompleteness::Completable,
+        &mut completion_cache,
+    )
 }
 
 fn successors_by_token_stereo_raw(
@@ -8467,7 +8505,13 @@ fn successors_by_token_stereo_raw(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
     let mut completion_cache = FxHashMap::default();
-    successors_by_token_stereo_impl(runtime, graph, state, false, &mut completion_cache)
+    stereo_next_token_successors_from_boundary(
+        runtime,
+        graph,
+        state,
+        StereoNextTokenCompleteness::Raw,
+        &mut completion_cache,
+    )
 }
 
 fn exact_successors_from_atom_stereo_state_drained(

@@ -133,6 +133,13 @@ struct IsolatedAromaticBeginSideTokenConstraint {
     selected_token: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DeferredCarrierChoiceConstraint {
+    side_idx: usize,
+    deferred_neighbor_idx: usize,
+    available_neighbors: Vec<usize>,
+}
+
 struct StereoEdgeEmissionContext<'a> {
     graph: &'a PreparedSmilesGraphData,
     constraint_model: &'a StereoConstraintModel,
@@ -2168,15 +2175,15 @@ fn available_carrier_neighbors_from_row_state(
     )
 }
 
-fn should_defer_carrier_commit_for_row_state(
+fn deferred_carrier_choice_constraint_for_row_state(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
     selected_neighbors: &[isize],
     side_idx: usize,
     neighbor_idx: usize,
-) -> bool {
+) -> Option<DeferredCarrierChoiceConstraint> {
     let Some(side_info) = context.side_infos.get(side_idx) else {
-        return false;
+        return None;
     };
     if state
         .component_phases
@@ -2185,22 +2192,39 @@ fn should_defer_carrier_commit_for_row_state(
         .unwrap_or(UNKNOWN_COMPONENT_PHASE)
         != UNKNOWN_COMPONENT_PHASE
     {
-        return false;
+        return None;
     }
     let Some(available_neighbors) =
         available_carrier_neighbors_from_row_state(context, selected_neighbors, side_idx)
     else {
-        return false;
+        return None;
     };
     if available_neighbors.len() <= 1 || !available_neighbors.contains(&neighbor_idx) {
-        return false;
+        return None;
     }
     let terminal_candidates = available_neighbors
         .iter()
         .copied()
         .filter(|&candidate_neighbor| context.graph.neighbors[candidate_neighbor].len() == 1)
         .collect::<Vec<_>>();
-    terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
+    if terminal_candidates.len() != 1 || neighbor_idx != terminal_candidates[0] {
+        return None;
+    }
+    Some(DeferredCarrierChoiceConstraint {
+        side_idx,
+        deferred_neighbor_idx: neighbor_idx,
+        available_neighbors,
+    })
+}
+
+fn should_defer_carrier_commit_for_constraint(
+    constraint: &DeferredCarrierChoiceConstraint,
+    side_idx: usize,
+    neighbor_idx: usize,
+) -> bool {
+    constraint.side_idx == side_idx
+        && constraint.deferred_neighbor_idx == neighbor_idx
+        && constraint.available_neighbors.len() > 1
 }
 
 fn literal_bond_part(
@@ -2330,13 +2354,17 @@ fn emitted_edge_part_generic(
             {
                 continue;
             }
-            if should_defer_carrier_commit_for_row_state(
+            if deferred_carrier_choice_constraint_for_row_state(
                 context,
                 state,
                 &updated_neighbors,
                 side_idx,
                 neighbor_idx,
-            ) {
+            )
+            .as_ref()
+            .is_some_and(|constraint| {
+                should_defer_carrier_commit_for_constraint(constraint, side_idx, neighbor_idx)
+            }) {
                 continue;
             }
             updated_neighbors[side_idx] = neighbor_idx as isize;

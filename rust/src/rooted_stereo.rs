@@ -6081,12 +6081,136 @@ fn raw_token_for_deferred_edge(
     Ok(Some(raw_token))
 }
 
+fn marker_event_for_deferred_component_token(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    chosen_token: &str,
+) -> PyResult<Option<StereoMarkerEventFact>> {
+    if deferred.begin_idx < 0 || deferred.end_idx < 0 {
+        return Ok(None);
+    }
+    let marker = match chosen_token {
+        "/" => StereoDirectionToken::Slash,
+        "\\" => StereoDirectionToken::Backslash,
+        _ => return Ok(None),
+    };
+    let begin_idx = deferred.begin_idx as usize;
+    let end_idx = deferred.end_idx as usize;
+    let edge = canonical_edge(begin_idx, end_idx);
+    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let Some(side_idx) = runtime
+        .edge_to_side_ids
+        .get(&edge)
+        .into_iter()
+        .flatten()
+        .copied()
+        .find(|&side_idx| {
+            let side_info = &runtime.side_infos[side_idx];
+            if side_info.component_idx != component_token.component_idx {
+                return false;
+            }
+            let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+                end_idx
+            } else if end_idx == side_info.endpoint_atom_idx {
+                begin_idx
+            } else {
+                return false;
+            };
+            resolved_selected_neighbors[side_idx] == edge_neighbor_idx as isize
+        })
+    else {
+        return Ok(None);
+    };
+    Ok(Some(StereoMarkerEventFact::MarkerPlaced {
+        side_idx,
+        slot: direction_erased_slot(state.prefix.as_ref()),
+        begin_idx,
+        end_idx,
+        marker,
+        role: directional_token_role(state.prefix.as_ref(), None),
+    }))
+}
+
+fn deferred_candidate_survives_marker_rows(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    reference_token: &str,
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+) -> PyResult<bool> {
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(component_token.component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Deferred token references unknown runtime component",
+        ));
+    };
+    if constraint_state.is_empty(model_component_idx) {
+        return Ok(false);
+    }
+    let Some(implied_token_flip) =
+        model_token_flip_for_chosen_token(reference_token, chosen_token)?
+    else {
+        return Ok(false);
+    };
+    let token_phase_assignment_ids = constraint_state
+        .token_phase_remaining_by_component
+        .get(model_component_idx)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let candidate_token_phase_assignment_ids = runtime
+        .constraint_model
+        .filter_token_phase_assignment_ids_for_token_flip(
+            model_component_idx,
+            component_token.component_idx,
+            token_phase_assignment_ids,
+            implied_token_flip,
+        )?;
+    if candidate_token_phase_assignment_ids.is_empty() {
+        return Ok(false);
+    }
+
+    let mut marker_events = marker_events_by_component
+        .get(model_component_idx)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(marker_event) = marker_event_for_deferred_component_token(
+        runtime,
+        state,
+        deferred,
+        component_token,
+        chosen_token,
+    )? {
+        marker_events.push(marker_event);
+    }
+    let survivor_state = marker_row_survivor_component_state(
+        runtime,
+        model_component_idx,
+        &candidate_token_phase_assignment_ids,
+        &marker_events,
+    )?;
+    Ok(!survivor_state.row_ids_after_marker_events.is_empty())
+}
+
 fn deferred_token_support_from_constraint_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
 ) -> PyResult<Vec<String>> {
+    let constraint_state = resolved_constraint_state_from_walker_state(
+        runtime,
+        graph,
+        state,
+        StereoConstraintLayer::Semantic,
+    )?;
+    let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
     if deferred.component_tokens.len() == 1 {
         let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
             Some(
@@ -6107,78 +6231,39 @@ fn deferred_token_support_from_constraint_state(
             return Ok(vec![literal_token.unwrap_or_default()]);
         };
         let component_token = &deferred.component_tokens[0];
-        let Some(model_component_idx) = runtime
-            .constraint_model
-            .component_for_runtime_component(component_token.component_idx)
-        else {
-            return Err(PyValueError::new_err(
-                "Deferred token references unknown runtime component",
-            ));
-        };
-        let constraint_state = resolved_constraint_state_from_walker_state(
-            runtime,
-            graph,
-            state,
-            StereoConstraintLayer::Semantic,
-        )?;
-        if constraint_state.is_empty(model_component_idx) {
-            return Err(PyValueError::new_err(
-                "Deferred token has no compatible stereo assignment",
-            ));
+        let mut out = Vec::new();
+        for candidate_token in [raw_token.clone(), flip_direction_token(&raw_token)?] {
+            if deferred_candidate_survives_marker_rows(
+                runtime,
+                state,
+                deferred,
+                component_token,
+                &raw_token,
+                &candidate_token,
+                &constraint_state,
+                &marker_events_by_component,
+            )? {
+                out.push(candidate_token);
+            }
         }
-        let mut out = constraint_state
-            .available_token_flips(
-                &runtime.constraint_model,
-                model_component_idx,
-                component_token.component_idx,
-            )
-            .into_iter()
-            .map(|token_flip| match token_flip {
-                StereoTokenFlip::Stored => Ok(raw_token.clone()),
-                StereoTokenFlip::Flipped => flip_direction_token(&raw_token),
-            })
-            .collect::<PyResult<Vec<_>>>()?;
         out.sort();
         out.dedup();
         return Ok(out);
     }
-
-    let constraint_state = resolved_constraint_state_from_walker_state(
-        runtime,
-        graph,
-        state,
-        StereoConstraintLayer::Semantic,
-    )?;
     let mut out = Vec::new();
     for candidate_token in ["/", "\\"] {
         let mut compatible = true;
         for component_token in deferred.component_tokens.iter() {
-            let Some(model_component_idx) = runtime
-                .constraint_model
-                .component_for_runtime_component(component_token.component_idx)
-            else {
-                return Err(PyValueError::new_err(
-                    "Deferred token references unknown runtime component",
-                ));
-            };
-            if constraint_state.is_empty(model_component_idx) {
-                compatible = false;
-                break;
-            }
-            let Some(implied_token_flip) =
-                model_token_flip_for_chosen_token(&component_token.stored_token, candidate_token)?
-            else {
-                compatible = false;
-                break;
-            };
-            if !constraint_state
-                .available_token_flips(
-                    &runtime.constraint_model,
-                    model_component_idx,
-                    component_token.component_idx,
-                )
-                .contains(&implied_token_flip)
-            {
+            if !deferred_candidate_survives_marker_rows(
+                runtime,
+                state,
+                deferred,
+                component_token,
+                &component_token.stored_token,
+                candidate_token,
+                &constraint_state,
+                &marker_events_by_component,
+            )? {
                 compatible = false;
                 break;
             }

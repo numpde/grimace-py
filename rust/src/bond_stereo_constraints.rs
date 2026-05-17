@@ -1271,6 +1271,47 @@ impl StereoConstraintModel {
         )
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn filter_token_phase_assignment_ids_for_token_flip(
+        &self,
+        component_idx: usize,
+        runtime_component_idx: usize,
+        token_phase_assignment_ids: &[usize],
+        token_flip: StereoTokenFlip,
+    ) -> PyResult<Vec<usize>> {
+        let Some(component) = self.components.get(component_idx) else {
+            return Err(PyValueError::new_err(
+                "token phase filter component index out of range",
+            ));
+        };
+        let Some(runtime_component_position) = component
+            .runtime_component_ids
+            .iter()
+            .position(|&idx| idx == runtime_component_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "token phase filter runtime component outside model component",
+            ));
+        };
+        let mut filtered = Vec::new();
+        for &assignment_id in token_phase_assignment_ids {
+            let Some(assignment) = component.all_token_phase_assignments.get(assignment_id) else {
+                return Err(PyValueError::new_err(
+                    "token phase filter assignment index out of range",
+                ));
+            };
+            if assignment
+                .token_flips
+                .get(runtime_component_position)
+                .copied()
+                == Some(token_flip)
+            {
+                filtered.push(assignment_id);
+            }
+        }
+        Ok(filtered)
+    }
+
     pub(crate) fn forced_token_flip_for_token_phase_assignment_ids(
         &self,
         component_idx: usize,
@@ -2903,6 +2944,28 @@ mod tests {
         assert_eq!(
             Some(StereoTokenFlip::Stored),
             model.forced_token_flip_for_token_phase_assignment_ids(0, 0, &[4, 6]),
+        );
+        assert_eq!(
+            vec![4, 6],
+            model
+                .filter_token_phase_assignment_ids_for_token_flip(
+                    0,
+                    0,
+                    &[4, 5, 6, 7],
+                    StereoTokenFlip::Stored,
+                )
+                .expect("token phase filter should be valid"),
+        );
+        assert_eq!(
+            vec![5, 7],
+            model
+                .filter_token_phase_assignment_ids_for_token_flip(
+                    0,
+                    0,
+                    &[4, 5, 6, 7],
+                    StereoTokenFlip::Flipped,
+                )
+                .expect("token phase filter should be valid"),
         );
         assert_eq!(
             None,

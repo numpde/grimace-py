@@ -2443,26 +2443,29 @@ fn deferred_carrier_choice_constraints_block_neighbor(
     })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum CarrierCommitmentDecision {
     Commit,
     Defer(DeferredCarrierChoiceConstraint),
     Skip,
 }
 
-struct CarrierCommitmentSupportFacts {
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CarrierCommitmentBoundaryQuery {
+    candidate_neighbor_idx: usize,
     forced_neighbor: Option<usize>,
     blocked_by_deferred_constraint: bool,
     deferrable_constraint: Option<DeferredCarrierChoiceConstraint>,
 }
 
-fn carrier_commitment_support_facts_from_boundary(
+fn carrier_commitment_boundary_query_from_edge_state(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
     selected_neighbors: &[isize],
     deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
     side_idx: usize,
     neighbor_idx: usize,
-) -> CarrierCommitmentSupportFacts {
+) -> CarrierCommitmentBoundaryQuery {
     let blocked_by_deferred_constraint = deferred_carrier_choice_constraints_block_neighbor(
         deferred_carrier_choice_constraints,
         side_idx,
@@ -2480,27 +2483,27 @@ fn carrier_commitment_support_facts_from_boundary(
     .filter(|constraint| {
         should_defer_carrier_commit_for_constraint(constraint, side_idx, neighbor_idx)
     });
-    CarrierCommitmentSupportFacts {
+    CarrierCommitmentBoundaryQuery {
+        candidate_neighbor_idx: neighbor_idx,
         forced_neighbor,
         blocked_by_deferred_constraint,
         deferrable_constraint,
     }
 }
 
-fn carrier_commitment_decision_from_support_boundary(
-    facts: CarrierCommitmentSupportFacts,
-    neighbor_idx: usize,
+fn carrier_commitment_decision_from_boundary_query(
+    query: CarrierCommitmentBoundaryQuery,
 ) -> CarrierCommitmentDecision {
-    if facts.blocked_by_deferred_constraint {
+    if query.blocked_by_deferred_constraint {
         return CarrierCommitmentDecision::Skip;
     }
-    if facts
+    if query
         .forced_neighbor
-        .is_some_and(|forced_neighbor| forced_neighbor != neighbor_idx)
+        .is_some_and(|forced_neighbor| forced_neighbor != query.candidate_neighbor_idx)
     {
         return CarrierCommitmentDecision::Skip;
     }
-    if let Some(constraint) = facts.deferrable_constraint {
+    if let Some(constraint) = query.deferrable_constraint {
         return CarrierCommitmentDecision::Defer(constraint);
     }
     CarrierCommitmentDecision::Commit
@@ -2637,7 +2640,7 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
-            let commitment_facts = carrier_commitment_support_facts_from_boundary(
+            let commitment_query = carrier_commitment_boundary_query_from_edge_state(
                 context,
                 state,
                 &updated_neighbors,
@@ -2645,8 +2648,7 @@ fn emitted_edge_part_generic(
                 side_idx,
                 neighbor_idx,
             );
-            match carrier_commitment_decision_from_support_boundary(commitment_facts, neighbor_idx)
-            {
+            match carrier_commitment_decision_from_boundary_query(commitment_query) {
                 CarrierCommitmentDecision::Commit => {
                     updated_neighbors[side_idx] = neighbor_idx as isize;
                     updated_orientations[side_idx] = edge_orientation;
@@ -9622,11 +9624,13 @@ mod tests {
         resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
         successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
-        validate_root_idx, validate_stereo_state_shape, ComponentBeginAtomFact,
-        ComponentPhaseCommitFact, ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint,
-        DeferredComponentPhaseFact, DeferredDirectionalComponentToken, DeferredDirectionalToken,
-        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, STORED_COMPONENT_TOKEN_FLIP,
-        UNKNOWN_COMPONENT_PHASE, UNKNOWN_COMPONENT_TOKEN_FLIP,
+        validate_root_idx, validate_stereo_state_shape,
+        carrier_commitment_decision_from_boundary_query, CarrierCommitmentBoundaryQuery,
+        CarrierCommitmentDecision, ComponentBeginAtomFact, ComponentPhaseCommitFact,
+        ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
+        DeferredDirectionalComponentToken, DeferredDirectionalToken, FLIPPED_COMPONENT_PHASE,
+        STORED_COMPONENT_PHASE, STORED_COMPONENT_TOKEN_FLIP, UNKNOWN_COMPONENT_PHASE,
+        UNKNOWN_COMPONENT_TOKEN_FLIP,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -10418,6 +10422,56 @@ mod tests {
 
         assert!(!available_neighbors.contains(&blocked_neighbor_idx));
         assert!(!available_neighbors.is_empty());
+    }
+
+    #[test]
+    fn carrier_commitment_boundary_query_decision_order_is_explicit() {
+        let constraint = DeferredCarrierChoiceConstraint {
+            side_idx: 3,
+            deferred_neighbor_idx: 5,
+            available_neighbors: vec![5, 7],
+        };
+
+        assert_eq!(
+            CarrierCommitmentDecision::Skip,
+            carrier_commitment_decision_from_boundary_query(CarrierCommitmentBoundaryQuery {
+                candidate_neighbor_idx: 5,
+                forced_neighbor: None,
+                blocked_by_deferred_constraint: true,
+                deferrable_constraint: Some(constraint.clone()),
+            })
+        );
+        assert_eq!(
+            CarrierCommitmentDecision::Skip,
+            carrier_commitment_decision_from_boundary_query(CarrierCommitmentBoundaryQuery {
+                candidate_neighbor_idx: 5,
+                forced_neighbor: Some(7),
+                blocked_by_deferred_constraint: false,
+                deferrable_constraint: Some(constraint.clone()),
+            })
+        );
+        assert_eq!(
+            CarrierCommitmentDecision::Defer(constraint),
+            carrier_commitment_decision_from_boundary_query(CarrierCommitmentBoundaryQuery {
+                candidate_neighbor_idx: 5,
+                forced_neighbor: Some(5),
+                blocked_by_deferred_constraint: false,
+                deferrable_constraint: Some(DeferredCarrierChoiceConstraint {
+                    side_idx: 3,
+                    deferred_neighbor_idx: 5,
+                    available_neighbors: vec![5, 7],
+                }),
+            })
+        );
+        assert_eq!(
+            CarrierCommitmentDecision::Commit,
+            carrier_commitment_decision_from_boundary_query(CarrierCommitmentBoundaryQuery {
+                candidate_neighbor_idx: 5,
+                forced_neighbor: Some(5),
+                blocked_by_deferred_constraint: false,
+                deferrable_constraint: None,
+            })
+        );
     }
 
     #[test]

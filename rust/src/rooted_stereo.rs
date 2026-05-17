@@ -4233,17 +4233,17 @@ fn resolved_constraint_state_from_walker_state(
     state: &RootedConnectedStereoWalkerStateData,
     layer: StereoConstraintLayer,
 ) -> PyResult<StereoConstraintState> {
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    let resolved_facts_by_component = carrier_facts_by_component_from_state(
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let raw_facts_by_component = carrier_facts_by_component_from_state(
         runtime,
-        &resolved_selected_neighbors,
+        raw_selected_neighbors,
         &state.deferred_carrier_choice_constraints,
     )?;
-    let token_constraints = component_token_constraints_from_state(
+    let token_constraints = partial_component_token_constraints_from_state(
         runtime,
         graph,
         state,
-        &resolved_selected_neighbors,
+        raw_selected_neighbors,
     )?;
     let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
     let token_observation_facts =
@@ -4251,7 +4251,7 @@ fn resolved_constraint_state_from_walker_state(
     StereoConstraintState::from_facts_and_token_observations(
         &runtime.constraint_model,
         layer,
-        &resolved_facts_by_component,
+        &raw_facts_by_component,
         &known_token_flip_facts,
         &token_observation_facts,
     )

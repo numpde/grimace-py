@@ -30,8 +30,12 @@ pub(crate) struct StereoSideInfoBuild {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum StereoConstraintLayer {
+    // Molecule-level stereo assignments that should remain valid independent
+    // of RDKit's particular writer spelling.
     Semantic,
+    // RDKit writer exclusions that are local to the stereo component shape.
     RdkitLocalWriter,
+    // RDKit writer exclusions that depend on traversal/emission observations.
     RdkitTraversalWriter,
 }
 

@@ -360,6 +360,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     stereo_selected_orientations: Arc<Vec<i8>>,
     stereo_first_emitted_candidates: Arc<Vec<isize>>,
     stereo_component_begin_atoms: Arc<Vec<isize>>,
+    committed_component_token_flips: Arc<Vec<Option<StereoTokenFlip>>>,
     stereo_component_token_flips: Arc<Vec<i8>>,
     deferred_carrier_choice_constraints: Arc<Vec<DeferredCarrierChoiceConstraint>>,
     stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
@@ -396,7 +397,7 @@ struct StereoCompletionKey {
     stereo_selected_orientations: Arc<Vec<i8>>,
     stereo_first_emitted_candidates: Arc<Vec<isize>>,
     stereo_component_begin_atoms: Arc<Vec<isize>>,
-    stereo_component_token_flips: Arc<Vec<i8>>,
+    committed_component_token_flips: Arc<Vec<Option<StereoTokenFlip>>>,
     deferred_carrier_choice_constraints: Arc<Vec<DeferredCarrierChoiceConstraint>>,
     stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
     action_stack: Vec<WalkerAction>,
@@ -415,7 +416,7 @@ impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
             stereo_selected_orientations: state.stereo_selected_orientations.clone(),
             stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
             stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
-            stereo_component_token_flips: state.stereo_component_token_flips.clone(),
+            committed_component_token_flips: state.committed_component_token_flips.clone(),
             deferred_carrier_choice_constraints: state.deferred_carrier_choice_constraints.clone(),
             stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
             action_stack: state.action_stack.clone(),
@@ -723,6 +724,7 @@ fn stereo_exact_state_from_full(
         stereo_selected_orientations,
         stereo_first_emitted_candidates,
         stereo_component_begin_atoms,
+        committed_component_token_flips,
         stereo_component_token_flips,
         deferred_carrier_choice_constraints,
         stereo_token_basis_facts,
@@ -735,6 +737,7 @@ fn stereo_exact_state_from_full(
     debug_assert!(stereo_selected_orientations.is_empty());
     debug_assert!(stereo_first_emitted_candidates.is_empty());
     debug_assert!(stereo_component_begin_atoms.is_empty());
+    debug_assert!(committed_component_token_flips.is_empty());
     debug_assert!(stereo_component_token_flips.is_empty());
     debug_assert!(deferred_carrier_choice_constraints.is_empty());
     debug_assert!(stereo_token_basis_facts.is_empty());
@@ -1191,13 +1194,13 @@ fn cmp_stereo_state_structure(
         )
         .then(
             if Arc::ptr_eq(
-                &left.stereo_component_token_flips,
-                &right.stereo_component_token_flips,
+                &left.committed_component_token_flips,
+                &right.committed_component_token_flips,
             ) {
                 Ordering::Equal
             } else {
-                left.stereo_component_token_flips
-                    .cmp(&right.stereo_component_token_flips)
+                left.committed_component_token_flips
+                    .cmp(&right.committed_component_token_flips)
             },
         )
         .then(
@@ -4081,12 +4084,12 @@ fn committed_component_token_flip_fact_from_state(
     state: &RootedConnectedStereoWalkerStateData,
     component_idx: usize,
 ) -> Option<CommittedComponentTokenFlipFact> {
-    model_token_flip_from_component_value(state.stereo_component_token_flips[component_idx]).map(
-        |token_flip| CommittedComponentTokenFlipFact {
+    state.committed_component_token_flips[component_idx].map(|token_flip| {
+        CommittedComponentTokenFlipFact {
             runtime_component_idx: component_idx,
             token_flip,
-        },
-    )
+        }
+    })
 }
 
 fn component_token_constraint_from_state(
@@ -4278,11 +4281,10 @@ fn assert_token_flips_explained_by_constraint_state(
         state,
         StereoConstraintLayer::Semantic,
     )?;
-    for component_idx in 0..state.stereo_component_token_flips.len() {
-        let known = state.stereo_component_token_flips[component_idx];
-        if known == UNKNOWN_COMPONENT_TOKEN_FLIP {
+    for component_idx in 0..state.committed_component_token_flips.len() {
+        let Some(known) = state.committed_component_token_flips[component_idx] else {
             continue;
-        }
+        };
         let Some(model_component_idx) = runtime
             .constraint_model
             .component_for_runtime_component(component_idx)
@@ -4305,7 +4307,7 @@ fn assert_token_flips_explained_by_constraint_state(
                 "Known token flip is not forced by stereo constraint state",
             ));
         };
-        if Some(forced) != model_token_flip_from_component_value(known) {
+        if forced != known {
             return Err(PyValueError::new_err(
                 "Known token flip disagrees with stereo constraint state",
             ));
@@ -5720,6 +5722,7 @@ fn validate_stereo_state_shape(
             .any(|(atom_idx, _rings)| *atom_idx >= graph.atom_count())
         || state.stereo_component_phases.len() != runtime.isolated_components.len()
         || state.stereo_component_begin_atoms.len() != runtime.isolated_components.len()
+        || state.committed_component_token_flips.len() != runtime.isolated_components.len()
         || state.stereo_component_token_flips.len() != runtime.isolated_components.len()
         || state.stereo_selected_neighbors.len() != runtime.side_infos.len()
         || state.stereo_selected_orientations.len() != runtime.side_infos.len()
@@ -5933,6 +5936,7 @@ fn initial_stereo_state_for_root(
         ]),
         stereo_first_emitted_candidates: Arc::new(vec![-1; runtime.side_infos.len()]),
         stereo_component_begin_atoms: Arc::new(vec![-1; runtime.isolated_components.len()]),
+        committed_component_token_flips: Arc::new(vec![None; runtime.isolated_components.len()]),
         stereo_component_token_flips: Arc::new(vec![
             UNKNOWN_COMPONENT_TOKEN_FLIP;
             runtime.isolated_components.len()
@@ -6860,15 +6864,22 @@ fn assert_component_token_flip_boundary_invariants(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
-    // Temporary equivalence check while committed token flips are still mirrored
-    // in the walker vector instead of stored only as support-state facts.
+    // Temporary equivalence check while the old walker vector remains as a
+    // diagnostic mirror of the committed token-fact state.
     assert_token_flips_explained_by_constraint_state(runtime, graph, state)?;
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    for component_idx in 0..state.stereo_component_token_flips.len() {
+    for component_idx in 0..state.committed_component_token_flips.len() {
+        let committed = state.committed_component_token_flips[component_idx]
+            .map(component_token_flip_value_from_model)
+            .unwrap_or(UNKNOWN_COMPONENT_TOKEN_FLIP);
+        if state.stereo_component_token_flips[component_idx] != committed {
+            return Err(PyValueError::new_err(
+                "Stereo component token flip shadow disagrees with committed token fact",
+            ));
+        }
         let inferred = inferred_component_token_flip(runtime, state, graph, component_idx)?;
         if let Some(inferred) = inferred {
-            let existing = state.stereo_component_token_flips[component_idx];
-            if existing != UNKNOWN_COMPONENT_TOKEN_FLIP && existing != inferred {
+            if committed != UNKNOWN_COMPONENT_TOKEN_FLIP && committed != inferred {
                 let component_selection_complete = runtime.side_ids_by_component[component_idx]
                     .iter()
                     .all(|&side_idx| resolved_selected_neighbors[side_idx] >= 0);
@@ -6902,15 +6913,25 @@ fn commit_component_token_flip_fact(
     fact: CommittedComponentTokenFlipFact,
 ) -> PyResult<()> {
     let chosen_flip = component_token_flip_value_from_model(fact.token_flip);
-    let existing = state.stereo_component_token_flips[fact.runtime_component_idx];
-    if existing == UNKNOWN_COMPONENT_TOKEN_FLIP {
+    let existing = state.committed_component_token_flips[fact.runtime_component_idx];
+    if let Some(existing) = existing {
+        if existing != fact.token_flip {
+            return Err(PyValueError::new_err(
+                "Stereo deferred token was committed inconsistently",
+            ));
+        }
+    } else {
+        Arc::make_mut(&mut state.committed_component_token_flips)[fact.runtime_component_idx] =
+            Some(fact.token_flip);
+    }
+
+    let shadow = state.stereo_component_token_flips[fact.runtime_component_idx];
+    if shadow == UNKNOWN_COMPONENT_TOKEN_FLIP {
         Arc::make_mut(&mut state.stereo_component_token_flips)[fact.runtime_component_idx] =
             chosen_flip;
-        return Ok(());
-    }
-    if existing != chosen_flip {
+    } else if shadow != chosen_flip {
         return Err(PyValueError::new_err(
-            "Stereo deferred token was committed inconsistently",
+            "Stereo deferred token shadow was committed inconsistently",
         ));
     }
     Ok(())
@@ -7544,6 +7565,9 @@ fn enter_atom_successors_by_token(
                             stereo_component_begin_atoms: Arc::new(
                                 current_component_begin_atoms.clone(),
                             ),
+                            committed_component_token_flips: base_state
+                                .committed_component_token_flips
+                                .clone(),
                             stereo_component_token_flips: base_state
                                 .stereo_component_token_flips
                                 .clone(),
@@ -7712,6 +7736,9 @@ fn enter_atom_successors_without_bond_stereo(
                                 .clone(),
                             stereo_component_begin_atoms: base_state
                                 .stereo_component_begin_atoms
+                                .clone(),
+                            committed_component_token_flips: base_state
+                                .committed_component_token_flips
                                 .clone(),
                             stereo_component_token_flips: base_state
                                 .stereo_component_token_flips
@@ -8266,6 +8293,7 @@ fn process_children_successors_without_bond_stereo(
             stereo_selected_orientations: state.stereo_selected_orientations.clone(),
             stereo_first_emitted_candidates: state.stereo_first_emitted_candidates.clone(),
             stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
+            committed_component_token_flips: state.committed_component_token_flips.clone(),
             stereo_component_token_flips: state.stereo_component_token_flips.clone(),
             deferred_carrier_choice_constraints: state.deferred_carrier_choice_constraints.clone(),
             stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
@@ -9518,7 +9546,8 @@ mod tests {
     use super::{
         advance_stereo_choice_state, advance_stereo_token_state, apply_component_begin_atom_fact,
         apply_component_phase_commit_fact, apply_deferred_component_phase_fact,
-        build_walker_runtime, check_supported_stereo_writer_surface, choices_for_stereo_state,
+        assert_component_token_flip_boundary_invariants, build_walker_runtime,
+        check_supported_stereo_writer_surface, choices_for_stereo_state,
         component_token_constraints_from_state, deferred_candidate_survives_marker_rows,
         drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
         enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
@@ -9534,8 +9563,8 @@ mod tests {
         validate_root_idx, validate_stereo_state_shape, ComponentBeginAtomFact,
         ComponentPhaseCommitFact, ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint,
         DeferredComponentPhaseFact, DeferredDirectionalComponentToken, DeferredDirectionalToken,
-        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
-        UNKNOWN_COMPONENT_TOKEN_FLIP,
+        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, STORED_COMPONENT_TOKEN_FLIP,
+        UNKNOWN_COMPONENT_PHASE, UNKNOWN_COMPONENT_TOKEN_FLIP,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -10148,6 +10177,7 @@ mod tests {
         let graph = sample_stereo_graph();
         let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
         let mut state = first_terminal_stereo_state(&runtime, &graph, initial_state);
+        Arc::make_mut(&mut state.committed_component_token_flips).fill(None);
         Arc::make_mut(&mut state.stereo_component_token_flips).fill(UNKNOWN_COMPONENT_TOKEN_FLIP);
 
         let selected_neighbors = resolved_selected_neighbors(&runtime, &state);
@@ -10193,6 +10223,26 @@ mod tests {
         )
         .expect("observation-backed constraint state should build");
         assert_eq!(observation_state, runtime_state);
+    }
+
+    #[test]
+    fn token_flip_shadow_vector_does_not_drive_known_constraints() {
+        let graph = sample_stereo_graph();
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let mut state = first_terminal_stereo_state(&runtime, &graph, initial_state);
+        Arc::make_mut(&mut state.committed_component_token_flips).fill(None);
+        Arc::make_mut(&mut state.stereo_component_token_flips).fill(STORED_COMPONENT_TOKEN_FLIP);
+
+        let selected_neighbors = resolved_selected_neighbors(&runtime, &state);
+        let constraints =
+            component_token_constraints_from_state(&runtime, &graph, &state, &selected_neighbors)
+                .expect("token constraints should classify");
+        assert!(constraints.iter().all(|constraint| matches!(
+            constraint.fact,
+            ComponentTokenConstraintFact::InferredTokenObservation(_)
+        )));
+        assert_component_token_flip_boundary_invariants(&runtime, &graph, &state)
+            .expect_err("shadow vector should not silently diverge from committed facts");
     }
 
     #[test]

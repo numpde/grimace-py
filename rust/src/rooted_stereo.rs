@@ -1899,20 +1899,56 @@ fn defer_component_phase_for_unresolved_begin_side(
     apply_deferred_component_phase_constraint(component_phases, component_begin_atoms, constraint)
 }
 
-fn component_phase_from_deferred_token(token: &str) -> PyResult<i8> {
+fn component_phase_from_selected_begin_side_token(token: &str) -> PyResult<i8> {
     match token {
         "/" => Ok(STORED_COMPONENT_PHASE),
         "\\" => Ok(FLIPPED_COMPONENT_PHASE),
         token => Err(PyValueError::new_err(format!(
-            "Unsupported deferred directional token: {token:?}"
+            "Unsupported selected begin-side directional token: {token:?}"
         ))),
     }
 }
 
-fn commit_deferred_component_phase_constraints_from_part(
+fn selected_begin_side_component_phase(
+    runtime: &StereoWalkerRuntimeData,
+    component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
+    component_idx: usize,
+) -> PyResult<Option<i8>> {
+    let begin_atom_idx = component_begin_atoms
+        .get(component_idx)
+        .copied()
+        .unwrap_or(-1);
+    if begin_atom_idx < 0 {
+        return Ok(None);
+    }
+    let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
+        .iter()
+        .copied()
+        .find(|&side_idx| {
+            runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx as usize
+        })
+    else {
+        return Ok(None);
+    };
+    let selected_neighbor_idx = selected_neighbors[begin_side_idx];
+    if selected_neighbor_idx < 0 {
+        return Ok(None);
+    }
+    let selected_token = candidate_base_token(
+        &runtime.side_infos[begin_side_idx],
+        selected_neighbor_idx as usize,
+    )?;
+    Ok(Some(component_phase_from_selected_begin_side_token(
+        &selected_token,
+    )?))
+}
+
+fn commit_deferred_component_phase_constraints_from_selected_begin_sides(
     runtime: &StereoWalkerRuntimeData,
     component_phases: &[i8],
     component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
     begin_idx: usize,
     part: &Part,
 ) -> PyResult<Vec<i8>> {
@@ -1933,8 +1969,14 @@ fn commit_deferred_component_phase_constraints_from_part(
             continue;
         }
 
-        let phase = component_phase_from_deferred_token(&component_token.stored_token)?;
-        updated_phases = with_component_phase(&updated_phases, component_idx, phase)?;
+        if let Some(phase) = selected_begin_side_component_phase(
+            runtime,
+            component_begin_atoms,
+            selected_neighbors,
+            component_idx,
+        )? {
+            updated_phases = with_component_phase(&updated_phases, component_idx, phase)?;
+        }
     }
     Ok(updated_phases)
 }
@@ -2562,10 +2604,11 @@ fn process_children_edge_update(
         parent_idx,
         child_idx,
     )?;
-    let updated_phases = commit_deferred_component_phase_constraints_from_part(
+    let updated_phases = commit_deferred_component_phase_constraints_from_selected_begin_sides(
         runtime,
         &updated_phases,
         &updated_begin_atoms,
+        &updated_neighbors,
         parent_idx,
         &edge_part,
     )?;

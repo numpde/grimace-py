@@ -166,8 +166,8 @@ class KnownStereoGapTests(unittest.TestCase):
                 {
                     "decoder_path_only": 1,
                     "support_enumeration_error": 1,
-                    "support_missing": 10,
-                    "support_present": 4,
+                    "support_missing": 8,
+                    "support_present": 6,
                 }
             ),
             status_counts,
@@ -364,15 +364,11 @@ class KnownStereoGapTests(unittest.TestCase):
                 else:
                     missing_case_ids.add(case.case_id)
 
+        self.assertEqual(set(), missing_case_ids)
         self.assertEqual(
             {
                 "manual_bond_stereo_difficult_cis_cis",
                 "manual_bond_stereo_difficult_cis_trans",
-            },
-            missing_case_ids,
-        )
-        self.assertEqual(
-            {
                 "manual_bond_stereo_difficult_trans_cis",
                 "manual_bond_stereo_difficult_trans_trans",
             },

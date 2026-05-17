@@ -158,6 +158,13 @@ pub(crate) enum StereoTokenObservationFact {
         selected_begin_token: StereoDirectionToken,
         rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations,
     },
+    IsolatedTwoCandidateBeginSide {
+        runtime_component_idx: usize,
+        component_phase: StereoComponentPhase,
+        selected_begin_token: StereoDirectionToken,
+        selected_begin_neighbor_is_first_emitted: Option<bool>,
+        rdkit_token_flip_adjustment: RdkitTokenFlipAdjustmentObservations,
+    },
     TwoCandidateBeginSide {
         runtime_component_idx: usize,
         component_phase: StereoComponentPhase,
@@ -179,6 +186,10 @@ impl StereoTokenObservationFact {
                 runtime_component_idx,
                 ..
             }
+            | Self::IsolatedTwoCandidateBeginSide {
+                runtime_component_idx,
+                ..
+            }
             | Self::TwoCandidateBeginSide {
                 runtime_component_idx,
                 ..
@@ -194,6 +205,9 @@ impl StereoTokenObservationFact {
             | Self::SelectedBeginSide {
                 component_phase, ..
             }
+            | Self::IsolatedTwoCandidateBeginSide {
+                component_phase, ..
+            }
             | Self::TwoCandidateBeginSide {
                 component_phase, ..
             } => component_phase,
@@ -207,6 +221,10 @@ impl StereoTokenObservationFact {
                 selected_begin_token,
                 ..
             } => Some(selected_begin_token),
+            Self::IsolatedTwoCandidateBeginSide {
+                selected_begin_token,
+                ..
+            } => Some(selected_begin_token),
             Self::TwoCandidateBeginSide {
                 selected_begin_token,
                 ..
@@ -217,6 +235,10 @@ impl StereoTokenObservationFact {
     pub(crate) fn selected_begin_neighbor_is_first_emitted(self) -> Option<bool> {
         match self {
             Self::AllSingleCandidate { .. } | Self::SelectedBeginSide { .. } => None,
+            Self::IsolatedTwoCandidateBeginSide {
+                selected_begin_neighbor_is_first_emitted,
+                ..
+            } => selected_begin_neighbor_is_first_emitted,
             Self::TwoCandidateBeginSide {
                 selected_begin_neighbor_is_first_emitted,
                 ..
@@ -234,6 +256,10 @@ impl StereoTokenObservationFact {
                 rdkit_token_flip_adjustment,
                 ..
             }
+            | Self::IsolatedTwoCandidateBeginSide {
+                rdkit_token_flip_adjustment,
+                ..
+            }
             | Self::TwoCandidateBeginSide {
                 rdkit_token_flip_adjustment,
                 ..
@@ -245,6 +271,7 @@ impl StereoTokenObservationFact {
         match self {
             Self::AllSingleCandidate { .. } => "all_single_candidate",
             Self::SelectedBeginSide { .. } => "selected_begin_side",
+            Self::IsolatedTwoCandidateBeginSide { .. } => "isolated_two_candidate_begin_side",
             Self::TwoCandidateBeginSide { .. } => "two_candidate_begin_side",
         }
     }
@@ -277,6 +304,16 @@ impl StereoTokenObservationFact {
                 if let Some(selected_is_first) = selected_begin_neighbor_is_first_emitted {
                     (selected_is_first == (selected_begin_token == StereoDirectionToken::Slash))
                         ^ rdkit_token_flip_adjustment
+                } else {
+                    phase_is_flipped ^ rdkit_token_flip_adjustment
+                }
+            }
+            Self::IsolatedTwoCandidateBeginSide {
+                selected_begin_neighbor_is_first_emitted,
+                ..
+            } => {
+                if let Some(selected_is_first) = selected_begin_neighbor_is_first_emitted {
+                    !selected_is_first ^ rdkit_token_flip_adjustment
                 } else {
                     phase_is_flipped ^ rdkit_token_flip_adjustment
                 }
@@ -2838,6 +2875,37 @@ mod tests {
                     selected_is_first,
                     observation.selected_begin_neighbor_is_first_emitted()
                 );
+            }
+        }
+
+        for (selected_is_first, adjustment, expected) in [
+            (Some(true), false, StereoTokenFlip::Stored),
+            (Some(false), false, StereoTokenFlip::Flipped),
+            (Some(true), true, StereoTokenFlip::Flipped),
+            (Some(false), true, StereoTokenFlip::Stored),
+        ] {
+            for selected_begin_token in
+                [StereoDirectionToken::Slash, StereoDirectionToken::Backslash]
+            {
+                for component_phase in [StereoComponentPhase::Stored, StereoComponentPhase::Flipped]
+                {
+                    let observation = StereoTokenObservationFact::IsolatedTwoCandidateBeginSide {
+                        runtime_component_idx: 0,
+                        component_phase,
+                        selected_begin_token,
+                        selected_begin_neighbor_is_first_emitted: selected_is_first,
+                        rdkit_token_flip_adjustment: rdkit_adjustment(adjustment),
+                    };
+                    assert_eq!(expected, observation.implied_token_flip());
+                    assert_eq!(
+                        "isolated_two_candidate_begin_side",
+                        observation.observation_kind()
+                    );
+                    assert_eq!(
+                        selected_is_first,
+                        observation.selected_begin_neighbor_is_first_emitted()
+                    );
+                }
             }
         }
 

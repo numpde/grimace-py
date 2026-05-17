@@ -6186,8 +6186,23 @@ fn legacy_procedural_inferred_component_token_flip(
         let all_single_candidate = side_ids
             .iter()
             .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1);
+        let all_two_candidate = side_ids
+            .iter()
+            .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 2);
         let isolated_flip = if all_single_candidate {
             false
+        } else if all_two_candidate && begin_side.candidate_neighbors.len() == 2 {
+            let first_neighbor_idx = state.stereo_first_emitted_candidates[begin_side_idx];
+            if first_neighbor_idx < 0 {
+                false
+            } else {
+                let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
+                if selected_neighbor_idx < 0 {
+                    return Ok(None);
+                }
+                let selected_is_first = first_neighbor_idx == selected_neighbor_idx;
+                (phase == FLIPPED_COMPONENT_PHASE) ^ !selected_is_first
+            }
         } else {
             let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
             if selected_neighbor_idx < 0 {
@@ -6289,6 +6304,7 @@ struct ComponentTokenInferenceInputs {
     selected_side_ids: Vec<usize>,
     is_isolated: bool,
     all_single_candidate: bool,
+    all_two_candidate: bool,
     observations: ComponentTokenObservationInputs,
     inferred: Option<i8>,
 }
@@ -6385,6 +6401,31 @@ impl ComponentTokenInferenceInputs {
                         .rdkit_token_flip_adjustment
                         .support_observations(),
                 }))
+            }
+            "isolated_two_candidate_begin_side" => {
+                let Some(selected_begin_token) = observations.selected_begin.token.as_deref()
+                else {
+                    return Ok(None);
+                };
+                let Some(selected_begin_neighbor_idx) = observations.selected_begin.neighbor_idx
+                else {
+                    return Ok(None);
+                };
+                Ok(Some(
+                    StereoTokenObservationFact::IsolatedTwoCandidateBeginSide {
+                        runtime_component_idx: self.component_idx,
+                        component_phase,
+                        selected_begin_token: StereoDirectionToken::from_str(selected_begin_token)?,
+                        selected_begin_neighbor_is_first_emitted: self
+                            .observations
+                            .first_emitted_candidate
+                            .neighbor_idx
+                            .map(|first_idx| first_idx == selected_begin_neighbor_idx),
+                        rdkit_token_flip_adjustment: observations
+                            .rdkit_token_flip_adjustment
+                            .support_observations(),
+                    },
+                ))
             }
             "coupled_two_candidate_begin_side" => {
                 let Some(selected_begin_token) = observations.selected_begin.token.as_deref()
@@ -6531,6 +6572,9 @@ fn component_token_inference_inputs(
     let all_single_candidate = side_ids
         .iter()
         .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1);
+    let all_two_candidate = side_ids
+        .iter()
+        .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 2);
     let observations = component_token_observation_inputs(
         runtime,
         graph,
@@ -6552,6 +6596,11 @@ fn component_token_inference_inputs(
         "missing_begin_side"
     } else if runtime.isolated_components[component_idx] && all_single_candidate {
         "isolated_all_single_candidate"
+    } else if runtime.isolated_components[component_idx]
+        && all_two_candidate
+        && begin_side_candidate_count == 2
+    {
+        "isolated_two_candidate_begin_side"
     } else if runtime.isolated_components[component_idx] {
         "isolated_selected_begin_side"
     } else if begin_side_candidate_count == 1 {
@@ -6565,6 +6614,7 @@ fn component_token_inference_inputs(
         inference_branch,
         "isolated_all_single_candidate"
             | "isolated_selected_begin_side"
+            | "isolated_two_candidate_begin_side"
             | "coupled_one_candidate_begin_side"
             | "coupled_two_candidate_begin_side"
     );
@@ -6593,7 +6643,10 @@ fn component_token_inference_inputs(
                 missing_input_facts.push("selected_begin_token".to_owned());
             }
         }
-        if inference_branch == "coupled_two_candidate_begin_side" {
+        if matches!(
+            inference_branch,
+            "isolated_two_candidate_begin_side" | "coupled_two_candidate_begin_side"
+        ) {
             required_input_facts.push("first_emitted_candidate_or_adjustment_fallback".to_owned());
         }
         required_input_facts.push("rdkit_token_flip_adjustment".to_owned());
@@ -6610,6 +6663,7 @@ fn component_token_inference_inputs(
         selected_side_ids,
         is_isolated: runtime.isolated_components[component_idx],
         all_single_candidate,
+        all_two_candidate,
         observations,
         inferred: None,
     };
@@ -6645,6 +6699,7 @@ fn component_token_inference_inputs_to_py(
     row.set_item("selected_side_ids", inputs.selected_side_ids.clone())?;
     row.set_item("is_isolated", inputs.is_isolated)?;
     row.set_item("all_single_candidate", inputs.all_single_candidate)?;
+    row.set_item("all_two_candidate", inputs.all_two_candidate)?;
     row.set_item(
         "input_observation_facts",
         component_token_observation_inputs_to_py(py, observations)?,
@@ -10117,6 +10172,21 @@ mod tests {
                 .expect("RDKit shared-edge prefix should stay completable");
         }
         assert_eq!("CC/C=C\\", state.prefix.as_ref());
+    }
+
+    #[test]
+    fn isolated_two_candidate_first_emitted_observation_keeps_manual_difficult_surface() {
+        let expected = "CC/C=C\\C(CO)=C(/C)CC";
+        let Some(graph) = prepared_graph_from_smiles(expected) else {
+            return;
+        };
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        for token in expected.chars().map(|token| token.to_string()) {
+            state = advance_stereo_token_state(&runtime, &graph, &state, &token)
+                .expect("manual difficult RDKit surface should stay completable");
+        }
+        assert_eq!(expected, state.prefix.as_ref());
+        assert!(is_complete_terminal_stereo_state(&graph, &state));
     }
 
     #[test]

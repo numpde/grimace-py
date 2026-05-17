@@ -111,6 +111,7 @@ struct EmittedEdgePartResult {
     selected_orientations: Vec<i8>,
     first_emitted_candidates: Vec<isize>,
     deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
+    token_basis_facts: Vec<Option<StereoTokenBasisFact>>,
 }
 
 struct ProcessChildrenEdgeUpdate {
@@ -119,6 +120,7 @@ struct ProcessChildrenEdgeUpdate {
     selected_orientations: Vec<i8>,
     first_emitted_candidates: Vec<isize>,
     deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
+    token_basis_facts: Vec<Option<StereoTokenBasisFact>>,
     component_phases: Vec<i8>,
     component_begin_atoms: Vec<isize>,
 }
@@ -127,14 +129,6 @@ struct ProcessChildrenEdgeUpdate {
 struct DeferredComponentPhaseConstraint {
     component_idx: usize,
     begin_atom_idx: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct IsolatedComponentTokenBasisState {
-    begin_side_idx: usize,
-    selected_neighbor_idx: usize,
-    fact: StereoTokenBasisFact,
-    available_begin_neighbors: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -160,6 +154,7 @@ struct StereoEdgeEmissionState<'a> {
     first_emitted_candidates: &'a [isize],
     component_begin_atoms: &'a [isize],
     deferred_carrier_choice_constraints: &'a [DeferredCarrierChoiceConstraint],
+    token_basis_facts: &'a [Option<StereoTokenBasisFact>],
 }
 
 type PendingRingBuckets = Vec<(usize, Vec<PendingRing>)>;
@@ -330,6 +325,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     stereo_component_begin_atoms: Arc<Vec<isize>>,
     stereo_component_token_flips: Arc<Vec<i8>>,
     deferred_carrier_choice_constraints: Arc<Vec<DeferredCarrierChoiceConstraint>>,
+    stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
     directional_marker_traces: Arc<Vec<DirectionalMarkerTrace>>,
     marker_event_traces: Arc<Vec<MarkerEventTrace>>,
     action_stack: Vec<WalkerAction>,
@@ -365,6 +361,7 @@ struct StereoCompletionKey {
     stereo_component_begin_atoms: Arc<Vec<isize>>,
     stereo_component_token_flips: Arc<Vec<i8>>,
     deferred_carrier_choice_constraints: Arc<Vec<DeferredCarrierChoiceConstraint>>,
+    stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -383,6 +380,7 @@ impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
             stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
             stereo_component_token_flips: state.stereo_component_token_flips.clone(),
             deferred_carrier_choice_constraints: state.deferred_carrier_choice_constraints.clone(),
+            stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
             action_stack: state.action_stack.clone(),
         }
     }
@@ -674,6 +672,7 @@ fn stereo_exact_state_from_full(
         stereo_component_begin_atoms,
         stereo_component_token_flips,
         deferred_carrier_choice_constraints,
+        stereo_token_basis_facts,
         directional_marker_traces,
         marker_event_traces,
         action_stack,
@@ -685,6 +684,7 @@ fn stereo_exact_state_from_full(
     debug_assert!(stereo_component_begin_atoms.is_empty());
     debug_assert!(stereo_component_token_flips.is_empty());
     debug_assert!(deferred_carrier_choice_constraints.is_empty());
+    debug_assert!(stereo_token_basis_facts.is_empty());
     debug_assert!(directional_marker_traces.is_empty());
     debug_assert!(marker_event_traces.is_empty());
     RootedConnectedStereoExactStateData {
@@ -1153,6 +1153,17 @@ fn cmp_stereo_state_structure(
             } else {
                 left.deferred_carrier_choice_constraints
                     .cmp(&right.deferred_carrier_choice_constraints)
+            },
+        )
+        .then(
+            if Arc::ptr_eq(
+                &left.stereo_token_basis_facts,
+                &right.stereo_token_basis_facts,
+            ) {
+                Ordering::Equal
+            } else {
+                left.stereo_token_basis_facts
+                    .cmp(&right.stereo_token_basis_facts)
             },
         )
         .then(left.visited_count.cmp(&right.visited_count))
@@ -2050,12 +2061,12 @@ fn side_has_only_aromatic_carrier_edges(
         })
 }
 
-fn isolated_component_token_basis_state_from_row_state(
+fn isolated_component_token_basis_fact_from_row_state(
     context: &StereoEdgeEmissionContext<'_>,
     component_begin_atoms: &[isize],
     selected_neighbors: &[isize],
     side_info: &StereoSideInfo,
-) -> PyResult<Option<IsolatedComponentTokenBasisState>> {
+) -> PyResult<Option<StereoTokenBasisFact>> {
     if side_info.candidate_neighbors.len() != 1 {
         return Ok(None);
     }
@@ -2100,31 +2111,24 @@ fn isolated_component_token_basis_state_from_row_state(
         &context.side_infos[begin_side_idx],
         begin_selected_neighbor as usize,
     )?;
-    Ok(Some(IsolatedComponentTokenBasisState {
-        begin_side_idx,
-        selected_neighbor_idx: begin_selected_neighbor as usize,
-        fact: StereoTokenBasisFact {
-            runtime_component_idx: component_idx,
-            selected_begin_token: StereoDirectionToken::from_str(&selected_token)?,
-        },
-        available_begin_neighbors,
+    Ok(Some(StereoTokenBasisFact {
+        runtime_component_idx: component_idx,
+        selected_begin_token: StereoDirectionToken::from_str(&selected_token)?,
     }))
 }
 
-fn isolated_component_stored_token_from_basis_state(
-    basis_state: IsolatedComponentTokenBasisState,
+fn isolated_component_stored_token_from_basis_fact(
+    fact: StereoTokenBasisFact,
+    component_idx: usize,
     emitted_from_endpoint: bool,
 ) -> PyResult<String> {
-    if !basis_state
-        .available_begin_neighbors
-        .contains(&basis_state.selected_neighbor_idx)
-    {
+    if fact.runtime_component_idx != component_idx {
         return Err(PyValueError::new_err(format!(
-            "Selected aromatic begin-side neighbor {} is not available for side {}",
-            basis_state.selected_neighbor_idx, basis_state.begin_side_idx
+            "isolated token-basis fact references runtime component {}, expected {}",
+            fact.runtime_component_idx, component_idx
         )));
     }
-    let selected_token = basis_state.fact.selected_begin_token.as_str();
+    let selected_token = fact.selected_begin_token.as_str();
     if emitted_from_endpoint {
         Ok(selected_token.to_owned())
     } else {
@@ -2133,29 +2137,54 @@ fn isolated_component_stored_token_from_basis_state(
 }
 
 fn isolated_component_stored_token_from_token_state(
-    context: &StereoEdgeEmissionContext<'_>,
-    state: &StereoEdgeEmissionState<'_>,
-    selected_neighbors: &[isize],
+    token_basis_facts: &[Option<StereoTokenBasisFact>],
     side_info: &StereoSideInfo,
     begin_idx: usize,
     end_idx: usize,
 ) -> PyResult<String> {
     let emitted_from_endpoint = begin_idx == side_info.endpoint_atom_idx;
-    let Some(basis_state) = isolated_component_token_basis_state_from_row_state(
-        context,
-        state.component_begin_atoms,
-        selected_neighbors,
-        side_info,
-    )?
-    else {
+    let Some(Some(fact)) = token_basis_facts.get(side_info.component_idx) else {
         return emitted_candidate_token(side_info, begin_idx, end_idx);
     };
-    if basis_state.fact.runtime_component_idx != side_info.component_idx {
-        return Err(PyValueError::new_err(
-            "isolated token-basis fact references the wrong runtime component",
-        ));
+    isolated_component_stored_token_from_basis_fact(
+        *fact,
+        side_info.component_idx,
+        emitted_from_endpoint,
+    )
+}
+
+fn updated_isolated_component_token_basis_facts_from_row_state(
+    context: &StereoEdgeEmissionContext<'_>,
+    component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
+    side_ids: &[usize],
+    token_basis_facts: &[Option<StereoTokenBasisFact>],
+) -> PyResult<Vec<Option<StereoTokenBasisFact>>> {
+    let mut updated_token_basis_facts = token_basis_facts.to_vec();
+    for &side_idx in side_ids {
+        let side_info = &context.side_infos[side_idx];
+        let Some(basis_fact) = isolated_component_token_basis_fact_from_row_state(
+            context,
+            component_begin_atoms,
+            selected_neighbors,
+            side_info,
+        )?
+        else {
+            continue;
+        };
+        let fact_slot = &mut updated_token_basis_facts[side_info.component_idx];
+        if let Some(existing_fact) = fact_slot {
+            if *existing_fact != basis_fact {
+                return Err(PyValueError::new_err(format!(
+                    "Conflicting isolated token-basis facts for runtime component {}",
+                    side_info.component_idx
+                )));
+            }
+        } else {
+            *fact_slot = Some(basis_fact);
+        }
     }
-    isolated_component_stored_token_from_basis_state(basis_state, emitted_from_endpoint)
+    Ok(updated_token_basis_facts)
 }
 
 fn row_state_carrier_obligation_neighbor(
@@ -2322,6 +2351,7 @@ fn literal_edge_result(
     selected_neighbors: &[isize],
     selected_orientations: &[i8],
     first_emitted_candidates: &[isize],
+    token_basis_facts: &[Option<StereoTokenBasisFact>],
 ) -> PyResult<EmittedEdgePartResult> {
     Ok(EmittedEdgePartResult {
         part: literal_bond_part(graph, begin_idx, end_idx)?,
@@ -2329,6 +2359,7 @@ fn literal_edge_result(
         selected_orientations: selected_orientations.to_vec(),
         first_emitted_candidates: first_emitted_candidates.to_vec(),
         deferred_carrier_choice_constraints: Vec::new(),
+        token_basis_facts: token_basis_facts.to_vec(),
     })
 }
 
@@ -2338,6 +2369,7 @@ fn edge_result_with_part_and_deferred_carrier_constraints(
     selected_orientations: Vec<i8>,
     first_emitted_candidates: Vec<isize>,
     deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
+    token_basis_facts: Vec<Option<StereoTokenBasisFact>>,
 ) -> EmittedEdgePartResult {
     EmittedEdgePartResult {
         part,
@@ -2345,6 +2377,7 @@ fn edge_result_with_part_and_deferred_carrier_constraints(
         selected_orientations,
         first_emitted_candidates,
         deferred_carrier_choice_constraints,
+        token_basis_facts,
     }
 }
 
@@ -2401,6 +2434,7 @@ fn emitted_edge_part_generic(
             state.selected_neighbors,
             state.selected_orientations,
             state.first_emitted_candidates,
+            state.token_basis_facts,
         );
     };
 
@@ -2409,6 +2443,7 @@ fn emitted_edge_part_generic(
     let mut updated_first_candidates = state.first_emitted_candidates.to_vec();
     let mut deferred_carrier_choice_constraints =
         state.deferred_carrier_choice_constraints.to_vec();
+    let token_basis_facts = state.token_basis_facts.to_vec();
     let mut stored_tokens = Vec::<(usize, String)>::new();
 
     for &side_idx in side_ids {
@@ -2473,6 +2508,7 @@ fn emitted_edge_part_generic(
             updated_orientations,
             updated_first_candidates,
             deferred_carrier_choice_constraints,
+            token_basis_facts,
         ));
     }
 
@@ -2482,6 +2518,7 @@ fn emitted_edge_part_generic(
         updated_orientations,
         updated_first_candidates,
         deferred_carrier_choice_constraints,
+        token_basis_facts,
     ))
 }
 
@@ -2502,6 +2539,7 @@ fn emitted_isolated_edge_part(
             state.selected_neighbors,
             state.selected_orientations,
             state.first_emitted_candidates,
+            state.token_basis_facts,
         );
     };
 
@@ -2534,10 +2572,30 @@ fn emitted_isolated_edge_part(
         if selected_neighbor != neighbor_idx as isize {
             continue;
         }
+    }
+
+    let token_basis_facts = updated_isolated_component_token_basis_facts_from_row_state(
+        context,
+        state.component_begin_atoms,
+        &updated_neighbors,
+        side_ids,
+        state.token_basis_facts,
+    )?;
+
+    for &side_idx in side_ids {
+        let side_info = &context.side_infos[side_idx];
+        let neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+            end_idx
+        } else if end_idx == side_info.endpoint_atom_idx {
+            begin_idx
+        } else {
+            continue;
+        };
+        if updated_neighbors[side_idx] != neighbor_idx as isize {
+            continue;
+        }
         let stored_token = isolated_component_stored_token_from_token_state(
-            context,
-            state,
-            &updated_neighbors,
+            &token_basis_facts,
             side_info,
             begin_idx,
             end_idx,
@@ -2552,6 +2610,7 @@ fn emitted_isolated_edge_part(
             updated_orientations,
             updated_first_candidates,
             deferred_carrier_choice_constraints,
+            token_basis_facts,
         ));
     }
 
@@ -2561,6 +2620,7 @@ fn emitted_isolated_edge_part(
         updated_orientations,
         updated_first_candidates,
         deferred_carrier_choice_constraints,
+        token_basis_facts,
     ))
 }
 
@@ -2579,6 +2639,7 @@ fn emitted_edge_part(
             state.selected_neighbors,
             state.selected_orientations,
             state.first_emitted_candidates,
+            state.token_basis_facts,
         );
     };
 
@@ -2598,6 +2659,7 @@ fn emitted_edge_part(
             selected_orientations: updated_orientations,
             first_emitted_candidates: updated_first_candidates,
             deferred_carrier_choice_constraints,
+            token_basis_facts,
             part: _,
         } = emitted_edge_part_generic(context, state, begin_idx, end_idx)?;
         if side_ids.is_empty() {
@@ -2607,6 +2669,7 @@ fn emitted_edge_part(
                 updated_orientations,
                 updated_first_candidates,
                 deferred_carrier_choice_constraints,
+                token_basis_facts,
             ));
         }
         let component_idx = context.side_infos[side_ids[0]].component_idx;
@@ -2639,6 +2702,7 @@ fn emitted_edge_part(
             updated_orientations,
             updated_first_candidates,
             deferred_carrier_choice_constraints,
+            token_basis_facts,
         ))
     }
 }
@@ -2684,6 +2748,7 @@ fn process_children_edge_update(
         selected_orientations: updated_orientations,
         first_emitted_candidates: updated_first_candidates,
         deferred_carrier_choice_constraints: updated_deferred_carrier_choice_constraints,
+        token_basis_facts: updated_token_basis_facts,
     } = emitted_edge_part(
         &edge_context,
         &StereoEdgeEmissionState {
@@ -2693,6 +2758,7 @@ fn process_children_edge_update(
             first_emitted_candidates: &current_first_candidates,
             component_begin_atoms: &current_begin_atoms,
             deferred_carrier_choice_constraints: &state.deferred_carrier_choice_constraints,
+            token_basis_facts: &state.stereo_token_basis_facts,
         },
         parent_idx,
         child_idx,
@@ -2736,6 +2802,7 @@ fn process_children_edge_update(
         selected_orientations: updated_orientations,
         first_emitted_candidates: updated_first_candidates,
         deferred_carrier_choice_constraints: updated_deferred_carrier_choice_constraints,
+        token_basis_facts: updated_token_basis_facts,
         component_phases: updated_phases,
         component_begin_atoms: updated_begin_atoms,
     })
@@ -5527,6 +5594,7 @@ fn initial_stereo_state_for_root(
             runtime.isolated_components.len()
         ]),
         deferred_carrier_choice_constraints: Arc::new(Vec::new()),
+        stereo_token_basis_facts: Arc::new(vec![None; runtime.isolated_components.len()]),
         directional_marker_traces: Arc::new(Vec::new()),
         marker_event_traces: Arc::new(Vec::new()),
         action_stack,
@@ -6848,6 +6916,8 @@ fn enter_atom_successors_by_token(
                     Arc::unwrap_or_clone(base_state.stereo_component_begin_atoms.clone());
                 let mut current_deferred_carrier_choice_constraints =
                     Arc::unwrap_or_clone(base_state.deferred_carrier_choice_constraints.clone());
+                let mut current_token_basis_facts =
+                    Arc::unwrap_or_clone(base_state.stereo_token_basis_facts.clone());
                 let mut current_marker_event_traces =
                     Arc::unwrap_or_clone(base_state.marker_event_traces.clone());
                 let mut current_ring_actions = Vec::<WalkerAction>::with_capacity(
@@ -6867,6 +6937,7 @@ fn enter_atom_successors_by_token(
                                 first_emitted_candidates: updated_first_candidates,
                                 deferred_carrier_choice_constraints:
                                     updated_deferred_carrier_choice_constraints,
+                                token_basis_facts: updated_token_basis_facts,
                             } = emitted_edge_part(
                                 &edge_context,
                                 &StereoEdgeEmissionState {
@@ -6877,6 +6948,7 @@ fn enter_atom_successors_by_token(
                                     component_begin_atoms: &current_component_begin_atoms,
                                     deferred_carrier_choice_constraints:
                                         &current_deferred_carrier_choice_constraints,
+                                    token_basis_facts: &current_token_basis_facts,
                                 },
                                 atom_idx,
                                 closure.other_atom_idx,
@@ -6897,6 +6969,7 @@ fn enter_atom_successors_by_token(
                             current_first_emitted_candidates = updated_first_candidates;
                             current_deferred_carrier_choice_constraints =
                                 updated_deferred_carrier_choice_constraints;
+                            current_token_basis_facts = updated_token_basis_facts;
                             if let Some(action) = part_to_action(bond_part) {
                                 current_ring_actions.push(action);
                             }
@@ -7010,6 +7083,7 @@ fn enter_atom_successors_by_token(
                             deferred_carrier_choice_constraints: Arc::new(
                                 current_deferred_carrier_choice_constraints.clone(),
                             ),
+                            stereo_token_basis_facts: Arc::new(current_token_basis_facts.clone()),
                             directional_marker_traces: base_state.directional_marker_traces.clone(),
                             marker_event_traces: Arc::new(current_marker_event_traces.clone()),
                             action_stack: base_state.action_stack.clone(),
@@ -7178,6 +7252,7 @@ fn enter_atom_successors_without_bond_stereo(
                             deferred_carrier_choice_constraints: base_state
                                 .deferred_carrier_choice_constraints
                                 .clone(),
+                            stereo_token_basis_facts: base_state.stereo_token_basis_facts.clone(),
                             directional_marker_traces: base_state.directional_marker_traces.clone(),
                             marker_event_traces: base_state.marker_event_traces.clone(),
                             action_stack: base_state.action_stack.clone(),
@@ -7605,6 +7680,7 @@ fn process_children_successors_by_token(
             selected_orientations,
             first_emitted_candidates,
             deferred_carrier_choice_constraints,
+            token_basis_facts,
             component_phases,
             component_begin_atoms,
         } = process_children_edge_update(
@@ -7622,6 +7698,7 @@ fn process_children_successors_by_token(
         successor.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
         successor.deferred_carrier_choice_constraints =
             Arc::new(deferred_carrier_choice_constraints);
+        successor.stereo_token_basis_facts = Arc::new(token_basis_facts);
         if matches!(edge_part, Part::Literal(_)) {
             let role = directional_token_role(successor.prefix.as_ref(), None);
             record_marker_event_traces_for_edge(
@@ -7656,6 +7733,7 @@ fn process_children_successors_by_token(
         selected_orientations,
         first_emitted_candidates,
         deferred_carrier_choice_constraints,
+        token_basis_facts,
         component_phases,
         component_begin_atoms,
     } = process_children_edge_update(
@@ -7674,6 +7752,7 @@ fn process_children_successors_by_token(
     base_state.stereo_component_phases = Arc::new(component_phases);
     base_state.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
     base_state.deferred_carrier_choice_constraints = Arc::new(deferred_carrier_choice_constraints);
+    base_state.stereo_token_basis_facts = Arc::new(token_basis_facts);
     assert_component_token_flip_boundary_invariants(context.runtime, context.graph, &base_state)?;
     process_children_terminal_successors(
         context,
@@ -7722,6 +7801,7 @@ fn process_children_successors_without_bond_stereo(
             stereo_component_begin_atoms: state.stereo_component_begin_atoms.clone(),
             stereo_component_token_flips: state.stereo_component_token_flips.clone(),
             deferred_carrier_choice_constraints: state.deferred_carrier_choice_constraints.clone(),
+            stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
             directional_marker_traces: state.directional_marker_traces.clone(),
             marker_event_traces: state.marker_event_traces.clone(),
             action_stack: {

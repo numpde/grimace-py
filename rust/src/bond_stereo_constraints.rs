@@ -105,7 +105,7 @@ impl StereoDirectionToken {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct StereoTokenBasisFact {
     pub(crate) runtime_component_idx: usize,
     pub(crate) selected_begin_token: StereoDirectionToken,

@@ -862,7 +862,7 @@ fn selected_carrier_directional_marker_side(
         })
 }
 
-fn marker_event_trace_rows_for_edge(
+fn rdkit_marker_event_trace_rows_for_edge(
     runtime: &StereoWalkerRuntimeData,
     begin_idx: usize,
     end_idx: usize,
@@ -892,7 +892,7 @@ fn marker_event_trace_rows_for_edge(
         .collect()
 }
 
-fn append_marker_event_traces_for_edge(
+fn append_rdkit_marker_event_traces_for_edge(
     runtime: &StereoWalkerRuntimeData,
     prefix: &str,
     marker_event_traces: &mut Vec<MarkerEventTrace>,
@@ -908,7 +908,7 @@ fn append_marker_event_traces_for_edge(
     let end = end_idx as usize;
     let slot = direction_erased_slot(prefix);
     for (component_idx, side_idx, endpoint_atom_idx, edge_neighbor_idx) in
-        marker_event_trace_rows_for_edge(runtime, begin, end)
+        rdkit_marker_event_trace_rows_for_edge(runtime, begin, end)
     {
         marker_event_traces.push(MarkerEventTrace {
             slot,
@@ -924,7 +924,7 @@ fn append_marker_event_traces_for_edge(
     }
 }
 
-fn record_marker_event_traces_for_edge(
+fn record_rdkit_marker_event_traces_for_edge(
     runtime: &StereoWalkerRuntimeData,
     state: &mut RootedConnectedStereoWalkerStateData,
     begin_idx: isize,
@@ -933,7 +933,7 @@ fn record_marker_event_traces_for_edge(
     role: StereoTraversalRole,
 ) {
     let prefix = state.prefix.clone();
-    append_marker_event_traces_for_edge(
+    append_rdkit_marker_event_traces_for_edge(
         runtime,
         prefix.as_ref(),
         Arc::make_mut(&mut state.marker_event_traces),
@@ -944,7 +944,7 @@ fn record_marker_event_traces_for_edge(
     );
 }
 
-fn record_directional_marker_trace(
+fn record_rdkit_directional_marker_trace(
     runtime: &StereoWalkerRuntimeData,
     state: &mut RootedConnectedStereoWalkerStateData,
     begin_idx: isize,
@@ -992,7 +992,14 @@ fn record_directional_marker_trace(
         edge_end_idx: end_idx,
         role,
     });
-    record_marker_event_traces_for_edge(runtime, state, begin_idx, end_idx, Some(marker), role);
+    record_rdkit_marker_event_traces_for_edge(
+        runtime,
+        state,
+        begin_idx,
+        end_idx,
+        Some(marker),
+        role,
+    );
 }
 
 fn push_ring_label(prefix: &mut Arc<str>, label: usize) {
@@ -3010,7 +3017,7 @@ fn process_children_terminal_successors(
     match step.edge_part {
         Part::Literal(token) if token.is_empty() => {
             let role = directional_token_role(base_state.prefix.as_ref(), None);
-            record_marker_event_traces_for_edge(
+            record_rdkit_marker_event_traces_for_edge(
                 context.runtime,
                 &mut base_state,
                 step.parent_idx as isize,
@@ -3032,7 +3039,7 @@ fn process_children_terminal_successors(
         }
         Part::Literal(token) => {
             let role = directional_token_role(base_state.prefix.as_ref(), None);
-            record_marker_event_traces_for_edge(
+            record_rdkit_marker_event_traces_for_edge(
                 context.runtime,
                 &mut base_state,
                 step.parent_idx as isize,
@@ -3066,7 +3073,7 @@ fn process_children_terminal_successors(
                     continue;
                 }
                 let role = directional_token_role(successor.prefix.as_ref(), None);
-                record_directional_marker_trace(
+                record_rdkit_directional_marker_trace(
                     context.runtime,
                     &mut successor,
                     deferred.begin_idx,
@@ -7478,7 +7485,7 @@ fn enter_atom_successors_by_token(
                                 closure.other_atom_idx,
                             )?;
                             if matches!(bond_part, Part::Literal(_)) {
-                                append_marker_event_traces_for_edge(
+                                append_rdkit_marker_event_traces_for_edge(
                                     runtime,
                                     base_state.prefix.as_ref(),
                                     &mut current_marker_event_traces,
@@ -7506,7 +7513,7 @@ fn enter_atom_successors_by_token(
                         RingAction::Open(target_idx) => {
                             let label = allocate_label(&mut current_free, &mut current_next);
                             current_ring_actions.push(WalkerAction::EmitRingLabel(label));
-                            append_marker_event_traces_for_edge(
+                            append_rdkit_marker_event_traces_for_edge(
                                 runtime,
                                 base_state.prefix.as_ref(),
                                 &mut current_marker_event_traces,
@@ -8225,7 +8232,7 @@ fn process_children_successors_by_token(
         successor.stereo_token_basis_facts = Arc::new(token_basis_facts);
         if matches!(edge_part, Part::Literal(_)) {
             let role = directional_token_role(successor.prefix.as_ref(), None);
-            record_marker_event_traces_for_edge(
+            record_rdkit_marker_event_traces_for_edge(
                 context.runtime,
                 &mut successor,
                 parent_idx as isize,
@@ -8650,7 +8657,7 @@ fn stereo_next_token_successors_from_boundary(
                     successor.prefix.as_ref(),
                     successor.action_stack.last(),
                 );
-                record_directional_marker_trace(
+                record_rdkit_directional_marker_trace(
                     runtime,
                     &mut successor,
                     deferred.begin_idx,

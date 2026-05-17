@@ -85,6 +85,9 @@ Main entrypoints:
   Returns an online branch-preserving decoder state.
 - `MolToSmilesDeterminizedDecoder(...)`
   Returns an online decoder that merges same-text next choices.
+- `MolToSmilesDeviation(...)`
+  Reports the first place where a candidate string or token sequence leaves
+  the molecule's supported SMILES language.
 - `MolToSmilesTokenInventory(...)`
   Returns the exact set of tokens that can appear in one decoder step.
 - `MolToSmilesTokenInventorySuperset(...)`
@@ -95,6 +98,8 @@ Supporting public type:
 - `MolToSmilesChoice`
   Each choice has `.text` for the emitted token and `.next_state` for the
   decoder state after taking that token.
+- `SmilesDeviation`
+  Diagnostic result returned by `MolToSmilesDeviation(...)`.
 
 The public API uses the compiled Rust extension end to end.
 
@@ -265,7 +270,35 @@ The first few merged decisions on that route are:
 - `"c1("`: choose `"c"` from `["O", "c", "C"]`
 - `"c1(ccccc1"`: choose `"O"` from `["C", "O"]`
 
-### 4. Ask for the exact token inventory
+### 4. Diagnose a candidate serialization
+
+`MolToSmilesDeviation(...)` returns `None` for an accepted candidate, otherwise
+it reports the first mismatch and the legal next Grimace token texts.
+
+```python
+small = Chem.MolFromSmiles("CCO")
+kwargs = dict(rootedAtAtom=-1, isomericSmiles=False, **FLAGS)
+
+assert grimace.MolToSmilesDeviation(small, "CCO", **kwargs) is None
+
+deviation = grimace.MolToSmilesDeviation(small, "CCN", **kwargs)
+assert deviation.accepted_text == "CC"
+assert deviation.rejected_text == "N"
+assert deviation.legal_next_tokens == ("O",)
+```
+
+String candidates are matched as text. Sequence candidates are atomic external
+tokens, so boundaries matter:
+
+```python
+grimace.MolToSmilesDeviation(small, "CCl", **kwargs).accepted_text
+# 'CC'
+
+grimace.MolToSmilesDeviation(small, ("C", "Cl"), **kwargs).accepted_text
+# 'C'
+```
+
+### 5. Ask for the exact token inventory
 
 `MolToSmilesTokenInventory(...)` answers a different question: not "what full
 strings are possible?" but "what one-step tokens can ever appear?"

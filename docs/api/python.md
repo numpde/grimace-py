@@ -23,8 +23,10 @@ Current top-level exports:
 - `MolToSmilesDecoder`
 - `MolToSmilesDeterminizedDecoder`
 - `MolToSmilesEnum`
+- `MolToSmilesDeviation`
 - `MolToSmilesTokenInventory`
 - `MolToSmilesTokenInventorySuperset`
+- `SmilesDeviation`
 
 The compiled extension `grimace._core` is required. There is no
 public runtime fallback. Run the public API from the same Python environment
@@ -263,6 +265,67 @@ So:
 - `MolToSmilesDecoder(...)` lets you step through that support one token at a time
 - `MolToSmilesDeterminizedDecoder(...)` lets you step through the same support
   with same-text branches merged
+
+## MolToSmilesDeviation
+
+`MolToSmilesDeviation(mol, candidate, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+
+This diagnoses the first place where a candidate leaves the molecule's
+supported SMILES language under the same public writer flags.
+
+It returns `None` when the candidate is accepted. Otherwise it returns a
+`SmilesDeviation` with:
+
+- `reason`: `"unexpected_text"`, `"unexpected_token"`, or `"incomplete"`
+- `char_index`: character offset in the concatenated candidate text
+- `token_index`: token offset for sequence candidates, or `None` for string candidates
+- `offset_in_token`: offset within the external token for sequence candidates,
+  or `None` for string candidates
+- `accepted_text`: accepted candidate prefix
+- `rejected_text`: remaining candidate text at the deviation
+- `legal_next_tokens`: sorted legal next Grimace token texts
+
+`candidate` may be a string or a sequence of external token strings. String
+candidates are matched as text. Sequence candidates are atomic: each item must
+match one legal Grimace decoder token text.
+
+```python
+from rdkit import Chem
+import grimace
+
+mol = Chem.MolFromSmiles("CCO")
+kwargs = dict(
+    rootedAtAtom=-1,
+    isomericSmiles=False,
+    canonical=False,
+    doRandom=True,
+)
+
+grimace.MolToSmilesDeviation(mol, "CCO", **kwargs)
+# None
+
+grimace.MolToSmilesDeviation(mol, "CCN", **kwargs)
+# SmilesDeviation(
+#     reason='unexpected_text',
+#     char_index=2,
+#     token_index=None,
+#     offset_in_token=None,
+#     accepted_text='CC',
+#     rejected_text='N',
+#     legal_next_tokens=('O',),
+# )
+```
+
+String input and external token sequence input intentionally have different
+boundary semantics:
+
+```python
+grimace.MolToSmilesDeviation(mol, "CCl", **kwargs)
+# accepted_text='CC', rejected_text='l', legal_next_tokens=('O',)
+
+grimace.MolToSmilesDeviation(mol, ("C", "Cl"), **kwargs)
+# accepted_text='C', rejected_text='Cl', legal_next_tokens=('(', 'C')
+```
 
 ## MolToSmilesTokenInventory
 

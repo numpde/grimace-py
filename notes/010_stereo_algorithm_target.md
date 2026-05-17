@@ -41,6 +41,31 @@ This is the intended replacement for scattered local repairs. The walker
 should ask the model what remains possible; it should not patch selections or
 flip tokens after constructing a successor.
 
+## Semantic vs RDKit Writer Boundary
+
+The model has two different jobs that must not be collapsed.
+
+The principled semantic layer answers chemistry/language questions:
+
+- which carrier choices are valid for each stereo endpoint;
+- which coupled endpoints belong to the same component;
+- which token-phase assignments preserve the intended stereo relation;
+- whether a candidate SMILES can parse back to the intended graph and stereo
+  assignment.
+
+The RDKit writer-parity layers answer serialization questions:
+
+- which otherwise semantic carrier assignments RDKit's writer excludes;
+- where RDKit places visible slash/backslash markers during traversal;
+- when RDKit moves a marker to a ring label, branch edge, or later slot;
+- which traversal-order observations RDKit uses to choose a spelling.
+
+Slash/backslash marker placement is therefore not the definition of molecular
+stereo. It is RDKit writer policy layered on top of the semantic component
+state. Runtime parity may need to mirror that policy exactly, but the code
+should name it as RDKit writer behavior instead of treating it as generic
+OpenSMILES or chemistry logic.
+
 ## Role of Z3
 
 Z3 is an exploration tool, not the production engine. It is useful for finding

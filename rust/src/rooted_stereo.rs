@@ -123,6 +123,7 @@ struct ProcessChildrenEdgeUpdate {
 
 struct StereoEdgeEmissionContext<'a> {
     graph: &'a PreparedSmilesGraphData,
+    constraint_model: &'a StereoConstraintModel,
     side_infos: &'a [StereoSideInfo],
     side_ids_by_component: &'a [Vec<usize>],
     edge_to_side_ids: &'a BTreeMap<(usize, usize), Vec<usize>>,
@@ -1950,49 +1951,68 @@ fn should_defer_unknown_two_candidate_side_commit(
     terminal_candidates.len() == 1 && neighbor_idx == terminal_candidates[0]
 }
 
-// Suspicious current model:
-// Forces a shared candidate edge through local heuristics. This is one of the
-// main places to replace with a principled deferred carrier-choice constraint.
-fn forced_shared_candidate_neighbor(
-    side_infos: &[StereoSideInfo],
-    edge_to_side_ids: &BTreeMap<(usize, usize), Vec<usize>>,
-    component_phases: &[i8],
+fn row_state_carrier_obligation_neighbor(
+    context: &StereoEdgeEmissionContext<'_>,
+    selected_neighbors: &[isize],
     side_idx: usize,
 ) -> Option<usize> {
-    let side_info = &side_infos[side_idx];
-    if side_info.candidate_neighbors.len() != 2 {
+    let side_info = context.side_infos.get(side_idx)?;
+    let component_idx = context.constraint_model.component_for_side(side_idx)?;
+    let component_facts = selected_neighbors
+        .iter()
+        .enumerate()
+        .filter_map(|(selected_side_idx, &neighbor_idx)| {
+            if neighbor_idx < 0
+                || context
+                    .constraint_model
+                    .component_for_side(selected_side_idx)
+                    != Some(component_idx)
+            {
+                return None;
+            }
+            Some(StereoConstraintFact::CarrierSelected {
+                side_idx: selected_side_idx,
+                neighbor_idx: neighbor_idx as usize,
+            })
+        })
+        .collect::<Vec<_>>();
+    let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
+        component_idx,
+        StereoConstraintLayer::Semantic,
+        &component_facts,
+    );
+    let available_neighbors = context
+        .constraint_model
+        .available_neighbors_for_assignment_ids(component_idx, side_idx, &remaining_assignment_ids);
+    if available_neighbors.len() == 1 {
+        return available_neighbors.first().copied();
+    }
+    if available_neighbors.len() != 2 {
         return None;
     }
 
-    // When exactly one candidate edge is shared with another side of the same
-    // coupled component, the unresolved phase often has to flow through that
-    // shared edge first so both sides stay phase-compatible. Once the component
-    // phase is known, stop forcing if that edge is still contested by another
-    // two-candidate side; that later side may need to own the visible token.
-    let shared_neighbors = side_info
-        .candidate_neighbors
+    let shared_neighbors = available_neighbors
         .iter()
         .copied()
         .filter(|&neighbor_idx| {
-            edge_to_side_ids
+            context
+                .edge_to_side_ids
                 .get(&canonical_edge(side_info.endpoint_atom_idx, neighbor_idx))
                 .into_iter()
                 .flatten()
                 .copied()
                 .any(|other_side_idx| {
                     other_side_idx != side_idx
-                        && side_infos[other_side_idx].component_idx == side_info.component_idx
+                        && context.constraint_model.component_for_side(other_side_idx)
+                            == Some(component_idx)
                 })
         })
         .collect::<Vec<_>>();
-    if shared_neighbors.len() != 1 {
-        return None;
+    if shared_neighbors.len() == 1 {
+        Some(shared_neighbors[0])
+    } else {
+        None
     }
-    let shared_neighbor = shared_neighbors[0];
-    if component_phases[side_info.component_idx] == UNKNOWN_COMPONENT_PHASE {
-        return Some(shared_neighbor);
-    }
-    Some(shared_neighbor)
 }
 
 fn literal_bond_part(
@@ -2117,19 +2137,9 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
-            // The ordering matters:
-            // 1. If the unresolved component must flow through one shared
-            //    candidate to stay coherent, force that candidate.
-            // 2. Otherwise, if this is the unique terminal candidate on an
-            //    unresolved two-candidate side, defer until the more
-            //    informative non-terminal candidate appears.
-            let forced_neighbor = forced_shared_candidate_neighbor(
-                context.side_infos,
-                context.edge_to_side_ids,
-                state.component_phases,
-                side_idx,
-            );
-            if forced_neighbor.is_some() && forced_neighbor != Some(neighbor_idx) {
+            if row_state_carrier_obligation_neighbor(context, &updated_neighbors, side_idx)
+                .is_some_and(|forced_neighbor| forced_neighbor != neighbor_idx)
+            {
                 continue;
             }
             if should_defer_unknown_two_candidate_side_commit(
@@ -2374,6 +2384,7 @@ fn process_children_edge_update(
 ) -> PyResult<ProcessChildrenEdgeUpdate> {
     let edge_context = StereoEdgeEmissionContext {
         graph,
+        constraint_model: &runtime.constraint_model,
         side_infos: &runtime.side_infos,
         side_ids_by_component: &runtime.side_ids_by_component,
         edge_to_side_ids: &runtime.edge_to_side_ids,
@@ -6473,6 +6484,7 @@ fn enter_atom_successors_by_token(
 
     let edge_context = StereoEdgeEmissionContext {
         graph,
+        constraint_model: &runtime.constraint_model,
         side_infos: &runtime.side_infos,
         side_ids_by_component: &runtime.side_ids_by_component,
         edge_to_side_ids: &runtime.edge_to_side_ids,

@@ -6741,60 +6741,50 @@ fn raw_token_for_deferred_edge(
     Ok(Some(raw_token))
 }
 
-fn marker_event_for_deferred_component_token(
+fn marker_events_for_deferred_component_token(
     runtime: &StereoWalkerRuntimeData,
-    state: &RootedConnectedStereoWalkerStateData,
+    prefix: &str,
     deferred: &DeferredDirectionalToken,
     component_token: &DeferredDirectionalComponentToken,
     chosen_token: &str,
-) -> PyResult<Option<StereoMarkerEventFact>> {
+) -> PyResult<Vec<StereoMarkerEventFact>> {
     if deferred.begin_idx < 0 || deferred.end_idx < 0 {
-        return Ok(None);
+        return Ok(Vec::new());
     }
     let marker = match chosen_token {
         "/" => StereoDirectionToken::Slash,
         "\\" => StereoDirectionToken::Backslash,
-        _ => return Ok(None),
+        _ => return Ok(Vec::new()),
     };
     let begin_idx = deferred.begin_idx as usize;
     let end_idx = deferred.end_idx as usize;
     let edge = canonical_edge(begin_idx, end_idx);
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    // Compatibility path: this treats a visible deferred marker as an event for
-    // the selected carrier edge. Complement-candidate marker placement must
-    // move through marker-placement rows before this can become the runtime
-    // source of truth.
-    let Some(side_idx) = runtime
-        .edge_to_side_ids
-        .get(&edge)
-        .into_iter()
-        .flatten()
-        .copied()
-        .find(|&side_idx| {
-            let side_info = &runtime.side_infos[side_idx];
-            if side_info.component_idx != component_token.component_idx {
-                return false;
-            }
-            let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
-                end_idx
-            } else if end_idx == side_info.endpoint_atom_idx {
-                begin_idx
-            } else {
-                return false;
-            };
-            resolved_selected_neighbors[side_idx] == edge_neighbor_idx as isize
-        })
-    else {
-        return Ok(None);
-    };
-    Ok(Some(StereoMarkerEventFact::MarkerPlaced {
-        side_idx,
-        slot: direction_erased_slot(state.prefix.as_ref()),
-        begin_idx,
-        end_idx,
-        marker,
-        role: directional_token_role(state.prefix.as_ref(), None),
-    }))
+    let mut events = Vec::new();
+    for &side_idx in runtime.edge_to_side_ids.get(&edge).into_iter().flatten() {
+        let side_info = &runtime.side_infos[side_idx];
+        if side_info.component_idx != component_token.component_idx {
+            continue;
+        }
+        let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+            end_idx
+        } else if end_idx == side_info.endpoint_atom_idx {
+            begin_idx
+        } else {
+            continue;
+        };
+        if !side_info.candidate_neighbors.contains(&edge_neighbor_idx) {
+            continue;
+        }
+        events.push(StereoMarkerEventFact::MarkerPlaced {
+            side_idx,
+            slot: direction_erased_slot(prefix),
+            begin_idx,
+            end_idx,
+            marker,
+            role: directional_token_role(prefix, None),
+        });
+    }
+    Ok(events)
 }
 
 fn deferred_candidate_survives_marker_rows(
@@ -6844,15 +6834,13 @@ fn deferred_candidate_survives_marker_rows(
         .get(model_component_idx)
         .cloned()
         .unwrap_or_default();
-    if let Some(marker_event) = marker_event_for_deferred_component_token(
+    marker_events.extend(marker_events_for_deferred_component_token(
         runtime,
-        state,
+        state.prefix.as_ref(),
         deferred,
         component_token,
         chosen_token,
-    )? {
-        marker_events.push(marker_event);
-    }
+    )?);
     let survivor_state = marker_row_survivor_component_state(
         runtime,
         model_component_idx,
@@ -9290,20 +9278,22 @@ mod tests {
         enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
         flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
         initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
-        known_token_flip_facts_from_constraints, next_token_support_for_stereo_state,
-        rdkit_ring_closure_projected_marker_slots, resolved_constraint_state_from_walker_state,
-        resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
-        selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
-        successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
+        known_token_flip_facts_from_constraints, marker_events_for_deferred_component_token,
+        next_token_support_for_stereo_state, rdkit_ring_closure_projected_marker_slots,
+        resolved_constraint_state_from_walker_state, resolved_selected_neighbors,
+        resolved_selected_neighbors_from_assignment_state, selected_neighbor_facts_by_component,
+        smiles_from_direction_marker_slots, successors_by_token_stereo_raw,
+        supported_token_observation_facts_from_constraints,
         traversal_constraint_facts_by_component, traversal_constraint_has_completion,
         validate_root_idx, validate_stereo_state_shape, ComponentBeginAtomFact,
         ComponentPhaseCommitFact, ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint,
-        DeferredComponentPhaseFact, FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE,
-        UNKNOWN_COMPONENT_PHASE, UNKNOWN_COMPONENT_TOKEN_FLIP,
+        DeferredComponentPhaseFact, DeferredDirectionalComponentToken, DeferredDirectionalToken,
+        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
+        UNKNOWN_COMPONENT_TOKEN_FLIP,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
-        StereoTraversalRole,
+        StereoMarkerEventFact, StereoTraversalRole,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -9766,6 +9756,48 @@ mod tests {
 
         assert_eq!(36, accepted);
         assert_eq!(20, rejected);
+    }
+
+    #[test]
+    fn deferred_marker_events_route_through_candidate_side_rows() {
+        let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
+            return;
+        };
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
+        let side_idx = runtime
+            .side_infos
+            .iter()
+            .position(|side_info| side_info.candidate_neighbors.len() == 2)
+            .expect("witness should have a two-candidate side");
+        let side_info = &runtime.side_infos[side_idx];
+        let candidate_neighbor = side_info.candidate_neighbors[0];
+        let component_token = DeferredDirectionalComponentToken {
+            component_idx: side_info.component_idx,
+            stored_token: side_info.candidate_base_tokens[0].clone(),
+        };
+        let deferred = DeferredDirectionalToken {
+            component_tokens: Arc::from(vec![component_token.clone()]),
+            begin_idx: side_info.endpoint_atom_idx as isize,
+            end_idx: candidate_neighbor as isize,
+        };
+
+        assert_eq!(-1, resolved_selected_neighbors(&runtime, &state)[side_idx]);
+        let events = marker_events_for_deferred_component_token(
+            &runtime,
+            "",
+            &deferred,
+            &component_token,
+            "/",
+        )
+        .expect("candidate marker events should build");
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            StereoMarkerEventFact::MarkerPlaced {
+                side_idx: event_side_idx,
+                ..
+            } if *event_side_idx == side_idx
+        )));
     }
 
     #[test]

@@ -1251,6 +1251,16 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             for event in shadow_debug["marker_obligation_facts"]
                         )
                     )
+                    self.assertTrue(
+                        all(
+                            isinstance(domain["slot"], int)
+                            and isinstance(domain["same_edge_future_marker_slots"], list)
+                            and isinstance(
+                                domain["same_side_other_edge_future_markers"], list
+                            )
+                            for domain in shadow_debug["marker_obligation_domains"]
+                        )
+                    )
 
                     for components in shadow_debug["marker_placement_state"].values():
                         for component in components:
@@ -1342,6 +1352,16 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             if component["is_empty_after_marker_events"]
         )
         self.assertFalse(shadow_obligation_empty_counts)
+        deferred_domains = [
+            domain
+            for row in rows
+            for domain in row["shadow_debug"]["marker_obligation_domains"]
+            if domain["is_deferred"]
+        ]
+        self.assertTrue(deferred_domains)
+        self.assertTrue(
+            all(domain["same_edge_future_marker_slots"] for domain in deferred_domains)
+        )
 
     def test_marker_obligations_do_not_coalesce_different_edges(self) -> None:
         case = next(
@@ -1355,20 +1375,8 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
 
         saw_same_side_different_edge_future_marker = False
         for row in rows:
-            events = row["shadow_debug"]["marker_event_facts"]
+            domains = row["shadow_debug"]["marker_obligation_domains"]
             obligations = row["shadow_debug"]["marker_obligation_facts"]
-            marker_slots_by_side = {}
-            marker_slots_by_side_edge = {}
-            for event in events:
-                if event["event"] != "marker_placed":
-                    continue
-                edge = tuple(sorted((event["begin_idx"], event["end_idx"])))
-                marker_slots_by_side.setdefault(event["side_idx"], []).append(
-                    (event["slot"], edge)
-                )
-                marker_slots_by_side_edge.setdefault(
-                    (event["side_idx"], edge), []
-                ).append(event["slot"])
 
             retained_obligations = {
                 (
@@ -1379,27 +1387,22 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
                 for event in obligations
             }
-            for event in events:
-                if event["event"] != "no_marker":
+            for domain in domains:
+                other_edge_future_markers = domain[
+                    "same_side_other_edge_future_markers"
+                ]
+                if not other_edge_future_markers:
                     continue
-                edge = tuple(sorted((event["begin_idx"], event["end_idx"])))
-                if any(
-                    slot > event["slot"]
-                    for slot in marker_slots_by_side_edge.get((event["side_idx"], edge), ())
-                ):
-                    continue
-                has_later_marker_on_other_edge = any(
-                    slot > event["slot"] and marker_edge != edge
-                    for slot, marker_edge in marker_slots_by_side.get(event["side_idx"], ())
-                )
-                if not has_later_marker_on_other_edge:
+                if domain["same_edge_future_marker_slots"]:
                     continue
 
                 saw_same_side_different_edge_future_marker = True
+                edge = tuple(domain["canonical_edge"])
                 self.assertIn(
-                    ("no_marker", event["side_idx"], event["slot"], edge),
+                    ("no_marker", domain["side_idx"], domain["slot"], edge),
                     retained_obligations,
                 )
+                self.assertFalse(domain["is_deferred"])
 
         self.assertTrue(saw_same_side_different_edge_future_marker)
 

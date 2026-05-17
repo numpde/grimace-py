@@ -3159,13 +3159,41 @@ fn marker_event_facts_to_py(
     Ok(rows)
 }
 
-fn slot_coalesced_marker_event_facts_by_component(
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MarkerObligationDomain {
+    component_idx: usize,
+    no_marker_event: StereoMarkerEventFact,
+    same_edge_future_marker_slots: Vec<usize>,
+    same_side_other_edge_future_markers: Vec<(usize, (usize, usize))>,
+}
+
+impl MarkerObligationDomain {
+    fn is_deferred(&self) -> bool {
+        !self.same_edge_future_marker_slots.is_empty()
+    }
+
+    fn no_marker_key(&self) -> Option<(usize, usize, (usize, usize))> {
+        match self.no_marker_event {
+            StereoMarkerEventFact::NoMarker {
+                side_idx,
+                slot,
+                begin_idx,
+                end_idx,
+                ..
+            } => Some((side_idx, slot, canonical_edge(begin_idx, end_idx))),
+            StereoMarkerEventFact::MarkerPlaced { .. } => None,
+        }
+    }
+}
+
+fn marker_obligation_domains_by_component(
     marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
-) -> Vec<Vec<StereoMarkerEventFact>> {
+) -> Vec<Vec<MarkerObligationDomain>> {
     marker_event_facts_by_component
         .iter()
-        .map(|facts| {
-            let future_marker_slots_by_target = facts
+        .enumerate()
+        .map(|(component_idx, facts)| {
+            let future_markers_by_side = facts
                 .iter()
                 .filter_map(|&fact| match fact {
                     StereoMarkerEventFact::MarkerPlaced {
@@ -3174,17 +3202,124 @@ fn slot_coalesced_marker_event_facts_by_component(
                         begin_idx,
                         end_idx,
                         ..
-                    } => Some(((side_idx, canonical_edge(begin_idx, end_idx)), slot)),
+                    } => Some((side_idx, slot, canonical_edge(begin_idx, end_idx))),
                     StereoMarkerEventFact::NoMarker { .. } => None,
                 })
                 .fold(
-                    BTreeMap::<(usize, (usize, usize)), BTreeSet<usize>>::new(),
-                    |mut acc, (target, slot)| {
-                        acc.entry(target).or_default().insert(slot);
+                    BTreeMap::<usize, Vec<(usize, (usize, usize))>>::new(),
+                    |mut acc, (side_idx, slot, edge)| {
+                        acc.entry(side_idx).or_default().push((slot, edge));
                         acc
                     },
                 );
 
+            facts
+                .iter()
+                .filter_map(|&fact| match fact {
+                    StereoMarkerEventFact::MarkerPlaced { .. } => None,
+                    StereoMarkerEventFact::NoMarker {
+                        side_idx,
+                        slot,
+                        begin_idx,
+                        end_idx,
+                        ..
+                    } => {
+                        let edge = canonical_edge(begin_idx, end_idx);
+                        let future_markers = future_markers_by_side
+                            .get(&side_idx)
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        let same_edge_future_marker_slots = future_markers
+                            .iter()
+                            .filter_map(|&(future_slot, future_edge)| {
+                                (future_slot > slot && future_edge == edge).then_some(future_slot)
+                            })
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect();
+                        let same_side_other_edge_future_markers = future_markers
+                            .iter()
+                            .filter_map(|&(future_slot, future_edge)| {
+                                (future_slot > slot && future_edge != edge)
+                                    .then_some((future_slot, future_edge))
+                            })
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect();
+                        Some(MarkerObligationDomain {
+                            component_idx,
+                            no_marker_event: fact,
+                            same_edge_future_marker_slots,
+                            same_side_other_edge_future_markers,
+                        })
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn marker_obligation_domains_to_py(
+    py: Python<'_>,
+    domains_by_component: &[Vec<MarkerObligationDomain>],
+) -> PyResult<Vec<Py<PyDict>>> {
+    let mut rows = Vec::new();
+    for domains in domains_by_component {
+        for domain in domains {
+            let row = PyDict::new(py);
+            row.set_item("component_idx", domain.component_idx)?;
+            if let StereoMarkerEventFact::NoMarker {
+                side_idx,
+                slot,
+                begin_idx,
+                end_idx,
+                role,
+            } = domain.no_marker_event
+            {
+                let edge = canonical_edge(begin_idx, end_idx);
+                row.set_item("side_idx", side_idx)?;
+                row.set_item("slot", slot)?;
+                row.set_item("begin_idx", begin_idx)?;
+                row.set_item("end_idx", end_idx)?;
+                row.set_item("canonical_edge", edge)?;
+                row.set_item("role", stereo_traversal_role_name(role))?;
+                row.set_item("is_deferred", domain.is_deferred())?;
+                row.set_item(
+                    "same_edge_future_marker_slots",
+                    domain.same_edge_future_marker_slots.clone(),
+                )?;
+                let other_edge_markers = domain
+                    .same_side_other_edge_future_markers
+                    .iter()
+                    .map(|&(future_slot, future_edge)| {
+                        let marker = PyDict::new(py);
+                        marker.set_item("slot", future_slot)?;
+                        marker.set_item("canonical_edge", future_edge)?;
+                        Ok(marker.unbind())
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
+                row.set_item("same_side_other_edge_future_markers", other_edge_markers)?;
+            }
+            rows.push(row.unbind());
+        }
+    }
+    Ok(rows)
+}
+
+fn slot_coalesced_marker_event_facts_by_component(
+    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+) -> Vec<Vec<StereoMarkerEventFact>> {
+    let deferred_no_marker_keys =
+        marker_obligation_domains_by_component(marker_event_facts_by_component)
+            .into_iter()
+            .flatten()
+            .filter(|domain| domain.is_deferred())
+            .filter_map(|domain| domain.no_marker_key())
+            .collect::<BTreeSet<_>>();
+
+    marker_event_facts_by_component
+        .iter()
+        .map(|facts| {
             facts
                 .iter()
                 .copied()
@@ -3196,9 +3331,11 @@ fn slot_coalesced_marker_event_facts_by_component(
                         begin_idx,
                         end_idx,
                         ..
-                    } => !future_marker_slots_by_target
-                        .get(&(side_idx, canonical_edge(begin_idx, end_idx)))
-                        .is_some_and(|slots| slots.iter().any(|&future_slot| future_slot > slot)),
+                    } => !deferred_no_marker_keys.contains(&(
+                        side_idx,
+                        slot,
+                        canonical_edge(begin_idx, end_idx),
+                    )),
                 })
                 .collect()
         })
@@ -4447,6 +4584,10 @@ fn stereo_output_fact_row_to_py(
         traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
     let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
     let shadow_marker_events_by_component = shadow_marker_event_facts_by_component(runtime, state)?;
+    let marker_obligation_domains =
+        marker_obligation_domains_by_component(&marker_events_by_component);
+    let shadow_marker_obligation_domains =
+        marker_obligation_domains_by_component(&shadow_marker_events_by_component);
     let marker_obligation_events_by_component =
         slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
     let shadow_marker_obligation_events_by_component =
@@ -4509,6 +4650,10 @@ fn stereo_output_fact_row_to_py(
     row.set_item(
         "marker_obligation_facts",
         marker_event_facts_to_py(py, &marker_obligation_events_by_component)?,
+    )?;
+    row.set_item(
+        "marker_obligation_domains",
+        marker_obligation_domains_to_py(py, &marker_obligation_domains)?,
     )?;
     row.set_item(
         "raw_layer_completions",
@@ -4574,6 +4719,10 @@ fn stereo_output_fact_row_to_py(
     shadow_debug.set_item(
         "marker_obligation_facts",
         marker_event_facts_to_py(py, &shadow_marker_obligation_events_by_component)?,
+    )?;
+    shadow_debug.set_item(
+        "marker_obligation_domains",
+        marker_obligation_domains_to_py(py, &shadow_marker_obligation_domains)?,
     )?;
     shadow_debug.set_item(
         "marker_placement_state",

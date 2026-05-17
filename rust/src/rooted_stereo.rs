@@ -4900,7 +4900,7 @@ fn component_token_phase_diagnostics_to_py(
                 token_inference_inputs
                     .observations
                     .rdkit_token_flip_adjustment
-                    .value,
+                    .value(),
             )?;
             row.set_item(
                 "state_token_flip",
@@ -5972,16 +5972,13 @@ fn rdkit_token_flip_adjustment_observation_from_state(
     observation.begin_side_orientation = Some(edge_orientation_name(begin_side_orientation));
     observation.root_begin_side_adjustment =
         observation.begin_atom_is_root && begin_side_orientation == AFTER_ATOM_EDGE_ORIENTATION;
-    let mut adjustment = observation.root_begin_side_adjustment;
 
     if runtime.isolated_components[component_idx] || begin_side.candidate_neighbors.len() != 1 {
-        observation.value = adjustment;
         return observation;
     }
 
     let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
     if selected_neighbor_idx < 0 {
-        observation.value = adjustment;
         return observation;
     }
     let selected_neighbor_idx = selected_neighbor_idx as usize;
@@ -5998,7 +5995,6 @@ fn rdkit_token_flip_adjustment_observation_from_state(
         });
 
     let Some(adjacent_two_side_idx) = adjacent_two_side_idx else {
-        observation.value = adjustment;
         return observation;
     };
     observation.adjacent_two_candidate_side_idx = Some(adjacent_two_side_idx);
@@ -6014,10 +6010,6 @@ fn rdkit_token_flip_adjustment_observation_from_state(
         && observation
             .adjacent_first_emitted_is_not_begin
             .unwrap_or(false);
-    if observation.adjacent_two_candidate_adjustment {
-        adjustment = !adjustment;
-    }
-    observation.value = adjustment;
     observation
 }
 
@@ -6140,7 +6132,6 @@ struct FirstEmittedCandidateObservation {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct RdkitTokenFlipAdjustmentObservation {
-    value: bool,
     root_begin_side_adjustment: bool,
     begin_atom_is_root: bool,
     begin_side_orientation: Option<&'static str>,
@@ -6152,6 +6143,10 @@ struct RdkitTokenFlipAdjustmentObservation {
 }
 
 impl RdkitTokenFlipAdjustmentObservation {
+    fn value(&self) -> bool {
+        self.support_observations().value()
+    }
+
     fn support_observations(&self) -> RdkitTokenFlipAdjustmentObservations {
         RdkitTokenFlipAdjustmentObservations {
             root_begin_side_orientation: self.root_begin_side_adjustment,
@@ -6319,7 +6314,7 @@ fn component_token_observation_inputs(
         .map(|side_idx| state.stereo_first_emitted_candidates[side_idx])
         .filter(|&neighbor_idx| neighbor_idx >= 0)
         .map(|neighbor_idx| neighbor_idx as usize);
-    let adjustment = rdkit_token_flip_adjustment_observation_from_state(
+    let rdkit_adjustment_observation = rdkit_token_flip_adjustment_observation_from_state(
         runtime,
         state,
         resolved_selected_neighbors,
@@ -6350,7 +6345,7 @@ fn component_token_observation_inputs(
         first_emitted_candidate: FirstEmittedCandidateObservation {
             neighbor_idx: first_emitted_candidate_idx,
         },
-        rdkit_token_flip_adjustment: adjustment,
+        rdkit_token_flip_adjustment: rdkit_adjustment_observation,
     })
 }
 
@@ -6545,7 +6540,7 @@ fn component_token_inference_inputs_to_py(
     )?;
     row.set_item(
         "rdkit_token_flip_adjustment",
-        observations.rdkit_token_flip_adjustment.value,
+        observations.rdkit_token_flip_adjustment.value(),
     )?;
     row.set_item(
         "inferred_token_flip",
@@ -6607,7 +6602,7 @@ fn component_token_observation_inputs_to_py(
 
     let rdkit_adjustment = PyDict::new(py);
     rdkit_adjustment.set_item("fact", "rdkit_token_flip_adjustment")?;
-    rdkit_adjustment.set_item("value", observations.rdkit_token_flip_adjustment.value)?;
+    rdkit_adjustment.set_item("value", observations.rdkit_token_flip_adjustment.value())?;
     rdkit_adjustment.set_item(
         "root_begin_side_adjustment",
         observations

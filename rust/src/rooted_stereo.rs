@@ -6112,13 +6112,10 @@ fn token_observation_facts_to_py(
         .collect()
 }
 
-// Suspicious current model:
-// Performs consistency repair/checking after successor construction. A cleaner
-// design should make token-flip commitments explicit transition constraints.
-fn normalize_component_token_flips(
+fn assert_component_token_flip_boundary_invariants(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
-    state: &mut RootedConnectedStereoWalkerStateData,
+    state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
     assert_token_flips_explained_by_constraint_state(runtime, graph, state)?;
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
@@ -6448,7 +6445,7 @@ fn commit_deferred_token_choice(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
         }
-        return normalize_component_token_flips(runtime, graph, state);
+        return assert_component_token_flip_boundary_invariants(runtime, graph, state);
     }
 
     if deferred.component_tokens.len() == 1 {
@@ -6471,7 +6468,7 @@ fn commit_deferred_token_choice(
                     "Token {chosen_token:?} is not available for deferred stereo token"
                 )));
             }
-            return normalize_component_token_flips(runtime, graph, state);
+            return assert_component_token_flip_boundary_invariants(runtime, graph, state);
         };
         let flipped = flip_direction_token(&raw_token)?;
         let chosen_flip = if chosen_token == raw_token {
@@ -6492,7 +6489,7 @@ fn commit_deferred_token_choice(
                 "Stereo deferred token was committed inconsistently",
             ));
         }
-        return normalize_component_token_flips(runtime, graph, state);
+        return assert_component_token_flip_boundary_invariants(runtime, graph, state);
     }
 
     for component_token in deferred.component_tokens.iter() {
@@ -6514,7 +6511,7 @@ fn commit_deferred_token_choice(
             ));
         }
     }
-    normalize_component_token_flips(runtime, graph, state)
+    assert_component_token_flip_boundary_invariants(runtime, graph, state)
 }
 
 fn enter_atom_successors_by_token(
@@ -6565,7 +6562,7 @@ fn enter_atom_successors_by_token(
                     });
                 }
                 push_literal_token(&mut successor.prefix, &atom_token);
-                normalize_component_token_flips(runtime, graph, &mut successor)?;
+                assert_component_token_flip_boundary_invariants(runtime, graph, &successor)?;
                 push_successor_bucket(&mut successors, atom_token, successor);
                 Ok(())
             })();
@@ -6801,7 +6798,9 @@ fn enter_atom_successors_by_token(
                             successor.action_stack.push(action.clone());
                         }
                         push_literal_token(&mut successor.prefix, &atom_token);
-                        normalize_component_token_flips(runtime, graph, &mut successor)?;
+                        assert_component_token_flip_boundary_invariants(
+                            runtime, graph, &successor,
+                        )?;
                         push_successor_bucket(&mut successors, atom_token, successor);
                         Ok(())
                     })();
@@ -7409,7 +7408,11 @@ fn process_children_successors_by_token(
             child_idx,
             part_to_action(edge_part),
         );
-        normalize_component_token_flips(context.runtime, context.graph, &mut successor)?;
+        assert_component_token_flip_boundary_invariants(
+            context.runtime,
+            context.graph,
+            &successor,
+        )?;
         return Ok(BTreeMap::from([("(".to_owned(), vec![successor])]));
     }
 
@@ -7436,7 +7439,7 @@ fn process_children_successors_by_token(
     base_state.stereo_first_emitted_candidates = Arc::new(first_emitted_candidates);
     base_state.stereo_component_phases = Arc::new(component_phases);
     base_state.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
-    normalize_component_token_flips(context.runtime, context.graph, &mut base_state)?;
+    assert_component_token_flip_boundary_invariants(context.runtime, context.graph, &base_state)?;
     process_children_terminal_successors(
         context,
         base_state,

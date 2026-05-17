@@ -127,6 +127,12 @@ struct DeferredComponentPhaseConstraint {
     begin_atom_idx: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct IsolatedAromaticBeginSideTokenConstraint {
+    begin_side_idx: usize,
+    selected_token: String,
+}
+
 struct StereoEdgeEmissionContext<'a> {
     graph: &'a PreparedSmilesGraphData,
     constraint_model: &'a StereoConstraintModel,
@@ -1961,6 +1967,85 @@ fn emitted_candidate_token(
     ))
 }
 
+fn side_has_only_aromatic_carrier_edges(
+    graph: &PreparedSmilesGraphData,
+    side_info: &StereoSideInfo,
+) -> bool {
+    !side_info.candidate_neighbors.is_empty()
+        && side_info.candidate_neighbors.iter().all(|&neighbor_idx| {
+            graph
+                .bond_index(side_info.endpoint_atom_idx, neighbor_idx)
+                .map(|bond_idx| graph.bond_kinds[bond_idx] == "AROMATIC")
+                .unwrap_or(false)
+        })
+}
+
+fn isolated_aromatic_begin_side_token_constraint(
+    context: &StereoEdgeEmissionContext<'_>,
+    component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
+    side_info: &StereoSideInfo,
+) -> PyResult<Option<IsolatedAromaticBeginSideTokenConstraint>> {
+    if side_info.candidate_neighbors.len() != 1 {
+        return Ok(None);
+    }
+    let component_idx = side_info.component_idx;
+    let begin_atom_idx = component_begin_atoms
+        .get(component_idx)
+        .copied()
+        .unwrap_or(-1);
+    if begin_atom_idx < 0 || begin_atom_idx as usize == side_info.endpoint_atom_idx {
+        return Ok(None);
+    }
+
+    let Some(begin_side_idx) = context
+        .side_ids_by_component
+        .get(component_idx)
+        .into_iter()
+        .flatten()
+        .copied()
+        .find(|&candidate_side_idx| {
+            let candidate_side = &context.side_infos[candidate_side_idx];
+            candidate_side.endpoint_atom_idx == begin_atom_idx as usize
+                && candidate_side.candidate_neighbors.len() == 2
+                && side_has_only_aromatic_carrier_edges(context.graph, candidate_side)
+        })
+    else {
+        return Ok(None);
+    };
+
+    let begin_selected_neighbor = selected_neighbors[begin_side_idx];
+    if begin_selected_neighbor < 0 {
+        return Ok(None);
+    }
+    Ok(Some(IsolatedAromaticBeginSideTokenConstraint {
+        begin_side_idx,
+        selected_token: candidate_base_token(
+            &context.side_infos[begin_side_idx],
+            begin_selected_neighbor as usize,
+        )?,
+    }))
+}
+
+fn apply_isolated_aromatic_begin_side_token_constraint(
+    token: String,
+    constraint: Option<IsolatedAromaticBeginSideTokenConstraint>,
+    emitted_from_endpoint: bool,
+) -> PyResult<String> {
+    let Some(constraint) = constraint else {
+        return Ok(token);
+    };
+    let IsolatedAromaticBeginSideTokenConstraint {
+        begin_side_idx: _,
+        selected_token,
+    } = constraint;
+    if emitted_from_endpoint {
+        Ok(selected_token)
+    } else {
+        flip_direction_token(&selected_token)
+    }
+}
+
 fn row_state_carrier_obligation_neighbor(
     context: &StereoEdgeEmissionContext<'_>,
     selected_neighbors: &[isize],
@@ -2242,9 +2327,10 @@ fn emitted_edge_part_generic(
     ))
 }
 
-// Suspicious current model:
-// Contains isolated-component token repair logic for aromatic begin sides. Keep
-// this isolated until it can be replaced by deferred token-choice constraints.
+// Transitional current model:
+// Names the isolated-component aromatic begin-side token constraint explicitly,
+// but still applies it during edge emission. The next step is to move this into
+// marker-row or token-choice state so edge emission only consumes model facts.
 fn emitted_isolated_edge_part(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
@@ -2293,54 +2379,17 @@ fn emitted_isolated_edge_part(
         if selected_neighbor != neighbor_idx as isize {
             continue;
         }
-        let mut stored_token = emitted_candidate_token(side_info, begin_idx, end_idx)?;
-        let component_idx = side_info.component_idx;
-        let begin_atom_idx = state
-            .component_begin_atoms
-            .get(component_idx)
-            .copied()
-            .unwrap_or(-1);
-        if side_info.candidate_neighbors.len() == 1
-            && begin_atom_idx >= 0
-            && begin_atom_idx as usize != side_info.endpoint_atom_idx
-        {
-            if let Some(begin_side_idx) = context
-                .side_ids_by_component
-                .get(component_idx)
-                .into_iter()
-                .flatten()
-                .copied()
-                .find(|&other_side_idx| {
-                    let other_side = &context.side_infos[other_side_idx];
-                    other_side.endpoint_atom_idx == begin_atom_idx as usize
-                        && other_side.candidate_neighbors.len() == 2
-                })
-            {
-                let begin_side = &context.side_infos[begin_side_idx];
-                let begin_selected_neighbor = updated_neighbors[begin_side_idx];
-                if begin_selected_neighbor >= 0
-                    && begin_side
-                        .candidate_neighbors
-                        .iter()
-                        .all(|&candidate_neighbor| {
-                            context
-                                .graph
-                                .bond_index(begin_side.endpoint_atom_idx, candidate_neighbor)
-                                .map(|bond_idx| context.graph.bond_kinds[bond_idx] == "AROMATIC")
-                                .unwrap_or(false)
-                        })
-                {
-                    let begin_selected_token =
-                        candidate_base_token(begin_side, begin_selected_neighbor as usize)?;
-                    stored_token = if begin_idx == side_info.endpoint_atom_idx {
-                        begin_selected_token
-                    } else {
-                        flip_direction_token(&begin_selected_token)?
-                    };
-                }
-            }
-        }
-        stored_tokens.push((component_idx, stored_token));
+        let stored_token = apply_isolated_aromatic_begin_side_token_constraint(
+            emitted_candidate_token(side_info, begin_idx, end_idx)?,
+            isolated_aromatic_begin_side_token_constraint(
+                context,
+                state.component_begin_atoms,
+                &updated_neighbors,
+                side_info,
+            )?,
+            begin_idx == side_info.endpoint_atom_idx,
+        )?;
+        stored_tokens.push((side_info.component_idx, stored_token));
     }
 
     if stored_tokens.is_empty() {

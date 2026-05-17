@@ -4062,27 +4062,6 @@ fn assignment_state_to_py(
     Ok(state_by_layer.unbind())
 }
 
-fn shadow_inferred_token_flip_facts_from_state(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoWalkerStateData,
-) -> PyResult<Vec<StereoTokenFlipFact>> {
-    let mut facts = Vec::new();
-    for component_idx in 0..runtime.isolated_components.len() {
-        let Some(token_flip) =
-            legacy_procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?
-                .and_then(model_token_flip_from_component_value)
-        else {
-            continue;
-        };
-        facts.push(StereoTokenFlipFact {
-            runtime_component_idx: component_idx,
-            token_flip,
-        });
-    }
-    Ok(facts)
-}
-
 enum ComponentTokenConstraintFact {
     KnownTokenFlip(StereoTokenFlipFact),
     InferredTokenObservation(StereoTokenObservationFact),
@@ -4122,7 +4101,6 @@ fn component_token_constraint_from_state(
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
-    assert_legacy_equivalence: bool,
 ) -> PyResult<ComponentTokenConstraint> {
     let inputs = component_token_inference_inputs(
         runtime,
@@ -4130,7 +4108,6 @@ fn component_token_constraint_from_state(
         state,
         resolved_selected_neighbors,
         component_idx,
-        assert_legacy_equivalence,
     )?;
     if let Some(committed_fact) =
         committed_component_token_flip_fact_from_state(state, component_idx)
@@ -4167,7 +4144,6 @@ fn component_token_constraints_from_state(
                 state,
                 resolved_selected_neighbors,
                 component_idx,
-                true,
             )
         })
         .collect()
@@ -4187,7 +4163,6 @@ fn partial_component_token_constraints_from_state(
                 state,
                 resolved_selected_neighbors,
                 component_idx,
-                false,
             )
         })
         .collect()
@@ -4338,26 +4313,6 @@ fn assert_token_flips_explained_by_constraint_state(
         }
     }
     Ok(())
-}
-
-fn constraint_state_to_py(
-    py: Python<'_>,
-    runtime: &StereoWalkerRuntimeData,
-    facts_by_component: &[Vec<StereoConstraintFact>],
-    token_flip_facts: &[StereoTokenFlipFact],
-) -> PyResult<Py<PyDict>> {
-    let state_by_layer = PyDict::new(py);
-    for layer in StereoConstraintLayer::ALL {
-        let constraint_state = StereoConstraintState::from_facts(
-            &runtime.constraint_model,
-            layer,
-            facts_by_component,
-            token_flip_facts,
-        )?;
-        let components = constraint_state_components_to_py(py, runtime, &constraint_state)?;
-        state_by_layer.set_item(stereo_constraint_layer_name(layer), components)?;
-    }
-    Ok(state_by_layer.unbind())
 }
 
 fn mixed_constraint_state_to_py(
@@ -5457,8 +5412,6 @@ fn stereo_output_fact_row_to_py(
         state,
         &resolved_selected_neighbors,
     )?;
-    let shadow_inferred_token_flip_facts =
-        shadow_inferred_token_flip_facts_from_state(runtime, graph, state)?;
     let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
     let inferred_token_observation_facts =
         inferred_token_observation_facts_from_constraints(&token_constraints);
@@ -5559,15 +5512,6 @@ fn stereo_output_fact_row_to_py(
     shadow_debug.set_item(
         "joined_support_boundary_matches_runtime",
         joined_support_boundary_selected_neighbors == resolved_selected_neighbors,
-    )?;
-    shadow_debug.set_item(
-        "resolved_constraint_state_from_inferred_token_flip_facts",
-        constraint_state_to_py(
-            py,
-            runtime,
-            &resolved_facts_by_component,
-            &shadow_inferred_token_flip_facts,
-        )?,
     )?;
     shadow_debug.set_item(
         "marker_event_facts",
@@ -6123,152 +6067,6 @@ fn provisional_phase_from_selected_side(
     )))
 }
 
-// Legacy shadow oracle:
-// infers one component-wide token flip from partially resolved side selections.
-// Runtime routing should use typed token observations; this helper remains only
-// to assert equivalence while the observation path replaces the old branches.
-fn legacy_procedural_inferred_component_token_flip(
-    runtime: &StereoWalkerRuntimeData,
-    state: &RootedConnectedStereoWalkerStateData,
-    graph: &PreparedSmilesGraphData,
-    component_idx: usize,
-) -> PyResult<Option<i8>> {
-    let isolated = runtime.isolated_components[component_idx];
-    let side_ids = &runtime.side_ids_by_component[component_idx];
-    if side_ids.is_empty() {
-        return Ok(None);
-    }
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
-    let selected_side_ids = side_ids
-        .iter()
-        .copied()
-        .filter(|&side_idx| resolved_selected_neighbors[side_idx] >= 0)
-        .collect::<Vec<_>>();
-    if !isolated && selected_side_ids.len() < 2 {
-        return Ok(None);
-    }
-    let mut phase = state.stereo_component_phases[component_idx];
-    let mut begin_atom_idx = state.stereo_component_begin_atoms[component_idx];
-    if phase == UNKNOWN_COMPONENT_PHASE || begin_atom_idx < 0 {
-        if selected_side_ids.len() != 1 {
-            return Ok(None);
-        }
-        let selected_side_idx = selected_side_ids[0];
-        let selected_side = &runtime.side_infos[selected_side_idx];
-        if phase == UNKNOWN_COMPONENT_PHASE {
-            phase = provisional_phase_from_selected_side(graph, selected_side)?;
-        }
-        if begin_atom_idx < 0 {
-            begin_atom_idx = selected_side.endpoint_atom_idx as isize;
-        }
-    }
-    let adjustment = rdkit_token_flip_adjustment_observation_from_state(
-        runtime,
-        state,
-        &resolved_selected_neighbors,
-        component_idx,
-    )
-    .value;
-    if begin_atom_idx < 0 {
-        return Ok(None);
-    }
-    let begin_atom_idx = begin_atom_idx as usize;
-    let Some(begin_side_idx) = side_ids
-        .iter()
-        .copied()
-        .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_atom_idx)
-    else {
-        return Ok(None);
-    };
-    let begin_side = &runtime.side_infos[begin_side_idx];
-
-    let component_flip = if isolated {
-        let all_single_candidate = side_ids
-            .iter()
-            .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 1);
-        let all_two_candidate = side_ids
-            .iter()
-            .all(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() == 2);
-        let isolated_flip = if all_single_candidate {
-            false
-        } else if all_two_candidate && begin_side.candidate_neighbors.len() == 2 {
-            let first_neighbor_idx = state.stereo_first_emitted_candidates[begin_side_idx];
-            if first_neighbor_idx < 0 {
-                false
-            } else {
-                let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
-                if selected_neighbor_idx < 0 {
-                    return Ok(None);
-                }
-                let selected_is_first = first_neighbor_idx == selected_neighbor_idx;
-                (phase == FLIPPED_COMPONENT_PHASE) ^ !selected_is_first
-            }
-        } else {
-            let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
-            if selected_neighbor_idx < 0 {
-                return Ok(None);
-            }
-            let selected_neighbor_idx = selected_neighbor_idx as usize;
-            let selected_token = candidate_base_token(begin_side, selected_neighbor_idx)?;
-            selected_token
-                == if phase == STORED_COMPONENT_PHASE {
-                    "/"
-                } else {
-                    "\\"
-                }
-        };
-        isolated_flip ^ adjustment
-    } else if begin_side.candidate_neighbors.len() == 1 {
-        let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
-        if selected_neighbor_idx < 0 {
-            return Ok(None);
-        }
-        let selected_neighbor_idx = selected_neighbor_idx as usize;
-        let selected_token = candidate_base_token(begin_side, selected_neighbor_idx)?;
-        let coupled_flip = selected_token
-            == if phase == STORED_COMPONENT_PHASE {
-                "/"
-            } else {
-                "\\"
-            };
-        coupled_flip ^ adjustment
-    } else if begin_side.candidate_neighbors.len() == 2 {
-        let selected_neighbor_idx = resolved_selected_neighbors[begin_side_idx];
-        if selected_neighbor_idx < 0 {
-            return Ok(None);
-        }
-        let selected_neighbor_idx = selected_neighbor_idx as usize;
-        let stored_token = candidate_base_token(begin_side, selected_neighbor_idx)?;
-        let first_neighbor_idx = state.stereo_first_emitted_candidates[begin_side_idx];
-        if first_neighbor_idx < 0 {
-            adjustment
-        } else {
-            let resolved_token = if phase == STORED_COMPONENT_PHASE {
-                stored_token.clone()
-            } else {
-                flip_direction_token(&stored_token)?
-            };
-            let invert_selected_first = stored_token == "/";
-            let mut desired_token = stored_token.clone();
-            if (first_neighbor_idx == resolved_selected_neighbors[begin_side_idx])
-                == invert_selected_first
-            {
-                desired_token = flip_direction_token(&stored_token)?;
-            }
-            (desired_token != resolved_token) ^ adjustment
-        }
-    } else {
-        return Ok(None);
-    };
-
-    let final_flip = (phase == FLIPPED_COMPONENT_PHASE) ^ component_flip;
-    Ok(Some(if final_flip {
-        FLIPPED_COMPONENT_TOKEN_FLIP
-    } else {
-        STORED_COMPONENT_TOKEN_FLIP
-    }))
-}
-
 fn component_token_flip_value_from_model(value: StereoTokenFlip) -> i8 {
     match value {
         StereoTokenFlip::Stored => STORED_COMPONENT_TOKEN_FLIP,
@@ -6289,7 +6087,6 @@ fn inferred_component_token_flip(
         state,
         &resolved_selected_neighbors,
         component_idx,
-        true,
     )?
     .inferred)
 }
@@ -6567,7 +6364,6 @@ fn component_token_inference_inputs(
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
-    assert_legacy_equivalence: bool,
 ) -> PyResult<ComponentTokenInferenceInputs> {
     let side_ids = &runtime.side_ids_by_component[component_idx];
     let selected_side_ids = side_ids
@@ -6676,21 +6472,6 @@ fn component_token_inference_inputs(
     let observation_inferred = inputs
         .supported_token_observation()?
         .map(|fact| component_token_flip_value_from_model(fact.implied_token_flip()));
-    let has_token_basis_fact = state
-        .stereo_token_basis_facts
-        .get(component_idx)
-        .and_then(|fact| *fact)
-        .is_some();
-    if assert_legacy_equivalence && !has_token_basis_fact {
-        let procedural_inferred =
-            legacy_procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
-        if procedural_inferred != observation_inferred {
-            return Err(PyValueError::new_err(format!(
-                "Observation-derived inferred token flip disagrees with procedural inference for branch {}",
-                inputs.inference_branch
-            )));
-        }
-    }
     inputs.inferred = observation_inferred;
     Ok(inputs)
 }

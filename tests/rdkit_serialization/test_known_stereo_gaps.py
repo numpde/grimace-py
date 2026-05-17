@@ -32,12 +32,32 @@ SUPPORTED_STEREO_DIAGNOSTIC_FLAGS = _runtime.MolToSmilesFlags(
     do_random=True,
     ignore_atom_map_numbers=False,
 )
+ALLOWED_ACCEPTANCE_ROLES = {
+    "decoder_path_acceptance",
+    "red_support_acceptance",
+    "support_present_family_guard",
+}
+ALLOWED_GAP_CLASSES = {
+    "missing_rdkit_writer_policy",
+    "missing_semantic_constraint",
+    "unsupported_representation",
+}
+ALLOWED_CURRENT_RESULTS = {
+    "decoder_path_only",
+    "support_enumeration_error",
+    "support_missing",
+    "support_present",
+}
 
 
 @dataclass(frozen=True, slots=True)
 class KnownStereoGapCase:
     case_id: str
     source: str
+    acceptance_role: str
+    gap_class: str | None
+    gap_detail: str
+    expected_current_result: str
     smiles: str | None
     molblock: str | None
     writer_membership_case_id: str | None
@@ -76,10 +96,32 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 f"known stereo-gap case {raw_case['id']!r} must define exactly "
                 "one of 'smiles', 'molblock', or 'writer_membership_case_id'"
             )
+        acceptance_role = raw_case["acceptance_role"]
+        gap_class = raw_case["gap_class"]
+        expected_current_result = raw_case["expected_current_result"]
+        if acceptance_role not in ALLOWED_ACCEPTANCE_ROLES:
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has unsupported "
+                f"acceptance_role {acceptance_role!r}"
+            )
+        if gap_class is not None and gap_class not in ALLOWED_GAP_CLASSES:
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has unsupported "
+                f"gap_class {gap_class!r}"
+            )
+        if expected_current_result not in ALLOWED_CURRENT_RESULTS:
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has unsupported "
+                f"expected_current_result {expected_current_result!r}"
+            )
         cases.append(
             KnownStereoGapCase(
                 case_id=raw_case["id"],
                 source=raw_case["source"],
+                acceptance_role=acceptance_role,
+                gap_class=gap_class,
+                gap_detail=raw_case["gap_detail"],
+                expected_current_result=expected_current_result,
                 smiles=smiles,
                 molblock=molblock,
                 writer_membership_case_id=writer_membership_case_id,
@@ -116,6 +158,39 @@ class KnownStereoGapTests(unittest.TestCase):
                 f"no pinned known stereo-gap corpus for RDKit {rdBase.rdkitVersion}"
             )
         cls.writer_cases_by_id = {case.case_id: case for case in writer_cases}
+
+    def test_pinned_known_stereo_gap_cases_are_classified(self) -> None:
+        status_counts = Counter(case.expected_current_result for case in self.cases)
+        self.assertEqual(
+            Counter(
+                {
+                    "decoder_path_only": 1,
+                    "support_enumeration_error": 1,
+                    "support_missing": 10,
+                    "support_present": 4,
+                }
+            ),
+            status_counts,
+        )
+        for case in self.cases:
+            with self.subTest(case_id=case.case_id):
+                self.assertTrue(case.gap_detail.strip(), case.case_id)
+                if case.acceptance_role == "red_support_acceptance":
+                    self.assertIn(case.gap_class, ALLOWED_GAP_CLASSES)
+                    self.assertIn(
+                        case.expected_current_result,
+                        {"support_enumeration_error", "support_missing"},
+                    )
+                    self.assertTrue(case.check_grimace_support)
+                else:
+                    self.assertIsNone(case.gap_class)
+                if case.acceptance_role == "decoder_path_acceptance":
+                    self.assertTrue(case.check_grimace_decoder_path)
+                    self.assertFalse(case.check_grimace_support)
+                    self.assertEqual("decoder_path_only", case.expected_current_result)
+                if case.acceptance_role == "support_present_family_guard":
+                    self.assertTrue(case.check_grimace_support)
+                    self.assertEqual("support_present", case.expected_current_result)
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:

@@ -3153,26 +3153,19 @@ fn resolved_selected_neighbors(
     selected_neighbors
 }
 
-fn joined_support_boundary_selected_neighbors(
+fn selected_neighbors_from_support_boundary_constraints(
     runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    state: &RootedConnectedStereoWalkerStateData,
+    raw_selected_neighbors: &[isize],
+    raw_facts_by_component: &[Vec<StereoConstraintFact>],
+    token_constraints: &[ComponentTokenConstraint],
 ) -> PyResult<Vec<isize>> {
-    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
-    let raw_facts_by_component = carrier_facts_by_component_from_state(
-        runtime,
-        raw_selected_neighbors,
-        &state.deferred_carrier_choice_constraints,
-    )?;
-    let token_constraints =
-        component_token_constraints_from_state(runtime, graph, state, raw_selected_neighbors)?;
-    let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
+    let known_token_flip_facts = known_token_flip_facts_from_constraints(token_constraints);
     let inferred_token_observation_facts =
-        inferred_token_observation_facts_from_constraints(&token_constraints);
+        inferred_token_observation_facts_from_constraints(token_constraints);
     let constraint_state = StereoConstraintState::from_facts_and_token_observations(
         &runtime.constraint_model,
         StereoConstraintLayer::Semantic,
-        &raw_facts_by_component,
+        raw_facts_by_component,
         &known_token_flip_facts,
         &inferred_token_observation_facts,
     )?;
@@ -3193,6 +3186,52 @@ fn joined_support_boundary_selected_neighbors(
         }
     }
     Ok(selected_neighbors)
+}
+
+fn joined_support_boundary_selected_neighbors(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<isize>> {
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let raw_facts_by_component = carrier_facts_by_component_from_state(
+        runtime,
+        raw_selected_neighbors,
+        &state.deferred_carrier_choice_constraints,
+    )?;
+    let token_constraints =
+        component_token_constraints_from_state(runtime, graph, state, raw_selected_neighbors)?;
+    selected_neighbors_from_support_boundary_constraints(
+        runtime,
+        raw_selected_neighbors,
+        &raw_facts_by_component,
+        &token_constraints,
+    )
+}
+
+fn partial_joined_support_boundary_selected_neighbors(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<isize>> {
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let raw_facts_by_component = carrier_facts_by_component_from_state(
+        runtime,
+        raw_selected_neighbors,
+        &state.deferred_carrier_choice_constraints,
+    )?;
+    let token_constraints = partial_component_token_constraints_from_state(
+        runtime,
+        graph,
+        state,
+        raw_selected_neighbors,
+    )?;
+    selected_neighbors_from_support_boundary_constraints(
+        runtime,
+        raw_selected_neighbors,
+        &raw_facts_by_component,
+        &token_constraints,
+    )
 }
 
 pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
@@ -4046,6 +4085,7 @@ fn component_token_constraint_from_state(
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
+    assert_legacy_equivalence: bool,
 ) -> PyResult<ComponentTokenConstraint> {
     let inputs = component_token_inference_inputs(
         runtime,
@@ -4053,6 +4093,7 @@ fn component_token_constraint_from_state(
         state,
         resolved_selected_neighbors,
         component_idx,
+        assert_legacy_equivalence,
     )?;
     if let Some(committed_fact) =
         committed_component_token_flip_fact_from_state(state, component_idx)
@@ -4089,6 +4130,27 @@ fn component_token_constraints_from_state(
                 state,
                 resolved_selected_neighbors,
                 component_idx,
+                true,
+            )
+        })
+        .collect()
+}
+
+fn partial_component_token_constraints_from_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    resolved_selected_neighbors: &[isize],
+) -> PyResult<Vec<ComponentTokenConstraint>> {
+    (0..runtime.isolated_components.len())
+        .map(|component_idx| {
+            component_token_constraint_from_state(
+                runtime,
+                graph,
+                state,
+                resolved_selected_neighbors,
+                component_idx,
+                false,
             )
         })
         .collect()
@@ -6170,6 +6232,7 @@ fn inferred_component_token_flip(
         state,
         &resolved_selected_neighbors,
         component_idx,
+        true,
     )?
     .inferred)
 }
@@ -6415,6 +6478,7 @@ fn component_token_inference_inputs(
     state: &RootedConnectedStereoWalkerStateData,
     resolved_selected_neighbors: &[isize],
     component_idx: usize,
+    assert_legacy_equivalence: bool,
 ) -> PyResult<ComponentTokenInferenceInputs> {
     let side_ids = &runtime.side_ids_by_component[component_idx];
     let selected_side_ids = side_ids
@@ -6510,13 +6574,15 @@ fn component_token_inference_inputs(
     let observation_inferred = inputs
         .supported_token_observation()?
         .map(|fact| component_token_flip_value_from_model(fact.implied_token_flip()));
-    let procedural_inferred =
-        legacy_procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
-    if procedural_inferred != observation_inferred {
-        return Err(PyValueError::new_err(format!(
-            "Observation-derived inferred token flip disagrees with procedural inference for branch {}",
-            inputs.inference_branch
-        )));
+    if assert_legacy_equivalence {
+        let procedural_inferred =
+            legacy_procedural_inferred_component_token_flip(runtime, state, graph, component_idx)?;
+        if procedural_inferred != observation_inferred {
+            return Err(PyValueError::new_err(format!(
+                "Observation-derived inferred token flip disagrees with procedural inference for branch {}",
+                inputs.inference_branch
+            )));
+        }
     }
     inputs.inferred = observation_inferred;
     Ok(inputs)
@@ -6841,6 +6907,7 @@ fn commit_component_token_flip_fact(
 
 fn raw_token_for_deferred_edge(
     runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
 ) -> PyResult<Option<String>> {
@@ -6854,7 +6921,8 @@ fn raw_token_for_deferred_edge(
     let begin_idx = deferred.begin_idx as usize;
     let end_idx = deferred.end_idx as usize;
     let edge = canonical_edge(begin_idx, end_idx);
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let resolved_selected_neighbors =
+        partial_joined_support_boundary_selected_neighbors(runtime, graph, state)?;
     let mut active_tokens = Vec::<String>::new();
 
     for &side_idx in runtime.edge_to_side_ids.get(&edge).into_iter().flatten() {
@@ -7024,7 +7092,7 @@ fn deferred_token_support_from_constraint_state(
         } else {
             None
         };
-        let Some(raw_token) = raw_token_for_deferred_edge(runtime, state, deferred)? else {
+        let Some(raw_token) = raw_token_for_deferred_edge(runtime, graph, state, deferred)? else {
             return Ok(vec![literal_token.unwrap_or_default()]);
         };
         let component_token = &deferred.component_tokens[0];
@@ -7128,7 +7196,7 @@ fn commit_deferred_token_choice(
     }
 
     if deferred.component_tokens.len() == 1 {
-        let raw_token = raw_token_for_deferred_edge(runtime, state, deferred)?;
+        let raw_token = raw_token_for_deferred_edge(runtime, graph, state, deferred)?;
         let Some(raw_token) = raw_token else {
             let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
                 graph

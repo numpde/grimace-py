@@ -64,7 +64,7 @@ struct PendingRing {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct DeferredDirectionalComponentToken {
     component_idx: usize,
-    stored_token: String,
+    reference_tokens: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -2166,6 +2166,38 @@ fn emitted_candidate_token(
     ))
 }
 
+fn component_reference_token_for_emitted_edge(
+    side_info: &StereoSideInfo,
+    begin_idx: usize,
+    end_idx: usize,
+) -> PyResult<String> {
+    if begin_idx == side_info.endpoint_atom_idx {
+        return candidate_base_token(side_info, end_idx);
+    }
+    if end_idx == side_info.endpoint_atom_idx {
+        return candidate_base_token(side_info, begin_idx);
+    }
+    Err(PyKeyError::new_err(
+        "Emitted edge does not match the stereo side",
+    ))
+}
+
+fn component_reference_tokens_for_emitted_edge(
+    side_info: &StereoSideInfo,
+    begin_idx: usize,
+    end_idx: usize,
+) -> PyResult<Vec<String>> {
+    // A shared visible marker can be read against either the component-local
+    // endpoint basis or the actual emitted character; marker rows decide which
+    // interpretation remains viable for a concrete walker state.
+    let mut tokens = BTreeSet::new();
+    tokens.insert(component_reference_token_for_emitted_edge(
+        side_info, begin_idx, end_idx,
+    )?);
+    tokens.insert(emitted_candidate_token(side_info, begin_idx, end_idx)?);
+    Ok(tokens.into_iter().collect())
+}
+
 fn side_has_only_aromatic_carrier_edges(
     graph: &PreparedSmilesGraphData,
     side_info: &StereoSideInfo,
@@ -2233,42 +2265,6 @@ fn isolated_component_token_basis_fact_from_row_state(
         runtime_component_idx: component_idx,
         selected_begin_token: StereoDirectionToken::from_str(&selected_token)?,
     }))
-}
-
-fn isolated_component_stored_token_from_basis_fact(
-    fact: StereoTokenBasisFact,
-    component_idx: usize,
-    emitted_from_endpoint: bool,
-) -> PyResult<String> {
-    if fact.runtime_component_idx != component_idx {
-        return Err(PyValueError::new_err(format!(
-            "isolated token-basis fact references runtime component {}, expected {}",
-            fact.runtime_component_idx, component_idx
-        )));
-    }
-    let selected_token = fact.selected_begin_token.as_str();
-    if emitted_from_endpoint {
-        Ok(selected_token.to_owned())
-    } else {
-        flip_direction_token(selected_token)
-    }
-}
-
-fn isolated_component_stored_token_from_token_state(
-    token_basis_facts: &[Option<StereoTokenBasisFact>],
-    side_info: &StereoSideInfo,
-    begin_idx: usize,
-    end_idx: usize,
-) -> PyResult<String> {
-    let emitted_from_endpoint = begin_idx == side_info.endpoint_atom_idx;
-    let Some(Some(fact)) = token_basis_facts.get(side_info.component_idx) else {
-        return emitted_candidate_token(side_info, begin_idx, end_idx);
-    };
-    isolated_component_stored_token_from_basis_fact(
-        *fact,
-        side_info.component_idx,
-        emitted_from_endpoint,
-    )
 }
 
 fn updated_isolated_component_token_basis_facts_from_row_state(
@@ -2563,29 +2559,27 @@ fn edge_result_with_part_and_deferred_carrier_constraints(
 }
 
 fn deferred_edge_part(
-    stored_tokens: &[(usize, String)],
+    component_reference_tokens: &[(usize, Vec<String>)],
     begin_idx: usize,
     end_idx: usize,
 ) -> PyResult<Part> {
     let mut component_tokens = Vec::<DeferredDirectionalComponentToken>::new();
-    for (component_idx, stored_token) in stored_tokens {
-        if component_tokens.iter().any(|existing| {
-            existing.component_idx == *component_idx && existing.stored_token != *stored_token
-        }) {
-            return Err(PyValueError::new_err(
-                "Carrier edge received conflicting stereo token assignments",
-            ));
-        }
-        if component_tokens
-            .iter()
-            .any(|existing| existing.component_idx == *component_idx)
+    for (component_idx, reference_tokens) in component_reference_tokens {
+        if let Some(existing) = component_tokens
+            .iter_mut()
+            .find(|existing| existing.component_idx == *component_idx)
         {
-            continue;
+            existing
+                .reference_tokens
+                .extend(reference_tokens.iter().cloned());
+            existing.reference_tokens.sort();
+            existing.reference_tokens.dedup();
+        } else {
+            component_tokens.push(DeferredDirectionalComponentToken {
+                component_idx: *component_idx,
+                reference_tokens: reference_tokens.clone(),
+            });
         }
-        component_tokens.push(DeferredDirectionalComponentToken {
-            component_idx: *component_idx,
-            stored_token: stored_token.clone(),
-        });
     }
 
     Ok(Part::Deferred(DeferredDirectionalToken {
@@ -2625,7 +2619,7 @@ fn emitted_edge_part_generic(
     let mut deferred_carrier_choice_constraints =
         state.deferred_carrier_choice_constraints.to_vec();
     let token_basis_facts = state.token_basis_facts.to_vec();
-    let mut stored_tokens = Vec::<(usize, String)>::new();
+    let mut component_reference_tokens = Vec::<(usize, Vec<String>)>::new();
 
     for &side_idx in side_ids {
         let side_info = &context.side_infos[side_idx];
@@ -2670,13 +2664,13 @@ fn emitted_edge_part_generic(
         if selected_neighbor != neighbor_idx as isize {
             continue;
         }
-        stored_tokens.push((
+        component_reference_tokens.push((
             side_info.component_idx,
-            emitted_candidate_token(side_info, begin_idx, end_idx)?,
+            component_reference_tokens_for_emitted_edge(side_info, begin_idx, end_idx)?,
         ));
     }
 
-    if stored_tokens.is_empty() {
+    if component_reference_tokens.is_empty() {
         return Ok(edge_result_with_part_and_deferred_carrier_constraints(
             literal_bond_part(context.graph, begin_idx, end_idx)?,
             updated_neighbors,
@@ -2688,7 +2682,7 @@ fn emitted_edge_part_generic(
     }
 
     Ok(edge_result_with_part_and_deferred_carrier_constraints(
-        deferred_edge_part(&stored_tokens, begin_idx, end_idx)?,
+        deferred_edge_part(&component_reference_tokens, begin_idx, end_idx)?,
         updated_neighbors,
         updated_orientations,
         updated_first_candidates,
@@ -2722,7 +2716,7 @@ fn emitted_isolated_edge_part(
     let mut updated_orientations = state.selected_orientations.to_vec();
     let mut updated_first_candidates = state.first_emitted_candidates.to_vec();
     let deferred_carrier_choice_constraints = state.deferred_carrier_choice_constraints.to_vec();
-    let mut stored_tokens = Vec::<(usize, String)>::new();
+    let mut component_reference_tokens = Vec::<(usize, Vec<String>)>::new();
 
     for &side_idx in side_ids {
         let side_info = &context.side_infos[side_idx];
@@ -2769,16 +2763,12 @@ fn emitted_isolated_edge_part(
         if updated_neighbors[side_idx] != neighbor_idx as isize {
             continue;
         }
-        let stored_token = isolated_component_stored_token_from_token_state(
-            &token_basis_facts,
-            side_info,
-            begin_idx,
-            end_idx,
-        )?;
-        stored_tokens.push((side_info.component_idx, stored_token));
+        let reference_tokens =
+            component_reference_tokens_for_emitted_edge(side_info, begin_idx, end_idx)?;
+        component_reference_tokens.push((side_info.component_idx, reference_tokens));
     }
 
-    if stored_tokens.is_empty() {
+    if component_reference_tokens.is_empty() {
         return Ok(edge_result_with_part_and_deferred_carrier_constraints(
             literal_bond_part(context.graph, begin_idx, end_idx)?,
             updated_neighbors,
@@ -2790,7 +2780,7 @@ fn emitted_isolated_edge_part(
     }
 
     Ok(edge_result_with_part_and_deferred_carrier_constraints(
-        deferred_edge_part(&stored_tokens, begin_idx, end_idx)?,
+        deferred_edge_part(&component_reference_tokens, begin_idx, end_idx)?,
         updated_neighbors,
         updated_orientations,
         updated_first_candidates,
@@ -2848,8 +2838,13 @@ fn emitted_edge_part(
             ));
         }
         let component_idx = context.side_infos[side_ids[0]].component_idx;
-        let stored_token =
+        let first_side_token =
             emitted_candidate_token(&context.side_infos[side_ids[0]], begin_idx, end_idx)?;
+        let reference_tokens = component_reference_tokens_for_emitted_edge(
+            &context.side_infos[side_ids[0]],
+            begin_idx,
+            end_idx,
+        )?;
         for &side_idx in &side_ids[1..] {
             let side_info = &context.side_infos[side_idx];
             if side_info.component_idx != component_idx {
@@ -2858,7 +2853,7 @@ fn emitted_edge_part(
                 ));
             }
             let side_token = emitted_candidate_token(side_info, begin_idx, end_idx)?;
-            if side_token != stored_token {
+            if side_token != first_side_token {
                 return Err(PyValueError::new_err(
                     "Carrier edge received conflicting stereo token assignments",
                 ));
@@ -2868,7 +2863,7 @@ fn emitted_edge_part(
             Part::Deferred(DeferredDirectionalToken {
                 component_tokens: Arc::from(vec![DeferredDirectionalComponentToken {
                     component_idx,
-                    stored_token,
+                    reference_tokens,
                 }]),
                 begin_idx: begin_idx as isize,
                 end_idx: end_idx as isize,
@@ -6979,7 +6974,7 @@ fn raw_token_for_deferred_edge(
         return Ok(deferred
             .component_tokens
             .first()
-            .map(|component_token| component_token.stored_token.clone()));
+            .and_then(|component_token| component_token.reference_tokens.first().cloned()));
     }
 
     let begin_idx = deferred.begin_idx as usize;
@@ -7069,7 +7064,7 @@ fn rdkit_marker_rows_accept_deferred_token(
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
     component_token: &DeferredDirectionalComponentToken,
-    reference_token: &str,
+    implied_token_flip: StereoTokenFlip,
     chosen_token: &str,
     constraint_state: &StereoConstraintState,
     marker_events_by_component: &[Vec<StereoMarkerEventFact>],
@@ -7085,11 +7080,6 @@ fn rdkit_marker_rows_accept_deferred_token(
     if constraint_state.is_empty(model_component_idx) {
         return Ok(false);
     }
-    let Some(implied_token_flip) =
-        model_token_flip_for_chosen_token(reference_token, chosen_token)?
-    else {
-        return Ok(false);
-    };
     let token_phase_assignment_ids = constraint_state
         .token_phase_remaining_by_component
         .get(model_component_idx)
@@ -7129,6 +7119,38 @@ fn rdkit_marker_rows_accept_deferred_token(
     Ok(!survivor_state.row_ids_after_marker_events.is_empty())
 }
 
+fn accepted_deferred_token_flips(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+) -> PyResult<Vec<StereoTokenFlip>> {
+    let mut accepted = BTreeSet::<StereoTokenFlip>::new();
+    for reference_token in &component_token.reference_tokens {
+        let Some(implied_token_flip) =
+            model_token_flip_for_chosen_token(reference_token, chosen_token)?
+        else {
+            continue;
+        };
+        if rdkit_marker_rows_accept_deferred_token(
+            runtime,
+            state,
+            deferred,
+            component_token,
+            implied_token_flip,
+            chosen_token,
+            constraint_state,
+            marker_events_by_component,
+        )? {
+            accepted.insert(implied_token_flip);
+        }
+    }
+    Ok(accepted.into_iter().collect())
+}
+
 fn deferred_token_support_from_constraint_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -7164,12 +7186,17 @@ fn deferred_token_support_from_constraint_state(
         let component_token = &deferred.component_tokens[0];
         let mut out = Vec::new();
         for candidate_token in [raw_token.clone(), flip_direction_token(&raw_token)?] {
+            let Some(implied_token_flip) =
+                model_token_flip_for_chosen_token(&raw_token, &candidate_token)?
+            else {
+                continue;
+            };
             if rdkit_marker_rows_accept_deferred_token(
                 runtime,
                 state,
                 deferred,
                 component_token,
-                &raw_token,
+                implied_token_flip,
                 &candidate_token,
                 &constraint_state,
                 &marker_events_by_component,
@@ -7185,16 +7212,16 @@ fn deferred_token_support_from_constraint_state(
     for candidate_token in ["/", "\\"] {
         let mut compatible = true;
         for component_token in deferred.component_tokens.iter() {
-            if !rdkit_marker_rows_accept_deferred_token(
+            let accepted_flips = accepted_deferred_token_flips(
                 runtime,
                 state,
                 deferred,
                 component_token,
-                &component_token.stored_token,
                 candidate_token,
                 &constraint_state,
                 &marker_events_by_component,
-            )? {
+            )?;
+            if accepted_flips.len() != 1 {
                 compatible = false;
                 break;
             }
@@ -7300,10 +7327,24 @@ fn commit_deferred_token_choice(
         return assert_component_token_flip_boundary_invariants(runtime, graph, state);
     }
 
+    let constraint_state = resolved_constraint_state_from_walker_state(
+        runtime,
+        graph,
+        state,
+        StereoConstraintLayer::Semantic,
+    )?;
+    let marker_events_by_component = rdkit_writer_marker_event_facts_by_component(runtime, state)?;
     for component_token in deferred.component_tokens.iter() {
-        let Some(chosen_model_flip) =
-            model_token_flip_for_chosen_token(&component_token.stored_token, chosen_token)?
-        else {
+        let accepted_flips = accepted_deferred_token_flips(
+            runtime,
+            state,
+            deferred,
+            component_token,
+            chosen_token,
+            &constraint_state,
+            &marker_events_by_component,
+        )?;
+        let [chosen_model_flip] = accepted_flips.as_slice() else {
             return Err(PyKeyError::new_err(format!(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
@@ -7312,7 +7353,7 @@ fn commit_deferred_token_choice(
             state,
             CommittedComponentTokenFlipFact {
                 runtime_component_idx: component_token.component_idx,
-                token_flip: chosen_model_flip,
+                token_flip: *chosen_model_flip,
             },
         )?;
     }
@@ -9600,7 +9641,7 @@ mod tests {
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
-        StereoMarkerEventFact, StereoTraversalRole,
+        StereoMarkerEventFact, StereoTokenFlip, StereoTraversalRole,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -10066,6 +10107,19 @@ mod tests {
     }
 
     #[test]
+    fn shared_component_deferred_edge_uses_component_local_reference_tokens() {
+        let Some(graph) = prepared_graph_from_smiles("CC/C=C\\C(CO)=C(/C)CC") else {
+            return;
+        };
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        for token in ["C", "C", "/", "C", "=", "C", "\\"] {
+            state = advance_stereo_token_state(&runtime, &graph, &state, token)
+                .expect("RDKit shared-edge prefix should stay completable");
+        }
+        assert_eq!("CC/C=C\\", state.prefix.as_ref());
+    }
+
+    #[test]
     fn deferred_marker_events_route_through_candidate_side_rows() {
         let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
             return;
@@ -10080,7 +10134,7 @@ mod tests {
         let candidate_neighbor = side_info.candidate_neighbors[0];
         let component_token = DeferredDirectionalComponentToken {
             component_idx: side_info.component_idx,
-            stored_token: side_info.candidate_base_tokens[0].clone(),
+            reference_tokens: vec![side_info.candidate_base_tokens[0].clone()],
         };
         let deferred = DeferredDirectionalToken {
             component_tokens: Arc::from(vec![component_token.clone()]),
@@ -10123,7 +10177,7 @@ mod tests {
         let candidate_neighbor = side_info.candidate_neighbors[0];
         let component_token = DeferredDirectionalComponentToken {
             component_idx: side_info.component_idx,
-            stored_token: side_info.candidate_base_tokens[0].clone(),
+            reference_tokens: vec![side_info.candidate_base_tokens[0].clone()],
         };
         let deferred = DeferredDirectionalToken {
             component_tokens: Arc::from(vec![component_token.clone()]),
@@ -10156,8 +10210,8 @@ mod tests {
             &state,
             &deferred,
             &component_token,
-            &component_token.stored_token,
-            &component_token.stored_token,
+            StereoTokenFlip::Stored,
+            &component_token.reference_tokens[0],
             &constraint_state,
             &marker_events_by_component,
         )

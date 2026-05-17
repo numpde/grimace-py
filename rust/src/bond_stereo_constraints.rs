@@ -100,13 +100,6 @@ impl StereoDirectionToken {
             ))),
         }
     }
-
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Slash => "/",
-            Self::Backslash => "\\",
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

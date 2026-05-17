@@ -121,6 +121,12 @@ struct ProcessChildrenEdgeUpdate {
     component_begin_atoms: Vec<isize>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct DeferredComponentPhaseConstraint {
+    component_idx: usize,
+    begin_atom_idx: usize,
+}
+
 struct StereoEdgeEmissionContext<'a> {
     graph: &'a PreparedSmilesGraphData,
     constraint_model: &'a StereoConstraintModel,
@@ -1608,6 +1614,21 @@ fn with_component_begin_atom(
     Ok(updated)
 }
 
+fn apply_deferred_component_phase_constraint(
+    component_phases: &[i8],
+    component_begin_atoms: &[isize],
+    constraint: DeferredComponentPhaseConstraint,
+) -> PyResult<(Vec<i8>, Vec<isize>)> {
+    let mut updated_phases = component_phases.to_vec();
+    updated_phases[constraint.component_idx] = UNKNOWN_COMPONENT_PHASE;
+    let updated_begin_atoms = with_component_begin_atom(
+        component_begin_atoms,
+        constraint.component_idx,
+        constraint.begin_atom_idx,
+    )?;
+    Ok((updated_phases, updated_begin_atoms))
+}
+
 fn component_phases_after_edge(
     graph: &PreparedSmilesGraphData,
     stereo_component_ids: &[isize],
@@ -1734,16 +1755,15 @@ fn eager_component_phases_for_child_order(
             parent_idx,
             other_endpoint_idx,
         )?;
-        let (next_phases, next_begin_atoms) =
-            defer_coupled_component_phase_if_begin_side_is_unresolved(
-                runtime,
-                graph,
-                &next_phases,
-                &next_begin_atoms,
-                selected_neighbors,
-                parent_idx,
-                other_endpoint_idx,
-            )?;
+        let (next_phases, next_begin_atoms) = defer_component_phase_for_unresolved_begin_side(
+            runtime,
+            graph,
+            &next_phases,
+            &next_begin_atoms,
+            selected_neighbors,
+            parent_idx,
+            other_endpoint_idx,
+        )?;
         updated_phases = next_phases;
         updated_begin_atoms = next_begin_atoms;
     }
@@ -1807,10 +1827,50 @@ fn eager_begin_side_child_order_state(
     )
 }
 
-// Suspicious current model:
-// Defers a coupled-component phase from a ring-opening edge before the
-// traversal has resolved which side should carry the visible token.
-fn defer_coupled_component_phase_if_begin_side_is_unresolved(
+fn deferred_component_phase_constraint_for_unresolved_begin_side(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    component_begin_atoms: &[isize],
+    selected_neighbors: &[isize],
+    begin_idx: usize,
+    end_idx: usize,
+) -> PyResult<Option<DeferredComponentPhaseConstraint>> {
+    let Some(bond_idx) = graph.bond_index(begin_idx, end_idx) else {
+        return Ok(None);
+    };
+    let component_idx = runtime.stereo_component_ids[bond_idx];
+    if component_idx < 0 || !is_stereo_double_bond(graph, bond_idx) {
+        return Ok(None);
+    }
+    let component_idx = component_idx as usize;
+    if runtime.isolated_components[component_idx] {
+        return Ok(None);
+    }
+
+    let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
+        .iter()
+        .copied()
+        .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_idx)
+    else {
+        return Ok(None);
+    };
+    let begin_side = &runtime.side_infos[begin_side_idx];
+    if begin_side.candidate_neighbors.len() <= 1 || selected_neighbors[begin_side_idx] >= 0 {
+        return Ok(None);
+    }
+    if component_begin_atoms[component_idx] >= 0
+        && component_begin_atoms[component_idx] != begin_idx as isize
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(DeferredComponentPhaseConstraint {
+        component_idx,
+        begin_atom_idx: begin_idx,
+    }))
+}
+
+fn defer_component_phase_for_unresolved_begin_side(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     component_phases: &[i8],
@@ -1819,46 +1879,31 @@ fn defer_coupled_component_phase_if_begin_side_is_unresolved(
     begin_idx: usize,
     end_idx: usize,
 ) -> PyResult<(Vec<i8>, Vec<isize>)> {
-    let Some(bond_idx) = graph.bond_index(begin_idx, end_idx) else {
-        return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
-    };
-    let component_idx = runtime.stereo_component_ids[bond_idx];
-    if component_idx < 0 || !is_stereo_double_bond(graph, bond_idx) {
-        return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
-    }
-    let component_idx = component_idx as usize;
-    if runtime.isolated_components[component_idx] {
-        return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
-    }
-
-    let Some(begin_side_idx) = runtime.side_ids_by_component[component_idx]
-        .iter()
-        .copied()
-        .find(|&side_idx| runtime.side_infos[side_idx].endpoint_atom_idx == begin_idx)
+    let Some(constraint) = deferred_component_phase_constraint_for_unresolved_begin_side(
+        runtime,
+        graph,
+        component_begin_atoms,
+        selected_neighbors,
+        begin_idx,
+        end_idx,
+    )?
     else {
         return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
     };
-    let begin_side = &runtime.side_infos[begin_side_idx];
-    if begin_side.candidate_neighbors.len() <= 1 || selected_neighbors[begin_side_idx] >= 0 {
-        return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
-    }
-    if component_begin_atoms[component_idx] >= 0
-        && component_begin_atoms[component_idx] != begin_idx as isize
-    {
-        return Ok((component_phases.to_vec(), component_begin_atoms.to_vec()));
-    }
-
-    let mut updated_phases = component_phases.to_vec();
-    updated_phases[component_idx] = UNKNOWN_COMPONENT_PHASE;
-    let updated_begin_atoms =
-        with_component_begin_atom(component_begin_atoms, component_idx, begin_idx)?;
-    Ok((updated_phases, updated_begin_atoms))
+    apply_deferred_component_phase_constraint(component_phases, component_begin_atoms, constraint)
 }
 
-// Suspicious current model:
-// Commits the deferred coupled-component phase from the first later token that
-// happens to resolve it. This should become an explicit deferred constraint.
-fn commit_coupled_component_phase_from_deferred_part(
+fn component_phase_from_deferred_token(token: &str) -> PyResult<i8> {
+    match token {
+        "/" => Ok(STORED_COMPONENT_PHASE),
+        "\\" => Ok(FLIPPED_COMPONENT_PHASE),
+        token => Err(PyValueError::new_err(format!(
+            "Unsupported deferred directional token: {token:?}"
+        ))),
+    }
+}
+
+fn commit_deferred_component_phase_constraints_from_part(
     runtime: &StereoWalkerRuntimeData,
     component_phases: &[i8],
     component_begin_atoms: &[isize],
@@ -1882,15 +1927,7 @@ fn commit_coupled_component_phase_from_deferred_part(
             continue;
         }
 
-        let phase = match component_token.stored_token.as_str() {
-            "/" => STORED_COMPONENT_PHASE,
-            "\\" => FLIPPED_COMPONENT_PHASE,
-            token => {
-                return Err(PyValueError::new_err(format!(
-                    "Unsupported deferred directional token: {token:?}"
-                )));
-            }
-        };
+        let phase = component_phase_from_deferred_token(&component_token.stored_token)?;
         updated_phases = with_component_phase(&updated_phases, component_idx, phase)?;
     }
     Ok(updated_phases)
@@ -2467,17 +2504,16 @@ fn process_children_edge_update(
         &updated_neighbors,
         &updated_orientations,
     );
-    let (updated_phases, updated_begin_atoms) =
-        defer_coupled_component_phase_if_begin_side_is_unresolved(
-            runtime,
-            graph,
-            &updated_phases,
-            &updated_begin_atoms,
-            &updated_neighbors,
-            parent_idx,
-            child_idx,
-        )?;
-    let updated_phases = commit_coupled_component_phase_from_deferred_part(
+    let (updated_phases, updated_begin_atoms) = defer_component_phase_for_unresolved_begin_side(
+        runtime,
+        graph,
+        &updated_phases,
+        &updated_begin_atoms,
+        &updated_neighbors,
+        parent_idx,
+        child_idx,
+    )?;
+    let updated_phases = commit_deferred_component_phase_constraints_from_part(
         runtime,
         &updated_phases,
         &updated_begin_atoms,
@@ -6633,7 +6669,7 @@ fn enter_atom_successors_by_token(
                             current_selected_neighbors = updated_neighbors;
                             current_selected_orientations = updated_orientations;
                             let (updated_phases, updated_begin_atoms) =
-                                defer_coupled_component_phase_if_begin_side_is_unresolved(
+                                defer_component_phase_for_unresolved_begin_side(
                                     runtime,
                                     graph,
                                     &updated_phases,

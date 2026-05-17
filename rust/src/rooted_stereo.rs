@@ -3668,7 +3668,7 @@ fn marker_event_facts_by_component(
     Ok(facts_by_component)
 }
 
-fn shadow_marker_event_facts_by_component(
+fn rdkit_writer_marker_event_facts_by_component(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<Vec<StereoMarkerEventFact>>> {
@@ -3782,76 +3782,81 @@ impl MarkerObligationDomain {
     }
 }
 
+fn marker_obligation_domains_for_component(
+    component_idx: usize,
+    facts: &[StereoMarkerEventFact],
+) -> Vec<MarkerObligationDomain> {
+    let future_markers_by_side = facts
+        .iter()
+        .filter_map(|&fact| match fact {
+            StereoMarkerEventFact::MarkerPlaced {
+                side_idx,
+                slot,
+                begin_idx,
+                end_idx,
+                ..
+            } => Some((side_idx, slot, canonical_edge(begin_idx, end_idx))),
+            StereoMarkerEventFact::NoMarker { .. } => None,
+        })
+        .fold(
+            BTreeMap::<usize, Vec<(usize, (usize, usize))>>::new(),
+            |mut acc, (side_idx, slot, edge)| {
+                acc.entry(side_idx).or_default().push((slot, edge));
+                acc
+            },
+        );
+
+    facts
+        .iter()
+        .filter_map(|&fact| match fact {
+            StereoMarkerEventFact::MarkerPlaced { .. } => None,
+            StereoMarkerEventFact::NoMarker {
+                side_idx,
+                slot,
+                begin_idx,
+                end_idx,
+                ..
+            } => {
+                let edge = canonical_edge(begin_idx, end_idx);
+                let future_markers = future_markers_by_side
+                    .get(&side_idx)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let same_edge_future_marker_slots = future_markers
+                    .iter()
+                    .filter_map(|&(future_slot, future_edge)| {
+                        (future_slot > slot && future_edge == edge).then_some(future_slot)
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
+                let same_side_other_edge_future_markers = future_markers
+                    .iter()
+                    .filter_map(|&(future_slot, future_edge)| {
+                        (future_slot > slot && future_edge != edge)
+                            .then_some((future_slot, future_edge))
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect();
+                Some(MarkerObligationDomain {
+                    component_idx,
+                    no_marker_event: fact,
+                    same_edge_future_marker_slots,
+                    same_side_other_edge_future_markers,
+                })
+            }
+        })
+        .collect()
+}
+
 fn marker_obligation_domains_by_component(
     marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
 ) -> Vec<Vec<MarkerObligationDomain>> {
     marker_event_facts_by_component
         .iter()
         .enumerate()
-        .map(|(component_idx, facts)| {
-            let future_markers_by_side = facts
-                .iter()
-                .filter_map(|&fact| match fact {
-                    StereoMarkerEventFact::MarkerPlaced {
-                        side_idx,
-                        slot,
-                        begin_idx,
-                        end_idx,
-                        ..
-                    } => Some((side_idx, slot, canonical_edge(begin_idx, end_idx))),
-                    StereoMarkerEventFact::NoMarker { .. } => None,
-                })
-                .fold(
-                    BTreeMap::<usize, Vec<(usize, (usize, usize))>>::new(),
-                    |mut acc, (side_idx, slot, edge)| {
-                        acc.entry(side_idx).or_default().push((slot, edge));
-                        acc
-                    },
-                );
-
-            facts
-                .iter()
-                .filter_map(|&fact| match fact {
-                    StereoMarkerEventFact::MarkerPlaced { .. } => None,
-                    StereoMarkerEventFact::NoMarker {
-                        side_idx,
-                        slot,
-                        begin_idx,
-                        end_idx,
-                        ..
-                    } => {
-                        let edge = canonical_edge(begin_idx, end_idx);
-                        let future_markers = future_markers_by_side
-                            .get(&side_idx)
-                            .map(Vec::as_slice)
-                            .unwrap_or(&[]);
-                        let same_edge_future_marker_slots = future_markers
-                            .iter()
-                            .filter_map(|&(future_slot, future_edge)| {
-                                (future_slot > slot && future_edge == edge).then_some(future_slot)
-                            })
-                            .collect::<BTreeSet<_>>()
-                            .into_iter()
-                            .collect();
-                        let same_side_other_edge_future_markers = future_markers
-                            .iter()
-                            .filter_map(|&(future_slot, future_edge)| {
-                                (future_slot > slot && future_edge != edge)
-                                    .then_some((future_slot, future_edge))
-                            })
-                            .collect::<BTreeSet<_>>()
-                            .into_iter()
-                            .collect();
-                        Some(MarkerObligationDomain {
-                            component_idx,
-                            no_marker_event: fact,
-                            same_edge_future_marker_slots,
-                            same_side_other_edge_future_markers,
-                        })
-                    }
-                })
-                .collect()
-        })
+        .map(|(component_idx, facts)| marker_obligation_domains_for_component(component_idx, facts))
         .collect()
 }
 
@@ -3902,39 +3907,44 @@ fn marker_obligation_domains_to_py(
     Ok(rows)
 }
 
-fn slot_coalesced_marker_event_facts_by_component(
-    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
-) -> Vec<Vec<StereoMarkerEventFact>> {
+fn slot_coalesced_marker_event_facts(
+    component_idx: usize,
+    marker_event_facts: &[StereoMarkerEventFact],
+) -> Vec<StereoMarkerEventFact> {
     let deferred_no_marker_keys =
-        marker_obligation_domains_by_component(marker_event_facts_by_component)
+        marker_obligation_domains_for_component(component_idx, marker_event_facts)
             .into_iter()
-            .flatten()
             .filter(|domain| domain.is_deferred())
             .filter_map(|domain| domain.no_marker_key())
             .collect::<BTreeSet<_>>();
 
+    marker_event_facts
+        .iter()
+        .copied()
+        .filter(|&fact| match fact {
+            StereoMarkerEventFact::MarkerPlaced { .. } => true,
+            StereoMarkerEventFact::NoMarker {
+                side_idx,
+                slot,
+                begin_idx,
+                end_idx,
+                ..
+            } => !deferred_no_marker_keys.contains(&(
+                side_idx,
+                slot,
+                canonical_edge(begin_idx, end_idx),
+            )),
+        })
+        .collect()
+}
+
+fn slot_coalesced_marker_event_facts_by_component(
+    marker_event_facts_by_component: &[Vec<StereoMarkerEventFact>],
+) -> Vec<Vec<StereoMarkerEventFact>> {
     marker_event_facts_by_component
         .iter()
-        .map(|facts| {
-            facts
-                .iter()
-                .copied()
-                .filter(|&fact| match fact {
-                    StereoMarkerEventFact::MarkerPlaced { .. } => true,
-                    StereoMarkerEventFact::NoMarker {
-                        side_idx,
-                        slot,
-                        begin_idx,
-                        end_idx,
-                        ..
-                    } => !deferred_no_marker_keys.contains(&(
-                        side_idx,
-                        slot,
-                        canonical_edge(begin_idx, end_idx),
-                    )),
-                })
-                .collect()
-        })
+        .enumerate()
+        .map(|(component_idx, facts)| slot_coalesced_marker_event_facts(component_idx, facts))
         .collect()
 }
 
@@ -5392,7 +5402,8 @@ fn stereo_output_fact_row_to_py(
     let traversal_facts_by_component =
         traversal_constraint_facts_by_component(runtime, state, &resolved_selected_neighbors);
     let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
-    let shadow_marker_events_by_component = shadow_marker_event_facts_by_component(runtime, state)?;
+    let shadow_marker_events_by_component =
+        rdkit_writer_marker_event_facts_by_component(runtime, state)?;
     let marker_obligation_domains =
         marker_obligation_domains_by_component(&marker_events_by_component);
     let shadow_marker_obligation_domains =
@@ -7054,6 +7065,7 @@ fn deferred_candidate_survives_marker_rows(
         component_token,
         chosen_token,
     )?);
+    let marker_events = slot_coalesced_marker_event_facts(model_component_idx, &marker_events);
     let survivor_state = marker_row_survivor_component_state(
         runtime,
         model_component_idx,
@@ -7075,7 +7087,7 @@ fn deferred_token_support_from_constraint_state(
         state,
         StereoConstraintLayer::Semantic,
     )?;
-    let marker_events_by_component = marker_event_facts_by_component(runtime, state)?;
+    let marker_events_by_component = rdkit_writer_marker_event_facts_by_component(runtime, state)?;
     if deferred.component_tokens.len() == 1 {
         let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
             Some(
@@ -9507,10 +9519,11 @@ mod tests {
         advance_stereo_choice_state, advance_stereo_token_state, apply_component_begin_atom_fact,
         apply_component_phase_commit_fact, apply_deferred_component_phase_fact,
         build_walker_runtime, check_supported_stereo_writer_surface, choices_for_stereo_state,
-        component_token_constraints_from_state, drain_exact_linear_stereo_actions,
-        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
-        flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
-        initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
+        component_token_constraints_from_state, deferred_candidate_survives_marker_rows,
+        drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
+        enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
+        inferred_token_observation_facts_from_constraints, initial_stereo_state_for_root,
+        is_complete_terminal_stereo_state, is_terminal_stereo_state,
         known_token_flip_facts_from_constraints, marker_events_for_deferred_component_token,
         next_token_support_for_stereo_state, rdkit_ring_closure_projected_marker_slots,
         resolved_constraint_state_from_walker_state, resolved_selected_neighbors,
@@ -10031,6 +10044,63 @@ mod tests {
                 ..
             } if *event_side_idx == side_idx
         )));
+    }
+
+    #[test]
+    fn deferred_marker_row_filtering_coalesces_prior_no_marker_on_same_edge() {
+        let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
+            return;
+        };
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        state.prefix = Arc::from("C");
+        let side_idx = runtime
+            .side_infos
+            .iter()
+            .position(|side_info| side_info.candidate_neighbors.len() == 2)
+            .expect("witness should have a two-candidate side");
+        let side_info = &runtime.side_infos[side_idx];
+        let candidate_neighbor = side_info.candidate_neighbors[0];
+        let component_token = DeferredDirectionalComponentToken {
+            component_idx: side_info.component_idx,
+            stored_token: side_info.candidate_base_tokens[0].clone(),
+        };
+        let deferred = DeferredDirectionalToken {
+            component_tokens: Arc::from(vec![component_token.clone()]),
+            begin_idx: side_info.endpoint_atom_idx as isize,
+            end_idx: candidate_neighbor as isize,
+        };
+        let model_component_idx = runtime
+            .constraint_model
+            .component_for_runtime_component(component_token.component_idx)
+            .expect("runtime component should be modeled");
+        let constraint_state = resolved_constraint_state_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            StereoConstraintLayer::Semantic,
+        )
+        .expect("initial constraint state should resolve");
+        let mut marker_events_by_component =
+            vec![Vec::new(); runtime.constraint_model.component_count()];
+        marker_events_by_component[model_component_idx].push(StereoMarkerEventFact::NoMarker {
+            side_idx,
+            slot: 0,
+            begin_idx: side_info.endpoint_atom_idx,
+            end_idx: candidate_neighbor,
+            role: StereoTraversalRole::TreeOrChain,
+        });
+
+        assert!(deferred_candidate_survives_marker_rows(
+            &runtime,
+            &state,
+            &deferred,
+            &component_token,
+            &component_token.stored_token,
+            &component_token.stored_token,
+            &constraint_state,
+            &marker_events_by_component,
+        )
+        .expect("candidate row filtering should run"));
     }
 
     #[test]

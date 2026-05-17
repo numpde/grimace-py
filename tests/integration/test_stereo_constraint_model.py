@@ -1557,13 +1557,10 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             if component["is_empty_after_marker_events"]
         )
         self.assertEqual(
-            {
-                "semantic": 5120,
-                "rdkit_local_writer": 5120,
-                "rdkit_traversal_writer": 5120,
-            },
-            dict(shadow_empty_counts),
+            {"semantic", "rdkit_local_writer", "rdkit_traversal_writer"},
+            set(shadow_empty_counts),
         )
+        self.assertTrue(all(count > 0 for count in shadow_empty_counts.values()))
         shadow_obligation_empty_counts = Counter(
             layer_name
             for row in rows

@@ -130,7 +130,7 @@ struct DeferredComponentPhaseConstraint {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct IsolatedAromaticBeginSideTokenConstraint {
+struct IsolatedComponentTokenBasisState {
     begin_side_idx: usize,
     selected_neighbor_idx: usize,
     selected_token: String,
@@ -2050,12 +2050,12 @@ fn side_has_only_aromatic_carrier_edges(
         })
 }
 
-fn isolated_aromatic_begin_side_token_constraint_from_row_state(
+fn isolated_component_token_basis_state_from_row_state(
     context: &StereoEdgeEmissionContext<'_>,
     component_begin_atoms: &[isize],
     selected_neighbors: &[isize],
     side_info: &StereoSideInfo,
-) -> PyResult<Option<IsolatedAromaticBeginSideTokenConstraint>> {
+) -> PyResult<Option<IsolatedComponentTokenBasisState>> {
     if side_info.candidate_neighbors.len() != 1 {
         return Ok(None);
     }
@@ -2096,7 +2096,7 @@ fn isolated_aromatic_begin_side_token_constraint_from_row_state(
     if !available_begin_neighbors.contains(&(begin_selected_neighbor as usize)) {
         return Ok(None);
     }
-    Ok(Some(IsolatedAromaticBeginSideTokenConstraint {
+    Ok(Some(IsolatedComponentTokenBasisState {
         begin_side_idx,
         selected_neighbor_idx: begin_selected_neighbor as usize,
         selected_token: candidate_base_token(
@@ -2107,30 +2107,45 @@ fn isolated_aromatic_begin_side_token_constraint_from_row_state(
     }))
 }
 
-fn apply_isolated_aromatic_begin_side_token_constraint(
-    token: String,
-    constraint: Option<IsolatedAromaticBeginSideTokenConstraint>,
+fn isolated_component_stored_token_from_basis_state(
+    basis_state: IsolatedComponentTokenBasisState,
     emitted_from_endpoint: bool,
 ) -> PyResult<String> {
-    let Some(constraint) = constraint else {
-        return Ok(token);
-    };
-    let IsolatedAromaticBeginSideTokenConstraint {
-        begin_side_idx,
-        selected_neighbor_idx,
-        selected_token,
-        available_begin_neighbors,
-    } = constraint;
-    if !available_begin_neighbors.contains(&selected_neighbor_idx) {
+    if !basis_state
+        .available_begin_neighbors
+        .contains(&basis_state.selected_neighbor_idx)
+    {
         return Err(PyValueError::new_err(format!(
-            "Selected aromatic begin-side neighbor {selected_neighbor_idx} is not available for side {begin_side_idx}"
+            "Selected aromatic begin-side neighbor {} is not available for side {}",
+            basis_state.selected_neighbor_idx, basis_state.begin_side_idx
         )));
     }
     if emitted_from_endpoint {
-        Ok(selected_token)
+        Ok(basis_state.selected_token)
     } else {
-        flip_direction_token(&selected_token)
+        flip_direction_token(&basis_state.selected_token)
     }
+}
+
+fn isolated_component_stored_token_from_token_state(
+    context: &StereoEdgeEmissionContext<'_>,
+    state: &StereoEdgeEmissionState<'_>,
+    selected_neighbors: &[isize],
+    side_info: &StereoSideInfo,
+    begin_idx: usize,
+    end_idx: usize,
+) -> PyResult<String> {
+    let emitted_from_endpoint = begin_idx == side_info.endpoint_atom_idx;
+    let Some(basis_state) = isolated_component_token_basis_state_from_row_state(
+        context,
+        state.component_begin_atoms,
+        selected_neighbors,
+        side_info,
+    )?
+    else {
+        return emitted_candidate_token(side_info, begin_idx, end_idx);
+    };
+    isolated_component_stored_token_from_basis_state(basis_state, emitted_from_endpoint)
 }
 
 fn row_state_carrier_obligation_neighbor(
@@ -2460,10 +2475,6 @@ fn emitted_edge_part_generic(
     ))
 }
 
-// Transitional current model:
-// Names the isolated-component aromatic begin-side token constraint explicitly,
-// but still applies it during edge emission. The next step is to move this into
-// marker-row or token-choice state so edge emission only consumes model facts.
 fn emitted_isolated_edge_part(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
@@ -2513,15 +2524,13 @@ fn emitted_isolated_edge_part(
         if selected_neighbor != neighbor_idx as isize {
             continue;
         }
-        let stored_token = apply_isolated_aromatic_begin_side_token_constraint(
-            emitted_candidate_token(side_info, begin_idx, end_idx)?,
-            isolated_aromatic_begin_side_token_constraint_from_row_state(
-                context,
-                state.component_begin_atoms,
-                &updated_neighbors,
-                side_info,
-            )?,
-            begin_idx == side_info.endpoint_atom_idx,
+        let stored_token = isolated_component_stored_token_from_token_state(
+            context,
+            state,
+            &updated_neighbors,
+            side_info,
+            begin_idx,
+            end_idx,
         )?;
         stored_tokens.push((side_info.component_idx, stored_token));
     }

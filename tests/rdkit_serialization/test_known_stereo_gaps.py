@@ -49,6 +49,13 @@ ALLOWED_CURRENT_RESULTS = {
     "support_missing",
     "support_present",
 }
+ALLOWED_BOUNDARY_LAYER_CLASSES = {
+    "rdkit_expected_parse_equivalent_missing_from_support",
+    "current_same_skeleton_parse_equivalent_present",
+    "current_same_skeleton_parse_mismatch_present",
+    "no_current_same_skeleton_support",
+    "unsupported_surface",
+}
 MarkerSlots = tuple[tuple[int, str], ...]
 MarkerSlotSet = tuple[MarkerSlots, ...]
 
@@ -62,11 +69,12 @@ class KnownStereoGapCase:
     gap_detail: str
     expected_current_result: str
     expected_current_same_skeleton_support_count: int | None
-    expected_rdkit_output_semantic_equivalent: bool | None
-    expected_current_same_skeleton_semantic_equivalent_count: int | None
-    expected_current_same_skeleton_semantic_mismatch_count: int | None
+    boundary_layer_classes: tuple[str, ...] | None
+    expected_rdkit_output_parse_equivalent: bool | None
+    expected_current_same_skeleton_parse_equivalent_count: int | None
+    expected_current_same_skeleton_parse_mismatch_count: int | None
     expected_current_same_skeleton_marker_slots: MarkerSlotSet | None
-    semantic_minimal_marker_slots: MarkerSlotSet | None
+    parse_equivalent_minimal_marker_slots: MarkerSlotSet | None
     smiles: str | None
     molblock: str | None
     writer_membership_case_id: str | None
@@ -172,32 +180,55 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
         expected_same_skeleton_support_count = raw_case.get(
             "expected_current_same_skeleton_support_count"
         )
-        expected_rdkit_output_semantic_equivalent = raw_case.get(
-            "expected_rdkit_output_semantic_equivalent"
+        raw_boundary_layer_classes = raw_case.get("boundary_layer_classes")
+        boundary_layer_classes = None
+        if raw_boundary_layer_classes is not None:
+            if type(raw_boundary_layer_classes) is not list:
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} must define "
+                    "boundary_layer_classes as a JSON list"
+                )
+            boundary_layer_classes = tuple(raw_boundary_layer_classes)
+            if len(set(boundary_layer_classes)) != len(boundary_layer_classes):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} has duplicate "
+                    "boundary_layer_classes"
+                )
+            if any(
+                type(boundary_layer_class) is not str
+                or boundary_layer_class not in ALLOWED_BOUNDARY_LAYER_CLASSES
+                for boundary_layer_class in boundary_layer_classes
+            ):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} has unsupported "
+                    "boundary_layer_classes"
+                )
+        expected_rdkit_output_parse_equivalent = raw_case.get(
+            "expected_rdkit_output_parse_equivalent"
         )
         if (
-            expected_rdkit_output_semantic_equivalent is not None
-            and type(expected_rdkit_output_semantic_equivalent) is not bool
+            expected_rdkit_output_parse_equivalent is not None
+            and type(expected_rdkit_output_parse_equivalent) is not bool
         ):
             raise ValueError(
                 f"known stereo-gap case {raw_case['id']!r} has invalid "
-                "expected_rdkit_output_semantic_equivalent"
+                "expected_rdkit_output_parse_equivalent"
             )
-        expected_same_skeleton_semantic_equivalent_count = _optional_nonnegative_int(
+        expected_same_skeleton_parse_equivalent_count = _optional_nonnegative_int(
             raw_case,
-            "expected_current_same_skeleton_semantic_equivalent_count",
+            "expected_current_same_skeleton_parse_equivalent_count",
         )
-        expected_same_skeleton_semantic_mismatch_count = _optional_nonnegative_int(
+        expected_same_skeleton_parse_mismatch_count = _optional_nonnegative_int(
             raw_case,
-            "expected_current_same_skeleton_semantic_mismatch_count",
+            "expected_current_same_skeleton_parse_mismatch_count",
         )
         same_skeleton_marker_slots = _marker_slot_set_from_json(
             raw_case,
             "expected_current_same_skeleton_marker_slots",
         )
-        semantic_minimal_marker_slots = _marker_slot_set_from_json(
+        parse_equivalent_minimal_marker_slots = _marker_slot_set_from_json(
             raw_case,
-            "semantic_minimal_marker_slots",
+            "parse_equivalent_minimal_marker_slots",
         )
         if same_skeleton_marker_slots is not None:
             if expected_current_result != "support_missing":
@@ -225,26 +256,31 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                     f"known stereo-gap case {raw_case['id']!r} must pin a "
                     "nonnegative expected_current_same_skeleton_support_count"
                 )
-            if expected_rdkit_output_semantic_equivalent is None:
+            if boundary_layer_classes is None:
                 raise ValueError(
                     f"known stereo-gap case {raw_case['id']!r} must pin "
-                    "expected_rdkit_output_semantic_equivalent"
+                    "boundary_layer_classes"
+                )
+            if expected_rdkit_output_parse_equivalent is None:
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} must pin "
+                    "expected_rdkit_output_parse_equivalent"
                 )
             if (
-                expected_same_skeleton_semantic_equivalent_count is None
-                or expected_same_skeleton_semantic_mismatch_count is None
+                expected_same_skeleton_parse_equivalent_count is None
+                or expected_same_skeleton_parse_mismatch_count is None
             ):
                 raise ValueError(
                     f"known stereo-gap case {raw_case['id']!r} must pin "
-                    "same-skeleton semantic equivalent/mismatch counts"
+                    "same-skeleton parse equivalent/mismatch counts"
                 )
             if (
-                expected_same_skeleton_semantic_equivalent_count
-                + expected_same_skeleton_semantic_mismatch_count
+                expected_same_skeleton_parse_equivalent_count
+                + expected_same_skeleton_parse_mismatch_count
                 != expected_same_skeleton_support_count
             ):
                 raise ValueError(
-                    f"known stereo-gap case {raw_case['id']!r} semantic "
+                    f"known stereo-gap case {raw_case['id']!r} parse "
                     "same-skeleton counts must sum to "
                     "expected_current_same_skeleton_support_count"
                 )
@@ -254,13 +290,14 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 "expected_current_same_skeleton_support_count for support_missing"
             )
         elif (
-            expected_rdkit_output_semantic_equivalent is not None
-            or expected_same_skeleton_semantic_equivalent_count is not None
-            or expected_same_skeleton_semantic_mismatch_count is not None
+            boundary_layer_classes is not None
+            or expected_rdkit_output_parse_equivalent is not None
+            or expected_same_skeleton_parse_equivalent_count is not None
+            or expected_same_skeleton_parse_mismatch_count is not None
         ):
             raise ValueError(
                 f"known stereo-gap case {raw_case['id']!r} may only define "
-                "semantic boundary counts for support_missing"
+                "parse boundary counts for support_missing"
             )
         cases.append(
             KnownStereoGapCase(
@@ -273,19 +310,22 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 expected_current_same_skeleton_support_count=(
                     expected_same_skeleton_support_count
                 ),
-                expected_rdkit_output_semantic_equivalent=(
-                    expected_rdkit_output_semantic_equivalent
+                boundary_layer_classes=boundary_layer_classes,
+                expected_rdkit_output_parse_equivalent=(
+                    expected_rdkit_output_parse_equivalent
                 ),
-                expected_current_same_skeleton_semantic_equivalent_count=(
-                    expected_same_skeleton_semantic_equivalent_count
+                expected_current_same_skeleton_parse_equivalent_count=(
+                    expected_same_skeleton_parse_equivalent_count
                 ),
-                expected_current_same_skeleton_semantic_mismatch_count=(
-                    expected_same_skeleton_semantic_mismatch_count
+                expected_current_same_skeleton_parse_mismatch_count=(
+                    expected_same_skeleton_parse_mismatch_count
                 ),
                 expected_current_same_skeleton_marker_slots=(
                     same_skeleton_marker_slots
                 ),
-                semantic_minimal_marker_slots=semantic_minimal_marker_slots,
+                parse_equivalent_minimal_marker_slots=(
+                    parse_equivalent_minimal_marker_slots
+                ),
                 smiles=smiles,
                 molblock=molblock,
                 writer_membership_case_id=writer_membership_case_id,
@@ -391,7 +431,7 @@ def _single_marker_candidate_slots(skeleton: str) -> tuple[int, ...]:
     return tuple(candidate_slots)
 
 
-def _semantic_minimal_marker_slot_sets(
+def _parse_equivalent_minimal_marker_slot_sets(
     skeleton: str,
     reference_stereo_signature: tuple[tuple[int, int, str, tuple[int, ...]], ...],
 ) -> MarkerSlotSet:
@@ -529,7 +569,7 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(3, len(rdkit_marker_slots))
         self.assertNotEqual(source_marker_slots, rdkit_marker_slots)
 
-    def test_smallest_gap_enumerates_semantic_marker_basis_space(self) -> None:
+    def test_smallest_gap_enumerates_parse_equivalent_marker_basis_space(self) -> None:
         case = next(
             case
             for case in self.cases
@@ -537,31 +577,36 @@ class KnownStereoGapTests(unittest.TestCase):
         )
         source_smiles = case.smiles
         self.assertIsNotNone(source_smiles)
-        self.assertIsNotNone(case.semantic_minimal_marker_slots)
+        self.assertIsNotNone(case.parse_equivalent_minimal_marker_slots)
         self.assertIsNotNone(case.expected_current_same_skeleton_marker_slots)
         assert source_smiles is not None
-        assert case.semantic_minimal_marker_slots is not None
+        assert case.parse_equivalent_minimal_marker_slots is not None
         assert case.expected_current_same_skeleton_marker_slots is not None
 
         skeleton = _direction_erased_skeleton(case.expected)
         source_mol = self._mol_from_case(case)
         reference_signature = _double_bond_stereo_signature(source_mol)
-        semantic_marker_slots = _semantic_minimal_marker_slot_sets(
+        parse_equivalent_marker_slots = _parse_equivalent_minimal_marker_slot_sets(
             skeleton,
             reference_signature,
         )
 
         source_marker_slots = _direction_marker_slots(source_smiles)
         rdkit_marker_slots = _direction_marker_slots(case.expected)
-        self.assertEqual(case.semantic_minimal_marker_slots, semantic_marker_slots)
-        self.assertIn(source_marker_slots, semantic_marker_slots)
-        self.assertIn(rdkit_marker_slots, semantic_marker_slots)
+        self.assertEqual(
+            case.parse_equivalent_minimal_marker_slots,
+            parse_equivalent_marker_slots,
+        )
+        self.assertIn(source_marker_slots, parse_equivalent_marker_slots)
+        self.assertIn(rdkit_marker_slots, parse_equivalent_marker_slots)
 
         current_same_skeleton_marker_slots = set(
             case.expected_current_same_skeleton_marker_slots
         )
         self.assertTrue(
-            current_same_skeleton_marker_slots.isdisjoint(semantic_marker_slots)
+            current_same_skeleton_marker_slots.isdisjoint(
+                parse_equivalent_marker_slots
+            )
         )
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
@@ -732,40 +777,42 @@ class KnownStereoGapTests(unittest.TestCase):
                         case.case_id,
                     )
 
-    def test_support_missing_cases_pin_semantic_boundary_profile(self) -> None:
+    def test_support_missing_cases_pin_parse_boundary_profile(self) -> None:
         support_cache: dict[tuple[str, int | None, bool], set[str]] = {}
         for case in self.cases:
             if case.expected_current_result != "support_missing":
                 continue
 
             with self.subTest(case_id=case.case_id, source=case.source):
-                self.assertIsNotNone(case.expected_rdkit_output_semantic_equivalent)
+                self.assertIsNotNone(case.boundary_layer_classes)
+                self.assertIsNotNone(case.expected_rdkit_output_parse_equivalent)
                 self.assertIsNotNone(
-                    case.expected_current_same_skeleton_semantic_equivalent_count
+                    case.expected_current_same_skeleton_parse_equivalent_count
                 )
                 self.assertIsNotNone(
-                    case.expected_current_same_skeleton_semantic_mismatch_count
+                    case.expected_current_same_skeleton_parse_mismatch_count
                 )
-                assert case.expected_rdkit_output_semantic_equivalent is not None
+                assert case.boundary_layer_classes is not None
+                assert case.expected_rdkit_output_parse_equivalent is not None
                 assert (
-                    case.expected_current_same_skeleton_semantic_equivalent_count
+                    case.expected_current_same_skeleton_parse_equivalent_count
                     is not None
                 )
                 assert (
-                    case.expected_current_same_skeleton_semantic_mismatch_count
+                    case.expected_current_same_skeleton_parse_mismatch_count
                     is not None
                 )
 
                 mol = self._mol_from_case(case)
                 reference_smiles = _canonical_isomeric_smiles(mol)
                 expected_mol = Chem.MolFromSmiles(case.expected)
-                expected_semantic_equivalent = (
+                expected_parse_equivalent = (
                     expected_mol is not None
                     and _canonical_isomeric_smiles(expected_mol) == reference_smiles
                 )
                 self.assertEqual(
-                    case.expected_rdkit_output_semantic_equivalent,
-                    expected_semantic_equivalent,
+                    case.expected_rdkit_output_parse_equivalent,
+                    expected_parse_equivalent,
                 )
 
                 support_key = (
@@ -800,12 +847,30 @@ class KnownStereoGapTests(unittest.TestCase):
                         mismatch_count += 1
 
                 self.assertEqual(
-                    case.expected_current_same_skeleton_semantic_equivalent_count,
+                    case.expected_current_same_skeleton_parse_equivalent_count,
                     equivalent_count,
                 )
                 self.assertEqual(
-                    case.expected_current_same_skeleton_semantic_mismatch_count,
+                    case.expected_current_same_skeleton_parse_mismatch_count,
                     mismatch_count,
+                )
+
+                expected_boundary_classes = {
+                    "rdkit_expected_parse_equivalent_missing_from_support"
+                }
+                if equivalent_count:
+                    expected_boundary_classes.add(
+                        "current_same_skeleton_parse_equivalent_present"
+                    )
+                if mismatch_count:
+                    expected_boundary_classes.add(
+                        "current_same_skeleton_parse_mismatch_present"
+                    )
+                if not equivalent_count and not mismatch_count:
+                    expected_boundary_classes.add("no_current_same_skeleton_support")
+                self.assertEqual(
+                    tuple(sorted(expected_boundary_classes)),
+                    tuple(sorted(case.boundary_layer_classes)),
                 )
 
     def test_manual_difficult_cases_keep_nonempty_marker_row_state(self) -> None:

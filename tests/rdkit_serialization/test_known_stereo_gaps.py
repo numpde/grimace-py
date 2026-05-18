@@ -470,6 +470,28 @@ class KnownStereoGapTests(unittest.TestCase):
             )
         )
 
+    def test_pinned_parse_equivalent_marker_basis_spaces_recompute(self) -> None:
+        cases = tuple(
+            case
+            for case in self.cases
+            if case.parse_equivalent_minimal_marker_slots is not None
+        )
+        self.assertEqual(2, len(cases))
+
+        for case in cases:
+            with self.subTest(case_id=case.case_id):
+                assert case.parse_equivalent_minimal_marker_slots is not None
+                skeleton = direction_erased_skeleton(case.expected)
+                marker_slots = parse_equivalent_minimal_marker_slot_sets(
+                    skeleton,
+                    self._mol_from_case(case),
+                )
+                self.assertEqual(
+                    case.parse_equivalent_minimal_marker_slots,
+                    marker_slots,
+                )
+                self.assertIn(direction_marker_slots(case.expected), marker_slots)
+
     def test_smallest_gap_pins_writer_quotient_token_phase_boundary(self) -> None:
         case = self._smallest_gap_case()
         self.assertIsNotNone(case.parse_equivalent_minimal_marker_slots)

@@ -141,7 +141,17 @@ def parse_equivalent_minimal_marker_slot_sets(
     max_marker_count = 2 * len(double_bond_stereo_signature(reference_mol))
     reference_canonical_smiles = canonical_isomeric_smiles(reference_mol)
     candidate_slots = _single_marker_candidate_slots(skeleton)
-    valid_marker_slot_sets = []
+    canonical_smiles_cache: dict[str, str | None] = {}
+    minimal_marker_slot_sets: list[MarkerSlots] = []
+
+    def candidate_canonical_smiles(marker_slots: MarkerSlots) -> str | None:
+        smiles = smiles_from_direction_marker_slots(skeleton, marker_slots)
+        if smiles not in canonical_smiles_cache:
+            mol = Chem.MolFromSmiles(smiles)
+            canonical_smiles_cache[smiles] = (
+                canonical_isomeric_smiles(mol) if mol is not None else None
+            )
+        return canonical_smiles_cache[smiles]
 
     RDLogger.DisableLog("rdApp.*")
     try:
@@ -149,40 +159,16 @@ def parse_equivalent_minimal_marker_slot_sets(
             for slots in combinations(candidate_slots, marker_count):
                 for markers in product(("/", "\\"), repeat=marker_count):
                     marker_slots = tuple(zip(slots, markers))
-                    mol = Chem.MolFromSmiles(
-                        smiles_from_direction_marker_slots(skeleton, marker_slots)
-                    )
+                    if any(
+                        set(minimal_marker_slots).issubset(marker_slots)
+                        for minimal_marker_slots in minimal_marker_slot_sets
+                    ):
+                        continue
                     if (
-                        mol is not None
-                        and canonical_isomeric_smiles(mol)
+                        candidate_canonical_smiles(marker_slots)
                         == reference_canonical_smiles
                     ):
-                        valid_marker_slot_sets.append(marker_slots)
-
-        minimal_marker_slot_sets = []
-        for marker_slots in valid_marker_slot_sets:
-            is_minimal = True
-            for marker_idx in range(len(marker_slots)):
-                reduced_marker_slots = tuple(
-                    marker_slot
-                    for idx, marker_slot in enumerate(marker_slots)
-                    if idx != marker_idx
-                )
-                reduced_mol = Chem.MolFromSmiles(
-                    smiles_from_direction_marker_slots(
-                        skeleton,
-                        reduced_marker_slots,
-                    )
-                )
-                if (
-                    reduced_mol is not None
-                    and canonical_isomeric_smiles(reduced_mol)
-                    == reference_canonical_smiles
-                ):
-                    is_minimal = False
-                    break
-            if is_minimal:
-                minimal_marker_slot_sets.append(marker_slots)
+                        minimal_marker_slot_sets.append(marker_slots)
     finally:
         RDLogger.EnableLog("rdApp.*")
 

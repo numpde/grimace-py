@@ -101,6 +101,13 @@ struct MarkerEventTrace {
     role: StereoTraversalRole,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct WriterMarkerSlotQuotientAcceptanceFact {
+    component_idx: usize,
+    slot: usize,
+    marker: StereoDirectionToken,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Part {
     Literal(String),
@@ -368,6 +375,7 @@ pub(crate) struct RootedConnectedStereoWalkerStateData {
     stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
     directional_marker_traces: Arc<Vec<DirectionalMarkerTrace>>,
     marker_event_traces: Arc<Vec<MarkerEventTrace>>,
+    writer_marker_slot_quotient_acceptance_facts: Arc<Vec<WriterMarkerSlotQuotientAcceptanceFact>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -403,6 +411,7 @@ struct StereoCompletionKey {
     deferred_carrier_choice_constraints: Arc<Vec<DeferredCarrierChoiceConstraint>>,
     stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
     marker_event_traces: Arc<Vec<MarkerEventTrace>>,
+    writer_marker_slot_quotient_acceptance_facts: Arc<Vec<WriterMarkerSlotQuotientAcceptanceFact>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -423,6 +432,9 @@ impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
             deferred_carrier_choice_constraints: state.deferred_carrier_choice_constraints.clone(),
             stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
             marker_event_traces: state.marker_event_traces.clone(),
+            writer_marker_slot_quotient_acceptance_facts: state
+                .writer_marker_slot_quotient_acceptance_facts
+                .clone(),
             action_stack: state.action_stack.clone(),
         }
     }
@@ -733,6 +745,7 @@ fn stereo_exact_state_from_full(
         stereo_token_basis_facts,
         directional_marker_traces,
         marker_event_traces,
+        writer_marker_slot_quotient_acceptance_facts,
         action_stack,
     } = state;
     debug_assert!(stereo_component_phases.is_empty());
@@ -745,6 +758,7 @@ fn stereo_exact_state_from_full(
     debug_assert!(stereo_token_basis_facts.is_empty());
     debug_assert!(directional_marker_traces.is_empty());
     debug_assert!(marker_event_traces.is_empty());
+    debug_assert!(writer_marker_slot_quotient_acceptance_facts.is_empty());
     RootedConnectedStereoExactStateData {
         prefix,
         dynamic: Arc::new(RootedConnectedStereoExactDynamicData {
@@ -4696,6 +4710,7 @@ fn resolved_constraint_state_from_walker_state(
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TerminalStereoSupportBoundarySummary {
     deferred_marker_obligation_domain_count: usize,
+    writer_marker_slot_quotient_acceptance_count: usize,
 }
 
 fn terminal_stereo_state_support_boundary_summary(
@@ -4749,6 +4764,9 @@ fn terminal_stereo_state_support_boundary_summary(
         .count();
     Ok(Some(TerminalStereoSupportBoundarySummary {
         deferred_marker_obligation_domain_count,
+        writer_marker_slot_quotient_acceptance_count: state
+            .writer_marker_slot_quotient_acceptance_facts
+            .len(),
     }))
 }
 
@@ -6249,6 +6267,10 @@ fn collect_deferred_marker_obligation_witness_rows(
                         "deferred_marker_obligation_domain_count",
                         summary.deferred_marker_obligation_domain_count,
                     )?;
+                    row.set_item(
+                        "writer_marker_slot_quotient_acceptance_count",
+                        summary.writer_marker_slot_quotient_acceptance_count,
+                    )?;
                     rows.append(row)?;
                 }
                 if scan.terminal_state_count >= max_terminal_states {
@@ -6927,6 +6949,10 @@ fn validate_stereo_state_shape(
                         .available_neighbors
                         .contains(&constraint.deferred_neighbor_idx)
             })
+        || state
+            .writer_marker_slot_quotient_acceptance_facts
+            .iter()
+            .any(|fact| fact.component_idx >= runtime.isolated_components.len())
     {
         return Err(PyValueError::new_err(
             "walker state is not compatible with this PreparedSmilesGraph",
@@ -7132,6 +7158,7 @@ fn initial_stereo_state_for_root(
         stereo_token_basis_facts: Arc::new(vec![None; runtime.isolated_components.len()]),
         directional_marker_traces: Arc::new(Vec::new()),
         marker_event_traces: Arc::new(Vec::new()),
+        writer_marker_slot_quotient_acceptance_facts: Arc::new(Vec::new()),
         action_stack,
     }
 }
@@ -9538,6 +9565,9 @@ fn enter_atom_successors_by_token(
                             stereo_token_basis_facts: Arc::new(current_token_basis_facts.clone()),
                             directional_marker_traces: base_state.directional_marker_traces.clone(),
                             marker_event_traces: Arc::new(current_marker_event_traces.clone()),
+                            writer_marker_slot_quotient_acceptance_facts: base_state
+                                .writer_marker_slot_quotient_acceptance_facts
+                                .clone(),
                             action_stack: base_state.action_stack.clone(),
                         };
                         if !child_order.is_empty() {
@@ -9707,6 +9737,9 @@ fn enter_atom_successors_without_bond_stereo(
                             stereo_token_basis_facts: base_state.stereo_token_basis_facts.clone(),
                             directional_marker_traces: base_state.directional_marker_traces.clone(),
                             marker_event_traces: base_state.marker_event_traces.clone(),
+                            writer_marker_slot_quotient_acceptance_facts: base_state
+                                .writer_marker_slot_quotient_acceptance_facts
+                                .clone(),
                             action_stack: base_state.action_stack.clone(),
                         };
                         if !child_order.is_empty() {
@@ -10257,6 +10290,9 @@ fn process_children_successors_without_bond_stereo(
             stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
             directional_marker_traces: state.directional_marker_traces.clone(),
             marker_event_traces: state.marker_event_traces.clone(),
+            writer_marker_slot_quotient_acceptance_facts: state
+                .writer_marker_slot_quotient_acceptance_facts
+                .clone(),
             action_stack: {
                 let extra = 2
                     + usize::from(next_branch_index + 1 < child_order.len())
@@ -11528,14 +11564,15 @@ mod tests {
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
         successors_by_token_stereo_raw, support_boundary_facts_from_edge_state,
         support_boundary_facts_from_walker_state, support_state_selected_neighbor_query,
-        supported_token_observation_facts_from_constraints, validate_root_idx,
+        supported_token_observation_facts_from_constraints,
+        terminal_stereo_state_support_boundary_summary, validate_root_idx,
         validate_stereo_state_shape, CarrierCommitmentBoundaryQuery, CarrierCommitmentDecision,
         ComponentBeginAtomFact, ComponentPhaseCommitFact, ComponentTokenConstraintFact,
         DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
         DeferredDirectionalComponentToken, DeferredDirectionalToken, MarkerEventTrace,
         RootedConnectedStereoWalkerStateData, StereoCompletionKey, StereoEdgeEmissionContext,
-        StereoEdgeEmissionState, FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE,
-        UNKNOWN_COMPONENT_PHASE,
+        StereoEdgeEmissionState, WriterMarkerSlotQuotientAcceptanceFact, FLIPPED_COMPONENT_PHASE,
+        STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -12242,6 +12279,48 @@ mod tests {
             empty_boundary_facts.marker_event_facts_by_component,
             traced_boundary_facts.marker_event_facts_by_component
         );
+    }
+
+    #[test]
+    fn writer_marker_slot_quotient_facts_are_shadow_state_identity() {
+        let Some(graph) = prepared_graph_from_smiles("C/C=C/C") else {
+            return;
+        };
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
+        let component_idx = runtime
+            .isolated_components
+            .iter()
+            .position(|_| true)
+            .expect("witness should have a stereo component");
+        let quotient_fact = WriterMarkerSlotQuotientAcceptanceFact {
+            component_idx,
+            slot: 0,
+            marker: StereoDirectionToken::Slash,
+        };
+
+        let mut quotient_state = state.clone();
+        quotient_state.writer_marker_slot_quotient_acceptance_facts =
+            Arc::new(vec![quotient_fact.clone()]);
+
+        assert_ne!(
+            StereoCompletionKey::from(&state),
+            StereoCompletionKey::from(&quotient_state)
+        );
+        validate_stereo_state_shape(&runtime, &graph, &quotient_state)
+            .expect("quotient fact should be shape-compatible");
+
+        let terminal_state = first_terminal_stereo_state(&runtime, &graph, state);
+        let mut quotient_terminal_state = terminal_state.clone();
+        quotient_terminal_state.writer_marker_slot_quotient_acceptance_facts =
+            Arc::new(vec![quotient_fact]);
+        let summary = terminal_stereo_state_support_boundary_summary(
+            &runtime,
+            &graph,
+            &quotient_terminal_state,
+        )
+        .expect("terminal summary should build")
+        .expect("terminal state should satisfy semantic support");
+        assert_eq!(1, summary.writer_marker_slot_quotient_acceptance_count);
     }
 
     #[derive(Default, Debug, PartialEq, Eq)]

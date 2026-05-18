@@ -2485,6 +2485,9 @@ struct StereoSupportBoundaryFacts {
     deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
     known_token_flip_facts: Vec<StereoTokenFlipFact>,
     inferred_token_observation_facts: Vec<StereoTokenObservationFact>,
+    marker_event_facts_by_component: Vec<Vec<StereoMarkerEventFact>>,
+    marker_obligation_domains_by_component: Vec<Vec<RdkitWriterMarkerObligationDomain>>,
+    marker_obligation_event_facts_by_component: Vec<Vec<StereoMarkerEventFact>>,
 }
 
 impl StereoSupportBoundaryFacts {
@@ -3236,13 +3239,23 @@ fn support_boundary_facts_from_token_constraints(
     carrier_facts_by_component: Vec<Vec<StereoConstraintFact>>,
     deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
     token_constraints: &[ComponentTokenConstraint],
+    marker_event_facts_by_component: Vec<Vec<StereoMarkerEventFact>>,
 ) -> PyResult<StereoSupportBoundaryFacts> {
+    let marker_obligation_domains_by_component =
+        rdkit_writer_marker_obligation_domains_by_component(&marker_event_facts_by_component);
+    let marker_obligation_event_facts_by_component =
+        rdkit_writer_slot_coalesced_marker_event_facts_by_component(
+            &marker_event_facts_by_component,
+        );
     Ok(StereoSupportBoundaryFacts {
         carrier_facts_by_component,
         deferred_carrier_choice_constraints,
         known_token_flip_facts: known_token_flip_facts_from_constraints(token_constraints),
         inferred_token_observation_facts:
             inferred_token_observation_facts_from_constraints(token_constraints),
+        marker_event_facts_by_component,
+        marker_obligation_domains_by_component,
+        marker_obligation_event_facts_by_component,
     })
 }
 
@@ -3267,6 +3280,7 @@ fn support_boundary_facts_from_walker_state(
         carrier_facts_by_component,
         state.deferred_carrier_choice_constraints.to_vec(),
         &token_constraints,
+        rdkit_writer_marker_event_facts_by_component(runtime, state)?,
     )
 }
 
@@ -3285,6 +3299,18 @@ fn support_boundary_facts_from_edge_state(
         deferred_carrier_choice_constraints: deferred_carrier_choice_constraints.to_vec(),
         known_token_flip_facts: Vec::new(),
         inferred_token_observation_facts: Vec::new(),
+        marker_event_facts_by_component: vec![
+            Vec::new();
+            context.constraint_model.component_count()
+        ],
+        marker_obligation_domains_by_component: vec![
+            Vec::new();
+            context.constraint_model.component_count()
+        ],
+        marker_obligation_event_facts_by_component: vec![
+            Vec::new();
+            context.constraint_model.component_count()
+        ],
     })
 }
 
@@ -5457,6 +5483,13 @@ fn stereo_output_fact_row_to_py(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Py<PyDict>> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let boundary_facts = support_boundary_facts_from_walker_state(
+        runtime,
+        graph,
+        state,
+        raw_selected_neighbors,
+        true,
+    )?;
     let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let assignment_state_resolved_selected_neighbors =
         resolved_selected_neighbors_from_assignment_state(runtime, raw_selected_neighbors);
@@ -5470,18 +5503,15 @@ fn stereo_output_fact_row_to_py(
         rdkit_traversal_writer_facts_by_component(runtime, state, &resolved_selected_neighbors);
     let marker_events_by_component =
         rdkit_writer_selected_marker_event_facts_by_component(runtime, state)?;
-    let shadow_marker_events_by_component =
-        rdkit_writer_marker_event_facts_by_component(runtime, state)?;
     let marker_obligation_domains =
         rdkit_writer_marker_obligation_domains_by_component(&marker_events_by_component);
-    let shadow_marker_obligation_domains =
-        rdkit_writer_marker_obligation_domains_by_component(&shadow_marker_events_by_component);
     let marker_obligation_events_by_component =
         rdkit_writer_slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
+    let shadow_marker_events_by_component = &boundary_facts.marker_event_facts_by_component;
+    let shadow_marker_obligation_domains =
+        &boundary_facts.marker_obligation_domains_by_component;
     let shadow_marker_obligation_events_by_component =
-        rdkit_writer_slot_coalesced_marker_event_facts_by_component(
-            &shadow_marker_events_by_component,
-        );
+        &boundary_facts.marker_obligation_event_facts_by_component;
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
         &runtime.constraint_model,
         StereoConstraintLayer::Semantic,
@@ -5498,9 +5528,9 @@ fn stereo_output_fact_row_to_py(
         state,
         &resolved_selected_neighbors,
     )?;
-    let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
+    let known_token_flip_facts = boundary_facts.known_token_flip_facts.clone();
     let inferred_token_observation_facts =
-        inferred_token_observation_facts_from_constraints(&token_constraints);
+        boundary_facts.inferred_token_observation_facts.clone();
     let supported_token_observation_facts =
         supported_token_observation_facts_from_constraints(&token_constraints)?;
 
@@ -5601,15 +5631,15 @@ fn stereo_output_fact_row_to_py(
     )?;
     shadow_debug.set_item(
         "marker_event_facts",
-        marker_event_facts_to_py(py, &shadow_marker_events_by_component)?,
+        marker_event_facts_to_py(py, shadow_marker_events_by_component)?,
     )?;
     shadow_debug.set_item(
         "marker_obligation_facts",
-        marker_event_facts_to_py(py, &shadow_marker_obligation_events_by_component)?,
+        marker_event_facts_to_py(py, shadow_marker_obligation_events_by_component)?,
     )?;
     shadow_debug.set_item(
         "marker_obligation_domains",
-        rdkit_writer_marker_obligation_domains_to_py(py, &shadow_marker_obligation_domains)?,
+        rdkit_writer_marker_obligation_domains_to_py(py, shadow_marker_obligation_domains)?,
     )?;
     shadow_debug.set_item(
         "marker_placement_state",
@@ -5619,7 +5649,7 @@ fn stereo_output_fact_row_to_py(
             &resolved_facts_by_component,
             &known_token_flip_facts,
             &inferred_token_observation_facts,
-            &shadow_marker_events_by_component,
+            shadow_marker_events_by_component,
         )?,
     )?;
     shadow_debug.set_item(
@@ -5630,7 +5660,7 @@ fn stereo_output_fact_row_to_py(
             &resolved_facts_by_component,
             &known_token_flip_facts,
             &inferred_token_observation_facts,
-            &shadow_marker_obligation_events_by_component,
+            shadow_marker_obligation_events_by_component,
         )?,
     )?;
     row.set_item("shadow_debug", shadow_debug)?;
@@ -6991,7 +7021,7 @@ fn rdkit_marker_rows_accept_deferred_token(
     implied_token_flip: StereoTokenFlip,
     chosen_token: &str,
     constraint_state: &StereoConstraintState,
-    marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+    boundary_facts: &StereoSupportBoundaryFacts,
 ) -> PyResult<bool> {
     let Some(model_component_idx) = runtime
         .constraint_model
@@ -7021,7 +7051,8 @@ fn rdkit_marker_rows_accept_deferred_token(
         return Ok(false);
     }
 
-    let mut marker_events = marker_events_by_component
+    let mut marker_events = boundary_facts
+        .marker_obligation_event_facts_by_component
         .get(model_component_idx)
         .cloned()
         .unwrap_or_default();
@@ -7050,7 +7081,7 @@ fn accepted_deferred_token_flips(
     component_token: &DeferredDirectionalComponentToken,
     chosen_token: &str,
     constraint_state: &StereoConstraintState,
-    marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+    boundary_facts: &StereoSupportBoundaryFacts,
 ) -> PyResult<Vec<StereoTokenFlip>> {
     let mut accepted = BTreeSet::<StereoTokenFlip>::new();
     for reference_token in &component_token.reference_tokens {
@@ -7067,7 +7098,7 @@ fn accepted_deferred_token_flips(
             implied_token_flip,
             chosen_token,
             constraint_state,
-            marker_events_by_component,
+            boundary_facts,
         )? {
             accepted.insert(implied_token_flip);
         }
@@ -7120,7 +7151,7 @@ fn accepted_single_component_deferred_token_flips(
     raw_token: &str,
     chosen_token: &str,
     constraint_state: &StereoConstraintState,
-    marker_events_by_component: &[Vec<StereoMarkerEventFact>],
+    boundary_facts: &StereoSupportBoundaryFacts,
 ) -> PyResult<Vec<StereoTokenFlip>> {
     // Acyclic cross-component carrier coupling can expose a visible marker
     // before the phase basis is known. Ring components and single-component
@@ -7140,7 +7171,7 @@ fn accepted_single_component_deferred_token_flips(
             component_token,
             chosen_token,
             constraint_state,
-            marker_events_by_component,
+            boundary_facts,
         );
     }
 
@@ -7156,7 +7187,7 @@ fn accepted_single_component_deferred_token_flips(
         implied_token_flip,
         chosen_token,
         constraint_state,
-        marker_events_by_component,
+        boundary_facts,
     )? {
         Ok(vec![implied_token_flip])
     } else {
@@ -7170,13 +7201,15 @@ fn deferred_token_support_from_constraint_state(
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
 ) -> PyResult<Vec<String>> {
-    let constraint_state = resolved_constraint_state_from_walker_state(
+    let boundary_facts = support_boundary_facts_from_walker_state(
         runtime,
         graph,
         state,
-        StereoConstraintLayer::Semantic,
+        state.stereo_selected_neighbors.as_ref(),
+        true,
     )?;
-    let marker_events_by_component = rdkit_writer_marker_event_facts_by_component(runtime, state)?;
+    let constraint_state =
+        boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
     if deferred.component_tokens.len() == 1 {
         let literal_token = if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
             Some(
@@ -7208,7 +7241,7 @@ fn deferred_token_support_from_constraint_state(
                 &raw_token,
                 &candidate_token,
                 &constraint_state,
-                &marker_events_by_component,
+                &boundary_facts,
             )?
             .is_empty()
             {
@@ -7230,7 +7263,7 @@ fn deferred_token_support_from_constraint_state(
                 component_token,
                 candidate_token,
                 &constraint_state,
-                &marker_events_by_component,
+                &boundary_facts,
             )?;
             if accepted_flips.len() != 1 {
                 compatible = false;
@@ -7322,14 +7355,15 @@ fn commit_deferred_token_choice(
             return assert_component_token_flip_boundary_invariants(runtime, graph, state);
         };
         let raw_token = raw_token.expect("checked above");
-        let constraint_state = resolved_constraint_state_from_walker_state(
+        let boundary_facts = support_boundary_facts_from_walker_state(
             runtime,
             graph,
             state,
-            StereoConstraintLayer::Semantic,
+            state.stereo_selected_neighbors.as_ref(),
+            true,
         )?;
-        let marker_events_by_component =
-            rdkit_writer_marker_event_facts_by_component(runtime, state)?;
+        let constraint_state =
+            boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
         let component_token = &deferred.component_tokens[0];
         let accepted_flips = accepted_single_component_deferred_token_flips(
             runtime,
@@ -7340,7 +7374,7 @@ fn commit_deferred_token_choice(
             &raw_token,
             chosen_token,
             &constraint_state,
-            &marker_events_by_component,
+            &boundary_facts,
         )?;
         if accepted_flips.is_empty() {
             return Err(PyKeyError::new_err(format!(
@@ -7374,13 +7408,15 @@ fn commit_deferred_token_choice(
         return assert_component_token_flip_boundary_invariants(runtime, graph, state);
     }
 
-    let constraint_state = resolved_constraint_state_from_walker_state(
+    let boundary_facts = support_boundary_facts_from_walker_state(
         runtime,
         graph,
         state,
-        StereoConstraintLayer::Semantic,
+        state.stereo_selected_neighbors.as_ref(),
+        true,
     )?;
-    let marker_events_by_component = rdkit_writer_marker_event_facts_by_component(runtime, state)?;
+    let constraint_state =
+        boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
     for component_token in deferred.component_tokens.iter() {
         let accepted_flips = accepted_deferred_token_flips(
             runtime,
@@ -7389,7 +7425,7 @@ fn commit_deferred_token_choice(
             component_token,
             chosen_token,
             &constraint_state,
-            &marker_events_by_component,
+            &boundary_facts,
         )?;
         let [chosen_model_flip] = accepted_flips.as_slice() else {
             return Err(PyKeyError::new_err(format!(
@@ -9669,6 +9705,9 @@ mod tests {
         next_token_support_for_stereo_state, rdkit_marker_rows_accept_deferred_token,
         rdkit_ring_closure_projected_marker_slots, rdkit_traversal_writer_facts_by_component,
         rdkit_traversal_writer_has_completion, resolved_constraint_state_from_walker_state,
+        rdkit_writer_marker_event_facts_by_component,
+        rdkit_writer_marker_obligation_domains_by_component,
+        rdkit_writer_slot_coalesced_marker_event_facts_by_component,
         resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
         support_boundary_facts_from_edge_state, support_boundary_facts_from_walker_state,
@@ -10240,6 +10279,43 @@ mod tests {
     }
 
     #[test]
+    fn support_boundary_facts_expose_marker_obligation_inputs() {
+        let expected = "C/C=C/C(C)=C/C";
+        let Some(graph) = prepared_graph_from_smiles(expected) else {
+            return;
+        };
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        for token in expected.chars().map(|token| token.to_string()) {
+            state = advance_stereo_token_state(&runtime, &graph, &state, &token)
+                .expect("witness should stay completable");
+        }
+
+        let boundary_facts = support_boundary_facts_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            state.stereo_selected_neighbors.as_ref(),
+            true,
+        )
+        .expect("support-boundary facts should build");
+        let marker_events = rdkit_writer_marker_event_facts_by_component(&runtime, &state)
+            .expect("marker event facts should build");
+        assert!(marker_events.iter().any(|facts| !facts.is_empty()));
+        assert_eq!(
+            marker_events,
+            boundary_facts.marker_event_facts_by_component
+        );
+        assert_eq!(
+            rdkit_writer_marker_obligation_domains_by_component(&marker_events),
+            boundary_facts.marker_obligation_domains_by_component,
+        );
+        assert_eq!(
+            rdkit_writer_slot_coalesced_marker_event_facts_by_component(&marker_events),
+            boundary_facts.marker_obligation_event_facts_by_component,
+        );
+    }
+
+    #[test]
     fn deferred_marker_row_filtering_coalesces_prior_no_marker_on_same_edge() {
         let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
             return;
@@ -10282,6 +10358,23 @@ mod tests {
             end_idx: candidate_neighbor,
             role: StereoTraversalRole::TreeOrChain,
         });
+        let mut boundary_facts = support_boundary_facts_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            state.stereo_selected_neighbors.as_ref(),
+            true,
+        )
+        .expect("support-boundary facts should build");
+        boundary_facts.marker_event_facts_by_component = marker_events_by_component;
+        boundary_facts.marker_obligation_domains_by_component =
+            rdkit_writer_marker_obligation_domains_by_component(
+                &boundary_facts.marker_event_facts_by_component,
+            );
+        boundary_facts.marker_obligation_event_facts_by_component =
+            rdkit_writer_slot_coalesced_marker_event_facts_by_component(
+                &boundary_facts.marker_event_facts_by_component,
+            );
 
         assert!(rdkit_marker_rows_accept_deferred_token(
             &runtime,
@@ -10291,7 +10384,7 @@ mod tests {
             StereoTokenFlip::Stored,
             &component_token.reference_tokens[0],
             &constraint_state,
-            &marker_events_by_component,
+            &boundary_facts,
         )
         .expect("candidate row filtering should run"));
     }

@@ -7814,6 +7814,95 @@ fn component_ids_for_edge(runtime: &StereoWalkerRuntimeData, edge: (usize, usize
         .collect()
 }
 
+fn remaining_component_has_nontrivial_visible_marker_basis(
+    runtime: &StereoWalkerRuntimeData,
+    component_idx: usize,
+    constraint_state: &StereoConstraintState,
+) -> PyResult<bool> {
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Deferred token references unknown runtime component",
+        ));
+    };
+    if constraint_state.is_empty(model_component_idx) {
+        return Ok(false);
+    }
+    let Some(component) = runtime.constraint_model.components.get(model_component_idx) else {
+        return Err(PyValueError::new_err(
+            "visible-marker basis component index out of range",
+        ));
+    };
+    let remaining_token_phase_assignment_ids = constraint_state
+        .token_phase_remaining_by_component
+        .get(model_component_idx)
+        .map(|ids| ids.iter().copied().collect::<BTreeSet<_>>())
+        .unwrap_or_default();
+    if remaining_token_phase_assignment_ids.is_empty() {
+        return Ok(false);
+    }
+
+    let mut has_non_selected_visible_edge_basis = false;
+    let mut has_shared_visible_edge_basis = false;
+    for row in &component.all_marker_placement_rows {
+        if !remaining_token_phase_assignment_ids.contains(&row.token_phase_assignment_id) {
+            continue;
+        }
+        let Some(token_phase_assignment) = component
+            .all_token_phase_assignments
+            .get(row.token_phase_assignment_id)
+        else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis token-phase index out of range",
+            ));
+        };
+        let Some(carrier_neighbors) = component
+            .all_neighbor_assignments
+            .get(token_phase_assignment.neighbor_assignment_id)
+        else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis carrier assignment index out of range",
+            ));
+        };
+        for (side_position, marker_neighbors) in row.marker_neighbor_sets.iter().enumerate() {
+            let Some(&side_idx) = component.side_ids.get(side_position) else {
+                return Err(PyValueError::new_err(
+                    "visible-marker basis side index out of range",
+                ));
+            };
+            let Some(side_info) = runtime.side_infos.get(side_idx) else {
+                return Err(PyValueError::new_err(
+                    "visible-marker basis runtime side index out of range",
+                ));
+            };
+            let Some(&selected_neighbor_idx) = carrier_neighbors.get(side_position) else {
+                return Err(PyValueError::new_err(
+                    "visible-marker basis carrier side index out of range",
+                ));
+            };
+            for &marker_neighbor_idx in marker_neighbors {
+                if marker_neighbor_idx != selected_neighbor_idx {
+                    has_non_selected_visible_edge_basis = true;
+                }
+                if component_ids_for_edge(
+                    runtime,
+                    canonical_edge(side_info.endpoint_atom_idx, marker_neighbor_idx),
+                )
+                .len()
+                    > 1
+                {
+                    has_shared_visible_edge_basis = true;
+                }
+            }
+        }
+    }
+    Ok(has_shared_visible_edge_basis
+        || (has_non_selected_visible_edge_basis
+            && runtime_component_has_cross_component_carrier_edge(runtime, component_idx)))
+}
+
 fn edge_neighbor_for_marker_event(
     runtime: &StereoWalkerRuntimeData,
     fact: StereoMarkerEventFact,
@@ -8181,11 +8270,56 @@ fn accepted_single_component_deferred_token_flips(
     constraint_state: &StereoConstraintState,
     boundary_facts: &StereoSupportBoundaryFacts,
 ) -> PyResult<Vec<StereoTokenFlip>> {
-    // Acyclic cross-component carrier coupling can expose a visible marker
-    // before the phase basis is known. Ring components and single-component
-    // diene components stay on the older path until those boundaries are
-    // handled explicitly.
-    if deferred_token_legacy_topology_guard_applies(runtime, graph, component_token.component_idx) {
+    let raw_accepted = if let Some(implied_token_flip) =
+        model_token_flip_for_chosen_token(raw_token, chosen_token)?
+    {
+        if rdkit_marker_rows_accept_deferred_token(
+            runtime,
+            state,
+            deferred,
+            component_token,
+            implied_token_flip,
+            chosen_token,
+            constraint_state,
+            boundary_facts,
+        )? {
+            vec![implied_token_flip]
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let basis_diagnostics = visible_marker_basis_diagnostics_for_component_token(
+        runtime,
+        state,
+        deferred,
+        component_token,
+        chosen_token,
+        constraint_state,
+        boundary_facts,
+    )?;
+    let has_current_visible_marker_basis = basis_diagnostics.iter().any(|diagnostic| {
+        diagnostic.basis_class == "non_selected_visible_edge"
+            || diagnostic.basis_class == "shared_visible_edge"
+    });
+    let has_remaining_visible_marker_basis =
+        remaining_component_has_nontrivial_visible_marker_basis(
+            runtime,
+            component_token.component_idx,
+            constraint_state,
+        )?;
+    // This is intentionally conservative: the row witness is now explicit,
+    // but the old topology guard remains until the next slice can remove it
+    // without changing pinned RDKit support.
+    if (has_current_visible_marker_basis || has_remaining_visible_marker_basis)
+        && deferred_token_legacy_topology_guard_applies(
+            runtime,
+            graph,
+            component_token.component_idx,
+        )
+    {
         return accepted_deferred_token_flips(
             runtime,
             state,
@@ -8197,24 +8331,7 @@ fn accepted_single_component_deferred_token_flips(
         );
     }
 
-    let Some(implied_token_flip) = model_token_flip_for_chosen_token(raw_token, chosen_token)?
-    else {
-        return Ok(Vec::new());
-    };
-    if rdkit_marker_rows_accept_deferred_token(
-        runtime,
-        state,
-        deferred,
-        component_token,
-        implied_token_flip,
-        chosen_token,
-        constraint_state,
-        boundary_facts,
-    )? {
-        Ok(vec![implied_token_flip])
-    } else {
-        Ok(Vec::new())
-    }
+    Ok(raw_accepted)
 }
 
 fn candidate_tokens_from_raw_deferred_tokens(raw_tokens: &[String]) -> PyResult<Vec<String>> {

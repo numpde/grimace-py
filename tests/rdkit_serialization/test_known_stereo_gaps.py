@@ -2,14 +2,25 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from itertools import combinations, product
 import json
 import unittest
 
-from rdkit import Chem, RDLogger, rdBase
+from rdkit import Chem, rdBase
 
 from grimace import _core, _runtime
 from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.marker_slot_equivalence import (
+    MarkerSlotSet,
+    MarkerSlots,
+    canonical_isomeric_smiles,
+    direction_erased_skeleton,
+    direction_marker_slots,
+    directional_bond_signature,
+    double_bond_stereo_signature,
+    emitted_marker_slots_from_attempt,
+    parse_equivalent_minimal_marker_slot_sets,
+    writer_marker_slot_quotient_diagnostic,
+)
 from tests.helpers.public_runtime import make_determinized_decoder
 from tests.helpers.rdkit_writer_membership import (
     load_pinned_writer_membership_cases,
@@ -60,8 +71,6 @@ SMALLEST_GAP_CASE_ID = "github3967_part2_directional_ring_closure_canonical"
 SMALLEST_GAP_ROOT_IDX = 0
 SMALLEST_GAP_TERMINAL_PREFIX = "C1=CC/C=C2\\C3=C"
 SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE = "\\"
-MarkerSlots = tuple[tuple[int, str], ...]
-MarkerSlotSet = tuple[MarkerSlots, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,14 +99,6 @@ class KnownStereoGapCase:
     rdkit_random_vector_index: int | None
     check_grimace_decoder_path: bool
     check_grimace_support: bool
-
-
-@dataclass(frozen=True, slots=True)
-class WriterMarkerSlotQuotientDiagnostic:
-    emitted_marker_slots: MarkerSlots
-    semantic_row_accepts: bool
-    marker_slot_quotient_candidate: bool
-    rdkit_writer_target_slots: bool
 
 
 def _marker_slot_set_from_json(
@@ -356,179 +357,6 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
     return tuple(cases)
 
 
-def _direction_erased_skeleton(smiles: str) -> str:
-    return "".join(char for char in smiles if char not in {"/", "\\"})
-
-
-def _direction_marker_slots(smiles: str) -> MarkerSlots:
-    slots = []
-    skeleton_slot = 0
-    for char in smiles:
-        if char in {"/", "\\"}:
-            slots.append((skeleton_slot, char))
-        else:
-            skeleton_slot += 1
-    return tuple(slots)
-
-
-def _emitted_marker_slots_from_attempt(attempt: dict[str, object]) -> MarkerSlots:
-    raw_slots = attempt["emitted_marker_slots"]
-    if type(raw_slots) is not list:
-        raise AssertionError("emitted_marker_slots diagnostic must be a list")
-    return tuple((slot, marker) for slot, marker in raw_slots)
-
-
-def _writer_marker_slot_quotient_diagnostic(
-    case: KnownStereoGapCase,
-    attempt: dict[str, object],
-) -> WriterMarkerSlotQuotientDiagnostic:
-    parse_equivalent_slots = case.parse_equivalent_minimal_marker_slots
-    if parse_equivalent_slots is None:
-        raise AssertionError(
-            f"case {case.case_id!r} must pin parse-equivalent marker slots"
-        )
-    emitted_marker_slots = _emitted_marker_slots_from_attempt(attempt)
-    semantic_row_accepts = bool(attempt["accepted"])
-    return WriterMarkerSlotQuotientDiagnostic(
-        emitted_marker_slots=emitted_marker_slots,
-        semantic_row_accepts=semantic_row_accepts,
-        marker_slot_quotient_candidate=(
-            not semantic_row_accepts and emitted_marker_slots in parse_equivalent_slots
-        ),
-        rdkit_writer_target_slots=(
-            emitted_marker_slots == _direction_marker_slots(case.expected)
-        ),
-    )
-
-
-def _smiles_from_direction_marker_slots(
-    skeleton: str,
-    marker_slots: MarkerSlots,
-) -> str:
-    markers_by_slot = dict(marker_slots)
-    parts = []
-    for slot, char in enumerate(skeleton):
-        if slot in markers_by_slot:
-            parts.append(markers_by_slot[slot])
-        parts.append(char)
-    if len(skeleton) in markers_by_slot:
-        parts.append(markers_by_slot[len(skeleton)])
-    return "".join(parts)
-
-
-def _directional_bond_signature(mol: Chem.Mol) -> tuple[tuple[int, int, str], ...]:
-    return tuple(
-        sorted(
-            (
-                bond.GetBeginAtomIdx(),
-                bond.GetEndAtomIdx(),
-                str(bond.GetBondDir()),
-            )
-            for bond in mol.GetBonds()
-            if bond.GetBondDir() != Chem.BondDir.NONE
-        )
-    )
-
-
-def _double_bond_stereo_signature(
-    mol: Chem.Mol,
-) -> tuple[tuple[int, int, str, tuple[int, ...]], ...]:
-    return tuple(
-        sorted(
-            (
-                bond.GetBeginAtomIdx(),
-                bond.GetEndAtomIdx(),
-                str(bond.GetStereo()),
-                tuple(bond.GetStereoAtoms()),
-            )
-            for bond in mol.GetBonds()
-            if bond.GetStereo() != Chem.BondStereo.STEREONONE
-        )
-    )
-
-
-def _canonical_isomeric_smiles(mol: Chem.Mol) -> str:
-    return Chem.MolToSmiles(
-        Chem.Mol(mol),
-        canonical=True,
-        isomericSmiles=True,
-    )
-
-
-def _single_marker_candidate_slots(skeleton: str) -> tuple[int, ...]:
-    candidate_slots = []
-    RDLogger.DisableLog("rdApp.*")
-    try:
-        for slot in range(len(skeleton) + 1):
-            if any(
-                Chem.MolFromSmiles(
-                    _smiles_from_direction_marker_slots(skeleton, ((slot, marker),))
-                )
-                is not None
-                for marker in ("/", "\\")
-            ):
-                candidate_slots.append(slot)
-    finally:
-        RDLogger.EnableLog("rdApp.*")
-    return tuple(candidate_slots)
-
-
-def _parse_equivalent_minimal_marker_slot_sets(
-    skeleton: str,
-    reference_stereo_signature: tuple[tuple[int, int, str, tuple[int, ...]], ...],
-) -> MarkerSlotSet:
-    # A minimal directional-bond basis needs at most two marker-bearing
-    # neighboring bonds per double bond; shared markers can reduce that count.
-    max_marker_count = 2 * len(reference_stereo_signature)
-    candidate_slots = _single_marker_candidate_slots(skeleton)
-    valid_marker_slot_sets = []
-
-    RDLogger.DisableLog("rdApp.*")
-    try:
-        for marker_count in range(max_marker_count + 1):
-            for slots in combinations(candidate_slots, marker_count):
-                for markers in product(("/", "\\"), repeat=marker_count):
-                    marker_slots = tuple(zip(slots, markers))
-                    mol = Chem.MolFromSmiles(
-                        _smiles_from_direction_marker_slots(skeleton, marker_slots)
-                    )
-                    if (
-                        mol is not None
-                        and _double_bond_stereo_signature(mol)
-                        == reference_stereo_signature
-                    ):
-                        valid_marker_slot_sets.append(marker_slots)
-
-        minimal_marker_slot_sets = []
-        for marker_slots in valid_marker_slot_sets:
-            is_minimal = True
-            for marker_idx in range(len(marker_slots)):
-                reduced_marker_slots = tuple(
-                    marker_slot
-                    for idx, marker_slot in enumerate(marker_slots)
-                    if idx != marker_idx
-                )
-                reduced_mol = Chem.MolFromSmiles(
-                    _smiles_from_direction_marker_slots(
-                        skeleton,
-                        reduced_marker_slots,
-                    )
-                )
-                if (
-                    reduced_mol is not None
-                    and _double_bond_stereo_signature(reduced_mol)
-                    == reference_stereo_signature
-                ):
-                    is_minimal = False
-                    break
-            if is_minimal:
-                minimal_marker_slot_sets.append(marker_slots)
-    finally:
-        RDLogger.EnableLog("rdApp.*")
-
-    return tuple(sorted(minimal_marker_slot_sets))
-
-
 class KnownStereoGapTests(unittest.TestCase):
     """Red tests for coupled directional-stereo parity gaps.
 
@@ -593,16 +421,16 @@ class KnownStereoGapTests(unittest.TestCase):
 
         self.assertEqual(case.expected, self._rdkit_output(source_mol, case))
         self.assertEqual(
-            _double_bond_stereo_signature(source_mol),
-            _double_bond_stereo_signature(expected_mol),
+            double_bond_stereo_signature(source_mol),
+            double_bond_stereo_signature(expected_mol),
         )
         self.assertNotEqual(
-            _directional_bond_signature(source_mol),
-            _directional_bond_signature(expected_mol),
+            directional_bond_signature(source_mol),
+            directional_bond_signature(expected_mol),
         )
 
-        source_marker_slots = _direction_marker_slots(source_smiles)
-        rdkit_marker_slots = _direction_marker_slots(case.expected)
+        source_marker_slots = direction_marker_slots(source_smiles)
+        rdkit_marker_slots = direction_marker_slots(case.expected)
         self.assertEqual(4, len(source_marker_slots))
         self.assertEqual(3, len(rdkit_marker_slots))
         self.assertNotEqual(source_marker_slots, rdkit_marker_slots)
@@ -617,16 +445,16 @@ class KnownStereoGapTests(unittest.TestCase):
         assert case.parse_equivalent_minimal_marker_slots is not None
         assert case.expected_current_same_skeleton_marker_slots is not None
 
-        skeleton = _direction_erased_skeleton(case.expected)
+        skeleton = direction_erased_skeleton(case.expected)
         source_mol = self._mol_from_case(case)
-        reference_signature = _double_bond_stereo_signature(source_mol)
-        parse_equivalent_marker_slots = _parse_equivalent_minimal_marker_slot_sets(
+        reference_signature = double_bond_stereo_signature(source_mol)
+        parse_equivalent_marker_slots = parse_equivalent_minimal_marker_slot_sets(
             skeleton,
             reference_signature,
         )
 
-        source_marker_slots = _direction_marker_slots(source_smiles)
-        rdkit_marker_slots = _direction_marker_slots(case.expected)
+        source_marker_slots = direction_marker_slots(source_smiles)
+        rdkit_marker_slots = direction_marker_slots(case.expected)
         self.assertEqual(
             case.parse_equivalent_minimal_marker_slots,
             parse_equivalent_marker_slots,
@@ -694,11 +522,16 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(0, attempt["row_count_after_marker_events"])
         self.assertFalse(attempt["accepted"])
 
-        quotient = _writer_marker_slot_quotient_diagnostic(case, attempt)
+        quotient = writer_marker_slot_quotient_diagnostic(
+            emitted_marker_slots=emitted_marker_slots_from_attempt(attempt),
+            semantic_row_accepts=bool(attempt["accepted"]),
+            parse_equivalent_marker_slots=case.parse_equivalent_minimal_marker_slots,
+            rdkit_expected_smiles=case.expected,
+        )
         self.assertFalse(quotient.semantic_row_accepts)
         self.assertTrue(quotient.marker_slot_quotient_candidate)
         self.assertTrue(quotient.rdkit_writer_target_slots)
-        self.assertEqual(_direction_marker_slots(case.expected), quotient.emitted_marker_slots)
+        self.assertEqual(direction_marker_slots(case.expected), quotient.emitted_marker_slots)
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:
@@ -840,12 +673,12 @@ class KnownStereoGapTests(unittest.TestCase):
                     )
                     support_cache[support_key] = support
 
-                expected_skeleton = _direction_erased_skeleton(case.expected)
+                expected_skeleton = direction_erased_skeleton(case.expected)
                 same_skeleton_support = tuple(
                     sorted(
                         smiles
                         for smiles in support
-                        if _direction_erased_skeleton(smiles) == expected_skeleton
+                        if direction_erased_skeleton(smiles) == expected_skeleton
                     )
                 )
 
@@ -856,7 +689,7 @@ class KnownStereoGapTests(unittest.TestCase):
                 )
                 actual_marker_slots = tuple(
                     sorted(
-                        _direction_marker_slots(smiles)
+                        direction_marker_slots(smiles)
                         for smiles in same_skeleton_support
                     )
                 )
@@ -868,7 +701,7 @@ class KnownStereoGapTests(unittest.TestCase):
                 if case.expected_current_same_skeleton_support_count:
                     self.assertTrue(
                         all(
-                            marker_slots != _direction_marker_slots(case.expected)
+                            marker_slots != direction_marker_slots(case.expected)
                             for marker_slots in actual_marker_slots
                         ),
                         case.case_id,
@@ -901,11 +734,11 @@ class KnownStereoGapTests(unittest.TestCase):
                 )
 
                 mol = self._mol_from_case(case)
-                reference_smiles = _canonical_isomeric_smiles(mol)
+                reference_smiles = canonical_isomeric_smiles(mol)
                 expected_mol = Chem.MolFromSmiles(case.expected)
                 expected_parse_equivalent = (
                     expected_mol is not None
-                    and _canonical_isomeric_smiles(expected_mol) == reference_smiles
+                    and canonical_isomeric_smiles(expected_mol) == reference_smiles
                 )
                 self.assertEqual(
                     case.expected_rdkit_output_parse_equivalent,
@@ -926,16 +759,16 @@ class KnownStereoGapTests(unittest.TestCase):
                     )
                     support_cache[support_key] = support
 
-                expected_skeleton = _direction_erased_skeleton(case.expected)
+                expected_skeleton = direction_erased_skeleton(case.expected)
                 equivalent_count = 0
                 mismatch_count = 0
                 for smiles in support:
-                    if _direction_erased_skeleton(smiles) != expected_skeleton:
+                    if direction_erased_skeleton(smiles) != expected_skeleton:
                         continue
                     support_mol = Chem.MolFromSmiles(smiles)
                     is_equivalent = (
                         support_mol is not None
-                        and _canonical_isomeric_smiles(support_mol)
+                        and canonical_isomeric_smiles(support_mol)
                         == reference_smiles
                     )
                     if is_equivalent:

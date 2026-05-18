@@ -1451,9 +1451,9 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         )
                     )
 
-    def test_shadow_marker_placement_state_tracks_no_marker_events(self) -> None:
-        saw_shadow_marker_event = False
-        saw_shadow_no_marker_event = False
+    def test_support_boundary_marker_placement_state_tracks_no_marker_events(self) -> None:
+        saw_boundary_marker_event = False
+        saw_boundary_no_marker_event = False
 
         for case in self.cases:
             mol = parse_smiles(case.smiles)
@@ -1471,33 +1471,33 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         )
                     )
 
-                    shadow_debug = row["shadow_debug"]
-                    shadow_marker_event_counts = Counter(
+                    support_boundary = row["support_boundary"]
+                    boundary_marker_event_counts = Counter(
                         event["component_idx"]
-                        for event in shadow_debug["marker_event_facts"]
+                        for event in support_boundary["marker_event_facts"]
                     )
-                    saw_shadow_marker_event |= any(
+                    saw_boundary_marker_event |= any(
                         event["event"] == "marker_placed"
-                        for event in shadow_debug["marker_event_facts"]
+                        for event in support_boundary["marker_event_facts"]
                     )
-                    saw_shadow_no_marker_event |= any(
+                    saw_boundary_no_marker_event |= any(
                         event["event"] == "no_marker"
-                        for event in shadow_debug["marker_event_facts"]
+                        for event in support_boundary["marker_event_facts"]
                     )
                     self.assertTrue(
                         all(
                             isinstance(event["slot"], int)
-                            for event in shadow_debug["marker_event_facts"]
+                            for event in support_boundary["marker_event_facts"]
                         )
                     )
                     self.assertLessEqual(
-                        len(shadow_debug["marker_obligation_facts"]),
-                        len(shadow_debug["marker_event_facts"]),
+                        len(support_boundary["marker_obligation_facts"]),
+                        len(support_boundary["marker_event_facts"]),
                     )
                     self.assertTrue(
                         all(
                             isinstance(event["slot"], int)
-                            for event in shadow_debug["marker_obligation_facts"]
+                            for event in support_boundary["marker_obligation_facts"]
                         )
                     )
                     self.assertTrue(
@@ -1507,14 +1507,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                             and isinstance(
                                 domain["same_side_other_edge_future_markers"], list
                             )
-                            for domain in shadow_debug["marker_obligation_domains"]
+                            for domain in support_boundary["marker_obligation_domains"]
                         )
                     )
 
-                    for components in shadow_debug["marker_placement_state"].values():
+                    for components in support_boundary["marker_placement_state"].values():
                         for component in components:
                             self.assertEqual(
-                                shadow_marker_event_counts[component["component_idx"]],
+                                boundary_marker_event_counts[component["component_idx"]],
                                 component["marker_event_count"],
                             )
                             self.assertEqual(
@@ -1556,7 +1556,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 component["is_empty_after_marker_events"],
                                 component["row_count_after_marker_events"] == 0,
                             )
-                    for components in shadow_debug["marker_obligation_state"].values():
+                    for components in support_boundary["marker_obligation_state"].values():
                         for component in components:
                             self.assertEqual(
                                 component["row_count_after_marker_events"],
@@ -1571,8 +1571,8 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 component["row_count_after_marker_events"] == 0,
                             )
 
-        self.assertTrue(saw_shadow_marker_event)
-        self.assertTrue(saw_shadow_no_marker_event)
+        self.assertTrue(saw_boundary_marker_event)
+        self.assertTrue(saw_boundary_no_marker_event)
 
     def test_reduced_porphyrin_is_marker_obligation_routing_witness(self) -> None:
         case = next(
@@ -1584,13 +1584,13 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
         rows = _core._stereo_constraint_output_facts(prepared)
 
-        shadow_event_counts = Counter(
+        boundary_event_counts = Counter(
             event["event"]
             for row in rows
-            for event in row["shadow_debug"]["marker_event_facts"]
+            for event in row["support_boundary"]["marker_event_facts"]
         )
-        self.assertGreater(shadow_event_counts["marker_placed"], 0)
-        self.assertGreater(shadow_event_counts["no_marker"], 0)
+        self.assertGreater(boundary_event_counts["marker_placed"], 0)
+        self.assertGreater(boundary_event_counts["no_marker"], 0)
 
         top_level_empty_counts = Counter(
             layer_name
@@ -1601,10 +1601,10 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         )
         self.assertFalse(top_level_empty_counts)
 
-        shadow_empty_counts = Counter(
+        boundary_empty_counts = Counter(
             layer_name
             for row in rows
-            for layer_name, components in row["shadow_debug"][
+            for layer_name, components in row["support_boundary"][
                 "marker_placement_state"
             ].items()
             for component in components
@@ -1612,23 +1612,23 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         )
         self.assertEqual(
             {"semantic", "rdkit_local_writer", "rdkit_traversal_writer"},
-            set(shadow_empty_counts),
+            set(boundary_empty_counts),
         )
-        self.assertTrue(all(count > 0 for count in shadow_empty_counts.values()))
-        shadow_obligation_empty_counts = Counter(
+        self.assertTrue(all(count > 0 for count in boundary_empty_counts.values()))
+        boundary_obligation_empty_counts = Counter(
             layer_name
             for row in rows
-            for layer_name, components in row["shadow_debug"][
+            for layer_name, components in row["support_boundary"][
                 "marker_obligation_state"
             ].items()
             for component in components
             if component["is_empty_after_marker_events"]
         )
-        self.assertFalse(shadow_obligation_empty_counts)
+        self.assertFalse(boundary_obligation_empty_counts)
         deferred_domains = [
             domain
             for row in rows
-            for domain in row["shadow_debug"]["marker_obligation_domains"]
+            for domain in row["support_boundary"]["marker_obligation_domains"]
             if domain["is_deferred"]
         ]
         self.assertTrue(deferred_domains)
@@ -1648,8 +1648,8 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
 
         saw_same_side_different_edge_future_marker = False
         for row in rows:
-            domains = row["shadow_debug"]["marker_obligation_domains"]
-            obligations = row["shadow_debug"]["marker_obligation_facts"]
+            domains = row["support_boundary"]["marker_obligation_domains"]
+            obligations = row["support_boundary"]["marker_obligation_facts"]
 
             retained_obligations = {
                 (

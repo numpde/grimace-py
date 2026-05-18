@@ -82,6 +82,7 @@ struct DirectionalMarkerTrace {
     side_idx: isize,
     endpoint_atom_idx: isize,
     selected_neighbor_idx: isize,
+    support_boundary_selected_neighbor_idx: isize,
     edge_begin_idx: isize,
     edge_end_idx: isize,
     role: StereoTraversalRole,
@@ -833,17 +834,13 @@ fn directional_token_role(prefix: &str, next_action: Option<&WalkerAction>) -> S
     }
 }
 
-// Compatibility diagnostic for the old selected-carrier marker path. This is
-// deliberately narrower than marker-placement row semantics: a visible marker
-// on a complement/bridge candidate may still be valid RDKit writer output.
-fn selected_carrier_directional_marker_side(
+fn directional_marker_side_from_selected_neighbors(
     runtime: &StereoWalkerRuntimeData,
-    state: &RootedConnectedStereoWalkerStateData,
+    selected_neighbors: &[isize],
     begin_idx: usize,
     end_idx: usize,
 ) -> Option<(usize, usize, usize)> {
     let edge = canonical_edge(begin_idx, end_idx);
-    let selected_neighbors = resolved_selected_neighbors(runtime, state);
     runtime
         .edge_to_side_ids
         .get(&edge)?
@@ -864,6 +861,41 @@ fn selected_carrier_directional_marker_side(
                 edge_neighbor_idx,
             ))
         })
+}
+
+// Compatibility diagnostic for the old selected-carrier marker path. This is
+// deliberately narrower than marker-placement row semantics: a visible marker
+// on a complement/bridge candidate may still be valid RDKit writer output.
+fn legacy_selected_carrier_directional_marker_side(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    begin_idx: usize,
+    end_idx: usize,
+) -> Option<(usize, usize, usize)> {
+    let selected_neighbors = resolved_selected_neighbors(runtime, state);
+    directional_marker_side_from_selected_neighbors(
+        runtime,
+        &selected_neighbors,
+        begin_idx,
+        end_idx,
+    )
+}
+
+fn support_boundary_selected_carrier_directional_marker_side(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    begin_idx: usize,
+    end_idx: usize,
+) -> Option<(usize, usize, usize)> {
+    let selected_neighbors =
+        partial_joined_support_boundary_selected_neighbors(runtime, graph, state).ok()?;
+    directional_marker_side_from_selected_neighbors(
+        runtime,
+        &selected_neighbors,
+        begin_idx,
+        end_idx,
+    )
 }
 
 fn rdkit_marker_event_trace_rows_for_edge(
@@ -950,6 +982,7 @@ fn record_rdkit_marker_event_traces_for_edge(
 
 fn record_rdkit_directional_marker_trace(
     runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
     state: &mut RootedConnectedStereoWalkerStateData,
     begin_idx: isize,
     end_idx: isize,
@@ -969,7 +1002,7 @@ fn record_rdkit_directional_marker_trace(
             let begin = begin_idx as usize;
             let end = end_idx as usize;
             if let Some((component_idx, side_idx, selected_neighbor_idx)) =
-                selected_carrier_directional_marker_side(runtime, state, begin, end)
+                legacy_selected_carrier_directional_marker_side(runtime, state, begin, end)
             {
                 let endpoint_atom_idx = runtime.side_infos[side_idx].endpoint_atom_idx;
                 (
@@ -984,6 +1017,15 @@ fn record_rdkit_directional_marker_trace(
         } else {
             (-1, -1, -1, -1)
         };
+    let support_boundary_selected_neighbor_idx = if begin_idx >= 0 && end_idx >= 0 {
+        let begin = begin_idx as usize;
+        let end = end_idx as usize;
+        support_boundary_selected_carrier_directional_marker_side(runtime, graph, state, begin, end)
+            .map(|(_, _, selected_neighbor_idx)| selected_neighbor_idx as isize)
+            .unwrap_or(-1)
+    } else {
+        -1
+    };
 
     Arc::make_mut(&mut state.directional_marker_traces).push(DirectionalMarkerTrace {
         slot: direction_erased_slot(state.prefix.as_ref()),
@@ -992,6 +1034,7 @@ fn record_rdkit_directional_marker_trace(
         side_idx,
         endpoint_atom_idx,
         selected_neighbor_idx,
+        support_boundary_selected_neighbor_idx,
         edge_begin_idx: begin_idx,
         edge_end_idx: end_idx,
         role,
@@ -1017,6 +1060,7 @@ fn direction_marker_from_literal_token(token: &str) -> Option<char> {
 
 fn record_rdkit_literal_edge_marker_trace(
     runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
     state: &mut RootedConnectedStereoWalkerStateData,
     begin_idx: isize,
     end_idx: isize,
@@ -1024,7 +1068,9 @@ fn record_rdkit_literal_edge_marker_trace(
     role: StereoTraversalRole,
 ) {
     if direction_marker_from_literal_token(token).is_some() {
-        record_rdkit_directional_marker_trace(runtime, state, begin_idx, end_idx, token, role);
+        record_rdkit_directional_marker_trace(
+            runtime, graph, state, begin_idx, end_idx, token, role,
+        );
     } else {
         record_rdkit_marker_event_traces_for_edge(runtime, state, begin_idx, end_idx, None, role);
     }
@@ -3167,6 +3213,7 @@ fn process_children_terminal_successors(
             let role = directional_token_role(base_state.prefix.as_ref(), None);
             record_rdkit_literal_edge_marker_trace(
                 context.runtime,
+                context.graph,
                 &mut base_state,
                 step.parent_idx as isize,
                 step.child_idx as isize,
@@ -3201,6 +3248,7 @@ fn process_children_terminal_successors(
                 let role = directional_token_role(successor.prefix.as_ref(), None);
                 record_rdkit_directional_marker_trace(
                     context.runtime,
+                    context.graph,
                     &mut successor,
                     deferred.begin_idx,
                     deferred.end_idx,
@@ -5635,6 +5683,10 @@ fn directional_marker_provenance_to_py(
         row.set_item("side_idx", trace.side_idx)?;
         row.set_item("endpoint_atom_idx", trace.endpoint_atom_idx)?;
         row.set_item("selected_neighbor_idx", trace.selected_neighbor_idx)?;
+        row.set_item(
+            "support_boundary_selected_neighbor_idx",
+            trace.support_boundary_selected_neighbor_idx,
+        )?;
         row.set_item("edge_begin_idx", trace.edge_begin_idx)?;
         row.set_item("edge_end_idx", trace.edge_end_idx)?;
 
@@ -9557,6 +9609,7 @@ fn process_children_successors_by_token(
             let role = directional_token_role(successor.prefix.as_ref(), None);
             record_rdkit_literal_edge_marker_trace(
                 context.runtime,
+                context.graph,
                 &mut successor,
                 parent_idx as isize,
                 child_idx as isize,
@@ -9982,6 +10035,7 @@ fn stereo_next_token_successors_from_boundary(
                 );
                 record_rdkit_directional_marker_trace(
                     runtime,
+                    graph,
                     &mut successor,
                     deferred.begin_idx,
                     deferred.end_idx,
@@ -11379,6 +11433,7 @@ mod tests {
         let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
         record_rdkit_literal_edge_marker_trace(
             &runtime,
+            &graph,
             &mut state,
             0,
             1,
@@ -11710,6 +11765,45 @@ mod tests {
                 terminal_partial_joined_mismatch_count: 0,
             },
             counts,
+        );
+    }
+
+    #[test]
+    fn directional_marker_traces_expose_support_boundary_shadow_lookup() {
+        let Some(graph) = prepared_graph_from_smiles("CC/C(C)=C(\\C)C(/C)=C/C") else {
+            return;
+        };
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let mut seen = BTreeSet::new();
+        let mut stack = vec![initial_state];
+        let mut total_marker_trace_count = 0usize;
+        let mut support_boundary_shadow_count = 0usize;
+        let mut support_boundary_shadow_mismatch_count = 0usize;
+        while let Some(mut state) = stack.pop() {
+            drain_exact_linear_stereo_actions(&mut state);
+            if !seen.insert(state.clone()) {
+                continue;
+            }
+            for trace in state.directional_marker_traces.iter() {
+                total_marker_trace_count += 1;
+                if trace.support_boundary_selected_neighbor_idx >= 0 {
+                    support_boundary_shadow_count += 1;
+                    if trace.support_boundary_selected_neighbor_idx != trace.selected_neighbor_idx {
+                        support_boundary_shadow_mismatch_count += 1;
+                    }
+                }
+            }
+            stack.extend(flatten_exact_stereo_successor_groups(
+                successors_by_token_stereo_raw(&runtime, &graph, &state)
+                    .expect("shared-carrier witness successors should build"),
+            ));
+        }
+        assert_eq!(262, total_marker_trace_count);
+        assert_eq!(262, support_boundary_shadow_count);
+        assert_eq!(
+            0,
+            support_boundary_shadow_mismatch_count,
+            "selected marker traces should expose a support-boundary shadow without changing the legacy trace value"
         );
     }
 

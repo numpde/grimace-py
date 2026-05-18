@@ -1,0 +1,111 @@
+{
+  "cases": [
+    {
+      "diagnostic_limit": 20,
+      "diagnostic_max_states": 10000,
+      "expected_basis_candidate_count": 2,
+      "expected_basis_class_counts": {
+        "selected_carrier": 2
+      },
+      "expected_current_support_accepts_candidate_count": 2,
+      "expected_diagnostic_row_count": 4,
+      "expected_grimace_runtime_support_count": 3,
+      "expected_legacy_topology_guard_component_count": 0,
+      "expected_max_row_survivor_count": 1,
+      "expected_raw_selected_carrier_explained_component_count": 2,
+      "expected_visible_edge_explained_component_count": 0,
+      "forbidden_basis_classes": [
+        "non_selected_visible_edge",
+        "shared_visible_edge"
+      ],
+      "id": "simple_alkene_selected_carrier_only",
+      "required_basis_classes": [
+        "selected_carrier"
+      ],
+      "root_idx": -1,
+      "smiles": "C/C=C/C",
+      "source": "visible-marker-basis task 03: ordinary selected-carrier guard"
+    },
+    {
+      "diagnostic_limit": 100,
+      "diagnostic_max_states": 100000,
+      "expected_basis_candidate_count": 76,
+      "expected_basis_class_counts": {
+        "non_selected_visible_edge": 2,
+        "selected_carrier": 50,
+        "shared_visible_edge": 24
+      },
+      "expected_current_support_accepts_candidate_count": 36,
+      "expected_diagnostic_row_count": 60,
+      "expected_grimace_runtime_support_count": 6,
+      "expected_legacy_topology_guard_component_count": 56,
+      "expected_max_row_survivor_count": 12,
+      "expected_raw_selected_carrier_explained_component_count": 42,
+      "expected_visible_edge_explained_component_count": 26,
+      "forbidden_basis_classes": [],
+      "id": "manual_stereo_atoms_selected_nonselected_shared",
+      "required_basis_classes": [
+        "non_selected_visible_edge",
+        "selected_carrier",
+        "shared_visible_edge"
+      ],
+      "root_idx": 4,
+      "smiles": "CC\\C=C/C(/C=C/CC)=C(/CC)CO",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoAtoms"
+    },
+    {
+      "diagnostic_limit": 300,
+      "diagnostic_max_states": 200000,
+      "expected_basis_candidate_count": 291,
+      "expected_basis_class_counts": {
+        "selected_carrier": 196,
+        "shared_visible_edge": 95
+      },
+      "expected_current_support_accepts_candidate_count": 134,
+      "expected_diagnostic_row_count": 272,
+      "expected_grimace_runtime_support_count": 96,
+      "expected_legacy_topology_guard_component_count": 254,
+      "expected_max_row_survivor_count": 12,
+      "expected_raw_selected_carrier_explained_component_count": 159,
+      "expected_visible_edge_explained_component_count": 95,
+      "forbidden_basis_classes": [
+        "non_selected_visible_edge"
+      ],
+      "id": "manual_difficult_diene_shared",
+      "required_basis_classes": [
+        "selected_carrier",
+        "shared_visible_edge"
+      ],
+      "root_idx": -1,
+      "smiles": "CC/C=C\\C(CO)=C(/C)CC",
+      "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoDifficultCase"
+    },
+    {
+      "diagnostic_limit": 40,
+      "diagnostic_max_states": 200000,
+      "expected_basis_candidate_count": 6,
+      "expected_basis_class_counts": {
+        "selected_carrier": 6
+      },
+      "expected_current_support_accepts_candidate_count": 6,
+      "expected_diagnostic_row_count": 12,
+      "expected_grimace_runtime_support_count": 22,
+      "expected_legacy_topology_guard_component_count": 0,
+      "expected_max_row_survivor_count": 72,
+      "expected_raw_selected_carrier_explained_component_count": 6,
+      "expected_visible_edge_explained_component_count": 0,
+      "forbidden_basis_classes": [
+        "non_selected_visible_edge",
+        "shared_visible_edge"
+      ],
+      "id": "minimal_ring_directional_no_nonselected_broadening",
+      "required_basis_classes": [
+        "selected_carrier"
+      ],
+      "root_idx": -1,
+      "smiles": "C/N=C1C=C/C(=N/C)[N-]/1",
+      "source": "tmp/exploration/stereo_assignment/027_investigate_rdkit_bond_dir_policy.py"
+    }
+  ],
+  "rdkit_version": "2026.03.1"
+}

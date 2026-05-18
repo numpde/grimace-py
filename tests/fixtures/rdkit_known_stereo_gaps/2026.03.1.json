@@ -147,14 +147,15 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 1,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
-        "current_same_skeleton_parse_equivalent_present"
+        "current_same_skeleton_parse_equivalent_present",
+        "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 1,
-      "expected_current_same_skeleton_parse_mismatch_count": 0,
+      "expected_current_same_skeleton_parse_mismatch_count": 1,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "N1c2c(C(/C1=C1/C(=O)Nc3cc(Br)ccc13)=N\\O)cccc2",
       "rooted_at_atom": null,
@@ -170,14 +171,14 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 0,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
-        "no_current_same_skeleton_support"
+        "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 0,
-      "expected_current_same_skeleton_parse_mismatch_count": 0,
+      "expected_current_same_skeleton_parse_mismatch_count": 2,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "N1C(/C(c2c1cccc2)=N/O)=C1\\C(=O)Nc2cc(ccc21)Br",
       "rooted_at_atom": null,
@@ -193,14 +194,15 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 1,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
-        "current_same_skeleton_parse_equivalent_present"
+        "current_same_skeleton_parse_equivalent_present",
+        "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 1,
-      "expected_current_same_skeleton_parse_mismatch_count": 0,
+      "expected_current_same_skeleton_parse_mismatch_count": 1,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "N1c2c(cccc2)C(=N\\O)/C1=C1\\c2ccc(Br)cc2NC1=O",
       "rooted_at_atom": null,
@@ -216,14 +218,14 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 0,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
-        "no_current_same_skeleton_support"
+        "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 0,
-      "expected_current_same_skeleton_parse_mismatch_count": 0,
+      "expected_current_same_skeleton_parse_mismatch_count": 2,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "N1C(/C(c2c1cccc2)=N/O)=C1\\C(Nc2c1ccc(c2)Br)=O",
       "rooted_at_atom": null,
@@ -239,14 +241,15 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 1,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
-        "current_same_skeleton_parse_equivalent_present"
+        "current_same_skeleton_parse_equivalent_present",
+        "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 1,
-      "expected_current_same_skeleton_parse_mismatch_count": 0,
+      "expected_current_same_skeleton_parse_mismatch_count": 1,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "c1ccc2C(/C(Nc2c1)=C1\\c2c(NC1=O)cc(cc2)Br)=N\\O",
       "rooted_at_atom": null,
@@ -262,14 +265,14 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 1,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
         "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 0,
-      "expected_current_same_skeleton_parse_mismatch_count": 1,
+      "expected_current_same_skeleton_parse_mismatch_count": 2,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "N1C(/C(=C2/C(=N/O)c3ccccc3N2)c2c1cc(Br)cc2)=O",
       "rooted_at_atom": null,
@@ -285,14 +288,14 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 1,
+      "expected_current_same_skeleton_support_count": 2,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
         "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 0,
-      "expected_current_same_skeleton_parse_mismatch_count": 1,
+      "expected_current_same_skeleton_parse_mismatch_count": 2,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "N1C(=O)/C(c2c1cc(Br)cc2)=C1/C(=N/O)c2ccccc2N1",
       "rooted_at_atom": null,
@@ -308,14 +311,15 @@
       "gap_class": "missing_rdkit_writer_policy",
       "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
       "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 1,
+      "expected_current_same_skeleton_support_count": 4,
       "boundary_layer_classes": [
         "rdkit_expected_parse_equivalent_missing_from_support",
-        "current_same_skeleton_parse_equivalent_present"
+        "current_same_skeleton_parse_equivalent_present",
+        "current_same_skeleton_parse_mismatch_present"
       ],
       "expected_rdkit_output_parse_equivalent": true,
       "expected_current_same_skeleton_parse_equivalent_count": 1,
-      "expected_current_same_skeleton_parse_mismatch_count": 0,
+      "expected_current_same_skeleton_parse_mismatch_count": 3,
       "writer_membership_case_id": "molblock_github4582_chembl409450_canonical",
       "expected": "c1cc2c(NC(=O)/C2=C2\\Nc3c(\\C2=N/O)cccc3)cc1Br",
       "rooted_at_atom": null,

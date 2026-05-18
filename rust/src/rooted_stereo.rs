@@ -6384,6 +6384,16 @@ fn deferred_marker_basis_candidate_rows_to_py(
                         &constraint_state,
                         &boundary_facts,
                     )?;
+                let token_flip_attempts = deferred_marker_token_flip_attempts_to_py(
+                    py,
+                    runtime,
+                    state,
+                    deferred,
+                    component_token,
+                    &candidate_token,
+                    &constraint_state,
+                    &boundary_facts,
+                )?;
                 let basis_diagnostics = visible_marker_basis_diagnostics_for_component_token(
                     runtime,
                     state,
@@ -6498,6 +6508,7 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     "raw_selected_carrier_token_flips",
                     token_flips_to_py_names(&raw_selected_carrier_token_flips),
                 )?;
+                component_row.set_item("token_flip_attempts", token_flip_attempts)?;
                 component_row.set_item(
                     "visible_edge_token_flips",
                     token_flips_to_py_names(&visible_edge_token_flips),
@@ -8249,6 +8260,115 @@ fn marker_event_fact_to_py(
         }
     }
     Ok(row.unbind())
+}
+
+fn deferred_marker_token_flip_attempts_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    boundary_facts: &StereoSupportBoundaryFacts,
+) -> PyResult<Vec<Py<PyDict>>> {
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(component_token.component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Deferred token references unknown runtime component",
+        ));
+    };
+    if constraint_state.is_empty(model_component_idx) {
+        return Ok(Vec::new());
+    }
+    let token_phase_assignment_ids = constraint_state
+        .token_phase_remaining_by_component
+        .get(model_component_idx)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let mut marker_events = boundary_facts
+        .marker_obligation_event_facts_by_component
+        .get(model_component_idx)
+        .cloned()
+        .unwrap_or_default();
+    marker_events.extend(marker_events_for_deferred_component_token(
+        runtime,
+        state.prefix.as_ref(),
+        deferred,
+        component_token,
+        chosen_token,
+    )?);
+    let marker_events =
+        rdkit_writer_slot_coalesced_marker_event_facts(model_component_idx, &marker_events);
+
+    let mut attempts = Vec::<Py<PyDict>>::new();
+    for reference_token in &component_token.reference_tokens {
+        let Some(implied_token_flip) =
+            model_token_flip_for_chosen_token(reference_token, chosen_token)?
+        else {
+            continue;
+        };
+        let candidate_token_phase_assignment_ids = runtime
+            .constraint_model
+            .filter_token_phase_assignment_ids_for_token_flip(
+                model_component_idx,
+                component_token.component_idx,
+                token_phase_assignment_ids,
+                implied_token_flip,
+            )?;
+        let survivor_state = rdkit_marker_row_survivor_component_state(
+            runtime,
+            model_component_idx,
+            &candidate_token_phase_assignment_ids,
+            &marker_events,
+        )?;
+        let row = PyDict::new(py);
+        row.set_item("reference_token", reference_token)?;
+        row.set_item(
+            "implied_token_flip",
+            model_token_flip_name(implied_token_flip),
+        )?;
+        row.set_item(
+            "token_phase_assignment_ids",
+            survivor_state.token_phase_assignment_ids.clone(),
+        )?;
+        row.set_item(
+            "token_phase_assignment_count",
+            survivor_state.token_phase_assignment_ids.len(),
+        )?;
+        row.set_item(
+            "row_ids_before_marker_events",
+            survivor_state.row_ids_before_marker_events.clone(),
+        )?;
+        row.set_item(
+            "row_count_before_marker_events",
+            survivor_state.row_ids_before_marker_events.len(),
+        )?;
+        row.set_item(
+            "row_ids_after_marker_events",
+            survivor_state.row_ids_after_marker_events.clone(),
+        )?;
+        row.set_item(
+            "row_count_after_marker_events",
+            survivor_state.row_ids_after_marker_events.len(),
+        )?;
+        row.set_item(
+            "marker_events",
+            marker_events
+                .iter()
+                .copied()
+                .map(|event| marker_event_fact_to_py(py, model_component_idx, event))
+                .collect::<PyResult<Vec<_>>>()?,
+        )?;
+        row.set_item(
+            "accepted",
+            !survivor_state.row_ids_after_marker_events.is_empty(),
+        )?;
+        attempts.push(row.unbind());
+    }
+    Ok(attempts)
 }
 
 fn component_ids_for_edge(runtime: &StereoWalkerRuntimeData, edge: (usize, usize)) -> Vec<usize> {

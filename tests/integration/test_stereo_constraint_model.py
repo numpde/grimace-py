@@ -595,6 +595,37 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                                     component["policy_variant_token_flips"][variant]
                                 ),
                             )
+                        accepted_attempt_flips = {
+                            attempt["implied_token_flip"]
+                            for attempt in component["token_flip_attempts"]
+                            if attempt["accepted"]
+                        }
+                        self.assertLessEqual(
+                            set(component["accepted_token_flips"]),
+                            accepted_attempt_flips,
+                        )
+                        for attempt in component["token_flip_attempts"]:
+                            self.assertEqual(
+                                attempt["token_phase_assignment_count"],
+                                len(attempt["token_phase_assignment_ids"]),
+                            )
+                            self.assertEqual(
+                                attempt["row_count_before_marker_events"],
+                                len(attempt["row_ids_before_marker_events"]),
+                            )
+                            self.assertEqual(
+                                attempt["row_count_after_marker_events"],
+                                len(attempt["row_ids_after_marker_events"]),
+                            )
+                            self.assertEqual(
+                                attempt["accepted"],
+                                bool(attempt["row_ids_after_marker_events"]),
+                            )
+                            self.assertLessEqual(
+                                set(attempt["row_ids_after_marker_events"]),
+                                set(attempt["row_ids_before_marker_events"]),
+                            )
+                            self.assertTrue(attempt["marker_events"])
                         for basis in component["basis_candidates"]:
                             self.assertIn(
                                 basis["basis_class"],

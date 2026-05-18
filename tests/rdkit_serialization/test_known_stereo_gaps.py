@@ -542,6 +542,28 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(0, attempt["row_count_before_marker_events"])
         self.assertEqual(0, attempt["row_count_after_marker_events"])
         self.assertFalse(attempt["accepted"])
+        self.assertTrue(attempt["graph_marker_equations_accept"])
+        self.assertEqual(2, attempt["graph_marker_equation_bond_count"])
+        self.assertEqual(2, attempt["graph_marker_equation_accepted_bond_count"])
+        self.assertEqual([], attempt["graph_marker_equation_missing_side_ids"])
+        self.assertEqual([0, 1, 2, 3], attempt["graph_marker_equation_covered_side_ids"])
+        self.assertEqual(
+            [
+                {
+                    "stereo_bond": (3, 4),
+                    "side_ids": [0, 1],
+                    "accepted_parities": ["stored"],
+                    "accepted": True,
+                },
+                {
+                    "stereo_bond": (5, 6),
+                    "side_ids": [2, 3],
+                    "accepted_parities": ["flipped"],
+                    "accepted": True,
+                },
+            ],
+            attempt["graph_marker_equation_bonds"],
+        )
 
         quotient = writer_marker_slot_quotient_diagnostic(
             emitted_marker_slots=emitted_marker_slots_from_attempt(attempt),
@@ -553,6 +575,68 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertTrue(quotient.marker_slot_quotient_candidate)
         self.assertTrue(quotient.rdkit_writer_target_slots)
         self.assertEqual(direction_marker_slots(case.expected), quotient.emitted_marker_slots)
+
+    def test_chembl409450_gap_exposes_component_graph_marker_equation_boundary(
+        self,
+    ) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "github4582_chembl409450_random_vector_seed1_index0"
+        )
+        mol = self._mol_from_case(case)
+        prepared = _runtime.prepare_smiles_graph(
+            mol,
+            flags=SUPPORTED_STEREO_DIAGNOSTIC_FLAGS,
+        )
+        diagnostics = _core._stereo_deferred_marker_basis_diagnostics(
+            prepared,
+            root_idx=13,
+            limit=20_000,
+            max_states=800_000,
+        )
+        self.assertFalse(diagnostics["truncated"])
+
+        target_rows = [
+            row
+            for row in diagnostics["rows"]
+            if row["prefix"] == "c12c(NC(/C2=C2"
+            and row["candidate_token"] == "/"
+            and not row["current_support_accepts_candidate"]
+        ]
+        self.assertEqual(1, len(target_rows))
+        target_row = target_rows[0]
+        target_components = [
+            component
+            for component in target_row["components"]
+            if component["component_idx"] == 1
+        ]
+        self.assertEqual(1, len(target_components))
+        attempts = [
+            attempt
+            for attempt in target_components[0]["token_flip_attempts"]
+            if emitted_marker_slots_from_attempt(attempt) == ((8, "/"), (13, "/"))
+        ]
+        self.assertEqual(1, len(attempts))
+        attempt = attempts[0]
+
+        self.assertFalse(attempt["accepted"])
+        self.assertTrue(attempt["graph_marker_equations_accept"])
+        self.assertEqual(1, attempt["graph_marker_equation_bond_count"])
+        self.assertEqual(1, attempt["graph_marker_equation_accepted_bond_count"])
+        self.assertEqual([], attempt["graph_marker_equation_missing_side_ids"])
+        self.assertEqual([2, 3], attempt["graph_marker_equation_covered_side_ids"])
+        self.assertEqual(
+            [
+                {
+                    "stereo_bond": (8, 9),
+                    "side_ids": [2, 3],
+                    "accepted_parities": ["flipped"],
+                    "accepted": True,
+                }
+            ],
+            attempt["graph_marker_equation_bonds"],
+        )
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:

@@ -8305,6 +8305,247 @@ fn emitted_marker_slots_from_marker_events(
         .collect()
 }
 
+fn graph_marker_equation_side_parity_for_event(
+    component: &StereoComponentConstraintModel,
+    side_position: usize,
+    event: StereoMarkerEventFact,
+) -> PyResult<Option<bool>> {
+    let Some(side_domain) = component.side_domains.get(side_position) else {
+        return Err(PyValueError::new_err(
+            "graph marker equation side index out of range",
+        ));
+    };
+    let (begin_idx, end_idx) = event.edge();
+    let neighbor_idx = if begin_idx == side_domain.endpoint_atom_idx {
+        end_idx
+    } else if end_idx == side_domain.endpoint_atom_idx {
+        begin_idx
+    } else {
+        return Err(PyValueError::new_err(
+            "graph marker equation event edge does not touch side endpoint",
+        ));
+    };
+    let Some(choice) = side_domain
+        .choices
+        .iter()
+        .find(|choice| choice.neighbor_idx == neighbor_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "graph marker equation event target outside side domain",
+        ));
+    };
+    let StereoMarkerEventFact::MarkerPlaced { marker, .. } = event else {
+        return Ok(None);
+    };
+    let observed_token = if begin_idx == side_domain.endpoint_atom_idx {
+        marker
+    } else {
+        let flipped = flip_direction_token(stereo_direction_token_name(marker))?;
+        StereoDirectionToken::from_str(&flipped)?
+    };
+    let base_token = StereoDirectionToken::from_str(&choice.base_token)?;
+    if observed_token == base_token {
+        Ok(Some(true))
+    } else if observed_token
+        == StereoDirectionToken::from_str(&flip_direction_token(&choice.base_token)?)?
+    {
+        Ok(Some(false))
+    } else {
+        Ok(None)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GraphMarkerEquationBondDiagnostic {
+    stereo_bond: (usize, usize),
+    side_ids: Vec<usize>,
+    accepted_parities: Vec<bool>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GraphMarkerEquationComponentDiagnostic {
+    bond_diagnostics: Vec<GraphMarkerEquationBondDiagnostic>,
+}
+
+fn graph_marker_equation_diagnostic_for_component(
+    runtime: &StereoWalkerRuntimeData,
+    model_component_idx: usize,
+    marker_events: &[StereoMarkerEventFact],
+) -> PyResult<GraphMarkerEquationComponentDiagnostic> {
+    let Some(component) = runtime.constraint_model.components.get(model_component_idx) else {
+        return Err(PyValueError::new_err(
+            "graph marker equation component index out of range",
+        ));
+    };
+    let mut parity_options_by_side = BTreeMap::<usize, BTreeSet<bool>>::new();
+    for &event in marker_events {
+        let StereoMarkerEventFact::MarkerPlaced {
+            slot,
+            begin_idx,
+            end_idx,
+            marker,
+            role,
+            ..
+        } = event
+        else {
+            continue;
+        };
+        for (side_position, &side_idx) in component.side_ids.iter().enumerate() {
+            let Some(side_info) = runtime.side_infos.get(side_idx) else {
+                return Err(PyValueError::new_err(
+                    "graph marker equation side index out of range",
+                ));
+            };
+            let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+                end_idx
+            } else if end_idx == side_info.endpoint_atom_idx {
+                begin_idx
+            } else {
+                continue;
+            };
+            if !side_info.candidate_neighbors.contains(&edge_neighbor_idx) {
+                continue;
+            }
+            let projected_event = StereoMarkerEventFact::MarkerPlaced {
+                side_idx,
+                slot,
+                begin_idx,
+                end_idx,
+                marker,
+                role,
+            };
+            if let Some(parity) = graph_marker_equation_side_parity_for_event(
+                component,
+                side_position,
+                projected_event,
+            )? {
+                parity_options_by_side
+                    .entry(side_idx)
+                    .or_default()
+                    .insert(parity);
+            }
+        }
+    }
+
+    let mut side_ids_by_stereo_bond = BTreeMap::<(usize, usize), Vec<usize>>::new();
+    for &side_idx in &component.side_ids {
+        let Some(side_info) = runtime.side_infos.get(side_idx) else {
+            return Err(PyValueError::new_err(
+                "graph marker equation side index out of range",
+            ));
+        };
+        side_ids_by_stereo_bond
+            .entry(canonical_edge(
+                side_info.endpoint_atom_idx,
+                side_info.other_endpoint_atom_idx,
+            ))
+            .or_default()
+            .push(side_idx);
+    }
+
+    let mut bond_diagnostics = Vec::new();
+    for (stereo_bond, side_ids) in side_ids_by_stereo_bond {
+        let mut accepted_parities = Vec::new();
+        for parity in [true, false] {
+            if side_ids.iter().all(|side_idx| {
+                parity_options_by_side
+                    .get(side_idx)
+                    .is_some_and(|options| options.contains(&parity))
+            }) {
+                accepted_parities.push(parity);
+            }
+        }
+        bond_diagnostics.push(GraphMarkerEquationBondDiagnostic {
+            stereo_bond,
+            side_ids,
+            accepted_parities,
+        });
+    }
+
+    Ok(GraphMarkerEquationComponentDiagnostic { bond_diagnostics })
+}
+
+fn graph_marker_equation_parity_name(parity: bool) -> &'static str {
+    if parity {
+        "stored"
+    } else {
+        "flipped"
+    }
+}
+
+fn graph_marker_equation_bond_diagnostics_to_py(
+    py: Python<'_>,
+    diagnostic: &GraphMarkerEquationComponentDiagnostic,
+) -> PyResult<Vec<Py<PyDict>>> {
+    diagnostic
+        .bond_diagnostics
+        .iter()
+        .map(|bond| {
+            let row = PyDict::new(py);
+            row.set_item("stereo_bond", bond.stereo_bond)?;
+            row.set_item("side_ids", bond.side_ids.clone())?;
+            row.set_item(
+                "accepted_parities",
+                bond.accepted_parities
+                    .iter()
+                    .copied()
+                    .map(graph_marker_equation_parity_name)
+                    .collect::<Vec<_>>(),
+            )?;
+            row.set_item("accepted", !bond.accepted_parities.is_empty())?;
+            Ok(row.unbind())
+        })
+        .collect()
+}
+
+fn graph_marker_equation_covered_side_ids(
+    diagnostic: &GraphMarkerEquationComponentDiagnostic,
+) -> Vec<usize> {
+    diagnostic
+        .bond_diagnostics
+        .iter()
+        .filter(|bond| !bond.accepted_parities.is_empty())
+        .flat_map(|bond| bond.side_ids.iter().copied())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn graph_marker_equation_missing_side_ids(
+    diagnostic: &GraphMarkerEquationComponentDiagnostic,
+) -> Vec<usize> {
+    diagnostic
+        .bond_diagnostics
+        .iter()
+        .filter(|bond| bond.accepted_parities.is_empty())
+        .flat_map(|bond| bond.side_ids.iter().copied())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn graph_marker_equations_accept(diagnostic: &GraphMarkerEquationComponentDiagnostic) -> bool {
+    !diagnostic.bond_diagnostics.is_empty()
+        && diagnostic
+            .bond_diagnostics
+            .iter()
+            .all(|bond| !bond.accepted_parities.is_empty())
+}
+
+fn graph_marker_equation_accepted_bond_count(
+    diagnostic: &GraphMarkerEquationComponentDiagnostic,
+) -> usize {
+    diagnostic
+        .bond_diagnostics
+        .iter()
+        .filter(|bond| !bond.accepted_parities.is_empty())
+        .count()
+}
+
+fn graph_marker_equation_bond_count(diagnostic: &GraphMarkerEquationComponentDiagnostic) -> usize {
+    diagnostic.bond_diagnostics.len()
+}
+
 fn deferred_marker_token_flip_attempts_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -8336,15 +8577,22 @@ fn deferred_marker_token_flip_attempts_to_py(
         .get(model_component_idx)
         .cloned()
         .unwrap_or_default();
-    marker_events.extend(marker_events_for_deferred_component_token(
+    let candidate_marker_events = marker_events_for_deferred_component_token(
         runtime,
         state.prefix.as_ref(),
         deferred,
         component_token,
         chosen_token,
-    )?);
+    )?;
+    marker_events.extend(candidate_marker_events.iter().copied());
     let marker_events =
         rdkit_writer_slot_coalesced_marker_event_facts(model_component_idx, &marker_events);
+    let mut graph_marker_events = boundary_facts
+        .marker_obligation_event_facts_by_component
+        .iter()
+        .flat_map(|events| events.iter().copied())
+        .collect::<Vec<_>>();
+    graph_marker_events.extend(candidate_marker_events);
 
     let mut attempts = Vec::<Py<PyDict>>::new();
     for reference_token in &component_token.reference_tokens {
@@ -8358,6 +8606,11 @@ fn deferred_marker_token_flip_attempts_to_py(
             model_component_idx,
             token_phase_assignment_ids,
             &marker_events,
+        )?;
+        let graph_marker_equations = graph_marker_equation_diagnostic_for_component(
+            runtime,
+            model_component_idx,
+            &graph_marker_events,
         )?;
         let candidate_token_phase_assignment_ids = runtime
             .constraint_model
@@ -8447,6 +8700,34 @@ fn deferred_marker_token_flip_attempts_to_py(
         row.set_item(
             "emitted_marker_slots",
             emitted_marker_slots_from_marker_events(&marker_events),
+        )?;
+        row.set_item(
+            "graph_marker_equation_bonds",
+            graph_marker_equation_bond_diagnostics_to_py(py, &graph_marker_equations)?,
+        )?;
+        row.set_item(
+            "graph_marker_equation_marker_slots",
+            emitted_marker_slots_from_marker_events(&graph_marker_events),
+        )?;
+        row.set_item(
+            "graph_marker_equation_accepted_bond_count",
+            graph_marker_equation_accepted_bond_count(&graph_marker_equations),
+        )?;
+        row.set_item(
+            "graph_marker_equation_bond_count",
+            graph_marker_equation_bond_count(&graph_marker_equations),
+        )?;
+        row.set_item(
+            "graph_marker_equations_accept",
+            graph_marker_equations_accept(&graph_marker_equations),
+        )?;
+        row.set_item(
+            "graph_marker_equation_covered_side_ids",
+            graph_marker_equation_covered_side_ids(&graph_marker_equations),
+        )?;
+        row.set_item(
+            "graph_marker_equation_missing_side_ids",
+            graph_marker_equation_missing_side_ids(&graph_marker_equations),
         )?;
         row.set_item(
             "accepted",

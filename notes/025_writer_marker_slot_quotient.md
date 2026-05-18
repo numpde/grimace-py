@@ -244,3 +244,33 @@ Acceptance for the diagnostic slice: both
 `graph_marker_equations_accept=true` while current semantic rows reject the
 RDKit target basis.  If either witness fails, the diagnostic must name the
 missing graph/writer fact precisely before any support change.
+
+## Diagnostic Slice Result
+
+The first graph-equation diagnostic should be interpreted as component-local,
+not as full-output support proof.
+
+For `github3967_part2_directional_ring_closure_canonical`, the exact terminal
+target attempt now shows the intended split:
+
+- semantic marker rows reject the candidate;
+- graph marker equations accept both stereo bonds;
+- the adjacent bonds use different parities (`stored` for bond `(3, 4)`,
+  `flipped` for bond `(5, 6)`) while sharing the emitted marker at slot `9`.
+
+For `github4582_chembl409450_random_vector_seed1_index0`, the diagnostic
+currently proves the same shape at the component frontier, not for the whole
+random-vector output in one row.  The component-1 frontier at root `13`, prefix
+`c12c(NC(/C2=C2`, candidate `/`, has emitted target slots `(8, "/")` and
+`(13, "/")`; semantic rows reject that basis while graph marker equations
+accept bond `(8, 9)` with `flipped` parity.  Component-0 rows also demonstrate
+graph-equation acceptance on their own frontier, but the current diagnostic
+does not yet aggregate a complete writer path across model components and
+roots.
+
+The remaining missing fact for full CHEMBL coverage is therefore precise:
+runtime diagnostics need a path-level writer-marker equation summary that
+aggregates global emitted marker events across model components for one
+candidate writer output.  Per-attempt component diagnostics are enough to
+validate the graph equation source, but not enough to claim the complete
+CHEMBL random-vector output has been represented as a single quotient path.

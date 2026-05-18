@@ -77,6 +77,36 @@ def _effective_layer_assignment_count(
     return assignment_count
 
 
+def _marker_row_diagnostics(prepared: object) -> dict[str, int]:
+    summary = _core._stereo_constraint_model_summary(prepared)
+    rows = _core._stereo_constraint_output_facts(prepared)
+    semantic_survivor_counts = [
+        component["row_count_after_marker_events"]
+        for row in rows
+        for component in row["marker_placement_state"]["semantic"]
+    ]
+    semantic_obligation_survivor_counts = [
+        component["row_count_after_marker_events"]
+        for row in rows
+        for component in row["marker_obligation_state"]["semantic"]
+    ]
+    return {
+        "output_row_count": len(rows),
+        "max_model_marker_row_count": max(
+            component["marker_placement_row_count"]
+            for component in summary["components"]
+        ),
+        "total_model_marker_row_count": sum(
+            component["marker_placement_row_count"]
+            for component in summary["components"]
+        ),
+        "max_semantic_marker_survivor_row_count": max(semantic_survivor_counts),
+        "max_semantic_marker_obligation_survivor_row_count": max(
+            semantic_obligation_survivor_counts
+        ),
+    }
+
+
 def _canonical_isomeric_smiles(smiles: str) -> str | None:
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -458,6 +488,39 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                     case.expected_rdkit_traversal_writer_assignment_count,
                     case.expected_rdkit_local_writer_assignment_count,
                 )
+
+    def test_pinned_marker_row_diagnostics_match_fixture_metadata(self) -> None:
+        saw_expected_diagnostics = False
+
+        for case in self.cases:
+            expected = case.expected_marker_row_diagnostics
+            if expected is None:
+                continue
+            saw_expected_diagnostics = True
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            actual = _marker_row_diagnostics(prepared)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(expected.output_row_count, actual["output_row_count"])
+                self.assertEqual(
+                    expected.max_model_marker_row_count,
+                    actual["max_model_marker_row_count"],
+                )
+                self.assertEqual(
+                    expected.total_model_marker_row_count,
+                    actual["total_model_marker_row_count"],
+                )
+                self.assertEqual(
+                    expected.max_semantic_marker_survivor_row_count,
+                    actual["max_semantic_marker_survivor_row_count"],
+                )
+                self.assertEqual(
+                    expected.max_semantic_marker_obligation_survivor_row_count,
+                    actual["max_semantic_marker_obligation_survivor_row_count"],
+                )
+
+        self.assertTrue(saw_expected_diagnostics)
 
     def test_shared_carrier_resolution_is_assignment_state_explained(self) -> None:
         saw_shared_group = False

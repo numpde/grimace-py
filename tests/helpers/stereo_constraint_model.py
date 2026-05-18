@@ -24,6 +24,15 @@ class PinnedStereoMarkerSequenceTransition:
 
 
 @dataclass(frozen=True, slots=True)
+class PinnedStereoMarkerRowDiagnostics:
+    output_row_count: int
+    max_model_marker_row_count: int
+    total_model_marker_row_count: int
+    max_semantic_marker_survivor_row_count: int
+    max_semantic_marker_obligation_survivor_row_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class PinnedStereoConstraintModelCase:
     case_id: str
     source: str
@@ -60,6 +69,7 @@ class PinnedStereoConstraintModelCase:
         tuple[tuple[str, int], ...]
     )
     expected_marker_sequence_transitions: tuple[PinnedStereoMarkerSequenceTransition, ...]
+    expected_marker_row_diagnostics: PinnedStereoMarkerRowDiagnostics | None
 
     @property
     def expected_component_count(self) -> int:
@@ -220,6 +230,54 @@ def _optional_string_int_counts(
             )
         parsed.append((key, value))
     return tuple(sorted(parsed))
+
+
+def _optional_marker_row_diagnostics(
+    raw_case: dict[str, object],
+    *,
+    fixture_path: Path,
+    case_id: str,
+) -> PinnedStereoMarkerRowDiagnostics | None:
+    raw_diagnostics = raw_case.get("expected_marker_row_diagnostics")
+    if raw_diagnostics is None:
+        return None
+    if not isinstance(raw_diagnostics, dict):
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define "
+            "expected_marker_row_diagnostics as an object"
+        )
+    return PinnedStereoMarkerRowDiagnostics(
+        output_row_count=required_positive_int(
+            raw_diagnostics,
+            field_name="output_row_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_model_marker_row_count=required_positive_int(
+            raw_diagnostics,
+            field_name="max_model_marker_row_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        total_model_marker_row_count=required_positive_int(
+            raw_diagnostics,
+            field_name="total_model_marker_row_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_semantic_marker_survivor_row_count=required_positive_int(
+            raw_diagnostics,
+            field_name="max_semantic_marker_survivor_row_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_semantic_marker_obligation_survivor_row_count=required_positive_int(
+            raw_diagnostics,
+            field_name="max_semantic_marker_obligation_survivor_row_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+    )
 
 
 def load_pinned_stereo_constraint_model_cases(
@@ -401,6 +459,11 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
+        expected_marker_row_diagnostics = _optional_marker_row_diagnostics(
+            raw_case,
+            fixture_path=fixture_case.fixture_path,
+            case_id=fixture_case.case_id,
+        )
         expected_token_flip_inference_branch_counts = _optional_string_int_counts(
             raw_case,
             field_name="expected_token_flip_inference_branch_counts",
@@ -525,6 +588,7 @@ def load_pinned_stereo_constraint_model_cases(
                     expected_ring_closure_marker_transform_residual_provenance_classes
                 ),
                 expected_marker_sequence_transitions=expected_marker_sequence_transitions,
+                expected_marker_row_diagnostics=expected_marker_row_diagnostics,
             )
         )
 

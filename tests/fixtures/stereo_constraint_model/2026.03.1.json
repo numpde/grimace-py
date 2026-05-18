@@ -8,6 +8,13 @@
         ]
       ],
       "expected_grimace_runtime_support_count": 3,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 2,
+        "max_semantic_marker_obligation_survivor_row_count": 1,
+        "max_semantic_marker_survivor_row_count": 1,
+        "output_row_count": 6,
+        "total_model_marker_row_count": 2
+      },
       "expected_rdkit_local_writer_assignment_count": 1,
       "expected_rdkit_traversal_writer_assignment_count": 1,
       "expected_semantic_assignment_count": 1,
@@ -32,6 +39,13 @@
         ]
       ],
       "expected_grimace_runtime_support_count": 5,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 2,
+        "max_semantic_marker_obligation_survivor_row_count": 1,
+        "max_semantic_marker_survivor_row_count": 1,
+        "output_row_count": 10,
+        "total_model_marker_row_count": 2
+      },
       "expected_rdkit_local_writer_assignment_count": 1,
       "expected_rdkit_traversal_writer_assignment_count": 1,
       "expected_semantic_assignment_count": 1,
@@ -56,6 +70,13 @@
         ]
       ],
       "expected_grimace_runtime_support_count": 28,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 12,
+        "max_semantic_marker_obligation_survivor_row_count": 2,
+        "max_semantic_marker_survivor_row_count": 2,
+        "output_row_count": 28,
+        "total_model_marker_row_count": 12
+      },
       "expected_rdkit_local_writer_assignment_count": 2,
       "expected_rdkit_traversal_writer_assignment_count": 2,
       "expected_semantic_assignment_count": 2,
@@ -81,6 +102,13 @@
         ]
       ],
       "expected_grimace_runtime_support_count": 24,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 12,
+        "max_semantic_marker_obligation_survivor_row_count": 3,
+        "max_semantic_marker_survivor_row_count": 3,
+        "output_row_count": 24,
+        "total_model_marker_row_count": 12
+      },
       "expected_rdkit_local_writer_assignment_count": 2,
       "expected_rdkit_traversal_writer_assignment_count": 2,
       "expected_semantic_assignment_count": 2,
@@ -108,6 +136,13 @@
       ],
       "expected_grimace_runtime_support_count": 144,
       "expected_joined_support_boundary_mismatch_count": 0,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 432,
+        "max_semantic_marker_obligation_survivor_row_count": 12,
+        "max_semantic_marker_survivor_row_count": 12,
+        "output_row_count": 144,
+        "total_model_marker_row_count": 432
+      },
       "expected_rdkit_local_writer_assignment_count": 8,
       "expected_rdkit_traversal_writer_assignment_count": 8,
       "expected_semantic_assignment_count": 8,
@@ -138,6 +173,13 @@
       "expected_direction_erased_skeletons_with_same_marker_sequence_count": 24,
       "expected_grimace_runtime_outputs_with_ring_digit_direction_count": 18,
       "expected_grimace_runtime_support_count": 28,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 144,
+        "max_semantic_marker_obligation_survivor_row_count": 4,
+        "max_semantic_marker_survivor_row_count": 4,
+        "output_row_count": 56,
+        "total_model_marker_row_count": 144
+      },
       "expected_marker_sequence_transitions": [
         {
           "direction_erased_skeleton": "N(=C1C=CC(=NC)[N-]1)C",
@@ -246,6 +288,13 @@
         ]
       ],
       "expected_grimace_runtime_support_count": 1664,
+      "expected_marker_row_diagnostics": {
+        "max_model_marker_row_count": 12,
+        "max_semantic_marker_obligation_survivor_row_count": 2,
+        "max_semantic_marker_survivor_row_count": 2,
+        "output_row_count": 6656,
+        "total_model_marker_row_count": 48
+      },
       "expected_rdkit_local_writer_assignment_count": 16,
       "expected_rdkit_traversal_writer_assignment_count": 12,
       "expected_semantic_assignment_count": 16,

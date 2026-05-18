@@ -144,3 +144,29 @@ The no-regret target is a bounded-row production path with measurement gates:
 The immediate next task is not a rows-vs-native rewrite. It is to finish
 removing stale shadow/procedural paths and keep adding measured red-gap targets
 against the row-backed boundary.
+
+## Terminal Support-Boundary Recheck
+
+Date: 2026-05-18
+
+After tightening terminal support-boundary filtering, the current pinned
+measurements still do not show row explosion:
+
+- Stereo-constraint model fixtures: 7 cases. The largest model row table is
+  still `ambiguous_shared_carrier_substituted_diene` with 432 rows in one
+  component and a terminal survivor maximum of 12 rows. The reduced porphyrin
+  fixture now has 1,536 public support strings and 6,144 diagnostic terminal
+  rows, but each component still has at most 12 model rows and at most 2
+  survivor rows after terminal marker filtering.
+- Serializer regression stereo cases: 16 all-roots isomeric cases in the
+  supported default writer mode. The largest model table is 12 rows, and the
+  largest terminal survivor count is 2 rows.
+- Supported known stereo-gap family guards: 6 cases. The difficult acyclic
+  family has 2 components, 4-6 sides, 74 total marker rows, and 72 rows in the
+  largest component. Terminal support-boundary survivor filtering reduces every
+  observed component row to 1 survivor.
+
+This strengthens the current recommendation: rows remain the right integration
+boundary for the branch. The important pressure is not row count yet; it is
+keeping the boundary authoritative and preventing stale procedural shortcuts
+from bypassing it.

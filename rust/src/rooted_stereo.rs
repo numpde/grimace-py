@@ -3442,16 +3442,73 @@ fn support_boundary_facts_from_edge_state(
     })
 }
 
-fn selected_neighbors_from_support_boundary_constraints(
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SupportStateSelectedNeighborComponentSummary {
+    component_idx: usize,
+    carrier_assignment_count: usize,
+    token_phase_assignment_count: usize,
+    marker_row_count_before_events: Option<usize>,
+    marker_row_count_after_events: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SupportStateSelectedNeighborQuery {
+    selected_neighbors: Vec<isize>,
+    forced_side_neighbors: Vec<(usize, usize)>,
+    unresolved_side_ids: Vec<usize>,
+    component_summaries: Vec<SupportStateSelectedNeighborComponentSummary>,
+}
+
+fn support_state_selected_neighbor_query(
     runtime: &StereoWalkerRuntimeData,
     raw_selected_neighbors: &[isize],
     boundary_facts: &StereoSupportBoundaryFacts,
-) -> PyResult<Vec<isize>> {
+    include_marker_survivor_counts: bool,
+) -> PyResult<SupportStateSelectedNeighborQuery> {
     let constraint_state =
         boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
 
     let mut selected_neighbors = raw_selected_neighbors.to_vec();
+    let mut forced_side_neighbors = Vec::<(usize, usize)>::new();
+    let mut unresolved_side_ids = BTreeSet::<usize>::new();
+    let mut component_summaries = Vec::new();
     for component in &runtime.constraint_model.components {
+        let component_idx = component.component_idx;
+        let carrier_assignment_count = constraint_state
+            .carrier_assignment_state
+            .remaining_by_component
+            .get(component_idx)
+            .map(Vec::len)
+            .unwrap_or(0);
+        let token_phase_assignment_ids = constraint_state
+            .token_phase_remaining_by_component
+            .get(component_idx)
+            .cloned()
+            .unwrap_or_default();
+        let (marker_row_count_before_events, marker_row_count_after_events) =
+            if include_marker_survivor_counts {
+                let Some(marker_events) = boundary_facts
+                    .marker_event_facts_by_component
+                    .get(component_idx)
+                else {
+                    return Err(PyValueError::new_err(
+                        "support-state selected-neighbor query missing marker events",
+                    ));
+                };
+                let survivor_state = rdkit_marker_row_survivor_component_state(
+                    runtime,
+                    component_idx,
+                    &token_phase_assignment_ids,
+                    marker_events,
+                )?;
+                (
+                    Some(survivor_state.row_ids_before_marker_events.len()),
+                    Some(survivor_state.row_ids_after_marker_events.len()),
+                )
+            } else {
+                (None, None)
+            };
+
         for &side_idx in &component.side_ids {
             if selected_neighbors[side_idx] >= 0 {
                 continue;
@@ -3459,21 +3516,86 @@ fn selected_neighbors_from_support_boundary_constraints(
             let available_neighbors = available_carrier_neighbors_for_support_boundary_model(
                 &runtime.constraint_model,
                 boundary_facts,
-                component.component_idx,
+                component_idx,
                 side_idx,
             )?;
             if let [neighbor_idx] = available_neighbors.as_slice() {
                 selected_neighbors[side_idx] = *neighbor_idx as isize;
-            } else if let Some(neighbor_idx) = constraint_state.forced_neighbor(
-                &runtime.constraint_model,
-                component.component_idx,
-                side_idx,
-            ) {
+                forced_side_neighbors.push((side_idx, *neighbor_idx));
+            } else if let Some(neighbor_idx) =
+                constraint_state.forced_neighbor(&runtime.constraint_model, component_idx, side_idx)
+            {
                 selected_neighbors[side_idx] = neighbor_idx as isize;
+                forced_side_neighbors.push((side_idx, neighbor_idx));
+            } else {
+                unresolved_side_ids.insert(side_idx);
             }
         }
+        component_summaries.push(SupportStateSelectedNeighborComponentSummary {
+            component_idx,
+            carrier_assignment_count,
+            token_phase_assignment_count: token_phase_assignment_ids.len(),
+            marker_row_count_before_events,
+            marker_row_count_after_events,
+        });
     }
-    Ok(selected_neighbors)
+    Ok(SupportStateSelectedNeighborQuery {
+        selected_neighbors,
+        forced_side_neighbors,
+        unresolved_side_ids: unresolved_side_ids.into_iter().collect(),
+        component_summaries,
+    })
+}
+
+fn selected_neighbors_from_support_boundary_constraints(
+    runtime: &StereoWalkerRuntimeData,
+    raw_selected_neighbors: &[isize],
+    boundary_facts: &StereoSupportBoundaryFacts,
+) -> PyResult<Vec<isize>> {
+    Ok(support_state_selected_neighbor_query(
+        runtime,
+        raw_selected_neighbors,
+        boundary_facts,
+        false,
+    )?
+    .selected_neighbors)
+}
+
+fn support_state_selected_neighbor_query_to_py(
+    py: Python<'_>,
+    query: &SupportStateSelectedNeighborQuery,
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("selected_neighbors", query.selected_neighbors.clone())?;
+    row.set_item("forced_side_neighbors", query.forced_side_neighbors.clone())?;
+    row.set_item("unresolved_side_ids", query.unresolved_side_ids.clone())?;
+    row.set_item(
+        "component_summaries",
+        query
+            .component_summaries
+            .iter()
+            .map(|summary| {
+                let component_row = PyDict::new(py);
+                component_row.set_item("component_idx", summary.component_idx)?;
+                component_row
+                    .set_item("carrier_assignment_count", summary.carrier_assignment_count)?;
+                component_row.set_item(
+                    "token_phase_assignment_count",
+                    summary.token_phase_assignment_count,
+                )?;
+                component_row.set_item(
+                    "marker_row_count_before_events",
+                    summary.marker_row_count_before_events,
+                )?;
+                component_row.set_item(
+                    "marker_row_count_after_events",
+                    summary.marker_row_count_after_events,
+                )?;
+                Ok(component_row.unbind())
+            })
+            .collect::<PyResult<Vec<_>>>()?,
+    )?;
+    Ok(row.unbind())
 }
 
 fn joined_support_boundary_selected_neighbors(
@@ -5730,6 +5852,12 @@ fn stereo_output_fact_row_to_py(
         resolved_selected_neighbors_from_assignment_state(runtime, raw_selected_neighbors);
     let joined_support_boundary_selected_neighbors =
         joined_support_boundary_selected_neighbors(runtime, graph, state)?;
+    let support_state_selected_neighbor_query = support_state_selected_neighbor_query(
+        runtime,
+        raw_selected_neighbors,
+        &boundary_facts,
+        true,
+    )?;
     let resolved_selected_neighbors = joined_support_boundary_selected_neighbors.clone();
     let raw_facts_by_component =
         selected_neighbor_facts_by_component(runtime, raw_selected_neighbors);
@@ -5886,9 +6014,41 @@ fn stereo_output_fact_row_to_py(
             support_boundary_marker_obligation_events_by_component,
         )?,
     )?;
+    support_boundary.set_item(
+        "selected_neighbor_query",
+        support_state_selected_neighbor_query_to_py(py, &support_state_selected_neighbor_query)?,
+    )?;
     row.set_item("support_boundary", support_boundary)?;
 
     let shadow_debug = PyDict::new(py);
+    shadow_debug.set_item(
+        "support_state_selected_neighbors",
+        support_state_selected_neighbor_query
+            .selected_neighbors
+            .clone(),
+    )?;
+    shadow_debug.set_item(
+        "support_state_unresolved_side_ids",
+        support_state_selected_neighbor_query
+            .unresolved_side_ids
+            .clone(),
+    )?;
+    shadow_debug.set_item(
+        "support_state_forced_side_neighbors",
+        support_state_selected_neighbor_query
+            .forced_side_neighbors
+            .clone(),
+    )?;
+    shadow_debug.set_item(
+        "support_state_selected_neighbors_match_runtime",
+        support_state_selected_neighbor_query.selected_neighbors
+            == legacy_field_resolved_selected_neighbors,
+    )?;
+    shadow_debug.set_item(
+        "support_state_selected_neighbors_match_joined_support_boundary",
+        support_state_selected_neighbor_query.selected_neighbors
+            == joined_support_boundary_selected_neighbors,
+    )?;
     shadow_debug.set_item(
         "resolved_selected_neighbors_from_assignment_state",
         assignment_state_resolved_selected_neighbors.clone(),
@@ -11089,7 +11249,7 @@ mod tests {
         resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
         successors_by_token_stereo_raw, support_boundary_facts_from_edge_state,
-        support_boundary_facts_from_walker_state,
+        support_boundary_facts_from_walker_state, support_state_selected_neighbor_query,
         supported_token_observation_facts_from_constraints, validate_root_idx,
         validate_stereo_state_shape, CarrierCommitmentBoundaryQuery, CarrierCommitmentDecision,
         ComponentBeginAtomFact, ComponentPhaseCommitFact, ComponentTokenConstraintFact,
@@ -11874,6 +12034,40 @@ mod tests {
             },
             counts,
         );
+    }
+
+    #[test]
+    fn support_state_selected_neighbor_query_exposes_shadow_state() {
+        let Some(graph) = prepared_graph_from_smiles("CC/C(C)=C(\\C)C(/C)=C/C") else {
+            return;
+        };
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
+        let boundary_facts = support_boundary_facts_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            state.stereo_selected_neighbors.as_ref(),
+            true,
+        )
+        .expect("support-state selected-neighbor facts should build");
+        let query = support_state_selected_neighbor_query(
+            &runtime,
+            state.stereo_selected_neighbors.as_ref(),
+            &boundary_facts,
+            true,
+        )
+        .expect("support-state selected-neighbor query should build");
+
+        assert_eq!(
+            query.selected_neighbors,
+            partial_joined_support_boundary_selected_neighbors(&runtime, &graph, &state)
+                .expect("partial support-boundary selected neighbors should build"),
+        );
+        assert!(query
+            .component_summaries
+            .iter()
+            .all(|summary| summary.marker_row_count_before_events.is_some()
+                && summary.marker_row_count_after_events.is_some()));
     }
 
     #[test]

@@ -567,7 +567,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
 
         self.assertTrue(saw_shared_group)
 
-    def test_terminal_carrier_resolution_has_assignment_state_shadow(self) -> None:
+    def test_terminal_carrier_resolution_uses_support_boundary_shadow(self) -> None:
         for case in self.cases:
             mol = parse_smiles(case.smiles)
             prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
@@ -584,11 +584,22 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                         "joined_support_boundary_selected_neighbors",
                         row["shadow_debug"],
                     )
+                    self.assertIn(
+                        "legacy_field_resolved_selected_neighbors",
+                        row["shadow_debug"],
+                    )
                     self.assertTrue(
-                        row["shadow_debug"]["assignment_state_resolution_matches_runtime"]
+                        row["shadow_debug"][
+                            "assignment_state_resolution_matches_support_boundary"
+                        ]
                     )
                     self.assertTrue(
                         row["shadow_debug"]["joined_support_boundary_matches_runtime"]
+                    )
+                    self.assertTrue(
+                        row["shadow_debug"][
+                            "legacy_field_resolution_matches_support_boundary"
+                        ]
                     )
 
     def test_current_runtime_support_count_matches_pinned_witnesses(self) -> None:

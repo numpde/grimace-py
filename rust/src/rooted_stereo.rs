@@ -5671,11 +5671,12 @@ fn stereo_output_fact_row_to_py(
         raw_selected_neighbors,
         true,
     )?;
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let legacy_field_resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
     let assignment_state_resolved_selected_neighbors =
         resolved_selected_neighbors_from_assignment_state(runtime, raw_selected_neighbors);
     let joined_support_boundary_selected_neighbors =
         joined_support_boundary_selected_neighbors(runtime, graph, state)?;
+    let resolved_selected_neighbors = joined_support_boundary_selected_neighbors.clone();
     let raw_facts_by_component =
         selected_neighbor_facts_by_component(runtime, raw_selected_neighbors);
     let resolved_facts_by_component =
@@ -5840,7 +5841,19 @@ fn stereo_output_fact_row_to_py(
     )?;
     shadow_debug.set_item(
         "assignment_state_resolution_matches_runtime",
+        assignment_state_resolved_selected_neighbors == legacy_field_resolved_selected_neighbors,
+    )?;
+    shadow_debug.set_item(
+        "assignment_state_resolution_matches_support_boundary",
         assignment_state_resolved_selected_neighbors == resolved_selected_neighbors,
+    )?;
+    shadow_debug.set_item(
+        "legacy_field_resolved_selected_neighbors",
+        legacy_field_resolved_selected_neighbors.clone(),
+    )?;
+    shadow_debug.set_item(
+        "legacy_field_resolution_matches_support_boundary",
+        legacy_field_resolved_selected_neighbors == resolved_selected_neighbors,
     )?;
     shadow_debug.set_item(
         "joined_support_boundary_selected_neighbors",
@@ -5848,7 +5861,7 @@ fn stereo_output_fact_row_to_py(
     )?;
     shadow_debug.set_item(
         "joined_support_boundary_matches_runtime",
-        joined_support_boundary_selected_neighbors == resolved_selected_neighbors,
+        joined_support_boundary_selected_neighbors == legacy_field_resolved_selected_neighbors,
     )?;
     row.set_item("shadow_debug", shadow_debug)?;
     row.set_item(

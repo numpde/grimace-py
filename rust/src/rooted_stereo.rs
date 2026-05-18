@@ -5621,9 +5621,11 @@ fn stereo_output_fact_row_to_py(
         rdkit_writer_marker_obligation_domains_by_component(&marker_events_by_component);
     let marker_obligation_events_by_component =
         rdkit_writer_slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
-    let shadow_marker_events_by_component = &boundary_facts.marker_event_facts_by_component;
-    let shadow_marker_obligation_domains = &boundary_facts.marker_obligation_domains_by_component;
-    let shadow_marker_obligation_events_by_component =
+    let support_boundary_marker_events_by_component =
+        &boundary_facts.marker_event_facts_by_component;
+    let support_boundary_marker_obligation_domains =
+        &boundary_facts.marker_obligation_domains_by_component;
+    let support_boundary_marker_obligation_events_by_component =
         &boundary_facts.marker_obligation_event_facts_by_component;
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
         &runtime.constraint_model,
@@ -5724,6 +5726,46 @@ fn stereo_output_fact_row_to_py(
             &inferred_token_observation_facts,
         )?,
     )?;
+    let support_boundary = PyDict::new(py);
+    support_boundary.set_item(
+        "marker_event_facts",
+        marker_event_facts_to_py(py, support_boundary_marker_events_by_component)?,
+    )?;
+    support_boundary.set_item(
+        "marker_obligation_facts",
+        marker_event_facts_to_py(py, support_boundary_marker_obligation_events_by_component)?,
+    )?;
+    support_boundary.set_item(
+        "marker_obligation_domains",
+        rdkit_writer_marker_obligation_domains_to_py(
+            py,
+            support_boundary_marker_obligation_domains,
+        )?,
+    )?;
+    support_boundary.set_item(
+        "marker_placement_state",
+        rdkit_marker_placement_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
+            support_boundary_marker_events_by_component,
+        )?,
+    )?;
+    support_boundary.set_item(
+        "marker_obligation_state",
+        rdkit_marker_placement_state_to_py(
+            py,
+            runtime,
+            &resolved_facts_by_component,
+            &known_token_flip_facts,
+            &inferred_token_observation_facts,
+            support_boundary_marker_obligation_events_by_component,
+        )?,
+    )?;
+    row.set_item("support_boundary", support_boundary)?;
+
     let shadow_debug = PyDict::new(py);
     shadow_debug.set_item(
         "resolved_selected_neighbors_from_assignment_state",
@@ -5743,15 +5785,18 @@ fn stereo_output_fact_row_to_py(
     )?;
     shadow_debug.set_item(
         "marker_event_facts",
-        marker_event_facts_to_py(py, shadow_marker_events_by_component)?,
+        marker_event_facts_to_py(py, support_boundary_marker_events_by_component)?,
     )?;
     shadow_debug.set_item(
         "marker_obligation_facts",
-        marker_event_facts_to_py(py, shadow_marker_obligation_events_by_component)?,
+        marker_event_facts_to_py(py, support_boundary_marker_obligation_events_by_component)?,
     )?;
     shadow_debug.set_item(
         "marker_obligation_domains",
-        rdkit_writer_marker_obligation_domains_to_py(py, shadow_marker_obligation_domains)?,
+        rdkit_writer_marker_obligation_domains_to_py(
+            py,
+            support_boundary_marker_obligation_domains,
+        )?,
     )?;
     shadow_debug.set_item(
         "marker_placement_state",
@@ -5761,7 +5806,7 @@ fn stereo_output_fact_row_to_py(
             &resolved_facts_by_component,
             &known_token_flip_facts,
             &inferred_token_observation_facts,
-            shadow_marker_events_by_component,
+            support_boundary_marker_events_by_component,
         )?,
     )?;
     shadow_debug.set_item(
@@ -5772,7 +5817,7 @@ fn stereo_output_fact_row_to_py(
             &resolved_facts_by_component,
             &known_token_flip_facts,
             &inferred_token_observation_facts,
-            shadow_marker_obligation_events_by_component,
+            support_boundary_marker_obligation_events_by_component,
         )?,
     )?;
     row.set_item("shadow_debug", shadow_debug)?;

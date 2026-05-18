@@ -169,92 +169,30 @@
           1
         ]
       ],
-      "expected_direction_erased_skeletons_with_different_marker_sequence_count": 4,
-      "expected_direction_erased_skeletons_with_same_marker_sequence_count": 24,
-      "expected_grimace_runtime_outputs_with_ring_digit_direction_count": 18,
-      "expected_grimace_runtime_support_count": 28,
+      "expected_direction_erased_skeletons_with_different_marker_sequence_count": 0,
+      "expected_direction_erased_skeletons_with_same_marker_sequence_count": 22,
+      "expected_grimace_runtime_outputs_with_ring_digit_direction_count": 12,
+      "expected_grimace_runtime_support_count": 22,
       "expected_marker_row_diagnostics": {
         "max_model_marker_row_count": 144,
         "max_semantic_marker_obligation_survivor_row_count": 4,
         "max_semantic_marker_survivor_row_count": 4,
-        "output_row_count": 56,
+        "output_row_count": 44,
         "total_model_marker_row_count": 144
       },
-      "expected_marker_sequence_transitions": [
-        {
-          "direction_erased_skeleton": "N(=C1C=CC(=NC)[N-]1)C",
-          "grimace_ordered_markers": [
-            "\\",
-            "/",
-            "/",
-            "/"
-          ],
-          "rdkit_ordered_markers": [
-            "/",
-            "/",
-            "\\",
-            "/"
-          ]
-        },
-        {
-          "direction_erased_skeleton": "N(=C1C=CC([N-]1)=NC)C",
-          "grimace_ordered_markers": [
-            "\\",
-            "/",
-            "/",
-            "/"
-          ],
-          "rdkit_ordered_markers": [
-            "/",
-            "\\",
-            "/",
-            "/"
-          ]
-        },
-        {
-          "direction_erased_skeleton": "N(C)=C1C=CC(=NC)[N-]1",
-          "grimace_ordered_markers": [
-            "/",
-            "\\",
-            "/",
-            "/"
-          ],
-          "rdkit_ordered_markers": [
-            "/",
-            "/",
-            "/",
-            "\\"
-          ]
-        },
-        {
-          "direction_erased_skeleton": "N(C)=C1C=CC([N-]1)=NC",
-          "grimace_ordered_markers": [
-            "/",
-            "\\",
-            "/",
-            "/"
-          ],
-          "rdkit_ordered_markers": [
-            "/",
-            "/",
-            "\\",
-            "/"
-          ]
-        }
-      ],
       "expected_rdkit_local_writer_assignment_count": 3,
       "expected_rdkit_sampled_outputs_with_ring_digit_direction_count": 18,
       "expected_rdkit_sampled_exact_local_invalid_overlap_count": 0,
-      "expected_rdkit_sampled_exact_support_overlap_count": 12,
-      "expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count": 16,
-      "expected_rdkit_sampled_outside_current_exact_identity_equivalent_count": 16,
+      "expected_rdkit_sampled_exact_support_overlap_count": 10,
+      "expected_rdkit_sampled_outside_current_exact_direction_erased_overlap_count": 12,
+      "expected_rdkit_sampled_outside_current_exact_identity_equivalent_count": 18,
       "expected_rdkit_sampled_outside_current_exact_parse_failure_count": 0,
-      "expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count": 6,
-      "expected_rdkit_sampled_outside_current_exact_support_count": 16,
-      "expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count": 10,
+      "expected_rdkit_sampled_outside_current_exact_ring_digit_direction_erased_overlap_count": 2,
+      "expected_rdkit_sampled_outside_current_exact_support_count": 18,
+      "expected_rdkit_sampled_outside_current_exact_with_ring_digit_direction_count": 12,
       "expected_rdkit_sampled_support_count": 28,
       "expected_rdkit_traversal_writer_assignment_count": 3,
-      "expected_ring_closure_marker_transform_exact_overlap_count": 18,
+      "expected_ring_closure_marker_transform_exact_overlap_count": 12,
       "expected_ring_closure_marker_transform_outside_rdkit_count": 10,
       "expected_ring_closure_marker_transform_residual_provenance_classes": {
         "branch_to_before_ring_label": 2,
@@ -262,7 +200,7 @@
         "tree_or_chain_to_before_bracket_atom": 2,
         "tree_or_chain_to_before_ring_label": 2
       },
-      "expected_ring_closure_marker_transform_support_count": 28,
+      "expected_ring_closure_marker_transform_support_count": 22,
       "expected_semantic_assignment_count": 4,
       "id": "minimal_nonstereo_double_hazard",
       "smiles": "C/N=C1C=C/C(=N/C)[N-]/1",

@@ -9,6 +9,10 @@
       "gap_detail": "Directional ring-closure writer placement no longer reaches a build-time carrier-token conflict, but this RDKit canonical output is still missing from support.",
       "expected_current_result": "support_missing",
       "expected_current_same_skeleton_support_count": 2,
+      "expected_current_same_skeleton_marker_slots": [
+        [[5, "/"], [9, "/"], [13, "/"]],
+        [[5, "/"], [9, "\\"], [13, "/"]]
+      ],
       "smiles": "C1=CC/C=C2C3=C/CC=CC=CC\\3C\\2C=C1",
       "expected": "C1=CC/C=C2\\C3=C\\CC=CC=CC3C2C=C1",
       "rooted_at_atom": null,

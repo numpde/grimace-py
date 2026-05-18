@@ -48,6 +48,8 @@ ALLOWED_CURRENT_RESULTS = {
     "support_missing",
     "support_present",
 }
+MarkerSlots = tuple[tuple[int, str], ...]
+MarkerSlotSet = tuple[MarkerSlots, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +61,7 @@ class KnownStereoGapCase:
     gap_detail: str
     expected_current_result: str
     expected_current_same_skeleton_support_count: int | None
+    expected_current_same_skeleton_marker_slots: MarkerSlotSet | None
     smiles: str | None
     molblock: str | None
     writer_membership_case_id: str | None
@@ -118,6 +121,42 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
         expected_same_skeleton_support_count = raw_case.get(
             "expected_current_same_skeleton_support_count"
         )
+        raw_same_skeleton_marker_slots = raw_case.get(
+            "expected_current_same_skeleton_marker_slots"
+        )
+        same_skeleton_marker_slots = None
+        if raw_same_skeleton_marker_slots is not None:
+            if expected_current_result != "support_missing":
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} may only define "
+                    "expected_current_same_skeleton_marker_slots for "
+                    "support_missing"
+                )
+            same_skeleton_marker_slots = tuple(
+                tuple((slot, marker) for slot, marker in marker_slots)
+                for marker_slots in raw_same_skeleton_marker_slots
+            )
+            if (
+                expected_same_skeleton_support_count is not None
+                and len(same_skeleton_marker_slots)
+                != expected_same_skeleton_support_count
+            ):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} marker-slot "
+                    "fixtures must match "
+                    "expected_current_same_skeleton_support_count"
+                )
+            for marker_slots in same_skeleton_marker_slots:
+                for slot, marker in marker_slots:
+                    if (
+                        type(slot) is not int
+                        or slot < 0
+                        or marker not in {"/", "\\"}
+                    ):
+                        raise ValueError(
+                            f"known stereo-gap case {raw_case['id']!r} has "
+                            "invalid same-skeleton marker slot"
+                        )
         if expected_current_result == "support_missing":
             if (
                 type(expected_same_skeleton_support_count) is not int
@@ -143,6 +182,9 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 expected_current_same_skeleton_support_count=(
                     expected_same_skeleton_support_count
                 ),
+                expected_current_same_skeleton_marker_slots=(
+                    same_skeleton_marker_slots
+                ),
                 smiles=smiles,
                 molblock=molblock,
                 writer_membership_case_id=writer_membership_case_id,
@@ -165,7 +207,7 @@ def _direction_erased_skeleton(smiles: str) -> str:
     return "".join(char for char in smiles if char not in {"/", "\\"})
 
 
-def _direction_marker_slots(smiles: str) -> tuple[tuple[int, str], ...]:
+def _direction_marker_slots(smiles: str) -> MarkerSlots:
     slots = []
     skeleton_slot = 0
     for char in smiles:
@@ -174,6 +216,37 @@ def _direction_marker_slots(smiles: str) -> tuple[tuple[int, str], ...]:
         else:
             skeleton_slot += 1
     return tuple(slots)
+
+
+def _directional_bond_signature(mol: Chem.Mol) -> tuple[tuple[int, int, str], ...]:
+    return tuple(
+        sorted(
+            (
+                bond.GetBeginAtomIdx(),
+                bond.GetEndAtomIdx(),
+                str(bond.GetBondDir()),
+            )
+            for bond in mol.GetBonds()
+            if bond.GetBondDir() != Chem.BondDir.NONE
+        )
+    )
+
+
+def _double_bond_stereo_signature(
+    mol: Chem.Mol,
+) -> tuple[tuple[int, int, str, tuple[int, ...]], ...]:
+    return tuple(
+        sorted(
+            (
+                bond.GetBeginAtomIdx(),
+                bond.GetEndAtomIdx(),
+                str(bond.GetStereo()),
+                tuple(bond.GetStereoAtoms()),
+            )
+            for bond in mol.GetBonds()
+            if bond.GetStereo() != Chem.BondStereo.STEREONONE
+        )
+    )
 
 
 class KnownStereoGapTests(unittest.TestCase):
@@ -226,6 +299,37 @@ class KnownStereoGapTests(unittest.TestCase):
                 if case.acceptance_role == "support_present_family_guard":
                     self.assertTrue(case.check_grimace_support)
                     self.assertEqual("support_present", case.expected_current_result)
+
+    def test_smallest_gap_separates_stereo_assignment_from_marker_basis(self) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "github3967_part2_directional_ring_closure_canonical"
+        )
+        source_smiles = case.smiles
+        self.assertIsNotNone(source_smiles)
+        assert source_smiles is not None
+
+        source_mol = self._mol_from_case(case)
+        expected_mol = Chem.MolFromSmiles(case.expected)
+        self.assertIsNotNone(expected_mol)
+        assert expected_mol is not None
+
+        self.assertEqual(case.expected, self._rdkit_output(source_mol, case))
+        self.assertEqual(
+            _double_bond_stereo_signature(source_mol),
+            _double_bond_stereo_signature(expected_mol),
+        )
+        self.assertNotEqual(
+            _directional_bond_signature(source_mol),
+            _directional_bond_signature(expected_mol),
+        )
+
+        source_marker_slots = _direction_marker_slots(source_smiles)
+        rdkit_marker_slots = _direction_marker_slots(case.expected)
+        self.assertEqual(4, len(source_marker_slots))
+        self.assertEqual(3, len(rdkit_marker_slots))
+        self.assertNotEqual(source_marker_slots, rdkit_marker_slots)
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:
@@ -375,12 +479,22 @@ class KnownStereoGapTests(unittest.TestCase):
                     case.expected_current_same_skeleton_support_count,
                     len(same_skeleton_support),
                 )
+                actual_marker_slots = tuple(
+                    sorted(
+                        _direction_marker_slots(smiles)
+                        for smiles in same_skeleton_support
+                    )
+                )
+                if case.expected_current_same_skeleton_marker_slots is not None:
+                    self.assertEqual(
+                        case.expected_current_same_skeleton_marker_slots,
+                        actual_marker_slots,
+                    )
                 if case.expected_current_same_skeleton_support_count:
                     self.assertTrue(
                         all(
-                            _direction_marker_slots(smiles)
-                            != _direction_marker_slots(case.expected)
-                            for smiles in same_skeleton_support
+                            marker_slots != _direction_marker_slots(case.expected)
+                            for marker_slots in actual_marker_slots
                         ),
                         case.case_id,
                     )

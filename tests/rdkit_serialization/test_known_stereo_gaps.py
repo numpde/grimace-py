@@ -92,6 +92,14 @@ class KnownStereoGapCase:
     check_grimace_support: bool
 
 
+@dataclass(frozen=True, slots=True)
+class WriterMarkerSlotQuotientDiagnostic:
+    emitted_marker_slots: MarkerSlots
+    semantic_row_accepts: bool
+    marker_slot_quotient_candidate: bool
+    rdkit_writer_target_slots: bool
+
+
 def _marker_slot_set_from_json(
     raw_case: dict[str, object],
     field_name: str,
@@ -361,6 +369,36 @@ def _direction_marker_slots(smiles: str) -> MarkerSlots:
         else:
             skeleton_slot += 1
     return tuple(slots)
+
+
+def _emitted_marker_slots_from_attempt(attempt: dict[str, object]) -> MarkerSlots:
+    raw_slots = attempt["emitted_marker_slots"]
+    if type(raw_slots) is not list:
+        raise AssertionError("emitted_marker_slots diagnostic must be a list")
+    return tuple((slot, marker) for slot, marker in raw_slots)
+
+
+def _writer_marker_slot_quotient_diagnostic(
+    case: KnownStereoGapCase,
+    attempt: dict[str, object],
+) -> WriterMarkerSlotQuotientDiagnostic:
+    parse_equivalent_slots = case.parse_equivalent_minimal_marker_slots
+    if parse_equivalent_slots is None:
+        raise AssertionError(
+            f"case {case.case_id!r} must pin parse-equivalent marker slots"
+        )
+    emitted_marker_slots = _emitted_marker_slots_from_attempt(attempt)
+    semantic_row_accepts = bool(attempt["accepted"])
+    return WriterMarkerSlotQuotientDiagnostic(
+        emitted_marker_slots=emitted_marker_slots,
+        semantic_row_accepts=semantic_row_accepts,
+        marker_slot_quotient_candidate=(
+            not semantic_row_accepts and emitted_marker_slots in parse_equivalent_slots
+        ),
+        rdkit_writer_target_slots=(
+            emitted_marker_slots == _direction_marker_slots(case.expected)
+        ),
+    )
 
 
 def _smiles_from_direction_marker_slots(
@@ -654,15 +692,13 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(0, attempt["token_phase_assignment_count"])
         self.assertEqual(0, attempt["row_count_before_marker_events"])
         self.assertEqual(0, attempt["row_count_after_marker_events"])
-        self.assertEqual(
-            _direction_marker_slots(case.expected),
-            tuple(tuple(marker_slot) for marker_slot in attempt["emitted_marker_slots"]),
-        )
-        self.assertIn(
-            tuple(tuple(marker_slot) for marker_slot in attempt["emitted_marker_slots"]),
-            case.parse_equivalent_minimal_marker_slots,
-        )
         self.assertFalse(attempt["accepted"])
+
+        quotient = _writer_marker_slot_quotient_diagnostic(case, attempt)
+        self.assertFalse(quotient.semantic_row_accepts)
+        self.assertTrue(quotient.marker_slot_quotient_candidate)
+        self.assertTrue(quotient.rdkit_writer_target_slots)
+        self.assertEqual(_direction_marker_slots(case.expected), quotient.emitted_marker_slots)
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:

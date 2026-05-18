@@ -58,6 +58,7 @@ class KnownStereoGapCase:
     gap_class: str | None
     gap_detail: str
     expected_current_result: str
+    expected_current_same_skeleton_support_count: int | None
     smiles: str | None
     molblock: str | None
     writer_membership_case_id: str | None
@@ -114,6 +115,23 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 f"known stereo-gap case {raw_case['id']!r} has unsupported "
                 f"expected_current_result {expected_current_result!r}"
             )
+        expected_same_skeleton_support_count = raw_case.get(
+            "expected_current_same_skeleton_support_count"
+        )
+        if expected_current_result == "support_missing":
+            if (
+                type(expected_same_skeleton_support_count) is not int
+                or expected_same_skeleton_support_count <= 0
+            ):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} must pin a "
+                    "positive expected_current_same_skeleton_support_count"
+                )
+        elif expected_same_skeleton_support_count is not None:
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} may only define "
+                "expected_current_same_skeleton_support_count for support_missing"
+            )
         cases.append(
             KnownStereoGapCase(
                 case_id=raw_case["id"],
@@ -122,6 +140,9 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 gap_class=gap_class,
                 gap_detail=raw_case["gap_detail"],
                 expected_current_result=expected_current_result,
+                expected_current_same_skeleton_support_count=(
+                    expected_same_skeleton_support_count
+                ),
                 smiles=smiles,
                 molblock=molblock,
                 writer_membership_case_id=writer_membership_case_id,
@@ -138,6 +159,21 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
             )
         )
     return tuple(cases)
+
+
+def _direction_erased_skeleton(smiles: str) -> str:
+    return "".join(char for char in smiles if char not in {"/", "\\"})
+
+
+def _direction_marker_slots(smiles: str) -> tuple[tuple[int, str], ...]:
+    slots = []
+    skeleton_slot = 0
+    for char in smiles:
+        if char in {"/", "\\"}:
+            slots.append((skeleton_slot, char))
+        else:
+            skeleton_slot += 1
+    return tuple(slots)
 
 
 class KnownStereoGapTests(unittest.TestCase):
@@ -301,6 +337,51 @@ class KnownStereoGapTests(unittest.TestCase):
                     case.expected in support,
                     f"{case.case_id}: missing RDKit output {case.expected!r} "
                     f"from Grimace support of size {len(support)}",
+                )
+
+    def test_support_missing_cases_are_marker_spelling_gaps(self) -> None:
+        support_cache: dict[tuple[str, int | None, bool], set[str]] = {}
+        for case in self.cases:
+            if case.expected_current_result != "support_missing":
+                continue
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                mol = self._mol_from_case(case)
+                support_key = (
+                    self._molecule_source_key(case),
+                    case.rooted_at_atom,
+                    case.isomeric_smiles,
+                )
+                support = support_cache.get(support_key)
+                if support is None:
+                    support = grimace_support(
+                        mol,
+                        rooted_at_atom=case.rooted_at_atom,
+                        isomeric_smiles=case.isomeric_smiles,
+                    )
+                    support_cache[support_key] = support
+
+                expected_skeleton = _direction_erased_skeleton(case.expected)
+                same_skeleton_support = tuple(
+                    sorted(
+                        smiles
+                        for smiles in support
+                        if _direction_erased_skeleton(smiles) == expected_skeleton
+                    )
+                )
+
+                self.assertNotIn(case.expected, support)
+                self.assertEqual(
+                    case.expected_current_same_skeleton_support_count,
+                    len(same_skeleton_support),
+                )
+                self.assertTrue(
+                    all(
+                        _direction_marker_slots(smiles)
+                        != _direction_marker_slots(case.expected)
+                        for smiles in same_skeleton_support
+                    ),
+                    case.case_id,
                 )
 
     def test_manual_difficult_cases_keep_nonempty_marker_row_state(self) -> None:

@@ -2253,8 +2253,12 @@ fn isolated_component_token_basis_fact_from_row_state(
     if begin_selected_neighbor < 0 {
         return Ok(None);
     }
-    let Some(available_begin_neighbors) =
-        available_carrier_neighbors_from_row_state(context, selected_neighbors, begin_side_idx)
+    let Some(available_begin_neighbors) = available_carrier_neighbors_from_support_boundary(
+        context,
+        selected_neighbors,
+        &[],
+        begin_side_idx,
+    )?
     else {
         return Ok(None);
     };
@@ -2305,15 +2309,78 @@ fn updated_isolated_component_token_basis_facts_from_row_state(
     Ok(updated_token_basis_facts)
 }
 
-fn row_state_carrier_obligation_neighbor(
+fn carrier_facts_by_component_from_edge_state(
     context: &StereoEdgeEmissionContext<'_>,
     selected_neighbors: &[isize],
+    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+) -> PyResult<Vec<Vec<StereoConstraintFact>>> {
+    let mut facts_by_component = vec![Vec::new(); context.constraint_model.component_count()];
+    for (side_idx, &neighbor_idx) in selected_neighbors.iter().enumerate() {
+        if neighbor_idx < 0 {
+            continue;
+        }
+        let Some(component_idx) = context.constraint_model.component_for_side(side_idx) else {
+            continue;
+        };
+        facts_by_component[component_idx].push(StereoConstraintFact::CarrierSelected {
+            side_idx,
+            neighbor_idx: neighbor_idx as usize,
+        });
+    }
+    for constraint in deferred_carrier_choice_constraints {
+        let Some(component_idx) = context
+            .constraint_model
+            .component_for_side(constraint.side_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "deferred carrier-choice constraint references unknown side",
+            ));
+        };
+        facts_by_component[component_idx].push(StereoConstraintFact::CarrierSelectionBlocked {
+            side_idx: constraint.side_idx,
+            neighbor_idx: constraint.deferred_neighbor_idx,
+        });
+    }
+    Ok(facts_by_component)
+}
+
+fn available_carrier_neighbors_from_support_boundary(
+    context: &StereoEdgeEmissionContext<'_>,
+    selected_neighbors: &[isize],
+    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
     side_idx: usize,
+) -> PyResult<Option<Vec<usize>>> {
+    let Some(component_idx) = context.constraint_model.component_for_side(side_idx) else {
+        return Ok(None);
+    };
+    let facts_by_component = carrier_facts_by_component_from_edge_state(
+        context,
+        selected_neighbors,
+        deferred_carrier_choice_constraints,
+    )?;
+    let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
+        component_idx,
+        StereoConstraintLayer::Semantic,
+        &facts_by_component[component_idx],
+    );
+    Ok(Some(
+        context
+            .constraint_model
+            .available_neighbors_for_assignment_ids(
+                component_idx,
+                side_idx,
+                &remaining_assignment_ids,
+            ),
+    ))
+}
+
+fn support_boundary_carrier_obligation_neighbor(
+    context: &StereoEdgeEmissionContext<'_>,
+    side_idx: usize,
+    available_neighbors: &[usize],
 ) -> Option<usize> {
     let side_info = context.side_infos.get(side_idx)?;
     let component_idx = context.constraint_model.component_for_side(side_idx)?;
-    let available_neighbors =
-        available_carrier_neighbors_from_row_state(context, selected_neighbors, side_idx)?;
     if available_neighbors.len() == 1 {
         return available_neighbors.first().copied();
     }
@@ -2345,52 +2412,12 @@ fn row_state_carrier_obligation_neighbor(
     }
 }
 
-fn available_carrier_neighbors_from_row_state(
-    context: &StereoEdgeEmissionContext<'_>,
-    selected_neighbors: &[isize],
-    side_idx: usize,
-) -> Option<Vec<usize>> {
-    let component_idx = context.constraint_model.component_for_side(side_idx)?;
-    let component_facts = selected_neighbors
-        .iter()
-        .enumerate()
-        .filter_map(|(selected_side_idx, &neighbor_idx)| {
-            if neighbor_idx < 0
-                || context
-                    .constraint_model
-                    .component_for_side(selected_side_idx)
-                    != Some(component_idx)
-            {
-                return None;
-            }
-            Some(StereoConstraintFact::CarrierSelected {
-                side_idx: selected_side_idx,
-                neighbor_idx: neighbor_idx as usize,
-            })
-        })
-        .collect::<Vec<_>>();
-    let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
-        component_idx,
-        StereoConstraintLayer::Semantic,
-        &component_facts,
-    );
-    Some(
-        context
-            .constraint_model
-            .available_neighbors_for_assignment_ids(
-                component_idx,
-                side_idx,
-                &remaining_assignment_ids,
-            ),
-    )
-}
-
-fn deferred_carrier_choice_constraint_for_row_state(
+fn deferred_carrier_choice_constraint_for_support_boundary(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
-    selected_neighbors: &[isize],
     side_idx: usize,
     neighbor_idx: usize,
+    available_neighbors: &[usize],
 ) -> Option<DeferredCarrierChoiceConstraint> {
     let Some(side_info) = context.side_infos.get(side_idx) else {
         return None;
@@ -2404,11 +2431,6 @@ fn deferred_carrier_choice_constraint_for_row_state(
     {
         return None;
     }
-    let Some(available_neighbors) =
-        available_carrier_neighbors_from_row_state(context, selected_neighbors, side_idx)
-    else {
-        return None;
-    };
     if available_neighbors.len() <= 1 || !available_neighbors.contains(&neighbor_idx) {
         return None;
     }
@@ -2423,7 +2445,7 @@ fn deferred_carrier_choice_constraint_for_row_state(
     Some(DeferredCarrierChoiceConstraint {
         side_idx,
         deferred_neighbor_idx: neighbor_idx,
-        available_neighbors,
+        available_neighbors: available_neighbors.to_vec(),
     })
 }
 
@@ -2469,30 +2491,37 @@ fn carrier_commitment_boundary_query_from_edge_state(
     deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
     side_idx: usize,
     neighbor_idx: usize,
-) -> CarrierCommitmentBoundaryQuery {
+) -> PyResult<CarrierCommitmentBoundaryQuery> {
     let blocked_by_deferred_constraint = deferred_carrier_choice_constraints_block_neighbor(
         deferred_carrier_choice_constraints,
         side_idx,
         neighbor_idx,
     );
+    let available_neighbors = available_carrier_neighbors_from_support_boundary(
+        context,
+        selected_neighbors,
+        deferred_carrier_choice_constraints,
+        side_idx,
+    )?
+    .unwrap_or_default();
     let forced_neighbor =
-        row_state_carrier_obligation_neighbor(context, selected_neighbors, side_idx);
-    let deferrable_constraint = deferred_carrier_choice_constraint_for_row_state(
+        support_boundary_carrier_obligation_neighbor(context, side_idx, &available_neighbors);
+    let deferrable_constraint = deferred_carrier_choice_constraint_for_support_boundary(
         context,
         state,
-        selected_neighbors,
         side_idx,
         neighbor_idx,
+        &available_neighbors,
     )
     .filter(|constraint| {
         should_defer_carrier_commit_for_constraint(constraint, side_idx, neighbor_idx)
     });
-    CarrierCommitmentBoundaryQuery {
+    Ok(CarrierCommitmentBoundaryQuery {
         candidate_neighbor_idx: neighbor_idx,
         forced_neighbor,
         blocked_by_deferred_constraint,
         deferrable_constraint,
-    }
+    })
 }
 
 fn carrier_commitment_decision_from_boundary_query(
@@ -2651,7 +2680,7 @@ fn emitted_edge_part_generic(
                 &deferred_carrier_choice_constraints,
                 side_idx,
                 neighbor_idx,
-            );
+            )?;
             match carrier_commitment_decision_from_boundary_query(commitment_query) {
                 CarrierCommitmentDecision::Commit => {
                     updated_neighbors[side_idx] = neighbor_idx as isize;
@@ -9595,11 +9624,14 @@ mod tests {
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
         successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         validate_root_idx, validate_stereo_state_shape,
+        available_carrier_neighbors_from_support_boundary,
+        carrier_commitment_boundary_query_from_edge_state,
         carrier_commitment_decision_from_boundary_query, CarrierCommitmentBoundaryQuery,
         CarrierCommitmentDecision, ComponentBeginAtomFact, ComponentPhaseCommitFact,
         ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
-        DeferredDirectionalComponentToken, DeferredDirectionalToken, FLIPPED_COMPONENT_PHASE,
-        STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
+        DeferredDirectionalComponentToken, DeferredDirectionalToken, StereoEdgeEmissionContext,
+        StereoEdgeEmissionState, FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE,
+        UNKNOWN_COMPONENT_PHASE,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -10370,6 +10402,47 @@ mod tests {
 
         assert!(!available_neighbors.contains(&blocked_neighbor_idx));
         assert!(!available_neighbors.is_empty());
+
+        let context = StereoEdgeEmissionContext {
+            graph: &graph,
+            constraint_model: &runtime.constraint_model,
+            side_infos: &runtime.side_infos,
+            side_ids_by_component: &runtime.side_ids_by_component,
+            edge_to_side_ids: &runtime.edge_to_side_ids,
+            isolated_components: &runtime.isolated_components,
+        };
+        let boundary_available_neighbors = available_carrier_neighbors_from_support_boundary(
+            &context,
+            &state.stereo_selected_neighbors,
+            &state.deferred_carrier_choice_constraints,
+            side_idx,
+        )
+        .expect("support-boundary query should build")
+        .expect("side should belong to a modeled component");
+        assert_eq!(available_neighbors, boundary_available_neighbors);
+
+        let edge_state = StereoEdgeEmissionState {
+            component_phases: &state.stereo_component_phases,
+            selected_neighbors: &state.stereo_selected_neighbors,
+            selected_orientations: &state.stereo_selected_orientations,
+            first_emitted_candidates: &state.stereo_first_emitted_candidates,
+            component_begin_atoms: &state.stereo_component_begin_atoms,
+            deferred_carrier_choice_constraints: &state.deferred_carrier_choice_constraints,
+            token_basis_facts: &state.stereo_token_basis_facts,
+        };
+        let query = carrier_commitment_boundary_query_from_edge_state(
+            &context,
+            &edge_state,
+            &state.stereo_selected_neighbors,
+            &state.deferred_carrier_choice_constraints,
+            side_idx,
+            blocked_neighbor_idx,
+        )
+        .expect("carrier commitment query should build from boundary facts");
+        assert_eq!(
+            CarrierCommitmentDecision::Skip,
+            carrier_commitment_decision_from_boundary_query(query)
+        );
     }
 
     #[test]

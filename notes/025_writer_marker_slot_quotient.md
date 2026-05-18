@@ -124,3 +124,56 @@ It must not use a completed-output repair phase.
    explicitly promoted cases, and no growth of non-target same-skeleton
    support.
 
+## Runtime Integration Checkpoint
+
+The first runtime prototype attempt exposes a sharper boundary: the quotient
+cannot be implemented as "add the rejected marker token to
+`deferred_token_support`".
+
+Two runtime paths would still reject the candidate:
+
+- `commit_deferred_token_choice` requires a semantic accepted token flip.  The
+  github3967 RDKit target has no accepted flip under the strict semantic
+  token-phase state, by design.
+- `terminal_stereo_state_support_boundary_summary` validates completed states
+  by recomputing semantic constraint state and marker-row survival from
+  `marker_event_traces`.  For github3967, even the base token-phase rows leave
+  zero marker rows after the RDKit target marker events.
+
+So the runtime needs an explicit writer-policy representation, not a looser
+semantic commit.  A quotient-accepted deferred token must carry enough state for
+completion and memoization to distinguish:
+
+- semantic row support accepted this token;
+- RDKit writer marker-slot quotient accepted this token;
+- neither accepted this token.
+
+That representation must be part of the walker state and completion key if it
+can affect future support, or it must be proven terminal-only before being kept
+out of the key.  Treating it as a local support-list append would produce an
+unrepresentable successor state.
+
+The quotient fact source is also not solved by the current Rust runtime.  The
+test fixtures prove two witnesses, but runtime support cannot consult test
+fixtures.  The implementation needs a principled source for parser-equivalent
+marker-slot classes or an explicitly named RDKit writer-policy table derived
+from prepared molecule facts.  Until that source exists, accepting only the
+fixture strings would be a special case, not a policy.
+
+## Revised Runtime Slices
+
+1. Add a writer-quotient acceptance fact to the walker state model, completion
+   key, and terminal support summary as a named shadow/debug path first.  It
+   should not change support yet.
+2. Define the runtime source of marker-slot quotient facts.  Prefer a
+   model-derived basis from prepared stereo components and marker slots.  If
+   that is not expressive enough, document the exact missing RDKit writer fact
+   before introducing a writer-policy table.
+3. Add terminal-only quotient probing for github3967 that constructs the
+   would-be successor state and reports why it is or is not complete under the
+   explicit quotient fact.
+4. Only after the state/key/summary representation exists, allow
+   `deferred_token_support` and `commit_deferred_token_choice` to accept a
+   quotient-backed token.  The semantic committed token flip must remain
+   unchanged or absent; quotient acceptance must not masquerade as semantic
+   token-phase acceptance.

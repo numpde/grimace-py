@@ -274,3 +274,31 @@ aggregates global emitted marker events across model components for one
 candidate writer output.  Per-attempt component diagnostics are enough to
 validate the graph equation source, but not enough to claim the complete
 CHEMBL random-vector output has been represented as a single quotient path.
+
+## Path-Level Aggregation Boundary
+
+Existing deferred-marker diagnostics cannot produce the full path-level
+summary for an unsupported RDKit output.  They enumerate frontiers reachable by
+the current Grimace support state, then report why a candidate token is or is
+not accepted at that frontier.  For a missing RDKit string, the exact path can
+leave current support before all later writer markers have been emitted, so
+there may be no single diagnostic row that contains the complete target marker
+basis across all model components.
+
+The clean next slice is a target-guided replay diagnostic, not broader
+enumeration:
+
+1. take a concrete target string and root;
+2. replay the online walker one target token at a time;
+3. when normal support rejects a token, construct the would-be diagnostic state
+   instead of silently stopping;
+4. aggregate global marker events across all model components along that target
+   prefix;
+5. report semantic row acceptance, graph marker-equation acceptance, and
+   writer-quotient eligibility at the first failing frontier.
+
+That diagnostic would still be online and transparent: it does not repair a
+completed string, and it does not use RDKit as an oracle during runtime.  It is
+only a reviewer/debug tool for a pinned target string.  Once this exists,
+`github4582_chembl409450_random_vector_seed1_index0` can be evaluated as one
+complete quotient path instead of as separate component-frontier witnesses.

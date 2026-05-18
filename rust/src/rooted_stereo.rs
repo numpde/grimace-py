@@ -192,6 +192,8 @@ struct StereoEdgeEmissionState<'a> {
     component_begin_atoms: &'a [isize],
     deferred_carrier_choice_constraints: &'a [DeferredCarrierChoiceConstraint],
     token_basis_facts: &'a [Option<StereoTokenBasisFact>],
+    marker_event_traces: &'a [MarkerEventTrace],
+    committed_component_token_flips: &'a [Option<StereoTokenFlip>],
 }
 
 type PendingRingBuckets = Vec<(usize, Vec<PendingRing>)>;
@@ -2284,9 +2286,13 @@ fn isolated_component_token_basis_fact_from_row_state(
     if begin_selected_neighbor < 0 {
         return Ok(None);
     }
-    let boundary_facts = support_boundary_facts_from_edge_state(context, selected_neighbors, &[])?;
-    let Some(available_begin_neighbors) =
-        available_carrier_neighbors_from_support_boundary(context, &boundary_facts, begin_side_idx)?
+    let boundary_facts =
+        support_boundary_facts_from_edge_state(context, selected_neighbors, &[], &[], &[])?;
+    let Some(available_begin_neighbors) = available_carrier_neighbors_from_support_boundary(
+        context,
+        &boundary_facts,
+        begin_side_idx,
+    )?
     else {
         return Ok(None);
     };
@@ -2372,6 +2378,59 @@ fn carrier_facts_by_component_from_edge_state(
     Ok(facts_by_component)
 }
 
+fn available_carrier_neighbors_for_support_boundary_model(
+    model: &StereoConstraintModel,
+    boundary_facts: &StereoSupportBoundaryFacts,
+    component_idx: usize,
+    side_idx: usize,
+) -> PyResult<Vec<usize>> {
+    if boundary_facts
+        .carrier_facts_by_component
+        .get(component_idx)
+        .is_none()
+    {
+        return Err(PyValueError::new_err(
+            "support-boundary facts do not match the constraint model",
+        ));
+    }
+    let constraint_state =
+        boundary_facts.constraint_state_for_model(model, StereoConstraintLayer::Semantic)?;
+    let Some(remaining_assignment_ids) = constraint_state
+        .carrier_assignment_state
+        .remaining_by_component
+        .get(component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "support-boundary constraint state does not match the edge-emission constraint model",
+        ));
+    };
+    let token_phase_assignment_ids = constraint_state
+        .token_phase_remaining_by_component
+        .get(component_idx)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let mut available_assignment_ids = remaining_assignment_ids.clone();
+    if let Some(marker_row_assignment_ids) =
+        marker_row_neighbor_assignment_ids_from_support_boundary(
+            model,
+            boundary_facts,
+            component_idx,
+            token_phase_assignment_ids,
+        )?
+    {
+        let marker_row_assignment_ids = marker_row_assignment_ids
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        available_assignment_ids
+            .retain(|assignment_id| marker_row_assignment_ids.contains(assignment_id));
+    }
+    Ok(model.available_neighbors_for_assignment_ids(
+        component_idx,
+        side_idx,
+        &available_assignment_ids,
+    ))
+}
+
 fn available_carrier_neighbors_from_support_boundary(
     context: &StereoEdgeEmissionContext<'_>,
     boundary_facts: &StereoSupportBoundaryFacts,
@@ -2380,24 +2439,13 @@ fn available_carrier_neighbors_from_support_boundary(
     let Some(component_idx) = context.constraint_model.component_for_side(side_idx) else {
         return Ok(None);
     };
-    let Some(component_facts) = boundary_facts.carrier_facts_by_component.get(component_idx) else {
-        return Err(PyValueError::new_err(
-            "support-boundary facts do not match the edge-emission constraint model",
-        ));
-    };
-    let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
-        component_idx,
-        StereoConstraintLayer::Semantic,
-        component_facts,
-    );
     Ok(Some(
-        context
-            .constraint_model
-            .available_neighbors_for_assignment_ids(
-                component_idx,
-                side_idx,
-                &remaining_assignment_ids,
-            ),
+        available_carrier_neighbors_for_support_boundary_model(
+            context.constraint_model,
+            boundary_facts,
+            component_idx,
+            side_idx,
+        )?,
     ))
 }
 
@@ -2522,19 +2570,64 @@ struct StereoSupportBoundaryFacts {
 }
 
 impl StereoSupportBoundaryFacts {
-    fn constraint_state(
+    fn constraint_state_for_model(
         &self,
-        runtime: &StereoWalkerRuntimeData,
+        model: &StereoConstraintModel,
         layer: StereoConstraintLayer,
     ) -> PyResult<StereoConstraintState> {
         StereoConstraintState::from_facts_and_token_observations(
-            &runtime.constraint_model,
+            model,
             layer,
             &self.carrier_facts_by_component,
             &self.known_token_flip_facts,
             &self.inferred_token_observation_facts,
         )
     }
+
+    fn constraint_state(
+        &self,
+        runtime: &StereoWalkerRuntimeData,
+        layer: StereoConstraintLayer,
+    ) -> PyResult<StereoConstraintState> {
+        self.constraint_state_for_model(&runtime.constraint_model, layer)
+    }
+}
+
+fn marker_row_neighbor_assignment_ids_from_support_boundary(
+    model: &StereoConstraintModel,
+    boundary_facts: &StereoSupportBoundaryFacts,
+    component_idx: usize,
+    token_phase_assignment_ids: &[usize],
+) -> PyResult<Option<Vec<usize>>> {
+    let Some(marker_events) = boundary_facts
+        .marker_obligation_event_facts_by_component
+        .get(component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "support-boundary marker facts do not match the constraint model",
+        ));
+    };
+    if marker_events.is_empty() {
+        return Ok(None);
+    }
+
+    let row_ids_before_marker_events = model
+        .marker_placement_row_ids_for_token_phase_assignment_ids(
+            component_idx,
+            token_phase_assignment_ids,
+        )?;
+    let row_ids_after_marker_events = model
+        .filter_marker_placement_row_ids_for_marker_event_facts(
+            component_idx,
+            &row_ids_before_marker_events,
+            marker_events,
+        )?;
+    Ok(Some(
+        model.neighbor_assignment_ids_for_marker_placement_row_ids(
+            component_idx,
+            &row_ids_after_marker_events,
+        )?,
+    ))
 }
 
 fn carrier_commitment_boundary_query_from_edge_state(
@@ -2549,12 +2642,9 @@ fn carrier_commitment_boundary_query_from_edge_state(
         side_idx,
         neighbor_idx,
     );
-    let available_neighbors = available_carrier_neighbors_from_support_boundary(
-        context,
-        boundary_facts,
-        side_idx,
-    )?
-    .unwrap_or_default();
+    let available_neighbors =
+        available_carrier_neighbors_from_support_boundary(context, boundary_facts, side_idx)?
+            .unwrap_or_default();
     let forced_neighbor =
         support_boundary_carrier_obligation_neighbor(context, side_idx, &available_neighbors);
     let deferrable_constraint = deferred_carrier_choice_constraint_for_support_boundary(
@@ -2728,6 +2818,8 @@ fn emitted_edge_part_generic(
                 context,
                 &updated_neighbors,
                 &deferred_carrier_choice_constraints,
+                state.marker_event_traces,
+                state.committed_component_token_flips,
             )?;
             let commitment_query = carrier_commitment_boundary_query_from_edge_state(
                 context,
@@ -2965,6 +3057,8 @@ fn process_children_edge_update(
             component_begin_atoms: &current_begin_atoms,
             deferred_carrier_choice_constraints: &state.deferred_carrier_choice_constraints,
             token_basis_facts: &state.stereo_token_basis_facts,
+            marker_event_traces: &state.marker_event_traces,
+            committed_component_token_flips: &state.committed_component_token_flips,
         },
         parent_idx,
         child_idx,
@@ -3228,8 +3322,9 @@ fn support_boundary_facts_from_token_constraints(
         carrier_facts_by_component,
         deferred_carrier_choice_constraints,
         known_token_flip_facts: known_token_flip_facts_from_constraints(token_constraints),
-        inferred_token_observation_facts:
-            inferred_token_observation_facts_from_constraints(token_constraints),
+        inferred_token_observation_facts: inferred_token_observation_facts_from_constraints(
+            token_constraints,
+        ),
         marker_event_facts_by_component,
         marker_obligation_domains_by_component,
         marker_obligation_event_facts_by_component,
@@ -3265,29 +3360,35 @@ fn support_boundary_facts_from_edge_state(
     context: &StereoEdgeEmissionContext<'_>,
     selected_neighbors: &[isize],
     deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+    marker_event_traces: &[MarkerEventTrace],
+    committed_component_token_flips: &[Option<StereoTokenFlip>],
 ) -> PyResult<StereoSupportBoundaryFacts> {
     let carrier_facts_by_component = carrier_facts_by_component_from_edge_state(
         context,
         selected_neighbors,
         deferred_carrier_choice_constraints,
     )?;
+    let marker_event_facts_by_component = rdkit_writer_marker_event_facts_by_component_from_traces(
+        context.constraint_model,
+        context.constraint_model.component_count(),
+        marker_event_traces,
+    )?;
+    let marker_obligation_domains_by_component =
+        rdkit_writer_marker_obligation_domains_by_component(&marker_event_facts_by_component);
+    let marker_obligation_event_facts_by_component =
+        rdkit_writer_slot_coalesced_marker_event_facts_by_component(
+            &marker_event_facts_by_component,
+        );
     Ok(StereoSupportBoundaryFacts {
         carrier_facts_by_component,
         deferred_carrier_choice_constraints: deferred_carrier_choice_constraints.to_vec(),
-        known_token_flip_facts: Vec::new(),
+        known_token_flip_facts: known_token_flip_facts_from_committed_component_token_flips(
+            committed_component_token_flips,
+        ),
         inferred_token_observation_facts: Vec::new(),
-        marker_event_facts_by_component: vec![
-            Vec::new();
-            context.constraint_model.component_count()
-        ],
-        marker_obligation_domains_by_component: vec![
-            Vec::new();
-            context.constraint_model.component_count()
-        ],
-        marker_obligation_event_facts_by_component: vec![
-            Vec::new();
-            context.constraint_model.component_count()
-        ],
+        marker_event_facts_by_component,
+        marker_obligation_domains_by_component,
+        marker_obligation_event_facts_by_component,
     })
 }
 
@@ -3305,7 +3406,15 @@ fn selected_neighbors_from_support_boundary_constraints(
             if selected_neighbors[side_idx] >= 0 {
                 continue;
             }
-            if let Some(neighbor_idx) = constraint_state.forced_neighbor(
+            let available_neighbors = available_carrier_neighbors_for_support_boundary_model(
+                &runtime.constraint_model,
+                boundary_facts,
+                component.component_idx,
+                side_idx,
+            )?;
+            if let [neighbor_idx] = available_neighbors.as_slice() {
+                selected_neighbors[side_idx] = *neighbor_idx as isize;
+            } else if let Some(neighbor_idx) = constraint_state.forced_neighbor(
                 &runtime.constraint_model,
                 component.component_idx,
                 side_idx,
@@ -3791,17 +3900,18 @@ fn rdkit_writer_selected_marker_event_facts_by_component(
     Ok(facts_by_component)
 }
 
-fn rdkit_writer_marker_event_facts_by_component(
-    runtime: &StereoWalkerRuntimeData,
-    state: &RootedConnectedStereoWalkerStateData,
+fn rdkit_writer_marker_event_facts_by_component_from_traces(
+    model: &StereoConstraintModel,
+    component_count: usize,
+    marker_event_traces: &[MarkerEventTrace],
 ) -> PyResult<Vec<Vec<StereoMarkerEventFact>>> {
-    let mut facts_by_component = vec![Vec::new(); runtime.constraint_model.component_count()];
-    for trace in state.marker_event_traces.iter() {
+    let mut facts_by_component = vec![Vec::new(); component_count];
+    for trace in marker_event_traces {
         if trace.side_idx < 0 || trace.edge_begin_idx < 0 || trace.edge_end_idx < 0 {
             continue;
         }
         let side_idx = trace.side_idx as usize;
-        let Some(component_idx) = runtime.constraint_model.component_for_side(side_idx) else {
+        let Some(component_idx) = model.component_for_side(side_idx) else {
             continue;
         };
         let fact = match trace.marker {
@@ -3828,6 +3938,17 @@ fn rdkit_writer_marker_event_facts_by_component(
         facts_by_component[component_idx].push(fact);
     }
     Ok(facts_by_component)
+}
+
+fn rdkit_writer_marker_event_facts_by_component(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<Vec<StereoMarkerEventFact>>> {
+    rdkit_writer_marker_event_facts_by_component_from_traces(
+        &runtime.constraint_model,
+        runtime.constraint_model.component_count(),
+        state.marker_event_traces.as_ref(),
+    )
 }
 
 fn marker_event_facts_to_py(
@@ -4193,6 +4314,22 @@ fn committed_component_token_flip_fact_from_state(
             token_flip,
         }
     })
+}
+
+fn known_token_flip_facts_from_committed_component_token_flips(
+    committed_component_token_flips: &[Option<StereoTokenFlip>],
+) -> Vec<StereoTokenFlipFact> {
+    committed_component_token_flips
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(runtime_component_idx, token_flip)| {
+            Some(StereoTokenFlipFact {
+                runtime_component_idx,
+                token_flip: token_flip?,
+            })
+        })
+        .collect()
 }
 
 fn component_token_constraint_from_state(
@@ -5485,8 +5622,7 @@ fn stereo_output_fact_row_to_py(
     let marker_obligation_events_by_component =
         rdkit_writer_slot_coalesced_marker_event_facts_by_component(&marker_events_by_component);
     let shadow_marker_events_by_component = &boundary_facts.marker_event_facts_by_component;
-    let shadow_marker_obligation_domains =
-        &boundary_facts.marker_obligation_domains_by_component;
+    let shadow_marker_obligation_domains = &boundary_facts.marker_obligation_domains_by_component;
     let shadow_marker_obligation_events_by_component =
         &boundary_facts.marker_obligation_event_facts_by_component;
     let raw_semantic_assignment_state = StereoAssignmentState::from_facts_by_component(
@@ -5506,8 +5642,7 @@ fn stereo_output_fact_row_to_py(
         &resolved_selected_neighbors,
     )?;
     let known_token_flip_facts = boundary_facts.known_token_flip_facts.clone();
-    let inferred_token_observation_facts =
-        boundary_facts.inferred_token_observation_facts.clone();
+    let inferred_token_observation_facts = boundary_facts.inferred_token_observation_facts.clone();
     let supported_token_observation_facts =
         supported_token_observation_facts_from_constraints(&token_constraints)?;
 
@@ -6849,8 +6984,8 @@ fn commit_component_token_basis_fact(
     state: &mut RootedConnectedStereoWalkerStateData,
     fact: StereoTokenBasisFact,
 ) -> PyResult<()> {
-    let fact_slot = &mut Arc::make_mut(&mut state.stereo_token_basis_facts)
-        [fact.runtime_component_idx];
+    let fact_slot =
+        &mut Arc::make_mut(&mut state.stereo_token_basis_facts)[fact.runtime_component_idx];
     if let Some(existing_fact) = fact_slot {
         if *existing_fact != fact {
             return Err(PyValueError::new_err(format!(
@@ -7609,6 +7744,9 @@ fn enter_atom_successors_by_token(
                                     deferred_carrier_choice_constraints:
                                         &current_deferred_carrier_choice_constraints,
                                     token_basis_facts: &current_token_basis_facts,
+                                    marker_event_traces: &current_marker_event_traces,
+                                    committed_component_token_flips: &base_state
+                                        .committed_component_token_flips,
                                 },
                                 atom_idx,
                                 closure.other_atom_idx,
@@ -9711,32 +9849,32 @@ mod tests {
     use super::{
         advance_stereo_choice_state, advance_stereo_token_state, apply_component_begin_atom_fact,
         apply_component_phase_commit_fact, apply_deferred_component_phase_fact,
-        build_walker_runtime, check_supported_stereo_writer_surface, choices_for_stereo_state,
-        component_token_constraints_from_state, drain_exact_linear_stereo_actions,
-        enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
-        flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
-        initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
+        available_carrier_neighbors_from_support_boundary, build_walker_runtime,
+        carrier_commitment_boundary_query_from_edge_state,
+        carrier_commitment_decision_from_boundary_query, check_supported_stereo_writer_surface,
+        choices_for_stereo_state, component_token_constraints_from_state,
+        drain_exact_linear_stereo_actions, enumerate_rooted_connected_stereo_smiles_support,
+        enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
+        inferred_token_observation_facts_from_constraints, initial_stereo_state_for_root,
+        is_complete_terminal_stereo_state, is_terminal_stereo_state,
         known_token_flip_facts_from_constraints, marker_events_for_deferred_component_token,
-        next_token_support_for_stereo_state, record_rdkit_literal_edge_marker_trace,
-        rdkit_marker_rows_accept_deferred_token, rdkit_ring_closure_projected_marker_slots,
-        rdkit_traversal_writer_facts_by_component,
-        rdkit_traversal_writer_has_completion, resolved_constraint_state_from_walker_state,
-        rdkit_writer_marker_event_facts_by_component,
+        next_token_support_for_stereo_state, rdkit_marker_rows_accept_deferred_token,
+        rdkit_ring_closure_projected_marker_slots, rdkit_traversal_writer_facts_by_component,
+        rdkit_traversal_writer_has_completion, rdkit_writer_marker_event_facts_by_component,
         rdkit_writer_marker_obligation_domains_by_component,
         rdkit_writer_slot_coalesced_marker_event_facts_by_component,
+        record_rdkit_literal_edge_marker_trace, resolved_constraint_state_from_walker_state,
         resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
-        support_boundary_facts_from_edge_state, support_boundary_facts_from_walker_state,
-        successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
-        validate_root_idx, validate_stereo_state_shape,
-        available_carrier_neighbors_from_support_boundary,
-        carrier_commitment_boundary_query_from_edge_state,
-        carrier_commitment_decision_from_boundary_query, CarrierCommitmentBoundaryQuery,
-        CarrierCommitmentDecision, ComponentBeginAtomFact, ComponentPhaseCommitFact,
-        ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
-        DeferredDirectionalComponentToken, DeferredDirectionalToken, StereoEdgeEmissionContext,
-        StereoEdgeEmissionState, FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE,
-        UNKNOWN_COMPONENT_PHASE,
+        successors_by_token_stereo_raw, support_boundary_facts_from_edge_state,
+        support_boundary_facts_from_walker_state,
+        supported_token_observation_facts_from_constraints, validate_root_idx,
+        validate_stereo_state_shape, CarrierCommitmentBoundaryQuery, CarrierCommitmentDecision,
+        ComponentBeginAtomFact, ComponentPhaseCommitFact, ComponentTokenConstraintFact,
+        DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
+        DeferredDirectionalComponentToken, DeferredDirectionalToken, MarkerEventTrace,
+        StereoEdgeEmissionContext, StereoEdgeEmissionState, FLIPPED_COMPONENT_PHASE,
+        STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -10369,6 +10507,73 @@ mod tests {
     }
 
     #[test]
+    fn edge_state_marker_rows_filter_carrier_availability() {
+        let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
+            return;
+        };
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
+        let side_idx = runtime
+            .side_infos
+            .iter()
+            .position(|side_info| side_info.candidate_neighbors.len() == 2)
+            .expect("witness should have a two-candidate side");
+        let side_info = &runtime.side_infos[side_idx];
+        let blocked_neighbor = side_info.candidate_neighbors[0];
+        let marked_neighbor = side_info.candidate_neighbors[1];
+        let marker = side_info.candidate_base_tokens[1]
+            .chars()
+            .next()
+            .expect("candidate token should be directional");
+        let marker_event_traces = vec![
+            MarkerEventTrace {
+                slot: 0,
+                marker: Some(marker),
+                component_idx: side_info.component_idx as isize,
+                side_idx: side_idx as isize,
+                endpoint_atom_idx: side_info.endpoint_atom_idx as isize,
+                edge_neighbor_idx: marked_neighbor as isize,
+                edge_begin_idx: side_info.endpoint_atom_idx as isize,
+                edge_end_idx: marked_neighbor as isize,
+                role: StereoTraversalRole::TreeOrChain,
+            },
+            MarkerEventTrace {
+                slot: 1,
+                marker: None,
+                component_idx: side_info.component_idx as isize,
+                side_idx: side_idx as isize,
+                endpoint_atom_idx: side_info.endpoint_atom_idx as isize,
+                edge_neighbor_idx: blocked_neighbor as isize,
+                edge_begin_idx: side_info.endpoint_atom_idx as isize,
+                edge_end_idx: blocked_neighbor as isize,
+                role: StereoTraversalRole::TreeOrChain,
+            },
+        ];
+
+        let context = StereoEdgeEmissionContext {
+            graph: &graph,
+            constraint_model: &runtime.constraint_model,
+            side_infos: &runtime.side_infos,
+            side_ids_by_component: &runtime.side_ids_by_component,
+            edge_to_side_ids: &runtime.edge_to_side_ids,
+            isolated_components: &runtime.isolated_components,
+        };
+        let boundary_facts = support_boundary_facts_from_edge_state(
+            &context,
+            &state.stereo_selected_neighbors,
+            &state.deferred_carrier_choice_constraints,
+            &marker_event_traces,
+            &state.committed_component_token_flips,
+        )
+        .expect("support-boundary facts should preserve edge marker events");
+        let available_neighbors =
+            available_carrier_neighbors_from_support_boundary(&context, &boundary_facts, side_idx)
+                .expect("boundary availability should build")
+                .expect("side should belong to a model component");
+
+        assert_eq!(vec![marked_neighbor], available_neighbors);
+    }
+
+    #[test]
     fn deferred_marker_row_filtering_coalesces_prior_no_marker_on_same_edge() {
         let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
             return;
@@ -10629,15 +10834,14 @@ mod tests {
             &context,
             &state.stereo_selected_neighbors,
             &state.deferred_carrier_choice_constraints,
+            &state.marker_event_traces,
+            &state.committed_component_token_flips,
         )
         .expect("support-boundary facts should build");
-        let boundary_available_neighbors = available_carrier_neighbors_from_support_boundary(
-            &context,
-            &boundary_facts,
-            side_idx,
-        )
-        .expect("support-boundary availability query should build")
-        .expect("side should belong to a modeled component");
+        let boundary_available_neighbors =
+            available_carrier_neighbors_from_support_boundary(&context, &boundary_facts, side_idx)
+                .expect("support-boundary availability query should build")
+                .expect("side should belong to a modeled component");
         assert_eq!(available_neighbors, boundary_available_neighbors);
 
         let edge_state = StereoEdgeEmissionState {
@@ -10648,6 +10852,8 @@ mod tests {
             component_begin_atoms: &state.stereo_component_begin_atoms,
             deferred_carrier_choice_constraints: &state.deferred_carrier_choice_constraints,
             token_basis_facts: &state.stereo_token_basis_facts,
+            marker_event_traces: &state.marker_event_traces,
+            committed_component_token_flips: &state.committed_component_token_flips,
         };
         let query = carrier_commitment_boundary_query_from_edge_state(
             &context,

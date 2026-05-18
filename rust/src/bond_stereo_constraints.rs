@@ -1583,6 +1583,90 @@ impl StereoConstraintModel {
         }
     }
 
+    fn row_token_flip_for_side(
+        component: &StereoComponentConstraintModel,
+        row: &StereoMarkerPlacementRow,
+        side_position: usize,
+    ) -> PyResult<StereoTokenFlip> {
+        let Some(side_domain) = component.side_domains.get(side_position) else {
+            return Err(PyValueError::new_err(
+                "marker placement row side index out of range",
+            ));
+        };
+        let Some(token_phase_assignment) = component
+            .all_token_phase_assignments
+            .get(row.token_phase_assignment_id)
+        else {
+            return Err(PyValueError::new_err(
+                "marker placement row token phase index out of range",
+            ));
+        };
+        let Some(runtime_component_position) = component
+            .runtime_component_ids
+            .iter()
+            .position(|&runtime_component_idx| {
+                runtime_component_idx == side_domain.component_idx
+            })
+        else {
+            return Err(PyValueError::new_err(
+                "marker placement row side references unknown runtime component",
+            ));
+        };
+        token_phase_assignment
+            .token_flips
+            .get(runtime_component_position)
+            .copied()
+            .ok_or_else(|| PyValueError::new_err("marker placement row token flip missing"))
+    }
+
+    fn row_marker_tokens_for_event_target(
+        component: &StereoComponentConstraintModel,
+        row: &StereoMarkerPlacementRow,
+        side_position: usize,
+        event: StereoMarkerEventFact,
+    ) -> PyResult<BTreeSet<StereoDirectionToken>> {
+        let Some(side_domain) = component.side_domains.get(side_position) else {
+            return Err(PyValueError::new_err(
+                "marker placement row side index out of range",
+            ));
+        };
+        let (begin_idx, end_idx) = event.edge();
+        let neighbor_idx = if begin_idx == side_domain.endpoint_atom_idx {
+            end_idx
+        } else if end_idx == side_domain.endpoint_atom_idx {
+            begin_idx
+        } else {
+            return Err(PyValueError::new_err(
+                "marker event edge does not touch side endpoint",
+            ));
+        };
+        let Some(choice) = side_domain
+            .choices
+            .iter()
+            .find(|choice| choice.neighbor_idx == neighbor_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "marker event target outside side domain",
+            ));
+        };
+        // Shared visible markers can be interpreted either in component-local
+        // endpoint basis or in the actual emitted-edge basis.
+        let mut basis_tokens = BTreeSet::from([choice.base_token.clone()]);
+        if begin_idx != side_domain.endpoint_atom_idx {
+            basis_tokens.insert(flip_direction_token(&choice.base_token)?);
+        }
+        let token_flip = Self::row_token_flip_for_side(component, row, side_position)?;
+        let mut tokens = BTreeSet::new();
+        for basis_token in basis_tokens {
+            let row_token = match token_flip {
+                StereoTokenFlip::Stored => basis_token,
+                StereoTokenFlip::Flipped => flip_direction_token(&basis_token)?,
+            };
+            tokens.insert(StereoDirectionToken::from_str(&row_token)?);
+        }
+        Ok(tokens)
+    }
+
     fn marker_placement_row_matches_event(
         component: &StereoComponentConstraintModel,
         row: &StereoMarkerPlacementRow,
@@ -1594,10 +1678,23 @@ impl StereoConstraintModel {
             return Ok(!event.is_marker_placed());
         };
         let row_neighbor_set = row.marker_neighbor_sets.get(side_position);
-        if event.is_marker_placed() {
-            Ok(row_neighbor_set.is_some_and(|neighbors| neighbors.contains(&event_neighbor_idx)))
-        } else {
-            Ok(!row_neighbor_set.is_some_and(|neighbors| neighbors.contains(&event_neighbor_idx)))
+        match event {
+            StereoMarkerEventFact::MarkerPlaced { marker, .. } => {
+                if !row_neighbor_set
+                    .is_some_and(|neighbors| neighbors.contains(&event_neighbor_idx))
+                {
+                    return Ok(false);
+                }
+                Ok(Self::row_marker_tokens_for_event_target(
+                    component,
+                    row,
+                    side_position,
+                    event,
+                )?
+                .contains(&marker))
+            }
+            StereoMarkerEventFact::NoMarker { .. } => Ok(!row_neighbor_set
+                .is_some_and(|neighbors| neighbors.contains(&event_neighbor_idx))),
         }
     }
 
@@ -2600,9 +2697,25 @@ mod tests {
                 }],
             )
             .expect("marker event query should be valid");
+        assert_eq!(vec![4, 5, 10, 11], marker_on_side_zero_neighbor_three);
+
+        let backslash_marker_on_side_zero_neighbor_three = model
+            .filter_marker_placement_row_ids_for_marker_event_facts(
+                0,
+                &all_row_ids,
+                &[StereoMarkerEventFact::MarkerPlaced {
+                    side_idx: 0,
+                    slot: 12,
+                    begin_idx: 1,
+                    end_idx: 3,
+                    marker: StereoDirectionToken::Backslash,
+                    role: StereoTraversalRole::TreeOrChain,
+                }],
+            )
+            .expect("marker event query should be valid");
         assert_eq!(
-            vec![1, 2, 4, 5, 7, 8, 10, 11],
-            marker_on_side_zero_neighbor_three
+            vec![1, 2, 7, 8],
+            backslash_marker_on_side_zero_neighbor_three
         );
 
         let only_neighbor_three = model
@@ -2618,9 +2731,9 @@ mod tests {
                 }],
             )
             .expect("marker event query should be valid");
-        assert_eq!(vec![1, 4, 7, 10], only_neighbor_three);
+        assert_eq!(vec![4, 10], only_neighbor_three);
         assert_eq!(
-            vec![0, 1, 2, 3],
+            vec![1, 3],
             model
                 .token_phase_assignment_ids_for_marker_placement_row_ids(0, &only_neighbor_three)
                 .expect("marker row token phase query should be valid"),

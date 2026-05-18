@@ -121,11 +121,11 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
         if expected_current_result == "support_missing":
             if (
                 type(expected_same_skeleton_support_count) is not int
-                or expected_same_skeleton_support_count <= 0
+                or expected_same_skeleton_support_count < 0
             ):
                 raise ValueError(
                     f"known stereo-gap case {raw_case['id']!r} must pin a "
-                    "positive expected_current_same_skeleton_support_count"
+                    "nonnegative expected_current_same_skeleton_support_count"
                 )
         elif expected_same_skeleton_support_count is not None:
             raise ValueError(
@@ -339,7 +339,7 @@ class KnownStereoGapTests(unittest.TestCase):
                     f"from Grimace support of size {len(support)}",
                 )
 
-    def test_support_missing_cases_are_marker_spelling_gaps(self) -> None:
+    def test_support_missing_cases_pin_direction_skeleton_profile(self) -> None:
         support_cache: dict[tuple[str, int | None, bool], set[str]] = {}
         for case in self.cases:
             if case.expected_current_result != "support_missing":
@@ -375,14 +375,15 @@ class KnownStereoGapTests(unittest.TestCase):
                     case.expected_current_same_skeleton_support_count,
                     len(same_skeleton_support),
                 )
-                self.assertTrue(
-                    all(
-                        _direction_marker_slots(smiles)
-                        != _direction_marker_slots(case.expected)
-                        for smiles in same_skeleton_support
-                    ),
-                    case.case_id,
-                )
+                if case.expected_current_same_skeleton_support_count:
+                    self.assertTrue(
+                        all(
+                            _direction_marker_slots(smiles)
+                            != _direction_marker_slots(case.expected)
+                            for smiles in same_skeleton_support
+                        ),
+                        case.case_id,
+                    )
 
     def test_manual_difficult_cases_keep_nonempty_marker_row_state(self) -> None:
         cases = tuple(

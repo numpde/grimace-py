@@ -10238,8 +10238,8 @@ mod tests {
             }
         }
 
-        assert_eq!(36, accepted);
-        assert_eq!(20, rejected);
+        assert_eq!(32, accepted);
+        assert_eq!(12, rejected);
     }
 
     #[test]

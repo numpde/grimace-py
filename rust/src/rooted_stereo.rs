@@ -4493,11 +4493,16 @@ fn resolved_constraint_state_from_walker_state(
     boundary_facts.constraint_state(runtime, layer)
 }
 
-fn terminal_stereo_state_has_support_boundary_marker_placement(
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TerminalStereoSupportBoundarySummary {
+    deferred_marker_obligation_domain_count: usize,
+}
+
+fn terminal_stereo_state_support_boundary_summary(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
-) -> PyResult<bool> {
+) -> PyResult<Option<TerminalStereoSupportBoundarySummary>> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
     let boundary_facts = support_boundary_facts_from_walker_state(
         runtime,
@@ -4511,7 +4516,7 @@ fn terminal_stereo_state_has_support_boundary_marker_placement(
     for component in &runtime.constraint_model.components {
         let component_idx = component.component_idx;
         if constraint_state.is_empty(component_idx) {
-            return Ok(false);
+            return Ok(None);
         }
         let Some(marker_events) = boundary_facts
             .marker_event_facts_by_component
@@ -4533,10 +4538,26 @@ fn terminal_stereo_state_has_support_boundary_marker_placement(
             marker_events,
         )?;
         if survivor_state.row_ids_after_marker_events.is_empty() {
-            return Ok(false);
+            return Ok(None);
         }
     }
-    Ok(true)
+    let deferred_marker_obligation_domain_count = boundary_facts
+        .marker_obligation_domains_by_component
+        .iter()
+        .flatten()
+        .filter(|domain| domain.is_deferred())
+        .count();
+    Ok(Some(TerminalStereoSupportBoundarySummary {
+        deferred_marker_obligation_domain_count,
+    }))
+}
+
+fn terminal_stereo_state_has_support_boundary_marker_placement(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<bool> {
+    Ok(terminal_stereo_state_support_boundary_summary(runtime, graph, state)?.is_some())
 }
 
 fn assert_token_flips_explained_by_constraint_state(
@@ -5933,6 +5954,70 @@ fn collect_stereo_output_fact_rows(
     Ok(())
 }
 
+struct DeferredMarkerObligationWitnessScan {
+    terminal_state_count: usize,
+    truncated: bool,
+}
+
+fn collect_deferred_marker_obligation_witness_rows(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    mut state: RootedConnectedStereoWalkerStateData,
+    rows: &Bound<'_, PyList>,
+    limit: usize,
+    max_terminal_states: usize,
+    scan: &mut DeferredMarkerObligationWitnessScan,
+) -> PyResult<()> {
+    if rows.len() >= limit || scan.truncated {
+        return Ok(());
+    }
+
+    drain_exact_linear_stereo_actions(&mut state);
+    if state.action_stack.is_empty() {
+        if is_complete_terminal_stereo_state(graph, &state) {
+            if let Some(summary) =
+                terminal_stereo_state_support_boundary_summary(runtime, graph, &state)?
+            {
+                scan.terminal_state_count += 1;
+                if summary.deferred_marker_obligation_domain_count > 0 {
+                    let row = PyDict::new(py);
+                    row.set_item("smiles", state.prefix.to_string())?;
+                    row.set_item(
+                        "deferred_marker_obligation_domain_count",
+                        summary.deferred_marker_obligation_domain_count,
+                    )?;
+                    rows.append(row)?;
+                }
+                if scan.terminal_state_count >= max_terminal_states {
+                    scan.truncated = true;
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    let successors = flatten_exact_stereo_successor_groups(successors_by_token_stereo_raw(
+        runtime, graph, &state,
+    )?);
+    for successor in successors {
+        collect_deferred_marker_obligation_witness_rows(
+            py,
+            runtime,
+            graph,
+            successor,
+            rows,
+            limit,
+            max_terminal_states,
+            scan,
+        )?;
+        if rows.len() >= limit || scan.truncated {
+            break;
+        }
+    }
+    Ok(())
+}
+
 #[pyfunction(name = "_stereo_constraint_output_facts", signature = (graph, root_idx=-1))]
 pub fn internal_stereo_constraint_output_facts(
     py: Python<'_>,
@@ -5963,6 +6048,72 @@ pub fn internal_stereo_constraint_output_facts(
         )?;
     }
     Ok(rows.unbind())
+}
+
+#[pyfunction(
+    name = "_stereo_deferred_marker_obligation_witnesses",
+    signature = (graph, root_idx=-1, limit=16, max_terminal_states=100000)
+)]
+pub fn internal_stereo_deferred_marker_obligation_witnesses(
+    py: Python<'_>,
+    graph: &Bound<'_, PyAny>,
+    root_idx: isize,
+    limit: usize,
+    max_terminal_states: usize,
+) -> PyResult<Py<PyDict>> {
+    if limit == 0 {
+        return Err(PyValueError::new_err("limit must be positive"));
+    }
+    if max_terminal_states == 0 {
+        return Err(PyValueError::new_err(
+            "max_terminal_states must be positive",
+        ));
+    }
+
+    let graph = PreparedSmilesGraphData::from_any(graph)?;
+    let root_indices = if root_idx == -1 {
+        (0..graph.atom_count()).collect::<Vec<_>>()
+    } else {
+        vec![validate_root_idx(&graph, root_idx)?]
+    };
+
+    let rows = PyList::empty(py);
+    let mut total_terminal_state_count = 0usize;
+    let mut truncated = false;
+    for root_idx in root_indices {
+        let runtime = build_walker_runtime(&graph, root_idx)?;
+        if runtime.side_infos.is_empty() {
+            return Err(PyValueError::new_err(
+                "stereo deferred marker-obligation witnesses require bond-stereo side metadata",
+            ));
+        }
+        let mut scan = DeferredMarkerObligationWitnessScan {
+            terminal_state_count: 0,
+            truncated: false,
+        };
+        collect_deferred_marker_obligation_witness_rows(
+            py,
+            &runtime,
+            &graph,
+            initial_stereo_state_for_root(&runtime, &graph, runtime.root_idx),
+            &rows,
+            limit,
+            max_terminal_states.saturating_sub(total_terminal_state_count),
+            &mut scan,
+        )?;
+        total_terminal_state_count += scan.terminal_state_count;
+        truncated |= scan.truncated;
+        if rows.len() >= limit || total_terminal_state_count >= max_terminal_states {
+            truncated |= total_terminal_state_count >= max_terminal_states;
+            break;
+        }
+    }
+
+    let result = PyDict::new(py);
+    result.set_item("witnesses", rows)?;
+    result.set_item("terminal_state_count", total_terminal_state_count)?;
+    result.set_item("truncated", truncated)?;
+    Ok(result.unbind())
 }
 
 fn validate_stereo_state_shape(

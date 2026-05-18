@@ -1582,6 +1582,31 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(saw_boundary_marker_event)
         self.assertTrue(saw_boundary_no_marker_event)
 
+    def test_deferred_marker_obligation_witness_scanner_is_bounded(self) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "minimal_nonstereo_double_hazard"
+        )
+        assert case.expected_marker_row_diagnostics is not None
+        mol = parse_smiles(case.smiles)
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+        full_scan = _core._stereo_deferred_marker_obligation_witnesses(prepared)
+        self.assertFalse(full_scan["truncated"])
+        self.assertEqual(
+            case.expected_marker_row_diagnostics.output_row_count,
+            full_scan["terminal_state_count"],
+        )
+        self.assertEqual([], full_scan["witnesses"])
+
+        bounded_scan = _core._stereo_deferred_marker_obligation_witnesses(
+            prepared,
+            max_terminal_states=5,
+        )
+        self.assertTrue(bounded_scan["truncated"])
+        self.assertEqual(5, bounded_scan["terminal_state_count"])
+
     def test_reduced_porphyrin_terminal_rows_keep_marker_boundary_survivors(self) -> None:
         case = next(
             case

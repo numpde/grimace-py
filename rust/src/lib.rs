@@ -17,8 +17,8 @@ use crate::rooted_nonstereo::{
 };
 use crate::rooted_stereo::{
     internal_stereo_constraint_model_summary, internal_stereo_constraint_output_facts,
-    PyRootedConnectedStereoDecoder, PyRootedConnectedStereoWalker,
-    PyRootedConnectedStereoWalkerState,
+    internal_stereo_deferred_marker_obligation_witnesses, PyRootedConnectedStereoDecoder,
+    PyRootedConnectedStereoWalker, PyRootedConnectedStereoWalkerState,
 };
 
 #[pymodule]
@@ -38,6 +38,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     m.add_function(wrap_pyfunction!(
         internal_stereo_constraint_output_facts,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        internal_stereo_deferred_marker_obligation_witnesses,
         m
     )?)?;
     Ok(())

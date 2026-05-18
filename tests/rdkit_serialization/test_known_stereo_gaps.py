@@ -62,6 +62,9 @@ class KnownStereoGapCase:
     gap_detail: str
     expected_current_result: str
     expected_current_same_skeleton_support_count: int | None
+    expected_rdkit_output_semantic_equivalent: bool | None
+    expected_current_same_skeleton_semantic_equivalent_count: int | None
+    expected_current_same_skeleton_semantic_mismatch_count: int | None
     expected_current_same_skeleton_marker_slots: MarkerSlotSet | None
     semantic_minimal_marker_slots: MarkerSlotSet | None
     smiles: str | None
@@ -107,6 +110,20 @@ def _marker_slot_set_from_json(
                     f"{field_name} slot"
                 )
     return marker_slot_set
+
+
+def _optional_nonnegative_int(
+    raw_case: dict[str, object],
+    field_name: str,
+) -> int | None:
+    value = raw_case.get(field_name)
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise ValueError(
+            f"known stereo-gap case {raw_case['id']!r} has invalid {field_name}"
+        )
+    return value
 
 
 def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase, ...]:
@@ -155,6 +172,25 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
         expected_same_skeleton_support_count = raw_case.get(
             "expected_current_same_skeleton_support_count"
         )
+        expected_rdkit_output_semantic_equivalent = raw_case.get(
+            "expected_rdkit_output_semantic_equivalent"
+        )
+        if (
+            expected_rdkit_output_semantic_equivalent is not None
+            and type(expected_rdkit_output_semantic_equivalent) is not bool
+        ):
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has invalid "
+                "expected_rdkit_output_semantic_equivalent"
+            )
+        expected_same_skeleton_semantic_equivalent_count = _optional_nonnegative_int(
+            raw_case,
+            "expected_current_same_skeleton_semantic_equivalent_count",
+        )
+        expected_same_skeleton_semantic_mismatch_count = _optional_nonnegative_int(
+            raw_case,
+            "expected_current_same_skeleton_semantic_mismatch_count",
+        )
         same_skeleton_marker_slots = _marker_slot_set_from_json(
             raw_case,
             "expected_current_same_skeleton_marker_slots",
@@ -189,10 +225,42 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                     f"known stereo-gap case {raw_case['id']!r} must pin a "
                     "nonnegative expected_current_same_skeleton_support_count"
                 )
+            if expected_rdkit_output_semantic_equivalent is None:
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} must pin "
+                    "expected_rdkit_output_semantic_equivalent"
+                )
+            if (
+                expected_same_skeleton_semantic_equivalent_count is None
+                or expected_same_skeleton_semantic_mismatch_count is None
+            ):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} must pin "
+                    "same-skeleton semantic equivalent/mismatch counts"
+                )
+            if (
+                expected_same_skeleton_semantic_equivalent_count
+                + expected_same_skeleton_semantic_mismatch_count
+                != expected_same_skeleton_support_count
+            ):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} semantic "
+                    "same-skeleton counts must sum to "
+                    "expected_current_same_skeleton_support_count"
+                )
         elif expected_same_skeleton_support_count is not None:
             raise ValueError(
                 f"known stereo-gap case {raw_case['id']!r} may only define "
                 "expected_current_same_skeleton_support_count for support_missing"
+            )
+        elif (
+            expected_rdkit_output_semantic_equivalent is not None
+            or expected_same_skeleton_semantic_equivalent_count is not None
+            or expected_same_skeleton_semantic_mismatch_count is not None
+        ):
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} may only define "
+                "semantic boundary counts for support_missing"
             )
         cases.append(
             KnownStereoGapCase(
@@ -204,6 +272,15 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 expected_current_result=expected_current_result,
                 expected_current_same_skeleton_support_count=(
                     expected_same_skeleton_support_count
+                ),
+                expected_rdkit_output_semantic_equivalent=(
+                    expected_rdkit_output_semantic_equivalent
+                ),
+                expected_current_same_skeleton_semantic_equivalent_count=(
+                    expected_same_skeleton_semantic_equivalent_count
+                ),
+                expected_current_same_skeleton_semantic_mismatch_count=(
+                    expected_same_skeleton_semantic_mismatch_count
                 ),
                 expected_current_same_skeleton_marker_slots=(
                     same_skeleton_marker_slots
@@ -285,6 +362,14 @@ def _double_bond_stereo_signature(
             for bond in mol.GetBonds()
             if bond.GetStereo() != Chem.BondStereo.STEREONONE
         )
+    )
+
+
+def _canonical_isomeric_smiles(mol: Chem.Mol) -> str:
+    return Chem.MolToSmiles(
+        Chem.Mol(mol),
+        canonical=True,
+        isomericSmiles=True,
     )
 
 
@@ -646,6 +731,82 @@ class KnownStereoGapTests(unittest.TestCase):
                         ),
                         case.case_id,
                     )
+
+    def test_support_missing_cases_pin_semantic_boundary_profile(self) -> None:
+        support_cache: dict[tuple[str, int | None, bool], set[str]] = {}
+        for case in self.cases:
+            if case.expected_current_result != "support_missing":
+                continue
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertIsNotNone(case.expected_rdkit_output_semantic_equivalent)
+                self.assertIsNotNone(
+                    case.expected_current_same_skeleton_semantic_equivalent_count
+                )
+                self.assertIsNotNone(
+                    case.expected_current_same_skeleton_semantic_mismatch_count
+                )
+                assert case.expected_rdkit_output_semantic_equivalent is not None
+                assert (
+                    case.expected_current_same_skeleton_semantic_equivalent_count
+                    is not None
+                )
+                assert (
+                    case.expected_current_same_skeleton_semantic_mismatch_count
+                    is not None
+                )
+
+                mol = self._mol_from_case(case)
+                reference_smiles = _canonical_isomeric_smiles(mol)
+                expected_mol = Chem.MolFromSmiles(case.expected)
+                expected_semantic_equivalent = (
+                    expected_mol is not None
+                    and _canonical_isomeric_smiles(expected_mol) == reference_smiles
+                )
+                self.assertEqual(
+                    case.expected_rdkit_output_semantic_equivalent,
+                    expected_semantic_equivalent,
+                )
+
+                support_key = (
+                    self._molecule_source_key(case),
+                    case.rooted_at_atom,
+                    case.isomeric_smiles,
+                )
+                support = support_cache.get(support_key)
+                if support is None:
+                    support = grimace_support(
+                        mol,
+                        rooted_at_atom=case.rooted_at_atom,
+                        isomeric_smiles=case.isomeric_smiles,
+                    )
+                    support_cache[support_key] = support
+
+                expected_skeleton = _direction_erased_skeleton(case.expected)
+                equivalent_count = 0
+                mismatch_count = 0
+                for smiles in support:
+                    if _direction_erased_skeleton(smiles) != expected_skeleton:
+                        continue
+                    support_mol = Chem.MolFromSmiles(smiles)
+                    is_equivalent = (
+                        support_mol is not None
+                        and _canonical_isomeric_smiles(support_mol)
+                        == reference_smiles
+                    )
+                    if is_equivalent:
+                        equivalent_count += 1
+                    else:
+                        mismatch_count += 1
+
+                self.assertEqual(
+                    case.expected_current_same_skeleton_semantic_equivalent_count,
+                    equivalent_count,
+                )
+                self.assertEqual(
+                    case.expected_current_same_skeleton_semantic_mismatch_count,
+                    mismatch_count,
+                )
 
     def test_manual_difficult_cases_keep_nonempty_marker_row_state(self) -> None:
         cases = tuple(

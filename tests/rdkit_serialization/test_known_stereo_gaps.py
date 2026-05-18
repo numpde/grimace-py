@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from itertools import combinations, product
 import json
 import unittest
 
-from rdkit import Chem, rdBase
+from rdkit import Chem, RDLogger, rdBase
 
 from grimace import _core, _runtime
 from tests.helpers.fixture_paths import checked_in_fixture_path
@@ -62,6 +63,7 @@ class KnownStereoGapCase:
     expected_current_result: str
     expected_current_same_skeleton_support_count: int | None
     expected_current_same_skeleton_marker_slots: MarkerSlotSet | None
+    semantic_minimal_marker_slots: MarkerSlotSet | None
     smiles: str | None
     molblock: str | None
     writer_membership_case_id: str | None
@@ -73,6 +75,38 @@ class KnownStereoGapCase:
     rdkit_random_vector_index: int | None
     check_grimace_decoder_path: bool
     check_grimace_support: bool
+
+
+def _marker_slot_set_from_json(
+    raw_case: dict[str, object],
+    field_name: str,
+) -> MarkerSlotSet | None:
+    raw_marker_slot_set = raw_case.get(field_name)
+    if raw_marker_slot_set is None:
+        return None
+
+    marker_slot_set = tuple(
+        tuple((slot, marker) for slot, marker in marker_slots)
+        for marker_slots in raw_marker_slot_set
+    )
+    for marker_slots in marker_slot_set:
+        if marker_slots != tuple(sorted(marker_slots)):
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has unsorted "
+                f"{field_name}"
+            )
+        if len({slot for slot, _marker in marker_slots}) != len(marker_slots):
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has duplicate "
+                f"{field_name} slots"
+            )
+        for slot, marker in marker_slots:
+            if type(slot) is not int or slot < 0 or marker not in {"/", "\\"}:
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} has invalid "
+                    f"{field_name} slot"
+                )
+    return marker_slot_set
 
 
 def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase, ...]:
@@ -121,21 +155,21 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
         expected_same_skeleton_support_count = raw_case.get(
             "expected_current_same_skeleton_support_count"
         )
-        raw_same_skeleton_marker_slots = raw_case.get(
-            "expected_current_same_skeleton_marker_slots"
+        same_skeleton_marker_slots = _marker_slot_set_from_json(
+            raw_case,
+            "expected_current_same_skeleton_marker_slots",
         )
-        same_skeleton_marker_slots = None
-        if raw_same_skeleton_marker_slots is not None:
+        semantic_minimal_marker_slots = _marker_slot_set_from_json(
+            raw_case,
+            "semantic_minimal_marker_slots",
+        )
+        if same_skeleton_marker_slots is not None:
             if expected_current_result != "support_missing":
                 raise ValueError(
                     f"known stereo-gap case {raw_case['id']!r} may only define "
                     "expected_current_same_skeleton_marker_slots for "
                     "support_missing"
                 )
-            same_skeleton_marker_slots = tuple(
-                tuple((slot, marker) for slot, marker in marker_slots)
-                for marker_slots in raw_same_skeleton_marker_slots
-            )
             if (
                 expected_same_skeleton_support_count is not None
                 and len(same_skeleton_marker_slots)
@@ -146,17 +180,6 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                     "fixtures must match "
                     "expected_current_same_skeleton_support_count"
                 )
-            for marker_slots in same_skeleton_marker_slots:
-                for slot, marker in marker_slots:
-                    if (
-                        type(slot) is not int
-                        or slot < 0
-                        or marker not in {"/", "\\"}
-                    ):
-                        raise ValueError(
-                            f"known stereo-gap case {raw_case['id']!r} has "
-                            "invalid same-skeleton marker slot"
-                        )
         if expected_current_result == "support_missing":
             if (
                 type(expected_same_skeleton_support_count) is not int
@@ -185,6 +208,7 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 expected_current_same_skeleton_marker_slots=(
                     same_skeleton_marker_slots
                 ),
+                semantic_minimal_marker_slots=semantic_minimal_marker_slots,
                 smiles=smiles,
                 molblock=molblock,
                 writer_membership_case_id=writer_membership_case_id,
@@ -218,6 +242,21 @@ def _direction_marker_slots(smiles: str) -> MarkerSlots:
     return tuple(slots)
 
 
+def _smiles_from_direction_marker_slots(
+    skeleton: str,
+    marker_slots: MarkerSlots,
+) -> str:
+    markers_by_slot = dict(marker_slots)
+    parts = []
+    for slot, char in enumerate(skeleton):
+        if slot in markers_by_slot:
+            parts.append(markers_by_slot[slot])
+        parts.append(char)
+    if len(skeleton) in markers_by_slot:
+        parts.append(markers_by_slot[len(skeleton)])
+    return "".join(parts)
+
+
 def _directional_bond_signature(mol: Chem.Mol) -> tuple[tuple[int, int, str], ...]:
     return tuple(
         sorted(
@@ -247,6 +286,80 @@ def _double_bond_stereo_signature(
             if bond.GetStereo() != Chem.BondStereo.STEREONONE
         )
     )
+
+
+def _single_marker_candidate_slots(skeleton: str) -> tuple[int, ...]:
+    candidate_slots = []
+    RDLogger.DisableLog("rdApp.*")
+    try:
+        for slot in range(len(skeleton) + 1):
+            if any(
+                Chem.MolFromSmiles(
+                    _smiles_from_direction_marker_slots(skeleton, ((slot, marker),))
+                )
+                is not None
+                for marker in ("/", "\\")
+            ):
+                candidate_slots.append(slot)
+    finally:
+        RDLogger.EnableLog("rdApp.*")
+    return tuple(candidate_slots)
+
+
+def _semantic_minimal_marker_slot_sets(
+    skeleton: str,
+    reference_stereo_signature: tuple[tuple[int, int, str, tuple[int, ...]], ...],
+) -> MarkerSlotSet:
+    # A minimal directional-bond basis needs at most two marker-bearing
+    # neighboring bonds per double bond; shared markers can reduce that count.
+    max_marker_count = 2 * len(reference_stereo_signature)
+    candidate_slots = _single_marker_candidate_slots(skeleton)
+    valid_marker_slot_sets = []
+
+    RDLogger.DisableLog("rdApp.*")
+    try:
+        for marker_count in range(max_marker_count + 1):
+            for slots in combinations(candidate_slots, marker_count):
+                for markers in product(("/", "\\"), repeat=marker_count):
+                    marker_slots = tuple(zip(slots, markers))
+                    mol = Chem.MolFromSmiles(
+                        _smiles_from_direction_marker_slots(skeleton, marker_slots)
+                    )
+                    if (
+                        mol is not None
+                        and _double_bond_stereo_signature(mol)
+                        == reference_stereo_signature
+                    ):
+                        valid_marker_slot_sets.append(marker_slots)
+
+        minimal_marker_slot_sets = []
+        for marker_slots in valid_marker_slot_sets:
+            is_minimal = True
+            for marker_idx in range(len(marker_slots)):
+                reduced_marker_slots = tuple(
+                    marker_slot
+                    for idx, marker_slot in enumerate(marker_slots)
+                    if idx != marker_idx
+                )
+                reduced_mol = Chem.MolFromSmiles(
+                    _smiles_from_direction_marker_slots(
+                        skeleton,
+                        reduced_marker_slots,
+                    )
+                )
+                if (
+                    reduced_mol is not None
+                    and _double_bond_stereo_signature(reduced_mol)
+                    == reference_stereo_signature
+                ):
+                    is_minimal = False
+                    break
+            if is_minimal:
+                minimal_marker_slot_sets.append(marker_slots)
+    finally:
+        RDLogger.EnableLog("rdApp.*")
+
+    return tuple(sorted(minimal_marker_slot_sets))
 
 
 class KnownStereoGapTests(unittest.TestCase):
@@ -330,6 +443,41 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(4, len(source_marker_slots))
         self.assertEqual(3, len(rdkit_marker_slots))
         self.assertNotEqual(source_marker_slots, rdkit_marker_slots)
+
+    def test_smallest_gap_enumerates_semantic_marker_basis_space(self) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "github3967_part2_directional_ring_closure_canonical"
+        )
+        source_smiles = case.smiles
+        self.assertIsNotNone(source_smiles)
+        self.assertIsNotNone(case.semantic_minimal_marker_slots)
+        self.assertIsNotNone(case.expected_current_same_skeleton_marker_slots)
+        assert source_smiles is not None
+        assert case.semantic_minimal_marker_slots is not None
+        assert case.expected_current_same_skeleton_marker_slots is not None
+
+        skeleton = _direction_erased_skeleton(case.expected)
+        source_mol = self._mol_from_case(case)
+        reference_signature = _double_bond_stereo_signature(source_mol)
+        semantic_marker_slots = _semantic_minimal_marker_slot_sets(
+            skeleton,
+            reference_signature,
+        )
+
+        source_marker_slots = _direction_marker_slots(source_smiles)
+        rdkit_marker_slots = _direction_marker_slots(case.expected)
+        self.assertEqual(case.semantic_minimal_marker_slots, semantic_marker_slots)
+        self.assertIn(source_marker_slots, semantic_marker_slots)
+        self.assertIn(rdkit_marker_slots, semantic_marker_slots)
+
+        current_same_skeleton_marker_slots = set(
+            case.expected_current_same_skeleton_marker_slots
+        )
+        self.assertTrue(
+            current_same_skeleton_marker_slots.isdisjoint(semantic_marker_slots)
+        )
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:

@@ -2253,12 +2253,9 @@ fn isolated_component_token_basis_fact_from_row_state(
     if begin_selected_neighbor < 0 {
         return Ok(None);
     }
-    let Some(available_begin_neighbors) = available_carrier_neighbors_from_support_boundary(
-        context,
-        selected_neighbors,
-        &[],
-        begin_side_idx,
-    )?
+    let boundary_facts = support_boundary_facts_from_edge_state(context, selected_neighbors, &[])?;
+    let Some(available_begin_neighbors) =
+        available_carrier_neighbors_from_support_boundary(context, &boundary_facts, begin_side_idx)?
     else {
         return Ok(None);
     };
@@ -2346,22 +2343,21 @@ fn carrier_facts_by_component_from_edge_state(
 
 fn available_carrier_neighbors_from_support_boundary(
     context: &StereoEdgeEmissionContext<'_>,
-    selected_neighbors: &[isize],
-    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+    boundary_facts: &StereoSupportBoundaryFacts,
     side_idx: usize,
 ) -> PyResult<Option<Vec<usize>>> {
     let Some(component_idx) = context.constraint_model.component_for_side(side_idx) else {
         return Ok(None);
     };
-    let facts_by_component = carrier_facts_by_component_from_edge_state(
-        context,
-        selected_neighbors,
-        deferred_carrier_choice_constraints,
-    )?;
+    let Some(component_facts) = boundary_facts.carrier_facts_by_component.get(component_idx) else {
+        return Err(PyValueError::new_err(
+            "support-boundary facts do not match the edge-emission constraint model",
+        ));
+    };
     let remaining_assignment_ids = context.constraint_model.remaining_assignment_ids(
         component_idx,
         StereoConstraintLayer::Semantic,
-        &facts_by_component[component_idx],
+        component_facts,
     );
     Ok(Some(
         context
@@ -2486,6 +2482,7 @@ struct CarrierCommitmentBoundaryQuery {
 
 struct StereoSupportBoundaryFacts {
     carrier_facts_by_component: Vec<Vec<StereoConstraintFact>>,
+    deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
     known_token_flip_facts: Vec<StereoTokenFlipFact>,
     inferred_token_observation_facts: Vec<StereoTokenObservationFact>,
 }
@@ -2509,20 +2506,18 @@ impl StereoSupportBoundaryFacts {
 fn carrier_commitment_boundary_query_from_edge_state(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
-    selected_neighbors: &[isize],
-    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+    boundary_facts: &StereoSupportBoundaryFacts,
     side_idx: usize,
     neighbor_idx: usize,
 ) -> PyResult<CarrierCommitmentBoundaryQuery> {
     let blocked_by_deferred_constraint = deferred_carrier_choice_constraints_block_neighbor(
-        deferred_carrier_choice_constraints,
+        &boundary_facts.deferred_carrier_choice_constraints,
         side_idx,
         neighbor_idx,
     );
     let available_neighbors = available_carrier_neighbors_from_support_boundary(
         context,
-        selected_neighbors,
-        deferred_carrier_choice_constraints,
+        boundary_facts,
         side_idx,
     )?
     .unwrap_or_default();
@@ -2695,11 +2690,15 @@ fn emitted_edge_part_generic(
 
         let selected_neighbor = updated_neighbors[side_idx];
         if selected_neighbor < 0 {
+            let boundary_facts = support_boundary_facts_from_edge_state(
+                context,
+                &updated_neighbors,
+                &deferred_carrier_choice_constraints,
+            )?;
             let commitment_query = carrier_commitment_boundary_query_from_edge_state(
                 context,
                 state,
-                &updated_neighbors,
-                &deferred_carrier_choice_constraints,
+                &boundary_facts,
                 side_idx,
                 neighbor_idx,
             )?;
@@ -3235,10 +3234,12 @@ fn resolved_selected_neighbors(
 
 fn support_boundary_facts_from_token_constraints(
     carrier_facts_by_component: Vec<Vec<StereoConstraintFact>>,
+    deferred_carrier_choice_constraints: Vec<DeferredCarrierChoiceConstraint>,
     token_constraints: &[ComponentTokenConstraint],
 ) -> PyResult<StereoSupportBoundaryFacts> {
     Ok(StereoSupportBoundaryFacts {
         carrier_facts_by_component,
+        deferred_carrier_choice_constraints,
         known_token_flip_facts: known_token_flip_facts_from_constraints(token_constraints),
         inferred_token_observation_facts:
             inferred_token_observation_facts_from_constraints(token_constraints),
@@ -3262,7 +3263,29 @@ fn support_boundary_facts_from_walker_state(
     } else {
         component_token_constraints_from_state(runtime, graph, state, selected_neighbors)?
     };
-    support_boundary_facts_from_token_constraints(carrier_facts_by_component, &token_constraints)
+    support_boundary_facts_from_token_constraints(
+        carrier_facts_by_component,
+        state.deferred_carrier_choice_constraints.to_vec(),
+        &token_constraints,
+    )
+}
+
+fn support_boundary_facts_from_edge_state(
+    context: &StereoEdgeEmissionContext<'_>,
+    selected_neighbors: &[isize],
+    deferred_carrier_choice_constraints: &[DeferredCarrierChoiceConstraint],
+) -> PyResult<StereoSupportBoundaryFacts> {
+    let carrier_facts_by_component = carrier_facts_by_component_from_edge_state(
+        context,
+        selected_neighbors,
+        deferred_carrier_choice_constraints,
+    )?;
+    Ok(StereoSupportBoundaryFacts {
+        carrier_facts_by_component,
+        deferred_carrier_choice_constraints: deferred_carrier_choice_constraints.to_vec(),
+        known_token_flip_facts: Vec::new(),
+        inferred_token_observation_facts: Vec::new(),
+    })
 }
 
 fn selected_neighbors_from_support_boundary_constraints(
@@ -9648,7 +9671,7 @@ mod tests {
         rdkit_traversal_writer_has_completion, resolved_constraint_state_from_walker_state,
         resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
-        support_boundary_facts_from_walker_state,
+        support_boundary_facts_from_edge_state, support_boundary_facts_from_walker_state,
         successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         validate_root_idx, validate_stereo_state_shape,
         available_carrier_neighbors_from_support_boundary,
@@ -10456,13 +10479,18 @@ mod tests {
             edge_to_side_ids: &runtime.edge_to_side_ids,
             isolated_components: &runtime.isolated_components,
         };
-        let boundary_available_neighbors = available_carrier_neighbors_from_support_boundary(
+        let boundary_facts = support_boundary_facts_from_edge_state(
             &context,
             &state.stereo_selected_neighbors,
             &state.deferred_carrier_choice_constraints,
+        )
+        .expect("support-boundary facts should build");
+        let boundary_available_neighbors = available_carrier_neighbors_from_support_boundary(
+            &context,
+            &boundary_facts,
             side_idx,
         )
-        .expect("support-boundary query should build")
+        .expect("support-boundary availability query should build")
         .expect("side should belong to a modeled component");
         assert_eq!(available_neighbors, boundary_available_neighbors);
 
@@ -10478,8 +10506,7 @@ mod tests {
         let query = carrier_commitment_boundary_query_from_edge_state(
             &context,
             &edge_state,
-            &state.stereo_selected_neighbors,
-            &state.deferred_carrier_choice_constraints,
+            &boundary_facts,
             side_idx,
             blocked_neighbor_idx,
         )

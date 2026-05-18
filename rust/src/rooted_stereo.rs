@@ -2484,6 +2484,28 @@ struct CarrierCommitmentBoundaryQuery {
     deferrable_constraint: Option<DeferredCarrierChoiceConstraint>,
 }
 
+struct StereoSupportBoundaryFacts {
+    carrier_facts_by_component: Vec<Vec<StereoConstraintFact>>,
+    known_token_flip_facts: Vec<StereoTokenFlipFact>,
+    inferred_token_observation_facts: Vec<StereoTokenObservationFact>,
+}
+
+impl StereoSupportBoundaryFacts {
+    fn constraint_state(
+        &self,
+        runtime: &StereoWalkerRuntimeData,
+        layer: StereoConstraintLayer,
+    ) -> PyResult<StereoConstraintState> {
+        StereoConstraintState::from_facts_and_token_observations(
+            &runtime.constraint_model,
+            layer,
+            &self.carrier_facts_by_component,
+            &self.known_token_flip_facts,
+            &self.inferred_token_observation_facts,
+        )
+    }
+}
+
 fn carrier_commitment_boundary_query_from_edge_state(
     context: &StereoEdgeEmissionContext<'_>,
     state: &StereoEdgeEmissionState<'_>,
@@ -3211,22 +3233,45 @@ fn resolved_selected_neighbors(
     selected_neighbors
 }
 
+fn support_boundary_facts_from_token_constraints(
+    carrier_facts_by_component: Vec<Vec<StereoConstraintFact>>,
+    token_constraints: &[ComponentTokenConstraint],
+) -> PyResult<StereoSupportBoundaryFacts> {
+    Ok(StereoSupportBoundaryFacts {
+        carrier_facts_by_component,
+        known_token_flip_facts: known_token_flip_facts_from_constraints(token_constraints),
+        inferred_token_observation_facts:
+            inferred_token_observation_facts_from_constraints(token_constraints),
+    })
+}
+
+fn support_boundary_facts_from_walker_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    selected_neighbors: &[isize],
+    use_partial_token_constraints: bool,
+) -> PyResult<StereoSupportBoundaryFacts> {
+    let carrier_facts_by_component = carrier_facts_by_component_from_state(
+        runtime,
+        selected_neighbors,
+        &state.deferred_carrier_choice_constraints,
+    )?;
+    let token_constraints = if use_partial_token_constraints {
+        partial_component_token_constraints_from_state(runtime, graph, state, selected_neighbors)?
+    } else {
+        component_token_constraints_from_state(runtime, graph, state, selected_neighbors)?
+    };
+    support_boundary_facts_from_token_constraints(carrier_facts_by_component, &token_constraints)
+}
+
 fn selected_neighbors_from_support_boundary_constraints(
     runtime: &StereoWalkerRuntimeData,
     raw_selected_neighbors: &[isize],
-    raw_facts_by_component: &[Vec<StereoConstraintFact>],
-    token_constraints: &[ComponentTokenConstraint],
+    boundary_facts: &StereoSupportBoundaryFacts,
 ) -> PyResult<Vec<isize>> {
-    let known_token_flip_facts = known_token_flip_facts_from_constraints(token_constraints);
-    let inferred_token_observation_facts =
-        inferred_token_observation_facts_from_constraints(token_constraints);
-    let constraint_state = StereoConstraintState::from_facts_and_token_observations(
-        &runtime.constraint_model,
-        StereoConstraintLayer::Semantic,
-        raw_facts_by_component,
-        &known_token_flip_facts,
-        &inferred_token_observation_facts,
-    )?;
+    let constraint_state =
+        boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
 
     let mut selected_neighbors = raw_selected_neighbors.to_vec();
     for component in &runtime.constraint_model.components {
@@ -3252,18 +3297,17 @@ fn joined_support_boundary_selected_neighbors(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<isize>> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
-    let raw_facts_by_component = carrier_facts_by_component_from_state(
+    let boundary_facts = support_boundary_facts_from_walker_state(
         runtime,
+        graph,
+        state,
         raw_selected_neighbors,
-        &state.deferred_carrier_choice_constraints,
+        false,
     )?;
-    let token_constraints =
-        component_token_constraints_from_state(runtime, graph, state, raw_selected_neighbors)?;
     selected_neighbors_from_support_boundary_constraints(
         runtime,
         raw_selected_neighbors,
-        &raw_facts_by_component,
-        &token_constraints,
+        &boundary_facts,
     )
 }
 
@@ -3273,22 +3317,17 @@ fn partial_joined_support_boundary_selected_neighbors(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<isize>> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
-    let raw_facts_by_component = carrier_facts_by_component_from_state(
-        runtime,
-        raw_selected_neighbors,
-        &state.deferred_carrier_choice_constraints,
-    )?;
-    let token_constraints = partial_component_token_constraints_from_state(
+    let boundary_facts = support_boundary_facts_from_walker_state(
         runtime,
         graph,
         state,
         raw_selected_neighbors,
+        true,
     )?;
     selected_neighbors_from_support_boundary_constraints(
         runtime,
         raw_selected_neighbors,
-        &raw_facts_by_component,
-        &token_constraints,
+        &boundary_facts,
     )
 }
 
@@ -4281,27 +4320,14 @@ fn resolved_constraint_state_from_walker_state(
     layer: StereoConstraintLayer,
 ) -> PyResult<StereoConstraintState> {
     let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
-    let raw_facts_by_component = carrier_facts_by_component_from_state(
-        runtime,
-        raw_selected_neighbors,
-        &state.deferred_carrier_choice_constraints,
-    )?;
-    let token_constraints = partial_component_token_constraints_from_state(
+    let boundary_facts = support_boundary_facts_from_walker_state(
         runtime,
         graph,
         state,
         raw_selected_neighbors,
+        true,
     )?;
-    let known_token_flip_facts = known_token_flip_facts_from_constraints(&token_constraints);
-    let token_observation_facts =
-        inferred_token_observation_facts_from_constraints(&token_constraints);
-    StereoConstraintState::from_facts_and_token_observations(
-        &runtime.constraint_model,
-        layer,
-        &raw_facts_by_component,
-        &known_token_flip_facts,
-        &token_observation_facts,
-    )
+    boundary_facts.constraint_state(runtime, layer)
 }
 
 fn assert_token_flips_explained_by_constraint_state(
@@ -9622,6 +9648,7 @@ mod tests {
         rdkit_traversal_writer_has_completion, resolved_constraint_state_from_walker_state,
         resolved_selected_neighbors, resolved_selected_neighbors_from_assignment_state,
         selected_neighbor_facts_by_component, smiles_from_direction_marker_slots,
+        support_boundary_facts_from_walker_state,
         successors_by_token_stereo_raw, supported_token_observation_facts_from_constraints,
         validate_root_idx, validate_stereo_state_shape,
         available_carrier_neighbors_from_support_boundary,
@@ -10320,6 +10347,18 @@ mod tests {
 
         let facts_by_component =
             selected_neighbor_facts_by_component(&runtime, &selected_neighbors);
+        let boundary_facts = support_boundary_facts_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            &state.stereo_selected_neighbors,
+            false,
+        )
+        .expect("support-boundary facts should build");
+        assert_eq!(
+            inferred_token_observation_facts,
+            boundary_facts.inferred_token_observation_facts,
+        );
         let runtime_state = resolved_constraint_state_from_walker_state(
             &runtime,
             &graph,
@@ -10336,6 +10375,12 @@ mod tests {
         )
         .expect("observation-backed constraint state should build");
         assert_eq!(observation_state, runtime_state);
+        assert_eq!(
+            runtime_state,
+            boundary_facts
+                .constraint_state(&runtime, StereoConstraintLayer::Semantic)
+                .expect("boundary facts should build the same constraint state"),
+        );
     }
 
     #[test]

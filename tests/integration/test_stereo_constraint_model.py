@@ -112,6 +112,56 @@ def _marker_row_diagnostics(prepared: object) -> dict[str, int]:
     }
 
 
+def _support_state_selected_neighbor_diagnostics(prepared: object) -> dict[str, int]:
+    rows = _core._stereo_constraint_output_facts(prepared)
+    component_summaries = [
+        component
+        for row in rows
+        for component in row["support_boundary"]["selected_neighbor_query"][
+            "component_summaries"
+        ]
+    ]
+    return {
+        "output_row_count": len(rows),
+        "runtime_mismatch_count": sum(
+            not row["shadow_debug"]["support_state_selected_neighbors_match_runtime"]
+            for row in rows
+        ),
+        "joined_support_boundary_mismatch_count": sum(
+            not row["shadow_debug"][
+                "support_state_selected_neighbors_match_joined_support_boundary"
+            ]
+            for row in rows
+        ),
+        "max_unresolved_side_count": max(
+            len(row["support_boundary"]["selected_neighbor_query"]["unresolved_side_ids"])
+            for row in rows
+        ),
+        "max_forced_side_neighbor_count": max(
+            len(
+                row["support_boundary"]["selected_neighbor_query"][
+                    "forced_side_neighbors"
+                ]
+            )
+            for row in rows
+        ),
+        "max_carrier_assignment_count": max(
+            component["carrier_assignment_count"] for component in component_summaries
+        ),
+        "max_token_phase_assignment_count": max(
+            component["token_phase_assignment_count"] for component in component_summaries
+        ),
+        "max_marker_row_count_before_events": max(
+            component["marker_row_count_before_events"] or 0
+            for component in component_summaries
+        ),
+        "max_marker_row_count_after_events": max(
+            component["marker_row_count_after_events"] or 0
+            for component in component_summaries
+        ),
+    }
+
+
 def _canonical_isomeric_smiles(smiles: str) -> str | None:
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -708,6 +758,55 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     expected.max_semantic_marker_obligation_survivor_row_count,
                     actual["max_semantic_marker_obligation_survivor_row_count"],
+                )
+
+        self.assertTrue(saw_expected_diagnostics)
+
+    def test_support_state_selected_neighbor_diagnostics_match_fixture(self) -> None:
+        saw_expected_diagnostics = False
+
+        for case in self.cases:
+            expected = case.expected_support_state_selected_neighbor_diagnostics
+            if expected is None:
+                continue
+            saw_expected_diagnostics = True
+            mol = parse_smiles(case.smiles)
+            prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+            actual = _support_state_selected_neighbor_diagnostics(prepared)
+
+            with self.subTest(case_id=case.case_id, source=case.source):
+                self.assertEqual(expected.output_row_count, actual["output_row_count"])
+                self.assertEqual(
+                    expected.runtime_mismatch_count,
+                    actual["runtime_mismatch_count"],
+                )
+                self.assertEqual(
+                    expected.joined_support_boundary_mismatch_count,
+                    actual["joined_support_boundary_mismatch_count"],
+                )
+                self.assertEqual(
+                    expected.max_unresolved_side_count,
+                    actual["max_unresolved_side_count"],
+                )
+                self.assertEqual(
+                    expected.max_forced_side_neighbor_count,
+                    actual["max_forced_side_neighbor_count"],
+                )
+                self.assertEqual(
+                    expected.max_carrier_assignment_count,
+                    actual["max_carrier_assignment_count"],
+                )
+                self.assertEqual(
+                    expected.max_token_phase_assignment_count,
+                    actual["max_token_phase_assignment_count"],
+                )
+                self.assertEqual(
+                    expected.max_marker_row_count_before_events,
+                    actual["max_marker_row_count_before_events"],
+                )
+                self.assertEqual(
+                    expected.max_marker_row_count_after_events,
+                    actual["max_marker_row_count_after_events"],
                 )
 
         self.assertTrue(saw_expected_diagnostics)

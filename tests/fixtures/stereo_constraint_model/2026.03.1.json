@@ -15,6 +15,17 @@
         "output_row_count": 6,
         "total_model_marker_row_count": 2
       },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 1,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 6,
+        "runtime_mismatch_count": 0
+      },
       "expected_rdkit_local_writer_assignment_count": 1,
       "expected_rdkit_traversal_writer_assignment_count": 1,
       "expected_semantic_assignment_count": 1,
@@ -45,6 +56,17 @@
         "max_semantic_marker_survivor_row_count": 1,
         "output_row_count": 10,
         "total_model_marker_row_count": 2
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 1,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 10,
+        "runtime_mismatch_count": 0
       },
       "expected_rdkit_local_writer_assignment_count": 1,
       "expected_rdkit_traversal_writer_assignment_count": 1,
@@ -77,6 +99,17 @@
         "output_row_count": 28,
         "total_model_marker_row_count": 12
       },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 3,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 28,
+        "runtime_mismatch_count": 0
+      },
       "expected_rdkit_local_writer_assignment_count": 2,
       "expected_rdkit_traversal_writer_assignment_count": 2,
       "expected_semantic_assignment_count": 2,
@@ -108,6 +141,17 @@
         "max_semantic_marker_survivor_row_count": 3,
         "output_row_count": 24,
         "total_model_marker_row_count": 12
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 3,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 24,
+        "runtime_mismatch_count": 0
       },
       "expected_rdkit_local_writer_assignment_count": 2,
       "expected_rdkit_traversal_writer_assignment_count": 2,
@@ -142,6 +186,17 @@
         "max_semantic_marker_survivor_row_count": 12,
         "output_row_count": 144,
         "total_model_marker_row_count": 432
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 27,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 144,
+        "runtime_mismatch_count": 0
       },
       "expected_rdkit_local_writer_assignment_count": 8,
       "expected_rdkit_traversal_writer_assignment_count": 8,
@@ -179,6 +234,17 @@
         "max_semantic_marker_survivor_row_count": 4,
         "output_row_count": 44,
         "total_model_marker_row_count": 144
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 9,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 44,
+        "runtime_mismatch_count": 0
       },
       "expected_rdkit_local_writer_assignment_count": 3,
       "expected_rdkit_sampled_outputs_with_ring_digit_direction_count": 18,
@@ -232,6 +298,17 @@
         "max_semantic_marker_survivor_row_count": 2,
         "output_row_count": 6144,
         "total_model_marker_row_count": 48
+      },
+      "expected_support_state_selected_neighbor_diagnostics": {
+        "joined_support_boundary_mismatch_count": 0,
+        "max_carrier_assignment_count": 1,
+        "max_forced_side_neighbor_count": 0,
+        "max_marker_row_count_after_events": 1,
+        "max_marker_row_count_before_events": 3,
+        "max_token_phase_assignment_count": 1,
+        "max_unresolved_side_count": 0,
+        "output_row_count": 6144,
+        "runtime_mismatch_count": 0
       },
       "expected_rdkit_local_writer_assignment_count": 16,
       "expected_rdkit_traversal_writer_assignment_count": 12,

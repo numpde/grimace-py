@@ -33,6 +33,19 @@ class PinnedStereoMarkerRowDiagnostics:
 
 
 @dataclass(frozen=True, slots=True)
+class PinnedSupportStateSelectedNeighborDiagnostics:
+    output_row_count: int
+    runtime_mismatch_count: int
+    joined_support_boundary_mismatch_count: int
+    max_unresolved_side_count: int
+    max_forced_side_neighbor_count: int
+    max_carrier_assignment_count: int
+    max_token_phase_assignment_count: int
+    max_marker_row_count_before_events: int
+    max_marker_row_count_after_events: int
+
+
+@dataclass(frozen=True, slots=True)
 class PinnedStereoConstraintModelCase:
     case_id: str
     source: str
@@ -70,6 +83,9 @@ class PinnedStereoConstraintModelCase:
     )
     expected_marker_sequence_transitions: tuple[PinnedStereoMarkerSequenceTransition, ...]
     expected_marker_row_diagnostics: PinnedStereoMarkerRowDiagnostics | None
+    expected_support_state_selected_neighbor_diagnostics: (
+        PinnedSupportStateSelectedNeighborDiagnostics | None
+    )
 
     @property
     def expected_component_count(self) -> int:
@@ -280,6 +296,95 @@ def _optional_marker_row_diagnostics(
     )
 
 
+def _required_nonnegative_diagnostic_int(
+    raw_diagnostics: dict[str, object],
+    *,
+    field_name: str,
+    fixture_path: Path,
+    case_id: str,
+) -> int:
+    value = raw_diagnostics.get(field_name)
+    if type(value) is not int or value < 0:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define "
+            f"nonnegative integer diagnostic field {field_name}"
+        )
+    return value
+
+
+def _optional_support_state_selected_neighbor_diagnostics(
+    raw_case: dict[str, object],
+    *,
+    fixture_path: Path,
+    case_id: str,
+) -> PinnedSupportStateSelectedNeighborDiagnostics | None:
+    field_name = "expected_support_state_selected_neighbor_diagnostics"
+    raw_diagnostics = raw_case.get(field_name)
+    if raw_diagnostics is None:
+        return None
+    if not isinstance(raw_diagnostics, dict):
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define "
+            f"{field_name} as an object"
+        )
+    return PinnedSupportStateSelectedNeighborDiagnostics(
+        output_row_count=required_positive_int(
+            raw_diagnostics,
+            field_name="output_row_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        runtime_mismatch_count=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="runtime_mismatch_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        joined_support_boundary_mismatch_count=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="joined_support_boundary_mismatch_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_unresolved_side_count=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="max_unresolved_side_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_forced_side_neighbor_count=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="max_forced_side_neighbor_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_carrier_assignment_count=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="max_carrier_assignment_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_token_phase_assignment_count=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="max_token_phase_assignment_count",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_marker_row_count_before_events=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="max_marker_row_count_before_events",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+        max_marker_row_count_after_events=_required_nonnegative_diagnostic_int(
+            raw_diagnostics,
+            field_name="max_marker_row_count_after_events",
+            fixture_path=fixture_path,
+            case_id=case_id,
+        ),
+    )
+
+
 def load_pinned_stereo_constraint_model_cases(
     rdkit_version: str,
     *,
@@ -464,6 +569,13 @@ def load_pinned_stereo_constraint_model_cases(
             fixture_path=fixture_case.fixture_path,
             case_id=fixture_case.case_id,
         )
+        expected_support_state_selected_neighbor_diagnostics = (
+            _optional_support_state_selected_neighbor_diagnostics(
+                raw_case,
+                fixture_path=fixture_case.fixture_path,
+                case_id=fixture_case.case_id,
+            )
+        )
         expected_token_flip_inference_branch_counts = _optional_string_int_counts(
             raw_case,
             field_name="expected_token_flip_inference_branch_counts",
@@ -589,6 +701,9 @@ def load_pinned_stereo_constraint_model_cases(
                 ),
                 expected_marker_sequence_transitions=expected_marker_sequence_transitions,
                 expected_marker_row_diagnostics=expected_marker_row_diagnostics,
+                expected_support_state_selected_neighbor_diagnostics=(
+                    expected_support_state_selected_neighbor_diagnostics
+                ),
             )
         )
 

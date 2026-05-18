@@ -649,6 +649,8 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual("flipped", attempt["implied_token_flip"])
         self.assertEqual("stored", attempt["base_forced_token_flip"])
         self.assertEqual(1, attempt["base_token_phase_assignment_count"])
+        self.assertEqual(9, attempt["base_row_count_before_marker_events"])
+        self.assertEqual(0, attempt["base_row_count_after_marker_events"])
         self.assertEqual(0, attempt["token_phase_assignment_count"])
         self.assertEqual(0, attempt["row_count_before_marker_events"])
         self.assertEqual(0, attempt["row_count_after_marker_events"])

@@ -8326,6 +8326,12 @@ fn deferred_marker_token_flip_attempts_to_py(
         else {
             continue;
         };
+        let base_survivor_state = rdkit_marker_row_survivor_component_state(
+            runtime,
+            model_component_idx,
+            token_phase_assignment_ids,
+            &marker_events,
+        )?;
         let candidate_token_phase_assignment_ids = runtime
             .constraint_model
             .filter_token_phase_assignment_ids_for_token_flip(
@@ -8363,6 +8369,22 @@ fn deferred_marker_token_flip_attempts_to_py(
             token_phase_assignment_ids.len(),
         )?;
         row.set_item("base_forced_token_flip", base_forced_token_flip)?;
+        row.set_item(
+            "base_row_ids_before_marker_events",
+            base_survivor_state.row_ids_before_marker_events.clone(),
+        )?;
+        row.set_item(
+            "base_row_count_before_marker_events",
+            base_survivor_state.row_ids_before_marker_events.len(),
+        )?;
+        row.set_item(
+            "base_row_ids_after_marker_events",
+            base_survivor_state.row_ids_after_marker_events.clone(),
+        )?;
+        row.set_item(
+            "base_row_count_after_marker_events",
+            base_survivor_state.row_ids_after_marker_events.len(),
+        )?;
         row.set_item(
             "token_phase_assignment_ids",
             survivor_state.token_phase_assignment_ids.clone(),

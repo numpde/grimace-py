@@ -610,6 +610,18 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                                 len(attempt["base_token_phase_assignment_ids"]),
                             )
                             self.assertEqual(
+                                attempt["base_row_count_before_marker_events"],
+                                len(attempt["base_row_ids_before_marker_events"]),
+                            )
+                            self.assertEqual(
+                                attempt["base_row_count_after_marker_events"],
+                                len(attempt["base_row_ids_after_marker_events"]),
+                            )
+                            self.assertLessEqual(
+                                set(attempt["base_row_ids_after_marker_events"]),
+                                set(attempt["base_row_ids_before_marker_events"]),
+                            )
+                            self.assertEqual(
                                 attempt["token_phase_assignment_count"],
                                 len(attempt["token_phase_assignment_ids"]),
                             )

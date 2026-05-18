@@ -21,6 +21,15 @@ VISIBLE_MARKER_BASIS_CLASSES = frozenset(
         "shared_visible_edge",
     )
 )
+VISIBLE_MARKER_POLICY_VARIANTS = frozenset(
+    (
+        "current_visible_basis",
+        "legacy_topology_gated_visible_basis",
+        "raw_selected_carrier",
+        "remaining_shared_visible_basis",
+        "remaining_visible_basis",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +46,7 @@ class PinnedVisibleMarkerBasisCase:
     expected_raw_selected_carrier_explained_component_count: int
     expected_visible_edge_explained_component_count: int
     expected_legacy_topology_guard_component_count: int
+    expected_policy_variant_accept_counts: tuple[tuple[str, int], ...]
     expected_basis_candidate_count: int
     expected_max_row_survivor_count: int
     expected_basis_class_counts: tuple[tuple[str, int], ...]
@@ -96,13 +106,14 @@ def _basis_class_tuple(
     return values
 
 
-def _basis_class_counts(
+def _positive_counts(
     raw_case: dict[str, object],
     *,
+    field_name: str,
+    valid_keys: frozenset[str],
     fixture_path: Path,
     case_id: str,
 ) -> tuple[tuple[str, int], ...]:
-    field_name = "expected_basis_class_counts"
     raw_counts = raw_case.get(field_name)
     if not isinstance(raw_counts, dict) or not raw_counts:
         raise ValueError(
@@ -111,10 +122,10 @@ def _basis_class_counts(
         )
     counts = []
     for key, value in raw_counts.items():
-        if key not in VISIBLE_MARKER_BASIS_CLASSES:
+        if key not in valid_keys:
             raise ValueError(
-                f"fixture {fixture_path} case {case_id!r} has unknown basis "
-                f"class {key!r}"
+                f"fixture {fixture_path} case {case_id!r} has unknown "
+                f"{field_name} key {key!r}"
             )
         if type(value) is not int or value <= 0:
             raise ValueError(
@@ -123,6 +134,21 @@ def _basis_class_counts(
             )
         counts.append((str(key), value))
     return tuple(sorted(counts))
+
+
+def _basis_class_counts(
+    raw_case: dict[str, object],
+    *,
+    fixture_path: Path,
+    case_id: str,
+) -> tuple[tuple[str, int], ...]:
+    return _positive_counts(
+        raw_case,
+        field_name="expected_basis_class_counts",
+        valid_keys=VISIBLE_MARKER_BASIS_CLASSES,
+        fixture_path=fixture_path,
+        case_id=case_id,
+    )
 
 
 def load_pinned_visible_marker_basis_cases(
@@ -200,6 +226,13 @@ def load_pinned_visible_marker_basis_cases(
                 expected_legacy_topology_guard_component_count=_required_nonnegative_int(
                     raw_case,
                     field_name="expected_legacy_topology_guard_component_count",
+                    fixture_path=fixture_path,
+                    case_id=case_id,
+                ),
+                expected_policy_variant_accept_counts=_positive_counts(
+                    raw_case,
+                    field_name="expected_policy_variant_accept_counts",
+                    valid_keys=VISIBLE_MARKER_POLICY_VARIANTS,
                     fixture_path=fixture_path,
                     case_id=case_id,
                 ),

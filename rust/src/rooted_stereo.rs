@@ -6222,6 +6222,50 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     .collect::<BTreeSet<_>>()
                     .into_iter()
                     .collect::<Vec<_>>();
+                let remaining_basis_summary = remaining_component_visible_marker_basis_summary(
+                    runtime,
+                    component_token.component_idx,
+                    &constraint_state,
+                )?;
+                let has_remaining_visible_marker_basis = remaining_basis_summary
+                    .has_shared_visible_edge_basis
+                    || (remaining_basis_summary.has_non_selected_visible_edge_basis
+                        && runtime_component_has_cross_component_carrier_edge(
+                            runtime,
+                            component_token.component_idx,
+                        ));
+                let all_marker_row_token_flips = accepted_deferred_token_flips(
+                    runtime,
+                    state,
+                    deferred,
+                    component_token,
+                    &candidate_token,
+                    &constraint_state,
+                    &boundary_facts,
+                )?;
+                let remaining_visible_token_flips = if has_remaining_visible_marker_basis {
+                    all_marker_row_token_flips.clone()
+                } else {
+                    Vec::new()
+                };
+                let remaining_shared_visible_token_flips =
+                    if remaining_basis_summary.has_shared_visible_edge_basis {
+                        all_marker_row_token_flips.clone()
+                    } else {
+                        Vec::new()
+                    };
+                let legacy_guard_applies = deferred_token_legacy_topology_guard_applies(
+                    runtime,
+                    graph,
+                    component_token.component_idx,
+                );
+                let legacy_topology_gated_token_flips = if legacy_guard_applies
+                    && (!visible_edge_token_flips.is_empty() || has_remaining_visible_marker_basis)
+                {
+                    all_marker_row_token_flips.clone()
+                } else {
+                    Vec::new()
+                };
 
                 let component_row = PyDict::new(py);
                 component_row.set_item("component_idx", component_token.component_idx)?;
@@ -6229,13 +6273,18 @@ fn deferred_marker_basis_candidate_rows_to_py(
                 component_row
                     .set_item("reference_tokens", component_token.reference_tokens.clone())?;
                 let shadow_debug = PyDict::new(py);
+                shadow_debug.set_item("legacy_topology_guard_applies", legacy_guard_applies)?;
                 shadow_debug.set_item(
-                    "legacy_topology_guard_applies",
-                    deferred_token_legacy_topology_guard_applies(
-                        runtime,
-                        graph,
-                        component_token.component_idx,
-                    ),
+                    "remaining_has_non_selected_visible_edge_basis",
+                    remaining_basis_summary.has_non_selected_visible_edge_basis,
+                )?;
+                shadow_debug.set_item(
+                    "remaining_has_shared_visible_edge_basis",
+                    remaining_basis_summary.has_shared_visible_edge_basis,
+                )?;
+                shadow_debug.set_item(
+                    "remaining_visible_basis_applies",
+                    has_remaining_visible_marker_basis,
                 )?;
                 component_row.set_item("shadow_debug", shadow_debug)?;
                 component_row.set_item(
@@ -6250,6 +6299,50 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     "visible_edge_token_flips",
                     token_flips_to_py_names(&visible_edge_token_flips),
                 )?;
+                let policy_variant_token_flips = PyDict::new(py);
+                policy_variant_token_flips.set_item(
+                    "raw_selected_carrier",
+                    token_flips_to_py_names(&raw_selected_carrier_token_flips),
+                )?;
+                policy_variant_token_flips.set_item(
+                    "current_visible_basis",
+                    token_flips_to_py_names(&visible_edge_token_flips),
+                )?;
+                policy_variant_token_flips.set_item(
+                    "remaining_visible_basis",
+                    token_flips_to_py_names(&remaining_visible_token_flips),
+                )?;
+                policy_variant_token_flips.set_item(
+                    "remaining_shared_visible_basis",
+                    token_flips_to_py_names(&remaining_shared_visible_token_flips),
+                )?;
+                policy_variant_token_flips.set_item(
+                    "legacy_topology_gated_visible_basis",
+                    token_flips_to_py_names(&legacy_topology_gated_token_flips),
+                )?;
+                component_row.set_item("policy_variant_token_flips", policy_variant_token_flips)?;
+                let policy_variant_accepts = PyDict::new(py);
+                policy_variant_accepts.set_item(
+                    "raw_selected_carrier",
+                    !raw_selected_carrier_token_flips.is_empty(),
+                )?;
+                policy_variant_accepts.set_item(
+                    "current_visible_basis",
+                    !visible_edge_token_flips.is_empty(),
+                )?;
+                policy_variant_accepts.set_item(
+                    "remaining_visible_basis",
+                    !remaining_visible_token_flips.is_empty(),
+                )?;
+                policy_variant_accepts.set_item(
+                    "remaining_shared_visible_basis",
+                    !remaining_shared_visible_token_flips.is_empty(),
+                )?;
+                policy_variant_accepts.set_item(
+                    "legacy_topology_gated_visible_basis",
+                    !legacy_topology_gated_token_flips.is_empty(),
+                )?;
+                component_row.set_item("policy_variant_accepts", policy_variant_accepts)?;
                 component_row.set_item(
                     "raw_selected_carrier_explains_chosen_token",
                     !raw_selected_carrier_token_flips.is_empty(),
@@ -7889,11 +7982,16 @@ fn component_ids_for_edge(runtime: &StereoWalkerRuntimeData, edge: (usize, usize
         .collect()
 }
 
-fn remaining_component_has_nontrivial_visible_marker_basis(
+struct RemainingVisibleMarkerBasisSummary {
+    has_non_selected_visible_edge_basis: bool,
+    has_shared_visible_edge_basis: bool,
+}
+
+fn remaining_component_visible_marker_basis_summary(
     runtime: &StereoWalkerRuntimeData,
     component_idx: usize,
     constraint_state: &StereoConstraintState,
-) -> PyResult<bool> {
+) -> PyResult<RemainingVisibleMarkerBasisSummary> {
     let Some(model_component_idx) = runtime
         .constraint_model
         .component_for_runtime_component(component_idx)
@@ -7903,7 +8001,10 @@ fn remaining_component_has_nontrivial_visible_marker_basis(
         ));
     };
     if constraint_state.is_empty(model_component_idx) {
-        return Ok(false);
+        return Ok(RemainingVisibleMarkerBasisSummary {
+            has_non_selected_visible_edge_basis: false,
+            has_shared_visible_edge_basis: false,
+        });
     }
     let Some(component) = runtime.constraint_model.components.get(model_component_idx) else {
         return Err(PyValueError::new_err(
@@ -7916,7 +8017,10 @@ fn remaining_component_has_nontrivial_visible_marker_basis(
         .map(|ids| ids.iter().copied().collect::<BTreeSet<_>>())
         .unwrap_or_default();
     if remaining_token_phase_assignment_ids.is_empty() {
-        return Ok(false);
+        return Ok(RemainingVisibleMarkerBasisSummary {
+            has_non_selected_visible_edge_basis: false,
+            has_shared_visible_edge_basis: false,
+        });
     }
 
     let mut has_non_selected_visible_edge_basis = false;
@@ -7973,8 +8077,21 @@ fn remaining_component_has_nontrivial_visible_marker_basis(
             }
         }
     }
-    Ok(has_shared_visible_edge_basis
-        || (has_non_selected_visible_edge_basis
+    Ok(RemainingVisibleMarkerBasisSummary {
+        has_non_selected_visible_edge_basis,
+        has_shared_visible_edge_basis,
+    })
+}
+
+fn remaining_component_has_nontrivial_visible_marker_basis(
+    runtime: &StereoWalkerRuntimeData,
+    component_idx: usize,
+    constraint_state: &StereoConstraintState,
+) -> PyResult<bool> {
+    let summary =
+        remaining_component_visible_marker_basis_summary(runtime, component_idx, constraint_state)?;
+    Ok(summary.has_shared_visible_edge_basis
+        || (summary.has_non_selected_visible_edge_basis
             && runtime_component_has_cross_component_carrier_edge(runtime, component_idx)))
 }
 

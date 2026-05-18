@@ -12,6 +12,9 @@
       "expected_grimace_runtime_support_count": 3,
       "expected_legacy_topology_guard_component_count": 0,
       "expected_max_row_survivor_count": 1,
+      "expected_policy_variant_accept_counts": {
+        "raw_selected_carrier": 2
+      },
       "expected_raw_selected_carrier_explained_component_count": 2,
       "expected_visible_edge_explained_component_count": 0,
       "forbidden_basis_classes": [
@@ -40,6 +43,13 @@
       "expected_grimace_runtime_support_count": 6,
       "expected_legacy_topology_guard_component_count": 56,
       "expected_max_row_survivor_count": 12,
+      "expected_policy_variant_accept_counts": {
+        "current_visible_basis": 26,
+        "legacy_topology_gated_visible_basis": 34,
+        "raw_selected_carrier": 42,
+        "remaining_shared_visible_basis": 50,
+        "remaining_visible_basis": 50
+      },
       "expected_raw_selected_carrier_explained_component_count": 42,
       "expected_visible_edge_explained_component_count": 26,
       "forbidden_basis_classes": [],
@@ -66,6 +76,13 @@
       "expected_grimace_runtime_support_count": 96,
       "expected_legacy_topology_guard_component_count": 254,
       "expected_max_row_survivor_count": 12,
+      "expected_policy_variant_accept_counts": {
+        "current_visible_basis": 95,
+        "legacy_topology_gated_visible_basis": 126,
+        "raw_selected_carrier": 159,
+        "remaining_shared_visible_basis": 196,
+        "remaining_visible_basis": 196
+      },
       "expected_raw_selected_carrier_explained_component_count": 159,
       "expected_visible_edge_explained_component_count": 95,
       "forbidden_basis_classes": [
@@ -92,6 +109,9 @@
       "expected_grimace_runtime_support_count": 22,
       "expected_legacy_topology_guard_component_count": 0,
       "expected_max_row_survivor_count": 72,
+      "expected_policy_variant_accept_counts": {
+        "raw_selected_carrier": 6
+      },
       "expected_raw_selected_carrier_explained_component_count": 6,
       "expected_visible_edge_explained_component_count": 0,
       "forbidden_basis_classes": [

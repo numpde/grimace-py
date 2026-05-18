@@ -16,6 +16,7 @@ from tests.helpers.stereo_constraint_model import (
 )
 from tests.helpers.visible_marker_basis import (
     VISIBLE_MARKER_BASIS_CLASSES,
+    VISIBLE_MARKER_POLICY_VARIANTS,
     load_pinned_visible_marker_basis_cases,
 )
 
@@ -421,6 +422,13 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                 for basis_class in component["basis_classes_considered"]
             )
             seen_basis_classes = set(basis_class_counts)
+            policy_variant_accept_counts = Counter(
+                variant
+                for row in rows
+                for component in row["components"]
+                for variant, accepts in component["policy_variant_accepts"].items()
+                if accepts
+            )
             basis_candidates = [
                 basis
                 for row in rows
@@ -476,6 +484,10 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                     ),
                 )
                 self.assertEqual(
+                    dict(case.expected_policy_variant_accept_counts),
+                    dict(sorted(policy_variant_accept_counts.items())),
+                )
+                self.assertEqual(
                     case.expected_basis_candidate_count,
                     len(basis_candidates),
                 )
@@ -504,6 +516,21 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                             component["visible_edge_basis_explains_chosen_token"],
                             bool(component["visible_edge_token_flips"]),
                         )
+                        self.assertEqual(
+                            set(component["policy_variant_accepts"]),
+                            VISIBLE_MARKER_POLICY_VARIANTS,
+                        )
+                        self.assertEqual(
+                            set(component["policy_variant_token_flips"]),
+                            VISIBLE_MARKER_POLICY_VARIANTS,
+                        )
+                        for variant in VISIBLE_MARKER_POLICY_VARIANTS:
+                            self.assertEqual(
+                                component["policy_variant_accepts"][variant],
+                                bool(
+                                    component["policy_variant_token_flips"][variant]
+                                ),
+                            )
                         for basis in component["basis_candidates"]:
                             self.assertIn(
                                 basis["basis_class"],

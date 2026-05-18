@@ -49,6 +49,13 @@ TOKEN_FLIP_ADJUSTMENT_REASON_COUNT_KEYS = frozenset(
         "adjacent_two_candidate_first_emitted",
     )
 )
+VISIBLE_MARKER_BASIS_CLASSES = frozenset(
+    (
+        "selected_carrier",
+        "non_selected_visible_edge",
+        "shared_visible_edge",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,6 +528,136 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                 )
 
         self.assertTrue(saw_expected_diagnostics)
+
+    def test_visible_marker_basis_diagnostics_keep_simple_alkene_selected_carrier_only(
+        self,
+    ) -> None:
+        mol = parse_smiles("C/C=C/C")
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+        diagnostics = _core._stereo_deferred_marker_basis_diagnostics(
+            prepared,
+            root_idx=-1,
+            limit=20,
+            max_states=10_000,
+        )
+
+        rows = diagnostics["rows"]
+        self.assertFalse(diagnostics["truncated"])
+        self.assertTrue(rows)
+        self.assertEqual(
+            {"selected_carrier"},
+            {
+                basis_class
+                for row in rows
+                for component in row["components"]
+                for basis_class in component["basis_classes_considered"]
+            },
+        )
+        for row in rows:
+            self.assertEqual(
+                row["current_support_accepts_candidate"],
+                all(
+                    bool(component["accepted_token_flips"])
+                    for component in row["components"]
+                ),
+            )
+            for component in row["components"]:
+                self.assertNotIn(
+                    "non_selected_visible_edge",
+                    component["basis_classes_considered"],
+                )
+                self.assertNotIn(
+                    "shared_visible_edge",
+                    component["basis_classes_considered"],
+                )
+                if component["accepted_token_flips"]:
+                    self.assertEqual(
+                        component["accepted_token_flips"],
+                        component["raw_selected_carrier_token_flips"],
+                    )
+
+    def test_visible_marker_basis_diagnostics_expose_row_survivor_witnesses(
+        self,
+    ) -> None:
+        mol = parse_smiles("CC\\C=C/C(/C=C/CC)=C(/CC)CO")
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+        diagnostics = _core._stereo_deferred_marker_basis_diagnostics(
+            prepared,
+            root_idx=4,
+            limit=100,
+            max_states=100_000,
+        )
+
+        rows = diagnostics["rows"]
+        self.assertFalse(diagnostics["truncated"])
+        self.assertTrue(rows)
+        seen_basis_classes = {
+            basis_class
+            for row in rows
+            for component in row["components"]
+            for basis_class in component["basis_classes_considered"]
+        }
+        self.assertLessEqual(seen_basis_classes, VISIBLE_MARKER_BASIS_CLASSES)
+        self.assertIn("selected_carrier", seen_basis_classes)
+        self.assertIn("non_selected_visible_edge", seen_basis_classes)
+        self.assertIn("shared_visible_edge", seen_basis_classes)
+        self.assertTrue(
+            any(
+                component["shadow_debug"]["legacy_topology_guard_applies"]
+                for row in rows
+                for component in row["components"]
+            )
+        )
+        self.assertTrue(
+            any(
+                component["visible_edge_basis_explains_chosen_token"]
+                for row in rows
+                for component in row["components"]
+            )
+        )
+
+        for row in rows:
+            self.assertEqual(
+                row["current_support_accepts_candidate"],
+                all(
+                    bool(component["accepted_token_flips"])
+                    for component in row["components"]
+                ),
+            )
+            for component in row["components"]:
+                self.assertLessEqual(
+                    set(component["basis_classes_considered"]),
+                    VISIBLE_MARKER_BASIS_CLASSES,
+                )
+                self.assertEqual(
+                    component["visible_edge_basis_explains_chosen_token"],
+                    bool(component["visible_edge_token_flips"]),
+                )
+                for basis in component["basis_candidates"]:
+                    self.assertIn(basis["basis_class"], VISIBLE_MARKER_BASIS_CLASSES)
+                    self.assertEqual(
+                        basis["row_count_supporting_basis"],
+                        len(basis["row_ids_supporting_basis"]),
+                    )
+                    self.assertLessEqual(
+                        set(basis["row_ids_supporting_basis"]),
+                        set(basis["row_ids_after_marker_events"]),
+                    )
+                    self.assertLessEqual(
+                        set(basis["row_ids_after_marker_events"]),
+                        set(basis["row_ids_before_marker_events"]),
+                    )
+                    self.assertTrue(basis["marker_events"])
+                    self.assertTrue(
+                        all(
+                            event["event"] == "marker_placed"
+                            and isinstance(event["slot"], int)
+                            and event["marker"] in {"/", "\\"}
+                            for event in basis["marker_events"]
+                        )
+                    )
 
     def test_shared_carrier_resolution_is_assignment_state_explained(self) -> None:
         saw_shared_group = False

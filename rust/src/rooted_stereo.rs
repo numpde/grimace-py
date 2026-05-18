@@ -6031,6 +6031,256 @@ fn collect_deferred_marker_obligation_witness_rows(
     Ok(())
 }
 
+struct DeferredMarkerBasisDiagnosticScan {
+    visited_state_count: usize,
+    truncated: bool,
+}
+
+fn deferred_edge_to_py(
+    py: Python<'_>,
+    graph: &PreparedSmilesGraphData,
+    deferred: &DeferredDirectionalToken,
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("begin_idx", deferred.begin_idx)?;
+    row.set_item("end_idx", deferred.end_idx)?;
+    if deferred.begin_idx >= 0 && deferred.end_idx >= 0 {
+        let begin_idx = deferred.begin_idx as usize;
+        let end_idx = deferred.end_idx as usize;
+        row.set_item("canonical_edge", canonical_edge(begin_idx, end_idx))?;
+        row.set_item("bond_token", graph.bond_token(begin_idx, end_idx))?;
+    } else {
+        row.set_item("canonical_edge", Option::<(usize, usize)>::None)?;
+        row.set_item("bond_token", Option::<&str>::None)?;
+    }
+    Ok(row.unbind())
+}
+
+fn deferred_marker_basis_candidate_rows_to_py(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+) -> PyResult<Vec<Py<PyDict>>> {
+    if deferred.component_tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let boundary_facts = support_boundary_facts_from_walker_state(
+        runtime,
+        graph,
+        state,
+        state.stereo_selected_neighbors.as_ref(),
+        true,
+    )?;
+    let constraint_state =
+        boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
+    let raw_tokens = raw_tokens_for_deferred_edge(runtime, graph, state, deferred)?;
+    let current_support =
+        deferred_token_support_from_constraint_state(runtime, graph, state, deferred)?;
+    let candidate_tokens = if deferred.component_tokens.len() == 1 {
+        if raw_tokens.is_empty() {
+            Vec::new()
+        } else {
+            candidate_tokens_from_raw_deferred_tokens(&raw_tokens)?
+        }
+    } else {
+        vec!["/".to_owned(), "\\".to_owned()]
+    };
+
+    let mut rows = Vec::<Py<PyDict>>::new();
+    for candidate_token in candidate_tokens {
+        let component_diagnostics = deferred
+            .component_tokens
+            .iter()
+            .map(|component_token| {
+                let model_component_idx = runtime
+                    .constraint_model
+                    .component_for_runtime_component(component_token.component_idx)
+                    .ok_or_else(|| {
+                        PyValueError::new_err("Deferred token references unknown runtime component")
+                    })?;
+                let accepted_token_flips = if deferred.component_tokens.len() == 1 {
+                    accepted_single_component_deferred_token_flips_from_raw_tokens(
+                        runtime,
+                        graph,
+                        state,
+                        deferred,
+                        component_token,
+                        &raw_tokens,
+                        &candidate_token,
+                        &constraint_state,
+                        &boundary_facts,
+                    )?
+                } else {
+                    accepted_deferred_token_flips(
+                        runtime,
+                        state,
+                        deferred,
+                        component_token,
+                        &candidate_token,
+                        &constraint_state,
+                        &boundary_facts,
+                    )?
+                };
+                let raw_selected_carrier_token_flips =
+                    accepted_token_flips_from_raw_selected_carrier_basis(
+                        runtime,
+                        state,
+                        deferred,
+                        component_token,
+                        &raw_tokens,
+                        &candidate_token,
+                        &constraint_state,
+                        &boundary_facts,
+                    )?;
+                let basis_diagnostics = visible_marker_basis_diagnostics_for_component_token(
+                    runtime,
+                    state,
+                    deferred,
+                    component_token,
+                    &candidate_token,
+                    &constraint_state,
+                    &boundary_facts,
+                )?;
+                let basis_classes = basis_diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.basis_class)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let visible_edge_token_flips = basis_diagnostics
+                    .iter()
+                    .filter(|diagnostic| {
+                        diagnostic.basis_class == "non_selected_visible_edge"
+                            || diagnostic.basis_class == "shared_visible_edge"
+                    })
+                    .map(|diagnostic| diagnostic.implied_token_flip)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+
+                let component_row = PyDict::new(py);
+                component_row.set_item("component_idx", component_token.component_idx)?;
+                component_row.set_item("model_component_idx", model_component_idx)?;
+                component_row
+                    .set_item("reference_tokens", component_token.reference_tokens.clone())?;
+                let shadow_debug = PyDict::new(py);
+                shadow_debug.set_item(
+                    "legacy_topology_guard_applies",
+                    deferred_token_legacy_topology_guard_applies(
+                        runtime,
+                        graph,
+                        component_token.component_idx,
+                    ),
+                )?;
+                component_row.set_item("shadow_debug", shadow_debug)?;
+                component_row.set_item(
+                    "accepted_token_flips",
+                    token_flips_to_py_names(&accepted_token_flips),
+                )?;
+                component_row.set_item(
+                    "raw_selected_carrier_token_flips",
+                    token_flips_to_py_names(&raw_selected_carrier_token_flips),
+                )?;
+                component_row.set_item(
+                    "visible_edge_token_flips",
+                    token_flips_to_py_names(&visible_edge_token_flips),
+                )?;
+                component_row.set_item(
+                    "raw_selected_carrier_explains_chosen_token",
+                    !raw_selected_carrier_token_flips.is_empty(),
+                )?;
+                component_row.set_item(
+                    "visible_edge_basis_explains_chosen_token",
+                    !visible_edge_token_flips.is_empty(),
+                )?;
+                component_row.set_item("basis_classes_considered", basis_classes)?;
+                component_row.set_item(
+                    "basis_candidates",
+                    basis_diagnostics
+                        .iter()
+                        .map(|diagnostic| {
+                            visible_marker_basis_diagnostic_to_py(
+                                py,
+                                component_token.component_idx,
+                                model_component_idx,
+                                diagnostic,
+                            )
+                        })
+                        .collect::<PyResult<Vec<_>>>()?,
+                )?;
+                Ok(component_row.unbind())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let row = PyDict::new(py);
+        row.set_item("root_idx", runtime.root_idx)?;
+        row.set_item("prefix", state.prefix.as_ref())?;
+        row.set_item("candidate_token", &candidate_token)?;
+        row.set_item(
+            "current_support_accepts_candidate",
+            current_support.contains(&candidate_token),
+        )?;
+        row.set_item("deferred_edge", deferred_edge_to_py(py, graph, deferred)?)?;
+        row.set_item("raw_tokens", raw_tokens.clone())?;
+        row.set_item("component_count", deferred.component_tokens.len())?;
+        row.set_item("components", component_diagnostics)?;
+        rows.push(row.unbind());
+    }
+    Ok(rows)
+}
+
+fn collect_deferred_marker_basis_diagnostic_rows(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    mut state: RootedConnectedStereoWalkerStateData,
+    rows: &Bound<'_, PyList>,
+    limit: usize,
+    max_states: usize,
+    scan: &mut DeferredMarkerBasisDiagnosticScan,
+) -> PyResult<()> {
+    if rows.len() >= limit || scan.truncated {
+        return Ok(());
+    }
+    if scan.visited_state_count >= max_states {
+        scan.truncated = true;
+        return Ok(());
+    }
+    scan.visited_state_count += 1;
+
+    drain_exact_linear_stereo_actions(&mut state);
+    if let Some(WalkerAction::EmitDeferred(deferred)) = state.action_stack.last().cloned() {
+        for row in
+            deferred_marker_basis_candidate_rows_to_py(py, runtime, graph, &state, &deferred)?
+        {
+            rows.append(row)?;
+            if rows.len() >= limit {
+                scan.truncated = true;
+                return Ok(());
+            }
+        }
+    }
+    if state.action_stack.is_empty() {
+        return Ok(());
+    }
+
+    let successors = flatten_exact_stereo_successor_groups(successors_by_token_stereo_raw(
+        runtime, graph, &state,
+    )?);
+    for successor in successors {
+        collect_deferred_marker_basis_diagnostic_rows(
+            py, runtime, graph, successor, rows, limit, max_states, scan,
+        )?;
+        if rows.len() >= limit || scan.truncated {
+            break;
+        }
+    }
+    Ok(())
+}
+
 #[pyfunction(name = "_stereo_constraint_output_facts", signature = (graph, root_idx=-1))]
 pub fn internal_stereo_constraint_output_facts(
     py: Python<'_>,
@@ -6125,6 +6375,70 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
     let result = PyDict::new(py);
     result.set_item("witnesses", rows)?;
     result.set_item("terminal_state_count", total_terminal_state_count)?;
+    result.set_item("truncated", truncated)?;
+    Ok(result.unbind())
+}
+
+#[pyfunction(
+    name = "_stereo_deferred_marker_basis_diagnostics",
+    signature = (graph, root_idx=-1, limit=64, max_states=100000)
+)]
+pub fn internal_stereo_deferred_marker_basis_diagnostics(
+    py: Python<'_>,
+    graph: &Bound<'_, PyAny>,
+    root_idx: isize,
+    limit: usize,
+    max_states: usize,
+) -> PyResult<Py<PyDict>> {
+    if limit == 0 {
+        return Err(PyValueError::new_err("limit must be positive"));
+    }
+    if max_states == 0 {
+        return Err(PyValueError::new_err("max_states must be positive"));
+    }
+
+    let graph = PreparedSmilesGraphData::from_any(graph)?;
+    let root_indices = if root_idx == -1 {
+        (0..graph.atom_count()).collect::<Vec<_>>()
+    } else {
+        vec![validate_root_idx(&graph, root_idx)?]
+    };
+
+    let rows = PyList::empty(py);
+    let mut total_visited_state_count = 0usize;
+    let mut truncated = false;
+    for root_idx in root_indices {
+        let runtime = build_walker_runtime(&graph, root_idx)?;
+        if runtime.side_infos.is_empty() {
+            return Err(PyValueError::new_err(
+                "stereo deferred marker-basis diagnostics require bond-stereo side metadata",
+            ));
+        }
+        let mut scan = DeferredMarkerBasisDiagnosticScan {
+            visited_state_count: 0,
+            truncated: false,
+        };
+        collect_deferred_marker_basis_diagnostic_rows(
+            py,
+            &runtime,
+            &graph,
+            initial_stereo_state_for_root(&runtime, &graph, runtime.root_idx),
+            &rows,
+            limit,
+            max_states.saturating_sub(total_visited_state_count),
+            &mut scan,
+        )?;
+        total_visited_state_count += scan.visited_state_count;
+        truncated |= scan.truncated;
+        if rows.len() >= limit || total_visited_state_count >= max_states {
+            truncated = true;
+            break;
+        }
+    }
+
+    let result = PyDict::new(py);
+    result.set_item("rows", rows)?;
+    result.set_item("visited_state_count", total_visited_state_count)?;
     result.set_item("truncated", truncated)?;
     Ok(result.unbind())
 }
@@ -7432,6 +7746,394 @@ fn accepted_deferred_token_flips(
     Ok(accepted.into_iter().collect())
 }
 
+fn deferred_token_legacy_topology_guard_applies(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    component_idx: usize,
+) -> bool {
+    graph.bond_count + 1 == graph.atom_count
+        && runtime_component_has_multi_candidate_side(runtime, component_idx)
+        && runtime_component_has_cross_component_carrier_edge(runtime, component_idx)
+}
+
+fn marker_event_fact_to_py(
+    py: Python<'_>,
+    component_idx: usize,
+    fact: StereoMarkerEventFact,
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("component_idx", component_idx)?;
+    match fact {
+        StereoMarkerEventFact::MarkerPlaced {
+            side_idx,
+            slot,
+            begin_idx,
+            end_idx,
+            marker,
+            role,
+        } => {
+            row.set_item("event", "marker_placed")?;
+            row.set_item("side_idx", side_idx)?;
+            row.set_item("slot", slot)?;
+            row.set_item("begin_idx", begin_idx)?;
+            row.set_item("end_idx", end_idx)?;
+            row.set_item("canonical_edge", canonical_edge(begin_idx, end_idx))?;
+            row.set_item("marker", stereo_direction_token_name(marker))?;
+            row.set_item("role", stereo_traversal_role_name(role))?;
+        }
+        StereoMarkerEventFact::NoMarker {
+            side_idx,
+            slot,
+            begin_idx,
+            end_idx,
+            role,
+        } => {
+            row.set_item("event", "no_marker")?;
+            row.set_item("side_idx", side_idx)?;
+            row.set_item("slot", slot)?;
+            row.set_item("begin_idx", begin_idx)?;
+            row.set_item("end_idx", end_idx)?;
+            row.set_item("canonical_edge", canonical_edge(begin_idx, end_idx))?;
+            row.set_item("marker", Option::<&str>::None)?;
+            row.set_item("role", stereo_traversal_role_name(role))?;
+        }
+    }
+    Ok(row.unbind())
+}
+
+fn component_ids_for_edge(runtime: &StereoWalkerRuntimeData, edge: (usize, usize)) -> Vec<usize> {
+    runtime
+        .edge_to_side_ids
+        .get(&edge)
+        .into_iter()
+        .flatten()
+        .filter_map(|&side_idx| runtime.side_infos.get(side_idx))
+        .map(|side_info| side_info.component_idx)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn edge_neighbor_for_marker_event(
+    runtime: &StereoWalkerRuntimeData,
+    fact: StereoMarkerEventFact,
+) -> Option<(usize, usize, (usize, usize))> {
+    let StereoMarkerEventFact::MarkerPlaced {
+        side_idx,
+        begin_idx,
+        end_idx,
+        ..
+    } = fact
+    else {
+        return None;
+    };
+    let side_info = runtime.side_infos.get(side_idx)?;
+    let edge_neighbor_idx = if begin_idx == side_info.endpoint_atom_idx {
+        end_idx
+    } else if end_idx == side_info.endpoint_atom_idx {
+        begin_idx
+    } else {
+        return None;
+    };
+    Some((
+        side_idx,
+        edge_neighbor_idx,
+        canonical_edge(begin_idx, end_idx),
+    ))
+}
+
+fn marker_basis_row_ids_for_event(
+    runtime: &StereoWalkerRuntimeData,
+    model_component_idx: usize,
+    event: StereoMarkerEventFact,
+    survivor_state: &RdkitMarkerRowSurvivorComponentState,
+) -> PyResult<(Vec<usize>, Vec<usize>)> {
+    let Some((side_idx, edge_neighbor_idx, _)) = edge_neighbor_for_marker_event(runtime, event)
+    else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    let Some(component) = runtime.constraint_model.components.get(model_component_idx) else {
+        return Err(PyValueError::new_err(
+            "visible-marker basis diagnostic component index out of range",
+        ));
+    };
+    let Some(side_position) = component
+        .side_ids
+        .iter()
+        .position(|&candidate_side_idx| candidate_side_idx == side_idx)
+    else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+
+    let mut selected_carrier_rows = BTreeSet::<usize>::new();
+    let mut non_selected_visible_edge_rows = BTreeSet::<usize>::new();
+    for &row_idx in &survivor_state.row_ids_after_marker_events {
+        let Some(row) = component.all_marker_placement_rows.get(row_idx) else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis diagnostic row index out of range",
+            ));
+        };
+        let Some(token_phase_assignment) = component
+            .all_token_phase_assignments
+            .get(row.token_phase_assignment_id)
+        else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis diagnostic token-phase index out of range",
+            ));
+        };
+        let Some(carrier_neighbors) = component
+            .all_neighbor_assignments
+            .get(token_phase_assignment.neighbor_assignment_id)
+        else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis diagnostic carrier assignment index out of range",
+            ));
+        };
+        let Some(&selected_neighbor_idx) = carrier_neighbors.get(side_position) else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis diagnostic carrier side index out of range",
+            ));
+        };
+        let Some(marker_neighbors) = row.marker_neighbor_sets.get(side_position) else {
+            return Err(PyValueError::new_err(
+                "visible-marker basis diagnostic marker side index out of range",
+            ));
+        };
+        if !marker_neighbors.contains(&edge_neighbor_idx) {
+            continue;
+        }
+        if selected_neighbor_idx == edge_neighbor_idx {
+            selected_carrier_rows.insert(row_idx);
+        } else {
+            non_selected_visible_edge_rows.insert(row_idx);
+        }
+    }
+    Ok((
+        selected_carrier_rows.into_iter().collect(),
+        non_selected_visible_edge_rows.into_iter().collect(),
+    ))
+}
+
+struct VisibleMarkerBasisDiagnostic {
+    basis_class: &'static str,
+    reference_token: String,
+    implied_token_flip: StereoTokenFlip,
+    row_ids_before_marker_events: Vec<usize>,
+    row_ids_after_marker_events: Vec<usize>,
+    row_ids_supporting_basis: Vec<usize>,
+    marker_events: Vec<StereoMarkerEventFact>,
+}
+
+fn visible_marker_basis_diagnostic_to_py(
+    py: Python<'_>,
+    component_idx: usize,
+    model_component_idx: usize,
+    diagnostic: &VisibleMarkerBasisDiagnostic,
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("basis_class", diagnostic.basis_class)?;
+    row.set_item("component_idx", component_idx)?;
+    row.set_item("model_component_idx", model_component_idx)?;
+    row.set_item("reference_token", &diagnostic.reference_token)?;
+    row.set_item(
+        "implied_token_flip",
+        model_token_flip_name(diagnostic.implied_token_flip),
+    )?;
+    row.set_item(
+        "row_ids_before_marker_events",
+        diagnostic.row_ids_before_marker_events.clone(),
+    )?;
+    row.set_item(
+        "row_ids_after_marker_events",
+        diagnostic.row_ids_after_marker_events.clone(),
+    )?;
+    row.set_item(
+        "row_ids_supporting_basis",
+        diagnostic.row_ids_supporting_basis.clone(),
+    )?;
+    row.set_item(
+        "row_count_supporting_basis",
+        diagnostic.row_ids_supporting_basis.len(),
+    )?;
+    row.set_item(
+        "marker_events",
+        diagnostic
+            .marker_events
+            .iter()
+            .copied()
+            .map(|event| marker_event_fact_to_py(py, model_component_idx, event))
+            .collect::<PyResult<Vec<_>>>()?,
+    )?;
+    Ok(row.unbind())
+}
+
+fn visible_marker_basis_diagnostics_for_component_token(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    boundary_facts: &StereoSupportBoundaryFacts,
+) -> PyResult<Vec<VisibleMarkerBasisDiagnostic>> {
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(component_token.component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Deferred token references unknown runtime component",
+        ));
+    };
+    if constraint_state.is_empty(model_component_idx) {
+        return Ok(Vec::new());
+    }
+    let token_phase_assignment_ids = constraint_state
+        .token_phase_remaining_by_component
+        .get(model_component_idx)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let marker_events = marker_events_for_deferred_component_token(
+        runtime,
+        state.prefix.as_ref(),
+        deferred,
+        component_token,
+        chosen_token,
+    )?;
+    if marker_events.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut diagnostics = Vec::<VisibleMarkerBasisDiagnostic>::new();
+    for reference_token in &component_token.reference_tokens {
+        let Some(implied_token_flip) =
+            model_token_flip_for_chosen_token(reference_token, chosen_token)?
+        else {
+            continue;
+        };
+        let candidate_token_phase_assignment_ids = runtime
+            .constraint_model
+            .filter_token_phase_assignment_ids_for_token_flip(
+                model_component_idx,
+                component_token.component_idx,
+                token_phase_assignment_ids,
+                implied_token_flip,
+            )?;
+        if candidate_token_phase_assignment_ids.is_empty() {
+            continue;
+        }
+
+        let mut all_marker_events = boundary_facts
+            .marker_obligation_event_facts_by_component
+            .get(model_component_idx)
+            .cloned()
+            .unwrap_or_default();
+        all_marker_events.extend(marker_events.iter().copied());
+        let all_marker_events =
+            rdkit_writer_slot_coalesced_marker_event_facts(model_component_idx, &all_marker_events);
+        let survivor_state = rdkit_marker_row_survivor_component_state(
+            runtime,
+            model_component_idx,
+            &candidate_token_phase_assignment_ids,
+            &all_marker_events,
+        )?;
+        if survivor_state.row_ids_after_marker_events.is_empty() {
+            continue;
+        }
+
+        let mut selected_carrier_rows = BTreeSet::<usize>::new();
+        let mut non_selected_visible_edge_rows = BTreeSet::<usize>::new();
+        let mut shared_visible_edge_rows = BTreeSet::<usize>::new();
+        for &event in &marker_events {
+            let Some((_, _, edge)) = edge_neighbor_for_marker_event(runtime, event) else {
+                continue;
+            };
+            let (selected_rows, non_selected_rows) = marker_basis_row_ids_for_event(
+                runtime,
+                model_component_idx,
+                event,
+                &survivor_state,
+            )?;
+            selected_carrier_rows.extend(selected_rows);
+            non_selected_visible_edge_rows.extend(non_selected_rows);
+            if component_ids_for_edge(runtime, edge).len() > 1 {
+                shared_visible_edge_rows
+                    .extend(survivor_state.row_ids_after_marker_events.iter().copied());
+            }
+        }
+
+        for (basis_class, row_ids_supporting_basis) in [
+            (
+                "selected_carrier",
+                selected_carrier_rows.into_iter().collect::<Vec<_>>(),
+            ),
+            (
+                "non_selected_visible_edge",
+                non_selected_visible_edge_rows
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                "shared_visible_edge",
+                shared_visible_edge_rows.into_iter().collect::<Vec<_>>(),
+            ),
+        ] {
+            if row_ids_supporting_basis.is_empty() {
+                continue;
+            }
+            diagnostics.push(VisibleMarkerBasisDiagnostic {
+                basis_class,
+                reference_token: reference_token.clone(),
+                implied_token_flip,
+                row_ids_before_marker_events: survivor_state.row_ids_before_marker_events.clone(),
+                row_ids_after_marker_events: survivor_state.row_ids_after_marker_events.clone(),
+                row_ids_supporting_basis,
+                marker_events: marker_events.clone(),
+            });
+        }
+    }
+    Ok(diagnostics)
+}
+
+fn accepted_token_flips_from_raw_selected_carrier_basis(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    raw_tokens: &[String],
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    boundary_facts: &StereoSupportBoundaryFacts,
+) -> PyResult<Vec<StereoTokenFlip>> {
+    let mut accepted = BTreeSet::<StereoTokenFlip>::new();
+    for raw_token in raw_tokens {
+        let Some(implied_token_flip) = model_token_flip_for_chosen_token(raw_token, chosen_token)?
+        else {
+            continue;
+        };
+        if rdkit_marker_rows_accept_deferred_token(
+            runtime,
+            state,
+            deferred,
+            component_token,
+            implied_token_flip,
+            chosen_token,
+            constraint_state,
+            boundary_facts,
+        )? {
+            accepted.insert(implied_token_flip);
+        }
+    }
+    Ok(accepted.into_iter().collect())
+}
+
+fn token_flips_to_py_names(token_flips: &[StereoTokenFlip]) -> Vec<&'static str> {
+    token_flips
+        .iter()
+        .copied()
+        .map(model_token_flip_name)
+        .collect()
+}
+
 fn runtime_component_has_multi_candidate_side(
     runtime: &StereoWalkerRuntimeData,
     runtime_component_idx: usize,
@@ -7483,13 +8185,7 @@ fn accepted_single_component_deferred_token_flips(
     // before the phase basis is known. Ring components and single-component
     // diene components stay on the older path until those boundaries are
     // handled explicitly.
-    if graph.bond_count + 1 == graph.atom_count
-        && runtime_component_has_multi_candidate_side(runtime, component_token.component_idx)
-        && runtime_component_has_cross_component_carrier_edge(
-            runtime,
-            component_token.component_idx,
-        )
-    {
+    if deferred_token_legacy_topology_guard_applies(runtime, graph, component_token.component_idx) {
         return accepted_deferred_token_flips(
             runtime,
             state,

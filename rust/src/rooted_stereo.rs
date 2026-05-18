@@ -10915,10 +10915,12 @@ mod tests {
         enumerate_support_from_stereo_state, flatten_exact_stereo_successor_groups,
         inferred_token_observation_facts_from_constraints, initial_stereo_state_for_root,
         is_complete_terminal_stereo_state, is_terminal_stereo_state,
-        known_token_flip_facts_from_constraints, marker_events_for_deferred_component_token,
-        next_token_support_for_stereo_state, rdkit_marker_rows_accept_deferred_token,
-        rdkit_ring_closure_projected_marker_slots, rdkit_traversal_writer_facts_by_component,
-        rdkit_traversal_writer_has_completion, rdkit_writer_marker_event_facts_by_component,
+        joined_support_boundary_selected_neighbors, known_token_flip_facts_from_constraints,
+        marker_events_for_deferred_component_token, next_token_support_for_stereo_state,
+        partial_joined_support_boundary_selected_neighbors,
+        rdkit_marker_rows_accept_deferred_token, rdkit_ring_closure_projected_marker_slots,
+        rdkit_traversal_writer_facts_by_component, rdkit_traversal_writer_has_completion,
+        rdkit_writer_marker_event_facts_by_component,
         rdkit_writer_marker_obligation_domains_by_component,
         rdkit_writer_slot_coalesced_marker_event_facts_by_component,
         record_rdkit_literal_edge_marker_trace, resolved_constraint_state_from_walker_state,
@@ -10931,8 +10933,9 @@ mod tests {
         ComponentBeginAtomFact, ComponentPhaseCommitFact, ComponentTokenConstraintFact,
         DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
         DeferredDirectionalComponentToken, DeferredDirectionalToken, MarkerEventTrace,
-        StereoCompletionKey, StereoEdgeEmissionContext, StereoEdgeEmissionState,
-        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
+        RootedConnectedStereoWalkerStateData, StereoCompletionKey, StereoEdgeEmissionContext,
+        StereoEdgeEmissionState, FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE,
+        UNKNOWN_COMPONENT_PHASE,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -11627,6 +11630,86 @@ mod tests {
         assert_ne!(
             empty_boundary_facts.marker_event_facts_by_component,
             traced_boundary_facts.marker_event_facts_by_component
+        );
+    }
+
+    #[derive(Default, Debug, PartialEq, Eq)]
+    struct SharedCarrierBoundaryDeltaCounts {
+        visited_state_count: usize,
+        full_joined_mismatch_count: usize,
+        partial_joined_mismatch_count: usize,
+        terminal_full_joined_mismatch_count: usize,
+        terminal_partial_joined_mismatch_count: usize,
+    }
+
+    fn shared_carrier_boundary_delta_counts(
+        runtime: &super::StereoWalkerRuntimeData,
+        graph: &PreparedSmilesGraphData,
+        state: RootedConnectedStereoWalkerStateData,
+    ) -> SharedCarrierBoundaryDeltaCounts {
+        fn visit(
+            runtime: &super::StereoWalkerRuntimeData,
+            graph: &PreparedSmilesGraphData,
+            mut state: RootedConnectedStereoWalkerStateData,
+            seen: &mut BTreeSet<RootedConnectedStereoWalkerStateData>,
+            counts: &mut SharedCarrierBoundaryDeltaCounts,
+        ) {
+            drain_exact_linear_stereo_actions(&mut state);
+            if !seen.insert(state.clone()) {
+                return;
+            }
+            counts.visited_state_count += 1;
+
+            let legacy = resolved_selected_neighbors(runtime, &state);
+            let is_terminal = is_complete_terminal_stereo_state(graph, &state);
+            let full_matches = joined_support_boundary_selected_neighbors(runtime, graph, &state)
+                .map(|neighbors| neighbors == legacy)
+                .unwrap_or(false);
+            let partial_matches =
+                partial_joined_support_boundary_selected_neighbors(runtime, graph, &state)
+                    .map(|neighbors| neighbors == legacy)
+                    .unwrap_or(false);
+
+            if !full_matches {
+                counts.full_joined_mismatch_count += 1;
+                counts.terminal_full_joined_mismatch_count += usize::from(is_terminal);
+            }
+            if !partial_matches {
+                counts.partial_joined_mismatch_count += 1;
+                counts.terminal_partial_joined_mismatch_count += usize::from(is_terminal);
+            }
+
+            let successors = flatten_exact_stereo_successor_groups(
+                successors_by_token_stereo_raw(runtime, graph, &state)
+                    .expect("shared-carrier witness successors should build"),
+            );
+            for successor in successors {
+                visit(runtime, graph, successor, seen, counts);
+            }
+        }
+
+        let mut seen = BTreeSet::new();
+        let mut counts = SharedCarrierBoundaryDeltaCounts::default();
+        visit(runtime, graph, state, &mut seen, &mut counts);
+        counts
+    }
+
+    #[test]
+    fn shared_carrier_boundary_resolution_delta_counts_are_pinned() {
+        let Some(graph) = prepared_graph_from_smiles("CC/C(C)=C(\\C)C(/C)=C/C") else {
+            return;
+        };
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
+        let counts = shared_carrier_boundary_delta_counts(&runtime, &graph, state);
+        assert_eq!(
+            SharedCarrierBoundaryDeltaCounts {
+                visited_state_count: 137,
+                full_joined_mismatch_count: 109,
+                partial_joined_mismatch_count: 109,
+                terminal_full_joined_mismatch_count: 0,
+                terminal_partial_joined_mismatch_count: 0,
+            },
+            counts,
         );
     }
 

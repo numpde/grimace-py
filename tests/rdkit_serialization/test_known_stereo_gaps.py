@@ -56,6 +56,10 @@ ALLOWED_BOUNDARY_LAYER_CLASSES = {
     "no_current_same_skeleton_support",
     "unsupported_surface",
 }
+SMALLEST_GAP_CASE_ID = "github3967_part2_directional_ring_closure_canonical"
+SMALLEST_GAP_ROOT_IDX = 0
+SMALLEST_GAP_TERMINAL_PREFIX = "C1=CC/C=C2\\C3=C"
+SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE = "\\"
 MarkerSlots = tuple[tuple[int, str], ...]
 MarkerSlotSet = tuple[MarkerSlots, ...]
 
@@ -539,11 +543,7 @@ class KnownStereoGapTests(unittest.TestCase):
                     self.assertEqual("support_present", case.expected_current_result)
 
     def test_smallest_gap_separates_stereo_assignment_from_marker_basis(self) -> None:
-        case = next(
-            case
-            for case in self.cases
-            if case.case_id == "github3967_part2_directional_ring_closure_canonical"
-        )
+        case = self._smallest_gap_case()
         source_smiles = case.smiles
         self.assertIsNotNone(source_smiles)
         assert source_smiles is not None
@@ -570,11 +570,7 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertNotEqual(source_marker_slots, rdkit_marker_slots)
 
     def test_smallest_gap_enumerates_parse_equivalent_marker_basis_space(self) -> None:
-        case = next(
-            case
-            for case in self.cases
-            if case.case_id == "github3967_part2_directional_ring_closure_canonical"
-        )
+        case = self._smallest_gap_case()
         source_smiles = case.smiles
         self.assertIsNotNone(source_smiles)
         self.assertIsNotNone(case.parse_equivalent_minimal_marker_slots)
@@ -609,11 +605,61 @@ class KnownStereoGapTests(unittest.TestCase):
             )
         )
 
+    def test_smallest_gap_pins_writer_quotient_token_phase_boundary(self) -> None:
+        case = self._smallest_gap_case()
+        mol = self._mol_from_case(case)
+        prepared = _runtime.prepare_smiles_graph(
+            mol,
+            flags=SUPPORTED_STEREO_DIAGNOSTIC_FLAGS,
+        )
+        diagnostics = _core._stereo_deferred_marker_basis_diagnostics(
+            prepared,
+            root_idx=SMALLEST_GAP_ROOT_IDX,
+            limit=10_000,
+            max_states=500_000,
+        )
+        self.assertFalse(diagnostics["truncated"])
+
+        target_rows = [
+            row
+            for row in diagnostics["rows"]
+            if row["prefix"] == SMALLEST_GAP_TERMINAL_PREFIX
+            and row["candidate_token"] == SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE
+        ]
+        self.assertEqual(1, len(target_rows))
+
+        target_row = target_rows[0]
+        self.assertFalse(target_row["current_support_accepts_candidate"])
+        self.assertEqual(["/"], target_row["raw_tokens"])
+        self.assertEqual(1, target_row["component_count"])
+        self.assertEqual(1, len(target_row["components"]))
+
+        component = target_row["components"][0]
+        self.assertEqual(["/"], component["reference_tokens"])
+        self.assertEqual([], component["accepted_token_flips"])
+        self.assertEqual([], component["raw_selected_carrier_token_flips"])
+        self.assertEqual([], component["visible_edge_token_flips"])
+        self.assertEqual([], component["basis_candidates"])
+        self.assertEqual(1, len(component["token_flip_attempts"]))
+
+        attempt = component["token_flip_attempts"][0]
+        self.assertEqual("/", attempt["reference_token"])
+        self.assertEqual("flipped", attempt["implied_token_flip"])
+        self.assertEqual("stored", attempt["base_forced_token_flip"])
+        self.assertEqual(1, attempt["base_token_phase_assignment_count"])
+        self.assertEqual(0, attempt["token_phase_assignment_count"])
+        self.assertEqual(0, attempt["row_count_before_marker_events"])
+        self.assertEqual(0, attempt["row_count_after_marker_events"])
+        self.assertFalse(attempt["accepted"])
+
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:
             writer_case = self.writer_cases_by_id[case.writer_membership_case_id]
             return mol_from_pinned_source(writer_case)
         return mol_from_pinned_source(case)
+
+    def _smallest_gap_case(self) -> KnownStereoGapCase:
+        return next(case for case in self.cases if case.case_id == SMALLEST_GAP_CASE_ID)
 
     def _molecule_source_key(self, case: KnownStereoGapCase) -> str:
         if case.writer_membership_case_id is not None:

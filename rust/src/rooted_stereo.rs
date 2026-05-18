@@ -3638,6 +3638,34 @@ fn partial_joined_support_boundary_selected_neighbors(
     )
 }
 
+fn observed_selected_neighbors_for_support_state_token_inference(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<Vec<isize>> {
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let boundary_facts = support_boundary_facts_from_walker_state(
+        runtime,
+        graph,
+        state,
+        raw_selected_neighbors,
+        true,
+    )?;
+    let query = support_state_selected_neighbor_query(
+        runtime,
+        raw_selected_neighbors,
+        &boundary_facts,
+        false,
+    )?;
+    let mut observed_selected_neighbors = query.selected_neighbors;
+    for (side_idx, _) in query.forced_side_neighbors {
+        if raw_selected_neighbors[side_idx] < 0 {
+            observed_selected_neighbors[side_idx] = -1;
+        }
+    }
+    Ok(observed_selected_neighbors)
+}
+
 pub(crate) fn enumerate_rooted_connected_stereo_smiles_support(
     graph: &PreparedSmilesGraphData,
     root_idx: isize,
@@ -7180,7 +7208,8 @@ fn inferred_component_token_flip(
     graph: &PreparedSmilesGraphData,
     component_idx: usize,
 ) -> PyResult<Option<i8>> {
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let resolved_selected_neighbors =
+        observed_selected_neighbors_for_support_state_token_inference(runtime, graph, state)?;
     Ok(component_token_inference_inputs(
         runtime,
         graph,
@@ -7842,7 +7871,8 @@ fn assert_component_token_flip_boundary_invariants(
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
     assert_token_flips_explained_by_constraint_state(runtime, graph, state)?;
-    let resolved_selected_neighbors = resolved_selected_neighbors(runtime, state);
+    let resolved_selected_neighbors =
+        partial_joined_support_boundary_selected_neighbors(runtime, graph, state)?;
     for component_idx in 0..state.committed_component_token_flips.len() {
         let committed = state.committed_component_token_flips[component_idx]
             .map(component_token_flip_value_from_model)
@@ -11793,6 +11823,16 @@ mod tests {
     }
 
     #[test]
+    fn support_state_forced_neighbors_do_not_replace_token_observations() {
+        let Some(graph) = prepared_graph_from_smiles("C(\\C=C\\F)=C(/Cl)Br") else {
+            return;
+        };
+        let support = stereo_support_set(&graph, 0);
+        assert!(support.contains("C(=C(/Br)Cl)/C=C/F"));
+        assert!(support.contains("C(=C(\\Cl)Br)/C=C/F"));
+    }
+
+    #[test]
     fn acyclic_deferred_marker_basis_keeps_manual_stereo_atoms_surfaces() {
         for expected in [
             "CC\\C=C/C(/C=C/CC)=C(/CC)CO",
@@ -12026,9 +12066,9 @@ mod tests {
         let counts = shared_carrier_boundary_delta_counts(&runtime, &graph, state);
         assert_eq!(
             SharedCarrierBoundaryDeltaCounts {
-                visited_state_count: 137,
-                full_joined_mismatch_count: 109,
-                partial_joined_mismatch_count: 109,
+                visited_state_count: 99,
+                full_joined_mismatch_count: 71,
+                partial_joined_mismatch_count: 71,
                 terminal_full_joined_mismatch_count: 0,
                 terminal_partial_joined_mismatch_count: 0,
             },
@@ -12100,8 +12140,8 @@ mod tests {
                     .expect("shared-carrier witness successors should build"),
             ));
         }
-        assert_eq!(262, total_marker_trace_count);
-        assert_eq!(262, support_boundary_shadow_count);
+        assert_eq!(188, total_marker_trace_count);
+        assert_eq!(188, support_boundary_shadow_count);
         assert_eq!(
             0,
             support_boundary_shadow_mismatch_count,

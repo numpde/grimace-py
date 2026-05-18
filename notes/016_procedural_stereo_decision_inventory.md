@@ -203,6 +203,25 @@ Adjacent model state:
 - The production runtime still emits markers through traversal/deferred-token
   paths rather than a single marker-obligation state.
 
+Coverage decision, 2026-05-18:
+
+- Keep same-edge deferred marker-obligation coverage at the lower-level Rust
+  edge-state boundary until a real terminal runtime witness is found.
+- Do not construct a synthetic terminal graph fixture just to force
+  `marker_obligation_domains[*].is_deferred == true`. That would turn a
+  synthetic marker/no-marker fact shape into an apparent public RDKit-support
+  claim.
+- The current executable split is intentional: Rust pins the row-filtering rule
+  for a synthetic same-edge no-marker/future-marker fact shape, integration
+  tests pin public support-boundary marker/no-marker facts and the
+  different-edge non-coalescing rule, and
+  `_stereo_deferred_marker_obligation_witnesses` remains the monitor for real
+  terminal witnesses.
+- If the scanner later finds a real terminal deferred-obligation row, promote
+  that molecule into a version-keyed fixture and add an integration assertion
+  against the pinned witness. Until then, lack of a public terminal witness is
+  a known coverage boundary, not a reason to overfit a fake public case.
+
 ### Completion/cache identity still carries procedural stereo vectors
 
 Code:

@@ -10507,7 +10507,7 @@ mod tests {
     }
 
     #[test]
-    fn edge_state_marker_rows_filter_carrier_availability() {
+    fn edge_state_marker_rows_do_not_conflate_marker_placement_with_carrier_selection() {
         let Some(graph) = prepared_graph_from_smiles("C/C=C/C(C)=C/C") else {
             return;
         };
@@ -10570,7 +10570,10 @@ mod tests {
                 .expect("boundary availability should build")
                 .expect("side should belong to a model component");
 
-        assert_eq!(vec![marked_neighbor], available_neighbors);
+        // A visible marker on one candidate and a no-marker event on the
+        // other constrains token-phase rows, but it does not by itself prove
+        // which side candidate RDKit selected as the semantic carrier.
+        assert_eq!(vec![blocked_neighbor, marked_neighbor], available_neighbors);
     }
 
     #[test]

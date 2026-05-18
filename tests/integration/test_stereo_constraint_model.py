@@ -1758,14 +1758,60 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             case.expected_marker_row_diagnostics.output_row_count,
             full_scan["terminal_state_count"],
         )
+        self.assertGreaterEqual(
+            full_scan["visited_state_count"],
+            full_scan["terminal_state_count"],
+        )
         self.assertEqual([], full_scan["witnesses"])
 
-        bounded_scan = _core._stereo_deferred_marker_obligation_witnesses(
+        terminal_bounded_scan = _core._stereo_deferred_marker_obligation_witnesses(
             prepared,
             max_terminal_states=5,
         )
-        self.assertTrue(bounded_scan["truncated"])
-        self.assertEqual(5, bounded_scan["terminal_state_count"])
+        self.assertTrue(terminal_bounded_scan["truncated"])
+        self.assertEqual(5, terminal_bounded_scan["terminal_state_count"])
+        self.assertGreaterEqual(
+            terminal_bounded_scan["visited_state_count"],
+            terminal_bounded_scan["terminal_state_count"],
+        )
+
+        state_bounded_scan = _core._stereo_deferred_marker_obligation_witnesses(
+            prepared,
+            max_states=5,
+        )
+        self.assertTrue(state_bounded_scan["truncated"])
+        self.assertLessEqual(state_bounded_scan["terminal_state_count"], 5)
+        self.assertEqual(5, state_bounded_scan["visited_state_count"])
+
+    def test_deferred_marker_obligation_witness_scanner_bounds_hard_gap(self) -> None:
+        mol = parse_smiles("C1=CC/C=C2C3=C/CC=CC=CC\\3C\\2C=C1")
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+        scan = _core._stereo_deferred_marker_obligation_witnesses(
+            prepared,
+            max_states=5,
+        )
+
+        self.assertTrue(scan["truncated"])
+        self.assertLessEqual(scan["terminal_state_count"], 5)
+        self.assertEqual(5, scan["visited_state_count"])
+
+    def test_deferred_marker_obligation_witness_scanner_rejects_zero_state_budget(
+        self,
+    ) -> None:
+        case = next(
+            case
+            for case in self.cases
+            if case.case_id == "minimal_nonstereo_double_hazard"
+        )
+        mol = parse_smiles(case.smiles)
+        prepared = _runtime.prepare_smiles_graph(mol, flags=SUPPORTED_STEREO_FLAGS)
+
+        with self.assertRaisesRegex(ValueError, "max_states must be positive"):
+            _core._stereo_deferred_marker_obligation_witnesses(
+                prepared,
+                max_states=0,
+            )
 
     def test_reduced_porphyrin_terminal_rows_keep_marker_boundary_survivors(self) -> None:
         case = next(

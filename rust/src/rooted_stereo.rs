@@ -5969,6 +5969,7 @@ fn collect_stereo_output_fact_rows(
 
 struct DeferredMarkerObligationWitnessScan {
     terminal_state_count: usize,
+    visited_state_count: usize,
     truncated: bool,
 }
 
@@ -5980,11 +5981,17 @@ fn collect_deferred_marker_obligation_witness_rows(
     rows: &Bound<'_, PyList>,
     limit: usize,
     max_terminal_states: usize,
+    max_states: usize,
     scan: &mut DeferredMarkerObligationWitnessScan,
 ) -> PyResult<()> {
     if rows.len() >= limit || scan.truncated {
         return Ok(());
     }
+    if scan.visited_state_count >= max_states {
+        scan.truncated = true;
+        return Ok(());
+    }
+    scan.visited_state_count += 1;
 
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
@@ -6022,6 +6029,7 @@ fn collect_deferred_marker_obligation_witness_rows(
             rows,
             limit,
             max_terminal_states,
+            max_states,
             scan,
         )?;
         if rows.len() >= limit || scan.truncated {
@@ -6315,7 +6323,7 @@ pub fn internal_stereo_constraint_output_facts(
 
 #[pyfunction(
     name = "_stereo_deferred_marker_obligation_witnesses",
-    signature = (graph, root_idx=-1, limit=16, max_terminal_states=100000)
+    signature = (graph, root_idx=-1, limit=16, max_terminal_states=100000, max_states=1000000)
 )]
 pub fn internal_stereo_deferred_marker_obligation_witnesses(
     py: Python<'_>,
@@ -6323,6 +6331,7 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
     root_idx: isize,
     limit: usize,
     max_terminal_states: usize,
+    max_states: usize,
 ) -> PyResult<Py<PyDict>> {
     if limit == 0 {
         return Err(PyValueError::new_err("limit must be positive"));
@@ -6331,6 +6340,9 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
         return Err(PyValueError::new_err(
             "max_terminal_states must be positive",
         ));
+    }
+    if max_states == 0 {
+        return Err(PyValueError::new_err("max_states must be positive"));
     }
 
     let graph = PreparedSmilesGraphData::from_any(graph)?;
@@ -6342,6 +6354,7 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
 
     let rows = PyList::empty(py);
     let mut total_terminal_state_count = 0usize;
+    let mut total_visited_state_count = 0usize;
     let mut truncated = false;
     for root_idx in root_indices {
         let runtime = build_walker_runtime(&graph, root_idx)?;
@@ -6352,6 +6365,7 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
         }
         let mut scan = DeferredMarkerObligationWitnessScan {
             terminal_state_count: 0,
+            visited_state_count: 0,
             truncated: false,
         };
         collect_deferred_marker_obligation_witness_rows(
@@ -6362,12 +6376,18 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
             &rows,
             limit,
             max_terminal_states.saturating_sub(total_terminal_state_count),
+            max_states.saturating_sub(total_visited_state_count),
             &mut scan,
         )?;
         total_terminal_state_count += scan.terminal_state_count;
+        total_visited_state_count += scan.visited_state_count;
         truncated |= scan.truncated;
-        if rows.len() >= limit || total_terminal_state_count >= max_terminal_states {
+        if rows.len() >= limit
+            || total_terminal_state_count >= max_terminal_states
+            || total_visited_state_count >= max_states
+        {
             truncated |= total_terminal_state_count >= max_terminal_states;
+            truncated |= total_visited_state_count >= max_states;
             break;
         }
     }
@@ -6375,6 +6395,7 @@ pub fn internal_stereo_deferred_marker_obligation_witnesses(
     let result = PyDict::new(py);
     result.set_item("witnesses", rows)?;
     result.set_item("terminal_state_count", total_terminal_state_count)?;
+    result.set_item("visited_state_count", total_visited_state_count)?;
     result.set_item("truncated", truncated)?;
     Ok(result.unbind())
 }

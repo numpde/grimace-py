@@ -51,7 +51,7 @@
         "legacy_topology_gated_visible_basis": 34,
         "raw_selected_carrier": 42,
         "remaining_shared_visible_basis": 50,
-        "remaining_visible_basis": 50
+        "legacy_remaining_visible_basis": 50
       },
       "expected_raw_selected_carrier_explained_component_count": 42,
       "expected_visible_edge_explained_component_count": 26,
@@ -86,7 +86,7 @@
         "legacy_topology_gated_visible_basis": 126,
         "raw_selected_carrier": 159,
         "remaining_shared_visible_basis": 196,
-        "remaining_visible_basis": 196
+        "legacy_remaining_visible_basis": 196
       },
       "expected_raw_selected_carrier_explained_component_count": 159,
       "expected_visible_edge_explained_component_count": 95,

@@ -28,7 +28,7 @@ VISIBLE_MARKER_POLICY_VARIANTS = frozenset(
         "legacy_topology_gated_visible_basis",
         "raw_selected_carrier",
         "remaining_shared_visible_basis",
-        "remaining_visible_basis",
+        "legacy_remaining_visible_basis",
     )
 )
 

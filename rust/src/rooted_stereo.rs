@@ -6226,10 +6226,10 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     component_token.component_idx,
                     &constraint_state,
                 )?;
-                let has_remaining_visible_marker_basis = remaining_basis_summary
+                let has_legacy_remaining_visible_marker_basis = remaining_basis_summary
                     .has_shared_visible_edge_basis
                     || (remaining_basis_summary.has_non_selected_visible_edge_basis
-                        && runtime_component_has_cross_component_carrier_edge(
+                        && legacy_topology_guard_component_has_cross_component_carrier_edge(
                             runtime,
                             component_token.component_idx,
                         ));
@@ -6242,11 +6242,12 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     &constraint_state,
                     &boundary_facts,
                 )?;
-                let remaining_visible_token_flips = if has_remaining_visible_marker_basis {
-                    all_marker_row_token_flips.clone()
-                } else {
-                    Vec::new()
-                };
+                let legacy_remaining_visible_token_flips =
+                    if has_legacy_remaining_visible_marker_basis {
+                        all_marker_row_token_flips.clone()
+                    } else {
+                        Vec::new()
+                    };
                 let remaining_shared_visible_token_flips =
                     if remaining_basis_summary.has_shared_visible_edge_basis {
                         all_marker_row_token_flips.clone()
@@ -6267,7 +6268,8 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     component_token.component_idx,
                 );
                 let legacy_topology_gated_token_flips = if legacy_guard_applies
-                    && (!visible_edge_token_flips.is_empty() || has_remaining_visible_marker_basis)
+                    && (!visible_edge_token_flips.is_empty()
+                        || has_legacy_remaining_visible_marker_basis)
                 {
                     all_marker_row_token_flips.clone()
                 } else {
@@ -6290,8 +6292,8 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     remaining_basis_summary.has_shared_visible_edge_basis,
                 )?;
                 shadow_debug.set_item(
-                    "remaining_visible_basis_applies",
-                    has_remaining_visible_marker_basis,
+                    "legacy_remaining_visible_basis_applies",
+                    has_legacy_remaining_visible_marker_basis,
                 )?;
                 shadow_debug.set_item(
                     "frontier_shared_nonselected_visible_basis_applies",
@@ -6322,8 +6324,8 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     token_flips_to_py_names(&visible_edge_token_flips),
                 )?;
                 policy_variant_token_flips.set_item(
-                    "remaining_visible_basis",
-                    token_flips_to_py_names(&remaining_visible_token_flips),
+                    "legacy_remaining_visible_basis",
+                    token_flips_to_py_names(&legacy_remaining_visible_token_flips),
                 )?;
                 policy_variant_token_flips.set_item(
                     "remaining_shared_visible_basis",
@@ -6348,8 +6350,8 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     !visible_edge_token_flips.is_empty(),
                 )?;
                 policy_variant_accepts.set_item(
-                    "remaining_visible_basis",
-                    !remaining_visible_token_flips.is_empty(),
+                    "legacy_remaining_visible_basis",
+                    !legacy_remaining_visible_token_flips.is_empty(),
                 )?;
                 policy_variant_accepts.set_item(
                     "remaining_shared_visible_basis",
@@ -7941,8 +7943,8 @@ fn deferred_token_legacy_topology_guard_applies(
     component_idx: usize,
 ) -> bool {
     graph.bond_count + 1 == graph.atom_count
-        && runtime_component_has_multi_candidate_side(runtime, component_idx)
-        && runtime_component_has_cross_component_carrier_edge(runtime, component_idx)
+        && legacy_topology_guard_component_has_multi_candidate_side(runtime, component_idx)
+        && legacy_topology_guard_component_has_cross_component_carrier_edge(runtime, component_idx)
 }
 
 fn marker_event_fact_to_py(
@@ -8430,7 +8432,7 @@ fn token_flips_to_py_names(token_flips: &[StereoTokenFlip]) -> Vec<&'static str>
         .collect()
 }
 
-fn runtime_component_has_multi_candidate_side(
+fn legacy_topology_guard_component_has_multi_candidate_side(
     runtime: &StereoWalkerRuntimeData,
     runtime_component_idx: usize,
 ) -> bool {
@@ -8442,7 +8444,7 @@ fn runtime_component_has_multi_candidate_side(
         .any(|&side_idx| runtime.side_infos[side_idx].candidate_neighbors.len() > 1)
 }
 
-fn runtime_component_has_cross_component_carrier_edge(
+fn legacy_topology_guard_component_has_cross_component_carrier_edge(
     runtime: &StereoWalkerRuntimeData,
     runtime_component_idx: usize,
 ) -> bool {

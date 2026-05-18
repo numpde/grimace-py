@@ -401,6 +401,7 @@ struct StereoCompletionKey {
     committed_component_token_flips: Arc<Vec<Option<StereoTokenFlip>>>,
     deferred_carrier_choice_constraints: Arc<Vec<DeferredCarrierChoiceConstraint>>,
     stereo_token_basis_facts: Arc<Vec<Option<StereoTokenBasisFact>>>,
+    marker_event_traces: Arc<Vec<MarkerEventTrace>>,
     action_stack: Vec<WalkerAction>,
 }
 
@@ -420,6 +421,7 @@ impl From<&RootedConnectedStereoWalkerStateData> for StereoCompletionKey {
             committed_component_token_flips: state.committed_component_token_flips.clone(),
             deferred_carrier_choice_constraints: state.deferred_carrier_choice_constraints.clone(),
             stereo_token_basis_facts: state.stereo_token_basis_facts.clone(),
+            marker_event_traces: state.marker_event_traces.clone(),
             action_stack: state.action_stack.clone(),
         }
     }
@@ -10929,8 +10931,8 @@ mod tests {
         ComponentBeginAtomFact, ComponentPhaseCommitFact, ComponentTokenConstraintFact,
         DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
         DeferredDirectionalComponentToken, DeferredDirectionalToken, MarkerEventTrace,
-        StereoEdgeEmissionContext, StereoEdgeEmissionState, FLIPPED_COMPONENT_PHASE,
-        STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
+        StereoCompletionKey, StereoEdgeEmissionContext, StereoEdgeEmissionState,
+        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -11559,6 +11561,72 @@ mod tests {
         assert_eq!(
             rdkit_writer_slot_coalesced_marker_event_facts_by_component(&marker_events),
             boundary_facts.marker_obligation_event_facts_by_component,
+        );
+    }
+
+    #[test]
+    fn completion_key_includes_marker_events_consumed_by_support_boundary() {
+        let Some(graph) = prepared_graph_from_smiles("C/C=C/C") else {
+            return;
+        };
+        let (runtime, state) = stereo_runtime_and_state(&graph, 0);
+        let (side_idx, candidate_idx) = runtime
+            .side_infos
+            .iter()
+            .enumerate()
+            .find_map(|(side_idx, side_info)| {
+                side_info
+                    .candidate_base_tokens
+                    .iter()
+                    .position(|token| token == "/" || token == "\\")
+                    .map(|candidate_idx| (side_idx, candidate_idx))
+            })
+            .expect("witness should have a directional side");
+        let side_info = &runtime.side_infos[side_idx];
+        let marked_neighbor = side_info.candidate_neighbors[candidate_idx];
+        let marker = side_info.candidate_base_tokens[candidate_idx]
+            .chars()
+            .next()
+            .expect("candidate token should be directional");
+
+        let mut traced_state = state.clone();
+        traced_state.marker_event_traces = Arc::new(vec![MarkerEventTrace {
+            slot: 0,
+            marker: Some(marker),
+            component_idx: side_info.component_idx as isize,
+            side_idx: side_idx as isize,
+            endpoint_atom_idx: side_info.endpoint_atom_idx as isize,
+            edge_neighbor_idx: marked_neighbor as isize,
+            edge_begin_idx: side_info.endpoint_atom_idx as isize,
+            edge_end_idx: marked_neighbor as isize,
+            role: StereoTraversalRole::TreeOrChain,
+        }]);
+
+        assert_ne!(
+            StereoCompletionKey::from(&state),
+            StereoCompletionKey::from(&traced_state)
+        );
+
+        let empty_boundary_facts = support_boundary_facts_from_walker_state(
+            &runtime,
+            &graph,
+            &state,
+            state.stereo_selected_neighbors.as_ref(),
+            true,
+        )
+        .expect("empty support-boundary facts should build");
+        let traced_boundary_facts = support_boundary_facts_from_walker_state(
+            &runtime,
+            &graph,
+            &traced_state,
+            traced_state.stereo_selected_neighbors.as_ref(),
+            true,
+        )
+        .expect("traced support-boundary facts should build");
+
+        assert_ne!(
+            empty_boundary_facts.marker_event_facts_by_component,
+            traced_boundary_facts.marker_event_facts_by_component
         );
     }
 

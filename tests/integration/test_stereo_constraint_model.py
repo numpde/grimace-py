@@ -1556,6 +1556,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
                                 component["is_empty_after_marker_events"],
                                 component["row_count_after_marker_events"] == 0,
                             )
+                    self.assertTrue(
+                        all(
+                            component["row_count_after_marker_events"] > 0
+                            for component in support_boundary[
+                                "marker_placement_state"
+                            ]["semantic"]
+                        )
+                    )
                     for components in support_boundary["marker_obligation_state"].values():
                         for component in components:
                             self.assertEqual(
@@ -1574,7 +1582,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
         self.assertTrue(saw_boundary_marker_event)
         self.assertTrue(saw_boundary_no_marker_event)
 
-    def test_reduced_porphyrin_is_marker_obligation_routing_witness(self) -> None:
+    def test_reduced_porphyrin_terminal_rows_keep_marker_boundary_survivors(self) -> None:
         case = next(
             case
             for case in self.cases
@@ -1610,11 +1618,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             for component in components
             if component["is_empty_after_marker_events"]
         )
-        self.assertEqual(
-            {"semantic", "rdkit_local_writer", "rdkit_traversal_writer"},
-            set(boundary_empty_counts),
-        )
-        self.assertTrue(all(count > 0 for count in boundary_empty_counts.values()))
+        self.assertFalse(boundary_empty_counts)
         boundary_obligation_empty_counts = Counter(
             layer_name
             for row in rows
@@ -1625,17 +1629,6 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             if component["is_empty_after_marker_events"]
         )
         self.assertFalse(boundary_obligation_empty_counts)
-        deferred_domains = [
-            domain
-            for row in rows
-            for domain in row["support_boundary"]["marker_obligation_domains"]
-            if domain["is_deferred"]
-        ]
-        self.assertTrue(deferred_domains)
-        self.assertTrue(
-            all(domain["same_edge_future_marker_slots"] for domain in deferred_domains)
-        )
-
     def test_marker_obligations_do_not_coalesce_different_edges(self) -> None:
         case = next(
             case

@@ -4493,6 +4493,52 @@ fn resolved_constraint_state_from_walker_state(
     boundary_facts.constraint_state(runtime, layer)
 }
 
+fn terminal_stereo_state_has_support_boundary_marker_placement(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<bool> {
+    let raw_selected_neighbors = state.stereo_selected_neighbors.as_ref();
+    let boundary_facts = support_boundary_facts_from_walker_state(
+        runtime,
+        graph,
+        state,
+        raw_selected_neighbors,
+        true,
+    )?;
+    let constraint_state =
+        boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
+    for component in &runtime.constraint_model.components {
+        let component_idx = component.component_idx;
+        if constraint_state.is_empty(component_idx) {
+            return Ok(false);
+        }
+        let Some(marker_events) = boundary_facts
+            .marker_event_facts_by_component
+            .get(component_idx)
+        else {
+            return Err(PyValueError::new_err(
+                "support-boundary marker facts do not match the constraint model",
+            ));
+        };
+        let token_phase_assignment_ids = constraint_state
+            .token_phase_remaining_by_component
+            .get(component_idx)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let survivor_state = rdkit_marker_row_survivor_component_state(
+            runtime,
+            component_idx,
+            token_phase_assignment_ids,
+            marker_events,
+        )?;
+        if survivor_state.row_ids_after_marker_events.is_empty() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 fn assert_token_flips_explained_by_constraint_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -5870,7 +5916,9 @@ fn collect_stereo_output_fact_rows(
 ) -> PyResult<()> {
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
-        if is_complete_terminal_stereo_state(graph, &state) {
+        if is_complete_terminal_stereo_state(graph, &state)
+            && terminal_stereo_state_has_support_boundary_marker_placement(runtime, graph, &state)?
+        {
             rows.append(stereo_output_fact_row_to_py(py, graph, runtime, &state)?)?;
         }
         return Ok(());
@@ -9423,7 +9471,9 @@ fn enumerate_support_from_stereo_state(
     }
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
-        if is_complete_terminal_stereo_state(graph, &state) {
+        if is_complete_terminal_stereo_state(graph, &state)
+            && terminal_stereo_state_has_support_boundary_marker_placement(runtime, graph, &state)?
+        {
             out.insert(state.prefix.to_string());
         }
         return Ok(());

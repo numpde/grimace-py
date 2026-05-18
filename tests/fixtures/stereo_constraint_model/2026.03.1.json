@@ -225,12 +225,12 @@
           1
         ]
       ],
-      "expected_grimace_runtime_support_count": 1664,
+      "expected_grimace_runtime_support_count": 1536,
       "expected_marker_row_diagnostics": {
         "max_model_marker_row_count": 12,
         "max_semantic_marker_obligation_survivor_row_count": 2,
         "max_semantic_marker_survivor_row_count": 2,
-        "output_row_count": 6656,
+        "output_row_count": 6144,
         "total_model_marker_row_count": 48
       },
       "expected_rdkit_local_writer_assignment_count": 16,

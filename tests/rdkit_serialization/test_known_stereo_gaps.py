@@ -693,7 +693,10 @@ class KnownStereoGapTests(unittest.TestCase):
                 self.assertEqual(case.expected, rdkit_output)
                 if case.check_grimace_decoder_path:
                     self._assert_determinized_decoder_accepts(mol, case)
-                if not case.check_grimace_support:
+                if (
+                    not case.check_grimace_support
+                    or case.expected_current_result != "support_present"
+                ):
                     continue
 
                 support_key = (
@@ -873,19 +876,13 @@ class KnownStereoGapTests(unittest.TestCase):
                     tuple(sorted(case.boundary_layer_classes)),
                 )
 
-    def test_manual_difficult_cases_expose_current_marker_boundary_mismatch(self) -> None:
+    def test_manual_difficult_cases_have_terminal_marker_boundary_survivors(self) -> None:
         cases = tuple(
             case
             for case in self.cases
             if case.case_id.startswith("manual_bond_stereo_difficult_")
         )
         self.assertEqual(4, len(cases))
-        expected_zero_survivor_counts = {
-            "manual_bond_stereo_difficult_cis_cis": 8,
-            "manual_bond_stereo_difficult_cis_trans": 8,
-            "manual_bond_stereo_difficult_trans_cis": 28,
-            "manual_bond_stereo_difficult_trans_trans": 28,
-        }
 
         for case in cases:
             with self.subTest(case_id=case.case_id, source=case.source):
@@ -897,7 +894,6 @@ class KnownStereoGapTests(unittest.TestCase):
                 rows = _core._stereo_constraint_output_facts(prepared)
                 self.assertTrue(rows)
 
-                zero_survivor_count = 0
                 nonzero_survivor_count = 0
                 for row in rows:
                     support_boundary = row["support_boundary"]
@@ -917,15 +913,13 @@ class KnownStereoGapTests(unittest.TestCase):
                             component["row_count_after_marker_events"],
                             len(component["rows_after_marker_events"]),
                         )
-                        if component["row_count_after_marker_events"] == 0:
-                            zero_survivor_count += 1
-                        else:
-                            nonzero_survivor_count += 1
+                        self.assertFalse(component["is_empty_after_marker_events"])
+                        self.assertGreater(
+                            component["row_count_after_marker_events"],
+                            0,
+                        )
+                        nonzero_survivor_count += 1
 
-                self.assertEqual(
-                    expected_zero_survivor_counts[case.case_id],
-                    zero_survivor_count,
-                )
                 self.assertGreater(nonzero_survivor_count, 0)
 
     def test_manual_difficult_cases_identify_row_routing_membership_gap(self) -> None:

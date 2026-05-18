@@ -2016,14 +2016,24 @@ pub(crate) fn stereo_side_infos(
             for node in oriented_for_side {
                 let reverse_node = (node.1, node.0);
                 if oriented_nodes.contains(&reverse_node) {
-                    parity_edges
-                        .entry(node)
-                        .or_default()
-                        .push((reverse_node, true));
-                    parity_edges
-                        .entry(reverse_node)
-                        .or_default()
-                        .push((node, true));
+                    let node_token = graph.directed_bond_token(node.0, node.1)?;
+                    let reverse_token =
+                        graph.directed_bond_token(reverse_node.0, reverse_node.1)?;
+                    // Only observed writer markers define a build-time
+                    // reverse-orientation token parity. Unmarked shared
+                    // carriers are resolved later by marker-placement rows.
+                    if matches!(node_token.as_str(), "/" | "\\")
+                        || matches!(reverse_token.as_str(), "/" | "\\")
+                    {
+                        parity_edges
+                            .entry(node)
+                            .or_default()
+                            .push((reverse_node, true));
+                        parity_edges
+                            .entry(reverse_node)
+                            .or_default()
+                            .push((node, true));
+                    }
                 }
 
                 seed_nodes.push((bond_idx, component_idx as usize, node));

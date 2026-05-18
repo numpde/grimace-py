@@ -6166,7 +6166,6 @@ fn deferred_marker_basis_candidate_rows_to_py(
                 let accepted_token_flips = if deferred.component_tokens.len() == 1 {
                     accepted_single_component_deferred_token_flips_from_raw_tokens(
                         runtime,
-                        graph,
                         state,
                         deferred,
                         component_token,
@@ -6254,6 +6253,14 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     } else {
                         Vec::new()
                     };
+                let frontier_shared_nonselected_visible_token_flips =
+                    if remaining_component_has_shared_nonselected_visible_marker_basis(
+                        &remaining_basis_summary,
+                    ) {
+                        all_marker_row_token_flips.clone()
+                    } else {
+                        Vec::new()
+                    };
                 let legacy_guard_applies = deferred_token_legacy_topology_guard_applies(
                     runtime,
                     graph,
@@ -6285,6 +6292,12 @@ fn deferred_marker_basis_candidate_rows_to_py(
                 shadow_debug.set_item(
                     "remaining_visible_basis_applies",
                     has_remaining_visible_marker_basis,
+                )?;
+                shadow_debug.set_item(
+                    "frontier_shared_nonselected_visible_basis_applies",
+                    remaining_component_has_shared_nonselected_visible_marker_basis(
+                        &remaining_basis_summary,
+                    ),
                 )?;
                 component_row.set_item("shadow_debug", shadow_debug)?;
                 component_row.set_item(
@@ -6320,6 +6333,10 @@ fn deferred_marker_basis_candidate_rows_to_py(
                     "legacy_topology_gated_visible_basis",
                     token_flips_to_py_names(&legacy_topology_gated_token_flips),
                 )?;
+                policy_variant_token_flips.set_item(
+                    "frontier_shared_nonselected_visible_basis",
+                    token_flips_to_py_names(&frontier_shared_nonselected_visible_token_flips),
+                )?;
                 component_row.set_item("policy_variant_token_flips", policy_variant_token_flips)?;
                 let policy_variant_accepts = PyDict::new(py);
                 policy_variant_accepts.set_item(
@@ -6341,6 +6358,10 @@ fn deferred_marker_basis_candidate_rows_to_py(
                 policy_variant_accepts.set_item(
                     "legacy_topology_gated_visible_basis",
                     !legacy_topology_gated_token_flips.is_empty(),
+                )?;
+                policy_variant_accepts.set_item(
+                    "frontier_shared_nonselected_visible_basis",
+                    !frontier_shared_nonselected_visible_token_flips.is_empty(),
                 )?;
                 component_row.set_item("policy_variant_accepts", policy_variant_accepts)?;
                 component_row.set_item(
@@ -8083,16 +8104,10 @@ fn remaining_component_visible_marker_basis_summary(
     })
 }
 
-fn remaining_component_has_nontrivial_visible_marker_basis(
-    runtime: &StereoWalkerRuntimeData,
-    component_idx: usize,
-    constraint_state: &StereoConstraintState,
-) -> PyResult<bool> {
-    let summary =
-        remaining_component_visible_marker_basis_summary(runtime, component_idx, constraint_state)?;
-    Ok(summary.has_shared_visible_edge_basis
-        || (summary.has_non_selected_visible_edge_basis
-            && runtime_component_has_cross_component_carrier_edge(runtime, component_idx)))
+fn remaining_component_has_shared_nonselected_visible_marker_basis(
+    summary: &RemainingVisibleMarkerBasisSummary,
+) -> bool {
+    summary.has_non_selected_visible_edge_basis && summary.has_shared_visible_edge_basis
 }
 
 fn edge_neighbor_for_marker_event(
@@ -8453,7 +8468,6 @@ fn runtime_component_has_cross_component_carrier_edge(
 
 fn accepted_single_component_deferred_token_flips(
     runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
     component_token: &DeferredDirectionalComponentToken,
@@ -8483,35 +8497,14 @@ fn accepted_single_component_deferred_token_flips(
         Vec::new()
     };
 
-    let basis_diagnostics = visible_marker_basis_diagnostics_for_component_token(
+    let remaining_basis_summary = remaining_component_visible_marker_basis_summary(
         runtime,
-        state,
-        deferred,
-        component_token,
-        chosen_token,
+        component_token.component_idx,
         constraint_state,
-        boundary_facts,
     )?;
-    let has_current_visible_marker_basis = basis_diagnostics.iter().any(|diagnostic| {
-        diagnostic.basis_class == "non_selected_visible_edge"
-            || diagnostic.basis_class == "shared_visible_edge"
-    });
-    let has_remaining_visible_marker_basis =
-        remaining_component_has_nontrivial_visible_marker_basis(
-            runtime,
-            component_token.component_idx,
-            constraint_state,
-        )?;
-    // This is intentionally conservative: the row witness is now explicit,
-    // but the old topology guard remains until the next slice can remove it
-    // without changing pinned RDKit support.
-    if (has_current_visible_marker_basis || has_remaining_visible_marker_basis)
-        && deferred_token_legacy_topology_guard_applies(
-            runtime,
-            graph,
-            component_token.component_idx,
-        )
-    {
+    let has_frontier_visible_marker_basis =
+        remaining_component_has_shared_nonselected_visible_marker_basis(&remaining_basis_summary);
+    if has_frontier_visible_marker_basis {
         return accepted_deferred_token_flips(
             runtime,
             state,
@@ -8537,7 +8530,6 @@ fn candidate_tokens_from_raw_deferred_tokens(raw_tokens: &[String]) -> PyResult<
 
 fn accepted_single_component_deferred_token_flips_from_raw_tokens(
     runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     deferred: &DeferredDirectionalToken,
     component_token: &DeferredDirectionalComponentToken,
@@ -8559,7 +8551,6 @@ fn accepted_single_component_deferred_token_flips_from_raw_tokens(
     };
     accepted_single_component_deferred_token_flips(
         runtime,
-        graph,
         state,
         deferred,
         component_token,
@@ -8610,7 +8601,6 @@ fn deferred_token_support_from_constraint_state(
         for candidate_token in candidate_tokens_from_raw_deferred_tokens(&raw_tokens)? {
             if !accepted_single_component_deferred_token_flips_from_raw_tokens(
                 runtime,
-                graph,
                 state,
                 deferred,
                 component_token,
@@ -8742,7 +8732,6 @@ fn commit_deferred_token_choice(
         let component_token = &deferred.component_tokens[0];
         let accepted_flips = accepted_single_component_deferred_token_flips_from_raw_tokens(
             runtime,
-            graph,
             state,
             deferred,
             component_token,

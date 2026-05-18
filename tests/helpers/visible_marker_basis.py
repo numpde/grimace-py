@@ -24,6 +24,7 @@ VISIBLE_MARKER_BASIS_CLASSES = frozenset(
 VISIBLE_MARKER_POLICY_VARIANTS = frozenset(
     (
         "current_visible_basis",
+        "frontier_shared_nonselected_visible_basis",
         "legacy_topology_gated_visible_basis",
         "raw_selected_carrier",
         "remaining_shared_visible_basis",
@@ -46,6 +47,7 @@ class PinnedVisibleMarkerBasisCase:
     expected_raw_selected_carrier_explained_component_count: int
     expected_visible_edge_explained_component_count: int
     expected_legacy_topology_guard_component_count: int
+    expected_frontier_replacement_mismatch_count: int
     expected_policy_variant_accept_counts: tuple[tuple[str, int], ...]
     expected_basis_candidate_count: int
     expected_max_row_survivor_count: int
@@ -226,6 +228,12 @@ def load_pinned_visible_marker_basis_cases(
                 expected_legacy_topology_guard_component_count=_required_nonnegative_int(
                     raw_case,
                     field_name="expected_legacy_topology_guard_component_count",
+                    fixture_path=fixture_path,
+                    case_id=case_id,
+                ),
+                expected_frontier_replacement_mismatch_count=_required_nonnegative_int(
+                    raw_case,
+                    field_name="expected_frontier_replacement_mismatch_count",
                     fixture_path=fixture_path,
                     case_id=case_id,
                 ),

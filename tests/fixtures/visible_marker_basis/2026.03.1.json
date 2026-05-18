@@ -10,6 +10,7 @@
       "expected_current_support_accepts_candidate_count": 2,
       "expected_diagnostic_row_count": 4,
       "expected_grimace_runtime_support_count": 3,
+      "expected_frontier_replacement_mismatch_count": 0,
       "expected_legacy_topology_guard_component_count": 0,
       "expected_max_row_survivor_count": 1,
       "expected_policy_variant_accept_counts": {
@@ -41,10 +42,12 @@
       "expected_current_support_accepts_candidate_count": 36,
       "expected_diagnostic_row_count": 60,
       "expected_grimace_runtime_support_count": 6,
+      "expected_frontier_replacement_mismatch_count": 0,
       "expected_legacy_topology_guard_component_count": 56,
       "expected_max_row_survivor_count": 12,
       "expected_policy_variant_accept_counts": {
         "current_visible_basis": 26,
+        "frontier_shared_nonselected_visible_basis": 34,
         "legacy_topology_gated_visible_basis": 34,
         "raw_selected_carrier": 42,
         "remaining_shared_visible_basis": 50,
@@ -74,10 +77,12 @@
       "expected_current_support_accepts_candidate_count": 134,
       "expected_diagnostic_row_count": 272,
       "expected_grimace_runtime_support_count": 96,
+      "expected_frontier_replacement_mismatch_count": 0,
       "expected_legacy_topology_guard_component_count": 254,
       "expected_max_row_survivor_count": 12,
       "expected_policy_variant_accept_counts": {
         "current_visible_basis": 95,
+        "frontier_shared_nonselected_visible_basis": 126,
         "legacy_topology_gated_visible_basis": 126,
         "raw_selected_carrier": 159,
         "remaining_shared_visible_basis": 196,
@@ -107,6 +112,7 @@
       "expected_current_support_accepts_candidate_count": 6,
       "expected_diagnostic_row_count": 12,
       "expected_grimace_runtime_support_count": 22,
+      "expected_frontier_replacement_mismatch_count": 0,
       "expected_legacy_topology_guard_component_count": 0,
       "expected_max_row_survivor_count": 72,
       "expected_policy_variant_accept_counts": {

@@ -429,6 +429,16 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                 for variant, accepts in component["policy_variant_accepts"].items()
                 if accepts
             )
+            frontier_replacement_mismatch_count = sum(
+                component["policy_variant_token_flips"][
+                    "frontier_shared_nonselected_visible_basis"
+                ]
+                != component["policy_variant_token_flips"][
+                    "legacy_topology_gated_visible_basis"
+                ]
+                for row in rows
+                for component in row["components"]
+            )
             basis_candidates = [
                 basis
                 for row in rows
@@ -486,6 +496,10 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     dict(case.expected_policy_variant_accept_counts),
                     dict(sorted(policy_variant_accept_counts.items())),
+                )
+                self.assertEqual(
+                    case.expected_frontier_replacement_mismatch_count,
+                    frontier_replacement_mismatch_count,
                 )
                 self.assertEqual(
                     case.expected_basis_candidate_count,

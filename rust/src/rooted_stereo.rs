@@ -6598,6 +6598,69 @@ fn deferred_marker_basis_candidate_rows_to_py(
     Ok(rows)
 }
 
+fn append_terminal_deferred_marker_basis_diagnostic_rows(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    rows: &Bound<'_, PyList>,
+    limit: usize,
+) -> PyResult<bool> {
+    let Some(WalkerAction::ProcessChildren {
+        parent_idx,
+        child_order,
+        next_branch_index,
+    }) = state.action_stack.last()
+    else {
+        return Ok(false);
+    };
+    if child_order.is_empty() || *next_branch_index + 1 != child_order.len() {
+        return Ok(false);
+    }
+
+    let child_idx = child_order[*next_branch_index];
+    let ProcessChildrenEdgeUpdate {
+        edge_part,
+        selected_neighbors,
+        selected_orientations,
+        first_emitted_candidates,
+        deferred_carrier_choice_constraints,
+        token_basis_facts,
+        component_phases,
+        component_begin_atoms,
+    } = process_children_edge_update(
+        runtime,
+        graph,
+        state,
+        *parent_idx,
+        child_order.as_ref(),
+        child_idx,
+    )?;
+    let Part::Deferred(deferred) = edge_part else {
+        return Ok(false);
+    };
+
+    let mut base_state = state.clone();
+    base_state.action_stack.pop();
+    base_state.stereo_selected_neighbors = Arc::new(selected_neighbors);
+    base_state.stereo_selected_orientations = Arc::new(selected_orientations);
+    base_state.stereo_first_emitted_candidates = Arc::new(first_emitted_candidates);
+    base_state.deferred_carrier_choice_constraints = Arc::new(deferred_carrier_choice_constraints);
+    base_state.stereo_token_basis_facts = Arc::new(token_basis_facts);
+    base_state.stereo_component_phases = Arc::new(component_phases);
+    base_state.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
+
+    for row in
+        deferred_marker_basis_candidate_rows_to_py(py, runtime, graph, &base_state, &deferred)?
+    {
+        rows.append(row)?;
+        if rows.len() >= limit {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn collect_deferred_marker_basis_diagnostic_rows(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -6628,6 +6691,12 @@ fn collect_deferred_marker_basis_diagnostic_rows(
                 return Ok(());
             }
         }
+    }
+    if append_terminal_deferred_marker_basis_diagnostic_rows(
+        py, runtime, graph, &state, rows, limit,
+    )? {
+        scan.truncated = true;
+        return Ok(());
     }
     if state.action_stack.is_empty() {
         return Ok(());

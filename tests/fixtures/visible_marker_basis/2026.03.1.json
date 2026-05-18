@@ -1,22 +1,22 @@
 {
   "cases": [
     {
-      "diagnostic_limit": 20,
+      "diagnostic_limit": 25,
       "diagnostic_max_states": 10000,
-      "expected_basis_candidate_count": 2,
+      "expected_basis_candidate_count": 14,
       "expected_basis_class_counts": {
-        "selected_carrier": 2
+        "selected_carrier": 14
       },
-      "expected_current_support_accepts_candidate_count": 2,
-      "expected_diagnostic_row_count": 4,
+      "expected_current_support_accepts_candidate_count": 12,
+      "expected_diagnostic_row_count": 24,
       "expected_grimace_runtime_support_count": 3,
       "expected_frontier_replacement_mismatch_count": 0,
       "expected_legacy_topology_guard_component_count": 0,
       "expected_max_row_survivor_count": 1,
       "expected_policy_variant_accept_counts": {
-        "raw_selected_carrier": 2
+        "raw_selected_carrier": 12
       },
-      "expected_raw_selected_carrier_explained_component_count": 2,
+      "expected_raw_selected_carrier_explained_component_count": 12,
       "expected_visible_edge_explained_component_count": 0,
       "forbidden_basis_classes": [
         "non_selected_visible_edge",
@@ -31,30 +31,30 @@
       "source": "visible-marker-basis task 03: ordinary selected-carrier guard"
     },
     {
-      "diagnostic_limit": 100,
+      "diagnostic_limit": 113,
       "diagnostic_max_states": 100000,
-      "expected_basis_candidate_count": 76,
+      "expected_basis_candidate_count": 108,
       "expected_basis_class_counts": {
-        "non_selected_visible_edge": 2,
-        "selected_carrier": 50,
-        "shared_visible_edge": 24
+        "non_selected_visible_edge": 6,
+        "selected_carrier": 76,
+        "shared_visible_edge": 26
       },
-      "expected_current_support_accepts_candidate_count": 36,
-      "expected_diagnostic_row_count": 60,
+      "expected_current_support_accepts_candidate_count": 62,
+      "expected_diagnostic_row_count": 112,
       "expected_grimace_runtime_support_count": 6,
       "expected_frontier_replacement_mismatch_count": 0,
-      "expected_legacy_topology_guard_component_count": 56,
+      "expected_legacy_topology_guard_component_count": 76,
       "expected_max_row_survivor_count": 12,
       "expected_policy_variant_accept_counts": {
-        "current_visible_basis": 26,
-        "frontier_shared_nonselected_visible_basis": 34,
-        "legacy_topology_gated_visible_basis": 34,
-        "raw_selected_carrier": 42,
-        "remaining_shared_visible_basis": 50,
-        "legacy_remaining_visible_basis": 50
+        "current_visible_basis": 32,
+        "frontier_shared_nonselected_visible_basis": 44,
+        "legacy_topology_gated_visible_basis": 44,
+        "raw_selected_carrier": 66,
+        "remaining_shared_visible_basis": 76,
+        "legacy_remaining_visible_basis": 76
       },
-      "expected_raw_selected_carrier_explained_component_count": 42,
-      "expected_visible_edge_explained_component_count": 26,
+      "expected_raw_selected_carrier_explained_component_count": 66,
+      "expected_visible_edge_explained_component_count": 32,
       "forbidden_basis_classes": [],
       "id": "manual_stereo_atoms_selected_nonselected_shared",
       "required_basis_classes": [
@@ -67,29 +67,29 @@
       "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoAtoms"
     },
     {
-      "diagnostic_limit": 300,
+      "diagnostic_limit": 535,
       "diagnostic_max_states": 200000,
-      "expected_basis_candidate_count": 291,
+      "expected_basis_candidate_count": 573,
       "expected_basis_class_counts": {
-        "selected_carrier": 196,
-        "shared_visible_edge": 95
+        "selected_carrier": 384,
+        "shared_visible_edge": 189
       },
-      "expected_current_support_accepts_candidate_count": 134,
-      "expected_diagnostic_row_count": 272,
+      "expected_current_support_accepts_candidate_count": 270,
+      "expected_diagnostic_row_count": 534,
       "expected_grimace_runtime_support_count": 96,
       "expected_frontier_replacement_mismatch_count": 0,
-      "expected_legacy_topology_guard_component_count": 254,
+      "expected_legacy_topology_guard_component_count": 276,
       "expected_max_row_survivor_count": 12,
       "expected_policy_variant_accept_counts": {
-        "current_visible_basis": 95,
-        "frontier_shared_nonselected_visible_basis": 126,
-        "legacy_topology_gated_visible_basis": 126,
-        "raw_selected_carrier": 159,
-        "remaining_shared_visible_basis": 196,
-        "legacy_remaining_visible_basis": 196
+        "current_visible_basis": 189,
+        "frontier_shared_nonselected_visible_basis": 148,
+        "legacy_topology_gated_visible_basis": 148,
+        "raw_selected_carrier": 296,
+        "remaining_shared_visible_basis": 384,
+        "legacy_remaining_visible_basis": 384
       },
-      "expected_raw_selected_carrier_explained_component_count": 159,
-      "expected_visible_edge_explained_component_count": 95,
+      "expected_raw_selected_carrier_explained_component_count": 296,
+      "expected_visible_edge_explained_component_count": 189,
       "forbidden_basis_classes": [
         "non_selected_visible_edge"
       ],
@@ -103,22 +103,22 @@
       "source": "RDKit Code/GraphMol/Wrap/rough_test.py:testBondSetStereoDifficultCase"
     },
     {
-      "diagnostic_limit": 40,
+      "diagnostic_limit": 285,
       "diagnostic_max_states": 200000,
-      "expected_basis_candidate_count": 6,
+      "expected_basis_candidate_count": 170,
       "expected_basis_class_counts": {
-        "selected_carrier": 6
+        "selected_carrier": 170
       },
-      "expected_current_support_accepts_candidate_count": 6,
-      "expected_diagnostic_row_count": 12,
+      "expected_current_support_accepts_candidate_count": 133,
+      "expected_diagnostic_row_count": 284,
       "expected_grimace_runtime_support_count": 22,
       "expected_frontier_replacement_mismatch_count": 0,
       "expected_legacy_topology_guard_component_count": 0,
       "expected_max_row_survivor_count": 72,
       "expected_policy_variant_accept_counts": {
-        "raw_selected_carrier": 6
+        "raw_selected_carrier": 133
       },
-      "expected_raw_selected_carrier_explained_component_count": 6,
+      "expected_raw_selected_carrier_explained_component_count": 133,
       "expected_visible_edge_explained_component_count": 0,
       "forbidden_basis_classes": [
         "non_selected_visible_edge",

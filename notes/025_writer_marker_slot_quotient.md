@@ -177,3 +177,70 @@ fixture strings would be a special case, not a policy.
    quotient-backed token.  The semantic committed token flip must remain
    unchanged or absent; quotient acceptance must not masquerade as semantic
    token-phase acceptance.
+
+## Runtime Fact Source
+
+The quotient fact source should not be the pinned JSON fixture corpus.  Those
+fixtures are evidence and regression tests, not runtime policy.  It also should
+not be RDKit canonicalization or completed-string parse equivalence: that would
+move the online writer into an oracle/repair phase.
+
+The existing marker-placement row model is also not a sufficient source.  The
+two pinned quotient witnesses already prove this:
+
+- `github3967_part2_directional_ring_closure_canonical` has RDKit target
+  slots `(5, "/"), (9, "\\"), (13, "\\")`, which are in the
+  parser-equivalent minimal marker-slot class, but existing semantic/base rows
+  still reject the emitted marker events.
+- `github4582_chembl409450_random_vector_seed1_index0` has RDKit target
+  slots `(8, "/"), (13, "/"), (35, "\\")`, also in the
+  parser-equivalent minimal marker-slot class, while current same-skeleton
+  support contains only different slot bases.
+
+The runtime source should instead be a graph-level marker-equation predicate:
+
+1. derive the relevant stereo double-bond equations from
+   `PreparedSmilesGraphData` (`bond_stereo_kinds`, `bond_stereo_atoms`, stored
+   bond endpoints, and the component model);
+2. translate current `MarkerEventTrace` plus the candidate marker event into
+   marker-slot observations on graph edges;
+3. evaluate whether those observations induce the intended double-bond stereo
+   assignment for the affected model component, independent of the currently
+   selected marker-placement row basis;
+4. separately require that the marker events are produced by the current RDKit
+   writer traversal path, so parser-equivalent but non-writer spellings are not
+   admitted.
+
+This is still online.  At a deferred token frontier the walker has the prefix,
+the emitted marker slots so far, the candidate marker slot, graph edge
+provenance, component identity, and no-marker observations.  It does not need
+the completed string, and it does not need to sample RDKit.
+
+The missing runtime fact is therefore not a fixture lookup.  It is a named
+component-local satisfiability fact, roughly:
+
+`GraphMarkerSlotStereoSatisfies(component_idx, marker_events, candidate_event)`
+
+That fact should feed `WriterMarkerSlotQuotientAcceptanceFact` only when the
+graph-level equations accept the emitted marker basis and the current traversal
+emitted that basis.  The existing semantic row support remains the primary
+path; the quotient fact is an RDKit-writer spelling layer over marker-slot
+representations.
+
+## Next Implementation Slice
+
+Prototype the graph-level marker-equation predicate as a diagnostic first.  It
+should report, for each deferred marker token attempt:
+
+- the stereo bonds in the affected model component;
+- the marker-event edges and slots considered;
+- whether the emitted marker basis satisfies the intended graph stereo;
+- whether semantic marker rows reject the same basis;
+- whether the candidate was emitted by the current writer traversal.
+
+Acceptance for the diagnostic slice: both
+`github3967_part2_directional_ring_closure_canonical` and
+`github4582_chembl409450_random_vector_seed1_index0` should show
+`graph_marker_equations_accept=true` while current semantic rows reject the
+RDKit target basis.  If either witness fails, the diagnostic must name the
+missing graph/writer fact precisely before any support change.

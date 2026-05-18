@@ -447,10 +447,9 @@ class KnownStereoGapTests(unittest.TestCase):
 
         skeleton = direction_erased_skeleton(case.expected)
         source_mol = self._mol_from_case(case)
-        reference_signature = double_bond_stereo_signature(source_mol)
         parse_equivalent_marker_slots = parse_equivalent_minimal_marker_slot_sets(
             skeleton,
-            reference_signature,
+            source_mol,
         )
 
         source_marker_slots = direction_marker_slots(source_smiles)

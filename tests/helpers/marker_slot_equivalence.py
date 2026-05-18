@@ -134,11 +134,12 @@ def _single_marker_candidate_slots(skeleton: str) -> tuple[int, ...]:
 
 def parse_equivalent_minimal_marker_slot_sets(
     skeleton: str,
-    reference_stereo_signature: tuple[tuple[int, int, str, tuple[int, ...]], ...],
+    reference_mol: Chem.Mol,
 ) -> MarkerSlotSet:
     # A minimal directional-bond basis needs at most two marker-bearing
     # neighboring bonds per double bond; shared markers can reduce that count.
-    max_marker_count = 2 * len(reference_stereo_signature)
+    max_marker_count = 2 * len(double_bond_stereo_signature(reference_mol))
+    reference_canonical_smiles = canonical_isomeric_smiles(reference_mol)
     candidate_slots = _single_marker_candidate_slots(skeleton)
     valid_marker_slot_sets = []
 
@@ -153,8 +154,8 @@ def parse_equivalent_minimal_marker_slot_sets(
                     )
                     if (
                         mol is not None
-                        and double_bond_stereo_signature(mol)
-                        == reference_stereo_signature
+                        and canonical_isomeric_smiles(mol)
+                        == reference_canonical_smiles
                     ):
                         valid_marker_slot_sets.append(marker_slots)
 
@@ -175,8 +176,8 @@ def parse_equivalent_minimal_marker_slot_sets(
                 )
                 if (
                     reduced_mol is not None
-                    and double_bond_stereo_signature(reduced_mol)
-                    == reference_stereo_signature
+                    and canonical_isomeric_smiles(reduced_mol)
+                    == reference_canonical_smiles
                 ):
                     is_minimal = False
                     break

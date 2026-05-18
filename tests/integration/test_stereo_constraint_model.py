@@ -630,6 +630,16 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                                 set(attempt["row_ids_before_marker_events"]),
                             )
                             self.assertTrue(attempt["marker_events"])
+                            self.assertEqual(
+                                sorted(
+                                    {
+                                        (event["slot"], event["marker"])
+                                        for event in attempt["marker_events"]
+                                        if event["event"] == "marker_placed"
+                                    }
+                                ),
+                                attempt["emitted_marker_slots"],
+                            )
                         for basis in component["basis_candidates"]:
                             self.assertIn(
                                 basis["basis_class"],

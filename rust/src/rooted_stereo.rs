@@ -8262,6 +8262,22 @@ fn marker_event_fact_to_py(
     Ok(row.unbind())
 }
 
+fn emitted_marker_slots_from_marker_events(
+    marker_events: &[StereoMarkerEventFact],
+) -> Vec<(usize, &'static str)> {
+    marker_events
+        .iter()
+        .filter_map(|event| {
+            let StereoMarkerEventFact::MarkerPlaced { slot, marker, .. } = event else {
+                return None;
+            };
+            Some((*slot, stereo_direction_token_name(*marker)))
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn deferred_marker_token_flip_attempts_to_py(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -8378,6 +8394,10 @@ fn deferred_marker_token_flip_attempts_to_py(
                 .copied()
                 .map(|event| marker_event_fact_to_py(py, model_component_idx, event))
                 .collect::<PyResult<Vec<_>>>()?,
+        )?;
+        row.set_item(
+            "emitted_marker_slots",
+            emitted_marker_slots_from_marker_events(&marker_events),
         )?;
         row.set_item(
             "accepted",

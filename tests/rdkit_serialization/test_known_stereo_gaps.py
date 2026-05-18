@@ -607,6 +607,8 @@ class KnownStereoGapTests(unittest.TestCase):
 
     def test_smallest_gap_pins_writer_quotient_token_phase_boundary(self) -> None:
         case = self._smallest_gap_case()
+        self.assertIsNotNone(case.parse_equivalent_minimal_marker_slots)
+        assert case.parse_equivalent_minimal_marker_slots is not None
         mol = self._mol_from_case(case)
         prepared = _runtime.prepare_smiles_graph(
             mol,
@@ -650,6 +652,14 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(0, attempt["token_phase_assignment_count"])
         self.assertEqual(0, attempt["row_count_before_marker_events"])
         self.assertEqual(0, attempt["row_count_after_marker_events"])
+        self.assertEqual(
+            _direction_marker_slots(case.expected),
+            tuple(tuple(marker_slot) for marker_slot in attempt["emitted_marker_slots"]),
+        )
+        self.assertIn(
+            tuple(tuple(marker_slot) for marker_slot in attempt["emitted_marker_slots"]),
+            case.parse_equivalent_minimal_marker_slots,
+        )
         self.assertFalse(attempt["accepted"])
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:

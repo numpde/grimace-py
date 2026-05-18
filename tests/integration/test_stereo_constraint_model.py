@@ -1654,6 +1654,7 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             if component["is_empty_after_marker_events"]
         )
         self.assertFalse(boundary_obligation_empty_counts)
+
     def test_marker_obligations_do_not_coalesce_different_edges(self) -> None:
         case = next(
             case

@@ -1002,6 +1002,37 @@ fn record_rdkit_directional_marker_trace(
     );
 }
 
+fn direction_marker_from_literal_token(token: &str) -> Option<char> {
+    let mut chars = token.chars();
+    let marker = chars.next()?;
+    if chars.next().is_some() || (marker != '/' && marker != '\\') {
+        return None;
+    }
+    Some(marker)
+}
+
+fn record_rdkit_literal_edge_marker_trace(
+    runtime: &StereoWalkerRuntimeData,
+    state: &mut RootedConnectedStereoWalkerStateData,
+    begin_idx: isize,
+    end_idx: isize,
+    token: &str,
+    role: StereoTraversalRole,
+) {
+    if direction_marker_from_literal_token(token).is_some() {
+        record_rdkit_directional_marker_trace(runtime, state, begin_idx, end_idx, token, role);
+    } else {
+        record_rdkit_marker_event_traces_for_edge(runtime, state, begin_idx, end_idx, None, role);
+    }
+}
+
+fn marker_event_marker_from_literal_part(part: &Part) -> Option<char> {
+    match part {
+        Part::Literal(token) => direction_marker_from_literal_token(token),
+        Part::Deferred(_) => None,
+    }
+}
+
 fn push_ring_label(prefix: &mut Arc<str>, label: usize) {
     push_literal_token(prefix, &ring_label_text(label));
 }
@@ -3038,12 +3069,12 @@ fn process_children_terminal_successors(
         }
         Part::Literal(token) => {
             let role = directional_token_role(base_state.prefix.as_ref(), None);
-            record_rdkit_marker_event_traces_for_edge(
+            record_rdkit_literal_edge_marker_trace(
                 context.runtime,
                 &mut base_state,
                 step.parent_idx as isize,
                 step.child_idx as isize,
-                None,
+                token.as_str(),
                 role,
             );
             push_literal_token(&mut base_state.prefix, &token);
@@ -7589,7 +7620,7 @@ fn enter_atom_successors_by_token(
                                     &mut current_marker_event_traces,
                                     atom_idx as isize,
                                     closure.other_atom_idx as isize,
-                                    None,
+                                    marker_event_marker_from_literal_part(&bond_part),
                                     StereoTraversalRole::RingClose,
                                 );
                             }
@@ -8328,14 +8359,14 @@ fn process_children_successors_by_token(
         successor.deferred_carrier_choice_constraints =
             Arc::new(deferred_carrier_choice_constraints);
         successor.stereo_token_basis_facts = Arc::new(token_basis_facts);
-        if matches!(edge_part, Part::Literal(_)) {
+        if let Part::Literal(token) = &edge_part {
             let role = directional_token_role(successor.prefix.as_ref(), None);
-            record_rdkit_marker_event_traces_for_edge(
+            record_rdkit_literal_edge_marker_trace(
                 context.runtime,
                 &mut successor,
                 parent_idx as isize,
                 child_idx as isize,
-                None,
+                token.as_str(),
                 role,
             );
         }
@@ -9686,8 +9717,9 @@ mod tests {
         flatten_exact_stereo_successor_groups, inferred_token_observation_facts_from_constraints,
         initial_stereo_state_for_root, is_complete_terminal_stereo_state, is_terminal_stereo_state,
         known_token_flip_facts_from_constraints, marker_events_for_deferred_component_token,
-        next_token_support_for_stereo_state, rdkit_marker_rows_accept_deferred_token,
-        rdkit_ring_closure_projected_marker_slots, rdkit_traversal_writer_facts_by_component,
+        next_token_support_for_stereo_state, record_rdkit_literal_edge_marker_trace,
+        rdkit_marker_rows_accept_deferred_token, rdkit_ring_closure_projected_marker_slots,
+        rdkit_traversal_writer_facts_by_component,
         rdkit_traversal_writer_has_completion, resolved_constraint_state_from_walker_state,
         rdkit_writer_marker_event_facts_by_component,
         rdkit_writer_marker_obligation_domains_by_component,
@@ -9708,7 +9740,7 @@ mod tests {
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
-        StereoMarkerEventFact, StereoTokenFlip, StereoTraversalRole,
+        StereoDirectionToken, StereoMarkerEventFact, StereoTokenFlip, StereoTraversalRole,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -10140,6 +10172,43 @@ mod tests {
             &selected_neighbors,
             StereoConstraintLayer::RdkitTraversalWriter,
         ));
+    }
+
+    #[test]
+    fn literal_directional_edge_records_marker_placed_event() {
+        let graph = sample_stereo_graph();
+        let (runtime, mut state) = stereo_runtime_and_state(&graph, 0);
+        record_rdkit_literal_edge_marker_trace(
+            &runtime,
+            &mut state,
+            0,
+            1,
+            "/",
+            StereoTraversalRole::TreeOrChain,
+        );
+
+        let marker_events = rdkit_writer_marker_event_facts_by_component(&runtime, &state)
+            .expect("marker events should build");
+        assert!(marker_events[0].iter().any(|event| matches!(
+            event,
+            StereoMarkerEventFact::MarkerPlaced {
+                side_idx: 0,
+                begin_idx: 0,
+                end_idx: 1,
+                marker: StereoDirectionToken::Slash,
+                role: StereoTraversalRole::TreeOrChain,
+                ..
+            }
+        )));
+        assert!(!marker_events[0].iter().any(|event| matches!(
+            event,
+            StereoMarkerEventFact::NoMarker {
+                side_idx: 0,
+                begin_idx: 0,
+                end_idx: 1,
+                ..
+            }
+        )));
     }
 
     #[test]

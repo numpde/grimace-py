@@ -606,6 +606,10 @@ class VisibleMarkerBasisFixtureTests(unittest.TestCase):
                         )
                         for attempt in component["token_flip_attempts"]:
                             self.assertEqual(
+                                attempt["base_token_phase_assignment_count"],
+                                len(attempt["base_token_phase_assignment_ids"]),
+                            )
+                            self.assertEqual(
                                 attempt["token_phase_assignment_count"],
                                 len(attempt["token_phase_assignment_ids"]),
                             )

@@ -8324,12 +8324,29 @@ fn deferred_marker_token_flip_attempts_to_py(
             &candidate_token_phase_assignment_ids,
             &marker_events,
         )?;
+        let base_forced_token_flip = runtime
+            .constraint_model
+            .forced_token_flip_for_token_phase_assignment_ids(
+                model_component_idx,
+                component_token.component_idx,
+                token_phase_assignment_ids,
+            )
+            .map(model_token_flip_name);
         let row = PyDict::new(py);
         row.set_item("reference_token", reference_token)?;
         row.set_item(
             "implied_token_flip",
             model_token_flip_name(implied_token_flip),
         )?;
+        row.set_item(
+            "base_token_phase_assignment_ids",
+            token_phase_assignment_ids,
+        )?;
+        row.set_item(
+            "base_token_phase_assignment_count",
+            token_phase_assignment_ids.len(),
+        )?;
+        row.set_item("base_forced_token_flip", base_forced_token_flip)?;
         row.set_item(
             "token_phase_assignment_ids",
             survivor_state.token_phase_assignment_ids.clone(),

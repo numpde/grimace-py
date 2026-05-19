@@ -70,7 +70,7 @@ class SouthStarOnlineSupportBoundary:
                 edge=normalized,
                 marker=marker,
                 token_allowed=False,
-                reason="edge_has_no_semantic_carrier_opportunity",
+                reason="marker_not_required_by_annotation_policy",
                 annotation_policy_decision=decision,
             )
         if marker not in decision.allowed_markers:

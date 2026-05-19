@@ -31,7 +31,7 @@ class SouthStarOnlineSupportBoundaryTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 self.assertFalse(support.token_allowed)
                 self.assertEqual(
-                    "edge_has_no_semantic_carrier_opportunity",
+                    "marker_not_required_by_annotation_policy",
                     support.reason,
                 )
 

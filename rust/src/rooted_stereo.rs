@@ -6931,11 +6931,13 @@ fn collect_target_guided_marker_basis_failure_rows(
     state: &RootedConnectedStereoWalkerStateData,
     remaining_target: &str,
     supported_tokens: &[String],
+    successor_prefixes: &[(String, String)],
 ) -> PyResult<Py<PyDict>> {
     let row = PyDict::new(py);
     row.set_item("prefix", state.prefix.as_ref())?;
     row.set_item("target_remaining", remaining_target)?;
     row.set_item("next_supported_tokens", supported_tokens)?;
+    row.set_item("next_successor_prefixes", successor_prefixes)?;
     row.set_item("action_stack_depth", state.action_stack.len())?;
 
     let deferred_rows = PyList::empty(py);
@@ -6946,6 +6948,14 @@ fn collect_target_guided_marker_basis_failure_rows(
             deferred_rows.append(deferred_row)?;
         }
     }
+    append_terminal_deferred_marker_basis_diagnostic_rows(
+        py,
+        runtime,
+        graph,
+        state,
+        &deferred_rows,
+        usize::MAX,
+    )?;
     row.set_item("deferred_marker_basis_rows", deferred_rows)?;
     Ok(row.unbind())
 }
@@ -6977,6 +6987,7 @@ fn target_guided_marker_basis_diagnostics_for_root(
         }
 
         let mut next_states = Vec::new();
+        let step_failures = PyList::empty(py);
         for mut state in states {
             visited_state_count += 1;
             drain_exact_linear_stereo_actions(&mut state);
@@ -6995,12 +7006,13 @@ fn target_guided_marker_basis_diagnostics_for_root(
                 return Ok(result.unbind());
             }
             if state.action_stack.is_empty() {
-                failures.append(collect_target_guided_marker_basis_failure_rows(
+                step_failures.append(collect_target_guided_marker_basis_failure_rows(
                     py,
                     runtime,
                     graph,
                     &state,
                     &target[prefix.len()..],
+                    &[],
                     &[],
                 )?)?;
                 continue;
@@ -7009,9 +7021,11 @@ fn target_guided_marker_basis_diagnostics_for_root(
             let successors_by_token = successors_by_token_stereo_raw(runtime, graph, &state)?;
             let supported_tokens = successors_by_token.keys().cloned().collect::<Vec<_>>();
             let mut matched_successor = false;
+            let mut successor_prefixes = Vec::<(String, String)>::new();
             for (_token, successors) in successors_by_token {
                 for mut successor in successors {
                     drain_exact_linear_stereo_actions(&mut successor);
+                    successor_prefixes.push((_token.clone(), successor.prefix.as_ref().to_owned()));
                     if target.starts_with(successor.prefix.as_ref()) {
                         matched_successor = true;
                         next_states.push(successor);
@@ -7019,18 +7033,22 @@ fn target_guided_marker_basis_diagnostics_for_root(
                 }
             }
             if !matched_successor {
-                failures.append(collect_target_guided_marker_basis_failure_rows(
+                step_failures.append(collect_target_guided_marker_basis_failure_rows(
                     py,
                     runtime,
                     graph,
                     &state,
                     &target[prefix.len()..],
                     &supported_tokens,
+                    &successor_prefixes,
                 )?)?;
             }
         }
 
-        if failures.len() > 0 {
+        if next_states.is_empty() && step_failures.len() > 0 {
+            for failure in step_failures.iter() {
+                failures.append(failure)?;
+            }
             let result = PyDict::new(py);
             result.set_item("root_idx", runtime.root_idx)?;
             result.set_item("status", "failed")?;

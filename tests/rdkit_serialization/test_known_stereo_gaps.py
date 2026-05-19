@@ -656,13 +656,36 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(1, len(root_result["failures"]))
 
         failure = root_result["failures"][0]
-        self.assertEqual("C1", failure["prefix"])
+        self.assertEqual(SMALLEST_GAP_TERMINAL_PREFIX, failure["prefix"])
         self.assertEqual(
-            "=CC/C=C2\\C3=C\\CC=CC=CC3C2C=C1",
+            "\\CC=CC=CC3C2C=C1",
             failure["target_remaining"],
         )
-        self.assertEqual(["C"], failure["next_supported_tokens"])
-        self.assertEqual([], failure["deferred_marker_basis_rows"])
+        self.assertEqual(["/"], failure["next_supported_tokens"])
+        self.assertEqual(
+            [("/", f"{SMALLEST_GAP_TERMINAL_PREFIX}/")],
+            failure["next_successor_prefixes"],
+        )
+
+        rejected_target_rows = [
+            row
+            for row in failure["deferred_marker_basis_rows"]
+            if row["candidate_token"] == SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE
+        ]
+        self.assertEqual(1, len(rejected_target_rows))
+        [row] = rejected_target_rows
+        self.assertFalse(row["current_support_accepts_candidate"])
+        [component] = row["components"]
+        [attempt] = component["token_flip_attempts"]
+        self.assertEqual("flipped", attempt["implied_token_flip"])
+        self.assertEqual(0, attempt["row_count_after_marker_events"])
+        self.assertEqual(
+            [(5, "/"), (9, "\\"), (13, "\\")],
+            attempt["graph_marker_equation_marker_slots"],
+        )
+        self.assertTrue(attempt["graph_marker_equations_accept"])
+        self.assertEqual(2, attempt["graph_marker_equation_accepted_bond_count"])
+        self.assertEqual(2, attempt["graph_marker_equation_bond_count"])
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:

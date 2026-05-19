@@ -322,3 +322,33 @@ transitions, not against raw choice-token strings.  It should ask: "does this
 successor transition, after its deterministic literal emissions, consume a
 prefix of the target writer text?"  Only after that alignment exists should the
 target-guided diagnostic be used to evaluate a complete missing CHEMBL output.
+
+## Target-Guided Replay Alignment Result
+
+The first replay alignment fix was to treat the walker frontier as
+nondeterministic.  A state that shares the current target prefix can still be
+the wrong branch; it should be pruned, not reported as a fatal failure, while a
+sibling state can continue along the target writer text.  The previous skeleton
+stopped at `C1` because one branch exposed successor token `C` with successor
+prefix `C1C`, even though another branch continued toward the target.
+
+The diagnostic now only fails a replay step when no active state can advance.
+For `github3967_part2_directional_ring_closure_canonical`, root `0`, it reaches
+the intended deferred marker frontier:
+
+- prefix: `C1=CC/C=C2\C3=C`;
+- target remainder: `\CC=CC=CC3C2C=C1`;
+- current support: `/`;
+- RDKit target candidate: `\`.
+
+At that frontier the same row-level split is visible in one target-guided
+failure:
+
+- semantic/current support rejects the `\` candidate;
+- the candidate emits marker slots `(5, "/"), (9, "\\"), (13, "\\")`;
+- graph marker equations accept both stereo bonds for those marker slots.
+
+This still does not change support behavior.  It makes the diagnostic boundary
+usable for path-level quotient investigation: off-target traversal branches
+are pruned, and the first true unsupported target candidate carries the same
+deferred-marker basis rows as the broader frontier scan.

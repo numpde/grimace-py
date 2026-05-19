@@ -6932,6 +6932,7 @@ fn collect_target_guided_marker_basis_failure_rows(
     remaining_target: &str,
     supported_tokens: &[String],
     successor_prefixes: &[(String, String)],
+    alignment_overrides: &[String],
 ) -> PyResult<Py<PyDict>> {
     let row = PyDict::new(py);
     row.set_item("prefix", state.prefix.as_ref())?;
@@ -6942,6 +6943,7 @@ fn collect_target_guided_marker_basis_failure_rows(
         "target_alignment_gap",
         target_alignment_gap_name(state.prefix.as_ref(), remaining_target, successor_prefixes),
     )?;
+    row.set_item("alignment_overrides", alignment_overrides)?;
     row.set_item("action_stack_depth", state.action_stack.len())?;
 
     let deferred_rows = PyList::empty(py);
@@ -6989,6 +6991,71 @@ fn target_alignment_gap_name(
     }
 }
 
+#[derive(Clone)]
+struct TargetGuidedReplayState {
+    walker: RootedConnectedStereoWalkerStateData,
+    alignment_overrides: Vec<String>,
+}
+
+fn target_guided_no_marker_before_atom_successors(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    target: &str,
+    alignment_overrides: &[String],
+) -> PyResult<Vec<TargetGuidedReplayState>> {
+    let Some(remaining_target) = target.strip_prefix(state.prefix.as_ref()) else {
+        return Ok(Vec::new());
+    };
+    if !starts_with_atom_text(remaining_target) {
+        return Ok(Vec::new());
+    }
+    let Some(WalkerAction::EmitDeferred(deferred)) = state.action_stack.last() else {
+        return Ok(Vec::new());
+    };
+    if deferred.begin_idx < 0 || deferred.end_idx < 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut bypass_state = state.clone();
+    bypass_state.action_stack.pop();
+    let role = directional_token_role(
+        bypass_state.prefix.as_ref(),
+        bypass_state.action_stack.last(),
+    );
+    record_rdkit_marker_event_traces_for_edge(
+        runtime,
+        &mut bypass_state,
+        deferred.begin_idx,
+        deferred.end_idx,
+        None,
+        role,
+    );
+
+    let mut out = Vec::<TargetGuidedReplayState>::new();
+    for successor_group in
+        successors_by_token_stereo_raw(runtime, graph, &bypass_state)?.into_values()
+    {
+        for mut successor in successor_group {
+            drain_exact_linear_stereo_actions(&mut successor);
+            if target.starts_with(successor.prefix.as_ref()) {
+                let mut overrides = alignment_overrides.to_vec();
+                overrides.push(format!(
+                    "no_marker_before_target_atom edge=({}, {}) prefix={}",
+                    deferred.begin_idx,
+                    deferred.end_idx,
+                    state.prefix.as_ref()
+                ));
+                out.push(TargetGuidedReplayState {
+                    walker: successor,
+                    alignment_overrides: overrides,
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn target_guided_marker_basis_diagnostics_for_root(
     py: Python<'_>,
     runtime: &StereoWalkerRuntimeData,
@@ -6996,11 +7063,10 @@ fn target_guided_marker_basis_diagnostics_for_root(
     target: &str,
     max_steps: usize,
 ) -> PyResult<Py<PyDict>> {
-    let mut states = vec![initial_stereo_state_for_root(
-        runtime,
-        graph,
-        runtime.root_idx,
-    )];
+    let mut states = vec![TargetGuidedReplayState {
+        walker: initial_stereo_state_for_root(runtime, graph, runtime.root_idx),
+        alignment_overrides: Vec::new(),
+    }];
     let mut visited_state_count = 0usize;
     let failures = PyList::empty(py);
 
@@ -7017,7 +7083,8 @@ fn target_guided_marker_basis_diagnostics_for_root(
 
         let mut next_states = Vec::new();
         let step_failures = PyList::empty(py);
-        for mut state in states {
+        for replay_state in states {
+            let mut state = replay_state.walker;
             visited_state_count += 1;
             drain_exact_linear_stereo_actions(&mut state);
             let prefix = state.prefix.as_ref();
@@ -7027,10 +7094,16 @@ fn target_guided_marker_basis_diagnostics_for_root(
             if prefix == target {
                 let result = PyDict::new(py);
                 result.set_item("root_idx", runtime.root_idx)?;
-                result.set_item("status", "matched_prefix")?;
+                let status = if replay_state.alignment_overrides.is_empty() {
+                    "matched_prefix"
+                } else {
+                    "matched_prefix_with_alignment_overrides"
+                };
+                result.set_item("status", status)?;
                 result.set_item("step_count", step_count)?;
                 result.set_item("visited_state_count", visited_state_count)?;
                 result.set_item("prefix", prefix)?;
+                result.set_item("alignment_overrides", replay_state.alignment_overrides)?;
                 result.set_item("failures", failures)?;
                 return Ok(result.unbind());
             }
@@ -7043,6 +7116,7 @@ fn target_guided_marker_basis_diagnostics_for_root(
                     &target[prefix.len()..],
                     &[],
                     &[],
+                    &replay_state.alignment_overrides,
                 )?)?;
                 continue;
             }
@@ -7057,8 +7131,24 @@ fn target_guided_marker_basis_diagnostics_for_root(
                     successor_prefixes.push((_token.clone(), successor.prefix.as_ref().to_owned()));
                     if target.starts_with(successor.prefix.as_ref()) {
                         matched_successor = true;
-                        next_states.push(successor);
+                        next_states.push(TargetGuidedReplayState {
+                            walker: successor,
+                            alignment_overrides: replay_state.alignment_overrides.clone(),
+                        });
                     }
+                }
+            }
+            if !matched_successor {
+                let bypassed_successors = target_guided_no_marker_before_atom_successors(
+                    runtime,
+                    graph,
+                    &state,
+                    target,
+                    &replay_state.alignment_overrides,
+                )?;
+                if !bypassed_successors.is_empty() {
+                    matched_successor = true;
+                    next_states.extend(bypassed_successors);
                 }
             }
             if !matched_successor {
@@ -7070,6 +7160,7 @@ fn target_guided_marker_basis_diagnostics_for_root(
                     &target[prefix.len()..],
                     &supported_tokens,
                     &successor_prefixes,
+                    &replay_state.alignment_overrides,
                 )?)?;
             }
         }

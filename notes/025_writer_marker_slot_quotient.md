@@ -359,7 +359,7 @@ Applying the aligned replay to
 `github4582_chembl409450_random_vector_seed1_index0` exposes a different
 writer-order boundary before the later component-frontier row.
 
-For roots `3` and `11`, replay reaches:
+Before the no-marker bridge, roots `3` and `11` reached:
 
 - prefix: `N1c2c(`;
 - target remainder: `C(/C1=C1/C(=O)Nc3cc(Br)ccc13)=N\O)cccc2`;
@@ -371,11 +371,20 @@ The diagnostic now labels this as
 `target_atom_before_directional_marker_successor`: the pinned RDKit writer text
 wants to emit the branch atom `C` before the directional marker that Grimace's
 current walker exposes as the next deferred edge token.  This is not the same
-boundary as the github3967 terminal marker quotient.  It means the current
-target-guided replay still cannot evaluate the full CHEMBL random-vector output
-as one quotient path.
+boundary as the github3967 terminal marker quotient.
 
-The next missing writer/path fact is therefore precise: the replay needs a
-support-neutral way to align target writer text across a branch atom plus a
-later directional marker on the child edge, without changing runtime support
-and without treating completed-string parse equivalence as an oracle.
+The replay now has a support-neutral bridge for that exact shape: if the target
+writer text wants atom text and the current action is a deferred directional
+marker, the diagnostic may record a `no_marker` event for that edge, consume the
+atom through the normal successor boundary, and carry an
+`alignment_overrides` audit entry.  For root `3`, that reaches the full CHEMBL
+target with:
+
+`no_marker_before_target_atom edge=(0, 1) prefix=N1c2c(`
+
+This is still not a support claim.  The diagnostic reports
+`matched_prefix_with_alignment_overrides`, not `matched_prefix`, so the result
+means: the target path is explainable once this named writer-order override is
+allowed.  The next runtime question is whether this override can be derived as
+a principled writer traversal fact rather than kept as a target-guided
+diagnostic accommodation.

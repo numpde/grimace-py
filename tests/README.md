@@ -11,6 +11,8 @@ The test suite is organized by intent first, then by feature.
 - `tests/integration/`: import, end-to-end smoke coverage, and kernel dataset contract checks.
 - `tests/perf/`: opt-in timing checks that are excluded by default.
 - `tests/helpers/`: shared case selectors, policy loaders, molecule parsers, and assertion helpers.
+- `tests/rdkit_serialization/known_stereo_gaps.py`: opt-in diagnostic checks
+  for known coupled directional-stereo gaps, excluded from default discovery.
 
 ## Commands
 
@@ -18,6 +20,7 @@ The test suite is organized by intent first, then by feature.
 - Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
+- Known stereo-gap diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_known_stereo_gaps -q`
 - Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
 
 CI runs the exact public invariants and pinned RDKit parity layers as separate
@@ -55,5 +58,7 @@ subset.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
 - `tests.run_pinned_rdkit_parity` must fail, not silently skip, when the
   installed RDKit version has no checked-in pinned fixtures.
+- Known gap tests should be runnable through a named diagnostic runner and
+  excluded from default discovery until they become passing conformance tests.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.
 - Prefer strengthening Rust-native tests before expanding parity breadth.

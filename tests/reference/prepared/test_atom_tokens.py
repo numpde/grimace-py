@@ -9,6 +9,10 @@ from grimace._reference import (
     load_default_connected_nonstereo_molecule_cases,
     prepare_smiles_graph,
 )
+from grimace._reference.prepared_graph import (
+    CONNECTED_STEREO_SURFACE,
+    prepared_stereo_atom_token,
+)
 from grimace._reference.rooted.connected_nonstereo import (
     build_atom_tokens,
     enumerate_rooted_connected_nonstereo_smiles_support,
@@ -149,6 +153,59 @@ class RootedAtomTokenTests(unittest.TestCase):
         self.assertEqual(
             {"C-C#N"},
             enumerate_rooted_connected_nonstereo_smiles_support(prepared, 0),
+        )
+
+    def test_prepared_stereo_atom_token_formats_writer_fields_directly(self) -> None:
+        cases = (
+            ("[13C@H](F)(Cl)Br", "[13C@H]", "[13C@@H]"),
+            ("[C@H:7](F)(Cl)Br", "[C@H:7]", "[C@@H:7]"),
+            ("[Si@H](F)(Cl)Br", "[Si@H]", "[Si@@H]"),
+        )
+
+        for smiles, single_at, double_at in cases:
+            with self.subTest(smiles=smiles):
+                prepared = prepare_smiles_graph(
+                    parse_smiles(smiles),
+                    self.policy,
+                    surface_kind=CONNECTED_STEREO_SURFACE,
+                )
+                self.assertEqual(
+                    single_at,
+                    prepared_stereo_atom_token(prepared, 0, stereo_mark="@"),
+                )
+                self.assertEqual(
+                    double_at,
+                    prepared_stereo_atom_token(prepared, 0, stereo_mark="@@"),
+                )
+
+        prepared = prepare_smiles_graph(
+            parse_smiles("F[C@H](Cl)Br"),
+            self.policy,
+            surface_kind=CONNECTED_STEREO_SURFACE,
+        )
+        with self.assertRaisesRegex(ValueError, "Unsupported stereo atom token marker"):
+            prepared_stereo_atom_token(prepared, 1, stereo_mark="@@@")
+
+    def test_prepared_stereo_atom_token_honors_ignored_atom_maps(self) -> None:
+        mapped = parse_smiles("[C@H:7](F)(Cl)Br")
+        keep_maps = prepare_smiles_graph(
+            mapped,
+            self.policy,
+            surface_kind=CONNECTED_STEREO_SURFACE,
+        )
+        ignore_maps = prepare_smiles_graph(
+            mapped,
+            with_sampling_override(self.policy, ignoreAtomMapNumbers=True),
+            surface_kind=CONNECTED_STEREO_SURFACE,
+        )
+
+        self.assertEqual(
+            "[C@H:7]",
+            prepared_stereo_atom_token(keep_maps, 0, stereo_mark="@"),
+        )
+        self.assertEqual(
+            "[C@H]",
+            prepared_stereo_atom_token(ignore_maps, 0, stereo_mark="@"),
         )
 
     def test_prepared_graph_dict_roundtrip_preserves_atom_tokens_on_dataset_slice(self) -> None:

@@ -43,6 +43,7 @@ SUPPORTED_STEREO_BOND_DIRS = {
     Chem.BondDir.ENDUPRIGHT,
     Chem.BondDir.ENDDOWNRIGHT,
 }
+_PERIODIC_TABLE = Chem.GetPeriodicTable()
 
 ORGANIC_SUBSET = {
     "*",
@@ -691,6 +692,53 @@ class PreparedSmilesGraph:
             bond_begin_atom_indices=tuple(int(value) for value in data.get("bond_begin_atom_indices", [])),
             bond_end_atom_indices=tuple(int(value) for value in data.get("bond_end_atom_indices", [])),
         )
+
+
+def prepared_atom_symbol(prepared: PreparedSmilesGraph, atom_idx: int) -> str:
+    atomic_num = prepared.atom_atomic_numbers[atom_idx]
+    if atomic_num == 0:
+        symbol = "*"
+    else:
+        symbol = _PERIODIC_TABLE.GetElementSymbol(atomic_num)
+
+    if prepared.atom_is_aromatic[atom_idx] and not prepared.writer_kekule_smiles:
+        lowered = symbol.lower()
+        if lowered in AROMATIC_LOWERCASE_SUBSET:
+            return lowered
+    return symbol
+
+
+def prepared_stereo_atom_token(
+    prepared: PreparedSmilesGraph,
+    atom_idx: int,
+    *,
+    stereo_mark: str,
+) -> str:
+    if stereo_mark not in {"@", "@@"}:
+        raise ValueError(f"Unsupported stereo atom token marker: {stereo_mark!r}")
+
+    hydrogen_count = (
+        prepared.atom_explicit_h_counts[atom_idx]
+        + prepared.atom_implicit_h_counts[atom_idx]
+    )
+    atom_map_number = (
+        0
+        if prepared.writer_ignore_atom_map_numbers
+        else prepared.atom_map_numbers[atom_idx]
+    )
+
+    parts = ["["]
+    isotope = prepared.atom_isotopes[atom_idx]
+    if isotope:
+        parts.append(str(isotope))
+    parts.append(prepared_atom_symbol(prepared, atom_idx))
+    parts.append(stereo_mark)
+    parts.append(format_hydrogen_count(hydrogen_count))
+    parts.append(format_charge(prepared.atom_formal_charges[atom_idx]))
+    if atom_map_number:
+        parts.append(f":{atom_map_number}")
+    parts.append("]")
+    return "".join(parts)
 
 
 def prepare_smiles_graph(

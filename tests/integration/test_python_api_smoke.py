@@ -29,8 +29,10 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertTrue(callable(grimace.MolToSmilesChoice))
         self.assertTrue(callable(grimace.MolToSmilesDecoder))
         self.assertTrue(callable(grimace.MolToSmilesDeterminizedDecoder))
+        self.assertTrue(callable(grimace.MolToSmilesDeviation))
         self.assertTrue(callable(grimace.MolToSmilesEnum))
         self.assertTrue(callable(grimace.MolToSmilesTokenInventory))
+        self.assertTrue(callable(grimace.MolToSmilesTokenInventorySuperset))
         self.assertFalse(hasattr(grimace, "MolToSmilesSupport"))
         self.assertFalse(hasattr(grimace, "ReferencePolicy"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))
@@ -303,7 +305,7 @@ class PythonApiSmokeTests(unittest.TestCase):
             kwargs=supported_public_kwargs(rootedAtAtom=99),
             expected_exception=IndexError,
             expected_regex="root_idx out of range",
-            included_entrypoints=("enum", "decoder", "inventory"),
+            included_entrypoints=("enum", "decoder", "inventory", "inventory_superset"),
         )
 
     def test_reference_defaults_load_from_installed_package_layout(self) -> None:

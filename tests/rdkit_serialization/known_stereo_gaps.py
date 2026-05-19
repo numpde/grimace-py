@@ -406,11 +406,12 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
 
 
 class KnownStereoGapTests(unittest.TestCase):
-    """Red tests for coupled directional-stereo parity gaps.
+    """Diagnostic tests for coupled directional-stereo parity gaps.
 
     These cases are not part of the passing writer-membership corpus yet. They
     should move there once Grimace resolves coupled double-bond direction tokens
-    with RDKit-equivalent traversal-order state.
+    with RDKit-equivalent traversal-order state. Run through
+    tests.run_known_stereo_gaps; this module is outside default discovery.
     """
 
     @classmethod

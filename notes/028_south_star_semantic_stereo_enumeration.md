@@ -1,47 +1,47 @@
-# South Star Semantic Stereo Enumeration
+# South Star Semantic Stereo Investigation
 
-Branch: `stereo-constraint-model`
+Branch: `south-star`
 
 Date: 2026-05-19
 
 ## Purpose
 
-The South Star is the mathematically clean stereo-enumeration target, distinct
-from RDKit writer-string parity.
+South Star names a semantic investigation target, distinct from RDKit
+writer-string parity.
 
-It asks: what should Grimace enumerate if the goal is not "match RDKit's
-serializer quirks", but instead "emit every online SMILES spelling that is
-semantically valid under a principled OpenSMILES-style stereo language"?
+The question is:
 
-This note names that target so runtime RDKit parity work and semantic
-enumeration work do not keep borrowing each other's concepts accidentally.
+> Which SMILES strings are valid semantic spellings of the intended graph and
+> stereo assignment, independent of whether RDKit's writer happens to emit
+> them?
 
-## Definition
+This note should not be read as a final runtime architecture. Its job is to keep
+the investigation from importing North Star assumptions accidentally.
 
-South Star enumeration is exact online support for graph and stereo semantics
-under a maximal directional-marker policy.
+## Starting Definition
 
-For a prepared molecule, Grimace should enumerate prefixes and complete SMILES
-strings such that:
+For now, South Star means parser-backed semantic correctness:
 
 - the emitted string is syntactically valid SMILES;
-- parsing the emitted string reconstructs the intended graph;
-- parsing the emitted string reconstructs the intended stereo assignments for
-  all supported stereo centers;
-- every directional marker required to make double-bond stereo explicit at the
-  chosen traversal boundary is emitted, rather than minimized away;
-- slash/backslash choices satisfy one global component constraint system;
-- every emitted token is supported online by the current prefix state;
-- no completed-string repair, cleanup, or backfill phase is needed.
+- parsing the emitted string reconstructs the intended molecular graph;
+- parsing the emitted string reconstructs the intended supported stereo
+  assignments;
+- slash/backslash markers have a globally consistent interpretation;
+- RDKit writer membership is comparison evidence, not the definition of
+  correctness.
 
-The "maximal" in maximal directional-marker policy means "mark all required
-directional carrier opportunities chosen by the semantic policy", not "spray
-markers on chemically irrelevant bonds". It is a deterministic semantic policy
-for making stereo explicit, not RDKit's traversal-conditioned minimization.
+This leaves several policy choices open. In particular, it does not yet decide:
+
+- whether the eventual semantic policy is maximal, minimal, or something else;
+- whether every eligible carrier edge should be marked;
+- whether only assignment-selected carrier edges should be marked;
+- whether omission can ever be a semantic observation;
+- which representation should implement the constraint system;
+- whether South Star becomes a public API or remains an internal diagnostic.
 
 ## Non-Definition
 
-The South Star is not:
+South Star is not:
 
 - RDKit writer support;
 - RDKit's `canonicalizeDoubleBonds` behavior;
@@ -52,116 +52,99 @@ The South Star is not:
   runtime;
 - a post-processing pass over completed RDKit-style outputs.
 
-OpenSMILES validity does not require global minimization of directional
-markers. Minimization or maximal annotation is a writer policy. South Star
-chooses maximal annotation because it gives a cleaner semantic constraint
-problem and avoids making RDKit's pruning look chemically fundamental.
+OpenSMILES validity does not appear to require global minimization of
+directional markers. Minimization, maximal annotation, and traversal-conditioned
+suppression are writer policies. South Star should make those policies explicit
+before choosing one.
 
 ## Relation To The North Star
 
 The current North Star for the public runtime is exact RDKit writer-string
 support for RDKit's `canonical=False, doRandom=True` regime. That remains the
-shipping API target.
+shipping API target unless explicitly changed.
 
-The South Star is a parallel semantic target:
+The South Star investigation should stay separate:
 
 - North Star: exact RDKit writer parity.
-- South Star: exact principled SMILES/stereo semantic support.
+- South Star: semantic validity of SMILES/stereo spellings.
 
-The two should share graph preparation, component decomposition, carrier
-domains, token-direction algebra, and online support-state machinery. They
-should not share writer-policy decisions blindly.
-
-A clean architecture should look like this:
-
-1. Build semantic stereo components and constraints.
-2. Expose a South Star support query over those semantic constraints.
-3. Layer RDKit writer policy as a named projection or additional constraint
-   layer.
-4. Keep public RDKit parity tests exact-string based.
-5. Keep South Star tests parser/semantic based and explicitly named as such.
+Shared infrastructure may be useful, but sharing must be deliberate. Graph
+preparation, component discovery, carrier domains, and token algebra may be
+semantic. RDKit marker suppression, no-marker events, committed-token parity
+filters, and serializer fixtures are writer-policy or comparison evidence unless
+proven otherwise.
 
 ## Why South Star Is Useful
 
-South Star gives a principled reference point when RDKit behavior is awkward,
+South Star gives a reference point when RDKit behavior is awkward,
 underspecified, or possibly inconsistent.
 
 It can answer:
 
-- whether Grimace's core stereo algebra is chemically/semantically coherent;
+- whether Grimace's stereo algebra is semantically coherent;
 - whether RDKit is omitting semantically valid spellings;
 - whether a red RDKit-parity witness is a semantic bug or a writer-policy gap;
-- whether a proposed runtime rule belongs in the semantic layer or RDKit policy
-  layer;
-- whether row/propagator machinery is solving the actual stereo constraint
-  problem or only mirroring serializer artifacts.
+- whether a proposed rule belongs in semantic support or RDKit writer policy;
+- whether row/propagator machinery is solving the stereo constraint problem or
+  only mirroring serializer artifacts.
 
 This is especially important for shared directional markers, conjugated systems,
 ring closures, and cases where RDKit mutates directional bond state after it has
 already chosen a traversal stack.
 
-## Constraint Shape
+## Starting Constraint Vocabulary
 
-The semantic model should decompose the molecule into independent stereo
-components. Within each component, variables describe finite choices:
+The investigation can begin with neutral concepts:
 
-- selected carrier neighbor for each stereo side;
-- directional token basis for each carrier edge;
-- per-component orientation or phase;
-- ring/branch traversal facts that affect how emitted tokens are interpreted;
-- marker obligations required by the maximal annotation policy.
+- intended molecular graph;
+- supported stereo centers or stereo bonds;
+- directional carrier candidates;
+- selected or observed carrier edges;
+- emitted slash/backslash tokens;
+- token basis relative to an emitted edge;
+- component-local assignments;
+- parser-observed graph/stereo result;
+- writer-policy comparison outcome.
 
-Constraints should enforce:
+These names are intentionally not a full model. They are a starting vocabulary
+for separating semantic facts from RDKit writer facts.
 
-- each supported stereo center has enough marked carrier information to recover
-  its assignment;
-- shared carrier edges satisfy every component that observes the same emitted
-  token;
-- a visible slash/backslash token has one consistent meaning in the emitted
-  edge basis;
-- omitted marker opportunities are legal only when the South Star policy says
-  the edge is not required;
-- terminal states have no pending semantic marker obligations.
+## Candidate Policy Questions
 
-Rows are one possible finite representation of this state. A native propagator,
-bitset domains, or a hybrid may be better later. The representation is not the
-goal; the goal is one explicit online constraint boundary.
+The central policy questions remain open:
 
-## Maximal Marker Policy
+- What does "sufficiently explicit" stereo annotation mean?
+- Is maximal annotation desirable, and if so, maximal over which carrier set?
+- Can omission of a marker carry semantic information, or is it only writer
+  policy?
+- How should shared carriers be represented when one marker constrains several
+  stereo centers?
+- How should ring-closure marker basis be stated independent of RDKit placement?
+- Which aromatic and non-double-bond stereo forms are in the first scope?
+- What evidence is enough to call a string semantically valid when RDKit does
+  not emit it?
 
-The starting South Star policy should be intentionally simple:
-
-- if a traversal edge is a required directional carrier for any surviving
-  semantic stereo assignment, a marker must be emitted on that edge when the
-  output grammar allows it;
-- if several marker values are compatible with different surviving assignments,
-  branch online;
-- if exactly one marker value is compatible, force it;
-- if an edge is not a required directional carrier under any surviving
-  assignment, do not emit a stereo marker for South Star purposes;
-- if an obligation is known but not yet placeable at the current grammar
-  boundary, carry it explicitly and discharge it at the next valid boundary.
-
-This policy deliberately avoids RDKit's question: "which otherwise valid
-markers should be suppressed as redundant for this traversal?" The South Star
-question is instead: "which markers make the semantic stereo assignment explicit
-and consistent?"
+The first implementation work should make these questions observable rather
+than answer all of them.
 
 ## Tests
 
 South Star tests should be separate from RDKit parity tests.
 
-Good test classes:
+The first tests should be small semantic witnesses:
 
-- tiny isolated alkene and oxime cases where all valid marked spellings are easy
-  to inspect;
-- conjugated/shared-carrier witnesses where RDKit omits some semantically valid
-  spellings;
-- ring-closure witnesses where marker basis must be interpreted through the
-  emitted edge, not only component-local endpoint order;
-- parser round-trip tests that verify graph and stereo assignment;
-- negative tests for inconsistent slash/backslash assignments;
-- cross-checks against Z3 or another exploration oracle for small components.
+- candidate strings that parse to the intended graph and stereo assignment;
+- negative strings that parse but invert or lose the intended stereo assignment;
+- cases where RDKit emits the string, recorded only as comparison metadata;
+- cases where RDKit does not emit the string, if the parser-backed semantic
+  result is still correct.
+
+Good early cases:
+
+- isolated alkene or oxime examples where all marked spellings are inspectable;
+- a small conjugated/shared-carrier witness;
+- a ring-closure witness where marker basis depends on the emitted edge;
+- one known RDKit-discrepant witness, clearly marked as comparison evidence.
 
 These tests should not assert equality with RDKit sampled output. If RDKit
 parity is relevant, add a separate paired test that states which layer is being
@@ -169,58 +152,56 @@ checked.
 
 ## Relationship To Current Branch
 
-`stereo-constraint-model` is closer to the South Star than `main` because it
-already has:
+The `south-star` branch starts from `stereo-constraint-model`, which already
+contains useful machinery and North Star baggage.
+
+Potentially useful machinery:
 
 - explicit stereo components;
 - carrier-assignment state;
 - token-phase assignment state;
-- marker-placement rows;
-- marker event facts;
 - support-boundary survivor queries;
-- diagnostics separating semantic and RDKit writer layers.
+- diagnostics that can compare semantic and RDKit writer layers.
 
-But it is not the South Star yet.
+North Star-shaped machinery:
 
-The current marker-placement rows are RDKit-policy shaped: they model visible
-marker subsets and no-marker events, because the public runtime is trying to
-match RDKit writer support. South Star should reuse the component and online
-fact machinery, but it should define its own semantic marker-obligation policy
-instead of inheriting RDKit suppression/minimization.
+- marker-placement rows modeled around visible RDKit marker subsets;
+- `NoMarker` writer events;
+- RDKit local/traversal writer layers;
+- token-flip adjustments named after RDKit writer behavior;
+- committed-token parity filters;
+- pinned exact-string RDKit fixtures as runtime authority.
 
-## Implementation Direction
+Do not delete these surfaces just because they are North Star-shaped. First
+classify them as semantic, comparison-only, reusable scaffolding, or obsolete.
 
-The least-regret implementation path is:
+## First-Slice Principle
 
-1. Keep public runtime on the RDKit parity path.
-2. Add South Star as an internal semantic support mode or diagnostic query.
-3. Reuse component decomposition and token-direction algebra.
-4. Add a semantic marker-obligation model that requires maximal annotation.
-5. Add small exact semantic fixtures independent of RDKit writer output.
-6. Compare South Star support with RDKit parity support on known witnesses and
-   classify differences as either semantic bugs or RDKit writer-policy
-   exclusions.
-7. Only after this split is stable, decide whether South Star should become a
-   public API surface.
+The first slice should create a clean observation point:
 
-## Open Questions
+1. Add a South Star semantic test runner that does not depend on RDKit
+   exact-string fixtures.
+2. Add tiny parser-backed semantic witnesses.
+3. Add helper assertions for graph/stereo equivalence.
+4. Record RDKit writer membership only as comparison metadata.
+5. Add guards or conventions that prevent South Star tests from depending on
+   RDKit writer-policy layers.
 
-- What exact OpenSMILES subset should define supported semantic parsing?
-- Which non-double-bond stereo classes belong in the first South Star slice?
-- Should maximal annotation mark every eligible carrier edge or exactly every
-  carrier edge selected by the component assignment?
-- How should aromatic directional bonds be represented in the semantic policy?
-- How much parser-equivalence evidence is enough before treating an RDKit
-  omission as a writer-policy exclusion rather than a Grimace bug?
+This first slice should not:
+
+- change public `MolToSmilesEnum` behavior;
+- delete RDKit parity fixtures;
+- decide the final annotation policy;
+- make row/state machinery the assumed representation;
+- treat RDKit omissions as automatically wrong.
 
 ## Success Criteria
 
-South Star is meaningful when:
+The investigation is on track when:
 
-- it is implemented as online support, not completed-string filtering;
-- every accepted string parses to the intended graph and stereo assignment;
-- every rejected string has a named semantic reason;
+- semantic tests can pass or fail independently of RDKit exact-string parity;
+- every accepted witness has parser-backed graph/stereo evidence;
+- every rejected witness has a named semantic reason or open question;
 - RDKit writer-policy exclusions are represented separately;
-- small witnesses can show South Star support strictly larger than RDKit writer
-  support without making the public RDKit parity layer fail;
-- the code makes it obvious whether a rule is semantic or RDKit-specific.
+- it is obvious whether a rule is semantic, writer-policy, or still
+  unclassified.

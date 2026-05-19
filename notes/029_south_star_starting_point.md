@@ -23,8 +23,7 @@ separation is visible should we decide what to delete, quarantine, or reuse.
 
 ## Working Definition
 
-South Star means mathematically clean semantic stereo enumeration with maximal
-or explicit directional annotation, as described in
+South Star starts as a semantic investigation, as described in
 `notes/028_south_star_semantic_stereo_enumeration.md`.
 
 For this starting point, the important distinction is:
@@ -35,6 +34,9 @@ For this starting point, the important distinction is:
 
 The `south-star` branch is for investigating the first without accidentally
 depending on the second.
+
+The starting point does not assume maximal annotation, rows, a public API shape,
+or a final runtime architecture. Those are later decisions.
 
 ## Initial Assumptions
 
@@ -134,6 +136,10 @@ Purpose:
 - allow semantic tests to fail independently while the public runtime remains
   RDKit-parity-oriented.
 
+The runner should not import RDKit writer-policy layers, pinned exact-string
+parity fixtures, or committed-token parity filters. If comparison with RDKit is
+needed, keep it as labeled metadata or a separate paired test.
+
 ### 3. Add Minimal Semantic Witnesses
 
 Start with a small fixture set, not a broad corpus:
@@ -148,7 +154,7 @@ Each witness should state:
 
 - input molecule;
 - intended graph/stereo assignment;
-- candidate South Star strings;
+- candidate semantic strings;
 - whether RDKit emits each string, as comparison metadata only;
 - parser/semantic round-trip expectation.
 
@@ -179,9 +185,12 @@ Purpose:
 Do not force these decisions in the first slice:
 
 - Should South Star use rows, bitsets, a native propagator, or a hybrid?
-- What exactly does "maximal annotation" mean for multi-candidate sides?
+- Should the semantic policy be maximal, minimal, or something else?
+- If maximal annotation is chosen, what exactly does it mean for
+  multi-candidate sides?
 - Are all eligible carrier edges marked, or only assignment-selected carrier
   edges?
+- Can omitted directional markers ever be semantic observations?
 - How should aromatic directional bonds be handled?
 - Which non-double-bond stereo forms are in scope?
 - Should South Star become a public API, an internal diagnostic, or a separate

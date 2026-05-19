@@ -162,3 +162,48 @@ graph-marker-equation-backed quotient or deferral:
 
 That is a narrower and more inspectable next step than weakening
 selected-carrier facts globally.
+
+## Parse-Equivalent-Present Writer Gaps
+
+The three remaining support-missing cases with existing same-skeleton
+parse-equivalent Grimace outputs are writer-policy gaps, not missing semantic
+support-basis gaps.
+
+### Extra Redundant Marker
+
+Two cases have the RDKit target slots as a subset of Grimace's parse-equivalent
+same-skeleton slots:
+
+- `github4582_chembl409450_random_vector_seed1_index3`
+  - RDKit target slots: `(16, \)`, `(18, /)`, `(23, \)`
+  - Grimace parse-equivalent slots: `(12, /)`, `(16, \)`, `(18, /)`,
+    `(23, \)`
+- `github4582_chembl409450_random_vector_seed1_index6`
+  - RDKit target slots: `(8, /)`, `(19, \)`, `(41, \)`
+  - Grimace parse-equivalent slots: `(6, /)`, `(8, /)`, `(19, \)`,
+    `(41, \)`
+
+These look like redundant-marker omission: Grimace emits one earlier marker
+that is semantically compatible but RDKit's writer omits it in the sampled
+surface.  The smallest useful policy here is not a new semantic constraint; it
+is a writer representative rule that can prove the earlier marker is redundant
+given later marker equations.
+
+### Global Phase Representative
+
+One case has a parse-equivalent same-skeleton Grimace output with all four
+marker slots inverted relative to the RDKit target:
+
+- `github4582_chembl409450_random_vector_seed1_index9`
+  - RDKit target slots: `(13, /)`, `(18, \)`, `(23, \)`, `(27, /)`
+  - Grimace parse-equivalent slots: `(13, \)`, `(18, /)`, `(23, /)`,
+    `(27, \)`
+
+That is likely a writer representative choice over a globally inverted
+directional-marker phase.  It should be handled separately from redundant
+marker omission and separately from the github3967 graph-marker-equation
+quotient.
+
+The practical implication is that the parse-equivalent-present cases are later
+polish for exact RDKit string support.  They should not drive the next
+semantic-basis work; github3967 remains the cleaner next runtime target.

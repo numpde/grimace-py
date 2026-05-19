@@ -19,6 +19,7 @@ from tests.helpers.marker_slot_equivalence import (
     double_bond_stereo_signature,
     emitted_marker_slots_from_attempt,
     parse_equivalent_minimal_marker_slot_sets,
+    smiles_from_direction_marker_slots,
     writer_marker_slot_quotient_diagnostic,
 )
 from tests.helpers.public_runtime import make_determinized_decoder
@@ -89,6 +90,7 @@ class KnownStereoGapCase:
     expected_current_same_skeleton_parse_equivalent_count: int | None
     expected_current_same_skeleton_parse_mismatch_count: int | None
     expected_current_same_skeleton_marker_slots: MarkerSlotSet | None
+    expected_current_parse_equivalent_marker_slots: MarkerSlots | None
     parse_equivalent_minimal_marker_slots: MarkerSlotSet | None
     smiles: str | None
     molblock: str | None
@@ -133,6 +135,33 @@ def _marker_slot_set_from_json(
                     f"{field_name} slot"
                 )
     return marker_slot_set
+
+
+def _marker_slots_from_json(
+    raw_case: dict[str, object],
+    field_name: str,
+) -> MarkerSlots | None:
+    raw_marker_slots = raw_case.get(field_name)
+    if raw_marker_slots is None:
+        return None
+
+    marker_slots = tuple((slot, marker) for slot, marker in raw_marker_slots)
+    if marker_slots != tuple(sorted(marker_slots)):
+        raise ValueError(
+            f"known stereo-gap case {raw_case['id']!r} has unsorted {field_name}"
+        )
+    if len({slot for slot, _marker in marker_slots}) != len(marker_slots):
+        raise ValueError(
+            f"known stereo-gap case {raw_case['id']!r} has duplicate marker "
+            f"slots in {field_name}"
+        )
+    for slot, marker in marker_slots:
+        if type(slot) is not int or slot < 0 or marker not in {"/", "\\"}:
+            raise ValueError(
+                f"known stereo-gap case {raw_case['id']!r} has invalid "
+                f"{field_name}"
+            )
+    return marker_slots
 
 
 def _optional_nonnegative_int(
@@ -245,6 +274,10 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
             raw_case,
             "parse_equivalent_minimal_marker_slots",
         )
+        current_parse_equivalent_marker_slots = _marker_slots_from_json(
+            raw_case,
+            "expected_current_parse_equivalent_marker_slots",
+        )
         if same_skeleton_marker_slots is not None:
             if expected_current_result != "support_missing":
                 raise ValueError(
@@ -290,6 +323,15 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                     "same-skeleton parse equivalent/mismatch counts"
                 )
             if (
+                current_parse_equivalent_marker_slots is not None
+                and expected_same_skeleton_parse_equivalent_count != 1
+            ):
+                raise ValueError(
+                    f"known stereo-gap case {raw_case['id']!r} may only pin one "
+                    "expected_current_parse_equivalent_marker_slots when the "
+                    "parse-equivalent count is exactly one"
+                )
+            if (
                 expected_same_skeleton_parse_equivalent_count
                 + expected_same_skeleton_parse_mismatch_count
                 != expected_same_skeleton_support_count
@@ -309,6 +351,7 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
             or expected_rdkit_output_parse_equivalent is not None
             or expected_same_skeleton_parse_equivalent_count is not None
             or expected_same_skeleton_parse_mismatch_count is not None
+            or current_parse_equivalent_marker_slots is not None
         ):
             raise ValueError(
                 f"known stereo-gap case {raw_case['id']!r} may only define "
@@ -337,6 +380,9 @@ def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase
                 ),
                 expected_current_same_skeleton_marker_slots=(
                     same_skeleton_marker_slots
+                ),
+                expected_current_parse_equivalent_marker_slots=(
+                    current_parse_equivalent_marker_slots
                 ),
                 parse_equivalent_minimal_marker_slots=(
                     parse_equivalent_minimal_marker_slots
@@ -442,10 +488,8 @@ class KnownStereoGapTests(unittest.TestCase):
         source_smiles = case.smiles
         self.assertIsNotNone(source_smiles)
         self.assertIsNotNone(case.parse_equivalent_minimal_marker_slots)
-        self.assertIsNotNone(case.expected_current_same_skeleton_marker_slots)
         assert source_smiles is not None
         assert case.parse_equivalent_minimal_marker_slots is not None
-        assert case.expected_current_same_skeleton_marker_slots is not None
 
         skeleton = direction_erased_skeleton(case.expected)
         source_mol = self._mol_from_case(case)
@@ -462,15 +506,6 @@ class KnownStereoGapTests(unittest.TestCase):
         )
         self.assertIn(source_marker_slots, parse_equivalent_marker_slots)
         self.assertIn(rdkit_marker_slots, parse_equivalent_marker_slots)
-
-        current_same_skeleton_marker_slots = set(
-            case.expected_current_same_skeleton_marker_slots
-        )
-        self.assertTrue(
-            current_same_skeleton_marker_slots.isdisjoint(
-                parse_equivalent_marker_slots
-            )
-        )
 
     def test_pinned_parse_equivalent_marker_basis_spaces_recompute(self) -> None:
         cases = tuple(
@@ -493,6 +528,56 @@ class KnownStereoGapTests(unittest.TestCase):
                     marker_slots,
                 )
                 self.assertIn(direction_marker_slots(case.expected), marker_slots)
+
+    def test_parse_equivalent_writer_gaps_pin_representative_policy_classes(
+        self,
+    ) -> None:
+        expected_policy_class = {
+            "github4582_chembl409450_random_vector_seed1_index3": (
+                "redundant_marker_omission"
+            ),
+            "github4582_chembl409450_random_vector_seed1_index6": (
+                "redundant_marker_omission"
+            ),
+            "github4582_chembl409450_random_vector_seed1_index9": (
+                "global_phase_representative"
+            ),
+        }
+        cases_by_id = {case.case_id: case for case in self.cases}
+
+        for case_id, policy_class in expected_policy_class.items():
+            case = cases_by_id[case_id]
+            with self.subTest(case_id=case_id, policy_class=policy_class):
+                self.assertEqual("support_missing", case.expected_current_result)
+                self.assertEqual(1, case.expected_current_same_skeleton_parse_equivalent_count)
+                self.assertIsNotNone(case.expected_current_parse_equivalent_marker_slots)
+                assert case.expected_current_parse_equivalent_marker_slots is not None
+
+                reference_smiles = canonical_isomeric_smiles(self._mol_from_case(case))
+                skeleton = direction_erased_skeleton(case.expected)
+                current_slots = case.expected_current_parse_equivalent_marker_slots
+                current_smiles = smiles_from_direction_marker_slots(
+                    skeleton,
+                    current_slots,
+                )
+                current_mol = Chem.MolFromSmiles(current_smiles)
+                self.assertIsNotNone(current_mol)
+                assert current_mol is not None
+                self.assertEqual(
+                    reference_smiles,
+                    canonical_isomeric_smiles(current_mol),
+                )
+                rdkit_slots = direction_marker_slots(case.expected)
+
+                if policy_class == "redundant_marker_omission":
+                    self.assertLess(set(rdkit_slots), set(current_slots))
+                    self.assertEqual(len(rdkit_slots) + 1, len(current_slots))
+                else:
+                    flipped_slots = tuple(
+                        (slot, "\\" if marker == "/" else "/")
+                        for slot, marker in current_slots
+                    )
+                    self.assertEqual(rdkit_slots, flipped_slots)
 
     def test_smallest_gap_uses_writer_quotient_token_phase_boundary(self) -> None:
         case = self._smallest_gap_case()

@@ -718,6 +718,17 @@ class KnownStereoGapTests(unittest.TestCase):
             [CHEMBL409450_TARGET_ALIGNMENT_OVERRIDE],
             root_result["alignment_overrides"],
         )
+        self.assertEqual(
+            [
+                {
+                    "kind": "no_marker_before_target_atom",
+                    "begin_idx": 0,
+                    "end_idx": 1,
+                    "prefix": CHEMBL409450_TARGET_ALIGNMENT_PREFIX,
+                }
+            ],
+            root_result["alignment_override_facts"],
+        )
         self.assertEqual([], root_result["failures"])
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:

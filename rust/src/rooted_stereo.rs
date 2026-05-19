@@ -6932,7 +6932,7 @@ fn collect_target_guided_marker_basis_failure_rows(
     remaining_target: &str,
     supported_tokens: &[String],
     successor_prefixes: &[(String, String)],
-    alignment_overrides: &[String],
+    alignment_overrides: &[TargetGuidedAlignmentOverrideFact],
 ) -> PyResult<Py<PyDict>> {
     let row = PyDict::new(py);
     row.set_item("prefix", state.prefix.as_ref())?;
@@ -6943,7 +6943,14 @@ fn collect_target_guided_marker_basis_failure_rows(
         "target_alignment_gap",
         target_alignment_gap_name(state.prefix.as_ref(), remaining_target, successor_prefixes),
     )?;
-    row.set_item("alignment_overrides", alignment_overrides)?;
+    row.set_item(
+        "alignment_overrides",
+        target_guided_alignment_override_names(alignment_overrides),
+    )?;
+    row.set_item(
+        "alignment_override_facts",
+        target_guided_alignment_override_facts_to_py(py, alignment_overrides)?,
+    )?;
     row.set_item("action_stack_depth", state.action_stack.len())?;
 
     let deferred_rows = PyList::empty(py);
@@ -6992,9 +6999,67 @@ fn target_alignment_gap_name(
 }
 
 #[derive(Clone)]
+enum TargetGuidedAlignmentOverrideKind {
+    NoMarkerBeforeTargetAtom,
+}
+
+#[derive(Clone)]
+struct TargetGuidedAlignmentOverrideFact {
+    kind: TargetGuidedAlignmentOverrideKind,
+    begin_idx: isize,
+    end_idx: isize,
+    prefix: Arc<str>,
+}
+
+impl TargetGuidedAlignmentOverrideFact {
+    fn kind_name(&self) -> &'static str {
+        match self.kind {
+            TargetGuidedAlignmentOverrideKind::NoMarkerBeforeTargetAtom => {
+                "no_marker_before_target_atom"
+            }
+        }
+    }
+
+    fn stable_name(&self) -> String {
+        format!(
+            "{} edge=({}, {}) prefix={}",
+            self.kind_name(),
+            self.begin_idx,
+            self.end_idx,
+            self.prefix.as_ref()
+        )
+    }
+}
+
+fn target_guided_alignment_override_names(
+    facts: &[TargetGuidedAlignmentOverrideFact],
+) -> Vec<String> {
+    facts
+        .iter()
+        .map(TargetGuidedAlignmentOverrideFact::stable_name)
+        .collect()
+}
+
+fn target_guided_alignment_override_facts_to_py(
+    py: Python<'_>,
+    facts: &[TargetGuidedAlignmentOverrideFact],
+) -> PyResult<Py<PyList>> {
+    let out = PyList::empty(py);
+    for fact in facts {
+        let row = PyDict::new(py);
+        row.set_item("kind", fact.kind_name())?;
+        row.set_item("begin_idx", fact.begin_idx)?;
+        row.set_item("end_idx", fact.end_idx)?;
+        row.set_item("prefix", fact.prefix.as_ref())?;
+        out.append(row)?;
+    }
+    Ok(out.unbind())
+}
+
+#[derive(Clone)]
 struct TargetGuidedReplayState {
     walker: RootedConnectedStereoWalkerStateData,
-    alignment_overrides: Vec<String>,
+    alignment_overrides: Vec<TargetGuidedAlignmentOverrideFact>,
 }
 
 fn target_guided_no_marker_before_atom_successors(
@@ -7002,7 +7067,7 @@ fn target_guided_no_marker_before_atom_successors(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     target: &str,
-    alignment_overrides: &[String],
+    alignment_overrides: &[TargetGuidedAlignmentOverrideFact],
 ) -> PyResult<Vec<TargetGuidedReplayState>> {
     let Some(remaining_target) = target.strip_prefix(state.prefix.as_ref()) else {
         return Ok(Vec::new());
@@ -7040,12 +7105,12 @@ fn target_guided_no_marker_before_atom_successors(
             drain_exact_linear_stereo_actions(&mut successor);
             if target.starts_with(successor.prefix.as_ref()) {
                 let mut overrides = alignment_overrides.to_vec();
-                overrides.push(format!(
-                    "no_marker_before_target_atom edge=({}, {}) prefix={}",
-                    deferred.begin_idx,
-                    deferred.end_idx,
-                    state.prefix.as_ref()
-                ));
+                overrides.push(TargetGuidedAlignmentOverrideFact {
+                    kind: TargetGuidedAlignmentOverrideKind::NoMarkerBeforeTargetAtom,
+                    begin_idx: deferred.begin_idx,
+                    end_idx: deferred.end_idx,
+                    prefix: state.prefix.clone(),
+                });
                 out.push(TargetGuidedReplayState {
                     walker: successor,
                     alignment_overrides: overrides,
@@ -7103,7 +7168,17 @@ fn target_guided_marker_basis_diagnostics_for_root(
                 result.set_item("step_count", step_count)?;
                 result.set_item("visited_state_count", visited_state_count)?;
                 result.set_item("prefix", prefix)?;
-                result.set_item("alignment_overrides", replay_state.alignment_overrides)?;
+                result.set_item(
+                    "alignment_overrides",
+                    target_guided_alignment_override_names(&replay_state.alignment_overrides),
+                )?;
+                result.set_item(
+                    "alignment_override_facts",
+                    target_guided_alignment_override_facts_to_py(
+                        py,
+                        &replay_state.alignment_overrides,
+                    )?,
+                )?;
                 result.set_item("failures", failures)?;
                 return Ok(result.unbind());
             }

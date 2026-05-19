@@ -373,18 +373,19 @@ wants to emit the branch atom `C` before the directional marker that Grimace's
 current walker exposes as the next deferred edge token.  This is not the same
 boundary as the github3967 terminal marker quotient.
 
-The replay now has a support-neutral bridge for that exact shape: if the target
-writer text wants atom text and the current action is a deferred directional
-marker, the diagnostic may record a `no_marker` event for that edge, consume the
-atom through the normal successor boundary, and carry an
-`alignment_overrides` audit entry.  For root `3`, that reaches the full CHEMBL
-target with:
+The replay now has a typed, support-neutral bridge for that exact shape: if the
+target writer text wants atom text and the current action is a deferred
+directional marker, the diagnostic may record a `no_marker` event for that
+edge, consume the atom through the normal successor boundary, and carry a
+structured `alignment_override_facts` entry.  For root `3`, that reaches the
+full CHEMBL target with:
 
 `no_marker_before_target_atom edge=(0, 1) prefix=N1c2c(`
 
 This is still not a support claim.  The diagnostic reports
 `matched_prefix_with_alignment_overrides`, not `matched_prefix`, so the result
 means: the target path is explainable once this named writer-order override is
-allowed.  The next runtime question is whether this override can be derived as
-a principled writer traversal fact rather than kept as a target-guided
-diagnostic accommodation.
+allowed.  The override is represented as data (`kind`, `begin_idx`, `end_idx`,
+and `prefix`) rather than as an opaque string internally.  The next runtime
+question is whether this override can be promoted from a target-guided
+diagnostic fact into a principled writer traversal fact.

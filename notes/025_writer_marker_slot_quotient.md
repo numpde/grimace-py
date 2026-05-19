@@ -395,5 +395,14 @@ For the CHEMBL witness, the injected event is:
 - component `0`, side `0`, edge `(0, 1)`, slot `6`, role `branch`,
   event `no_marker`.
 
-The next runtime question is whether this override can be promoted from a
-target-guided diagnostic fact into a principled writer traversal fact.
+That bridge was then promoted from target-guided replay into the normal runtime
+boundary: when a deferred directional marker is immediately followed by atom
+entry, Grimace also considers an empty-token successor that records the same
+`no_marker` event and lets the standard completion filter decide whether the
+atom path can finish.  This closes the pinned CHEMBL root-3 witness without a
+target-guided override: the target-guided diagnostic now reports
+`matched_prefix`, not `matched_prefix_with_alignment_overrides`, for that case.
+
+The remaining runtime question is whether the same empty-token omitted-marker
+successor is sufficient for the other red directional-stereo gaps, or whether
+additional RDKit writer-order facts are still missing.

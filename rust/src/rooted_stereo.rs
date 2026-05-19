@@ -6210,9 +6210,7 @@ fn collect_stereo_output_fact_rows(
 ) -> PyResult<()> {
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
-        if is_complete_terminal_stereo_state(graph, &state)
-            && terminal_stereo_state_has_support_boundary_marker_placement(runtime, graph, &state)?
-        {
+        if is_supported_terminal_stereo_state(runtime, graph, &state)? {
             rows.append(stereo_output_fact_row_to_py(py, graph, runtime, &state)?)?;
         }
         return Ok(());
@@ -7673,6 +7671,20 @@ fn is_complete_terminal_stereo_state(
     is_terminal_stereo_state(state)
         && state.visited_count == graph.atom_count()
         && state.pending.is_empty()
+}
+
+fn is_supported_terminal_stereo_state(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<bool> {
+    if !is_complete_terminal_stereo_state(graph, state) {
+        return Ok(false);
+    }
+    if runtime.side_infos.is_empty() {
+        return Ok(true);
+    }
+    terminal_stereo_state_has_support_boundary_marker_placement(runtime, graph, state)
 }
 
 fn part_to_action(part: Part) -> Option<WalkerAction> {
@@ -11250,7 +11262,9 @@ fn can_complete_from_stereo_state_memo(
     cache: &mut StereoCompletionCache,
 ) -> bool {
     match state.action_stack.last() {
-        None => return is_complete_terminal_stereo_state(graph, state),
+        None => {
+            return is_supported_terminal_stereo_state(runtime, graph, state).unwrap_or(false);
+        }
         Some(WalkerAction::EmitLiteral(_))
         | Some(WalkerAction::EmitRingLabel(_))
         | Some(WalkerAction::EmitCloseParen) => {
@@ -11280,7 +11294,7 @@ fn can_complete_from_stereo_state_memo(
         }
     };
     let result = if successors.is_empty() {
-        is_complete_terminal_stereo_state(graph, state)
+        is_supported_terminal_stereo_state(runtime, graph, state).unwrap_or(false)
     } else {
         successors.into_values().any(|successor_group| {
             successor_group.into_iter().any(|successor| {
@@ -11380,6 +11394,11 @@ fn stereo_next_token_successors_from_boundary(
         }
         WalkerAction::EmitDeferred(deferred) => {
             let mut out = BTreeMap::<String, Vec<RootedConnectedStereoWalkerStateData>>::new();
+            if let Some(successor) =
+                omitted_deferred_marker_before_atom_successor(runtime, state, &deferred)
+            {
+                out.entry(String::new()).or_default().push(successor);
+            }
             for token in deferred_token_support(runtime, graph, state, &deferred)? {
                 let mut successor = state.clone();
                 successor.action_stack.pop();
@@ -11486,6 +11505,41 @@ fn stereo_next_token_successors_from_boundary(
     } else {
         Ok(successors)
     }
+}
+
+fn omitted_deferred_marker_before_atom_successor(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+) -> Option<RootedConnectedStereoWalkerStateData> {
+    let mut successor = state.clone();
+    successor.action_stack.pop();
+    if !matches!(
+        successor.action_stack.last(),
+        Some(WalkerAction::EnterAtom { .. })
+    ) {
+        return None;
+    }
+    let role = directional_token_role(successor.prefix.as_ref(), successor.action_stack.last());
+    let mut marker_event_traces = Vec::<MarkerEventTrace>::new();
+    append_rdkit_marker_event_traces_for_edge(
+        runtime,
+        successor.prefix.as_ref(),
+        &mut marker_event_traces,
+        deferred.begin_idx,
+        deferred.end_idx,
+        None,
+        role,
+    );
+    if marker_event_traces.is_empty()
+        || !marker_event_traces
+            .iter()
+            .any(|trace| trace.marker.is_none())
+    {
+        return None;
+    }
+    Arc::make_mut(&mut successor.marker_event_traces).extend(marker_event_traces);
+    Some(successor)
 }
 
 fn successors_by_token_stereo(
@@ -11887,9 +11941,7 @@ fn enumerate_support_from_stereo_state(
     }
     drain_exact_linear_stereo_actions(&mut state);
     if state.action_stack.is_empty() {
-        if is_complete_terminal_stereo_state(graph, &state)
-            && terminal_stereo_state_has_support_boundary_marker_placement(runtime, graph, &state)?
-        {
+        if is_supported_terminal_stereo_state(runtime, graph, &state)? {
             out.insert(state.prefix.to_string());
         }
         return Ok(());
@@ -13173,9 +13225,9 @@ mod tests {
         let counts = shared_carrier_boundary_delta_counts(&runtime, &graph, state);
         assert_eq!(
             SharedCarrierBoundaryDeltaCounts {
-                visited_state_count: 99,
-                full_joined_mismatch_count: 71,
-                partial_joined_mismatch_count: 71,
+                visited_state_count: 124,
+                full_joined_mismatch_count: 87,
+                partial_joined_mismatch_count: 87,
                 terminal_full_joined_mismatch_count: 0,
                 terminal_partial_joined_mismatch_count: 0,
             },
@@ -13247,8 +13299,8 @@ mod tests {
                     .expect("shared-carrier witness successors should build"),
             ));
         }
-        assert_eq!(188, total_marker_trace_count);
-        assert_eq!(188, support_boundary_shadow_count);
+        assert_eq!(222, total_marker_trace_count);
+        assert_eq!(222, support_boundary_shadow_count);
         assert_eq!(
             0,
             support_boundary_shadow_mismatch_count,

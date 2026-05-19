@@ -161,19 +161,10 @@
     {
       "id": "github4582_chembl409450_random_vector_seed1_index0",
       "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 bulk random output order, mirrored with MolToRandomSmilesVect seed 1 index 0",
-      "acceptance_role": "red_support_acceptance",
-      "gap_class": "missing_rdkit_writer_policy",
-      "gap_detail": "Directional ring-closure writer placement is missing this representative RDKit random-vector output.",
-      "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 2,
-      "boundary_layer_classes": [
-        "rdkit_expected_parse_equivalent_missing_from_support",
-        "current_same_skeleton_parse_equivalent_present",
-        "current_same_skeleton_parse_mismatch_present"
-      ],
-      "expected_rdkit_output_parse_equivalent": true,
-      "expected_current_same_skeleton_parse_equivalent_count": 1,
-      "expected_current_same_skeleton_parse_mismatch_count": 1,
+      "acceptance_role": "support_present_family_guard",
+      "gap_class": null,
+      "gap_detail": "Representative RDKit random-vector output now covered by the no-marker-before-atom deferred branch path.",
+      "expected_current_result": "support_present",
       "parse_equivalent_minimal_marker_slots": [
         [[1, "/"], [6, "/"], [12, "/"], [35, "\\"]],
         [[1, "/"], [6, "/"], [13, "\\"], [35, "\\"]],

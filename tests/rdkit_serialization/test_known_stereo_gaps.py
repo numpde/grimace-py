@@ -73,10 +73,6 @@ SMALLEST_GAP_TERMINAL_PREFIX = "C1=CC/C=C2\\C3=C"
 SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE = "\\"
 CHEMBL409450_GAP_CASE_ID = "github4582_chembl409450_random_vector_seed1_index0"
 CHEMBL409450_TARGET_ROOT_IDX = 3
-CHEMBL409450_TARGET_ALIGNMENT_PREFIX = "N1c2c("
-CHEMBL409450_TARGET_ALIGNMENT_OVERRIDE = (
-    "no_marker_before_target_atom edge=(0, 1) prefix=N1c2c("
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,8 +384,8 @@ class KnownStereoGapTests(unittest.TestCase):
             Counter(
                 {
                     "decoder_path_only": 1,
-                    "support_missing": 9,
-                    "support_present": 6,
+                    "support_missing": 8,
+                    "support_present": 7,
                 }
             ),
             status_counts,
@@ -693,7 +689,7 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(2, attempt["graph_marker_equation_accepted_bond_count"])
         self.assertEqual(2, attempt["graph_marker_equation_bond_count"])
 
-    def test_chembl409450_target_guided_replay_records_writer_order_override(
+    def test_chembl409450_promoted_no_marker_path_matches_without_override(
         self,
     ) -> None:
         case = next(
@@ -712,44 +708,10 @@ class KnownStereoGapTests(unittest.TestCase):
             max_steps=5_000,
         )
         [root_result] = diagnostics["root_results"]
-        self.assertEqual("matched_prefix_with_alignment_overrides", root_result["status"])
+        self.assertEqual("matched_prefix", root_result["status"])
         self.assertEqual(case.expected, root_result["prefix"])
-        self.assertEqual(
-            [CHEMBL409450_TARGET_ALIGNMENT_OVERRIDE],
-            root_result["alignment_overrides"],
-        )
-        self.assertEqual(
-            [
-                {
-                    "kind": "no_marker_before_target_atom",
-                    "begin_idx": 0,
-                    "end_idx": 1,
-                    "prefix": CHEMBL409450_TARGET_ALIGNMENT_PREFIX,
-                    "current_action": "deferred_directional_edge",
-                    "role": "branch",
-                    "target_starts_with_atom_text": True,
-                    "deferred_directional_edge": True,
-                    "has_marker_event_provenance": True,
-                    "injected_no_marker_event": True,
-                    "marker_events": [
-                        {
-                            "slot": 6,
-                            "component_idx": 0,
-                            "side_idx": 0,
-                            "endpoint_atom_idx": 1,
-                            "edge_neighbor_idx": 0,
-                            "begin_idx": 0,
-                            "end_idx": 1,
-                            "canonical_edge": (0, 1),
-                            "role": "branch",
-                            "event": "no_marker",
-                            "marker": None,
-                        }
-                    ],
-                }
-            ],
-            root_result["alignment_override_facts"],
-        )
+        self.assertEqual([], root_result["alignment_overrides"])
+        self.assertEqual([], root_result["alignment_override_facts"])
         self.assertEqual([], root_result["failures"])
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:

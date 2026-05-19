@@ -4690,6 +4690,7 @@ fn runtime_token_constraint_facts_to_py(
     Ok(row.unbind())
 }
 
+#[cfg(test)]
 fn resolved_constraint_state_from_walker_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4833,6 +4834,7 @@ fn terminal_stereo_state_has_support_boundary_marker_placement(
     Ok(terminal_stereo_state_support_boundary_summary(runtime, graph, state)?.is_some())
 }
 
+#[cfg(test)]
 fn assert_token_flips_explained_by_constraint_state(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -7481,35 +7483,7 @@ fn validate_stereo_state_shape(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
-    if state.visited.len() != graph.atom_count()
-        || state
-            .pending
-            .iter()
-            .any(|(atom_idx, _rings)| *atom_idx >= graph.atom_count())
-        || state.stereo_component_phases.len() != runtime.isolated_components.len()
-        || state.stereo_component_begin_atoms.len() != runtime.isolated_components.len()
-        || state.committed_component_token_flips.len() != runtime.isolated_components.len()
-        || state.stereo_selected_neighbors.len() != runtime.side_infos.len()
-        || state.stereo_selected_orientations.len() != runtime.side_infos.len()
-        || state.stereo_first_emitted_candidates.len() != runtime.side_infos.len()
-        || state
-            .deferred_carrier_choice_constraints
-            .iter()
-            .any(|constraint| {
-                constraint.side_idx >= runtime.side_infos.len()
-                    || !constraint
-                        .available_neighbors
-                        .contains(&constraint.deferred_neighbor_idx)
-            })
-        || state
-            .writer_marker_slot_quotient_acceptance_facts
-            .iter()
-            .any(|fact| fact.component_idx >= runtime.isolated_components.len())
-    {
-        return Err(PyValueError::new_err(
-            "walker state is not compatible with this PreparedSmilesGraph",
-        ));
-    }
+    validate_stereo_state_shape_fast(runtime, graph, state)?;
     #[cfg(debug_assertions)]
     validate_stereo_state_against_constraint_model(runtime, state)?;
     Ok(())
@@ -7875,6 +7849,7 @@ fn component_token_flip_value_from_model(value: StereoTokenFlip) -> i8 {
     }
 }
 
+#[cfg(test)]
 fn inferred_component_token_flip(
     runtime: &StereoWalkerRuntimeData,
     state: &RootedConnectedStereoWalkerStateData,
@@ -8538,11 +8513,109 @@ fn token_observation_facts_to_py(
         .collect()
 }
 
-fn assert_component_token_flip_boundary_invariants(
+fn validate_stereo_state_shape_fast(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<()> {
+    if state.visited.len() != graph.atom_count()
+        || state
+            .pending
+            .iter()
+            .any(|(atom_idx, _rings)| *atom_idx >= graph.atom_count())
+        || state.stereo_component_phases.len() != runtime.isolated_components.len()
+        || state.stereo_component_begin_atoms.len() != runtime.isolated_components.len()
+        || state.committed_component_token_flips.len() != runtime.isolated_components.len()
+        || state.stereo_token_basis_facts.len() != runtime.isolated_components.len()
+        || state.stereo_selected_neighbors.len() != runtime.side_infos.len()
+        || state.stereo_selected_orientations.len() != runtime.side_infos.len()
+        || state.stereo_first_emitted_candidates.len() != runtime.side_infos.len()
+        || state
+            .deferred_carrier_choice_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.side_idx >= runtime.side_infos.len()
+                    || !constraint
+                        .available_neighbors
+                        .contains(&constraint.deferred_neighbor_idx)
+            })
+        || state
+            .writer_marker_slot_quotient_acceptance_facts
+            .iter()
+            .any(|fact| fact.component_idx >= runtime.isolated_components.len())
+    {
+        return Err(PyValueError::new_err(
+            "walker state is not compatible with this PreparedSmilesGraph",
+        ));
+    }
+    Ok(())
+}
+
+fn assert_committed_component_token_flips_match_boundary_observations(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<()> {
+    // This is a production support filter, not a full diagnostic proof. The
+    // slow test-only invariant below keeps the broader proof available.
+    let mut observed_selected_neighbors = None;
+    let mut resolved_selected_neighbors = None;
+    for (component_idx, committed) in state.committed_component_token_flips.iter().enumerate() {
+        let Some(committed) = committed.map(component_token_flip_value_from_model) else {
+            continue;
+        };
+        if observed_selected_neighbors.is_none() {
+            observed_selected_neighbors = Some(
+                observed_selected_neighbors_for_support_state_token_inference(
+                    runtime, graph, state,
+                )?,
+            );
+        }
+        let observed_selected_neighbors = observed_selected_neighbors
+            .as_ref()
+            .expect("observed selected neighbors were initialized");
+        let inferred = component_token_inference_inputs(
+            runtime,
+            graph,
+            state,
+            observed_selected_neighbors,
+            component_idx,
+        )?
+        .inferred;
+        if let Some(inferred) = inferred {
+            if committed == inferred {
+                continue;
+            }
+            if resolved_selected_neighbors.is_none() {
+                resolved_selected_neighbors = Some(
+                    partial_joined_support_boundary_selected_neighbors(runtime, graph, state)?,
+                );
+            }
+            let resolved_selected_neighbors = resolved_selected_neighbors
+                .as_ref()
+                .expect("resolved selected neighbors were initialized");
+            let component_selection_complete = runtime.side_ids_by_component[component_idx]
+                .iter()
+                .all(|&side_idx| resolved_selected_neighbors[side_idx] >= 0);
+            if !runtime.isolated_components[component_idx] && !component_selection_complete {
+                continue;
+            }
+            return Err(PyValueError::new_err(
+                "Stereo component token flip was committed inconsistently",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn validate_component_token_flip_boundary_invariants_slow(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+) -> PyResult<()> {
+    validate_stereo_state_shape_fast(runtime, graph, state)?;
     assert_token_flips_explained_by_constraint_state(runtime, graph, state)?;
     let resolved_selected_neighbors =
         partial_joined_support_boundary_selected_neighbors(runtime, graph, state)?;
@@ -10147,7 +10220,9 @@ fn commit_deferred_token_choice(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
         }
-        return assert_component_token_flip_boundary_invariants(runtime, graph, state);
+        return assert_committed_component_token_flips_match_boundary_observations(
+            runtime, graph, state,
+        );
     }
 
     if deferred.component_tokens.len() == 1 {
@@ -10170,7 +10245,9 @@ fn commit_deferred_token_choice(
                     "Token {chosen_token:?} is not available for deferred stereo token"
                 )));
             }
-            return assert_component_token_flip_boundary_invariants(runtime, graph, state);
+            return assert_committed_component_token_flips_match_boundary_observations(
+                runtime, graph, state,
+            );
         };
         let boundary_facts = support_boundary_facts_from_walker_state(
             runtime,
@@ -10236,7 +10313,9 @@ fn commit_deferred_token_choice(
                 },
             )?;
         }
-        return assert_component_token_flip_boundary_invariants(runtime, graph, state);
+        return assert_committed_component_token_flips_match_boundary_observations(
+            runtime, graph, state,
+        );
     }
 
     let boundary_facts = support_boundary_facts_from_walker_state(
@@ -10271,7 +10350,7 @@ fn commit_deferred_token_choice(
             },
         )?;
     }
-    assert_component_token_flip_boundary_invariants(runtime, graph, state)
+    assert_committed_component_token_flips_match_boundary_observations(runtime, graph, state)
 }
 
 fn enter_atom_successors_by_token(
@@ -10322,7 +10401,9 @@ fn enter_atom_successors_by_token(
                     });
                 }
                 push_literal_token(&mut successor.prefix, &atom_token);
-                assert_component_token_flip_boundary_invariants(runtime, graph, &successor)?;
+                assert_committed_component_token_flips_match_boundary_observations(
+                    runtime, graph, &successor,
+                )?;
                 push_successor_bucket(&mut successors, atom_token, successor);
                 Ok(())
             })();
@@ -10581,7 +10662,7 @@ fn enter_atom_successors_by_token(
                             successor.action_stack.push(action.clone());
                         }
                         push_literal_token(&mut successor.prefix, &atom_token);
-                        assert_component_token_flip_boundary_invariants(
+                        assert_committed_component_token_flips_match_boundary_observations(
                             runtime, graph, &successor,
                         )?;
                         push_successor_bucket(&mut successors, atom_token, successor);
@@ -11204,7 +11285,7 @@ fn process_children_successors_by_token(
             child_idx,
             part_to_action(edge_part),
         );
-        assert_component_token_flip_boundary_invariants(
+        assert_committed_component_token_flips_match_boundary_observations(
             context.runtime,
             context.graph,
             &successor,
@@ -11239,7 +11320,11 @@ fn process_children_successors_by_token(
     base_state.stereo_component_begin_atoms = Arc::new(component_begin_atoms);
     base_state.deferred_carrier_choice_constraints = Arc::new(deferred_carrier_choice_constraints);
     base_state.stereo_token_basis_facts = Arc::new(token_basis_facts);
-    assert_component_token_flip_boundary_invariants(context.runtime, context.graph, &base_state)?;
+    assert_committed_component_token_flips_match_boundary_observations(
+        context.runtime,
+        context.graph,
+        &base_state,
+    )?;
     process_children_terminal_successors(
         context,
         base_state,
@@ -12605,14 +12690,15 @@ mod tests {
         successors_by_token_stereo_raw, support_boundary_facts_from_edge_state,
         support_boundary_facts_from_walker_state, support_state_selected_neighbor_query,
         supported_token_observation_facts_from_constraints,
-        terminal_stereo_state_support_boundary_summary, validate_root_idx,
-        validate_stereo_state_shape, CarrierCommitmentBoundaryQuery, CarrierCommitmentDecision,
-        ComponentBeginAtomFact, ComponentPhaseCommitFact, ComponentTokenConstraintFact,
-        DeferredCarrierChoiceConstraint, DeferredComponentPhaseFact,
-        DeferredDirectionalComponentToken, DeferredDirectionalToken, MarkerEventTrace,
-        RootedConnectedStereoWalkerStateData, StereoCompletionKey, StereoEdgeEmissionContext,
-        StereoEdgeEmissionState, WriterMarkerSlotQuotientAcceptanceFact, FLIPPED_COMPONENT_PHASE,
-        STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
+        terminal_stereo_state_support_boundary_summary,
+        validate_component_token_flip_boundary_invariants_slow, validate_root_idx,
+        validate_stereo_state_shape, validate_stereo_state_shape_fast,
+        CarrierCommitmentBoundaryQuery, CarrierCommitmentDecision, ComponentBeginAtomFact,
+        ComponentPhaseCommitFact, ComponentTokenConstraintFact, DeferredCarrierChoiceConstraint,
+        DeferredComponentPhaseFact, DeferredDirectionalComponentToken, DeferredDirectionalToken,
+        MarkerEventTrace, RootedConnectedStereoWalkerStateData, StereoCompletionKey,
+        StereoEdgeEmissionContext, StereoEdgeEmissionState, WriterMarkerSlotQuotientAcceptanceFact,
+        FLIPPED_COMPONENT_PHASE, STORED_COMPONENT_PHASE, UNKNOWN_COMPONENT_PHASE,
     };
     use crate::bond_stereo_constraints::{
         StereoAssignmentState, StereoConstraintFact, StereoConstraintLayer, StereoConstraintState,
@@ -13775,6 +13861,18 @@ mod tests {
 
         validate_stereo_state_shape(&runtime, &graph, &state)
             .expect_err("invalid selected carrier should fail validation");
+    }
+
+    #[test]
+    fn slow_boundary_invariants_remain_available_for_diagnostics() {
+        let graph = sample_stereo_graph();
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let state = first_terminal_stereo_state(&runtime, &graph, initial_state);
+
+        validate_stereo_state_shape_fast(&runtime, &graph, &state)
+            .expect("fast state-shape validation should accept reachable states");
+        validate_component_token_flip_boundary_invariants_slow(&runtime, &graph, &state)
+            .expect("slow boundary invariants should accept reachable states");
     }
 
     #[test]

@@ -21,6 +21,7 @@ The test suite is organized by intent first, then by feature.
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Known stereo-gap diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_known_stereo_gaps -q`
+- Stereo constraint diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
 - Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
 
 CI runs the exact public invariants and pinned RDKit parity layers as separate
@@ -60,5 +61,8 @@ subset.
   installed RDKit version has no checked-in pinned fixtures.
 - Known gap tests should be runnable through a named diagnostic runner and
   excluded from default discovery until they become passing conformance tests.
+- Large stereo-constraint model witnesses should be marked `test_tier:
+  "diagnostic"` in their version-keyed fixture and run through
+  `tests.run_stereo_constraint_diagnostics`, not default discovery.
 - Shared case selectors and policy overrides belong in `tests/helpers/`, not duplicated across files.
 - Prefer strengthening Rust-native tests before expanding parity breadth.

@@ -337,6 +337,46 @@ class StereoConstraintModelFixtureLoaderTest(unittest.TestCase):
         self.assertEqual(2, cases[0].expected_component_count)
         self.assertEqual(4, cases[0].expected_side_count)
         self.assertEqual((2, 2), cases[0].expected_component_domain_assignment_counts)
+        self.assertEqual("default", cases[0].test_tier)
+
+    def test_stereo_constraint_model_fixture_loads_diagnostic_test_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "diagnostic_case",
+                        test_tier="diagnostic",
+                    )
+                ),
+            )
+
+            cases = load_pinned_stereo_constraint_model_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
+
+        self.assertEqual("diagnostic", cases[0].test_tier)
+
+    def test_stereo_constraint_model_fixture_rejects_bad_test_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _stereo_constraint_model_case(
+                        "bad_test_tier",
+                        test_tier="slow",
+                    )
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "test_tier"):
+                load_pinned_stereo_constraint_model_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
 
     def test_stereo_constraint_model_fixture_rejects_bad_domain_sizes(self) -> None:
         invalid_cases = (

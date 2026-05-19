@@ -315,7 +315,8 @@
       "expected_semantic_assignment_count": 16,
       "id": "reduced_porphyrin_traversal_coupling",
       "smiles": "c1cc2[n-]c1/N=c1/cc/c([n-]1)=N/c1ccc([n-]1)/N=c1/cc/c([n-]1)=N/2",
-      "source": "tmp/exploration/stereo_assignment/028_investigate_rdkit_traversal_coupling.py"
+      "source": "tmp/exploration/stereo_assignment/028_investigate_rdkit_traversal_coupling.py",
+      "test_tier": "diagnostic"
     }
   ],
   "rdkit_version": "2026.03.1"

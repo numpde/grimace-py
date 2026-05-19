@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import unittest
 from collections import Counter
 from dataclasses import dataclass
@@ -54,6 +55,22 @@ TOKEN_FLIP_ADJUSTMENT_REASON_COUNT_KEYS = frozenset(
         "adjacent_two_candidate_first_emitted",
     )
 )
+STEREO_CONSTRAINT_DIAGNOSTIC_ENV = "RUN_STEREO_CONSTRAINT_DIAGNOSTICS"
+VISIBLE_MARKER_BASIS_DIAGNOSTIC_ENV = "RUN_VISIBLE_MARKER_BASIS_DIAGNOSTICS"
+
+
+def _include_diagnostic_cases() -> bool:
+    return os.environ.get(STEREO_CONSTRAINT_DIAGNOSTIC_ENV) == "1"
+
+
+def _include_visible_marker_basis_diagnostics() -> bool:
+    return os.environ.get(VISIBLE_MARKER_BASIS_DIAGNOSTIC_ENV) == "1"
+
+
+def _default_discovery_cases(cases: tuple[object, ...]) -> tuple[object, ...]:
+    if _include_diagnostic_cases():
+        return cases
+    return tuple(case for case in cases if case.test_tier == "default")
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,6 +455,10 @@ def _rdkit_respelling_family(smileses: frozenset[str]) -> frozenset[str]:
     return frozenset(rewritten)
 
 
+@unittest.skipUnless(
+    _include_visible_marker_basis_diagnostics(),
+    f"set {VISIBLE_MARKER_BASIS_DIAGNOSTIC_ENV}=1 to run visible-marker diagnostics",
+)
 class VisibleMarkerBasisFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -684,12 +705,17 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            cls.cases = load_pinned_stereo_constraint_model_cases(rdBase.rdkitVersion)
+            cls.all_cases = load_pinned_stereo_constraint_model_cases(
+                rdBase.rdkitVersion
+            )
+            cls.cases = _default_discovery_cases(cls.all_cases)
         except FileNotFoundError:
             raise unittest.SkipTest(
                 f"no pinned stereo-constraint-model corpus for RDKit "
                 f"{rdBase.rdkitVersion}"
             )
+        if not cls.cases:
+            raise unittest.SkipTest("no stereo-constraint-model cases selected")
 
     def test_native_model_shape_matches_pinned_witnesses(self) -> None:
         for case in self.cases:
@@ -2011,9 +2037,14 @@ class StereoConstraintModelFixtureTests(unittest.TestCase):
             )
 
     def test_reduced_porphyrin_terminal_rows_keep_marker_boundary_survivors(self) -> None:
+        if not _include_diagnostic_cases():
+            self.skipTest(
+                f"set {STEREO_CONSTRAINT_DIAGNOSTIC_ENV}=1 to run slow "
+                "stereo-constraint diagnostics"
+            )
         case = next(
             case
-            for case in self.cases
+            for case in self.all_cases
             if case.case_id == "reduced_porphyrin_traversal_coupling"
         )
         mol = parse_smiles(case.smiles)

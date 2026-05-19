@@ -15,6 +15,8 @@ from tests.helpers.pinned_rdkit_fixtures import (
     required_string,
 )
 
+ALLOWED_TEST_TIERS = frozenset(("default", "diagnostic"))
+
 
 @dataclass(frozen=True, slots=True)
 class PinnedStereoMarkerSequenceTransition:
@@ -49,6 +51,7 @@ class PinnedSupportStateSelectedNeighborDiagnostics:
 class PinnedStereoConstraintModelCase:
     case_id: str
     source: str
+    test_tier: str
     smiles: str
     expected_component_side_domain_sizes: tuple[tuple[int, ...], ...]
     expected_semantic_assignment_count: int
@@ -385,6 +388,21 @@ def _optional_support_state_selected_neighbor_diagnostics(
     )
 
 
+def _test_tier(
+    raw_case: dict[str, object],
+    *,
+    fixture_path: Path,
+    case_id: str,
+) -> str:
+    value = raw_case.get("test_tier", "default")
+    if value not in ALLOWED_TEST_TIERS:
+        raise ValueError(
+            f"fixture {fixture_path} case {case_id!r} must define test_tier as "
+            f"one of {sorted(ALLOWED_TEST_TIERS)!r}"
+        )
+    return str(value)
+
+
 def load_pinned_stereo_constraint_model_cases(
     rdkit_version: str,
     *,
@@ -592,6 +610,11 @@ def load_pinned_stereo_constraint_model_cases(
             PinnedStereoConstraintModelCase(
                 case_id=fixture_case.case_id,
                 source=fixture_case.source,
+                test_tier=_test_tier(
+                    raw_case,
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                ),
                 smiles=required_string(
                     raw_case,
                     field_name="smiles",

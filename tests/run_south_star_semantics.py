@@ -5,6 +5,7 @@ import unittest
 
 SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_harness",
+    "tests.south_star.test_semantic_witnesses",
 )
 
 

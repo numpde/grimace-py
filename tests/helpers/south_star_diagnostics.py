@@ -3,23 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tests.helpers.south_star_annotation_policy import (
-    DIRECTIONAL_MARKERS,
     AnnotationPolicy,
     AnnotationPolicyDecision,
     EmittedEdgeBasis,
     MaximalEligibleCarrierAnnotationPolicy,
-    SemanticCarrierOpportunity,
-    SurvivingSemanticAssignment,
-    normalized_edge,
+)
+from tests.helpers.south_star_semantic_facts import (
+    SouthStarSemanticFacts,
+    prototype_surviving_assignments_from_case,
+    south_star_semantic_facts_from_case,
 )
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarSemanticFacts:
-    case_id: str
-    source_smiles: str
-    carrier_opportunities: tuple[SemanticCarrierOpportunity, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,26 +28,13 @@ def south_star_semantic_diagnostic(
     annotation_policy: AnnotationPolicy | None = None,
 ) -> SouthStarSemanticDiagnostic:
     policy = annotation_policy or MaximalEligibleCarrierAnnotationPolicy()
-    semantic_facts = SouthStarSemanticFacts(
-        case_id=case.case_id,
-        source_smiles=case.source_smiles,
-        carrier_opportunities=tuple(
-            SemanticCarrierOpportunity(edge=edge)
-            for edge in case.eligible_carrier_edges
-        ),
-    )
-    survivor = SurvivingSemanticAssignment(
-        assignment_id=f"{case.case_id}:fixture-survivor",
-        marker_options_by_edge={
-            normalized_edge(edge): DIRECTIONAL_MARKERS
-            for edge in case.eligible_carrier_edges
-        },
-    )
+    semantic_facts = south_star_semantic_facts_from_case(case)
+    surviving_assignments = prototype_surviving_assignments_from_case(case)
     decisions = tuple(
         policy.decision(
             carrier_opportunities=semantic_facts.carrier_opportunities,
             emitted_edge=EmittedEdgeBasis(edge=edge),
-            surviving_assignments=(survivor,),
+            surviving_assignments=surviving_assignments,
         )
         for edge in case.eligible_carrier_edges
     )

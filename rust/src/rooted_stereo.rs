@@ -7009,6 +7009,7 @@ struct TargetGuidedAlignmentOverrideFact {
     begin_idx: isize,
     end_idx: isize,
     prefix: Arc<str>,
+    marker_event_traces: Vec<MarkerEventTrace>,
 }
 
 impl TargetGuidedAlignmentOverrideFact {
@@ -7051,9 +7052,49 @@ fn target_guided_alignment_override_facts_to_py(
         row.set_item("begin_idx", fact.begin_idx)?;
         row.set_item("end_idx", fact.end_idx)?;
         row.set_item("prefix", fact.prefix.as_ref())?;
+        row.set_item(
+            "marker_events",
+            target_guided_marker_event_traces_to_py(py, &fact.marker_event_traces)?,
+        )?;
         out.append(row)?;
     }
     Ok(out.unbind())
+}
+
+fn target_guided_marker_event_traces_to_py(
+    py: Python<'_>,
+    traces: &[MarkerEventTrace],
+) -> PyResult<Py<PyList>> {
+    let rows = PyList::empty(py);
+    for trace in traces {
+        let row = PyDict::new(py);
+        row.set_item("slot", trace.slot)?;
+        row.set_item("component_idx", trace.component_idx)?;
+        row.set_item("side_idx", trace.side_idx)?;
+        row.set_item("endpoint_atom_idx", trace.endpoint_atom_idx)?;
+        row.set_item("edge_neighbor_idx", trace.edge_neighbor_idx)?;
+        row.set_item("begin_idx", trace.edge_begin_idx)?;
+        row.set_item("end_idx", trace.edge_end_idx)?;
+        if trace.edge_begin_idx >= 0 && trace.edge_end_idx >= 0 {
+            row.set_item(
+                "canonical_edge",
+                canonical_edge(trace.edge_begin_idx as usize, trace.edge_end_idx as usize),
+            )?;
+        }
+        row.set_item("role", stereo_traversal_role_name(trace.role))?;
+        match trace.marker {
+            Some(marker) => {
+                row.set_item("event", "marker_placed")?;
+                row.set_item("marker", marker.to_string())?;
+            }
+            None => {
+                row.set_item("event", "no_marker")?;
+                row.set_item("marker", Option::<&str>::None)?;
+            }
+        }
+        rows.append(row)?;
+    }
+    Ok(rows.unbind())
 }
 
 #[derive(Clone)]
@@ -7088,14 +7129,21 @@ fn target_guided_no_marker_before_atom_successors(
         bypass_state.prefix.as_ref(),
         bypass_state.action_stack.last(),
     );
-    record_rdkit_marker_event_traces_for_edge(
+    let mut override_marker_events = Vec::<MarkerEventTrace>::new();
+    append_rdkit_marker_event_traces_for_edge(
         runtime,
-        &mut bypass_state,
+        bypass_state.prefix.as_ref(),
+        &mut override_marker_events,
         deferred.begin_idx,
         deferred.end_idx,
         None,
         role,
     );
+    if override_marker_events.is_empty() {
+        return Ok(Vec::new());
+    }
+    Arc::make_mut(&mut bypass_state.marker_event_traces)
+        .extend(override_marker_events.iter().cloned());
 
     let mut out = Vec::<TargetGuidedReplayState>::new();
     for successor_group in
@@ -7110,6 +7158,7 @@ fn target_guided_no_marker_before_atom_successors(
                     begin_idx: deferred.begin_idx,
                     end_idx: deferred.end_idx,
                     prefix: state.prefix.clone(),
+                    marker_event_traces: override_marker_events.clone(),
                 });
                 out.push(TargetGuidedReplayState {
                     walker: successor,

@@ -386,6 +386,13 @@ This is still not a support claim.  The diagnostic reports
 `matched_prefix_with_alignment_overrides`, not `matched_prefix`, so the result
 means: the target path is explainable once this named writer-order override is
 allowed.  The override is represented as data (`kind`, `begin_idx`, `end_idx`,
-and `prefix`) rather than as an opaque string internally.  The next runtime
-question is whether this override can be promoted from a target-guided
-diagnostic fact into a principled writer traversal fact.
+`prefix`, and the concrete `marker_events` injected by the bridge) rather than
+as an opaque string internally.  The bridge is also constrained to edges that
+actually produce at least one RDKit writer marker-event row; otherwise it does
+not fire.  For the CHEMBL witness, the injected event is:
+
+- component `0`, side `0`, edge `(0, 1)`, slot `6`, role `branch`,
+  event `no_marker`.
+
+The next runtime question is whether this override can be promoted from a
+target-guided diagnostic fact into a principled writer traversal fact.

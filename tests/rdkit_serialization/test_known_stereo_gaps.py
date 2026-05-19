@@ -725,6 +725,21 @@ class KnownStereoGapTests(unittest.TestCase):
                     "begin_idx": 0,
                     "end_idx": 1,
                     "prefix": CHEMBL409450_TARGET_ALIGNMENT_PREFIX,
+                    "marker_events": [
+                        {
+                            "slot": 6,
+                            "component_idx": 0,
+                            "side_idx": 0,
+                            "endpoint_atom_idx": 1,
+                            "edge_neighbor_idx": 0,
+                            "begin_idx": 0,
+                            "end_idx": 1,
+                            "canonical_edge": (0, 1),
+                            "role": "branch",
+                            "event": "no_marker",
+                            "marker": None,
+                        }
+                    ],
                 }
             ],
             root_result["alignment_override_facts"],

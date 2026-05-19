@@ -63,6 +63,69 @@
           "reason": "loses_double_bond_stereo"
         }
       ]
+    },
+    {
+      "id": "branched_substituted_alkene",
+      "source_smiles": "Cl/C=C(\\F)/Br",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [2, 4]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 3
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "not_checked",
+        "notes": "South Star witness for multiple eligible carriers on one side of a double bond."
+      },
+      "positive_semantic_smiles": [
+        "Cl/C=C(\\F)/Br",
+        "Cl\\C=C(/F)\\Br"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "F/C(Br)=C/Cl",
+          "reason": "inverts_double_bond_stereo"
+        },
+        {
+          "smiles": "ClC=C(F)Br",
+          "reason": "loses_double_bond_stereo"
+        }
+      ]
+    },
+    {
+      "id": "hetero_imine_carrier",
+      "source_smiles": "C/C=N/O",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 2
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "not_checked",
+        "notes": "South Star witness for directional markers around a hetero double bond."
+      },
+      "positive_semantic_smiles": [
+        "C/C=N/O",
+        "C\\C=N\\O"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "C/C=N\\O",
+          "reason": "inverts_imine_stereo"
+        },
+        {
+          "smiles": "CC=NO",
+          "reason": "loses_imine_stereo"
+        }
+      ]
     }
   ]
 }

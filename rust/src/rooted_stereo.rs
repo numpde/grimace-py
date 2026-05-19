@@ -6924,6 +6924,178 @@ pub fn internal_stereo_deferred_marker_basis_diagnostics(
     Ok(result.unbind())
 }
 
+fn collect_target_guided_marker_basis_failure_rows(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    remaining_target: &str,
+    supported_tokens: &[String],
+) -> PyResult<Py<PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("prefix", state.prefix.as_ref())?;
+    row.set_item("target_remaining", remaining_target)?;
+    row.set_item("next_supported_tokens", supported_tokens)?;
+    row.set_item("action_stack_depth", state.action_stack.len())?;
+
+    let deferred_rows = PyList::empty(py);
+    if let Some(WalkerAction::EmitDeferred(deferred)) = state.action_stack.last().cloned() {
+        for deferred_row in
+            deferred_marker_basis_candidate_rows_to_py(py, runtime, graph, state, &deferred)?
+        {
+            deferred_rows.append(deferred_row)?;
+        }
+    }
+    row.set_item("deferred_marker_basis_rows", deferred_rows)?;
+    Ok(row.unbind())
+}
+
+fn target_guided_marker_basis_diagnostics_for_root(
+    py: Python<'_>,
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    target: &str,
+    max_steps: usize,
+) -> PyResult<Py<PyDict>> {
+    let mut states = vec![initial_stereo_state_for_root(
+        runtime,
+        graph,
+        runtime.root_idx,
+    )];
+    let mut visited_state_count = 0usize;
+    let failures = PyList::empty(py);
+
+    for step_count in 0..max_steps {
+        if states.is_empty() {
+            let result = PyDict::new(py);
+            result.set_item("root_idx", runtime.root_idx)?;
+            result.set_item("status", "exhausted")?;
+            result.set_item("step_count", step_count)?;
+            result.set_item("visited_state_count", visited_state_count)?;
+            result.set_item("failures", failures)?;
+            return Ok(result.unbind());
+        }
+
+        let mut next_states = Vec::new();
+        for mut state in states {
+            visited_state_count += 1;
+            drain_exact_linear_stereo_actions(&mut state);
+            let prefix = state.prefix.as_ref();
+            if !target.starts_with(prefix) {
+                continue;
+            }
+            if prefix == target {
+                let result = PyDict::new(py);
+                result.set_item("root_idx", runtime.root_idx)?;
+                result.set_item("status", "matched_prefix")?;
+                result.set_item("step_count", step_count)?;
+                result.set_item("visited_state_count", visited_state_count)?;
+                result.set_item("prefix", prefix)?;
+                result.set_item("failures", failures)?;
+                return Ok(result.unbind());
+            }
+            if state.action_stack.is_empty() {
+                failures.append(collect_target_guided_marker_basis_failure_rows(
+                    py,
+                    runtime,
+                    graph,
+                    &state,
+                    &target[prefix.len()..],
+                    &[],
+                )?)?;
+                continue;
+            }
+
+            let successors_by_token = successors_by_token_stereo_raw(runtime, graph, &state)?;
+            let supported_tokens = successors_by_token.keys().cloned().collect::<Vec<_>>();
+            let mut matched_successor = false;
+            for (_token, successors) in successors_by_token {
+                for mut successor in successors {
+                    drain_exact_linear_stereo_actions(&mut successor);
+                    if target.starts_with(successor.prefix.as_ref()) {
+                        matched_successor = true;
+                        next_states.push(successor);
+                    }
+                }
+            }
+            if !matched_successor {
+                failures.append(collect_target_guided_marker_basis_failure_rows(
+                    py,
+                    runtime,
+                    graph,
+                    &state,
+                    &target[prefix.len()..],
+                    &supported_tokens,
+                )?)?;
+            }
+        }
+
+        if failures.len() > 0 {
+            let result = PyDict::new(py);
+            result.set_item("root_idx", runtime.root_idx)?;
+            result.set_item("status", "failed")?;
+            result.set_item("step_count", step_count)?;
+            result.set_item("visited_state_count", visited_state_count)?;
+            result.set_item("failures", failures)?;
+            return Ok(result.unbind());
+        }
+
+        states = next_states;
+    }
+
+    let result = PyDict::new(py);
+    result.set_item("root_idx", runtime.root_idx)?;
+    result.set_item("status", "truncated")?;
+    result.set_item("step_count", max_steps)?;
+    result.set_item("visited_state_count", visited_state_count)?;
+    result.set_item("failures", failures)?;
+    Ok(result.unbind())
+}
+
+#[pyfunction(
+    name = "_stereo_target_guided_marker_basis_diagnostics",
+    signature = (graph, target, root_idx=-1, max_steps=100000)
+)]
+pub fn internal_stereo_target_guided_marker_basis_diagnostics(
+    py: Python<'_>,
+    graph: &Bound<'_, PyAny>,
+    target: &str,
+    root_idx: isize,
+    max_steps: usize,
+) -> PyResult<Py<PyDict>> {
+    if target.is_empty() {
+        return Err(PyValueError::new_err("target must be non-empty"));
+    }
+    if max_steps == 0 {
+        return Err(PyValueError::new_err("max_steps must be positive"));
+    }
+
+    let graph = PreparedSmilesGraphData::from_any(graph)?;
+    let root_indices = if root_idx == -1 {
+        (0..graph.atom_count()).collect::<Vec<_>>()
+    } else {
+        vec![validate_root_idx(&graph, root_idx)?]
+    };
+
+    let root_results = PyList::empty(py);
+    for root_idx in root_indices {
+        let runtime = build_walker_runtime(&graph, root_idx)?;
+        if runtime.side_infos.is_empty() {
+            return Err(PyValueError::new_err(
+                "stereo target-guided diagnostics require bond-stereo side metadata",
+            ));
+        }
+        root_results.append(target_guided_marker_basis_diagnostics_for_root(
+            py, &runtime, &graph, target, max_steps,
+        )?)?;
+    }
+
+    let result = PyDict::new(py);
+    result.set_item("target", target)?;
+    result.set_item("root_results", root_results)?;
+    Ok(result.unbind())
+}
+
 fn validate_stereo_state_shape(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,

@@ -302,3 +302,23 @@ completed string, and it does not use RDKit as an oracle during runtime.  It is
 only a reviewer/debug tool for a pinned target string.  Once this exists,
 `github4582_chembl409450_random_vector_seed1_index0` can be evaluated as one
 complete quotient path instead of as separate component-frontier witnesses.
+
+## Target-Guided Replay Skeleton Result
+
+The first replay skeleton follows walker states whose drained prefixes remain a
+prefix of the target string and reports the first unsupported frontier.  It is
+useful, but not yet sufficient for the CHEMBL quotient path.
+
+The blocker is below the stereo quotient layer: walker support choices are
+decoder choice tokens, while the target is writer text.  In SMILES, a bond
+literal may appear before the atom token that the decoder exposes as the next
+choice.  For example, on the github3967 target, replay reaches prefix `C1` and
+the next supported choice is atom token `C`, while the target text remaining is
+`=CC/...`.  The writer text and decoder choice stream are both online, but they
+are not the same token stream.
+
+So the next replay slice must align target writer text against successor
+transitions, not against raw choice-token strings.  It should ask: "does this
+successor transition, after its deterministic literal emissions, consume a
+prefix of the target writer text?"  Only after that alignment exists should the
+target-guided diagnostic be used to evaluate a complete missing CHEMBL output.

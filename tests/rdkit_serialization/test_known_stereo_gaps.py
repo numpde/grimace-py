@@ -638,6 +638,32 @@ class KnownStereoGapTests(unittest.TestCase):
             attempt["graph_marker_equation_bonds"],
         )
 
+    def test_target_guided_replay_pins_choice_text_alignment_boundary(self) -> None:
+        case = self._smallest_gap_case()
+        mol = self._mol_from_case(case)
+        prepared = _runtime.prepare_smiles_graph(
+            mol,
+            flags=SUPPORTED_STEREO_DIAGNOSTIC_FLAGS,
+        )
+        diagnostics = _core._stereo_target_guided_marker_basis_diagnostics(
+            prepared,
+            case.expected,
+            root_idx=SMALLEST_GAP_ROOT_IDX,
+            max_steps=1_000,
+        )
+        [root_result] = diagnostics["root_results"]
+        self.assertEqual("failed", root_result["status"])
+        self.assertEqual(1, len(root_result["failures"]))
+
+        failure = root_result["failures"][0]
+        self.assertEqual("C1", failure["prefix"])
+        self.assertEqual(
+            "=CC/C=C2\\C3=C\\CC=CC=CC3C2C=C1",
+            failure["target_remaining"],
+        )
+        self.assertEqual(["C"], failure["next_supported_tokens"])
+        self.assertEqual([], failure["deferred_marker_basis_rows"])
+
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:
             writer_case = self.writer_cases_by_id[case.writer_membership_case_id]

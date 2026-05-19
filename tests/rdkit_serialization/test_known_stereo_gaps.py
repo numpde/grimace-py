@@ -658,6 +658,35 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(case.expected, root_result["prefix"])
         self.assertEqual([], root_result["failures"])
 
+    def test_smallest_gap_quotient_support_remains_bounded(self) -> None:
+        case = self._smallest_gap_case()
+        mol = self._mol_from_case(case)
+        support = grimace_support(
+            mol,
+            rooted_at_atom=case.rooted_at_atom,
+            isomeric_smiles=case.isomeric_smiles,
+        )
+        self.assertIn(case.expected, support)
+        self.assertEqual(304, len(support))
+
+        expected_skeleton = direction_erased_skeleton(case.expected)
+        same_skeleton_support = tuple(
+            sorted(
+                smiles
+                for smiles in support
+                if direction_erased_skeleton(smiles) == expected_skeleton
+            )
+        )
+        self.assertEqual(
+            (
+                "C1=CC/C=C2/C3=C/CC=CC=CC3C2C=C1",
+                "C1=CC/C=C2/C3=C\\CC=CC=CC3C2C=C1",
+                "C1=CC/C=C2\\C3=C/CC=CC=CC3C2C=C1",
+                "C1=CC/C=C2\\C3=C\\CC=CC=CC3C2C=C1",
+            ),
+            same_skeleton_support,
+        )
+
     def test_chembl409450_promoted_no_marker_path_matches_without_override(
         self,
     ) -> None:

@@ -13405,6 +13405,19 @@ mod tests {
             support.contains(&"\\".to_owned()),
             "writer quotient should expose the RDKit target marker"
         );
+        assert!(
+            support.contains(&"/".to_owned()),
+            "normal row support should remain available beside the quotient"
+        );
+
+        let normal_state = advance_stereo_token_state(&runtime, &graph, &state, "/")
+            .expect("normal row-supported token should advance");
+        assert!(
+            normal_state
+                .writer_marker_slot_quotient_acceptance_facts
+                .is_empty(),
+            "row-supported token must not create a quotient fact"
+        );
 
         let state = advance_stereo_token_state(&runtime, &graph, &state, "\\")
             .expect("writer quotient token should advance");

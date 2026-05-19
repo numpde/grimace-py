@@ -7009,6 +7009,12 @@ struct TargetGuidedAlignmentOverrideFact {
     begin_idx: isize,
     end_idx: isize,
     prefix: Arc<str>,
+    current_action: &'static str,
+    role: StereoTraversalRole,
+    target_starts_with_atom_text: bool,
+    deferred_directional_edge: bool,
+    has_marker_event_provenance: bool,
+    injected_no_marker_event: bool,
     marker_event_traces: Vec<MarkerEventTrace>,
 }
 
@@ -7052,6 +7058,18 @@ fn target_guided_alignment_override_facts_to_py(
         row.set_item("begin_idx", fact.begin_idx)?;
         row.set_item("end_idx", fact.end_idx)?;
         row.set_item("prefix", fact.prefix.as_ref())?;
+        row.set_item("current_action", fact.current_action)?;
+        row.set_item("role", stereo_traversal_role_name(fact.role))?;
+        row.set_item(
+            "target_starts_with_atom_text",
+            fact.target_starts_with_atom_text,
+        )?;
+        row.set_item("deferred_directional_edge", fact.deferred_directional_edge)?;
+        row.set_item(
+            "has_marker_event_provenance",
+            fact.has_marker_event_provenance,
+        )?;
+        row.set_item("injected_no_marker_event", fact.injected_no_marker_event)?;
         row.set_item(
             "marker_events",
             target_guided_marker_event_traces_to_py(py, &fact.marker_event_traces)?,
@@ -7103,24 +7121,47 @@ struct TargetGuidedReplayState {
     alignment_overrides: Vec<TargetGuidedAlignmentOverrideFact>,
 }
 
-fn target_guided_no_marker_before_atom_successors(
+#[derive(Clone)]
+struct TargetGuidedNoMarkerBeforeAtomPredicate {
+    begin_idx: isize,
+    end_idx: isize,
+    role: StereoTraversalRole,
+    injected_no_marker_event: bool,
+    marker_event_traces: Vec<MarkerEventTrace>,
+}
+
+impl TargetGuidedNoMarkerBeforeAtomPredicate {
+    fn to_alignment_override_fact(&self, prefix: Arc<str>) -> TargetGuidedAlignmentOverrideFact {
+        TargetGuidedAlignmentOverrideFact {
+            kind: TargetGuidedAlignmentOverrideKind::NoMarkerBeforeTargetAtom,
+            begin_idx: self.begin_idx,
+            end_idx: self.end_idx,
+            prefix,
+            current_action: "deferred_directional_edge",
+            role: self.role,
+            target_starts_with_atom_text: true,
+            deferred_directional_edge: true,
+            has_marker_event_provenance: true,
+            injected_no_marker_event: self.injected_no_marker_event,
+            marker_event_traces: self.marker_event_traces.clone(),
+        }
+    }
+}
+
+fn target_guided_no_marker_before_atom_predicate(
     runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
     target: &str,
-    alignment_overrides: &[TargetGuidedAlignmentOverrideFact],
-) -> PyResult<Vec<TargetGuidedReplayState>> {
-    let Some(remaining_target) = target.strip_prefix(state.prefix.as_ref()) else {
-        return Ok(Vec::new());
-    };
+) -> Option<TargetGuidedNoMarkerBeforeAtomPredicate> {
+    let remaining_target = target.strip_prefix(state.prefix.as_ref())?;
     if !starts_with_atom_text(remaining_target) {
-        return Ok(Vec::new());
+        return None;
     }
-    let Some(WalkerAction::EmitDeferred(deferred)) = state.action_stack.last() else {
-        return Ok(Vec::new());
+    let WalkerAction::EmitDeferred(deferred) = state.action_stack.last()? else {
+        return None;
     };
     if deferred.begin_idx < 0 || deferred.end_idx < 0 {
-        return Ok(Vec::new());
+        return None;
     }
 
     let mut bypass_state = state.clone();
@@ -7129,21 +7170,51 @@ fn target_guided_no_marker_before_atom_successors(
         bypass_state.prefix.as_ref(),
         bypass_state.action_stack.last(),
     );
-    let mut override_marker_events = Vec::<MarkerEventTrace>::new();
+    let mut marker_event_traces = Vec::<MarkerEventTrace>::new();
     append_rdkit_marker_event_traces_for_edge(
         runtime,
         bypass_state.prefix.as_ref(),
-        &mut override_marker_events,
+        &mut marker_event_traces,
         deferred.begin_idx,
         deferred.end_idx,
         None,
         role,
     );
-    if override_marker_events.is_empty() {
-        return Ok(Vec::new());
+    if marker_event_traces.is_empty() {
+        return None;
     }
+    let injected_no_marker_event = marker_event_traces
+        .iter()
+        .any(|trace| trace.marker.is_none());
+    if !injected_no_marker_event {
+        return None;
+    }
+
+    Some(TargetGuidedNoMarkerBeforeAtomPredicate {
+        begin_idx: deferred.begin_idx,
+        end_idx: deferred.end_idx,
+        role,
+        injected_no_marker_event,
+        marker_event_traces,
+    })
+}
+
+fn target_guided_no_marker_before_atom_successors(
+    runtime: &StereoWalkerRuntimeData,
+    graph: &PreparedSmilesGraphData,
+    state: &RootedConnectedStereoWalkerStateData,
+    target: &str,
+    alignment_overrides: &[TargetGuidedAlignmentOverrideFact],
+) -> PyResult<Vec<TargetGuidedReplayState>> {
+    let Some(predicate) = target_guided_no_marker_before_atom_predicate(runtime, state, target)
+    else {
+        return Ok(Vec::new());
+    };
+
+    let mut bypass_state = state.clone();
+    bypass_state.action_stack.pop();
     Arc::make_mut(&mut bypass_state.marker_event_traces)
-        .extend(override_marker_events.iter().cloned());
+        .extend(predicate.marker_event_traces.iter().cloned());
 
     let mut out = Vec::<TargetGuidedReplayState>::new();
     for successor_group in
@@ -7153,13 +7224,7 @@ fn target_guided_no_marker_before_atom_successors(
             drain_exact_linear_stereo_actions(&mut successor);
             if target.starts_with(successor.prefix.as_ref()) {
                 let mut overrides = alignment_overrides.to_vec();
-                overrides.push(TargetGuidedAlignmentOverrideFact {
-                    kind: TargetGuidedAlignmentOverrideKind::NoMarkerBeforeTargetAtom,
-                    begin_idx: deferred.begin_idx,
-                    end_idx: deferred.end_idx,
-                    prefix: state.prefix.clone(),
-                    marker_event_traces: override_marker_events.clone(),
-                });
+                overrides.push(predicate.to_alignment_override_fact(state.prefix.clone()));
                 out.push(TargetGuidedReplayState {
                     walker: successor,
                     alignment_overrides: overrides,

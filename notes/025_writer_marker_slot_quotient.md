@@ -373,12 +373,12 @@ wants to emit the branch atom `C` before the directional marker that Grimace's
 current walker exposes as the next deferred edge token.  This is not the same
 boundary as the github3967 terminal marker quotient.
 
-The replay now has a typed, support-neutral bridge for that exact shape: if the
-target writer text wants atom text and the current action is a deferred
-directional marker, the diagnostic may record a `no_marker` event for that
-edge, consume the atom through the normal successor boundary, and carry a
-structured `alignment_override_facts` entry.  For root `3`, that reaches the
-full CHEMBL target with:
+The replay now has a named, support-neutral predicate for that exact shape:
+`no_marker_before_target_atom`.  It fires only when the target writer text wants
+atom text, the current walker action is a concrete deferred directional edge,
+that edge has RDKit marker-event provenance, and the bridge injects an explicit
+`no_marker` event before consuming the atom through the normal successor
+boundary.  For root `3`, that reaches the full CHEMBL target with:
 
 `no_marker_before_target_atom edge=(0, 1) prefix=N1c2c(`
 
@@ -386,10 +386,11 @@ This is still not a support claim.  The diagnostic reports
 `matched_prefix_with_alignment_overrides`, not `matched_prefix`, so the result
 means: the target path is explainable once this named writer-order override is
 allowed.  The override is represented as data (`kind`, `begin_idx`, `end_idx`,
-`prefix`, and the concrete `marker_events` injected by the bridge) rather than
-as an opaque string internally.  The bridge is also constrained to edges that
-actually produce at least one RDKit writer marker-event row; otherwise it does
-not fire.  For the CHEMBL witness, the injected event is:
+`prefix`, `current_action`, `role`, predicate evidence booleans, and the
+concrete `marker_events` injected by the bridge) rather than as an opaque
+string internally.  The bridge is also constrained to edges that actually
+produce at least one RDKit writer marker-event row; otherwise it does not fire.
+For the CHEMBL witness, the injected event is:
 
 - component `0`, side `0`, edge `(0, 1)`, slot `6`, role `branch`,
   event `no_marker`.

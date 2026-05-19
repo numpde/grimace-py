@@ -725,6 +725,12 @@ class KnownStereoGapTests(unittest.TestCase):
                     "begin_idx": 0,
                     "end_idx": 1,
                     "prefix": CHEMBL409450_TARGET_ALIGNMENT_PREFIX,
+                    "current_action": "deferred_directional_edge",
+                    "role": "branch",
+                    "target_starts_with_atom_text": True,
+                    "deferred_directional_edge": True,
+                    "has_marker_event_provenance": True,
+                    "injected_no_marker_event": True,
                     "marker_events": [
                         {
                             "slot": 6,

@@ -77,6 +77,19 @@ def _serializer_case(case_id: str, **overrides: object) -> dict[str, object]:
     return case
 
 
+def _writer_membership_case(case_id: str, **overrides: object) -> dict[str, object]:
+    case = {
+        **_base_case(case_id),
+        "smiles": "CCO",
+        "expected": "CCO",
+        "rooted_at_atom": None,
+        "isomeric_smiles": False,
+        "rdkit_canonical": False,
+    }
+    case.update(overrides)
+    return case
+
+
 def _stereo_constraint_model_case(case_id: str, **overrides: object) -> dict[str, object]:
     case = {
         **_base_case(case_id),
@@ -254,6 +267,47 @@ class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "expected as strings"):
                 load_pinned_serializer_regression_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+            )
+
+
+class WriterMembershipFixtureLoaderTest(unittest.TestCase):
+    def test_writer_membership_fixture_accepts_decoder_membership_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _writer_membership_case(
+                        "case_a",
+                        membership_check="decoder",
+                    )
+                ),
+            )
+
+            [case] = load_pinned_writer_membership_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
+
+        self.assertEqual("decoder", case.membership_check)
+
+    def test_writer_membership_fixture_rejects_bad_membership_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / f"{RDKIT_VERSION}.json",
+                _base_payload(
+                    _writer_membership_case(
+                        "case_a",
+                        membership_check="maybe",
+                    )
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "unsupported membership_check"):
+                load_pinned_writer_membership_cases(
                     RDKIT_VERSION,
                     fixture_root=root,
                 )

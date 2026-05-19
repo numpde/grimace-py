@@ -35,7 +35,8 @@
       "expected": "CC1=C(/C=C/C(=C/C=C/C(=C/C(=O)O)C)C)C(C)(C)CCC1",
       "rooted_at_atom": null,
       "isomeric_smiles": true,
-      "rdkit_canonical": false
+      "rdkit_canonical": false,
+      "membership_check": "decoder"
     }
   ]
 }

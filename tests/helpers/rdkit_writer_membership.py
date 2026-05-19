@@ -29,6 +29,7 @@ class PinnedWriterMembershipCase:
     all_bonds_explicit: bool = False
     all_hs_explicit: bool = False
     ignore_atom_map_numbers: bool = False
+    membership_check: str = "support"
 
 
 _FIXTURE_ROOT = pinned_rdkit_fixture_root(PINNED_RDKIT_WRITER_MEMBERSHIP)
@@ -121,7 +122,21 @@ def load_pinned_writer_membership_cases(
                     fixture_path=fixture_case.fixture_path,
                     case_id=fixture_case.case_id,
                 ),
+                membership_check=optional_string(
+                    raw_case,
+                    field_name="membership_check",
+                    fixture_path=fixture_case.fixture_path,
+                    case_id=fixture_case.case_id,
+                )
+                or "support",
             )
         )
+
+    for case in cases:
+        if case.membership_check not in {"support", "decoder"}:
+            raise ValueError(
+                f"writer-membership case {case.case_id!r} has unsupported "
+                f"membership_check {case.membership_check!r}"
+            )
 
     return tuple(cases)

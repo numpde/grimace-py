@@ -3,7 +3,7 @@ from __future__ import annotations
 from rdkit import Chem, rdBase
 
 import grimace
-from tests.helpers.public_runtime import supported_public_kwargs
+from tests.helpers.public_runtime import make_determinized_decoder, supported_public_kwargs
 from tests.helpers.rdkit_rooted_random import PinnedRootedRandomCase
 from tests.helpers.rdkit_writer_membership import PinnedWriterMembershipCase
 
@@ -127,6 +127,52 @@ def grimace_token_inventory(
     )
 
 
+def assert_determinized_decoder_accepts(
+    test_case,
+    *,
+    mol: Chem.Mol,
+    expected: str,
+    rooted_at_atom: int | None,
+    isomeric_smiles: bool,
+    kekule_smiles: bool = False,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> None:
+    decoder = make_determinized_decoder(
+        mol,
+        **supported_public_kwargs_from_rdkit_options(
+            rooted_at_atom=rooted_at_atom,
+            isomeric_smiles=isomeric_smiles,
+            kekule_smiles=kekule_smiles,
+            all_bonds_explicit=all_bonds_explicit,
+            all_hs_explicit=all_hs_explicit,
+            ignore_atom_map_numbers=ignore_atom_map_numbers,
+        ),
+    )
+    pos = 0
+    while pos < len(expected):
+        choice = next(
+            (
+                choice
+                for choice in decoder.next_choices
+                if expected.startswith(choice.text, pos)
+            ),
+            None,
+        )
+        if choice is None:
+            choices = tuple(choice.text for choice in decoder.next_choices)
+            test_case.fail(
+                f"decoder rejected expected output at offset {pos}; "
+                f"prefix={expected[:pos]!r}; next={expected[pos:pos + 24]!r}; "
+                f"choices={choices!r}"
+            )
+        decoder = choice.next_state
+        pos += len(choice.text)
+
+    test_case.assertTrue(decoder.is_terminal)
+
+
 def sample_rdkit_random_support(
     mol: Chem.Mol,
     *,
@@ -195,6 +241,20 @@ def assert_exact_writer_case_in_grimace_support(
         )
         if rdkit_out not in sampled:
             return
+
+    if case.membership_check == "decoder":
+        assert_determinized_decoder_accepts(
+            test_case,
+            mol=mol,
+            expected=rdkit_out,
+            rooted_at_atom=case.rooted_at_atom,
+            isomeric_smiles=case.isomeric_smiles,
+            kekule_smiles=case.kekule_smiles,
+            all_bonds_explicit=case.all_bonds_explicit,
+            all_hs_explicit=case.all_hs_explicit,
+            ignore_atom_map_numbers=case.ignore_atom_map_numbers,
+        )
+        return
 
     support = grimace_support(
         mol,

@@ -7,6 +7,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_annotation_policy_boundary",
     "tests.south_star.test_dependency_boundaries",
     "tests.south_star.test_harness",
+    "tests.south_star.test_semantic_diagnostics",
     "tests.south_star.test_semantic_witnesses",
 )
 

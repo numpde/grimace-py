@@ -77,3 +77,55 @@ after the semantic support basis is already present.
 3. Keep behavior changes narrow.  The next runtime promotion should name one
    target-independent fact, prove it on one witness, and then reclassify only
    the affected fixture cases.
+
+## Target-Guided Scan Of No-Parse-Equivalent Cases
+
+The five no-parse-equivalent cases were scanned with
+`_stereo_target_guided_marker_basis_diagnostics(..., root_idx=-1,
+max_steps=5000)`.
+
+### github3967 Terminal Marker Basis
+
+The smallest witness remains the cleanest next target:
+
+- case: `github3967_part2_directional_ring_closure_canonical`
+- root: `0`
+- longest relevant prefix: `C1=CC/C=C2\C3=C`
+- target remainder: `\CC=CC=CC3C2C=C1`
+- current next token support: `/`
+- RDKit target token at that boundary: `\`
+- `target_alignment_gap`: `no_successor_prefix_matches_target`
+- deferred marker rows: `/` attempt leaves one row but graph-marker equations
+  reject; `\` attempt has graph-marker equations accepting but zero rows after
+  marker events
+
+This still looks like a marker-basis/slot-quotient problem rather than a
+branch atom-ordering problem.  It is the smallest and least CHEMBL-specific
+remaining red case.
+
+### CHEMBL No-Parse-Equivalent Cases
+
+The four CHEMBL no-parse-equivalent cases share an early root-`3` failure:
+
+- cases: seed-1 indices `2`, `5`, `7`, and `8`
+- root: `3`
+- prefix: `N1`
+- target remainder starts with atom text `C...`
+- current next token support: `/`, `\`
+- `target_alignment_gap`: `target_atom_before_directional_marker_successor`
+- deferred marker rows: two candidate rows; stored `/` and stored `\` each
+  preserve twelve rows after marker events in one attempt, but graph-marker
+  equations reject; flipped attempts go to zero rows
+
+The same cases also have longer-prefix failures on root `11`, but those are
+not yet the best next target:
+
+- indices `2` and `5`: prefix `N1C(/C(c2c1cc`, target wants `c`, support wants
+  `(`
+- index `7`: prefix `N1C(/C(=C2/`, target wants `C`, support wants `N`
+- index `8`: prefix `N1C(=O)/C(c2c1cc(Br)cc2)=C1/`, target wants `C`, support
+  wants `N`
+
+Those longer-prefix failures look more like traversal/ring-order choices after
+some writer policy has already diverged.  The next principled runtime slice
+should therefore start with github3967, not the CHEMBL root-`11` mismatches.

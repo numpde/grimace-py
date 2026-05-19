@@ -129,3 +129,36 @@ not yet the best next target:
 Those longer-prefix failures look more like traversal/ring-order choices after
 some writer policy has already diverged.  The next principled runtime slice
 should therefore start with github3967, not the CHEMBL root-`11` mismatches.
+
+## github3967 Root-Cause Slice
+
+The focused deferred-marker diagnostic at prefix `C1=CC/C=C2\C3=C` has two
+candidate rows:
+
+- candidate `/`: current support accepts it; selected-carrier basis forces the
+  component token phase to `stored`; one row survives marker events; graph
+  marker equations reject because only side ids `[0, 1]` are covered
+- candidate `\`: current support rejects it; the candidate implies `flipped`;
+  the base selected-carrier fact has already forced `stored`; token-phase
+  assignment count drops to zero before marker-event filtering; graph marker
+  equations accept and cover side ids `[0, 1, 2, 3]`
+
+So the immediate failure is not that terminal marker events alone erase a valid
+row.  The earlier selected-carrier token-phase commitment is too strong for
+this writer surface: it commits `stored` locally, while the complete
+marker-slot equation says the RDKit target is satisfiable with `flipped`.
+
+The next target-independent fact should therefore not be another local
+candidate-token special case.  The cleaner candidate is a
+graph-marker-equation-backed quotient or deferral:
+
+- keep selected-carrier token-phase facts as the normal online constraint
+- at a support boundary with a complete graph-marker equation, allow a
+  competing token phase if the full equation covers all component side ids and
+  accepts the candidate marker slots
+- expose the quotient as an explicit writer-policy fact, with row ids and graph
+  marker equation evidence, so it remains separable from principled semantic
+  constraints
+
+That is a narrower and more inspectable next step than weakening
+selected-carrier facts globally.

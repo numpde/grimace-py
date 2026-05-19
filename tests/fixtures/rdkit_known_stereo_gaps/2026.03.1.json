@@ -4,22 +4,10 @@
     {
       "id": "github3967_part2_directional_ring_closure_canonical",
       "source": "RDKit Code/GraphMol/SmilesParse/catch_tests.cpp:Github #4582 continued github #3967 part 2",
-      "acceptance_role": "red_support_acceptance",
-      "gap_class": "missing_rdkit_writer_policy",
-      "gap_detail": "Directional ring-closure writer placement no longer reaches a build-time carrier-token conflict, but this RDKit canonical output is still missing from support.",
-      "expected_current_result": "support_missing",
-      "expected_current_same_skeleton_support_count": 2,
-      "boundary_layer_classes": [
-        "rdkit_expected_parse_equivalent_missing_from_support",
-        "current_same_skeleton_parse_mismatch_present"
-      ],
-      "expected_rdkit_output_parse_equivalent": true,
-      "expected_current_same_skeleton_parse_equivalent_count": 0,
-      "expected_current_same_skeleton_parse_mismatch_count": 2,
-      "expected_current_same_skeleton_marker_slots": [
-        [[5, "/"], [9, "/"], [13, "/"]],
-        [[5, "/"], [9, "\\"], [13, "/"]]
-      ],
+      "acceptance_role": "support_present_family_guard",
+      "gap_class": null,
+      "gap_detail": "RDKit canonical directional ring-closure writer surface is present through the graph-marker slot quotient path.",
+      "expected_current_result": "support_present",
       "parse_equivalent_minimal_marker_slots": [
         [[5, "/"], [8, "/"], [10, "/"], [13, "/"]],
         [[5, "/"], [8, "/"], [10, "\\"], [13, "\\"]],

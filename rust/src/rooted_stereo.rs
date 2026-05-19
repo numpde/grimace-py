@@ -4713,6 +4713,49 @@ struct TerminalStereoSupportBoundarySummary {
     writer_marker_slot_quotient_acceptance_count: usize,
 }
 
+fn writer_marker_slot_quotient_accepts_terminal_component(
+    runtime: &StereoWalkerRuntimeData,
+    model_component_idx: usize,
+    marker_events: &[StereoMarkerEventFact],
+    quotient_facts: &[WriterMarkerSlotQuotientAcceptanceFact],
+) -> PyResult<bool> {
+    let relevant_facts = quotient_facts
+        .iter()
+        .filter(|fact| {
+            runtime
+                .constraint_model
+                .component_for_runtime_component(fact.component_idx)
+                .is_some_and(|idx| idx == model_component_idx)
+        })
+        .collect::<Vec<_>>();
+    if relevant_facts.is_empty() {
+        return Ok(false);
+    }
+    for fact in &relevant_facts {
+        let emitted = marker_events.iter().any(|event| {
+            matches!(
+                event,
+                StereoMarkerEventFact::MarkerPlaced { slot, marker, .. }
+                    if *slot == fact.slot && *marker == fact.marker
+            )
+        });
+        if !emitted {
+            return Ok(false);
+        }
+    }
+    let graph_marker_equations = graph_marker_equation_diagnostic_for_component(
+        runtime,
+        model_component_idx,
+        marker_events,
+    )?;
+    Ok(graph_marker_equations_accept(&graph_marker_equations)
+        && graph_marker_equation_covers_component(
+            runtime,
+            model_component_idx,
+            &graph_marker_equations,
+        )?)
+}
+
 fn terminal_stereo_state_support_boundary_summary(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -4728,6 +4771,11 @@ fn terminal_stereo_state_support_boundary_summary(
     )?;
     let constraint_state =
         boundary_facts.constraint_state(runtime, StereoConstraintLayer::Semantic)?;
+    let graph_marker_events = boundary_facts
+        .marker_event_facts_by_component
+        .iter()
+        .flat_map(|events| events.iter().copied())
+        .collect::<Vec<_>>();
     for component in &runtime.constraint_model.components {
         let component_idx = component.component_idx;
         if constraint_state.is_empty(component_idx) {
@@ -4753,7 +4801,14 @@ fn terminal_stereo_state_support_boundary_summary(
             marker_events,
         )?;
         if survivor_state.row_ids_after_marker_events.is_empty() {
-            return Ok(None);
+            if !writer_marker_slot_quotient_accepts_terminal_component(
+                runtime,
+                component_idx,
+                &graph_marker_events,
+                &state.writer_marker_slot_quotient_acceptance_facts,
+            )? {
+                return Ok(None);
+            }
         }
     }
     let deferred_marker_obligation_domain_count = boundary_facts
@@ -8563,6 +8618,16 @@ fn commit_component_token_flip_fact(
     Ok(())
 }
 
+fn commit_writer_marker_slot_quotient_acceptance_fact(
+    state: &mut RootedConnectedStereoWalkerStateData,
+    fact: WriterMarkerSlotQuotientAcceptanceFact,
+) {
+    let facts = Arc::make_mut(&mut state.writer_marker_slot_quotient_acceptance_facts);
+    if !facts.contains(&fact) {
+        facts.push(fact);
+    }
+}
+
 fn raw_tokens_for_deferred_edge(
     runtime: &StereoWalkerRuntimeData,
     graph: &PreparedSmilesGraphData,
@@ -9055,6 +9120,126 @@ fn graph_marker_equation_accepted_bond_count(
 
 fn graph_marker_equation_bond_count(diagnostic: &GraphMarkerEquationComponentDiagnostic) -> usize {
     diagnostic.bond_diagnostics.len()
+}
+
+fn graph_marker_equation_covers_component(
+    runtime: &StereoWalkerRuntimeData,
+    model_component_idx: usize,
+    diagnostic: &GraphMarkerEquationComponentDiagnostic,
+) -> PyResult<bool> {
+    let Some(component) = runtime.constraint_model.components.get(model_component_idx) else {
+        return Err(PyValueError::new_err(
+            "graph marker equation component index out of range",
+        ));
+    };
+    let covered_side_ids = graph_marker_equation_covered_side_ids(diagnostic);
+    Ok(covered_side_ids == component.side_ids)
+}
+
+fn writer_marker_slot_quotient_acceptance_fact_for_deferred_token(
+    runtime: &StereoWalkerRuntimeData,
+    state: &RootedConnectedStereoWalkerStateData,
+    deferred: &DeferredDirectionalToken,
+    component_token: &DeferredDirectionalComponentToken,
+    chosen_token: &str,
+    constraint_state: &StereoConstraintState,
+    boundary_facts: &StereoSupportBoundaryFacts,
+) -> PyResult<Option<WriterMarkerSlotQuotientAcceptanceFact>> {
+    let marker = match chosen_token {
+        "/" | "\\" => StereoDirectionToken::from_str(chosen_token)?,
+        _ => return Ok(None),
+    };
+    let Some(model_component_idx) = runtime
+        .constraint_model
+        .component_for_runtime_component(component_token.component_idx)
+    else {
+        return Err(PyValueError::new_err(
+            "Deferred token references unknown runtime component",
+        ));
+    };
+    if constraint_state.is_empty(model_component_idx) {
+        return Ok(None);
+    }
+
+    let token_phase_assignment_ids = constraint_state
+        .token_phase_remaining_by_component
+        .get(model_component_idx)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let base_forced_token_flip = runtime
+        .constraint_model
+        .forced_token_flip_for_token_phase_assignment_ids(
+            model_component_idx,
+            component_token.component_idx,
+            token_phase_assignment_ids,
+        );
+    let Some(base_forced_token_flip) = base_forced_token_flip else {
+        return Ok(None);
+    };
+
+    let mut competing_phase_blocked = false;
+    for reference_token in &component_token.reference_tokens {
+        let Some(implied_token_flip) =
+            model_token_flip_for_chosen_token(reference_token, chosen_token)?
+        else {
+            continue;
+        };
+        if implied_token_flip == base_forced_token_flip {
+            continue;
+        }
+        let candidate_token_phase_assignment_ids = runtime
+            .constraint_model
+            .filter_token_phase_assignment_ids_for_token_flip(
+                model_component_idx,
+                component_token.component_idx,
+                token_phase_assignment_ids,
+                implied_token_flip,
+            )?;
+        if candidate_token_phase_assignment_ids.is_empty() {
+            competing_phase_blocked = true;
+            break;
+        }
+    }
+    if !competing_phase_blocked {
+        return Ok(None);
+    }
+
+    let candidate_marker_events = marker_events_for_deferred_component_token(
+        runtime,
+        state.prefix.as_ref(),
+        deferred,
+        component_token,
+        chosen_token,
+    )?;
+    if candidate_marker_events.is_empty() {
+        return Ok(None);
+    }
+    let mut graph_marker_events = boundary_facts
+        .marker_event_facts_by_component
+        .iter()
+        .flat_map(|events| events.iter().copied())
+        .collect::<Vec<_>>();
+    graph_marker_events.extend(candidate_marker_events);
+    let graph_marker_equations = graph_marker_equation_diagnostic_for_component(
+        runtime,
+        model_component_idx,
+        &graph_marker_events,
+    )?;
+    if !graph_marker_equations_accept(&graph_marker_equations)
+        || !graph_marker_equation_covers_component(
+            runtime,
+            model_component_idx,
+            &graph_marker_equations,
+        )?
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(WriterMarkerSlotQuotientAcceptanceFact {
+        component_idx: component_token.component_idx,
+        slot: direction_erased_slot(state.prefix.as_ref()),
+        marker,
+    }))
 }
 
 fn deferred_marker_token_flip_attempts_to_py(
@@ -9858,7 +10043,7 @@ fn deferred_token_support_from_constraint_state(
         let component_token = &deferred.component_tokens[0];
         let mut out = Vec::new();
         for candidate_token in candidate_tokens_from_raw_deferred_tokens(&raw_tokens)? {
-            if !accepted_single_component_deferred_token_flips_from_raw_tokens(
+            let accepted_flips = accepted_single_component_deferred_token_flips_from_raw_tokens(
                 runtime,
                 state,
                 deferred,
@@ -9867,9 +10052,17 @@ fn deferred_token_support_from_constraint_state(
                 candidate_token.as_str(),
                 &constraint_state,
                 &boundary_facts,
-            )?
-            .is_empty()
-            {
+            )?;
+            let quotient_fact = writer_marker_slot_quotient_acceptance_fact_for_deferred_token(
+                runtime,
+                state,
+                deferred,
+                component_token,
+                candidate_token.as_str(),
+                &constraint_state,
+                &boundary_facts,
+            )?;
+            if !accepted_flips.is_empty() || quotient_fact.is_some() {
                 out.push(candidate_token);
             }
         }
@@ -9999,12 +10192,27 @@ fn commit_deferred_token_choice(
             &constraint_state,
             &boundary_facts,
         )?;
-        if accepted_flips.is_empty() {
+        let quotient_fact = if accepted_flips.is_empty() {
+            writer_marker_slot_quotient_acceptance_fact_for_deferred_token(
+                runtime,
+                state,
+                deferred,
+                component_token,
+                chosen_token,
+                &constraint_state,
+                &boundary_facts,
+            )?
+        } else {
+            None
+        };
+        if accepted_flips.is_empty() && quotient_fact.is_none() {
             return Err(PyKeyError::new_err(format!(
                 "Token {chosen_token:?} is not available for deferred stereo token"
             )));
         };
-        if let [chosen_model_flip] = accepted_flips.as_slice() {
+        if let Some(quotient_fact) = quotient_fact {
+            commit_writer_marker_slot_quotient_acceptance_fact(state, quotient_fact);
+        } else if let [chosen_model_flip] = accepted_flips.as_slice() {
             commit_component_token_flip_fact(
                 state,
                 CommittedComponentTokenFlipFact {
@@ -12527,6 +12735,32 @@ mod tests {
             .expect("at least one terminal stereo state should be reachable")
     }
 
+    fn advance_to_stereo_prefix(
+        runtime: &super::StereoWalkerRuntimeData,
+        graph: &PreparedSmilesGraphData,
+        mut state: super::RootedConnectedStereoWalkerStateData,
+        target_prefix: &str,
+    ) -> super::RootedConnectedStereoWalkerStateData {
+        while state.prefix.as_ref() != target_prefix {
+            let current_prefix = state.prefix.to_string();
+            let options = next_token_support_for_stereo_state(runtime, graph, &state)
+                .expect("support should be available");
+            let chosen = options
+                .iter()
+                .find(|token| target_prefix.starts_with(&format!("{current_prefix}{token}")))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "no supported token advances {current_prefix:?} toward \
+                         {target_prefix:?}; options={options:?}"
+                    )
+                })
+                .clone();
+            state = advance_stereo_token_state(runtime, graph, &state, &chosen)
+                .expect("advancing along an available path should succeed");
+        }
+        state
+    }
+
     fn sample_stereo_graph() -> PreparedSmilesGraphData {
         PreparedSmilesGraphData {
             schema_version: PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -13153,6 +13387,44 @@ mod tests {
         .expect("terminal summary should build")
         .expect("terminal state should satisfy semantic support");
         assert_eq!(1, summary.writer_marker_slot_quotient_acceptance_count);
+    }
+
+    #[test]
+    fn github3967_quotient_admits_complete_graph_marker_equation_token() {
+        let source = "C1=CC/C=C2C3=C/CC=CC=CC\\3C\\2C=C1";
+        let expected = "C1=CC/C=C2\\C3=C\\CC=CC=CC3C2C=C1";
+        let quotient_prefix = "C1=CC/C=C2\\C3=C";
+        let Some(graph) = prepared_graph_from_smiles(source) else {
+            return;
+        };
+        let (runtime, initial_state) = stereo_runtime_and_state(&graph, 0);
+        let state = advance_to_stereo_prefix(&runtime, &graph, initial_state, quotient_prefix);
+        let support = next_token_support_for_stereo_state(&runtime, &graph, &state)
+            .expect("support should be available");
+        assert!(
+            support.contains(&"\\".to_owned()),
+            "writer quotient should expose the RDKit target marker"
+        );
+
+        let state = advance_stereo_token_state(&runtime, &graph, &state, "\\")
+            .expect("writer quotient token should advance");
+        assert_eq!(
+            vec![WriterMarkerSlotQuotientAcceptanceFact {
+                component_idx: 0,
+                slot: 13,
+                marker: StereoDirectionToken::Backslash,
+            }],
+            state
+                .writer_marker_slot_quotient_acceptance_facts
+                .as_ref()
+                .clone(),
+        );
+
+        let terminal_state = advance_to_stereo_prefix(&runtime, &graph, state, expected);
+        assert!(
+            super::is_supported_terminal_stereo_state(&runtime, &graph, &terminal_state)
+                .expect("terminal support should be decidable")
+        );
     }
 
     #[derive(Default, Debug, PartialEq, Eq)]

@@ -1,29 +1,39 @@
-# Remaining Stereo Gap Triage After Omitted-Marker Promotion
+# Remaining Stereo Gap Triage After Marker-Boundary Promotions
 
 Date: 2026-05-19
 Branch: `stereo-constraint-model`
-Baseline commit: `db98278`
+Baseline commits: `db98278`, graph-marker quotient slice
 
 ## Summary
 
-The omitted deferred-marker-before-atom runtime promotion closed exactly one
-pinned RDKit writer gap:
+Two target-independent runtime promotions have closed pinned RDKit writer gaps:
 
 - `github4582_chembl409450_random_vector_seed1_index0`
-- previous state: `support_missing`
-- current state: `support_present`
+  - mechanism: omitted deferred-marker-before-atom path
+  - previous state: `support_missing`
+  - current state: `support_present`
+- `github3967_part2_directional_ring_closure_canonical`
+  - mechanism: graph-marker-equation-backed writer slot quotient
+  - previous state: `support_missing`
+  - current state: `support_present`
 
 The known stereo-gap fixture now has:
 
-- `support_present`: 7
-- `support_missing`: 8
+- `support_present`: 8
+- `support_missing`: 7
 - `decoder_path_only`: 1
 
 This is a useful result, but not a general solution for the remaining red
-directional-stereo writer gaps.  The promotion is target-independent and now
-part of the normal runtime boundary, but it only covers the shape where a
-deferred directional marker is immediately followed by atom entry and an
-omitted-marker event still passes the support boundary.
+directional-stereo writer gaps.  Both promotions are target-independent and now
+part of the normal runtime boundary, but each is intentionally narrow:
+
+- omitted-marker promotion covers the shape where a deferred directional marker
+  is immediately followed by atom entry and an omitted-marker event still passes
+  the support boundary
+- graph-marker quotient promotion covers the shape where a candidate marker's
+  local token phase conflicts with an already-forced selected-carrier phase,
+  while the complete component graph-marker equation accepts the emitted marker
+  slots and covers every side in that component
 
 ## Remaining Support-Missing Cases
 
@@ -31,7 +41,6 @@ All remaining missing cases are still classified as `missing_rdkit_writer_policy
 
 | Case | Same-skeleton support | Parse-equivalent current support | Parse-mismatch current support |
 | --- | ---: | ---: | ---: |
-| `github3967_part2_directional_ring_closure_canonical` | 2 | 0 | 2 |
 | `github4582_chembl409450_random_vector_seed1_index2` | 2 | 0 | 2 |
 | `github4582_chembl409450_random_vector_seed1_index3` | 2 | 1 | 1 |
 | `github4582_chembl409450_random_vector_seed1_index5` | 2 | 0 | 2 |
@@ -42,11 +51,10 @@ All remaining missing cases are still classified as `missing_rdkit_writer_policy
 
 ## Boundary Grouping
 
-There are two useful buckets now.
+There are two useful remaining buckets now.
 
-First, five cases have no same-skeleton parse-equivalent Grimace output:
+First, four cases have no same-skeleton parse-equivalent Grimace output:
 
-- `github3967_part2_directional_ring_closure_canonical`
 - `github4582_chembl409450_random_vector_seed1_index2`
 - `github4582_chembl409450_random_vector_seed1_index5`
 - `github4582_chembl409450_random_vector_seed1_index7`
@@ -68,40 +76,42 @@ after the semantic support basis is already present.
 
 ## Next Slices
 
-1. Re-run target-guided diagnostics for the five no-parse-equivalent cases and
+1. Re-run target-guided diagnostics for the four no-parse-equivalent cases and
    group their first failure rows by `target_alignment_gap`,
    `deferred_marker_basis_rows`, and marker-event facts.
 2. Separately inspect the three parse-equivalent-present cases for writer string
    preference: compare RDKit target marker slots with Grimace same-skeleton
    parse-equivalent marker slots.
 3. Keep behavior changes narrow.  The next runtime promotion should name one
-   target-independent fact, prove it on one witness, and then reclassify only
-   the affected fixture cases.
+  target-independent fact, prove it on one witness, and then reclassify only
+  the affected fixture cases.
 
-## Target-Guided Scan Of No-Parse-Equivalent Cases
+## Historical Target-Guided Scan Of No-Parse-Equivalent Cases
 
-The five no-parse-equivalent cases were scanned with
+The original five no-parse-equivalent cases were scanned with
 `_stereo_target_guided_marker_basis_diagnostics(..., root_idx=-1,
 max_steps=5000)`.
 
 ### github3967 Terminal Marker Basis
 
-The smallest witness remains the cleanest next target:
+This was the cleanest next target and is now closed by the graph-marker
+equation quotient:
 
 - case: `github3967_part2_directional_ring_closure_canonical`
 - root: `0`
 - longest relevant prefix: `C1=CC/C=C2\C3=C`
 - target remainder: `\CC=CC=CC3C2C=C1`
-- current next token support: `/`
+- previous next token support: `/`
 - RDKit target token at that boundary: `\`
 - `target_alignment_gap`: `no_successor_prefix_matches_target`
 - deferred marker rows: `/` attempt leaves one row but graph-marker equations
   reject; `\` attempt has graph-marker equations accepting but zero rows after
   marker events
 
-This still looks like a marker-basis/slot-quotient problem rather than a
-branch atom-ordering problem.  It is the smallest and least CHEMBL-specific
-remaining red case.
+The implemented runtime path keeps selected-carrier token-phase facts as the
+normal constraint, but admits a competing deferred marker only when the full
+component graph-marker equation covers every side and accepts the emitted
+marker slots.  Target-guided replay now reaches the full RDKit target.
 
 ### CHEMBL No-Parse-Equivalent Cases
 
@@ -127,18 +137,18 @@ not yet the best next target:
   wants `N`
 
 Those longer-prefix failures look more like traversal/ring-order choices after
-some writer policy has already diverged.  The next principled runtime slice
-should therefore start with github3967, not the CHEMBL root-`11` mismatches.
+some writer policy has already diverged.  The CHEMBL root-`3` mismatch is now
+the smaller remaining no-parse-equivalent bucket.
 
 ## github3967 Root-Cause Slice
 
-The focused deferred-marker diagnostic at prefix `C1=CC/C=C2\C3=C` has two
-candidate rows:
+The focused deferred-marker diagnostic at prefix `C1=CC/C=C2\C3=C` originally
+had two candidate rows:
 
 - candidate `/`: current support accepts it; selected-carrier basis forces the
   component token phase to `stored`; one row survives marker events; graph
   marker equations reject because only side ids `[0, 1]` are covered
-- candidate `\`: current support rejects it; the candidate implies `flipped`;
+- candidate `\`: current support rejected it; the candidate implies `flipped`;
   the base selected-carrier fact has already forced `stored`; token-phase
   assignment count drops to zero before marker-event filtering; graph marker
   equations accept and cover side ids `[0, 1, 2, 3]`
@@ -148,9 +158,7 @@ row.  The earlier selected-carrier token-phase commitment is too strong for
 this writer surface: it commits `stored` locally, while the complete
 marker-slot equation says the RDKit target is satisfiable with `flipped`.
 
-The next target-independent fact should therefore not be another local
-candidate-token special case.  The cleaner candidate is a
-graph-marker-equation-backed quotient or deferral:
+The target-independent fact is a graph-marker-equation-backed quotient:
 
 - keep selected-carrier token-phase facts as the normal online constraint
 - at a support boundary with a complete graph-marker equation, allow a
@@ -160,8 +168,8 @@ graph-marker-equation-backed quotient or deferral:
   marker equation evidence, so it remains separable from principled semantic
   constraints
 
-That is a narrower and more inspectable next step than weakening
-selected-carrier facts globally.
+This is narrower and more inspectable than weakening selected-carrier facts
+globally.
 
 ## Parse-Equivalent-Present Writer Gaps
 
@@ -201,7 +209,7 @@ marker slots inverted relative to the RDKit target:
 
 That is likely a writer representative choice over a globally inverted
 directional-marker phase.  It should be handled separately from redundant
-marker omission and separately from the github3967 graph-marker-equation
+marker omission and from the already-promoted github3967 graph-marker-equation
 quotient.
 
 The practical implication is that the parse-equivalent-present cases are later

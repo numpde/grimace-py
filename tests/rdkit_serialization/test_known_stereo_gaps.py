@@ -384,8 +384,8 @@ class KnownStereoGapTests(unittest.TestCase):
             Counter(
                 {
                     "decoder_path_only": 1,
-                    "support_missing": 8,
-                    "support_present": 7,
+                    "support_missing": 7,
+                    "support_present": 8,
                 }
             ),
             status_counts,
@@ -494,7 +494,7 @@ class KnownStereoGapTests(unittest.TestCase):
                 )
                 self.assertIn(direction_marker_slots(case.expected), marker_slots)
 
-    def test_smallest_gap_pins_writer_quotient_token_phase_boundary(self) -> None:
+    def test_smallest_gap_uses_writer_quotient_token_phase_boundary(self) -> None:
         case = self._smallest_gap_case()
         self.assertIsNotNone(case.parse_equivalent_minimal_marker_slots)
         assert case.parse_equivalent_minimal_marker_slots is not None
@@ -520,7 +520,7 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertEqual(1, len(target_rows))
 
         target_row = target_rows[0]
-        self.assertFalse(target_row["current_support_accepts_candidate"])
+        self.assertTrue(target_row["current_support_accepts_candidate"])
         self.assertEqual(["/"], target_row["raw_tokens"])
         self.assertEqual(1, target_row["component_count"])
         self.assertEqual(1, len(target_row["components"]))
@@ -654,40 +654,9 @@ class KnownStereoGapTests(unittest.TestCase):
             max_steps=1_000,
         )
         [root_result] = diagnostics["root_results"]
-        self.assertEqual("failed", root_result["status"])
-        self.assertEqual(1, len(root_result["failures"]))
-
-        failure = root_result["failures"][0]
-        self.assertEqual(SMALLEST_GAP_TERMINAL_PREFIX, failure["prefix"])
-        self.assertEqual(
-            "\\CC=CC=CC3C2C=C1",
-            failure["target_remaining"],
-        )
-        self.assertEqual(["/"], failure["next_supported_tokens"])
-        self.assertEqual(
-            [("/", f"{SMALLEST_GAP_TERMINAL_PREFIX}/")],
-            failure["next_successor_prefixes"],
-        )
-
-        rejected_target_rows = [
-            row
-            for row in failure["deferred_marker_basis_rows"]
-            if row["candidate_token"] == SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE
-        ]
-        self.assertEqual(1, len(rejected_target_rows))
-        [row] = rejected_target_rows
-        self.assertFalse(row["current_support_accepts_candidate"])
-        [component] = row["components"]
-        [attempt] = component["token_flip_attempts"]
-        self.assertEqual("flipped", attempt["implied_token_flip"])
-        self.assertEqual(0, attempt["row_count_after_marker_events"])
-        self.assertEqual(
-            [(5, "/"), (9, "\\"), (13, "\\")],
-            attempt["graph_marker_equation_marker_slots"],
-        )
-        self.assertTrue(attempt["graph_marker_equations_accept"])
-        self.assertEqual(2, attempt["graph_marker_equation_accepted_bond_count"])
-        self.assertEqual(2, attempt["graph_marker_equation_bond_count"])
+        self.assertEqual("matched_prefix", root_result["status"])
+        self.assertEqual(case.expected, root_result["prefix"])
+        self.assertEqual([], root_result["failures"])
 
     def test_chembl409450_promoted_no_marker_path_matches_without_override(
         self,

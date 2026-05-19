@@ -6938,6 +6938,10 @@ fn collect_target_guided_marker_basis_failure_rows(
     row.set_item("target_remaining", remaining_target)?;
     row.set_item("next_supported_tokens", supported_tokens)?;
     row.set_item("next_successor_prefixes", successor_prefixes)?;
+    row.set_item(
+        "target_alignment_gap",
+        target_alignment_gap_name(state.prefix.as_ref(), remaining_target, successor_prefixes),
+    )?;
     row.set_item("action_stack_depth", state.action_stack.len())?;
 
     let deferred_rows = PyList::empty(py);
@@ -6958,6 +6962,31 @@ fn collect_target_guided_marker_basis_failure_rows(
     )?;
     row.set_item("deferred_marker_basis_rows", deferred_rows)?;
     Ok(row.unbind())
+}
+
+fn starts_with_atom_text(text: &str) -> bool {
+    matches!(
+        text.as_bytes().first(),
+        Some(b'[' | b'A'..=b'Z' | b'a'..=b'z')
+    )
+}
+
+fn target_alignment_gap_name(
+    prefix: &str,
+    remaining_target: &str,
+    successor_prefixes: &[(String, String)],
+) -> &'static str {
+    let target_starts_with_atom = starts_with_atom_text(remaining_target);
+    let any_directional_successor = successor_prefixes.iter().any(|(_token, successor_prefix)| {
+        successor_prefix
+            .strip_prefix(prefix)
+            .is_some_and(|delta| delta.starts_with('/') || delta.starts_with('\\'))
+    });
+    if target_starts_with_atom && any_directional_successor {
+        "target_atom_before_directional_marker_successor"
+    } else {
+        "no_successor_prefix_matches_target"
+    }
 }
 
 fn target_guided_marker_basis_diagnostics_for_root(

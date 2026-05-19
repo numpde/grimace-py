@@ -71,6 +71,12 @@ SMALLEST_GAP_CASE_ID = "github3967_part2_directional_ring_closure_canonical"
 SMALLEST_GAP_ROOT_IDX = 0
 SMALLEST_GAP_TERMINAL_PREFIX = "C1=CC/C=C2\\C3=C"
 SMALLEST_GAP_RDKIT_TERMINAL_CANDIDATE = "\\"
+CHEMBL409450_GAP_CASE_ID = "github4582_chembl409450_random_vector_seed1_index0"
+CHEMBL409450_TARGET_ROOTS = (3, 11)
+CHEMBL409450_TARGET_ALIGNMENT_PREFIX = "N1c2c("
+CHEMBL409450_TARGET_ALIGNMENT_REMAINDER = (
+    "C(/C1=C1/C(=O)Nc3cc(Br)ccc13)=N\\O)cccc2"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -686,6 +692,51 @@ class KnownStereoGapTests(unittest.TestCase):
         self.assertTrue(attempt["graph_marker_equations_accept"])
         self.assertEqual(2, attempt["graph_marker_equation_accepted_bond_count"])
         self.assertEqual(2, attempt["graph_marker_equation_bond_count"])
+
+    def test_chembl409450_target_guided_replay_names_writer_order_gap(
+        self,
+    ) -> None:
+        case = next(
+            case for case in self.cases if case.case_id == CHEMBL409450_GAP_CASE_ID
+        )
+        mol = self._mol_from_case(case)
+        prepared = _runtime.prepare_smiles_graph(
+            mol,
+            flags=SUPPORTED_STEREO_DIAGNOSTIC_FLAGS,
+        )
+
+        for root_idx in CHEMBL409450_TARGET_ROOTS:
+            with self.subTest(root_idx=root_idx):
+                diagnostics = _core._stereo_target_guided_marker_basis_diagnostics(
+                    prepared,
+                    case.expected,
+                    root_idx=root_idx,
+                    max_steps=5_000,
+                )
+                [root_result] = diagnostics["root_results"]
+                self.assertEqual("failed", root_result["status"])
+
+                alignment_failures = [
+                    failure
+                    for failure in root_result["failures"]
+                    if failure["target_alignment_gap"]
+                    == "target_atom_before_directional_marker_successor"
+                ]
+                self.assertEqual(1, len(alignment_failures))
+                [failure] = alignment_failures
+                self.assertEqual(CHEMBL409450_TARGET_ALIGNMENT_PREFIX, failure["prefix"])
+                self.assertEqual(
+                    CHEMBL409450_TARGET_ALIGNMENT_REMAINDER,
+                    failure["target_remaining"],
+                )
+                self.assertEqual(["/", "\\"], failure["next_supported_tokens"])
+                self.assertEqual(
+                    [
+                        ("/", f"{CHEMBL409450_TARGET_ALIGNMENT_PREFIX}/"),
+                        ("\\", f"{CHEMBL409450_TARGET_ALIGNMENT_PREFIX}\\"),
+                    ],
+                    failure["next_successor_prefixes"],
+                )
 
     def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:

@@ -352,3 +352,30 @@ This still does not change support behavior.  It makes the diagnostic boundary
 usable for path-level quotient investigation: off-target traversal branches
 are pruned, and the first true unsupported target candidate carries the same
 deferred-marker basis rows as the broader frontier scan.
+
+## CHEMBL Target-Guided Replay Result
+
+Applying the aligned replay to
+`github4582_chembl409450_random_vector_seed1_index0` exposes a different
+writer-order boundary before the later component-frontier row.
+
+For roots `3` and `11`, replay reaches:
+
+- prefix: `N1c2c(`;
+- target remainder: `C(/C1=C1/C(=O)Nc3cc(Br)ccc13)=N\O)cccc2`;
+- available marker successors: `/` and `\`, yielding prefixes `N1c2c(/` and
+  `N1c2c(\`;
+- off-target structural successor: `c`, yielding prefix `N1c2c(c`.
+
+The diagnostic now labels this as
+`target_atom_before_directional_marker_successor`: the pinned RDKit writer text
+wants to emit the branch atom `C` before the directional marker that Grimace's
+current walker exposes as the next deferred edge token.  This is not the same
+boundary as the github3967 terminal marker quotient.  It means the current
+target-guided replay still cannot evaluate the full CHEMBL random-vector output
+as one quotient path.
+
+The next missing writer/path fact is therefore precise: the replay needs a
+support-neutral way to align target writer text across a branch atom plus a
+later directional marker on the child edge, without changing runtime support
+and without treating completed-string parse equivalence as an oracle.

@@ -20,6 +20,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_semantic_witnesses",
     "tests.south_star.test_support_boundary",
     "tests.south_star.test_support_gates",
+    "tests.south_star.test_z3_equation_oracle",
 )
 
 

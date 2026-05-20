@@ -119,6 +119,52 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                 self.assertIsNotNone(event.begin_atom_idx)
                 self.assertIsNotNone(event.end_atom_idx)
 
+    def test_directional_markers_are_rendered_from_marker_slots(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_semantic_cases()
+            if case.case_id == "branched_substituted_alkene"
+        )
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        marker_events = tuple(
+            event
+            for traversal in traversals
+            for event in traversal.events
+            if event.text in {"/", "\\"}
+        )
+
+        self.assertGreater(len(marker_events), 0)
+        for event in marker_events:
+            self.assertIsNotNone(event.marker_slot)
+            slot = event.marker_slot
+            with self.subTest(slot_id=slot.slot_id):
+                self.assertEqual(event.text, slot.selected_marker)
+                self.assertEqual(event.edge, slot.edge)
+                self.assertEqual(
+                    event.begin_atom_idx,
+                    slot.begin_atom_idx,
+                )
+                self.assertEqual(event.end_atom_idx, slot.end_atom_idx)
+                self.assertIn(slot.syntax_position, {"branch", "main"})
+                self.assertNotEqual((), slot.adjacent_contexts)
+
+    def test_non_directional_bond_events_do_not_have_marker_slots(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_semantic_cases()
+            if case.case_id == "branched_substituted_alkene"
+        )
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+
+        for event in (
+            event
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind == "bond" and event.text not in {"/", "\\"}
+        ):
+            with self.subTest(text=event.text, edge=event.edge):
+                self.assertIsNone(event.marker_slot)
+
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,
     ) -> None:

@@ -24,6 +24,18 @@ class _CarrierContext:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarMarkerSlot:
+    slot_id: str
+    edge: Edge
+    begin_atom_idx: int
+    end_atom_idx: int
+    begin_parent_idx: int | None
+    syntax_position: str
+    selected_marker: str
+    adjacent_contexts: tuple[_CarrierContext, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarTraversalEvent:
     kind: str
     text: str
@@ -32,6 +44,7 @@ class SouthStarTraversalEvent:
     begin_atom_idx: int | None = None
     end_atom_idx: int | None = None
     begin_parent_idx: int | None = None
+    marker_slot: SouthStarMarkerSlot | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +301,7 @@ def _branch_event_variants(
         begin_atom_idx,
         end_atom_idx,
         begin_parent_idx=begin_parent_idx,
+        syntax_position="branch",
         marker_by_edge=marker_by_edge,
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
@@ -319,6 +333,7 @@ def _child_event_variants(
         begin_atom_idx,
         end_atom_idx,
         begin_parent_idx=begin_parent_idx,
+        syntax_position="main",
         marker_by_edge=marker_by_edge,
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
@@ -350,6 +365,7 @@ def _bond_event(
     end_atom_idx: int,
     *,
     begin_parent_idx: int | None,
+    syntax_position: str,
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
 ) -> SouthStarTraversalEvent:
@@ -357,6 +373,7 @@ def _bond_event(
     bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
     if bond is None:
         raise ValueError(f"edge {edge!r} is not a bond")
+    marker_slot = None
     if edge in marker_by_edge:
         text = _marker_for_traversal_edge(
             edge=edge,
@@ -364,6 +381,15 @@ def _bond_event(
             begin_atom_idx=begin_atom_idx,
             end_atom_idx=end_atom_idx,
             begin_parent_idx=begin_parent_idx,
+            carrier_contexts_by_edge=carrier_contexts_by_edge,
+        )
+        marker_slot = _marker_slot(
+            edge=edge,
+            begin_atom_idx=begin_atom_idx,
+            end_atom_idx=end_atom_idx,
+            begin_parent_idx=begin_parent_idx,
+            syntax_position=syntax_position,
+            selected_marker=text,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
     elif bond.GetBondType() == Chem.BondType.DOUBLE:
@@ -382,7 +408,46 @@ def _bond_event(
         begin_atom_idx=begin_atom_idx,
         end_atom_idx=end_atom_idx,
         begin_parent_idx=begin_parent_idx,
+        marker_slot=marker_slot,
     )
+
+
+def _marker_slot(
+    *,
+    edge: Edge,
+    begin_atom_idx: int,
+    end_atom_idx: int,
+    begin_parent_idx: int | None,
+    syntax_position: str,
+    selected_marker: str,
+    carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
+) -> SouthStarMarkerSlot:
+    return SouthStarMarkerSlot(
+        slot_id=_marker_slot_id(
+            begin_atom_idx=begin_atom_idx,
+            end_atom_idx=end_atom_idx,
+            begin_parent_idx=begin_parent_idx,
+            syntax_position=syntax_position,
+        ),
+        edge=edge,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
+        syntax_position=syntax_position,
+        selected_marker=selected_marker,
+        adjacent_contexts=carrier_contexts_by_edge[edge],
+    )
+
+
+def _marker_slot_id(
+    *,
+    begin_atom_idx: int,
+    end_atom_idx: int,
+    begin_parent_idx: int | None,
+    syntax_position: str,
+) -> str:
+    parent = "root" if begin_parent_idx is None else str(begin_parent_idx)
+    return f"{syntax_position}:{parent}->{begin_atom_idx}->{end_atom_idx}"
 
 
 def _carrier_contexts_by_edge(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import permutations
 from itertools import product
 
 from rdkit import Chem
@@ -57,20 +58,29 @@ def mol_to_smiles_enum_s_graph_native_for_case(
 ) -> SouthStarEnumSPrototypeResult:
     mol = parse_smiles(case.source_smiles)
     state = SouthStarComponentSupportState.from_mol(mol)
-    outputs = tuple(
+    candidate_outputs = tuple(
         dict.fromkeys(
-            _emit_smiles_for_marker_assignment(
+            output
+            for marker_by_edge in _combined_marker_assignments(state)
+            for output in _emit_all_tree_smiles_for_marker_assignment(
                 mol,
                 marker_by_edge=marker_by_edge,
             )
-            for marker_by_edge in _combined_marker_assignments(state)
+        )
+    )
+    outputs = tuple(
+        output
+        for output in candidate_outputs
+        if semantic_oracle_accepts(
+            source_smiles=case.source_smiles,
+            candidate_smiles=output,
         )
     )
     return SouthStarEnumSPrototypeResult(
         case_id=case.case_id,
         outputs=outputs,
         complexity_snapshot=state.complexity_snapshot(),
-        generation_basis="south_star_graph_native_seed_traversal",
+        generation_basis="south_star_graph_native_tree_traversal_semantic_filter",
     )
 
 
@@ -114,78 +124,127 @@ def _merge_assignment_markers(
             )
 
 
-def _emit_smiles_for_marker_assignment(
+def _emit_all_tree_smiles_for_marker_assignment(
     mol: Chem.Mol,
     *,
     marker_by_edge: dict[Edge, str],
-) -> str:
-    _assert_seed_traversal_supported(mol)
-    visited: set[int] = set()
-    return _emit_atom_subtree(
-        mol,
-        atom_idx=0,
-        parent_idx=None,
-        visited=visited,
-        marker_by_edge=marker_by_edge,
+) -> tuple[str, ...]:
+    _assert_tree_traversal_supported(mol)
+    return tuple(
+        output
+        for root_idx in range(mol.GetNumAtoms())
+        for output in _emit_atom_subtree_variants(
+            mol,
+            atom_idx=root_idx,
+            parent_idx=None,
+            visited=frozenset(),
+            marker_by_edge=marker_by_edge,
+        )
     )
 
 
-def _assert_seed_traversal_supported(mol: Chem.Mol) -> None:
+def _assert_tree_traversal_supported(mol: Chem.Mol) -> None:
     if mol.GetNumAtoms() == 0:
-        raise ValueError("South Star graph-native seed traversal requires atoms")
+        raise ValueError("South Star graph-native tree traversal requires atoms")
+    if len(Chem.GetMolFrags(mol)) != 1:
+        raise NotImplementedError(
+            "South Star graph-native tree traversal currently requires one "
+            "connected component"
+        )
     if mol.GetNumBonds() != mol.GetNumAtoms() - 1:
         raise NotImplementedError(
-            "South Star graph-native seed traversal currently requires one "
+            "South Star graph-native tree traversal currently requires one "
             "connected acyclic component"
         )
 
 
-def _emit_atom_subtree(
+def _emit_atom_subtree_variants(
     mol: Chem.Mol,
     *,
     atom_idx: int,
     parent_idx: int | None,
-    visited: set[int],
+    visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
-) -> str:
-    visited.add(atom_idx)
+) -> tuple[str, ...]:
+    visited = visited | {atom_idx}
     atom_text = _atom_text(mol.GetAtomWithIdx(atom_idx))
     children = tuple(
         neighbor.GetIdx()
         for neighbor in mol.GetAtomWithIdx(atom_idx).GetNeighbors()
         if neighbor.GetIdx() != parent_idx and neighbor.GetIdx() not in visited
     )
-    ordered_children = tuple(sorted(children))
-    if not ordered_children:
-        return atom_text
+    if not children:
+        return (atom_text,)
 
-    pieces = [atom_text]
-    branch_children = ordered_children[:-1]
-    main_child = ordered_children[-1]
-    for child_idx in branch_children:
-        pieces.append(
-            "("
-            + _bond_text(mol, atom_idx, child_idx, marker_by_edge=marker_by_edge)
-            + _emit_atom_subtree(
+    outputs: list[str] = []
+    for ordered_children in permutations(sorted(children)):
+        branch_children = ordered_children[:-1]
+        main_child = ordered_children[-1]
+        branch_variants = tuple(
+            _prefixed_branch_variants(
                 mol,
-                atom_idx=child_idx,
                 parent_idx=atom_idx,
+                child_idx=child_idx,
                 visited=visited,
                 marker_by_edge=marker_by_edge,
             )
-            + ")"
+            for child_idx in branch_children
         )
-    pieces.append(
-        _bond_text(mol, atom_idx, main_child, marker_by_edge=marker_by_edge)
-        + _emit_atom_subtree(
+        main_variants = _prefixed_child_variants(
             mol,
-            atom_idx=main_child,
             parent_idx=atom_idx,
+            child_idx=main_child,
+            visited=visited,
+            marker_by_edge=marker_by_edge,
+        )
+        for branch_group in product(*branch_variants):
+            for main_text in main_variants:
+                outputs.append(atom_text + "".join(branch_group) + main_text)
+    return tuple(dict.fromkeys(outputs))
+
+
+def _prefixed_branch_variants(
+    mol: Chem.Mol,
+    *,
+    parent_idx: int,
+    child_idx: int,
+    visited: frozenset[int],
+    marker_by_edge: dict[Edge, str],
+) -> tuple[str, ...]:
+    return tuple(
+        "("
+        + _bond_text(mol, parent_idx, child_idx, marker_by_edge=marker_by_edge)
+        + child_text
+        + ")"
+        for child_text in _emit_atom_subtree_variants(
+            mol,
+            atom_idx=child_idx,
+            parent_idx=parent_idx,
             visited=visited,
             marker_by_edge=marker_by_edge,
         )
     )
-    return "".join(pieces)
+
+
+def _prefixed_child_variants(
+    mol: Chem.Mol,
+    *,
+    parent_idx: int,
+    child_idx: int,
+    visited: frozenset[int],
+    marker_by_edge: dict[Edge, str],
+) -> tuple[str, ...]:
+    return tuple(
+        _bond_text(mol, parent_idx, child_idx, marker_by_edge=marker_by_edge)
+        + child_text
+        for child_text in _emit_atom_subtree_variants(
+            mol,
+            atom_idx=child_idx,
+            parent_idx=parent_idx,
+            visited=visited,
+            marker_by_edge=marker_by_edge,
+        )
+    )
 
 
 def _atom_text(atom: Chem.Atom) -> str:

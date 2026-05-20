@@ -34,12 +34,15 @@ not a package-ready runtime surface.
 
 The seed enumerator:
 
-- derives outputs from the RDKit molecule graph and South Star component marker
-  assignments;
+- derives traversal candidates from the RDKit molecule graph and South Star
+  component marker assignments;
 - does not use fixture-positive strings or `MolToSmilesEnum` outputs as
   generation input;
-- emits one deterministic connected-acyclic atom-index traversal;
-- varies component-local marker assignments for the supported stereo features.
+- enumerates roots and child/main-branch orders for the current connected
+  acyclic tree subset;
+- varies component-local marker assignments for the supported stereo features;
+- filters generated candidates through the current South Star conformance
+  oracle.
 
 The fixture-backed prototype remains comparison support only. It is not the
 intended implementation strategy for a package API.
@@ -125,11 +128,14 @@ Star goal.
 ## Package-Readiness Gap
 
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native
-enumerator needs a broader traversal surface:
+enumerator needs a broader molecule and syntax surface:
 
-- supported roots;
-- supported branch orders;
-- supported traversal choices;
+- ring-closure traversal and marker bases;
+- disconnected molecule policy;
+- atom text beyond the current organic-subset seed;
+- supported aromatic directional surfaces, if any;
+- local branch-orientation equations that avoid relying on the conformance
+  oracle as a generated-candidate filter;
 - explicit fail-fast checks for every unsupported molecule class;
 - complexity diagnostics that expose component counts, local assignment counts,
   affected component counts, and estimated product size.

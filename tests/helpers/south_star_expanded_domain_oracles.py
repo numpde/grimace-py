@@ -8,14 +8,20 @@ completeness, not runtime code and not a second package implementation.
 """
 
 from dataclasses import dataclass
+from functools import reduce
 from itertools import permutations
 from itertools import product
+from operator import mul
 
 from rdkit import Chem
 
 from grimace._south_star.annotation_policy import Edge
 from grimace._south_star.annotation_policy import normalized_edge
-from tests.helpers.south_star_exact_support import SouthStarExpandedSupportCase
+from tests.helpers.south_star_exact_support import (
+    SouthStarExpandedSupportCase,
+    load_south_star_exact_first_domain_cases,
+    load_south_star_expanded_support_cases,
+)
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 
@@ -28,6 +34,15 @@ class _RingToken:
 @dataclass(frozen=True, slots=True)
 class _RingFragment:
     tokens: tuple[_RingToken, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarDisconnectedCompositionOracleResult:
+    outputs: tuple[str, ...]
+    fragment_output_counts: tuple[int, ...]
+    fragment_order_policy: str
+    fragment_order_count: int
+    estimated_product_size: int
 
 
 def independent_saturated_monocycle_support_for_case(
@@ -49,6 +64,65 @@ def independent_saturated_monocycle_support_for_case(
             ):
                 outputs.append(_render_with_ring_digit(fragment, closure_edge))
     return tuple(dict.fromkeys(outputs))
+
+
+def independent_disconnected_composition_support_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarDisconnectedCompositionOracleResult:
+    fragment_supports = _independent_fragment_supports_for_case(case)
+    fragment_orders = tuple(permutations(range(len(fragment_supports))))
+    outputs = tuple(
+        dict.fromkeys(
+            ".".join(output_group)
+            for order in fragment_orders
+            for output_group in product(
+                *(fragment_supports[fragment_idx] for fragment_idx in order)
+            )
+        )
+    )
+    fragment_output_counts = tuple(len(support) for support in fragment_supports)
+    return SouthStarDisconnectedCompositionOracleResult(
+        outputs=outputs,
+        fragment_output_counts=fragment_output_counts,
+        fragment_order_policy="all_fragment_orders",
+        fragment_order_count=len(fragment_orders),
+        estimated_product_size=len(fragment_orders)
+        * reduce(mul, fragment_output_counts, 1),
+    )
+
+
+def _independent_fragment_supports_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> tuple[tuple[str, ...], ...]:
+    if case.case_id == "markerless_disconnected_ring_and_atom":
+        return (
+            _expanded_support("simple_saturated_monocycle_cyclohexane"),
+            ("O",),
+        )
+    if case.case_id == "disconnected_stereo_fragment_and_atom":
+        return (
+            _exact_first_domain_support("isolated_alkene_z"),
+            ("O",),
+        )
+    raise NotImplementedError(
+        f"no disconnected-composition oracle fragment supports for {case.case_id!r}"
+    )
+
+
+def _expanded_support(case_id: str) -> tuple[str, ...]:
+    return next(
+        case.expected_support
+        for case in load_south_star_expanded_support_cases()
+        if case.case_id == case_id
+    )
+
+
+def _exact_first_domain_support(case_id: str) -> tuple[str, ...]:
+    return next(
+        case.expected_support
+        for case in load_south_star_exact_first_domain_cases()
+        if case.case_id == case_id
+    )
 
 
 def _tree_fragments_with_blocked_edge(

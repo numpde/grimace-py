@@ -5,6 +5,7 @@ import unittest
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_DISCONNECTED_COMPOSITION_ORACLE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY,
@@ -13,6 +14,7 @@ from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
+    independent_disconnected_composition_support_for_case,
     independent_saturated_monocycle_support_for_case,
 )
 from tests.helpers.south_star_semantic_oracle import graph_signature
@@ -54,6 +56,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
+                case.support_authority
+                == SOUTH_STAR_DISCONNECTED_COMPOSITION_ORACLE_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
                 case.support_authority == SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY
                 for case in cases
             )
@@ -69,6 +78,24 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                     frozenset(case.expected_support),
                     frozenset(independent_saturated_monocycle_support_for_case(case)),
                 )
+
+    def test_independent_disconnected_composition_oracle_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_DISCONNECTED_COMPOSITION_ORACLE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                result = independent_disconnected_composition_support_for_case(case)
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertEqual(
+                    len(case.expected_support),
+                    result.estimated_product_size,
+                )
+                self.assertEqual("all_fragment_orders", result.fragment_order_policy)
+                self.assertEqual(2, result.fragment_order_count)
 
     def test_graph_native_support_matches_expanded_domain_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

@@ -235,8 +235,8 @@
       "case_id": "markerless_disconnected_ring_and_atom",
       "feature_area": "disconnected_markerless_fragments",
       "source_smiles": "C1CCCCC1.O",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned current all-fragment-orders composition for independently supported markerless fragments.",
+      "support_authority": "independent_disconnected_composition_oracle",
+      "evidence_notes": "Checked by the independent disconnected-composition oracle from connected-fragment fixture supports under all_fragment_orders.",
       "expected_support": [
         "C1CCCCC1.O",
         "C(CCCC1)C1.O",
@@ -254,8 +254,8 @@
       "case_id": "disconnected_stereo_fragment_and_atom",
       "feature_area": "disconnected_stereo_fragments",
       "source_smiles": "F/C=C\\Cl.O",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned current all-fragment-orders composition for one directional-stereo fragment and one markerless fragment.",
+      "support_authority": "independent_disconnected_composition_oracle",
+      "evidence_notes": "Checked by the independent disconnected-composition oracle from first-domain stereo-fragment support plus markerless atom support under all_fragment_orders.",
       "expected_support": [
         "F/C=C\\Cl.O",
         "C(\\F)=C\\Cl.O",

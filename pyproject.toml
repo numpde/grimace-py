@@ -34,7 +34,9 @@ module-name = "grimace._core"
 features = ["python-extension"]
 
 [dependency-groups]
-test = []
+test = [
+    "z3-solver==4.16.0.0",
+]
 dev = [
     "tree-sitter>=0.25",
     "tree-sitter-cpp>=0.23",

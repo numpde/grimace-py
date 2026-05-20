@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 from dataclasses import dataclass
 
 from tests.helpers.south_star_marker_equations import (
@@ -12,10 +11,6 @@ from tests.helpers.south_star_marker_equations import expected_marker_from_equat
 @dataclass(frozen=True, slots=True)
 class SouthStarZ3MarkerAssignment:
     marker_by_slot: tuple[tuple[str, str], ...]
-
-
-def z3_available() -> bool:
-    return importlib.util.find_spec("z3") is not None
 
 
 def z3_marker_assignments_for_equations(

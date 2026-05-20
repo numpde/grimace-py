@@ -15,13 +15,11 @@ from tests.helpers.south_star_marker_equations import expected_marker_from_equat
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 from tests.helpers.south_star_parity_solver import solve_marker_slot_parity_equations
-from tests.helpers.south_star_z3_oracle import z3_available
 from tests.helpers.south_star_z3_oracle import (
     z3_marker_assignments_for_equations,
 )
 
 
-@unittest.skipUnless(z3_available(), "z3 is optional test/spec support")
 class SouthStarZ3EquationOracleTests(unittest.TestCase):
     def test_z3_assignment_sets_match_current_equation_assignments(self) -> None:
         for case_id in (

@@ -36,6 +36,8 @@ jobs:
         run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install --upgrade pip maturin
       - name: Install pinned RDKit fixture version
         run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+      - name: Install pinned test dependencies
+        run: unset CONDA_PREFIX && . .venv/bin/activate && python -m pip install "z3-solver==4.16.0.0"
       - name: Install package into test environment
         run: unset CONDA_PREFIX && . .venv/bin/activate && maturin develop --release
       - name: Run Python test suite from source tree

@@ -201,6 +201,38 @@
           "reason": "loses_double_bond_stereo"
         }
       ]
+    },
+    {
+      "id": "same_side_alternate_carriers",
+      "source_smiles": "C/C=C(\\C)/Cl",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [2, 4]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 3
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "not_checked",
+        "notes": "South Star witness for one double-bond side with two eligible carrier edges under maximal carrier annotation."
+      },
+      "positive_semantic_smiles": [
+        "C/C=C(\\C)/Cl",
+        "C\\C=C(/C)\\Cl"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "C/C=C(/C)\\Cl",
+          "reason": "inverts_double_bond_stereo"
+        },
+        {
+          "smiles": "CC=C(C)Cl",
+          "reason": "loses_double_bond_stereo"
+        }
+      ]
     }
   ]
 }

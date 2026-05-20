@@ -52,6 +52,26 @@ class SouthStarGraphTopologyFacts:
     ring_bond_indices: tuple[int, ...]
     ring_count: int
 
+    @property
+    def atom_count(self) -> int:
+        return len(self.atom_indices)
+
+    @property
+    def bond_count(self) -> int:
+        return len(self.bond_edges)
+
+    @property
+    def fragment_count(self) -> int:
+        return len(self.fragment_atom_indices)
+
+    @property
+    def connected(self) -> bool:
+        return self.fragment_count == 1
+
+    @property
+    def acyclic_connected_tree(self) -> bool:
+        return self.connected and self.bond_count == self.atom_count - 1
+
 
 @dataclass(frozen=True, slots=True)
 class SouthStarMoleculeFacts:

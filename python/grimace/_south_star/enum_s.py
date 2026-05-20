@@ -28,7 +28,6 @@ from grimace._south_star.support_gates import (
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
     SouthStarTetrahedralCenterFact,
-    extract_tetrahedral_center_facts,
     preserving_tetrahedral_token,
 )
 
@@ -167,11 +166,16 @@ def _mol_to_smiles_enum_s_graph_native_for_mol(
         facts,
         annotation_policy=policy_set.annotation_policy,
     )
-    if len(Chem.GetMolFrags(mol)) > 1:
-        generation = _disconnected_generation_for_mol(mol, policy_set=policy_set)
+    if facts.graph_topology.fragment_count > 1:
+        generation = _disconnected_generation_for_mol(
+            mol,
+            molecule_facts=facts,
+            policy_set=policy_set,
+        )
     else:
         generation = _connected_generation_for_mol(
             mol,
+            molecule_facts=facts,
             state=state,
             policy_set=policy_set,
         )
@@ -190,10 +194,15 @@ def _mol_to_smiles_enum_s_graph_native_for_mol(
 def _connected_generation_for_mol(
     mol: Chem.Mol,
     *,
+    molecule_facts: SouthStarMoleculeFacts,
     state: SouthStarComponentSupportState,
     policy_set: SouthStarPolicySet,
 ) -> _SupportGeneration:
-    traversals = _tree_traversals_for_mol(mol, state=state)
+    traversals = _tree_traversals_for_mol(
+        mol,
+        molecule_facts=molecule_facts,
+        state=state,
+    )
     raw_outputs = tuple(traversal.render() for traversal in traversals)
     outputs = policy_set.output_order_policy.deduplicate(raw_outputs)
     marker_slot_count = sum(
@@ -220,18 +229,31 @@ def _connected_generation_for_mol(
 def _disconnected_generation_for_mol(
     mol: Chem.Mol,
     *,
+    molecule_facts: SouthStarMoleculeFacts,
     policy_set: SouthStarPolicySet,
 ) -> _SupportGeneration:
+    if molecule_facts.graph_topology.fragment_count <= 1:
+        raise ValueError("disconnected generation requires multiple fragments")
+    fragments = tuple(Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True))
+    if len(fragments) != molecule_facts.graph_topology.fragment_count:
+        raise AssertionError(
+            "South Star disconnected generation requires fragment extraction "
+            "to match molecule topology facts"
+        )
     fragment_generations = tuple(
         _connected_generation_for_mol(
             fragment,
-            state=SouthStarComponentSupportState.from_mol(
-                fragment,
+            molecule_facts=fragment_facts,
+            state=SouthStarComponentSupportState.from_molecule_facts(
+                fragment_facts,
                 annotation_policy=policy_set.annotation_policy,
             ),
             policy_set=policy_set,
         )
-        for fragment in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
+        for fragment_facts, fragment in (
+            (SouthStarMoleculeFacts.from_mol(fragment), fragment)
+            for fragment in fragments
+        )
     )
     fragment_supports = tuple(
         SouthStarFragmentSupport(
@@ -279,8 +301,13 @@ def mol_to_smiles_enum_s_tree_traversals_for_case(
     case: object,
 ) -> tuple[SouthStarTreeTraversal, ...]:
     mol = _parse_smiles(case.source_smiles)
-    state = SouthStarComponentSupportState.from_mol(mol)
-    return _tree_traversals_for_mol(mol, state=state)
+    molecule_facts = SouthStarMoleculeFacts.from_mol(mol)
+    state = SouthStarComponentSupportState.from_molecule_facts(molecule_facts)
+    return _tree_traversals_for_mol(
+        mol,
+        molecule_facts=molecule_facts,
+        state=state,
+    )
 
 
 def render_south_star_traversal(
@@ -360,13 +387,16 @@ def _marker_assignments_by_slot(
 def _tree_traversals_for_mol(
     mol: Chem.Mol,
     *,
+    molecule_facts: SouthStarMoleculeFacts,
     state: SouthStarComponentSupportState,
 ) -> tuple[SouthStarTreeTraversal, ...]:
+    _assert_state_uses_molecule_facts(state, molecule_facts)
     return tuple(
         traversal
         for combined_assignment in _combined_marker_assignments(state)
         for traversal in _tree_traversals_for_marker_assignment(
             mol,
+            molecule_facts=molecule_facts,
             state=state,
             marker_by_edge=combined_assignment.marker_by_edge,
             component_marker_assignments=(
@@ -417,14 +447,16 @@ def _merge_assignment_markers(
 def _tree_traversals_for_marker_assignment(
     mol: Chem.Mol,
     *,
+    molecule_facts: SouthStarMoleculeFacts,
     state: SouthStarComponentSupportState,
     marker_by_edge: dict[Edge, str],
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
-    _assert_tree_traversal_supported(mol)
+    _assert_tree_traversal_supported(mol, molecule_facts=molecule_facts)
     if is_supported_monocycle_with_acyclic_branches(mol):
         return _monocycle_traversals(
             mol,
+            molecule_facts=molecule_facts,
             state=state,
             marker_by_edge=marker_by_edge,
             component_marker_assignments=component_marker_assignments,
@@ -434,7 +466,7 @@ def _tree_traversals_for_marker_assignment(
         mol,
         marker_by_edge=marker_by_edge,
     )
-    tetrahedral_facts_by_atom = _tetrahedral_facts_by_atom(mol)
+    tetrahedral_facts_by_atom = _tetrahedral_facts_by_atom(molecule_facts)
     return tuple(
         _with_solved_marker_assignments(
             state,
@@ -445,7 +477,7 @@ def _tree_traversals_for_marker_assignment(
                 component_marker_assignments=component_marker_assignments,
             ),
         )
-        for root_idx in range(mol.GetNumAtoms())
+        for root_idx in molecule_facts.graph_topology.atom_indices
         for fragment in _atom_subtree_event_variants(
             mol,
             atom_idx=root_idx,
@@ -486,22 +518,37 @@ def _with_solved_marker_assignments(
     )
 
 
-def _assert_tree_traversal_supported(mol: Chem.Mol) -> None:
-    if mol.GetNumAtoms() == 0:
+def _assert_tree_traversal_supported(
+    mol: Chem.Mol,
+    *,
+    molecule_facts: SouthStarMoleculeFacts,
+) -> None:
+    topology = molecule_facts.graph_topology
+    if topology.atom_count == 0:
         raise ValueError("South Star graph-native tree traversal requires atoms")
-    if len(Chem.GetMolFrags(mol)) != 1:
+    if not topology.connected:
         raise NotImplementedError(
             "South Star graph-native tree traversal currently requires one "
             "connected component"
         )
-    if mol.GetNumBonds() == mol.GetNumAtoms() - 1:
+    if topology.acyclic_connected_tree:
         return
     if is_supported_monocycle_with_acyclic_branches(mol):
         return
-    if mol.GetNumBonds() != mol.GetNumAtoms() - 1:
-        raise NotImplementedError(
-            "South Star graph-native tree traversal currently requires one "
-            "connected acyclic component or one nonstereo monocycle"
+    raise NotImplementedError(
+        "South Star graph-native tree traversal currently requires one "
+        "connected acyclic component or one nonstereo monocycle"
+    )
+
+
+def _assert_state_uses_molecule_facts(
+    state: SouthStarComponentSupportState,
+    molecule_facts: SouthStarMoleculeFacts,
+) -> None:
+    if state.molecule_facts is not molecule_facts:
+        raise AssertionError(
+            "South Star generation requires component support state to share "
+            "the supplied molecule facts"
         )
 
 
@@ -684,6 +731,7 @@ def _child_event_variants(
 def _monocycle_traversals(
     mol: Chem.Mol,
     *,
+    molecule_facts: SouthStarMoleculeFacts,
     state: SouthStarComponentSupportState,
     marker_by_edge: dict[Edge, str],
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
@@ -709,7 +757,7 @@ def _monocycle_traversals(
                 component_marker_assignments=component_marker_assignments,
             ),
         )
-        for root_idx in range(mol.GetNumAtoms())
+        for root_idx in molecule_facts.graph_topology.atom_indices
         for closure_edge in ring_edges
         for fragment in _atom_subtree_event_variants(
             mol,
@@ -928,11 +976,11 @@ def _emitted_tetrahedral_ligand_order(
 
 
 def _tetrahedral_facts_by_atom(
-    mol: Chem.Mol,
+    molecule_facts: SouthStarMoleculeFacts,
 ) -> dict[int, SouthStarTetrahedralCenterFact]:
     return {
         fact.center_atom_idx: fact
-        for fact in extract_tetrahedral_center_facts(mol)
+        for fact in molecule_facts.tetrahedral_center_facts
     }
 
 

@@ -1,5 +1,18 @@
 from __future__ import annotations
 
+"""Independent spec oracle for the first South Star domain.
+
+This module deliberately duplicates traversal, marker-slot, and rendering
+concepts from the graph-native EnumS prototype. That duplication is the point:
+these helpers are a test oracle for declared-language completeness, not a
+runtime implementation and not a reusable production backend.
+
+Do not import this module from package/runtime code. If the oracle and EnumS
+prototype disagree, investigate the semantic model or fixtures instead of
+making one call into the other. The only intended consumers are South Star
+tests that need an implementation-independent support check.
+"""
+
 from dataclasses import dataclass
 from itertools import permutations
 from itertools import product
@@ -49,6 +62,7 @@ class _CombinedGraphAssignment:
 def independent_first_domain_support_for_case(
     case: SouthStarSemanticCase,
 ) -> tuple[str, ...]:
+    """Enumerate first-domain support independently of graph-native EnumS."""
     mol = parse_smiles(case.source_smiles)
     state = SouthStarComponentSupportState.from_mol(mol)
     _assert_first_domain_mol(mol)

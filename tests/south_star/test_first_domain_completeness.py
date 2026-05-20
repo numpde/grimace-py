@@ -27,6 +27,9 @@ class SouthStarFirstDomainCompletenessTests(unittest.TestCase):
                 self.assertEqual(exact_case.expected_support, result.outputs)
 
     def test_independent_oracle_matches_exact_first_domain_fixtures(self) -> None:
+        # This oracle is intentionally separate from graph-native EnumS. It is
+        # completeness evidence for the declared first-domain language, not a
+        # second implementation path to promote into runtime code.
         semantic_cases = {
             case.case_id: case for case in load_south_star_semantic_cases()
         }

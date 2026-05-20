@@ -66,3 +66,38 @@ class SouthStarComponentSupportStateTests(unittest.TestCase):
             DIRECTIONAL_MARKERS,
             state.allowed_directional_markers(edge=(0, 1)),
         )
+
+    def test_complexity_snapshot_counts_independent_components(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles("F/C=C\\CC/C=C\\Cl"),
+        )
+
+        snapshot = state.complexity_snapshot()
+
+        self.assertEqual(2, snapshot.component_count)
+        self.assertEqual(4, snapshot.estimated_product_size)
+        self.assertEqual(
+            [2, 2],
+            [
+                estimate.estimated_local_assignment_count
+                for estimate in snapshot.local_assignment_estimates
+            ],
+        )
+
+    def test_complexity_snapshot_exposes_coupled_component_size(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles("C/C=C/C=C/C"),
+        )
+
+        snapshot = state.complexity_snapshot()
+
+        self.assertEqual(1, snapshot.component_count)
+        self.assertEqual(4, snapshot.estimated_product_size)
+        self.assertEqual(
+            1,
+            snapshot.local_assignment_estimates[0].coupling_cause_count,
+        )
+        self.assertEqual(
+            2,
+            snapshot.local_assignment_estimates[0].source_feature_count,
+        )

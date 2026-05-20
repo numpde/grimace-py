@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import reduce
+from operator import mul
 
 from rdkit import Chem
 
@@ -30,6 +32,22 @@ class SouthStarComponentMarkerSupport:
     token_allowed: bool
     reason: str
     affected_components: tuple[SouthStarAffectedComponentSupport, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarComponentAssignmentEstimate:
+    component_id: str
+    source_feature_count: int
+    eligible_carrier_count: int
+    coupling_cause_count: int
+    estimated_local_assignment_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarComponentComplexitySnapshot:
+    component_count: int
+    local_assignment_estimates: tuple[SouthStarComponentAssignmentEstimate, ...]
+    estimated_product_size: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +126,32 @@ class SouthStarComponentSupportState:
             if self.explain_directional_marker(edge=edge, marker=marker).token_allowed
         )
 
+    def complexity_snapshot(self) -> SouthStarComponentComplexitySnapshot:
+        estimates = tuple(
+            SouthStarComponentAssignmentEstimate(
+                component_id=component.component_id,
+                source_feature_count=len(component.source_features),
+                eligible_carrier_count=len(component.eligible_carrier_edges),
+                coupling_cause_count=len(component.coupling_causes),
+                estimated_local_assignment_count=(
+                    _prototype_component_assignment_estimate(component)
+                ),
+            )
+            for component in self.components
+        )
+        return SouthStarComponentComplexitySnapshot(
+            component_count=len(self.components),
+            local_assignment_estimates=estimates,
+            estimated_product_size=reduce(
+                mul,
+                (
+                    estimate.estimated_local_assignment_count
+                    for estimate in estimates
+                ),
+                1,
+            ),
+        )
+
 
 def _prototype_local_survivor_count(
     component: SouthStarSemanticStereoComponent,
@@ -120,3 +164,9 @@ def _prototype_local_survivor_count(
     if marker not in DIRECTIONAL_MARKERS:
         return 0
     return 1
+
+
+def _prototype_component_assignment_estimate(
+    component: SouthStarSemanticStereoComponent,
+) -> int:
+    return 2 ** len(component.source_features)

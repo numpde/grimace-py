@@ -397,6 +397,27 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
             all(event.ring_closure.closure_id for event in ring_events)
         )
 
+    def test_graph_native_composes_markerless_disconnected_fragments(self) -> None:
+        result = mol_to_smiles_enum_s_graph_native(
+            "C1CCCCC1.O",
+            case_id="cyclohexane_oxygen",
+        )
+
+        self.assertEqual("cyclohexane_oxygen", result.case_id)
+        self.assertEqual(
+            (
+                "C1CCCCC1.O",
+                "O.C1CCCCC1",
+            ),
+            result.outputs,
+        )
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(
+                    graph_signature("C1CCCCC1.O"),
+                    graph_signature(output),
+                )
+
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,
     ) -> None:

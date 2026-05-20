@@ -222,6 +222,8 @@ def _disconnected_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, 
     fragments = Chem.GetMolFrags(mol)
     if len(fragments) <= 1:
         return ()
+    if disconnected_fragments_have_supported_independent_traversal(mol):
+        return ()
     return (
         SouthStarUnsupportedFeature(
             category="disconnected_molecule",
@@ -240,6 +242,8 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         bond.GetIdx() for bond in mol.GetBonds() if bond.IsInRing()
     )
     if not ring_atom_indices and not ring_bond_indices:
+        return ()
+    if disconnected_fragments_have_supported_independent_traversal(mol):
         return ()
     if is_simple_saturated_monocycle(mol):
         return ()
@@ -370,4 +374,28 @@ def is_simple_saturated_monocycle(mol: Chem.Mol) -> bool:
     return all(
         bond.IsInRing() and bond.GetBondType() == Chem.BondType.SINGLE
         for bond in mol.GetBonds()
+    )
+
+
+def disconnected_fragments_have_supported_independent_traversal(
+    mol: Chem.Mol,
+) -> bool:
+    fragments = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
+    if len(fragments) <= 1:
+        return False
+    return all(
+        not _has_source_stereo_features(fragment)
+        and south_star_support_gate_report(fragment).supported
+        for fragment in fragments
+    )
+
+
+def _has_source_stereo_features(mol: Chem.Mol) -> bool:
+    return any(
+        bond.GetBondType() == Chem.BondType.DOUBLE
+        and bond.GetStereo() != Chem.BondStereo.STEREONONE
+        for bond in mol.GetBonds()
+    ) or any(
+        atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        for atom in mol.GetAtoms()
     )

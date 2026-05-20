@@ -13,6 +13,10 @@ from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from grimace._south_star.annotation_policy import Edge, normalized_edge
+from grimace._south_star.fragments import (
+    SouthStarFragmentSupport,
+    compose_disconnected_fragment_supports,
+)
 from grimace._south_star.support_gates import is_simple_saturated_monocycle
 
 
@@ -107,19 +111,54 @@ def mol_to_smiles_enum_s_graph_native(
     case_id: str = "",
 ) -> SouthStarEnumSPrototypeResult:
     mol = _parse_smiles(source_smiles)
+    return _mol_to_smiles_enum_s_graph_native_for_mol(mol, case_id=case_id)
+
+
+def _mol_to_smiles_enum_s_graph_native_for_mol(
+    mol: Chem.Mol,
+    *,
+    case_id: str = "",
+) -> SouthStarEnumSPrototypeResult:
     state = SouthStarComponentSupportState.from_mol(mol)
-    outputs = tuple(
-        dict.fromkeys(
-            traversal.render()
-            for traversal in _tree_traversals_for_mol(mol, state=state)
-        )
-    )
+    if len(Chem.GetMolFrags(mol)) > 1:
+        outputs = _disconnected_outputs_for_mol(mol)
+    else:
+        outputs = _connected_outputs_for_mol(mol, state=state)
     return SouthStarEnumSPrototypeResult(
         case_id=case_id,
         outputs=outputs,
         complexity_snapshot=state.complexity_snapshot(),
         generation_basis="south_star_graph_native_equation_solved_tree_traversal",
     )
+
+
+def _connected_outputs_for_mol(
+    mol: Chem.Mol,
+    *,
+    state: SouthStarComponentSupportState,
+) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            traversal.render()
+            for traversal in _tree_traversals_for_mol(mol, state=state)
+        )
+    )
+
+
+def _disconnected_outputs_for_mol(mol: Chem.Mol) -> tuple[str, ...]:
+    fragment_supports = tuple(
+        SouthStarFragmentSupport(
+            fragment_id=f"fragment:{fragment_idx}",
+            outputs=_connected_outputs_for_mol(
+                fragment,
+                state=SouthStarComponentSupportState.from_mol(fragment),
+            ),
+        )
+        for fragment_idx, fragment in enumerate(
+            Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
+        )
+    )
+    return compose_disconnected_fragment_supports(fragment_supports).outputs
 
 
 def mol_to_smiles_enum_s_tree_traversals_for_case(

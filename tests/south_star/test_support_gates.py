@@ -43,6 +43,11 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertIn("disconnected_molecule", report.categories)
 
+    def test_markerless_disconnected_fragments_are_supported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CCCCC1.O"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
     def test_simple_saturated_monocycles_are_supported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C1CCCCC1"))
 

@@ -82,6 +82,21 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     result.generation_basis,
                 )
 
+    def test_graph_native_result_names_default_policies(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_semantic_cases()
+            if case.case_id == "isolated_alkene_z"
+        )
+        result = mol_to_smiles_enum_s_graph_native_for_case(case)
+
+        self.assertEqual("maximal_eligible_carrier", result.annotation_policy)
+        self.assertEqual("all_fragment_orders", result.fragment_order_policy)
+        self.assertEqual(
+            "first_occurrence_deduplication",
+            result.output_order_policy,
+        )
+
     def test_graph_native_tree_traversal_excludes_negative_semantic_witnesses(
         self,
     ) -> None:

@@ -34,6 +34,8 @@ class AnnotationPolicyDecision:
 
 
 class AnnotationPolicy(Protocol):
+    name: str
+
     def decision(
         self,
         *,
@@ -45,6 +47,8 @@ class AnnotationPolicy(Protocol):
 
 
 class MaximalEligibleCarrierAnnotationPolicy:
+    name: str = "maximal_eligible_carrier"
+
     def decision(
         self,
         *,

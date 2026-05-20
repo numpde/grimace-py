@@ -26,6 +26,10 @@ class SouthStarFragmentCompositionTests(unittest.TestCase):
         self.assertEqual((1, 1), result.fragment_output_counts)
         self.assertEqual("all_fragment_orders", result.fragment_order_policy)
         self.assertEqual(2, result.fragment_order_count)
+        self.assertEqual(
+            "first_occurrence_deduplication",
+            result.output_order_policy,
+        )
         self.assertEqual(2, result.estimated_product_size)
 
     def test_composition_multiplies_local_supports_by_fragment_orders(self) -> None:

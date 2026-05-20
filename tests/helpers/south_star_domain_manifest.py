@@ -29,6 +29,7 @@ class SouthStarDomainManifest:
     expanded_feature_areas: frozenset[str]
     annotation_policies: frozenset[str]
     fragment_order_policies: frozenset[str]
+    output_order_policies: frozenset[str]
     unsupported_feature_categories: frozenset[str]
 
 
@@ -69,6 +70,11 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     fragment_order_policies=frozenset(
         {
             "all_fragment_orders",
+        }
+    ),
+    output_order_policies=frozenset(
+        {
+            "first_occurrence_deduplication",
         }
     ),
     unsupported_feature_categories=frozenset(

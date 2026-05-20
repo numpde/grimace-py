@@ -6,7 +6,9 @@ import unittest
 
 from rdkit import Chem
 
+from grimace._south_star.annotation_policy import MaximalEligibleCarrierAnnotationPolicy
 from grimace._south_star.fragments import AllFragmentOrderPolicy
+from grimace._south_star.output_order import FirstOccurrenceOutputOrderPolicy
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_EXPANDED_SUPPORT_POLICY,
@@ -49,6 +51,16 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         self.assertIn(
             AllFragmentOrderPolicy().name,
             SOUTH_STAR_PRIVATE_DOMAIN.fragment_order_policies,
+        )
+
+    def test_manifest_names_runtime_policy_objects(self) -> None:
+        self.assertIn(
+            MaximalEligibleCarrierAnnotationPolicy().name,
+            SOUTH_STAR_PRIVATE_DOMAIN.annotation_policies,
+        )
+        self.assertIn(
+            FirstOccurrenceOutputOrderPolicy().name,
+            SOUTH_STAR_PRIVATE_DOMAIN.output_order_policies,
         )
 
     def test_manifest_covers_observed_unsupported_categories(self) -> None:

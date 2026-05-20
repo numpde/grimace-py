@@ -6,6 +6,8 @@ from itertools import permutations
 from itertools import product
 from operator import mul
 
+from grimace._south_star.output_order import FirstOccurrenceOutputOrderPolicy
+
 
 @dataclass(frozen=True, slots=True)
 class SouthStarFragmentSupport:
@@ -46,6 +48,7 @@ class SouthStarDisconnectedCompositionResult:
     fragment_output_counts: tuple[int, ...]
     fragment_order_policy: str
     fragment_order_count: int
+    output_order_policy: str
     estimated_product_size: int
 
 
@@ -53,18 +56,18 @@ def compose_disconnected_fragment_supports(
     fragments: tuple[SouthStarFragmentSupport, ...],
     *,
     fragment_order_policy: AllFragmentOrderPolicy | None = None,
+    output_order_policy: FirstOccurrenceOutputOrderPolicy | None = None,
 ) -> SouthStarDisconnectedCompositionResult:
     if not fragments:
         raise ValueError("disconnected composition requires at least one fragment")
     fragment_order_policy = fragment_order_policy or AllFragmentOrderPolicy()
+    output_order_policy = output_order_policy or FirstOccurrenceOutputOrderPolicy()
     orders = fragment_order_policy.fragment_orders(len(fragments))
-    outputs = tuple(
-        dict.fromkeys(
-            ".".join(output_group)
-            for order in orders
-            for output_group in product(
-                *(fragments[fragment_idx].outputs for fragment_idx in order)
-            )
+    outputs = output_order_policy.deduplicate(
+        ".".join(output_group)
+        for order in orders
+        for output_group in product(
+            *(fragments[fragment_idx].outputs for fragment_idx in order)
         )
     )
     fragment_output_counts = tuple(len(fragment.outputs) for fragment in fragments)
@@ -74,6 +77,7 @@ def compose_disconnected_fragment_supports(
         fragment_output_counts=fragment_output_counts,
         fragment_order_policy=fragment_order_policy.name,
         fragment_order_count=len(orders),
+        output_order_policy=output_order_policy.name,
         estimated_product_size=len(orders)
         * reduce(mul, fragment_output_counts, 1),
     )

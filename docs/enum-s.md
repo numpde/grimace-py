@@ -114,6 +114,17 @@ This policy is intentionally modular. Future package work may add minimal,
 canonical, or writer-like annotation policies without changing the component
 fact model.
 
+The private runtime currently passes a small immutable policy set through the
+graph-native EnumS path:
+
+- annotation policy: `maximal_eligible_carrier`;
+- fragment-order policy: `all_fragment_orders`;
+- output-order policy: `first_occurrence_deduplication`.
+
+These names are engineering contract labels, not a plugin framework. They make
+the current behavior explicit in diagnostics and tests while preserving the
+existing default support order.
+
 ## Conformance Evidence
 
 The current South Star oracle separates four checks:

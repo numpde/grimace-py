@@ -17,6 +17,8 @@ from grimace._south_star.fragments import (
     SouthStarFragmentSupport,
     compose_disconnected_fragment_supports,
 )
+from grimace._south_star.policies import DEFAULT_SOUTH_STAR_POLICY_SET
+from grimace._south_star.policies import SouthStarPolicySet
 from grimace._south_star.support_gates import (
     is_supported_monocycle_with_acyclic_branches,
 )
@@ -91,6 +93,11 @@ class SouthStarEnumSPrototypeResult:
     outputs: tuple[str, ...]
     complexity_snapshot: SouthStarComponentComplexitySnapshot
     generation_basis: str
+    annotation_policy: str = DEFAULT_SOUTH_STAR_POLICY_SET.annotation_policy.name
+    fragment_order_policy: str = (
+        DEFAULT_SOUTH_STAR_POLICY_SET.fragment_order_policy.name
+    )
+    output_order_policy: str = DEFAULT_SOUTH_STAR_POLICY_SET.output_order_policy.name
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,26 +124,42 @@ def mol_to_smiles_enum_s_graph_native(
     source_smiles: str,
     *,
     case_id: str = "",
+    policy_set: SouthStarPolicySet = DEFAULT_SOUTH_STAR_POLICY_SET,
 ) -> SouthStarEnumSPrototypeResult:
     mol = _parse_smiles(source_smiles)
-    return _mol_to_smiles_enum_s_graph_native_for_mol(mol, case_id=case_id)
+    return _mol_to_smiles_enum_s_graph_native_for_mol(
+        mol,
+        case_id=case_id,
+        policy_set=policy_set,
+    )
 
 
 def _mol_to_smiles_enum_s_graph_native_for_mol(
     mol: Chem.Mol,
     *,
     case_id: str = "",
+    policy_set: SouthStarPolicySet,
 ) -> SouthStarEnumSPrototypeResult:
-    state = SouthStarComponentSupportState.from_mol(mol)
+    state = SouthStarComponentSupportState.from_mol(
+        mol,
+        annotation_policy=policy_set.annotation_policy,
+    )
     if len(Chem.GetMolFrags(mol)) > 1:
-        outputs = _disconnected_outputs_for_mol(mol)
+        outputs = _disconnected_outputs_for_mol(mol, policy_set=policy_set)
     else:
-        outputs = _connected_outputs_for_mol(mol, state=state)
+        outputs = _connected_outputs_for_mol(
+            mol,
+            state=state,
+            policy_set=policy_set,
+        )
     return SouthStarEnumSPrototypeResult(
         case_id=case_id,
         outputs=outputs,
         complexity_snapshot=state.complexity_snapshot(),
         generation_basis="south_star_graph_native_equation_solved_tree_traversal",
+        annotation_policy=policy_set.annotation_policy.name,
+        fragment_order_policy=policy_set.fragment_order_policy.name,
+        output_order_policy=policy_set.output_order_policy.name,
     )
 
 
@@ -144,29 +167,40 @@ def _connected_outputs_for_mol(
     mol: Chem.Mol,
     *,
     state: SouthStarComponentSupportState,
+    policy_set: SouthStarPolicySet,
 ) -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            traversal.render()
-            for traversal in _tree_traversals_for_mol(mol, state=state)
-        )
+    return policy_set.output_order_policy.deduplicate(
+        traversal.render()
+        for traversal in _tree_traversals_for_mol(mol, state=state)
     )
 
 
-def _disconnected_outputs_for_mol(mol: Chem.Mol) -> tuple[str, ...]:
+def _disconnected_outputs_for_mol(
+    mol: Chem.Mol,
+    *,
+    policy_set: SouthStarPolicySet,
+) -> tuple[str, ...]:
     fragment_supports = tuple(
         SouthStarFragmentSupport(
             fragment_id=f"fragment:{fragment_idx}",
             outputs=_connected_outputs_for_mol(
                 fragment,
-                state=SouthStarComponentSupportState.from_mol(fragment),
+                state=SouthStarComponentSupportState.from_mol(
+                    fragment,
+                    annotation_policy=policy_set.annotation_policy,
+                ),
+                policy_set=policy_set,
             ),
         )
         for fragment_idx, fragment in enumerate(
             Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
         )
     )
-    return compose_disconnected_fragment_supports(fragment_supports).outputs
+    return compose_disconnected_fragment_supports(
+        fragment_supports,
+        fragment_order_policy=policy_set.fragment_order_policy,
+        output_order_policy=policy_set.output_order_policy,
+    ).outputs
 
 
 def mol_to_smiles_enum_s_tree_traversals_for_case(

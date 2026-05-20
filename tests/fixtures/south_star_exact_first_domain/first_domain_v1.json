@@ -37,6 +37,90 @@
         "N(/O)=C\\C",
         "O\\N=C\\C"
       ]
+    },
+    {
+      "case_id": "conjugated_triene_same_phase",
+      "source_smiles": "C/C=C/C=C/C=C/C",
+      "expected_support": [
+        "C/C=C/C=C/C=C/C",
+        "C(\\C)=C/C=C/C=C/C",
+        "C(=C/C=C/C=C/C)\\C",
+        "C\\C=C\\C=C\\C=C\\C",
+        "C(/C)=C\\C=C\\C=C\\C",
+        "C(=C\\C=C\\C=C\\C)/C"
+      ]
+    },
+    {
+      "case_id": "hetero_conjugated_enimine",
+      "source_smiles": "C/C=C/N=C/O",
+      "expected_support": [
+        "C/C=C/N=C/O",
+        "C(\\C)=C/N=C/O",
+        "C(=C/N=C/O)\\C",
+        "C(=N/C=C/C)\\O",
+        "C(\\O)=N/C=C/C",
+        "O/C=N/C=C/C",
+        "C\\C=C\\N=C\\O",
+        "C(/C)=C\\N=C\\O",
+        "C(=C\\N=C\\O)/C",
+        "C(=N\\C=C\\C)/O",
+        "C(/O)=N\\C=C\\C",
+        "O\\C=N\\C=C\\C"
+      ]
+    },
+    {
+      "case_id": "mixed_coupled_and_independent_alkenes",
+      "source_smiles": "F/C=C/C=C/C/C=C\\Cl",
+      "expected_support": [
+        "F/C=C/C=C/C/C=C\\Cl",
+        "C(\\F)=C/C=C/C/C=C\\Cl",
+        "C(=C/C=C/C/C=C\\Cl)\\F",
+        "C(=C/C=C/F)\\C/C=C\\Cl",
+        "C(\\C/C=C\\Cl)=C/C=C/F",
+        "C(/C=C/C=C/F)/C=C\\Cl",
+        "C(/C=C\\Cl)/C=C/C=C/F",
+        "C(\\C/C=C/C=C/F)=C\\Cl",
+        "C(=C\\Cl)\\C/C=C/C=C/F",
+        "C(=C/C/C=C/C=C/F)/Cl",
+        "C(/Cl)=C/C/C=C/C=C/F",
+        "Cl\\C=C/C/C=C/C=C/F",
+        "F/C=C/C=C/C\\C=C/Cl",
+        "C(\\F)=C/C=C/C\\C=C/Cl",
+        "C(=C/C=C/C\\C=C/Cl)\\F",
+        "C(=C/C=C/F)\\C\\C=C/Cl",
+        "C(\\C\\C=C/Cl)=C/C=C/F",
+        "C(/C=C/C=C/F)\\C=C/Cl",
+        "C(\\C=C/Cl)/C=C/C=C/F",
+        "C(/C/C=C/C=C/F)=C/Cl",
+        "C(=C/Cl)/C/C=C/C=C/F",
+        "C(=C\\C/C=C/C=C/F)\\Cl",
+        "C(\\Cl)=C\\C/C=C/C=C/F",
+        "Cl/C=C\\C/C=C/C=C/F",
+        "F\\C=C\\C=C\\C/C=C\\Cl",
+        "C(/F)=C\\C=C\\C/C=C\\Cl",
+        "C(=C\\C=C\\C/C=C\\Cl)/F",
+        "C(=C\\C=C\\F)/C/C=C\\Cl",
+        "C(/C/C=C\\Cl)=C\\C=C\\F",
+        "C(\\C=C\\C=C\\F)/C=C\\Cl",
+        "C(/C=C\\Cl)\\C=C\\C=C\\F",
+        "C(\\C\\C=C\\C=C\\F)=C\\Cl",
+        "C(=C\\Cl)\\C\\C=C\\C=C\\F",
+        "C(=C/C\\C=C\\C=C\\F)/Cl",
+        "C(/Cl)=C/C\\C=C\\C=C\\F",
+        "Cl\\C=C/C\\C=C\\C=C\\F",
+        "F\\C=C\\C=C\\C\\C=C/Cl",
+        "C(/F)=C\\C=C\\C\\C=C/Cl",
+        "C(=C\\C=C\\C\\C=C/Cl)/F",
+        "C(=C\\C=C\\F)/C\\C=C/Cl",
+        "C(/C\\C=C/Cl)=C\\C=C\\F",
+        "C(\\C=C\\C=C\\F)\\C=C/Cl",
+        "C(\\C=C/Cl)\\C=C\\C=C\\F",
+        "C(/C\\C=C\\C=C\\F)=C/Cl",
+        "C(=C/Cl)/C\\C=C\\C=C\\F",
+        "C(=C\\C\\C=C\\C=C\\F)\\Cl",
+        "C(\\Cl)=C\\C\\C=C\\C=C\\F",
+        "Cl/C=C\\C\\C=C\\C=C\\F"
+      ]
     }
   ]
 }

@@ -2,12 +2,51 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_annotation_policy import DIRECTIONAL_MARKERS
+from tests.helpers.south_star_annotation_policy import (
+    DIRECTIONAL_MARKERS,
+    AnnotationPolicyDecision,
+    EmittedEdgeBasis,
+    SemanticCarrierOpportunity,
+    SurvivingSemanticAssignment,
+    normalized_edge,
+)
 from tests.helpers.south_star_component_support_state import (
     SouthStarComponentSupportState,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
+
+
+class ComponentSlashOnlyPolicy:
+    def decision(
+        self,
+        *,
+        carrier_opportunities: tuple[SemanticCarrierOpportunity, ...],
+        emitted_edge: EmittedEdgeBasis,
+        surviving_assignments: tuple[SurvivingSemanticAssignment, ...],
+    ) -> AnnotationPolicyDecision:
+        del carrier_opportunities, surviving_assignments
+        return AnnotationPolicyDecision(
+            edge=normalized_edge(emitted_edge.edge),
+            marker_required=True,
+            allowed_markers=("/",),
+        )
+
+
+class ComponentNoMarkerPolicy:
+    def decision(
+        self,
+        *,
+        carrier_opportunities: tuple[SemanticCarrierOpportunity, ...],
+        emitted_edge: EmittedEdgeBasis,
+        surviving_assignments: tuple[SurvivingSemanticAssignment, ...],
+    ) -> AnnotationPolicyDecision:
+        del carrier_opportunities, surviving_assignments
+        return AnnotationPolicyDecision(
+            edge=normalized_edge(emitted_edge.edge),
+            marker_required=False,
+            allowed_markers=(),
+        )
 
 
 class SouthStarComponentSupportStateTests(unittest.TestCase):
@@ -101,3 +140,24 @@ class SouthStarComponentSupportStateTests(unittest.TestCase):
             2,
             snapshot.local_assignment_estimates[0].source_feature_count,
         )
+
+    def test_injected_policy_controls_component_marker_options(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles("F/C=C\\Cl"),
+            annotation_policy=ComponentSlashOnlyPolicy(),
+        )
+
+        self.assertEqual(("/",), state.allowed_directional_markers(edge=(0, 1)))
+        rejected = state.explain_directional_marker(edge=(0, 1), marker="\\")
+        self.assertFalse(rejected.token_allowed)
+        self.assertEqual("marker_rejected_by_annotation_policy", rejected.reason)
+
+    def test_injected_policy_controls_component_marker_requirement(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles("F/C=C\\Cl"),
+            annotation_policy=ComponentNoMarkerPolicy(),
+        )
+
+        support = state.explain_directional_marker(edge=(0, 1), marker="/")
+        self.assertFalse(support.token_allowed)
+        self.assertEqual("marker_not_required_by_annotation_policy", support.reason)

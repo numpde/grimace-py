@@ -8,7 +8,12 @@ from rdkit import Chem
 
 from tests.helpers.south_star_annotation_policy import (
     DIRECTIONAL_MARKERS,
+    AnnotationPolicy,
     Edge,
+    EmittedEdgeBasis,
+    MaximalEligibleCarrierAnnotationPolicy,
+    SemanticCarrierOpportunity,
+    SurvivingSemanticAssignment,
     normalized_edge,
 )
 from tests.helpers.south_star_components import (
@@ -53,19 +58,34 @@ class SouthStarComponentComplexitySnapshot:
 @dataclass(frozen=True, slots=True)
 class SouthStarComponentSupportState:
     components: tuple[SouthStarSemanticStereoComponent, ...]
+    annotation_policy: AnnotationPolicy
 
     @classmethod
     def from_case(
         cls,
         case: SouthStarSemanticCase,
+        *,
+        annotation_policy: AnnotationPolicy | None = None,
     ) -> SouthStarComponentSupportState:
-        return cls.from_mol(parse_smiles(case.source_smiles))
+        return cls.from_mol(
+            parse_smiles(case.source_smiles),
+            annotation_policy=annotation_policy,
+        )
 
     @classmethod
-    def from_mol(cls, mol: Chem.Mol) -> SouthStarComponentSupportState:
+    def from_mol(
+        cls,
+        mol: Chem.Mol,
+        *,
+        annotation_policy: AnnotationPolicy | None = None,
+    ) -> SouthStarComponentSupportState:
         extraction = extract_south_star_components(mol)
         extraction.fail_if_unsupported()
-        return cls(components=extraction.components)
+        return cls(
+            components=extraction.components,
+            annotation_policy=annotation_policy
+            or MaximalEligibleCarrierAnnotationPolicy(),
+        )
 
     def explain_directional_marker(
         self,
@@ -88,6 +108,30 @@ class SouthStarComponentSupportState:
                 marker=marker,
                 token_allowed=False,
                 reason="edge_affects_no_semantic_component",
+                affected_components=(),
+            )
+
+        policy_decision = self.annotation_policy.decision(
+            carrier_opportunities=_carrier_opportunities_for_components(affected),
+            emitted_edge=EmittedEdgeBasis(edge=normalized),
+            surviving_assignments=_prototype_surviving_assignments_for_components(
+                affected
+            ),
+        )
+        if not policy_decision.marker_required:
+            return SouthStarComponentMarkerSupport(
+                edge=normalized,
+                marker=marker,
+                token_allowed=False,
+                reason="marker_not_required_by_annotation_policy",
+                affected_components=(),
+            )
+        if marker not in policy_decision.allowed_markers:
+            return SouthStarComponentMarkerSupport(
+                edge=normalized,
+                marker=marker,
+                token_allowed=False,
+                reason="marker_rejected_by_annotation_policy",
                 affected_components=(),
             )
 
@@ -170,3 +214,31 @@ def _prototype_component_assignment_estimate(
     component: SouthStarSemanticStereoComponent,
 ) -> int:
     return 2 ** len(component.source_features)
+
+
+def _carrier_opportunities_for_components(
+    components: tuple[SouthStarSemanticStereoComponent, ...],
+) -> tuple[SemanticCarrierOpportunity, ...]:
+    return tuple(
+        SemanticCarrierOpportunity(edge=edge)
+        for edge in dict.fromkeys(
+            edge
+            for component in components
+            for edge in component.eligible_carrier_edges
+        )
+    )
+
+
+def _prototype_surviving_assignments_for_components(
+    components: tuple[SouthStarSemanticStereoComponent, ...],
+) -> tuple[SurvivingSemanticAssignment, ...]:
+    return tuple(
+        SurvivingSemanticAssignment(
+            assignment_id=component.component_id,
+            marker_options_by_edge={
+                edge: DIRECTIONAL_MARKERS
+                for edge in component.eligible_carrier_edges
+            },
+        )
+        for component in components
+    )

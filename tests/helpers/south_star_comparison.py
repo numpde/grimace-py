@@ -12,7 +12,7 @@ from tests.helpers.south_star_semantic_oracle import (
     semantic_oracle_accepts,
     south_star_conformance_report,
 )
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
+from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
 
@@ -75,7 +75,7 @@ def south_star_parity_comparison_report(
     case: SouthStarSemanticCase,
 ) -> SouthStarParityComparisonReport:
     south_star_support = frozenset(
-        mol_to_smiles_enum_s_prototype_for_case(case).outputs
+        mol_to_smiles_enum_s_graph_native_for_case(case).outputs
     )
     rdkit_parity_support = _grimace_public_parity_support(case.source_smiles)
     intersection = south_star_support.intersection(rdkit_parity_support)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
+from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_output_correctness import (
     evaluate_south_star_output_correctness,
 )
@@ -10,9 +10,9 @@ from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 
 class SouthStarOutputCorrectnessHarnessTests(unittest.TestCase):
-    def test_every_enum_s_prototype_output_passes_semantic_conformance(self) -> None:
+    def test_every_graph_native_enum_s_output_passes_semantic_conformance(self) -> None:
         for case in load_south_star_semantic_cases():
-            enum_result = mol_to_smiles_enum_s_prototype_for_case(case)
+            enum_result = mol_to_smiles_enum_s_graph_native_for_case(case)
             correctness_results = evaluate_south_star_output_correctness(
                 case=case,
                 enum_result=enum_result,
@@ -37,7 +37,7 @@ class SouthStarOutputCorrectnessHarnessTests(unittest.TestCase):
     def test_harness_rejects_mismatched_case_and_enum_result(self) -> None:
         cases = load_south_star_semantic_cases()
         self.assertGreaterEqual(len(cases), 2)
-        enum_result = mol_to_smiles_enum_s_prototype_for_case(cases[0])
+        enum_result = mol_to_smiles_enum_s_graph_native_for_case(cases[0])
 
         with self.assertRaisesRegex(ValueError, "does not match"):
             evaluate_south_star_output_correctness(

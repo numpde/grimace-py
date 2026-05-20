@@ -20,6 +20,7 @@ from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectat
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 from tests.helpers.south_star_semantic_oracle import graph_signature
+from tests.helpers.south_star_semantic_oracle import semantic_signature
 
 
 class SouthStarEnumSPrototypeTests(unittest.TestCase):
@@ -417,6 +418,30 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     graph_signature("C1CCCCC1.O"),
                     graph_signature(output),
                 )
+
+    def test_graph_native_preserves_implicit_h_tetrahedral_stereo(self) -> None:
+        source = "C[C@H](F)Cl"
+        result = mol_to_smiles_enum_s_graph_native(source, case_id="implicit_h_chiral")
+
+        self.assertEqual("implicit_h_chiral", result.case_id)
+        self.assertIn(source, result.outputs)
+        self.assertIn("[C@@H](C)(F)Cl", result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(graph_signature(source), graph_signature(output))
+                self.assertEqual(semantic_signature(source), semantic_signature(output))
+
+    def test_graph_native_preserves_quaternary_tetrahedral_stereo(self) -> None:
+        source = "C[C@](F)(Cl)Br"
+        result = mol_to_smiles_enum_s_graph_native(source, case_id="quaternary_chiral")
+
+        self.assertEqual("quaternary_chiral", result.case_id)
+        self.assertIn(source, result.outputs)
+        self.assertIn("[C@](C)(F)(Cl)Br", result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(graph_signature(source), graph_signature(output))
+                self.assertEqual(semantic_signature(source), semantic_signature(output))
 
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,

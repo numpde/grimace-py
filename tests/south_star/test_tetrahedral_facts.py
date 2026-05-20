@@ -82,12 +82,10 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             )
         )
 
-    def test_atom_stereo_remains_fail_fast_for_enumeration(self) -> None:
+    def test_tetrahedral_atom_stereo_is_inside_current_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C[C@H](F)Cl"))
 
-        self.assertIn("atom_stereo", report.categories)
-        with self.assertRaisesRegex(NotImplementedError, "atom_stereo"):
-            report.fail_if_unsupported()
+        self.assertTrue(report.supported, report.unsupported_features)
 
 
 if __name__ == "__main__":

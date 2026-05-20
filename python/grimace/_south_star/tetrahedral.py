@@ -34,6 +34,18 @@ def extract_tetrahedral_center_facts(
     )
 
 
+def tetrahedral_atom_supported(atom: Chem.Atom) -> bool:
+    if atom.GetChiralTag() not in {
+        Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+        Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+    }:
+        return False
+    implicit_hydrogen_count = atom.GetTotalNumHs()
+    if implicit_hydrogen_count > 1:
+        return False
+    return atom.GetDegree() + implicit_hydrogen_count == 4
+
+
 def preserving_tetrahedral_token(
     *,
     source_token: str,
@@ -64,20 +76,16 @@ def tetrahedral_token_preserves_orientation(
 
 
 def _tetrahedral_center_fact(atom: Chem.Atom) -> SouthStarTetrahedralCenterFact:
-    implicit_hydrogen_count = atom.GetTotalNumHs()
-    if implicit_hydrogen_count > 1:
+    if not tetrahedral_atom_supported(atom):
         raise NotImplementedError(
-            "South Star tetrahedral fact extraction supports at most one implicit "
-            "hydrogen ligand"
+            "South Star tetrahedral fact extraction requires a tetrahedral "
+            "center with exactly four ligands"
         )
+    implicit_hydrogen_count = atom.GetTotalNumHs()
     explicit_neighbors = tuple(neighbor.GetIdx() for neighbor in atom.GetNeighbors())
     source_ligand_order = tuple(f"atom:{atom_idx}" for atom_idx in explicit_neighbors)
     if implicit_hydrogen_count:
         source_ligand_order += (IMPLICIT_HYDROGEN_LIGAND,)
-    if len(source_ligand_order) != 4:
-        raise NotImplementedError(
-            "South Star tetrahedral fact extraction requires exactly four ligands"
-        )
     return SouthStarTetrahedralCenterFact(
         center_atom_idx=atom.GetIdx(),
         chiral_tag=str(atom.GetChiralTag()),

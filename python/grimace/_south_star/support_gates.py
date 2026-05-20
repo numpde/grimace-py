@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
+from grimace._south_star.tetrahedral import tetrahedral_atom_supported
+
 
 SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
     {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
@@ -172,10 +174,14 @@ def _atom_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, .
             category="atom_stereo",
             atom_indices=(atom.GetIdx(),),
             bond_indices=(),
-            reason="South Star first scope does not model atom stereo components",
+            reason=(
+                "only tetrahedral centers with exactly four ligands are modeled "
+                "in the current South Star atom-stereo scope"
+            ),
         )
         for atom in mol.GetAtoms()
         if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        and not tetrahedral_atom_supported(atom)
     )
 
 
@@ -370,6 +376,11 @@ def is_simple_saturated_monocycle(mol: Chem.Mol) -> bool:
     if mol.GetNumBonds() != mol.GetNumAtoms():
         return False
     if any(atom.GetDegree() != 2 for atom in mol.GetAtoms()):
+        return False
+    if any(
+        atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        for atom in mol.GetAtoms()
+    ):
         return False
     return all(
         bond.IsInRing() and bond.GetBondType() == Chem.BondType.SINGLE

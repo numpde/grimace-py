@@ -17,8 +17,15 @@ class SouthStarSupportGateTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_atom_stereo_is_fail_fast_unsupported(self) -> None:
+    def test_supported_tetrahedral_atom_stereo_is_inside_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C[C@H](F)Cl"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_unsupported_atom_stereo_is_fail_fast_unsupported(self) -> None:
+        mol = parse_smiles("CCF")
+        mol.GetAtomWithIdx(1).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
+        report = south_star_support_gate_report(mol)
 
         self.assertIn("atom_stereo", report.categories)
         with self.assertRaisesRegex(NotImplementedError, "atom_stereo"):

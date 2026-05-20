@@ -18,6 +18,12 @@ from grimace._south_star.fragments import (
     compose_disconnected_fragment_supports,
 )
 from grimace._south_star.support_gates import is_simple_saturated_monocycle
+from grimace._south_star.tetrahedral import (
+    IMPLICIT_HYDROGEN_LIGAND,
+    SouthStarTetrahedralCenterFact,
+    extract_tetrahedral_center_facts,
+    preserving_tetrahedral_token,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +328,7 @@ def _tree_traversals_for_marker_assignment(
         mol,
         marker_by_edge=marker_by_edge,
     )
+    tetrahedral_facts_by_atom = _tetrahedral_facts_by_atom(mol)
     return tuple(
         _with_solved_marker_assignments(
             state,
@@ -340,6 +347,7 @@ def _tree_traversals_for_marker_assignment(
             visited=frozenset(),
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
         )
     )
 
@@ -405,14 +413,9 @@ def _atom_subtree_event_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
+    tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
 ) -> tuple[_TraversalFragment, ...]:
     visited = visited | {atom_idx}
-    atom_text = _atom_text(mol.GetAtomWithIdx(atom_idx))
-    atom_event = SouthStarTraversalEvent(
-        kind="atom",
-        text=atom_text,
-        atom_idx=atom_idx,
-    )
     children = tuple(
         neighbor.GetIdx()
         for neighbor in mol.GetAtomWithIdx(atom_idx).GetNeighbors()
@@ -429,10 +432,24 @@ def _atom_subtree_event_variants(
     ):
         return ()
     if not children:
+        atom_event = _atom_event(
+            mol,
+            atom_idx=atom_idx,
+            parent_idx=parent_idx,
+            ordered_children=(),
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
+        )
         return (_TraversalFragment(events=(atom_event,)),)
 
     variants: list[_TraversalFragment] = []
     for ordered_children in permutations(sorted(children)):
+        atom_event = _atom_event(
+            mol,
+            atom_idx=atom_idx,
+            parent_idx=parent_idx,
+            ordered_children=ordered_children,
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
+        )
         branch_children = ordered_children[:-1]
         main_child = ordered_children[-1]
         branch_variants = tuple(
@@ -444,6 +461,7 @@ def _atom_subtree_event_variants(
                 visited=visited,
                 marker_by_edge=marker_by_edge,
                 carrier_contexts_by_edge=carrier_contexts_by_edge,
+                tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
             )
             for child_idx in branch_children
         )
@@ -455,6 +473,7 @@ def _atom_subtree_event_variants(
             visited=visited,
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
         )
         for branch_group in product(*branch_variants):
             branch_events = tuple(
@@ -480,6 +499,7 @@ def _branch_event_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
+    tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
 ) -> tuple[_TraversalFragment, ...]:
     branch_open = SouthStarTraversalEvent(kind="branch_open", text="(")
     branch_close = SouthStarTraversalEvent(kind="branch_close", text=")")
@@ -505,6 +525,7 @@ def _branch_event_variants(
             visited=visited,
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
         )
     )
 
@@ -518,6 +539,7 @@ def _child_event_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
+    tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
 ) -> tuple[_TraversalFragment, ...]:
     bond_event = _bond_event(
         mol,
@@ -539,6 +561,7 @@ def _child_event_variants(
             visited=visited,
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
         )
     )
 
@@ -683,6 +706,77 @@ def _ring_closure_bond_text(mol: Chem.Mol, edge: Edge) -> str:
         "South Star simple ring traversal currently supports only single-bond "
         "ring closures"
     )
+
+
+def _atom_event(
+    mol: Chem.Mol,
+    *,
+    atom_idx: int,
+    parent_idx: int | None,
+    ordered_children: tuple[int, ...],
+    tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
+) -> SouthStarTraversalEvent:
+    return SouthStarTraversalEvent(
+        kind="atom",
+        text=_atom_text_for_traversal(
+            mol.GetAtomWithIdx(atom_idx),
+            parent_idx=parent_idx,
+            ordered_children=ordered_children,
+            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
+        ),
+        atom_idx=atom_idx,
+    )
+
+
+def _atom_text_for_traversal(
+    atom: Chem.Atom,
+    *,
+    parent_idx: int | None,
+    ordered_children: tuple[int, ...],
+    tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
+) -> str:
+    fact = tetrahedral_facts_by_atom.get(atom.GetIdx())
+    if fact is None:
+        return _atom_text(atom)
+
+    emitted_ligand_order = _emitted_tetrahedral_ligand_order(
+        parent_idx=parent_idx,
+        ordered_children=ordered_children,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+    )
+    token = preserving_tetrahedral_token(
+        source_token=fact.source_token,
+        source_ligand_order=fact.source_ligand_order,
+        emitted_ligand_order=emitted_ligand_order,
+    )
+    hydrogen_text = "H" if fact.implicit_hydrogen_count else ""
+    return f"[{atom.GetSymbol()}{token}{hydrogen_text}]"
+
+
+def _emitted_tetrahedral_ligand_order(
+    *,
+    parent_idx: int | None,
+    ordered_children: tuple[int, ...],
+    implicit_hydrogen_count: int,
+) -> tuple[str, ...]:
+    emitted = []
+    if parent_idx is None and implicit_hydrogen_count:
+        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
+    if parent_idx is not None:
+        emitted.append(f"atom:{parent_idx}")
+    emitted.extend(f"atom:{child_idx}" for child_idx in ordered_children)
+    if parent_idx is not None and implicit_hydrogen_count:
+        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
+    return tuple(emitted)
+
+
+def _tetrahedral_facts_by_atom(
+    mol: Chem.Mol,
+) -> dict[int, SouthStarTetrahedralCenterFact]:
+    return {
+        fact.center_atom_idx: fact
+        for fact in extract_tetrahedral_center_facts(mol)
+    }
 
 
 def _atom_text(atom: Chem.Atom) -> str:

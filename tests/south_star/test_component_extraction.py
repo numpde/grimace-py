@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+from rdkit import Chem
+
 from grimace._south_star.annotation_policy import normalized_edge
 from grimace._south_star.components import extract_south_star_components
 from tests.helpers.south_star_semantic_oracle import parse_smiles
@@ -74,7 +76,9 @@ class SouthStarComponentExtractionTests(unittest.TestCase):
         )
 
     def test_unsupported_gate_prevents_component_extraction(self) -> None:
-        extraction = extract_south_star_components(parse_smiles("C[C@H](F)Cl"))
+        mol = parse_smiles("CCF")
+        mol.GetAtomWithIdx(1).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
+        extraction = extract_south_star_components(mol)
 
         self.assertFalse(extraction.supported)
         self.assertEqual((), extraction.components)

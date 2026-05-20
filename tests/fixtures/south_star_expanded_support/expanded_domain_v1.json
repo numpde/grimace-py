@@ -284,6 +284,16 @@
       ]
     },
     {
+      "case_id": "explicit_bracket_hydrogen_h2",
+      "feature_area": "explicit_bracket_hydrogen",
+      "source_smiles": "[H][H]",
+      "support_authority": "graph_native_regression_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for the first explicit bracket-hydrogen grammar slice: neutral, non-isotopic, non-radical explicit hydrogen atoms only.",
+      "expected_support": [
+        "[H][H]"
+      ]
+    },
+    {
       "case_id": "implicit_h_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@H](F)Cl",

@@ -937,6 +937,13 @@ def _atom_text(atom: Chem.Atom) -> str:
     symbol = atom.GetSymbol()
     if symbol in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
         return symbol
+    if (
+        symbol == "H"
+        and atom.GetIsotope() == 0
+        and atom.GetFormalCharge() == 0
+        and atom.GetNumRadicalElectrons() == 0
+    ):
+        return "[H]"
     raise NotImplementedError(
         f"South Star graph-native seed traversal does not support atom {symbol!r}"
     )

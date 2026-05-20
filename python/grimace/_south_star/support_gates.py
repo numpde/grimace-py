@@ -8,7 +8,7 @@ from grimace._south_star.tetrahedral import tetrahedral_atom_supported
 
 
 SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
-    {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
+    {"H", "B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
 )
 SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = frozenset(
     {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
@@ -102,6 +102,9 @@ def south_star_support_gate_report(mol: Chem.Mol) -> SouthStarSupportGateReport:
     unsupported: list[SouthStarUnsupportedFeature] = []
     unsupported.extend(_query_features(mol))
     unsupported.extend(_empty_molecule_features(mol))
+    unsupported.extend(_unsupported_atom_isotope_features(mol))
+    unsupported.extend(_unsupported_atom_charge_features(mol))
+    unsupported.extend(_unsupported_radical_atom_features(mol))
     unsupported.extend(_unsupported_atom_text_features(mol))
     unsupported.extend(_atom_stereo_features(mol))
     unsupported.extend(_metal_features(mol))
@@ -168,6 +171,60 @@ def _unsupported_atom_text_features(
         )
         for atom in mol.GetAtoms()
         if atom.GetSymbol() not in SUPPORTED_ATOM_SYMBOLS
+    )
+
+
+def _unsupported_atom_isotope_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    return tuple(
+        SouthStarUnsupportedFeature(
+            category="unsupported_atom_isotope",
+            atom_indices=(atom.GetIdx(),),
+            bond_indices=(),
+            reason=(
+                "isotopic atom text requires a separate South Star bracket-atom "
+                "grammar contract"
+            ),
+        )
+        for atom in mol.GetAtoms()
+        if atom.GetIsotope() != 0
+    )
+
+
+def _unsupported_atom_charge_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    return tuple(
+        SouthStarUnsupportedFeature(
+            category="unsupported_atom_charge",
+            atom_indices=(atom.GetIdx(),),
+            bond_indices=(),
+            reason=(
+                "charged atom text requires a separate South Star bracket-atom "
+                "grammar contract"
+            ),
+        )
+        for atom in mol.GetAtoms()
+        if atom.GetFormalCharge() != 0
+    )
+
+
+def _unsupported_radical_atom_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    return tuple(
+        SouthStarUnsupportedFeature(
+            category="unsupported_radical_atom",
+            atom_indices=(atom.GetIdx(),),
+            bond_indices=(),
+            reason=(
+                "radical atom text requires a separate South Star bracket-atom "
+                "grammar contract"
+            ),
+        )
+        for atom in mol.GetAtoms()
+        if atom.GetNumRadicalElectrons() != 0
     )
 
 

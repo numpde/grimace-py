@@ -76,9 +76,11 @@ The implemented private scope is deliberately narrow:
 - hetero imine or oxime-style carriers using the same directional semantics;
 - independent stereo components;
 - explicitly coupled components, including shared carrier edges;
-- same-side alternate carrier edges under maximal carrier annotation.
+- same-side alternate carrier edges under maximal carrier annotation;
 - tetrahedral centers with exactly four ligands, including the current
-  implicit-hydrogen and quaternary-center slices.
+  implicit-hydrogen and quaternary-center slices;
+- explicit bracket hydrogen atoms in the narrow neutral, non-isotopic,
+  non-radical form emitted as `[H]`.
 
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.
@@ -92,6 +94,9 @@ Current unsupported categories include:
 
 - query atoms or query bonds;
 - unsupported bond types;
+- atom isotopes, charges, and radicals, reported as
+  `unsupported_atom_isotope`, `unsupported_atom_charge`, and
+  `unsupported_radical_atom`;
 - dative or metal-containing stereo surfaces;
 - fused/polycyclic rings, reported as `fused_or_polycyclic_ring`;
 - ring/tetrahedral interactions, reported as `ring_tetrahedral_interaction`;
@@ -205,7 +210,8 @@ enumerator needs a broader molecule and syntax surface:
 - broader ring-closure marker bases, including stereo-double-bond closure edges;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
-- atom text beyond the current organic-subset seed;
+- bracket atom text beyond the current neutral explicit-hydrogen and
+  tetrahedral-center slices;
 - aromatic ring and aromatic directional-surface models, if any;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more

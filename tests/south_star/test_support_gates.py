@@ -27,6 +27,11 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
+    def test_explicit_bracket_hydrogen_slice_is_inside_gate_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("[H][H]"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
     def test_unsupported_atom_stereo_is_fail_fast_unsupported(self) -> None:
         mol = parse_smiles("CCF")
         mol.GetAtomWithIdx(1).SetChiralTag(Chem.ChiralType.CHI_TETRAHEDRAL_CCW)
@@ -118,6 +123,18 @@ class SouthStarSupportGateTests(unittest.TestCase):
         report = south_star_support_gate_report(parse_smiles("[SiH3]C"))
 
         self.assertUnsupportedCategory("unsupported_atom_text", report.categories)
+
+    def test_unsupported_bracket_atom_modifiers_are_fail_fast_unsupported(self) -> None:
+        cases = (
+            ("[2H][H]", "unsupported_atom_isotope"),
+            ("[H+]", "unsupported_atom_charge"),
+            ("[H]", "unsupported_radical_atom"),
+        )
+
+        for smiles, category in cases:
+            with self.subTest(smiles=smiles):
+                report = south_star_support_gate_report(parse_smiles(smiles))
+                self.assertUnsupportedCategory(category, report.categories)
 
     def test_unsupported_bond_types_are_fail_fast_unsupported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C#N"))

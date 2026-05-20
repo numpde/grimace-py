@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "policy": "south_star_generation_diagnostics_budget_v1",
+  "cases": [
+    {
+      "case_id": "isolated_alkene_z",
+      "evidence_notes": "First-domain acyclic directional-stereo representative.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [12],
+        "fragment_order_count": 1,
+        "stereo_component_count": 1,
+        "traversal_skeleton_count": 12,
+        "marker_slot_count": 24,
+        "local_assignment_count": 2,
+        "solved_assignment_count": 12,
+        "estimated_product_size": 12,
+        "raw_output_count": 12,
+        "output_count": 12,
+        "deduplication_drop_count": 0
+      }
+    },
+    {
+      "case_id": "conjugated_triene_same_phase",
+      "evidence_notes": "First-domain acyclic coupled-component representative with output deduplication.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [6],
+        "fragment_order_count": 1,
+        "stereo_component_count": 1,
+        "traversal_skeleton_count": 12,
+        "marker_slot_count": 48,
+        "local_assignment_count": 2,
+        "solved_assignment_count": 12,
+        "estimated_product_size": 12,
+        "raw_output_count": 12,
+        "output_count": 6,
+        "deduplication_drop_count": 6
+      }
+    },
+    {
+      "case_id": "unsaturated_nonstereo_monocycle_cyclohexene",
+      "evidence_notes": "Regression-backed unsaturated monocycle representative.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [30],
+        "fragment_order_count": 1,
+        "stereo_component_count": 0,
+        "traversal_skeleton_count": 60,
+        "marker_slot_count": 0,
+        "local_assignment_count": 1,
+        "solved_assignment_count": 60,
+        "estimated_product_size": 60,
+        "raw_output_count": 60,
+        "output_count": 30,
+        "deduplication_drop_count": 30
+      }
+    },
+    {
+      "case_id": "ring_stereo_monocycle_cyclooctene",
+      "evidence_notes": "Ring-stereo monocycle representative with ring-open marker slots.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [112],
+        "fragment_order_count": 1,
+        "stereo_component_count": 1,
+        "traversal_skeleton_count": 224,
+        "marker_slot_count": 448,
+        "local_assignment_count": 2,
+        "solved_assignment_count": 224,
+        "estimated_product_size": 224,
+        "raw_output_count": 224,
+        "output_count": 112,
+        "deduplication_drop_count": 112
+      }
+    },
+    {
+      "case_id": "disconnected_stereo_fragment_and_atom",
+      "evidence_notes": "Disconnected composition representative with all fragment orders.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 2,
+        "fragment_output_counts": [12, 1],
+        "fragment_order_count": 2,
+        "stereo_component_count": 1,
+        "traversal_skeleton_count": 13,
+        "marker_slot_count": 24,
+        "local_assignment_count": 2,
+        "solved_assignment_count": 13,
+        "estimated_product_size": 24,
+        "raw_output_count": 24,
+        "output_count": 24,
+        "deduplication_drop_count": 0
+      }
+    },
+    {
+      "case_id": "explicit_bracket_hydrogen_h2",
+      "evidence_notes": "Regression-backed explicit-bracket atom representative with deduplication.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [1],
+        "fragment_order_count": 1,
+        "stereo_component_count": 0,
+        "traversal_skeleton_count": 2,
+        "marker_slot_count": 0,
+        "local_assignment_count": 1,
+        "solved_assignment_count": 2,
+        "estimated_product_size": 2,
+        "raw_output_count": 2,
+        "output_count": 1,
+        "deduplication_drop_count": 1
+      }
+    },
+    {
+      "case_id": "implicit_h_tetrahedral_center",
+      "evidence_notes": "Regression-backed tetrahedral atom-stereo representative.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [12],
+        "fragment_order_count": 1,
+        "stereo_component_count": 0,
+        "traversal_skeleton_count": 12,
+        "marker_slot_count": 0,
+        "local_assignment_count": 1,
+        "solved_assignment_count": 12,
+        "estimated_product_size": 12,
+        "raw_output_count": 12,
+        "output_count": 12,
+        "deduplication_drop_count": 0
+      }
+    }
+  ]
+}

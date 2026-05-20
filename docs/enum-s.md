@@ -179,6 +179,11 @@ Test-only complexity diagnostics may also record per-layer timings for fact
 extraction, generation, and conformance checks. Those timings are inspectable
 metadata, not correctness thresholds.
 
+Representative non-timing budgets live in
+`tests/fixtures/south_star_complexity_budgets/generation_diagnostics_v1.json`.
+They pin reviewable diagnostic counts for selected domains so support-surface
+expansion cannot hide multiplicative growth behind generic consistency checks.
+
 ## Package-Readiness Harness
 
 The private package-readiness command is:

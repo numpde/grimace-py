@@ -193,18 +193,19 @@ not equivalent to independent completeness oracles.
 
 ## Conformance Evidence
 
-The current South Star oracle separates four checks:
+The current South Star conformance layer separates four checks:
 
 - RDKit parseability, used as parser evidence;
 - non-isomeric graph equivalence;
 - isomeric stereo equivalence;
-- RDKit-independent annotation conformance for the current directional-marker
-  subset.
+- RDKit-independent grammar membership for the declared South Star subset.
 
-The annotation conformance basis is
-`south_star_current_subset_directional_marker_grammar`. It is narrower than a
-full OpenSMILES parser and covers the atom, branch, double-bond, and
-slash/backslash forms emitted by the seed enumerator.
+The grammar-conformance basis is `south_star_declared_subset_grammar_v1`. It is
+narrower than a full OpenSMILES parser and currently covers the atom, branch,
+dot-fragment, ring-label, bracket-atom, double-bond, slash/backslash, and
+tetrahedral-token forms emitted by the seed enumerator. It is a syntax
+membership check only; graph identity and stereo identity remain separate
+semantic checks.
 
 Exact support evidence is split by domain:
 

@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from rdkit import Chem
 from rdkit import rdBase
 
-from tests.helpers.south_star_annotation_conformance import (
-    ANNOTATION_CONFORMANCE_BASIS,
-    south_star_annotation_conformance,
+from tests.helpers.south_star_grammar_conformance import (
+    SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
+    south_star_grammar_conformance,
 )
 
 
@@ -23,7 +23,11 @@ class SouthStarConformanceReport:
     rdkit_parseability: SouthStarConformanceCheck
     graph_equivalence: SouthStarConformanceCheck
     stereo_equivalence: SouthStarConformanceCheck
-    annotation_conformance: SouthStarConformanceCheck
+    grammar_conformance: SouthStarConformanceCheck
+
+    @property
+    def annotation_conformance(self) -> SouthStarConformanceCheck:
+        return self.grammar_conformance
 
     @property
     def accepted(self) -> bool:
@@ -32,7 +36,7 @@ class SouthStarConformanceReport:
                 self.rdkit_parseability.passed,
                 self.graph_equivalence.passed,
                 self.stereo_equivalence.passed,
-                self.annotation_conformance.passed,
+                self.grammar_conformance.passed,
             )
         )
 
@@ -44,7 +48,7 @@ class SouthStarConformanceReport:
                 ("rdkit_parseability", self.rdkit_parseability),
                 ("graph_equivalence", self.graph_equivalence),
                 ("stereo_equivalence", self.stereo_equivalence),
-                ("annotation_conformance", self.annotation_conformance),
+                ("grammar_conformance", self.grammar_conformance),
             )
             if not check.passed
         )
@@ -78,6 +82,7 @@ def south_star_conformance_report(
     candidate_smiles: str,
 ) -> SouthStarConformanceReport:
     source_mol = parse_smiles(source_smiles)
+    grammar_conformance = south_star_grammar_conformance(candidate_smiles)
     candidate_mol = _try_parse_smiles(candidate_smiles)
 
     if candidate_mol is None:
@@ -98,10 +103,10 @@ def south_star_conformance_report(
                 basis="canonical_isomeric_smiles",
                 detail="candidate stereo is unavailable because parsing failed",
             ),
-            annotation_conformance=SouthStarConformanceCheck(
-                passed=False,
-                basis=ANNOTATION_CONFORMANCE_BASIS,
-                detail="candidate annotations are unavailable because parsing failed",
+            grammar_conformance=SouthStarConformanceCheck(
+                passed=grammar_conformance.passed,
+                basis=SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
+                detail=grammar_conformance.detail,
             ),
         )
 
@@ -109,8 +114,6 @@ def south_star_conformance_report(
     candidate_graph = _graph_signature_for_mol(candidate_mol)
     source_semantics = _semantic_signature_for_mol(source_mol)
     candidate_semantics = _semantic_signature_for_mol(candidate_mol)
-    annotation_conformance = south_star_annotation_conformance(candidate_smiles)
-
     return SouthStarConformanceReport(
         rdkit_parseability=SouthStarConformanceCheck(
             passed=True,
@@ -135,10 +138,10 @@ def south_star_conformance_report(
                 else "candidate stereo semantics differ from source"
             ),
         ),
-        annotation_conformance=SouthStarConformanceCheck(
-            passed=annotation_conformance.passed,
-            basis=ANNOTATION_CONFORMANCE_BASIS,
-            detail=annotation_conformance.detail,
+        grammar_conformance=SouthStarConformanceCheck(
+            passed=grammar_conformance.passed,
+            basis=SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
+            detail=grammar_conformance.detail,
         ),
     )
 

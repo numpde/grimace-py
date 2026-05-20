@@ -126,6 +126,81 @@
           "reason": "loses_imine_stereo"
         }
       ]
+    },
+    {
+      "id": "independent_two_alkenes",
+      "source_smiles": "F/C=C\\CC/C=C\\Cl",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [4, 5],
+        [6, 7]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 4
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "not_checked",
+        "notes": "South Star witness for two independent double-bond stereo components."
+      },
+      "positive_semantic_smiles": [
+        "F/C=C\\CC/C=C\\Cl",
+        "F\\C=C/CC/C=C\\Cl",
+        "F/C=C\\CC\\C=C/Cl",
+        "F\\C=C/CC\\C=C/Cl"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "F/C=C/CC/C=C\\Cl",
+          "reason": "inverts_first_double_bond_stereo"
+        },
+        {
+          "smiles": "F/C=C\\CC/C=C/Cl",
+          "reason": "inverts_second_double_bond_stereo"
+        },
+        {
+          "smiles": "FC=CCCC=CCl",
+          "reason": "loses_both_double_bond_stereo_assignments"
+        }
+      ]
+    },
+    {
+      "id": "linear_diene_opposite_phase",
+      "source_smiles": "C/C=C\\C=C/C",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [4, 5]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 3
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "not_checked",
+        "notes": "South Star witness for coupled double-bond stereo through one shared carrier edge with opposite visible marker phase."
+      },
+      "positive_semantic_smiles": [
+        "C/C=C\\C=C/C",
+        "C\\C=C/C=C\\C"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "C/C=C/C=C/C",
+          "reason": "inverts_coupled_double_bond_stereo_assignments"
+        },
+        {
+          "smiles": "C\\C=C\\C=C\\C",
+          "reason": "inverts_coupled_double_bond_stereo_assignments"
+        },
+        {
+          "smiles": "CC=CC=CC",
+          "reason": "loses_double_bond_stereo"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "policy": "south_star_first_domain_maximal_eligible_carrier",
+  "cases": [
+    {
+      "case_id": "isolated_alkene_z",
+      "source_smiles": "F/C=C\\Cl",
+      "expected_support": [
+        "F/C=C\\Cl",
+        "C(\\F)=C\\Cl",
+        "C(=C\\Cl)\\F",
+        "C(=C/F)/Cl",
+        "C(/Cl)=C/F",
+        "Cl\\C=C/F",
+        "F\\C=C/Cl",
+        "C(/F)=C/Cl",
+        "C(=C/Cl)/F",
+        "C(=C\\F)\\Cl",
+        "C(\\Cl)=C\\F",
+        "Cl/C=C\\F"
+      ]
+    },
+    {
+      "case_id": "hetero_imine_carrier",
+      "source_smiles": "C/C=N/O",
+      "expected_support": [
+        "C/C=N/O",
+        "C(\\C)=N/O",
+        "C(=N/O)\\C",
+        "N(=C/C)\\O",
+        "N(\\O)=C/C",
+        "O/N=C/C",
+        "C\\C=N\\O",
+        "C(/C)=N\\O",
+        "C(=N\\O)/C",
+        "N(=C\\C)/O",
+        "N(/O)=C\\C",
+        "O\\N=C\\C"
+      ]
+    }
+  ]
+}

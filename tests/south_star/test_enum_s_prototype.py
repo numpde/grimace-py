@@ -125,12 +125,12 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         self.assertIsNotNone(result.generation_diagnostics)
         diagnostics = result.generation_diagnostics
         self.assertEqual(1, diagnostics.fragment_count)
-        self.assertEqual((98,), diagnostics.fragment_output_counts)
-        self.assertEqual(196, diagnostics.traversal_skeleton_count)
-        self.assertEqual(392, diagnostics.marker_slot_count)
+        self.assertEqual((112,), diagnostics.fragment_output_counts)
+        self.assertEqual(224, diagnostics.traversal_skeleton_count)
+        self.assertEqual(448, diagnostics.marker_slot_count)
         self.assertEqual(2, diagnostics.local_assignment_count)
-        self.assertEqual(196, diagnostics.solved_assignment_count)
-        self.assertEqual(196, diagnostics.estimated_product_size)
+        self.assertEqual(224, diagnostics.solved_assignment_count)
+        self.assertEqual(224, diagnostics.estimated_product_size)
 
     def test_graph_native_result_pins_disconnected_generation_diagnostics(self) -> None:
         case = _expanded_support_case("disconnected_stereo_fragment_and_atom")
@@ -544,6 +544,41 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         self.assertGreater(len(ring_marker_slots), 0)
         self.assertTrue(
             all(slot.syntax_position == "ring_open" for slot in ring_marker_slots)
+        )
+
+    def test_stereo_double_bond_ring_closures_are_event_modeled(self) -> None:
+        case = _expanded_support_case("ring_stereo_monocycle_cyclooctene")
+
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        central_closure_traversals = tuple(
+            traversal
+            for traversal in traversals
+            if any(
+                event.kind == "ring_open"
+                and event.edge == (1, 2)
+                and event.text == "="
+                for event in traversal.events
+            )
+        )
+
+        self.assertGreater(len(central_closure_traversals), 0)
+        self.assertTrue(
+            all(
+                event.marker_slot is None
+                for traversal in central_closure_traversals
+                for event in traversal.events
+                if event.ring_closure is not None and event.edge == (1, 2)
+            )
+        )
+        self.assertTrue(
+            all(
+                any(
+                    event.marker_slot is not None
+                    and event.marker_slot.syntax_position in {"branch", "main"}
+                    for event in traversal.events
+                )
+                for traversal in central_closure_traversals
+            )
         )
 
     def test_graph_native_composes_markerless_disconnected_fragments(self) -> None:

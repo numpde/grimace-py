@@ -306,7 +306,7 @@ def _ring_stereo_closure_edge_supported(mol: Chem.Mol, *, edge: Edge) -> bool:
     bond = mol.GetBondBetweenAtoms(*edge)
     if bond is None:
         raise ValueError(f"ring closure edge {edge!r} is not a bond")
-    return bond.GetStereo() == Chem.BondStereo.STEREONONE
+    return bond.GetBondType() in {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
 
 
 def _ring_stereo_tree_fragments(
@@ -611,12 +611,20 @@ def _ring_stereo_marker_assignments_for_events(
 ) -> tuple[dict[str, str], tuple[SouthStarRingStereoOracleEquation, ...]]:
     marker_by_slot = {}
     equations = []
+    ring_stereo_closure_open_atom_by_edge = (
+        _ring_stereo_closure_open_atom_by_edge(events)
+    )
     for event in events:
         slot = event.marker_slot
         if slot is None:
             continue
         graph_marker = marker_by_edge[slot.edge]
-        traversal_orientation_flip = _ring_stereo_traversal_orientation_flip(slot)
+        traversal_orientation_flip = _ring_stereo_traversal_orientation_flip(
+            slot,
+            ring_stereo_closure_open_atom_by_edge=(
+                ring_stereo_closure_open_atom_by_edge
+            ),
+        )
         emitted_marker = (
             _flipped_marker(graph_marker)
             if traversal_orientation_flip
@@ -635,6 +643,19 @@ def _ring_stereo_marker_assignments_for_events(
             )
         )
     return marker_by_slot, tuple(equations)
+
+
+def _ring_stereo_closure_open_atom_by_edge(
+    events: tuple[_RingStereoTraversalEvent, ...],
+) -> dict[Edge, int]:
+    return {
+        normalized_edge(event.edge): event.begin_atom_idx
+        for event in events
+        if event.kind == "ring_open"
+        and event.edge is not None
+        and event.begin_atom_idx is not None
+        and event.text == "="
+    }
 
 
 def _render_ring_stereo_events(
@@ -660,6 +681,8 @@ def _render_ring_stereo_events(
 
 def _ring_stereo_traversal_orientation_flip(
     slot: _RingStereoMarkerSlot,
+    *,
+    ring_stereo_closure_open_atom_by_edge: dict[Edge, int],
 ) -> bool:
     if slot.syntax_position == "ring_open":
         return _ring_stereo_ring_open_orientation_flip(slot)
@@ -671,6 +694,14 @@ def _ring_stereo_traversal_orientation_flip(
             and slot.end_atom_idx != context.double_neighbor_idx
             and slot.begin_parent_idx != context.double_neighbor_idx
         ):
+            flip = not flip
+        central_edge = normalized_edge(
+            (context.center_atom_idx, context.double_neighbor_idx)
+        )
+        open_atom_idx = ring_stereo_closure_open_atom_by_edge.get(central_edge)
+        # The independent oracle models the same semantic phase rule as the
+        # runtime: closing the stereo double bond flips one endpoint basis.
+        if open_atom_idx == context.center_atom_idx:
             flip = not flip
     return flip
 

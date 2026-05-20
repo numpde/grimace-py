@@ -748,7 +748,7 @@ def _ring_closure_edge_supported(mol: Chem.Mol, *, edge: Edge) -> bool:
     bond = mol.GetBondBetweenAtoms(*edge)
     if bond is None:
         raise ValueError(f"ring closure edge {edge!r} is not a bond")
-    return bond.GetStereo() == Chem.BondStereo.STEREONONE
+    return bond.GetBondType() in {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
 
 
 def _with_ring_closure_events(

@@ -60,6 +60,9 @@ def marker_slot_parity_equations_for_traversal(
 ) -> tuple[SouthStarMarkerSlotParityEquation, ...]:
     graph_marker_by_edge = _graph_marker_by_edge(traversal)
     components_by_edge = _components_by_edge(state)
+    ring_stereo_closure_open_atom_by_edge = (
+        _ring_stereo_closure_open_atom_by_edge(traversal)
+    )
 
     equations = []
     for event in traversal.events:
@@ -68,7 +71,12 @@ def marker_slot_parity_equations_for_traversal(
         slot = event.marker_slot
         edge = normalized_edge(slot.edge)
         graph_marker = graph_marker_by_edge[edge]
-        traversal_orientation_flip = _traversal_orientation_flip(slot)
+        traversal_orientation_flip = _traversal_orientation_flip(
+            slot,
+            ring_stereo_closure_open_atom_by_edge=(
+                ring_stereo_closure_open_atom_by_edge
+            ),
+        )
         emitted_marker = _marker_with_orientation(
             graph_marker,
             traversal_orientation_flip=traversal_orientation_flip,
@@ -181,7 +189,25 @@ def _equation_id(*, slot_id: str, component_ids: tuple[str, ...]) -> str:
     return f"{slot_id}:{','.join(component_ids)}"
 
 
-def _traversal_orientation_flip(slot: SouthStarMarkerSlot) -> bool:
+def _ring_stereo_closure_open_atom_by_edge(
+    traversal: SouthStarTreeTraversal,
+) -> dict[Edge, int]:
+    return {
+        normalized_edge(event.edge): event.begin_atom_idx
+        for event in traversal.events
+        if event.kind == "ring_open"
+        and event.ring_closure is not None
+        and event.edge is not None
+        and event.begin_atom_idx is not None
+        and event.text == "="
+    }
+
+
+def _traversal_orientation_flip(
+    slot: SouthStarMarkerSlot,
+    *,
+    ring_stereo_closure_open_atom_by_edge: dict[Edge, int],
+) -> bool:
     if slot.syntax_position == "ring_open":
         return _ring_open_orientation_flip(slot)
 
@@ -192,6 +218,14 @@ def _traversal_orientation_flip(slot: SouthStarMarkerSlot) -> bool:
             and slot.end_atom_idx != context.double_neighbor_idx
             and slot.begin_parent_idx != context.double_neighbor_idx
         ):
+            flip = not flip
+        central_edge = normalized_edge(
+            (context.center_atom_idx, context.double_neighbor_idx)
+        )
+        open_atom_idx = ring_stereo_closure_open_atom_by_edge.get(central_edge)
+        # A stereo double bond rendered as a ring closure reverses exactly one
+        # endpoint's local marker phase relative to the tree-edge carrier basis.
+        if open_atom_idx == context.center_atom_idx:
             flip = not flip
     return flip
 

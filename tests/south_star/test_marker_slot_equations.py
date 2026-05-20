@@ -114,6 +114,45 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
                 self.assertIn(equation.graph_marker, {"/", "\\"})
                 self.assertIn(equation.emitted_marker, {"/", "\\"})
 
+    def test_stereo_double_bond_ring_closure_uses_carrier_equations(
+        self,
+    ) -> None:
+        case = _expanded_case("ring_stereo_monocycle_cyclooctene")
+        state = SouthStarComponentSupportState.from_mol(parse_smiles(case.source_smiles))
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+
+        central_closure_equation_groups = []
+        for traversal in traversals:
+            if not any(
+                event.kind == "ring_open"
+                and event.edge == (1, 2)
+                and event.text == "="
+                for event in traversal.events
+            ):
+                continue
+            central_closure_equation_groups.append(
+                marker_slot_parity_equations_for_traversal(state, traversal)
+            )
+
+        self.assertGreater(len(central_closure_equation_groups), 0)
+        for equations in central_closure_equation_groups:
+            with self.subTest(equations=equations):
+                self.assertEqual(2, len(equations))
+                self.assertTrue(
+                    all(
+                        equation.syntax_position in {"main", "branch"}
+                        for equation in equations
+                    )
+                )
+                self.assertEqual(
+                    {(1, 2)},
+                    {
+                        term.central_bond
+                        for equation in equations
+                        for term in equation.feature_terms
+                    },
+                )
+
 
 def _case(case_id: str):
     return next(

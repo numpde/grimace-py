@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from rdkit import Chem
-from rdkit import rdBase
-
 from tests.helpers.south_star_grammar_conformance import (
     SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
     south_star_grammar_conformance,
+)
+from tests.helpers.south_star_semantic_identity import (
+    SOUTH_STAR_GRAPH_IDENTITY_BASIS,
+    SOUTH_STAR_PARSER_DEPENDENCY_BASIS,
+    SOUTH_STAR_STEREO_IDENTITY_BASIS,
+    graph_signature,
+    parse_smiles,
+    semantic_signature,
+    south_star_semantic_identity_report,
 )
 
 
@@ -54,21 +60,6 @@ class SouthStarConformanceReport:
         )
 
 
-def parse_smiles(smiles: str) -> Chem.Mol:
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        raise AssertionError(f"failed to parse SMILES {smiles!r}")
-    return mol
-
-
-def graph_signature(smiles: str) -> str:
-    return _graph_signature_for_mol(parse_smiles(smiles))
-
-
-def semantic_signature(smiles: str) -> str:
-    return _semantic_signature_for_mol(parse_smiles(smiles))
-
-
 def semantic_oracle_accepts(*, source_smiles: str, candidate_smiles: str) -> bool:
     return south_star_conformance_report(
         source_smiles=source_smiles,
@@ -81,27 +72,28 @@ def south_star_conformance_report(
     source_smiles: str,
     candidate_smiles: str,
 ) -> SouthStarConformanceReport:
-    source_mol = parse_smiles(source_smiles)
     grammar_conformance = south_star_grammar_conformance(candidate_smiles)
-    candidate_mol = _try_parse_smiles(candidate_smiles)
+    identity_report = south_star_semantic_identity_report(
+        source_smiles=source_smiles,
+        candidate_smiles=candidate_smiles,
+    )
 
-    if candidate_mol is None:
-        failed = SouthStarConformanceCheck(
-            passed=False,
-            basis="rdkit_parser",
-            detail="candidate SMILES did not parse",
-        )
+    if not identity_report.parser_dependency.passed:
         return SouthStarConformanceReport(
-            rdkit_parseability=failed,
+            rdkit_parseability=SouthStarConformanceCheck(
+                passed=False,
+                basis=SOUTH_STAR_PARSER_DEPENDENCY_BASIS,
+                detail=identity_report.parser_dependency.detail,
+            ),
             graph_equivalence=SouthStarConformanceCheck(
                 passed=False,
-                basis="canonical_nonisomeric_smiles",
-                detail="candidate graph is unavailable because parsing failed",
+                basis=SOUTH_STAR_GRAPH_IDENTITY_BASIS,
+                detail=identity_report.graph_identity.detail,
             ),
             stereo_equivalence=SouthStarConformanceCheck(
                 passed=False,
-                basis="canonical_isomeric_smiles",
-                detail="candidate stereo is unavailable because parsing failed",
+                basis=SOUTH_STAR_STEREO_IDENTITY_BASIS,
+                detail=identity_report.stereo_identity.detail,
             ),
             grammar_conformance=SouthStarConformanceCheck(
                 passed=grammar_conformance.passed,
@@ -110,58 +102,25 @@ def south_star_conformance_report(
             ),
         )
 
-    source_graph = _graph_signature_for_mol(source_mol)
-    candidate_graph = _graph_signature_for_mol(candidate_mol)
-    source_semantics = _semantic_signature_for_mol(source_mol)
-    candidate_semantics = _semantic_signature_for_mol(candidate_mol)
     return SouthStarConformanceReport(
         rdkit_parseability=SouthStarConformanceCheck(
             passed=True,
-            basis="rdkit_parser",
-            detail="candidate SMILES parsed",
+            basis=SOUTH_STAR_PARSER_DEPENDENCY_BASIS,
+            detail=identity_report.parser_dependency.detail,
         ),
         graph_equivalence=SouthStarConformanceCheck(
-            passed=source_graph == candidate_graph,
-            basis="canonical_nonisomeric_smiles",
-            detail=(
-                "candidate graph matches source"
-                if source_graph == candidate_graph
-                else "candidate graph differs from source"
-            ),
+            passed=identity_report.graph_identity.passed,
+            basis=SOUTH_STAR_GRAPH_IDENTITY_BASIS,
+            detail=identity_report.graph_identity.detail,
         ),
         stereo_equivalence=SouthStarConformanceCheck(
-            passed=source_semantics == candidate_semantics,
-            basis="canonical_isomeric_smiles",
-            detail=(
-                "candidate stereo semantics match source"
-                if source_semantics == candidate_semantics
-                else "candidate stereo semantics differ from source"
-            ),
+            passed=identity_report.stereo_identity.passed,
+            basis=SOUTH_STAR_STEREO_IDENTITY_BASIS,
+            detail=identity_report.stereo_identity.detail,
         ),
         grammar_conformance=SouthStarConformanceCheck(
             passed=grammar_conformance.passed,
             basis=SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
             detail=grammar_conformance.detail,
         ),
-    )
-
-
-def _try_parse_smiles(smiles: str) -> Chem.Mol | None:
-    with rdBase.BlockLogs():
-        return Chem.MolFromSmiles(smiles)
-
-
-def _graph_signature_for_mol(mol: Chem.Mol) -> str:
-    return Chem.MolToSmiles(
-        mol,
-        canonical=True,
-        isomericSmiles=False,
-    )
-
-
-def _semantic_signature_for_mol(mol: Chem.Mol) -> str:
-    return Chem.MolToSmiles(
-        mol,
-        canonical=True,
-        isomericSmiles=True,
     )

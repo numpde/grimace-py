@@ -207,6 +207,12 @@ tetrahedral-token forms emitted by the seed enumerator. It is a syntax
 membership check only; graph identity and stereo identity remain separate
 semantic checks.
 
+Graph and stereo identity currently use a named parse-back boundary:
+`rdkit_parser_dependency`, `rdkit_canonical_nonisomeric_parseback`, and
+`rdkit_canonical_isomeric_parseback`. That makes the parser dependency explicit:
+RDKit parsing is evidence for current graph/stereo identity checks, not the
+definition of grammar membership or support completeness.
+
 Exact support evidence is split by domain:
 
 - `tests/fixtures/south_star_exact_first_domain/first_domain_v1.json` pins the

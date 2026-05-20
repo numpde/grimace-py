@@ -24,6 +24,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_policy_modularity",
     "tests.south_star.test_private_api_boundary",
     "tests.south_star.test_semantic_diagnostics",
+    "tests.south_star.test_semantic_identity",
     "tests.south_star.test_semantic_witnesses",
     "tests.south_star.test_support_boundary",
     "tests.south_star.test_support_gates",

@@ -19,6 +19,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_harness",
     "tests.south_star.test_marker_slot_equations",
     "tests.south_star.test_output_correctness_harness",
+    "tests.south_star.test_package_readiness",
     "tests.south_star.test_parity_solver",
     "tests.south_star.test_policy_modularity",
     "tests.south_star.test_semantic_diagnostics",

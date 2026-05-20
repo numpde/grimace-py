@@ -155,6 +155,27 @@ complexity shifts or hidden support-generation changes, but they are not
 semantic authority. Fixture support and independent oracles remain the
 correctness evidence.
 
+## Package-Readiness Harness
+
+The private package-readiness command is:
+
+```bash
+PYTHONPATH=python:. python3 -m unittest tests.run_south_star_package_readiness -q
+```
+
+It aggregates the current pre-public `MolToSmilesEnumS` checks:
+
+- exact support equality where independent oracles exist;
+- graph/stereo parse-back checks for regression-backed fixture domains;
+- unsupported-feature gate checks;
+- policy-name diagnostics;
+- generation complexity guardrails.
+
+The harness also exposes a readiness matrix that separates oracle-backed cases
+from graph-native regression-backed cases. That distinction is part of the
+current maturity signal: regression-backed domains are usable as evidence, but
+not equivalent to independent completeness oracles.
+
 ## Conformance Evidence
 
 The current South Star oracle separates four checks:

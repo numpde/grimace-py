@@ -241,12 +241,17 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
     )
     if not ring_atom_indices and not ring_bond_indices:
         return ()
+    if is_simple_saturated_monocycle(mol):
+        return ()
     return (
         SouthStarUnsupportedFeature(
             category="ring_molecule",
             atom_indices=ring_atom_indices,
             bond_indices=ring_bond_indices,
-            reason="ring traversal and ring-closure marker bases are not modeled yet",
+            reason=(
+                "only simple saturated monocycles have South Star ring traversal "
+                "support"
+            ),
         ),
     )
 
@@ -350,4 +355,19 @@ def _directional_carrier_bonds_for_stereo_bond(
     return tuple(
         mol.GetBondWithIdx(bond_idx)
         for bond_idx in dict.fromkeys(carrier_bond_indices)
+    )
+
+
+def is_simple_saturated_monocycle(mol: Chem.Mol) -> bool:
+    if mol.GetNumAtoms() == 0:
+        return False
+    if len(Chem.GetMolFrags(mol)) != 1:
+        return False
+    if mol.GetNumBonds() != mol.GetNumAtoms():
+        return False
+    if any(atom.GetDegree() != 2 for atom in mol.GetAtoms()):
+        return False
+    return all(
+        bond.IsInRing() and bond.GetBondType() == Chem.BondType.SINGLE
+        for bond in mol.GetBonds()
     )

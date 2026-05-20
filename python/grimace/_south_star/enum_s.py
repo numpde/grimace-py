@@ -13,6 +13,7 @@ from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from grimace._south_star.annotation_policy import Edge, normalized_edge
+from grimace._south_star.support_gates import is_simple_saturated_monocycle
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,6 +269,16 @@ def _tree_traversals_for_marker_assignment(
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
     _assert_tree_traversal_supported(mol)
+    if is_simple_saturated_monocycle(mol):
+        if marker_by_edge:
+            raise NotImplementedError(
+                "South Star simple ring traversal does not support marker slots yet"
+            )
+        return _simple_ring_traversals(
+            mol,
+            component_marker_assignments=component_marker_assignments,
+        )
+
     carrier_contexts_by_edge = _carrier_contexts_by_edge(
         mol,
         marker_by_edge=marker_by_edge,
@@ -329,10 +340,14 @@ def _assert_tree_traversal_supported(mol: Chem.Mol) -> None:
             "South Star graph-native tree traversal currently requires one "
             "connected component"
         )
+    if mol.GetNumBonds() == mol.GetNumAtoms() - 1:
+        return
+    if is_simple_saturated_monocycle(mol):
+        return
     if mol.GetNumBonds() != mol.GetNumAtoms() - 1:
         raise NotImplementedError(
             "South Star graph-native tree traversal currently requires one "
-            "connected acyclic component"
+            "connected acyclic component or one simple saturated monocycle"
         )
 
 
@@ -486,6 +501,148 @@ def _child_event_variants(
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
+    )
+
+
+def _simple_ring_traversals(
+    mol: Chem.Mol,
+    *,
+    component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
+) -> tuple[SouthStarTreeTraversal, ...]:
+    return tuple(
+        SouthStarTreeTraversal(
+            root_atom_idx=root_idx,
+            events=_simple_ring_events(mol, root_idx, first_child_idx),
+            marker_assignments=(),
+            component_marker_assignments=component_marker_assignments,
+        )
+        for root_idx in range(mol.GetNumAtoms())
+        for first_child_idx in sorted(
+            neighbor.GetIdx() for neighbor in mol.GetAtomWithIdx(root_idx).GetNeighbors()
+        )
+    )
+
+
+def _simple_ring_events(
+    mol: Chem.Mol,
+    root_atom_idx: int,
+    first_child_idx: int,
+) -> tuple[SouthStarTraversalEvent, ...]:
+    root_neighbors = sorted(
+        neighbor.GetIdx() for neighbor in mol.GetAtomWithIdx(root_atom_idx).GetNeighbors()
+    )
+    if first_child_idx not in root_neighbors:
+        raise ValueError(
+            f"atom {first_child_idx} is not a simple-ring neighbor of root "
+            f"{root_atom_idx}"
+        )
+    closing_atom_idx = next(
+        atom_idx for atom_idx in root_neighbors if atom_idx != first_child_idx
+    )
+    closure_edge = normalized_edge((root_atom_idx, closing_atom_idx))
+    closure = SouthStarRingClosure(
+        closure_id=f"{closure_edge[0]}-{closure_edge[1]}",
+        label="1",
+        role="open",
+    )
+    events = [
+        SouthStarTraversalEvent(
+            kind="atom",
+            text=_atom_text(mol.GetAtomWithIdx(root_atom_idx)),
+            atom_idx=root_atom_idx,
+        ),
+        SouthStarTraversalEvent(
+            kind="ring_open",
+            text=_ring_closure_bond_text(mol, closure_edge),
+            edge=closure_edge,
+            begin_atom_idx=root_atom_idx,
+            end_atom_idx=closing_atom_idx,
+            begin_parent_idx=None,
+            ring_closure=closure,
+        ),
+    ]
+
+    previous_atom_idx = root_atom_idx
+    atom_idx = first_child_idx
+    visited = {root_atom_idx}
+    while atom_idx != closing_atom_idx:
+        visited.add(atom_idx)
+        events.append(
+            _bond_event(
+                mol,
+                previous_atom_idx,
+                atom_idx,
+                begin_parent_idx=None,
+                syntax_position="main",
+                marker_by_edge={},
+                carrier_contexts_by_edge={},
+            )
+        )
+        events.append(
+            SouthStarTraversalEvent(
+                kind="atom",
+                text=_atom_text(mol.GetAtomWithIdx(atom_idx)),
+                atom_idx=atom_idx,
+            )
+        )
+        next_atoms = tuple(
+            neighbor.GetIdx()
+            for neighbor in mol.GetAtomWithIdx(atom_idx).GetNeighbors()
+            if neighbor.GetIdx() != previous_atom_idx
+        )
+        if len(next_atoms) != 1:
+            raise NotImplementedError(
+                "South Star simple ring traversal requires degree-2 ring atoms"
+            )
+        previous_atom_idx, atom_idx = atom_idx, next_atoms[0]
+        if atom_idx in visited:
+            raise ValueError("simple ring traversal revisited an atom before closure")
+
+    events.append(
+        _bond_event(
+            mol,
+            previous_atom_idx,
+            closing_atom_idx,
+            begin_parent_idx=None,
+            syntax_position="main",
+            marker_by_edge={},
+            carrier_contexts_by_edge={},
+        )
+    )
+    events.append(
+        SouthStarTraversalEvent(
+            kind="atom",
+            text=_atom_text(mol.GetAtomWithIdx(closing_atom_idx)),
+            atom_idx=closing_atom_idx,
+        )
+    )
+    events.append(
+        SouthStarTraversalEvent(
+            kind="ring_close",
+            text="",
+            edge=closure_edge,
+            begin_atom_idx=closing_atom_idx,
+            end_atom_idx=root_atom_idx,
+            begin_parent_idx=previous_atom_idx,
+            ring_closure=SouthStarRingClosure(
+                closure_id=closure.closure_id,
+                label=closure.label,
+                role="close",
+            ),
+        )
+    )
+    return tuple(events)
+
+
+def _ring_closure_bond_text(mol: Chem.Mol, edge: Edge) -> str:
+    bond = mol.GetBondBetweenAtoms(*edge)
+    if bond is None:
+        raise ValueError(f"ring closure edge {edge!r} is not a bond")
+    if bond.GetBondType() == Chem.BondType.SINGLE:
+        return ""
+    raise NotImplementedError(
+        "South Star simple ring traversal currently supports only single-bond "
+        "ring closures"
     )
 
 

@@ -6,6 +6,7 @@ from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native_for_case
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
@@ -18,6 +19,7 @@ from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_c
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
+from tests.helpers.south_star_semantic_oracle import graph_signature
 
 
 class SouthStarEnumSPrototypeTests(unittest.TestCase):
@@ -351,6 +353,48 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     SouthStarMarkerSlotAssignment(slot_id=slot_id, marker="/"),
                 ),
             ),
+        )
+
+    def test_graph_native_traversal_enumerates_simple_saturated_ring(self) -> None:
+        result = mol_to_smiles_enum_s_graph_native("C1CCCCC1", case_id="cyclohexane")
+
+        self.assertEqual("cyclohexane", result.case_id)
+        self.assertEqual(("C1CCCCC1",), result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(graph_signature("C1CCCCC1"), graph_signature(output))
+
+    def test_simple_ring_traversals_expose_real_ring_closure_events(self) -> None:
+        case = SouthStarSemanticCase(
+            case_id="cyclohexane",
+            semantic_feature="simple saturated monocycle",
+            source_smiles="C1CCCCC1",
+            eligible_carrier_edges=(),
+            maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
+                required_marker_edge_count=0,
+            ),
+            rdkit_writer_membership_status="not_checked",
+            rdkit_writer_membership_notes="Synthetic simple-ring traversal test case.",
+            positive_semantic_smiles=(),
+            negative_semantic_smiles=(),
+        )
+
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        ring_events = tuple(
+            event
+            for traversal in traversals
+            for event in traversal.events
+            if event.ring_closure is not None
+        )
+
+        self.assertGreater(len(ring_events), 0)
+        self.assertEqual(
+            {"ring_open", "ring_close"},
+            {event.kind for event in ring_events},
+        )
+        self.assertTrue(all(event.ring_closure.label == "1" for event in ring_events))
+        self.assertTrue(
+            all(event.ring_closure.closure_id for event in ring_events)
         )
 
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(

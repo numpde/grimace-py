@@ -99,6 +99,14 @@ def marker_slot_parity_equations_for_traversal(
     return tuple(equations)
 
 
+def expected_marker_from_equation(
+    equation: SouthStarMarkerSlotParityEquation,
+) -> str:
+    if equation.traversal_orientation_flip:
+        return _flipped_marker(equation.graph_marker)
+    return equation.graph_marker
+
+
 def _marker_by_slot(
     marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...],
 ) -> dict[str, str]:
@@ -181,3 +189,11 @@ def _feature_carrier_side(
 
 def _equation_id(*, slot_id: str, component_ids: tuple[str, ...]) -> str:
     return f"{slot_id}:{','.join(component_ids)}"
+
+
+def _flipped_marker(marker: str) -> str:
+    if marker == "/":
+        return "\\"
+    if marker == "\\":
+        return "/"
+    raise ValueError(f"unsupported South Star directional marker {marker!r}")

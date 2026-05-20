@@ -11,9 +11,10 @@ from tests.helpers.south_star_enum_s import (
 from tests.helpers.south_star_marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
+from tests.helpers.south_star_marker_equations import expected_marker_from_equation
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
-from tests.helpers.south_star_z3_oracle import expected_marker_from_equation
+from tests.helpers.south_star_parity_solver import solve_marker_slot_parity_equations
 from tests.helpers.south_star_z3_oracle import z3_available
 from tests.helpers.south_star_z3_oracle import (
     z3_marker_assignments_for_equations,
@@ -70,6 +71,34 @@ class SouthStarZ3EquationOracleTests(unittest.TestCase):
                 self.assertEqual(
                     equation.emitted_marker,
                     expected_marker_from_equation(equation),
+                )
+
+    def test_custom_solver_assignment_sets_match_z3(self) -> None:
+        case = _case("linear_diene_same_phase")
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles(case.source_smiles)
+        )
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+
+        for traversal in traversals:
+            equations = marker_slot_parity_equations_for_traversal(state, traversal)
+            z3_assignments = z3_marker_assignments_for_equations(equations)
+            solver_result = solve_marker_slot_parity_equations(equations)
+
+            with self.subTest(root=traversal.root_atom_idx):
+                self.assertEqual(
+                    tuple(
+                        sorted(
+                            tuple(sorted(assignment.marker_by_slot))
+                            for assignment in z3_assignments
+                        )
+                    ),
+                    tuple(
+                        sorted(
+                            assignment.marker_by_slot
+                            for assignment in solver_result.assignments
+                        )
+                    ),
                 )
 
 

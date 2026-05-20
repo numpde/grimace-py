@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from tests.helpers.south_star_marker_equations import (
     SouthStarMarkerSlotParityEquation,
 )
+from tests.helpers.south_star_marker_equations import expected_marker_from_equation
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,14 +71,6 @@ def z3_marker_assignments_for_equations(
     return tuple(assignments)
 
 
-def expected_marker_from_equation(
-    equation: SouthStarMarkerSlotParityEquation,
-) -> str:
-    if equation.traversal_orientation_flip:
-        return _flipped_marker(equation.graph_marker)
-    return equation.graph_marker
-
-
 def _require_z3():
     try:
         import z3
@@ -86,11 +79,3 @@ def _require_z3():
             "z3 is required for South Star Z3 oracle tests"
         ) from exc
     return z3
-
-
-def _flipped_marker(marker: str) -> str:
-    if marker == "/":
-        return "\\"
-    if marker == "\\":
-        return "/"
-    raise ValueError(f"unsupported South Star directional marker {marker!r}")

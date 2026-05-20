@@ -9,7 +9,7 @@ from tests.helpers.south_star_component_support_state import (
 )
 from tests.helpers.south_star_components import SouthStarSemanticStereoComponent
 from tests.helpers.south_star_components import SouthStarSourceStereoFeature
-from tests.helpers.south_star_enum_s import SouthStarMarkerSlotAssignment
+from tests.helpers.south_star_enum_s import SouthStarMarkerSlot
 from tests.helpers.south_star_enum_s import SouthStarTreeTraversal
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from tests.helpers.south_star_semantic_oracle import parse_smiles
@@ -58,7 +58,6 @@ def marker_slot_parity_equations_for_traversal(
     state: SouthStarComponentSupportState,
     traversal: SouthStarTreeTraversal,
 ) -> tuple[SouthStarMarkerSlotParityEquation, ...]:
-    marker_by_slot = _marker_by_slot(traversal.marker_assignments)
     graph_marker_by_edge = _graph_marker_by_edge(traversal)
     components_by_edge = _components_by_edge(state)
 
@@ -69,7 +68,11 @@ def marker_slot_parity_equations_for_traversal(
         slot = event.marker_slot
         edge = normalized_edge(slot.edge)
         graph_marker = graph_marker_by_edge[edge]
-        emitted_marker = marker_by_slot[slot.slot_id]
+        traversal_orientation_flip = _traversal_orientation_flip(slot)
+        emitted_marker = _marker_with_orientation(
+            graph_marker,
+            traversal_orientation_flip=traversal_orientation_flip,
+        )
         feature_terms = _feature_terms_for_edge(
             components_by_edge.get(edge, ()),
             edge=edge,
@@ -91,7 +94,7 @@ def marker_slot_parity_equations_for_traversal(
                 begin_parent_idx=slot.begin_parent_idx,
                 graph_marker=graph_marker,
                 emitted_marker=emitted_marker,
-                traversal_orientation_flip=graph_marker != emitted_marker,
+                traversal_orientation_flip=traversal_orientation_flip,
                 component_ids=component_ids,
                 feature_terms=feature_terms,
             )
@@ -105,19 +108,6 @@ def expected_marker_from_equation(
     if equation.traversal_orientation_flip:
         return _flipped_marker(equation.graph_marker)
     return equation.graph_marker
-
-
-def _marker_by_slot(
-    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...],
-) -> dict[str, str]:
-    marker_by_slot = {}
-    for assignment in marker_assignments:
-        if assignment.slot_id in marker_by_slot:
-            raise ValueError(
-                f"duplicate marker assignment for slot {assignment.slot_id!r}"
-            )
-        marker_by_slot[assignment.slot_id] = assignment.marker
-    return marker_by_slot
 
 
 def _graph_marker_by_edge(traversal: SouthStarTreeTraversal) -> dict[Edge, str]:
@@ -189,6 +179,28 @@ def _feature_carrier_side(
 
 def _equation_id(*, slot_id: str, component_ids: tuple[str, ...]) -> str:
     return f"{slot_id}:{','.join(component_ids)}"
+
+
+def _traversal_orientation_flip(slot: SouthStarMarkerSlot) -> bool:
+    flip = False
+    for context in slot.adjacent_contexts:
+        if (
+            slot.begin_atom_idx == context.center_atom_idx
+            and slot.end_atom_idx != context.double_neighbor_idx
+            and slot.begin_parent_idx != context.double_neighbor_idx
+        ):
+            flip = not flip
+    return flip
+
+
+def _marker_with_orientation(
+    graph_marker: str,
+    *,
+    traversal_orientation_flip: bool,
+) -> str:
+    if traversal_orientation_flip:
+        return _flipped_marker(graph_marker)
+    return graph_marker
 
 
 def _flipped_marker(marker: str) -> str:

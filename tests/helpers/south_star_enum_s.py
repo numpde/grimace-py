@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 from itertools import permutations
 from itertools import product
 
@@ -77,7 +78,6 @@ class SouthStarEnumSPrototypeResult:
 @dataclass(frozen=True, slots=True)
 class _TraversalFragment:
     events: tuple[SouthStarTraversalEvent, ...]
-    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +129,7 @@ def mol_to_smiles_enum_s_graph_native_for_case(
         case_id=case.case_id,
         outputs=outputs,
         complexity_snapshot=state.complexity_snapshot(),
-        generation_basis="south_star_graph_native_tree_traversal",
+        generation_basis="south_star_graph_native_equation_solved_tree_traversal",
     )
 
 
@@ -197,6 +197,7 @@ def _tree_traversals_for_mol(
         for combined_assignment in _combined_marker_assignments(state)
         for traversal in _tree_traversals_for_marker_assignment(
             mol,
+            state=state,
             marker_by_edge=combined_assignment.marker_by_edge,
             component_marker_assignments=(
                 combined_assignment.component_marker_assignments
@@ -258,6 +259,7 @@ def _merge_assignment_markers(
 def _tree_traversals_for_marker_assignment(
     mol: Chem.Mol,
     *,
+    state: SouthStarComponentSupportState,
     marker_by_edge: dict[Edge, str],
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
@@ -267,11 +269,14 @@ def _tree_traversals_for_marker_assignment(
         marker_by_edge=marker_by_edge,
     )
     return tuple(
-        SouthStarTreeTraversal(
-            root_atom_idx=root_idx,
-            events=fragment.events,
-            marker_assignments=fragment.marker_assignments,
-            component_marker_assignments=component_marker_assignments,
+        _with_solved_marker_assignments(
+            state,
+            SouthStarTreeTraversal(
+                root_atom_idx=root_idx,
+                events=fragment.events,
+                marker_assignments=(),
+                component_marker_assignments=component_marker_assignments,
+            ),
         )
         for root_idx in range(mol.GetNumAtoms())
         for fragment in _atom_subtree_event_variants(
@@ -282,6 +287,33 @@ def _tree_traversals_for_marker_assignment(
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
+    )
+
+
+def _with_solved_marker_assignments(
+    state: SouthStarComponentSupportState,
+    traversal: SouthStarTreeTraversal,
+) -> SouthStarTreeTraversal:
+    from tests.helpers.south_star_marker_equations import (
+        marker_slot_parity_equations_for_traversal,
+    )
+    from tests.helpers.south_star_parity_solver import (
+        solve_marker_slot_parity_equations,
+    )
+
+    equations = marker_slot_parity_equations_for_traversal(state, traversal)
+    solver_result = solve_marker_slot_parity_equations(equations)
+    if len(solver_result.assignments) != 1:
+        raise ValueError(
+            "South Star graph-native traversal expects exactly one solved "
+            "marker assignment per traversal skeleton"
+        )
+    return replace(
+        traversal,
+        marker_assignments=tuple(
+            SouthStarMarkerSlotAssignment(slot_id=slot_id, marker=marker)
+            for slot_id, marker in solver_result.assignments[0].marker_by_slot
+        ),
     )
 
 
@@ -363,19 +395,12 @@ def _atom_subtree_event_variants(
             branch_events = tuple(
                 event for branch in branch_group for event in branch.events
             )
-            branch_marker_assignments = tuple(
-                assignment
-                for branch in branch_group
-                for assignment in branch.marker_assignments
-            )
             for main_fragment in main_variants:
                 variants.append(
                     _TraversalFragment(
                         events=(atom_event,)
                         + branch_events
                         + main_fragment.events,
-                        marker_assignments=branch_marker_assignments
-                        + main_fragment.marker_assignments,
                     )
                 )
     return tuple(dict.fromkeys(variants))
@@ -393,7 +418,7 @@ def _branch_event_variants(
 ) -> tuple[_TraversalFragment, ...]:
     branch_open = SouthStarTraversalEvent(kind="branch_open", text="(")
     branch_close = SouthStarTraversalEvent(kind="branch_close", text=")")
-    bond_event, marker_assignment = _bond_event(
+    bond_event = _bond_event(
         mol,
         begin_atom_idx,
         end_atom_idx,
@@ -407,8 +432,6 @@ def _branch_event_variants(
             events=(branch_open, bond_event)
             + child_fragment.events
             + (branch_close,),
-            marker_assignments=_marker_assignment_tuple(marker_assignment)
-            + child_fragment.marker_assignments,
         )
         for child_fragment in _atom_subtree_event_variants(
             mol,
@@ -431,7 +454,7 @@ def _child_event_variants(
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
 ) -> tuple[_TraversalFragment, ...]:
-    bond_event, marker_assignment = _bond_event(
+    bond_event = _bond_event(
         mol,
         begin_atom_idx,
         end_atom_idx,
@@ -443,8 +466,6 @@ def _child_event_variants(
     return tuple(
         _TraversalFragment(
             events=(bond_event,) + child_fragment.events,
-            marker_assignments=_marker_assignment_tuple(marker_assignment)
-            + child_fragment.marker_assignments,
         )
         for child_fragment in _atom_subtree_event_variants(
             mol,
@@ -475,22 +496,13 @@ def _bond_event(
     syntax_position: str,
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[SouthStarTraversalEvent, SouthStarMarkerSlotAssignment | None]:
+) -> SouthStarTraversalEvent:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
     if bond is None:
         raise ValueError(f"edge {edge!r} is not a bond")
     marker_slot = None
-    marker_assignment = None
     if edge in marker_by_edge:
-        selected_marker = _marker_for_traversal_edge(
-            edge=edge,
-            base_marker=marker_by_edge[edge],
-            begin_atom_idx=begin_atom_idx,
-            end_atom_idx=end_atom_idx,
-            begin_parent_idx=begin_parent_idx,
-            carrier_contexts_by_edge=carrier_contexts_by_edge,
-        )
         marker_slot = _marker_slot(
             edge=edge,
             begin_atom_idx=begin_atom_idx,
@@ -498,10 +510,6 @@ def _bond_event(
             begin_parent_idx=begin_parent_idx,
             syntax_position=syntax_position,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
-        )
-        marker_assignment = SouthStarMarkerSlotAssignment(
-            slot_id=marker_slot.slot_id,
-            marker=selected_marker,
         )
         text = ""
     elif bond.GetBondType() == Chem.BondType.DOUBLE:
@@ -513,26 +521,15 @@ def _bond_event(
             f"South Star graph-native tree traversal does not support bond "
             f"{bond.GetBondType()}"
         )
-    return (
-        SouthStarTraversalEvent(
-            kind="bond",
-            text=text,
-            edge=edge,
-            begin_atom_idx=begin_atom_idx,
-            end_atom_idx=end_atom_idx,
-            begin_parent_idx=begin_parent_idx,
-            marker_slot=marker_slot,
-        ),
-        marker_assignment,
+    return SouthStarTraversalEvent(
+        kind="bond",
+        text=text,
+        edge=edge,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
+        marker_slot=marker_slot,
     )
-
-
-def _marker_assignment_tuple(
-    marker_assignment: SouthStarMarkerSlotAssignment | None,
-) -> tuple[SouthStarMarkerSlotAssignment, ...]:
-    if marker_assignment is None:
-        return ()
-    return (marker_assignment,)
 
 
 def _marker_slot(
@@ -613,26 +610,6 @@ def _carrier_contexts_for_edge(
     return tuple(contexts)
 
 
-def _marker_for_traversal_edge(
-    *,
-    edge: Edge,
-    base_marker: str,
-    begin_atom_idx: int,
-    end_atom_idx: int,
-    begin_parent_idx: int | None,
-    carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> str:
-    flip = False
-    for context in carrier_contexts_by_edge[edge]:
-        if (
-            begin_atom_idx == context.center_atom_idx
-            and end_atom_idx != context.double_neighbor_idx
-            and begin_parent_idx != context.double_neighbor_idx
-        ):
-            flip = not flip
-    return _flipped_marker(base_marker) if flip else base_marker
-
-
 def _traversal_child_edge_allowed(
     *,
     begin_atom_idx: int,
@@ -654,13 +631,5 @@ def _traversal_child_edge_allowed(
         raise NotImplementedError(
             f"South Star shared carrier edge {edge!r} has ambiguous traversal "
             f"contexts from atom {begin_atom_idx}"
-        )
+    )
     return begin_parent_idx == begin_contexts[0].double_neighbor_idx
-
-
-def _flipped_marker(marker: str) -> str:
-    if marker == "/":
-        return "\\"
-    if marker == "\\":
-        return "/"
-    raise ValueError(f"unsupported South Star directional marker {marker!r}")

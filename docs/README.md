@@ -6,6 +6,8 @@ Documentation is intentionally small and split by audience:
   current limits
 - [correctness-contracts.md](correctness-contracts.md): separation between
   principled SMILES/chemistry semantics and RDKit writer-parity behavior
+- [enum-s.md](enum-s.md): provisional South Star semantic enumeration contract
+  and package-readiness boundary
 - [testing-fixtures.md](testing-fixtures.md): fixture taxonomy and RDKit
   parity evidence boundaries
 - [rdkit-serializer-coverage.md](rdkit-serializer-coverage.md): reviewed

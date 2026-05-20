@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tests.helpers.south_star_marker_equations import (
+from grimace._south_star.marker_equations import (
     SouthStarMarkerSlotParityEquation,
 )
-from tests.helpers.south_star_marker_equations import expected_marker_from_equation
+from grimace._south_star.marker_equations import expected_marker_from_equation
 
 
 @dataclass(frozen=True, slots=True)

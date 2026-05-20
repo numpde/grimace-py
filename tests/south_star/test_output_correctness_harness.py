@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_output_correctness import (
     evaluate_south_star_output_correctness,
 )

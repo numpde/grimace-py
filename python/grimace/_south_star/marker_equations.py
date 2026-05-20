@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tests.helpers.south_star_annotation_policy import Edge
-from tests.helpers.south_star_annotation_policy import normalized_edge
-from tests.helpers.south_star_component_support_state import (
+from rdkit import Chem
+
+from grimace._south_star.annotation_policy import Edge
+from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
-from tests.helpers.south_star_components import SouthStarSemanticStereoComponent
-from tests.helpers.south_star_components import SouthStarSourceStereoFeature
-from tests.helpers.south_star_enum_s import SouthStarMarkerSlot
-from tests.helpers.south_star_enum_s import SouthStarTreeTraversal
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
-from tests.helpers.south_star_semantic_oracle import parse_smiles
-from tests.helpers.south_star_semantics import SouthStarSemanticCase
+from grimace._south_star.components import SouthStarSemanticStereoComponent
+from grimace._south_star.components import SouthStarSourceStereoFeature
+from grimace._south_star.enum_s import SouthStarMarkerSlot
+from grimace._south_star.enum_s import SouthStarTreeTraversal
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,9 +44,9 @@ class SouthStarMarkerSlotParityEquation:
 
 
 def marker_slot_parity_equations_for_case(
-    case: SouthStarSemanticCase,
+    case: object,
 ) -> tuple[tuple[SouthStarMarkerSlotParityEquation, ...], ...]:
-    mol = parse_smiles(case.source_smiles)
+    mol = _parse_smiles(case.source_smiles)
     state = SouthStarComponentSupportState.from_mol(mol)
     return tuple(
         marker_slot_parity_equations_for_traversal(state, traversal)
@@ -209,3 +209,10 @@ def _flipped_marker(marker: str) -> str:
     if marker == "\\":
         return "/"
     raise ValueError(f"unsupported South Star directional marker {marker!r}")
+
+
+def _parse_smiles(smiles: str) -> Chem.Mol:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"failed to parse SMILES {smiles!r}")
+    return mol

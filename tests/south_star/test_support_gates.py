@@ -6,7 +6,7 @@ from rdkit import Chem
 
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
-from tests.helpers.south_star_support_gates import south_star_support_gate_report
+from grimace._south_star.support_gates import south_star_support_gate_report
 
 
 class SouthStarSupportGateTests(unittest.TestCase):

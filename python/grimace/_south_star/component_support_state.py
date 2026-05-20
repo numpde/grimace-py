@@ -7,7 +7,7 @@ from operator import mul
 
 from rdkit import Chem
 
-from tests.helpers.south_star_annotation_policy import (
+from grimace._south_star.annotation_policy import (
     DIRECTIONAL_MARKERS,
     AnnotationPolicy,
     Edge,
@@ -17,12 +17,10 @@ from tests.helpers.south_star_annotation_policy import (
     SurvivingSemanticAssignment,
     normalized_edge,
 )
-from tests.helpers.south_star_components import (
+from grimace._south_star.components import (
     SouthStarSemanticStereoComponent,
     extract_south_star_components,
 )
-from tests.helpers.south_star_semantic_oracle import parse_smiles
-from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,12 +69,12 @@ class SouthStarComponentSupportState:
     @classmethod
     def from_case(
         cls,
-        case: SouthStarSemanticCase,
+        case: object,
         *,
         annotation_policy: AnnotationPolicy | None = None,
     ) -> SouthStarComponentSupportState:
         return cls.from_mol(
-            parse_smiles(case.source_smiles),
+            _parse_smiles(case.source_smiles),
             annotation_policy=annotation_policy,
         )
 
@@ -351,3 +349,10 @@ def _normalized_marker_observations(
                 f"conflicting marker observations for carrier edge {normalized!r}"
             )
     return normalized_observations
+
+
+def _parse_smiles(smiles: str) -> Chem.Mol:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"failed to parse SMILES {smiles!r}")
+    return mol

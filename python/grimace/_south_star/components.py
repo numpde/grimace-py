@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
-from tests.helpers.south_star_annotation_policy import Edge, normalized_edge
-from tests.helpers.south_star_support_gates import (
+from grimace._south_star.annotation_policy import Edge, normalized_edge
+from grimace._south_star.support_gates import (
     SouthStarSupportGateReport,
     SouthStarUnsupportedFeature,
     south_star_support_gate_report,

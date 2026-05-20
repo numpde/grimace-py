@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_annotation_policy import (
+from grimace._south_star.annotation_policy import (
     DIRECTIONAL_MARKERS,
     AnnotationPolicyDecision,
     EmittedEdgeBasis,
@@ -10,7 +10,7 @@ from tests.helpers.south_star_annotation_policy import (
     SurvivingSemanticAssignment,
     normalized_edge,
 )
-from tests.helpers.south_star_component_support_state import (
+from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles

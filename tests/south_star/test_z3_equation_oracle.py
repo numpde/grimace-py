@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_component_support_state import (
+from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
-from tests.helpers.south_star_enum_s import (
+from grimace._south_star.enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
-from tests.helpers.south_star_marker_equations import (
+from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
-from tests.helpers.south_star_marker_equations import expected_marker_from_equation
+from grimace._south_star.marker_equations import expected_marker_from_equation
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
-from tests.helpers.south_star_parity_solver import solve_marker_slot_parity_equations
-from tests.helpers.south_star_z3_oracle import (
+from grimace._south_star.parity_solver import solve_marker_slot_parity_equations
+from grimace._south_star.z3_oracle import (
     z3_marker_assignments_for_equations,
 )
 

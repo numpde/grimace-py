@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_annotation_policy import normalized_edge
-from tests.helpers.south_star_components import extract_south_star_components
+from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.components import extract_south_star_components
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 

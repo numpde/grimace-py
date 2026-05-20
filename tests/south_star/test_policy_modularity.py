@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_annotation_policy import (
+from grimace._south_star.annotation_policy import (
     AnnotationPolicyDecision,
     EmittedEdgeBasis,
     SemanticCarrierOpportunity,

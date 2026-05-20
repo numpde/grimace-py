@@ -29,7 +29,10 @@ FORBIDDEN_IMPORT_PREFIXES: tuple[str, ...] = (
 )
 FORBIDDEN_CORE_HELPER_IMPORT_PREFIXES: tuple[str, ...] = (
     *FORBIDDEN_IMPORT_PREFIXES,
-    "grimace",
+    "grimace._core",
+    "grimace._deviation",
+    "grimace._reference",
+    "grimace._runtime",
 )
 
 
@@ -60,6 +63,10 @@ def _imported_modules(path: Path) -> tuple[str, ...]:
     return tuple(modules)
 
 
+def _imports_public_grimace_runtime(module_name: str) -> bool:
+    return module_name == "grimace" or module_name.startswith("grimace.")
+
+
 class SouthStarDependencyBoundaryTests(unittest.TestCase):
     def test_south_star_tests_do_not_import_rdkit_writer_parity_surfaces(self) -> None:
         for path in _south_star_python_files():
@@ -85,7 +92,11 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
         runtime_importers = tuple(
             path.name
             for path in _south_star_helper_files()
-            if "grimace" in _imported_modules(path)
+            if any(
+                _imports_public_grimace_runtime(module_name)
+                and not module_name.startswith("grimace._south_star")
+                for module_name in _imported_modules(path)
+            )
         )
 
         self.assertEqual(tuple(sorted(COMPARISON_HELPER_NAMES)), runtime_importers)

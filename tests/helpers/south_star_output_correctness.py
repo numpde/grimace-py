@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tests.helpers.south_star_enum_s import SouthStarEnumSPrototypeResult
+from grimace._south_star.enum_s import SouthStarEnumSPrototypeResult
 from tests.helpers.south_star_semantic_oracle import (
     SouthStarConformanceReport,
     south_star_conformance_report,

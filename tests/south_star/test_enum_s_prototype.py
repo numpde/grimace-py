@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_component_support_state import (
+from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
-from tests.helpers.south_star_enum_s import (
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native_for_case
+from grimace._south_star.enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
-from tests.helpers.south_star_enum_s import render_south_star_traversal
-from tests.helpers.south_star_enum_s import SouthStarMarkerSlot
-from tests.helpers.south_star_enum_s import SouthStarMarkerSlotAssignment
-from tests.helpers.south_star_enum_s import SouthStarTraversalEvent
+from grimace._south_star.enum_s import render_south_star_traversal
+from grimace._south_star.enum_s import SouthStarMarkerSlot
+from grimace._south_star.enum_s import SouthStarMarkerSlotAssignment
+from grimace._south_star.enum_s import SouthStarTraversalEvent
+from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases

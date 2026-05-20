@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_annotation_policy import DIRECTIONAL_MARKERS
+from grimace._south_star.annotation_policy import DIRECTIONAL_MARKERS
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 from tests.helpers.south_star_support_boundary import SouthStarOnlineSupportBoundary
 

@@ -12,7 +12,7 @@ from tests.helpers.south_star_semantic_oracle import (
     semantic_oracle_accepts,
     south_star_conformance_report,
 )
-from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
 

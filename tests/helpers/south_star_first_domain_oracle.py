@@ -19,12 +19,12 @@ from itertools import product
 
 from rdkit import Chem
 
-from tests.helpers.south_star_annotation_policy import Edge
-from tests.helpers.south_star_annotation_policy import normalized_edge
-from tests.helpers.south_star_component_support_state import (
+from grimace._south_star.annotation_policy import Edge
+from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.component_support_state import (
     SouthStarComponentMarkerAssignment,
 )
-from tests.helpers.south_star_component_support_state import (
+from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles

@@ -8,6 +8,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_ORACLE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
+    SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY,
     SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import (
@@ -15,6 +16,7 @@ from tests.helpers.south_star_exact_support import (
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
     independent_disconnected_composition_support_for_case,
+    independent_ring_stereo_monocycle_support_for_case,
     independent_saturated_monocycle_support_for_case,
 )
 from tests.helpers.south_star_semantic_oracle import graph_signature
@@ -67,6 +69,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 for case in cases
             )
         )
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY
+                for case in cases
+            )
+        )
 
     def test_independent_saturated_monocycle_oracle_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():
@@ -96,6 +105,35 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 )
                 self.assertEqual("all_fragment_orders", result.fragment_order_policy)
                 self.assertEqual(2, result.fragment_order_count)
+
+    def test_independent_ring_stereo_monocycle_oracle_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                result = independent_ring_stereo_monocycle_support_for_case(case)
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertGreater(result.closure_edge_count, 0)
+                self.assertEqual(2, result.marker_assignment_count)
+                self.assertGreater(len(result.equations), 0)
+                self.assertTrue(
+                    any(
+                        equation.syntax_position == "ring_open"
+                        and equation.slot_id.startswith("ring_open:")
+                        for equation in result.equations
+                    )
+                )
+                for equation in result.equations:
+                    self.assertIn(equation.graph_marker, {"/", "\\"})
+                    self.assertIn(equation.emitted_marker, {"/", "\\"})
+                    self.assertEqual(
+                        equation.traversal_orientation_flip,
+                        equation.graph_marker != equation.emitted_marker,
+                    )
 
     def test_graph_native_support_matches_expanded_domain_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

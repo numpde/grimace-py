@@ -128,8 +128,8 @@
       "case_id": "ring_stereo_monocycle_cyclooctene",
       "feature_area": "ring_stereo_monocycle",
       "source_smiles": "C1/C=C\\CCCCC1",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first modeled ring-stereo monocycle slice; marker slots are event-local on tree bonds or ring-open closure events.",
+      "support_authority": "independent_ring_stereo_monocycle_oracle",
+      "evidence_notes": "Checked by the independent ring-stereo monocycle oracle from closure-edge marker slots and parity equations; stereo double-bond closure edges remain a separate unsupported slice.",
       "expected_support": [
         "C1/C=C\\CCCCC1",
         "C(/C=C\\CCCC1)C1",

@@ -29,8 +29,9 @@ seed enumerator until the semantic traversal surface is expanded.
 
 ## Current Status
 
-The current implementation is a graph-native seed used by tests and diagnostics,
-not a package-ready runtime surface.
+The current implementation lives behind the private internal
+`grimace._south_star` boundary and is used by tests and diagnostics. It is not
+imported from `grimace.__init__` and is not a package-ready runtime surface.
 
 The seed enumerator:
 
@@ -42,10 +43,11 @@ The seed enumerator:
   acyclic tree subset;
 - varies component-local marker assignments for the supported stereo features;
 - applies local carrier-orientation rules for markers emitted through branches
-  or reversed tree edges.
+  or reversed tree edges;
+- renders strings from traversal events plus solved marker-slot assignments.
 
-The fixture-backed prototype remains comparison support only. It is not the
-intended implementation strategy for a package API.
+The fixture-backed prototype remains in `tests.helpers` as comparison support
+only. It is not the implementation strategy for a package API.
 
 ## First Supported Shape
 
@@ -141,4 +143,5 @@ enumerator needs a broader molecule and syntax surface:
   affected component counts, and estimated product size.
 
 The provisional name `MolToSmilesEnumS` should remain internal until that
-surface is implemented and reviewed.
+surface is implemented and reviewed. The current private implementation is a
+construction path for that future surface, not a public API commitment.

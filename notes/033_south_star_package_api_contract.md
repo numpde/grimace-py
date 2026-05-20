@@ -13,9 +13,9 @@ not a public package API yet.
 
 The current public runtime remains `MolToSmilesEnum`, whose contract is RDKit
 writer parity for the supported `canonical=False, doRandom=True` regime.
-`MolToSmilesEnumS` must remain separate until its graph-native enumerator covers
-the declared traversal support, its conformance oracle is documented, and its
-unsupported-feature gates are explicit.
+`MolToSmilesEnumS` must remain separate until the private graph-native
+implementation covers the declared traversal support, its conformance oracle is
+documented, and its unsupported-feature gates are explicit.
 
 ## Intended Contract
 
@@ -35,7 +35,7 @@ The target is semantic correctness, not RDKit writer-string equality:
 
 The first package-facing class should stay narrow:
 
-- one connected molecule;
+- one connected acyclic molecule;
 - explicit directional double-bond stereo represented by slash/backslash
   carriers;
 - acyclic alkene-style carriers;
@@ -125,23 +125,28 @@ These categories are diagnostics. Equality is not the South Star goal.
 
 ## Current Implementation Boundary
 
-Current branch code has both a witness-backed comparison helper and a
-graph-native seed enumerator.
+Current branch code has a private graph-native implementation boundary plus
+fixture-backed comparison support.
 
 - `tests.helpers.south_star_enum_s.mol_to_smiles_enum_s_prototype_for_case`
   remains fixture-backed comparison/test support.
-- `tests.helpers.south_star_enum_s.mol_to_smiles_enum_s_graph_native_for_case`
-  derives outputs from the molecule graph and component marker assignments.
+- `grimace._south_star` owns the private graph-native implementation. Tests and
+  diagnostics import that internal boundary directly; the public `grimace`
+  package does not export it.
+- `grimace._south_star.enum_s.mol_to_smiles_enum_s_graph_native_for_case`
+  derives outputs from the molecule graph, component marker assignments,
+  traversal events, marker-slot equations, and solved marker assignments.
 - The graph-native seed does not use fixture-positive strings or
   `MolToSmilesEnum` outputs as generation input.
 - The correctness harness and parity comparison diagnostics now consume the
-  graph-native seed by default.
+  graph-native implementation by default.
 
-This is still not package-ready. The graph-native seed currently emits one
-deterministic connected-acyclic atom-index traversal and varies component
-marker assignments. Before package exposure, graph-native enumeration must
-cover the declared root, branch-order, and traversal choices or the public
-contract must explicitly define a narrower surface.
+This is still not package-ready. The graph-native implementation now enumerates
+roots and child/main-branch orders for the current connected acyclic tree
+subset, but it still excludes rings, disconnected molecules, tetrahedral atom
+stereo, aromatic output, and broader atom/bond syntax. Before package exposure,
+the public contract must either implement those surfaces or explicitly define a
+narrower semantic language.
 
 ## Naming
 

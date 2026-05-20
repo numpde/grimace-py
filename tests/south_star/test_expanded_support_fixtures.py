@@ -21,6 +21,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             {
                 "simple_saturated_monocycle",
+                "branched_saturated_monocycle",
                 "disconnected_markerless_fragments",
                 "disconnected_stereo_fragments",
                 "tetrahedral_atom_stereo",

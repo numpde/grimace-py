@@ -251,7 +251,7 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         return ()
     if disconnected_fragments_have_supported_independent_traversal(mol):
         return ()
-    if is_simple_saturated_monocycle(mol):
+    if is_saturated_monocycle_with_acyclic_branches(mol):
         return ()
     return (
         SouthStarUnsupportedFeature(
@@ -368,24 +368,26 @@ def _directional_carrier_bonds_for_stereo_bond(
     )
 
 
-def is_simple_saturated_monocycle(mol: Chem.Mol) -> bool:
+def is_saturated_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     if mol.GetNumAtoms() == 0:
         return False
     if len(Chem.GetMolFrags(mol)) != 1:
         return False
     if mol.GetNumBonds() != mol.GetNumAtoms():
         return False
-    if any(atom.GetDegree() != 2 for atom in mol.GetAtoms()):
-        return False
     if any(
         atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
         for atom in mol.GetAtoms()
     ):
         return False
-    return all(
-        bond.IsInRing() and bond.GetBondType() == Chem.BondType.SINGLE
-        for bond in mol.GetBonds()
-    )
+    ring_info = mol.GetRingInfo()
+    if ring_info.NumRings() != 1:
+        return False
+    ring_atoms = set(ring_info.AtomRings()[0])
+    ring_bonds = set(ring_info.BondRings()[0])
+    if len(ring_atoms) != len(ring_bonds):
+        return False
+    return all(bond.GetBondType() == Chem.BondType.SINGLE for bond in mol.GetBonds())
 
 
 def disconnected_fragments_have_supported_independent_traversal(

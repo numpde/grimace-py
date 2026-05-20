@@ -65,8 +65,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_branched_rings_are_fail_fast_unsupported(self) -> None:
+    def test_branched_saturated_monocycles_are_supported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("CC1CCCCC1"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_fused_rings_are_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CC2CCCC2C1"))
 
         self.assertIn("ring_molecule", report.categories)
 

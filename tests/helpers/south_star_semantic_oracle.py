@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from rdkit import Chem
 from rdkit import rdBase
 
-
-ANNOTATION_CONFORMANCE_BASIS = (
-    "rdkit_parser_evidence_for_current_directional_marker_grammar"
+from tests.helpers.south_star_annotation_conformance import (
+    ANNOTATION_CONFORMANCE_BASIS,
+    south_star_annotation_conformance,
 )
 
 
@@ -109,6 +109,7 @@ def south_star_conformance_report(
     candidate_graph = _graph_signature_for_mol(candidate_mol)
     source_semantics = _semantic_signature_for_mol(source_mol)
     candidate_semantics = _semantic_signature_for_mol(candidate_mol)
+    annotation_conformance = south_star_annotation_conformance(candidate_smiles)
 
     return SouthStarConformanceReport(
         rdkit_parseability=SouthStarConformanceCheck(
@@ -135,12 +136,9 @@ def south_star_conformance_report(
             ),
         ),
         annotation_conformance=SouthStarConformanceCheck(
-            passed=True,
+            passed=annotation_conformance.passed,
             basis=ANNOTATION_CONFORMANCE_BASIS,
-            detail=(
-                "candidate directional annotations are parseable; RDKit parser "
-                "behavior is evidence here, not the South Star definition"
-            ),
+            detail=annotation_conformance.detail,
         ),
     )
 

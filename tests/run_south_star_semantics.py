@@ -4,6 +4,7 @@ import unittest
 
 
 SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
+    "tests.south_star.test_annotation_conformance",
     "tests.south_star.test_annotation_policy_boundary",
     "tests.south_star.test_component_extraction",
     "tests.south_star.test_component_support_state",

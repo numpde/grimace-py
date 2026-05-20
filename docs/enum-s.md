@@ -41,8 +41,8 @@ The seed enumerator:
 - enumerates roots and child/main-branch orders for the current connected
   acyclic tree subset;
 - varies component-local marker assignments for the supported stereo features;
-- filters generated candidates through the current South Star conformance
-  oracle.
+- applies local carrier-orientation rules for markers emitted through branches
+  or reversed tree edges.
 
 The fixture-backed prototype remains comparison support only. It is not the
 intended implementation strategy for a package API.
@@ -134,8 +134,8 @@ enumerator needs a broader molecule and syntax surface:
 - disconnected molecule policy;
 - atom text beyond the current organic-subset seed;
 - supported aromatic directional surfaces, if any;
-- local branch-orientation equations that avoid relying on the conformance
-  oracle as a generated-candidate filter;
+- broader validation of local branch-orientation equations against more
+  adversarial carrier topologies;
 - explicit fail-fast checks for every unsupported molecule class;
 - complexity diagnostics that expose component counts, local assignment counts,
   affected component counts, and estimated product size.

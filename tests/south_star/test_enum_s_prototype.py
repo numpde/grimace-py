@@ -54,7 +54,7 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     set(case.positive_semantic_smiles) - set(result.outputs),
                 )
                 self.assertEqual(
-                    "south_star_graph_native_tree_traversal_semantic_filter",
+                    "south_star_graph_native_tree_traversal",
                     result.generation_basis,
                 )
 

@@ -57,6 +57,7 @@ class SouthStarTreeTraversal:
     root_atom_idx: int
     events: tuple[SouthStarTraversalEvent, ...]
     marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...]
+    component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...]
 
     def render(self) -> str:
         return render_south_star_traversal(
@@ -77,6 +78,12 @@ class SouthStarEnumSPrototypeResult:
 class _TraversalFragment:
     events: tuple[SouthStarTraversalEvent, ...]
     marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _CombinedMarkerAssignment:
+    marker_by_edge: dict[Edge, str]
+    component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...]
 
 
 def mol_to_smiles_enum_s_prototype_for_case(
@@ -187,10 +194,13 @@ def _tree_traversals_for_mol(
 ) -> tuple[SouthStarTreeTraversal, ...]:
     return tuple(
         traversal
-        for marker_by_edge in _combined_marker_assignments(state)
+        for combined_assignment in _combined_marker_assignments(state)
         for traversal in _tree_traversals_for_marker_assignment(
             mol,
-            marker_by_edge=marker_by_edge,
+            marker_by_edge=combined_assignment.marker_by_edge,
+            component_marker_assignments=(
+                combined_assignment.component_marker_assignments
+            ),
         )
     )
 
@@ -209,17 +219,27 @@ def _assert_fixture_carriers_are_supported(
 
 def _combined_marker_assignments(
     state: SouthStarComponentSupportState,
-) -> tuple[dict[Edge, str], ...]:
+) -> tuple[_CombinedMarkerAssignment, ...]:
     per_component = state.component_marker_assignments()
     if not per_component:
-        return ({},)
+        return (
+            _CombinedMarkerAssignment(
+                marker_by_edge={},
+                component_marker_assignments=(),
+            ),
+        )
 
     combined = []
     for assignment_group in product(*per_component):
         marker_by_edge: dict[Edge, str] = {}
         for assignment in assignment_group:
             _merge_assignment_markers(marker_by_edge, assignment)
-        combined.append(marker_by_edge)
+        combined.append(
+            _CombinedMarkerAssignment(
+                marker_by_edge=marker_by_edge,
+                component_marker_assignments=assignment_group,
+            )
+        )
     return tuple(combined)
 
 
@@ -239,6 +259,7 @@ def _tree_traversals_for_marker_assignment(
     mol: Chem.Mol,
     *,
     marker_by_edge: dict[Edge, str],
+    component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
     _assert_tree_traversal_supported(mol)
     carrier_contexts_by_edge = _carrier_contexts_by_edge(
@@ -250,6 +271,7 @@ def _tree_traversals_for_marker_assignment(
             root_atom_idx=root_idx,
             events=fragment.events,
             marker_assignments=fragment.marker_assignments,
+            component_marker_assignments=component_marker_assignments,
         )
         for root_idx in range(mol.GetNumAtoms())
         for fragment in _atom_subtree_event_variants(

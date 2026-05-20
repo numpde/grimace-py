@@ -19,8 +19,8 @@ from grimace._south_star.annotation_policy import (
 )
 from grimace._south_star.components import (
     SouthStarSemanticStereoComponent,
-    extract_south_star_components,
 )
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +63,7 @@ class SouthStarComponentMarkerAssignment:
 
 @dataclass(frozen=True, slots=True)
 class SouthStarComponentSupportState:
-    components: tuple[SouthStarSemanticStereoComponent, ...]
+    molecule_facts: SouthStarMoleculeFacts
     annotation_policy: AnnotationPolicy
 
     @classmethod
@@ -85,13 +85,28 @@ class SouthStarComponentSupportState:
         *,
         annotation_policy: AnnotationPolicy | None = None,
     ) -> SouthStarComponentSupportState:
-        extraction = extract_south_star_components(mol)
-        extraction.fail_if_unsupported()
+        return cls.from_molecule_facts(
+            SouthStarMoleculeFacts.from_mol(mol),
+            annotation_policy=annotation_policy,
+        )
+
+    @classmethod
+    def from_molecule_facts(
+        cls,
+        molecule_facts: SouthStarMoleculeFacts,
+        *,
+        annotation_policy: AnnotationPolicy | None = None,
+    ) -> SouthStarComponentSupportState:
+        molecule_facts.fail_if_unsupported()
         return cls(
-            components=extraction.components,
+            molecule_facts=molecule_facts,
             annotation_policy=annotation_policy
             or MaximalEligibleCarrierAnnotationPolicy(),
         )
+
+    @property
+    def components(self) -> tuple[SouthStarSemanticStereoComponent, ...]:
+        return self.molecule_facts.components
 
     def explain_directional_marker(
         self,

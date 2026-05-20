@@ -8,10 +8,9 @@ from grimace._south_star.annotation_policy import (
     SurvivingSemanticAssignment,
     normalized_edge,
 )
-from grimace._south_star.components import (
-    SouthStarSemanticStereoComponent,
-    extract_south_star_components,
-)
+from grimace._south_star.components import SouthStarSemanticStereoComponent
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
+from grimace._south_star.support_gates import SouthStarSupportGateReport
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
@@ -20,30 +19,30 @@ from tests.helpers.south_star_semantics import SouthStarSemanticCase
 class SouthStarSemanticFacts:
     case_id: str
     source_smiles: str
-    components: tuple[SouthStarSemanticStereoComponent, ...]
-    carrier_opportunities: tuple[SemanticCarrierOpportunity, ...]
+    molecule_facts: SouthStarMoleculeFacts
+
+    @property
+    def components(self) -> tuple[SouthStarSemanticStereoComponent, ...]:
+        return self.molecule_facts.components
+
+    @property
+    def carrier_opportunities(self) -> tuple[SemanticCarrierOpportunity, ...]:
+        return self.molecule_facts.carrier_opportunities
+
+    @property
+    def support_gate_report(self) -> SouthStarSupportGateReport:
+        return self.molecule_facts.support_gate_report
 
 
 def south_star_semantic_facts_from_case(
     case: SouthStarSemanticCase,
 ) -> SouthStarSemanticFacts:
-    extraction = extract_south_star_components(parse_smiles(case.source_smiles))
-    extraction.fail_if_unsupported()
-    carrier_edges = tuple(
-        dict.fromkeys(
-            edge
-            for component in extraction.components
-            for edge in component.eligible_carrier_edges
-        )
-    )
+    molecule_facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+    molecule_facts.fail_if_unsupported()
     return SouthStarSemanticFacts(
         case_id=case.case_id,
         source_smiles=case.source_smiles,
-        components=extraction.components,
-        carrier_opportunities=tuple(
-            SemanticCarrierOpportunity(edge=edge)
-            for edge in carrier_edges
-        ),
+        molecule_facts=molecule_facts,
     )
 
 

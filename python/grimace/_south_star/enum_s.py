@@ -19,6 +19,7 @@ from grimace._south_star.fragments import (
     SouthStarFragmentSupport,
     compose_disconnected_fragment_supports,
 )
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.policies import DEFAULT_SOUTH_STAR_POLICY_SET
 from grimace._south_star.policies import SouthStarPolicySet
 from grimace._south_star.support_gates import (
@@ -159,9 +160,11 @@ def _mol_to_smiles_enum_s_graph_native_for_mol(
     *,
     case_id: str = "",
     policy_set: SouthStarPolicySet,
+    molecule_facts: SouthStarMoleculeFacts | None = None,
 ) -> SouthStarEnumSPrototypeResult:
-    state = SouthStarComponentSupportState.from_mol(
-        mol,
+    facts = molecule_facts or SouthStarMoleculeFacts.from_mol(mol)
+    state = SouthStarComponentSupportState.from_molecule_facts(
+        facts,
         annotation_policy=policy_set.annotation_policy,
     )
     if len(Chem.GetMolFrags(mol)) > 1:

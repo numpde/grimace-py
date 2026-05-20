@@ -61,8 +61,12 @@ class SouthStarComponentExtraction:
         self.support_gate_report.fail_if_unsupported()
 
 
-def extract_south_star_components(mol: Chem.Mol) -> SouthStarComponentExtraction:
-    gate_report = south_star_support_gate_report(mol)
+def extract_south_star_components(
+    mol: Chem.Mol,
+    *,
+    support_gate_report: SouthStarSupportGateReport | None = None,
+) -> SouthStarComponentExtraction:
+    gate_report = support_gate_report or south_star_support_gate_report(mol)
     if not gate_report.supported:
         return SouthStarComponentExtraction(
             support_gate_report=gate_report,

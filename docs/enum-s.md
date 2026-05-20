@@ -39,10 +39,18 @@ feature areas, and unsupported categories aligned.
 
 The provisional private API boundary is
 `grimace._south_star.api.mol_to_smiles_enum_s_private(mol, *, policy_set=...)`.
-It accepts an RDKit `Mol`, applies the South Star support gates before
-enumeration, uses `DEFAULT_SOUTH_STAR_POLICY_SET` unless a policy set is passed
-explicitly, and returns graph-native outputs plus policy names and generation
-diagnostics. It is deliberately not exported from `grimace.__init__`.
+It accepts an RDKit `Mol`, builds `SouthStarMoleculeFacts`, applies the South
+Star support gates before enumeration, uses `DEFAULT_SOUTH_STAR_POLICY_SET`
+unless a policy set is passed explicitly, and returns graph-native outputs plus
+policy names and generation diagnostics. It is deliberately not exported from
+`grimace.__init__`.
+
+`SouthStarMoleculeFacts` is the current semantic fact boundary. It owns the
+support-gate report, atom and bond text facts, graph topology, extracted
+semantic stereo components, carrier opportunities, and tetrahedral center
+facts. Runtime generation, component support state, diagnostics, and test
+helpers should consume those named facts instead of re-deriving parallel local
+views.
 
 The seed enumerator:
 

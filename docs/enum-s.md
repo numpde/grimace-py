@@ -228,6 +228,11 @@ using explicit categories:
 These categories are diagnostics. Equality with RDKit support is not the South
 Star goal.
 
+The diagnostic helper is `tests.helpers.south_star_comparison`. It may import
+the public `grimace.MolToSmilesEnum` writer-parity surface, but core South Star
+helpers and semantic tests must not. Diagnostic reports are allowed to expose
+differences; those differences are metadata, not semantic failures.
+
 ## Package-Readiness Gap
 
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native

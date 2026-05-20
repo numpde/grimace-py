@@ -12,8 +12,15 @@ from tests.helpers.south_star_semantic_oracle import (
     semantic_oracle_accepts,
     south_star_conformance_report,
 )
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native_for_case
+from tests.helpers.south_star_exact_support import SouthStarExpandedSupportCase
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
+
+
+SOUTH_STAR_INTERSECTION = "intersection"
+SOUTH_STAR_ONLY = "SouthStarOnly"
+RDKIT_PARITY_ONLY = "RDKitParityOnly"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,16 +81,40 @@ def south_star_comparison_labels(
 def south_star_parity_comparison_report(
     case: SouthStarSemanticCase,
 ) -> SouthStarParityComparisonReport:
-    south_star_support = frozenset(
-        mol_to_smiles_enum_s_graph_native_for_case(case).outputs
+    return _parity_comparison_report(
+        case_id=case.case_id,
+        source_smiles=case.source_smiles,
+        south_star_outputs=mol_to_smiles_enum_s_graph_native_for_case(case).outputs,
     )
-    rdkit_parity_support = _grimace_public_parity_support(case.source_smiles)
+
+
+def south_star_expanded_parity_comparison_report(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarParityComparisonReport:
+    return _parity_comparison_report(
+        case_id=case.case_id,
+        source_smiles=case.source_smiles,
+        south_star_outputs=mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        ).outputs,
+    )
+
+
+def _parity_comparison_report(
+    *,
+    case_id: str,
+    source_smiles: str,
+    south_star_outputs: tuple[str, ...],
+) -> SouthStarParityComparisonReport:
+    south_star_support = frozenset(south_star_outputs)
+    rdkit_parity_support = _grimace_public_parity_support(source_smiles)
     intersection = south_star_support.intersection(rdkit_parity_support)
     south_star_only = south_star_support.difference(rdkit_parity_support)
     rdkit_parity_only = rdkit_parity_support.difference(south_star_support)
 
     return SouthStarParityComparisonReport(
-        case_id=case.case_id,
+        case_id=case_id,
         south_star_support_size=len(south_star_support),
         rdkit_parity_support_size=len(rdkit_parity_support),
         intersection_size=len(intersection),
@@ -92,14 +123,14 @@ def south_star_parity_comparison_report(
         intersection=tuple(sorted(intersection)),
         classifications=tuple(
             _membership_classification(
-                case,
+                source_smiles=source_smiles,
                 candidate_smiles=candidate_smiles,
                 membership=membership,
             )
             for membership, candidates in (
-                ("intersection", intersection),
-                ("south_star_only", south_star_only),
-                ("rdkit_parity_only", rdkit_parity_only),
+                (SOUTH_STAR_INTERSECTION, intersection),
+                (SOUTH_STAR_ONLY, south_star_only),
+                (RDKIT_PARITY_ONLY, rdkit_parity_only),
             )
             for candidate_smiles in sorted(candidates)
         ),
@@ -129,8 +160,8 @@ def _comparison_label(
 
 
 def _membership_classification(
-    case: SouthStarSemanticCase,
     *,
+    source_smiles: str,
     candidate_smiles: str,
     membership: str,
 ) -> SouthStarSupportMembershipClassification:
@@ -138,7 +169,7 @@ def _membership_classification(
         candidate_smiles=candidate_smiles,
         membership=membership,
         conformance_report=south_star_conformance_report(
-            source_smiles=case.source_smiles,
+            source_smiles=source_smiles,
             candidate_smiles=candidate_smiles,
         ),
     )

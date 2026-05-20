@@ -43,7 +43,48 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertIn("disconnected_molecule", report.categories)
 
-    def test_ring_stereo_is_fail_fast_unsupported(self) -> None:
+    def test_rings_are_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CCCCC1"))
+
+        self.assertIn("ring_molecule", report.categories)
+
+    def test_ring_stereo_has_specific_fail_fast_reason(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C1/C=C\\CCCCC1"))
 
+        self.assertIn("ring_molecule", report.categories)
         self.assertIn("ring_stereo", report.categories)
+
+    def test_unsupported_atom_text_is_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("[SiH3]C"))
+
+        self.assertIn("unsupported_atom_text", report.categories)
+
+    def test_unsupported_bond_types_are_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C#N"))
+
+        self.assertIn("unsupported_bond_type", report.categories)
+
+    def test_aromatic_bonds_are_outside_first_domain(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("c1ccccc1"))
+
+        self.assertIn("unsupported_bond_type", report.categories)
+        self.assertIn("ring_molecule", report.categories)
+
+    def test_aromatic_directional_surfaces_have_specific_reason(self) -> None:
+        mol = parse_smiles("c1ccccc1")
+        bond = mol.GetBondWithIdx(0)
+        bond.SetBondDir(Chem.BondDir.ENDUPRIGHT)
+
+        report = south_star_support_gate_report(mol)
+
+        self.assertIn("aromatic_directional_surface", report.categories)
+
+    def test_stereo_without_carrier_basis_is_fail_fast_unsupported(self) -> None:
+        mol = parse_smiles("FC=CCl")
+        bond = mol.GetBondBetweenAtoms(1, 2)
+        self.assertIsNotNone(bond)
+        bond.SetStereo(Chem.BondStereo.STEREOZ)
+
+        report = south_star_support_gate_report(mol)
+
+        self.assertIn("unstated_component_equation", report.categories)

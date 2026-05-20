@@ -5,12 +5,11 @@ from dataclasses import dataclass
 from rdkit import Chem
 
 
+SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
+    {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
+)
 SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = frozenset(
-    {
-        Chem.BondType.SINGLE,
-        Chem.BondType.DOUBLE,
-        Chem.BondType.AROMATIC,
-    }
+    {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
 )
 METAL_ATOMIC_NUMBERS: frozenset[int] = frozenset(
     {
@@ -100,13 +99,17 @@ class SouthStarSupportGateReport:
 def south_star_support_gate_report(mol: Chem.Mol) -> SouthStarSupportGateReport:
     unsupported: list[SouthStarUnsupportedFeature] = []
     unsupported.extend(_query_features(mol))
+    unsupported.extend(_empty_molecule_features(mol))
+    unsupported.extend(_unsupported_atom_text_features(mol))
     unsupported.extend(_atom_stereo_features(mol))
     unsupported.extend(_metal_features(mol))
     unsupported.extend(_bond_type_features(mol))
     unsupported.extend(_dative_bond_features(mol))
     unsupported.extend(_disconnected_features(mol))
+    unsupported.extend(_ring_features(mol))
     unsupported.extend(_ring_stereo_features(mol))
     unsupported.extend(_aromatic_directional_features(mol))
+    unsupported.extend(_unstated_component_equation_features(mol))
     return SouthStarSupportGateReport(unsupported_features=tuple(unsupported))
 
 
@@ -133,6 +136,34 @@ def _query_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
                 )
             )
     return tuple(features)
+
+
+def _empty_molecule_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
+    if mol.GetNumAtoms() != 0:
+        return ()
+    return (
+        SouthStarUnsupportedFeature(
+            category="empty_molecule",
+            atom_indices=(),
+            bond_indices=(),
+            reason="South Star first scope requires at least one atom",
+        ),
+    )
+
+
+def _unsupported_atom_text_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    return tuple(
+        SouthStarUnsupportedFeature(
+            category="unsupported_atom_text",
+            atom_indices=(atom.GetIdx(),),
+            bond_indices=(),
+            reason=f"atom symbol {atom.GetSymbol()!r} is outside first South Star scope",
+        )
+        for atom in mol.GetAtoms()
+        if atom.GetSymbol() not in SUPPORTED_ATOM_SYMBOLS
+    )
 
 
 def _atom_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
@@ -201,6 +232,25 @@ def _disconnected_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, 
     )
 
 
+def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
+    ring_atom_indices = tuple(
+        atom.GetIdx() for atom in mol.GetAtoms() if atom.IsInRing()
+    )
+    ring_bond_indices = tuple(
+        bond.GetIdx() for bond in mol.GetBonds() if bond.IsInRing()
+    )
+    if not ring_atom_indices and not ring_bond_indices:
+        return ()
+    return (
+        SouthStarUnsupportedFeature(
+            category="ring_molecule",
+            atom_indices=ring_atom_indices,
+            bond_indices=ring_bond_indices,
+            reason="ring traversal and ring-closure marker bases are not modeled yet",
+        ),
+    )
+
+
 def _ring_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
     features: list[SouthStarUnsupportedFeature] = []
     for bond in mol.GetBonds():
@@ -230,4 +280,74 @@ def _aromatic_directional_features(
         )
         for bond in mol.GetBonds()
         if bond.GetIsAromatic() and bond.GetBondDir() != Chem.BondDir.NONE
+    )
+
+
+def _unstated_component_equation_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    features: list[SouthStarUnsupportedFeature] = []
+    for bond in mol.GetBonds():
+        if bond.GetBondType() != Chem.BondType.DOUBLE:
+            continue
+        if bond.GetStereo() == Chem.BondStereo.STEREONONE:
+            continue
+
+        carrier_bonds = _directional_carrier_bonds_for_stereo_bond(mol, bond)
+        if not carrier_bonds:
+            features.append(
+                SouthStarUnsupportedFeature(
+                    category="unstated_component_equation",
+                    atom_indices=(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()),
+                    bond_indices=(bond.GetIdx(),),
+                    reason=(
+                        "stereo double bond has no directional carrier basis "
+                        "for first-scope marker equations"
+                    ),
+                )
+            )
+            continue
+
+        for carrier_bond in carrier_bonds:
+            if carrier_bond.GetBondDir() == Chem.BondDir.NONE:
+                features.append(
+                    SouthStarUnsupportedFeature(
+                        category="unstated_component_equation",
+                        atom_indices=(
+                            carrier_bond.GetBeginAtomIdx(),
+                            carrier_bond.GetEndAtomIdx(),
+                        ),
+                        bond_indices=(carrier_bond.GetIdx(), bond.GetIdx()),
+                        reason=(
+                            "stereo double-bond carrier has no slash/backslash "
+                            "basis for first-scope marker equations"
+                        ),
+                    )
+                )
+    return tuple(features)
+
+
+def _directional_carrier_bonds_for_stereo_bond(
+    mol: Chem.Mol,
+    stereo_bond: Chem.Bond,
+) -> tuple[Chem.Bond, ...]:
+    carrier_bond_indices = []
+    endpoints = (
+        (stereo_bond.GetBeginAtomIdx(), stereo_bond.GetEndAtomIdx()),
+        (stereo_bond.GetEndAtomIdx(), stereo_bond.GetBeginAtomIdx()),
+    )
+    for endpoint_atom_idx, excluded_atom_idx in endpoints:
+        endpoint = mol.GetAtomWithIdx(endpoint_atom_idx)
+        for neighbor in endpoint.GetNeighbors():
+            neighbor_idx = neighbor.GetIdx()
+            if neighbor_idx == excluded_atom_idx:
+                continue
+            carrier_bond = mol.GetBondBetweenAtoms(endpoint_atom_idx, neighbor_idx)
+            if carrier_bond is None:
+                continue
+            if carrier_bond.GetBondType() == Chem.BondType.SINGLE:
+                carrier_bond_indices.append(carrier_bond.GetIdx())
+    return tuple(
+        mol.GetBondWithIdx(bond_idx)
+        for bond_idx in dict.fromkeys(carrier_bond_indices)
     )

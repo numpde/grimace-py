@@ -7,6 +7,8 @@ from tests.helpers.south_star_component_support_state import (
 )
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
+from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
+from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 
@@ -80,3 +82,21 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
 
         self.assertIn("Cl\\C=C/F", result.outputs)
         self.assertIn("Cl/C=C\\F", result.outputs)
+
+    def test_graph_native_tree_traversal_rejects_unsupported_before_output(
+        self,
+    ) -> None:
+        case = SouthStarSemanticCase(
+            case_id="unsupported_ring",
+            source_smiles="C1/C=C\\CCCCC1",
+            eligible_carrier_edges=(),
+            maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
+                required_marker_edge_count=0,
+            ),
+            rdkit_writer_membership_status="not_checked",
+            positive_semantic_smiles=(),
+            negative_semantic_smiles=(),
+        )
+
+        with self.assertRaisesRegex(NotImplementedError, "ring_molecule"):
+            mol_to_smiles_enum_s_graph_native_for_case(case)

@@ -6,6 +6,9 @@ from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_fo
 from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
 )
+from tests.helpers.south_star_first_domain_oracle import (
+    independent_first_domain_support_for_case,
+)
 from tests.helpers.south_star_semantic_oracle import semantic_oracle_accepts
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
@@ -22,6 +25,20 @@ class SouthStarFirstDomainCompletenessTests(unittest.TestCase):
             with self.subTest(case_id=exact_case.case_id):
                 self.assertEqual(exact_case.source_smiles, semantic_case.source_smiles)
                 self.assertEqual(exact_case.expected_support, result.outputs)
+
+    def test_independent_oracle_matches_exact_first_domain_fixtures(self) -> None:
+        semantic_cases = {
+            case.case_id: case for case in load_south_star_semantic_cases()
+        }
+        for exact_case in load_south_star_exact_first_domain_cases():
+            semantic_case = semantic_cases[exact_case.case_id]
+            oracle_support = independent_first_domain_support_for_case(semantic_case)
+
+            with self.subTest(case_id=exact_case.case_id):
+                self.assertEqual(
+                    frozenset(exact_case.expected_support),
+                    frozenset(oracle_support),
+                )
 
     def test_exact_first_domain_fixtures_are_semantic_evidence(self) -> None:
         for exact_case in load_south_star_exact_first_domain_cases():

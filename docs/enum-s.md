@@ -93,11 +93,20 @@ Current unsupported categories include:
 - query atoms or query bonds;
 - unsupported bond types;
 - dative or metal-containing stereo surfaces;
-- fused/polycyclic rings;
+- fused/polycyclic rings, reported as `fused_or_polycyclic_ring`;
+- ring/tetrahedral interactions, reported as `ring_tetrahedral_interaction`;
 - unsaturated ring traversal and ring-closure carrier bases;
 - ring stereo;
-- aromatic directional surfaces;
+- aromatic rings, reported as `aromatic_ring_surface`;
+- aromatic directional surfaces, reported separately as
+  `aromatic_directional_surface`;
 - any component whose marker equations cannot be stated locally.
+
+These unsupported categories are classification boundaries, not implementation
+targets by themselves. The current near-term ring work is simple monocycles and
+explicit ring-closure stereo carrier bases. Aromatic surfaces, fused/polycyclic
+ring systems, and ring/tetrahedral interactions require separate semantic
+models before enumeration should widen to them.
 
 ## Annotation Policy
 
@@ -197,7 +206,8 @@ enumerator needs a broader molecule and syntax surface:
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - atom text beyond the current organic-subset seed;
-- supported aromatic directional surfaces, if any;
+- aromatic ring and aromatic directional-surface models, if any;
+- a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;
 - independent completeness oracles beyond the first connected acyclic

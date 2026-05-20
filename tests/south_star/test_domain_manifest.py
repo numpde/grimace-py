@@ -72,6 +72,8 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             south_star_support_gate_report(parse_smiles("[SiH3]C")),
             south_star_support_gate_report(parse_smiles("C#N")),
             south_star_support_gate_report(parse_smiles("c1ccccc1")),
+            south_star_support_gate_report(parse_smiles("C1CC2CCCC2C1")),
+            south_star_support_gate_report(parse_smiles("F[C@H]1CCCC(C)C1")),
             south_star_support_gate_report(_empty_molecule()),
         )
         observed_categories = frozenset(

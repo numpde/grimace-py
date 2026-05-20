@@ -80,15 +80,18 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     unsupported_feature_categories=frozenset(
         {
             "aromatic_directional_surface",
+            "aromatic_ring_surface",
             "atom_stereo",
             "dative_bond",
             "disconnected_molecule",
             "empty_molecule",
+            "fused_or_polycyclic_ring",
             "metal_atom",
             "query_atom",
             "query_bond",
             "ring_molecule",
             "ring_stereo",
+            "ring_tetrahedral_interaction",
             "unsupported_atom_text",
             "unsupported_bond_type",
             "unstated_component_equation",

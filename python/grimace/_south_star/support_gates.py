@@ -109,7 +109,10 @@ def south_star_support_gate_report(mol: Chem.Mol) -> SouthStarSupportGateReport:
     unsupported.extend(_dative_bond_features(mol))
     unsupported.extend(_disconnected_features(mol))
     unsupported.extend(_ring_features(mol))
+    unsupported.extend(_polycyclic_ring_features(mol))
+    unsupported.extend(_ring_tetrahedral_interaction_features(mol))
     unsupported.extend(_ring_stereo_features(mol))
+    unsupported.extend(_aromatic_ring_features(mol))
     unsupported.extend(_aromatic_directional_features(mol))
     unsupported.extend(_unstated_component_equation_features(mol))
     return SouthStarSupportGateReport(unsupported_features=tuple(unsupported))
@@ -284,6 +287,75 @@ def _ring_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, .
                 )
             )
     return tuple(features)
+
+
+def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
+    if mol.GetNumAtoms() == 0:
+        return ()
+    ring_info = mol.GetRingInfo()
+    if ring_info.NumRings() <= 1:
+        return ()
+    ring_atom_indices = tuple(
+        atom.GetIdx() for atom in mol.GetAtoms() if atom.IsInRing()
+    )
+    ring_bond_indices = tuple(
+        bond.GetIdx() for bond in mol.GetBonds() if bond.IsInRing()
+    )
+    return (
+        SouthStarUnsupportedFeature(
+            category="fused_or_polycyclic_ring",
+            atom_indices=ring_atom_indices,
+            bond_indices=ring_bond_indices,
+            reason=(
+                "fused and polycyclic ring traversal requires a separate "
+                "ring-system model"
+            ),
+        ),
+    )
+
+
+def _ring_tetrahedral_interaction_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    return tuple(
+        SouthStarUnsupportedFeature(
+            category="ring_tetrahedral_interaction",
+            atom_indices=(atom.GetIdx(),),
+            bond_indices=tuple(bond.GetIdx() for bond in atom.GetBonds()),
+            reason=(
+                "ring-local tetrahedral ligand ordering requires a separate "
+                "ring/tetrahedral interaction model"
+            ),
+        )
+        for atom in mol.GetAtoms()
+        if atom.IsInRing()
+        and atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+    )
+
+
+def _aromatic_ring_features(
+    mol: Chem.Mol,
+) -> tuple[SouthStarUnsupportedFeature, ...]:
+    aromatic_bonds = tuple(bond for bond in mol.GetBonds() if bond.GetIsAromatic())
+    if not aromatic_bonds:
+        return ()
+    return (
+        SouthStarUnsupportedFeature(
+            category="aromatic_ring_surface",
+            atom_indices=tuple(
+                dict.fromkeys(
+                    atom_idx
+                    for bond in aromatic_bonds
+                    for atom_idx in (bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
+                )
+            ),
+            bond_indices=tuple(bond.GetIdx() for bond in aromatic_bonds),
+            reason=(
+                "aromatic ring traversal and bond rendering require a separate "
+                "aromatic grammar model"
+            ),
+        ),
+    )
 
 
 def _aromatic_directional_features(

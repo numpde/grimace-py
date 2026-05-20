@@ -84,6 +84,10 @@ class SouthStarSupportGateTests(unittest.TestCase):
         report = south_star_support_gate_report(parse_smiles("C1CC2CCCC2C1"))
 
         self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertUnsupportedCategory(
+            "fused_or_polycyclic_ring",
+            report.categories,
+        )
 
     def test_modeled_ring_stereo_monocycles_are_supported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C1/C=C\\CCCCC1"))
@@ -94,6 +98,21 @@ class SouthStarSupportGateTests(unittest.TestCase):
         report = south_star_support_gate_report(parse_smiles("C1/C=C\\C2CCCC2C1"))
 
         self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertUnsupportedCategory(
+            "fused_or_polycyclic_ring",
+            report.categories,
+        )
+
+    def test_ring_tetrahedral_interactions_are_specific_unsupported_surface(
+        self,
+    ) -> None:
+        report = south_star_support_gate_report(parse_smiles("F[C@H]1CCCC(C)C1"))
+
+        self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertUnsupportedCategory(
+            "ring_tetrahedral_interaction",
+            report.categories,
+        )
 
     def test_unsupported_atom_text_is_fail_fast_unsupported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("[SiH3]C"))
@@ -108,6 +127,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
     def test_aromatic_bonds_are_outside_first_domain(self) -> None:
         report = south_star_support_gate_report(parse_smiles("c1ccccc1"))
 
+        self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
         self.assertUnsupportedCategory("ring_molecule", report.categories)
 

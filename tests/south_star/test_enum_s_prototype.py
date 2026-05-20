@@ -10,6 +10,10 @@ from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_c
 from tests.helpers.south_star_enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
+from tests.helpers.south_star_enum_s import render_south_star_traversal
+from tests.helpers.south_star_enum_s import SouthStarMarkerSlot
+from tests.helpers.south_star_enum_s import SouthStarMarkerSlotAssignment
+from tests.helpers.south_star_enum_s import SouthStarTraversalEvent
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
@@ -127,18 +131,22 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         )
         traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
         marker_events = tuple(
-            event
+            (traversal, event)
             for traversal in traversals
             for event in traversal.events
-            if event.text in {"/", "\\"}
+            if event.marker_slot is not None
         )
 
         self.assertGreater(len(marker_events), 0)
-        for event in marker_events:
-            self.assertIsNotNone(event.marker_slot)
+        for traversal, event in marker_events:
             slot = event.marker_slot
+            marker_by_slot = {
+                assignment.slot_id: assignment.marker
+                for assignment in traversal.marker_assignments
+            }
             with self.subTest(slot_id=slot.slot_id):
-                self.assertEqual(event.text, slot.selected_marker)
+                self.assertEqual("", event.text)
+                self.assertIn(marker_by_slot[slot.slot_id], {"/", "\\"})
                 self.assertEqual(event.edge, slot.edge)
                 self.assertEqual(
                     event.begin_atom_idx,
@@ -160,10 +168,99 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
             event
             for traversal in traversals
             for event in traversal.events
-            if event.kind == "bond" and event.text not in {"/", "\\"}
+            if event.kind == "bond" and event.marker_slot is None
         ):
             with self.subTest(text=event.text, edge=event.edge):
                 self.assertIsNone(event.marker_slot)
+
+    def test_renderer_consumes_supplied_marker_assignments(self) -> None:
+        slot_id = "main:root->0->1"
+        slot = SouthStarMarkerSlot(
+            slot_id=slot_id,
+            edge=(0, 1),
+            begin_atom_idx=0,
+            end_atom_idx=1,
+            begin_parent_idx=None,
+            syntax_position="main",
+            adjacent_contexts=(),
+        )
+        events = (
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=0),
+            SouthStarTraversalEvent(
+                kind="bond",
+                text="",
+                edge=(0, 1),
+                begin_atom_idx=0,
+                end_atom_idx=1,
+                begin_parent_idx=None,
+                marker_slot=slot,
+            ),
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=1),
+        )
+
+        self.assertEqual(
+            "C/C",
+            render_south_star_traversal(
+                events,
+                marker_assignments=(
+                    SouthStarMarkerSlotAssignment(
+                        slot_id=slot_id,
+                        marker="/",
+                    ),
+                ),
+            ),
+        )
+        self.assertEqual(
+            "C\\C",
+            render_south_star_traversal(
+                events,
+                marker_assignments=(
+                    SouthStarMarkerSlotAssignment(
+                        slot_id=slot_id,
+                        marker="\\",
+                    ),
+                ),
+            ),
+        )
+
+    def test_renderer_requires_exact_marker_assignment_coverage(self) -> None:
+        slot = SouthStarMarkerSlot(
+            slot_id="main:root->0->1",
+            edge=(0, 1),
+            begin_atom_idx=0,
+            end_atom_idx=1,
+            begin_parent_idx=None,
+            syntax_position="main",
+            adjacent_contexts=(),
+        )
+        events = (
+            SouthStarTraversalEvent(
+                kind="bond",
+                text="",
+                edge=(0, 1),
+                begin_atom_idx=0,
+                end_atom_idx=1,
+                begin_parent_idx=None,
+                marker_slot=slot,
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "exactly cover"):
+            render_south_star_traversal(events, marker_assignments=())
+        with self.assertRaisesRegex(ValueError, "duplicate marker assignment"):
+            render_south_star_traversal(
+                events,
+                marker_assignments=(
+                    SouthStarMarkerSlotAssignment(
+                        slot_id="main:root->0->1",
+                        marker="/",
+                    ),
+                    SouthStarMarkerSlotAssignment(
+                        slot_id="main:root->0->1",
+                        marker="/",
+                    ),
+                ),
+            )
 
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,

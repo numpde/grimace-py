@@ -31,8 +31,13 @@ class SouthStarMarkerSlot:
     end_atom_idx: int
     begin_parent_idx: int | None
     syntax_position: str
-    selected_marker: str
     adjacent_contexts: tuple[_CarrierContext, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarMarkerSlotAssignment:
+    slot_id: str
+    marker: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,9 +56,13 @@ class SouthStarTraversalEvent:
 class SouthStarTreeTraversal:
     root_atom_idx: int
     events: tuple[SouthStarTraversalEvent, ...]
+    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...]
 
     def render(self) -> str:
-        return "".join(event.text for event in self.events)
+        return render_south_star_traversal(
+            self.events,
+            marker_assignments=self.marker_assignments,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +71,12 @@ class SouthStarEnumSPrototypeResult:
     outputs: tuple[str, ...]
     complexity_snapshot: SouthStarComponentComplexitySnapshot
     generation_basis: str
+
+
+@dataclass(frozen=True, slots=True)
+class _TraversalFragment:
+    events: tuple[SouthStarTraversalEvent, ...]
+    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...] = ()
 
 
 def mol_to_smiles_enum_s_prototype_for_case(
@@ -117,6 +132,52 @@ def mol_to_smiles_enum_s_tree_traversals_for_case(
     mol = parse_smiles(case.source_smiles)
     state = SouthStarComponentSupportState.from_mol(mol)
     return _tree_traversals_for_mol(mol, state=state)
+
+
+def render_south_star_traversal(
+    events: tuple[SouthStarTraversalEvent, ...],
+    *,
+    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...],
+) -> str:
+    markers_by_slot = _marker_assignments_by_slot(marker_assignments)
+    required_slot_ids = {
+        event.marker_slot.slot_id
+        for event in events
+        if event.marker_slot is not None
+    }
+    if set(markers_by_slot) != required_slot_ids:
+        raise ValueError(
+            "marker assignments must exactly cover traversal marker slots"
+        )
+
+    rendered: list[str] = []
+    for event in events:
+        if event.marker_slot is None:
+            rendered.append(event.text)
+        else:
+            if event.text:
+                raise ValueError(
+                    "marker-slot events must not carry rendered marker text"
+                )
+            rendered.append(markers_by_slot[event.marker_slot.slot_id])
+    return "".join(rendered)
+
+
+def _marker_assignments_by_slot(
+    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...],
+) -> dict[str, str]:
+    markers_by_slot = {}
+    for assignment in marker_assignments:
+        if assignment.marker not in {"/", "\\"}:
+            raise ValueError(
+                f"unsupported South Star marker assignment {assignment.marker!r}"
+            )
+        if assignment.slot_id in markers_by_slot:
+            raise ValueError(
+                f"duplicate marker assignment for slot {assignment.slot_id!r}"
+            )
+        markers_by_slot[assignment.slot_id] = assignment.marker
+    return markers_by_slot
 
 
 def _tree_traversals_for_mol(
@@ -187,10 +248,11 @@ def _tree_traversals_for_marker_assignment(
     return tuple(
         SouthStarTreeTraversal(
             root_atom_idx=root_idx,
-            events=events,
+            events=fragment.events,
+            marker_assignments=fragment.marker_assignments,
         )
         for root_idx in range(mol.GetNumAtoms())
-        for events in _atom_subtree_event_variants(
+        for fragment in _atom_subtree_event_variants(
             mol,
             atom_idx=root_idx,
             parent_idx=None,
@@ -224,7 +286,7 @@ def _atom_subtree_event_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[tuple[SouthStarTraversalEvent, ...], ...]:
+) -> tuple[_TraversalFragment, ...]:
     visited = visited | {atom_idx}
     atom_text = _atom_text(mol.GetAtomWithIdx(atom_idx))
     atom_event = SouthStarTraversalEvent(
@@ -248,9 +310,9 @@ def _atom_subtree_event_variants(
     ):
         return ()
     if not children:
-        return ((atom_event,),)
+        return (_TraversalFragment(events=(atom_event,)),)
 
-    variants: list[tuple[SouthStarTraversalEvent, ...]] = []
+    variants: list[_TraversalFragment] = []
     for ordered_children in permutations(sorted(children)):
         branch_children = ordered_children[:-1]
         main_child = ordered_children[-1]
@@ -277,10 +339,23 @@ def _atom_subtree_event_variants(
         )
         for branch_group in product(*branch_variants):
             branch_events = tuple(
-                event for branch in branch_group for event in branch
+                event for branch in branch_group for event in branch.events
             )
-            for main_events in main_variants:
-                variants.append((atom_event,) + branch_events + main_events)
+            branch_marker_assignments = tuple(
+                assignment
+                for branch in branch_group
+                for assignment in branch.marker_assignments
+            )
+            for main_fragment in main_variants:
+                variants.append(
+                    _TraversalFragment(
+                        events=(atom_event,)
+                        + branch_events
+                        + main_fragment.events,
+                        marker_assignments=branch_marker_assignments
+                        + main_fragment.marker_assignments,
+                    )
+                )
     return tuple(dict.fromkeys(variants))
 
 
@@ -293,10 +368,10 @@ def _branch_event_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[tuple[SouthStarTraversalEvent, ...], ...]:
+) -> tuple[_TraversalFragment, ...]:
     branch_open = SouthStarTraversalEvent(kind="branch_open", text="(")
     branch_close = SouthStarTraversalEvent(kind="branch_close", text=")")
-    bond_event = _bond_event(
+    bond_event, marker_assignment = _bond_event(
         mol,
         begin_atom_idx,
         end_atom_idx,
@@ -306,8 +381,14 @@ def _branch_event_variants(
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
     return tuple(
-        (branch_open, bond_event) + child_events + (branch_close,)
-        for child_events in _atom_subtree_event_variants(
+        _TraversalFragment(
+            events=(branch_open, bond_event)
+            + child_fragment.events
+            + (branch_close,),
+            marker_assignments=_marker_assignment_tuple(marker_assignment)
+            + child_fragment.marker_assignments,
+        )
+        for child_fragment in _atom_subtree_event_variants(
             mol,
             atom_idx=end_atom_idx,
             parent_idx=begin_atom_idx,
@@ -327,8 +408,8 @@ def _child_event_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[tuple[SouthStarTraversalEvent, ...], ...]:
-    bond_event = _bond_event(
+) -> tuple[_TraversalFragment, ...]:
+    bond_event, marker_assignment = _bond_event(
         mol,
         begin_atom_idx,
         end_atom_idx,
@@ -338,8 +419,12 @@ def _child_event_variants(
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
     return tuple(
-        (bond_event,) + child_events
-        for child_events in _atom_subtree_event_variants(
+        _TraversalFragment(
+            events=(bond_event,) + child_fragment.events,
+            marker_assignments=_marker_assignment_tuple(marker_assignment)
+            + child_fragment.marker_assignments,
+        )
+        for child_fragment in _atom_subtree_event_variants(
             mol,
             atom_idx=end_atom_idx,
             parent_idx=begin_atom_idx,
@@ -368,14 +453,15 @@ def _bond_event(
     syntax_position: str,
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> SouthStarTraversalEvent:
+) -> tuple[SouthStarTraversalEvent, SouthStarMarkerSlotAssignment | None]:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
     if bond is None:
         raise ValueError(f"edge {edge!r} is not a bond")
     marker_slot = None
+    marker_assignment = None
     if edge in marker_by_edge:
-        text = _marker_for_traversal_edge(
+        selected_marker = _marker_for_traversal_edge(
             edge=edge,
             base_marker=marker_by_edge[edge],
             begin_atom_idx=begin_atom_idx,
@@ -389,9 +475,13 @@ def _bond_event(
             end_atom_idx=end_atom_idx,
             begin_parent_idx=begin_parent_idx,
             syntax_position=syntax_position,
-            selected_marker=text,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
+        marker_assignment = SouthStarMarkerSlotAssignment(
+            slot_id=marker_slot.slot_id,
+            marker=selected_marker,
+        )
+        text = ""
     elif bond.GetBondType() == Chem.BondType.DOUBLE:
         text = "="
     elif bond.GetBondType() == Chem.BondType.SINGLE:
@@ -401,15 +491,26 @@ def _bond_event(
             f"South Star graph-native tree traversal does not support bond "
             f"{bond.GetBondType()}"
         )
-    return SouthStarTraversalEvent(
-        kind="bond",
-        text=text,
-        edge=edge,
-        begin_atom_idx=begin_atom_idx,
-        end_atom_idx=end_atom_idx,
-        begin_parent_idx=begin_parent_idx,
-        marker_slot=marker_slot,
+    return (
+        SouthStarTraversalEvent(
+            kind="bond",
+            text=text,
+            edge=edge,
+            begin_atom_idx=begin_atom_idx,
+            end_atom_idx=end_atom_idx,
+            begin_parent_idx=begin_parent_idx,
+            marker_slot=marker_slot,
+        ),
+        marker_assignment,
     )
+
+
+def _marker_assignment_tuple(
+    marker_assignment: SouthStarMarkerSlotAssignment | None,
+) -> tuple[SouthStarMarkerSlotAssignment, ...]:
+    if marker_assignment is None:
+        return ()
+    return (marker_assignment,)
 
 
 def _marker_slot(
@@ -419,7 +520,6 @@ def _marker_slot(
     end_atom_idx: int,
     begin_parent_idx: int | None,
     syntax_position: str,
-    selected_marker: str,
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
 ) -> SouthStarMarkerSlot:
     return SouthStarMarkerSlot(
@@ -434,7 +534,6 @@ def _marker_slot(
         end_atom_idx=end_atom_idx,
         begin_parent_idx=begin_parent_idx,
         syntax_position=syntax_position,
-        selected_marker=selected_marker,
         adjacent_contexts=carrier_contexts_by_edge[edge],
     )
 

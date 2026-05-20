@@ -248,6 +248,40 @@ the public `grimace.MolToSmilesEnum` writer-parity surface, but core South Star
 helpers and semantic tests must not. Diagnostic reports are allowed to expose
 differences; those differences are metadata, not semantic failures.
 
+## Public API Promotion Gate
+
+`MolToSmilesEnumS` must remain private until the promotion gate is satisfied.
+The gate is intentionally stricter than "the current fixtures pass": each
+promoted behavior needs a declared domain, syntax evidence, semantic identity
+evidence, support-completeness evidence, unsupported-case coverage, diagnostics,
+and release-facing documentation.
+
+The executable readiness entry point is:
+
+```bash
+PYTHONPATH=python:. python3 -m unittest tests.run_south_star_package_readiness -q
+```
+
+The gate has these required parts:
+
+| Gate | Required evidence |
+| --- | --- |
+| Private boundary | `MolToSmilesEnumS` is not exported from `grimace.__init__` until all other gates pass. |
+| Supported domain manifest | Supported feature areas, support authorities, policy names, and unsupported categories are declared in one manifest. |
+| Grammar conformance | Every output is in the declared South Star grammar subset. |
+| Semantic identity | Every output parses back to the intended graph and stereo assignment under the named parser dependency. |
+| Independent support completeness | Every promoted supported domain has an independent support oracle. Graph-native regression-backed cases are not promotion evidence. |
+| Unsupported-category completeness | Every out-of-domain molecule class fails before enumeration with a named category. |
+| Complexity guardrails | Generation diagnostics expose fragment counts, traversal skeletons, marker slots, assignment counts, solved counts, and estimated products for representative cases. |
+| Documentation | Docs name the contract, policy set, supported domains, unsupported domains, parser dependency, and difference from RDKit writer parity. |
+| CI command | The readiness runner is listed as the command to run before public export. |
+| Release notes | Any release that exports `MolToSmilesEnumS` must state the semantic contract and explicitly distinguish it from `MolToSmilesEnum` RDKit writer parity. |
+
+The test-side gate list is
+`tests.south_star.test_package_readiness.SOUTH_STAR_PUBLIC_API_PROMOTION_GATES`.
+It records both executable commands and explicit review items so the promotion
+bar is not reduced to informal confidence.
+
 ## Package-Readiness Gap
 
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native

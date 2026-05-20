@@ -25,7 +25,113 @@ class SouthStarReadinessMatrix:
     policy_names: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarPublicApiPromotionGate:
+    gate_id: str
+    evidence: str
+    verification: str
+
+
+SOUTH_STAR_PUBLIC_API_PROMOTION_GATES: tuple[SouthStarPublicApiPromotionGate, ...] = (
+    SouthStarPublicApiPromotionGate(
+        gate_id="private_boundary",
+        evidence="MolToSmilesEnumS is not exported until all gates pass.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_private_api_boundary -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="supported_domain_manifest",
+        evidence="Supported domains, authorities, policies, and blockers are "
+        "declared by the South Star domain manifest.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_domain_manifest -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="grammar_conformance",
+        evidence="Outputs satisfy the declared South Star grammar subset.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_grammar_conformance -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="semantic_identity",
+        evidence="Outputs parse back to the intended graph and stereo identity.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_semantic_identity "
+        "tests.south_star.test_output_correctness_harness -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="independent_support_completeness",
+        evidence="Every promoted supported domain has an independent "
+        "support-completeness oracle, not graph-native regression authority.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_first_domain_completeness "
+        "tests.south_star.test_expanded_support_fixtures -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="unsupported_category_completeness",
+        evidence="Unsupported molecule classes fail before enumeration with "
+        "manifested categories.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_support_gates -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="complexity_guardrails",
+        evidence="Generation diagnostics expose product-size and assignment "
+        "guardrails for representative promoted domains.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.south_star.test_package_readiness -q",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="documentation_contract",
+        evidence="Docs name the contract, policy set, supported and unsupported "
+        "domains, parser dependency, and RDKit-parity distinction.",
+        verification="explicit review: docs/enum-s.md and public API docs match "
+        "the exported surface.",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="release_notes_scope",
+        evidence="Release notes state the semantic contract and distinguish it "
+        "from MolToSmilesEnum RDKit writer parity.",
+        verification="explicit review: release notes match the exact exported "
+        "surface and readiness matrix.",
+    ),
+    SouthStarPublicApiPromotionGate(
+        gate_id="full_readiness_runner",
+        evidence="The named package-readiness runner passes as the promotion "
+        "entry point.",
+        verification="PYTHONPATH=python:. python3 -m unittest "
+        "tests.run_south_star_package_readiness -q",
+    ),
+)
+
+
 class SouthStarPackageReadinessTests(unittest.TestCase):
+    def test_public_api_promotion_gate_is_explicit(self) -> None:
+        gate_ids = tuple(gate.gate_id for gate in SOUTH_STAR_PUBLIC_API_PROMOTION_GATES)
+
+        self.assertEqual(
+            (
+                "private_boundary",
+                "supported_domain_manifest",
+                "grammar_conformance",
+                "semantic_identity",
+                "independent_support_completeness",
+                "unsupported_category_completeness",
+                "complexity_guardrails",
+                "documentation_contract",
+                "release_notes_scope",
+                "full_readiness_runner",
+            ),
+            gate_ids,
+        )
+        for gate in SOUTH_STAR_PUBLIC_API_PROMOTION_GATES:
+            with self.subTest(gate_id=gate.gate_id):
+                self.assertTrue(gate.evidence)
+                self.assertTrue(
+                    gate.verification.startswith("PYTHONPATH=python:.")
+                    or gate.verification.startswith("explicit review:")
+                )
+
     def test_readiness_matrix_reports_evidence_classes(self) -> None:
         matrix = south_star_package_readiness_matrix()
 

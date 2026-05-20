@@ -43,6 +43,19 @@ class SouthStarComponentExtractionTests(unittest.TestCase):
             ((0, 1), (2, 3), (4, 5)),
             extraction.components[0].eligible_carrier_edges,
         )
+        self.assertEqual(1, len(extraction.components[0].coupling_causes))
+        self.assertEqual(
+            "shared_carrier_edge",
+            extraction.components[0].coupling_causes[0].category,
+        )
+        self.assertEqual(
+            (2, 3),
+            extraction.components[0].coupling_causes[0].carrier_edge,
+        )
+        self.assertEqual(
+            ("bond:1", "bond:3"),
+            extraction.components[0].coupling_causes[0].feature_ids,
+        )
 
     def test_independent_features_are_separate_components(self) -> None:
         extraction = extract_south_star_components(
@@ -54,6 +67,10 @@ class SouthStarComponentExtractionTests(unittest.TestCase):
         self.assertEqual(
             [1, 1],
             [len(component.source_features) for component in extraction.components],
+        )
+        self.assertEqual(
+            [(), ()],
+            [component.coupling_causes for component in extraction.components],
         )
 
     def test_unsupported_gate_prevents_component_extraction(self) -> None:

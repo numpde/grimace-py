@@ -28,10 +28,18 @@ class SouthStarSourceStereoFeature:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarComponentCoupling:
+    category: str
+    carrier_edge: Edge | None
+    feature_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarSemanticStereoComponent:
     component_id: str
     source_features: tuple[SouthStarSourceStereoFeature, ...]
     eligible_carrier_edges: tuple[Edge, ...]
+    coupling_causes: tuple[SouthStarComponentCoupling, ...] = ()
     unsupported_features: tuple[SouthStarUnsupportedFeature, ...] = ()
 
 
@@ -142,8 +150,10 @@ def _componentize_features(
             parent[right_root] = left_root
 
     carrier_owner: dict[Edge, int] = {}
+    feature_indices_by_carrier: dict[Edge, list[int]] = {}
     for feature_index, feature in enumerate(features):
         for edge in feature.eligible_carrier_edges:
+            feature_indices_by_carrier.setdefault(edge, []).append(feature_index)
             owner = carrier_owner.setdefault(edge, feature_index)
             union(owner, feature_index)
 
@@ -160,11 +170,31 @@ def _componentize_features(
                 for edge in feature.eligible_carrier_edges
             )
         )
+        grouped_feature_ids = frozenset(
+            feature.feature_id for feature in grouped_features
+        )
+        coupling_causes = tuple(
+            SouthStarComponentCoupling(
+                category="shared_carrier_edge",
+                carrier_edge=edge,
+                feature_ids=tuple(
+                    features[feature_index].feature_id
+                    for feature_index in feature_indices
+                ),
+            )
+            for edge, feature_indices in feature_indices_by_carrier.items()
+            if len(feature_indices) > 1
+            and all(
+                features[feature_index].feature_id in grouped_feature_ids
+                for feature_index in feature_indices
+            )
+        )
         components.append(
             SouthStarSemanticStereoComponent(
                 component_id=f"component:{component_index}",
                 source_features=tuple(grouped_features),
                 eligible_carrier_edges=carrier_edges,
+                coupling_causes=coupling_causes,
             )
         )
     return tuple(components)

@@ -8,6 +8,7 @@ SOUTH_STAR_PACKAGE_READINESS_MODULES: tuple[str, ...] = (
     "tests.south_star.test_expanded_support_fixtures",
     "tests.south_star.test_first_domain_completeness",
     "tests.south_star.test_package_readiness",
+    "tests.south_star.test_private_api_boundary",
     "tests.south_star.test_support_gates",
     "tests.south_star.test_enum_s_prototype",
 )

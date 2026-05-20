@@ -37,6 +37,13 @@ The executable private contract is tracked by
 support-gate tests use that manifest to keep policy names, fixture authorities,
 feature areas, and unsupported categories aligned.
 
+The provisional private API boundary is
+`grimace._south_star.api.mol_to_smiles_enum_s_private(mol, *, policy_set=...)`.
+It accepts an RDKit `Mol`, applies the South Star support gates before
+enumeration, uses `DEFAULT_SOUTH_STAR_POLICY_SET` unless a policy set is passed
+explicitly, and returns graph-native outputs plus policy names and generation
+diagnostics. It is deliberately not exported from `grimace.__init__`.
+
 The seed enumerator:
 
 - derives traversal candidates from the RDKit molecule graph and South Star

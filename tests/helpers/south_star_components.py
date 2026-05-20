@@ -19,6 +19,7 @@ class SouthStarSourceStereoFeature:
     rdkit_stereo: str
     left_carrier_edges: tuple[Edge, ...]
     right_carrier_edges: tuple[Edge, ...]
+    source_marker_by_edge: tuple[tuple[Edge, str], ...]
 
     @property
     def eligible_carrier_edges(self) -> tuple[Edge, ...]:
@@ -105,6 +106,10 @@ def _source_stereo_features(
                 rdkit_stereo=str(bond.GetStereo()),
                 left_carrier_edges=left_carriers,
                 right_carrier_edges=right_carriers,
+                source_marker_by_edge=_source_marker_by_edge(
+                    mol,
+                    carrier_edges=left_carriers + right_carriers,
+                ),
             )
         )
     return tuple(features)
@@ -127,6 +132,31 @@ def _carrier_edges_for_endpoint(
             continue
         edges.append(normalized_edge((endpoint_atom_idx, neighbor_idx)))
     return tuple(dict.fromkeys(edges))
+
+
+def _source_marker_by_edge(
+    mol: Chem.Mol,
+    *,
+    carrier_edges: tuple[Edge, ...],
+) -> tuple[tuple[Edge, str], ...]:
+    return tuple(
+        (edge, _directional_marker_for_bond(mol, edge=edge))
+        for edge in dict.fromkeys(carrier_edges)
+    )
+
+
+def _directional_marker_for_bond(mol: Chem.Mol, *, edge: Edge) -> str:
+    bond = mol.GetBondBetweenAtoms(*edge)
+    if bond is None:
+        raise ValueError(f"carrier edge {edge!r} is not a bond")
+    direction = bond.GetBondDir()
+    if direction == Chem.BondDir.ENDUPRIGHT:
+        return "/"
+    if direction == Chem.BondDir.ENDDOWNRIGHT:
+        return "\\"
+    raise ValueError(
+        f"carrier edge {edge!r} has unsupported directional basis {direction}"
+    )
 
 
 def _componentize_features(

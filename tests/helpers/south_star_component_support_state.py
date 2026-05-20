@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import reduce
 from operator import mul
@@ -114,9 +115,7 @@ class SouthStarComponentSupportState:
         policy_decision = self.annotation_policy.decision(
             carrier_opportunities=_carrier_opportunities_for_components(affected),
             emitted_edge=EmittedEdgeBasis(edge=normalized),
-            surviving_assignments=_prototype_surviving_assignments_for_components(
-                affected
-            ),
+            surviving_assignments=_surviving_assignments_for_components(affected),
         )
         if not policy_decision.marker_required:
             return SouthStarComponentMarkerSupport(
@@ -138,10 +137,9 @@ class SouthStarComponentSupportState:
         affected_support = tuple(
             SouthStarAffectedComponentSupport(
                 component_id=component.component_id,
-                local_survivor_count=_prototype_local_survivor_count(
+                local_survivor_count=_local_survivor_count(
                     component,
-                    edge=normalized,
-                    marker=marker,
+                    observations={normalized: marker},
                 ),
             )
             for component in affected
@@ -170,6 +168,30 @@ class SouthStarComponentSupportState:
             if self.explain_directional_marker(edge=edge, marker=marker).token_allowed
         )
 
+    def explain_directional_marker_observations(
+        self,
+        observations: Mapping[Edge, str],
+    ) -> tuple[SouthStarAffectedComponentSupport, ...]:
+        normalized_observations = _normalized_marker_observations(observations)
+        affected = tuple(
+            component
+            for component in self.components
+            if any(
+                edge in component.eligible_carrier_edges
+                for edge in normalized_observations
+            )
+        )
+        return tuple(
+            SouthStarAffectedComponentSupport(
+                component_id=component.component_id,
+                local_survivor_count=_local_survivor_count(
+                    component,
+                    observations=normalized_observations,
+                ),
+            )
+            for component in affected
+        )
+
     def complexity_snapshot(self) -> SouthStarComponentComplexitySnapshot:
         estimates = tuple(
             SouthStarComponentAssignmentEstimate(
@@ -178,7 +200,7 @@ class SouthStarComponentSupportState:
                 eligible_carrier_count=len(component.eligible_carrier_edges),
                 coupling_cause_count=len(component.coupling_causes),
                 estimated_local_assignment_count=(
-                    _prototype_component_assignment_estimate(component)
+                    len(_component_marker_assignments(component))
                 ),
             )
             for component in self.components
@@ -197,23 +219,20 @@ class SouthStarComponentSupportState:
         )
 
 
-def _prototype_local_survivor_count(
+def _local_survivor_count(
     component: SouthStarSemanticStereoComponent,
     *,
-    edge: Edge,
-    marker: str,
+    observations: Mapping[Edge, str],
 ) -> int:
-    if edge not in component.eligible_carrier_edges:
-        return 0
-    if marker not in DIRECTIONAL_MARKERS:
-        return 0
-    return 1
-
-
-def _prototype_component_assignment_estimate(
-    component: SouthStarSemanticStereoComponent,
-) -> int:
-    return 2 ** len(component.source_features)
+    return sum(
+        1
+        for assignment in _component_marker_assignments(component)
+        if all(
+            assignment.marker_options_by_edge.get(edge) == (marker,)
+            for edge, marker in observations.items()
+            if edge in component.eligible_carrier_edges
+        )
+    )
 
 
 def _carrier_opportunities_for_components(
@@ -229,16 +248,79 @@ def _carrier_opportunities_for_components(
     )
 
 
-def _prototype_surviving_assignments_for_components(
+def _surviving_assignments_for_components(
     components: tuple[SouthStarSemanticStereoComponent, ...],
 ) -> tuple[SurvivingSemanticAssignment, ...]:
     return tuple(
-        SurvivingSemanticAssignment(
-            assignment_id=component.component_id,
-            marker_options_by_edge={
-                edge: DIRECTIONAL_MARKERS
-                for edge in component.eligible_carrier_edges
-            },
-        )
+        assignment
         for component in components
+        for assignment in _component_marker_assignments(component)
     )
+
+
+def _component_marker_assignments(
+    component: SouthStarSemanticStereoComponent,
+) -> tuple[SurvivingSemanticAssignment, ...]:
+    source_markers = _component_source_markers(component)
+    return (
+        SurvivingSemanticAssignment(
+            assignment_id=f"{component.component_id}:source",
+            marker_options_by_edge={
+                edge: (marker,) for edge, marker in source_markers.items()
+            },
+        ),
+        SurvivingSemanticAssignment(
+            assignment_id=f"{component.component_id}:global_flip",
+            marker_options_by_edge={
+                edge: (_flipped_marker(marker),)
+                for edge, marker in source_markers.items()
+            },
+        ),
+    )
+
+
+def _component_source_markers(
+    component: SouthStarSemanticStereoComponent,
+) -> dict[Edge, str]:
+    source_markers: dict[Edge, str] = {}
+    for feature in component.source_features:
+        for edge, marker in feature.source_marker_by_edge:
+            existing = source_markers.setdefault(edge, marker)
+            if existing != marker:
+                raise ValueError(
+                    f"component {component.component_id!r} has conflicting source "
+                    f"markers for carrier edge {edge!r}: {existing!r} vs {marker!r}"
+                )
+    missing_edges = tuple(
+        edge for edge in component.eligible_carrier_edges if edge not in source_markers
+    )
+    if missing_edges:
+        raise ValueError(
+            f"component {component.component_id!r} has no source marker for "
+            f"carrier edges {missing_edges!r}"
+        )
+    return source_markers
+
+
+def _flipped_marker(marker: str) -> str:
+    if marker == "/":
+        return "\\"
+    if marker == "\\":
+        return "/"
+    raise ValueError(f"directional marker must be one of {DIRECTIONAL_MARKERS}")
+
+
+def _normalized_marker_observations(
+    observations: Mapping[Edge, str],
+) -> dict[Edge, str]:
+    normalized_observations: dict[Edge, str] = {}
+    for edge, marker in observations.items():
+        if marker not in DIRECTIONAL_MARKERS:
+            raise ValueError(f"directional marker must be one of {DIRECTIONAL_MARKERS}")
+        normalized = normalized_edge(edge)
+        existing = normalized_observations.setdefault(normalized, marker)
+        if existing != marker:
+            raise ValueError(
+                f"conflicting marker observations for carrier edge {normalized!r}"
+            )
+    return normalized_observations

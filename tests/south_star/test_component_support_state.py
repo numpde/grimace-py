@@ -106,6 +106,64 @@ class SouthStarComponentSupportStateTests(unittest.TestCase):
             state.allowed_directional_markers(edge=(0, 1)),
         )
 
+    def test_single_alkene_observations_preserve_or_invert_stereo(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(parse_smiles("F/C=C\\Cl"))
+
+        preserving = state.explain_directional_marker_observations(
+            {
+                (0, 1): "/",
+                (2, 3): "\\",
+            }
+        )
+        inverting = state.explain_directional_marker_observations(
+            {
+                (0, 1): "/",
+                (2, 3): "/",
+            }
+        )
+
+        self.assertEqual(1, preserving[0].local_survivor_count)
+        self.assertEqual(0, inverting[0].local_survivor_count)
+
+    def test_shared_carrier_observations_couple_diene_assignments(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles("C/C=C\\C=C/C"),
+        )
+
+        preserving = state.explain_directional_marker_observations(
+            {
+                (0, 1): "/",
+                (2, 3): "\\",
+                (4, 5): "/",
+            }
+        )
+        inverting = state.explain_directional_marker_observations(
+            {
+                (0, 1): "/",
+                (2, 3): "/",
+                (4, 5): "/",
+            }
+        )
+
+        self.assertEqual(("component:0",), tuple(s.component_id for s in preserving))
+        self.assertEqual(1, preserving[0].local_survivor_count)
+        self.assertEqual(0, inverting[0].local_survivor_count)
+
+    def test_independent_component_observations_stay_local(self) -> None:
+        state = SouthStarComponentSupportState.from_mol(
+            parse_smiles("F/C=C\\CC/C=C\\Cl"),
+        )
+
+        support = state.explain_directional_marker_observations(
+            {
+                (0, 1): "/",
+                (2, 3): "\\",
+            }
+        )
+
+        self.assertEqual(("component:0",), tuple(s.component_id for s in support))
+        self.assertEqual(1, support[0].local_survivor_count)
+
     def test_complexity_snapshot_counts_independent_components(self) -> None:
         state = SouthStarComponentSupportState.from_mol(
             parse_smiles("F/C=C\\CC/C=C\\Cl"),
@@ -131,7 +189,7 @@ class SouthStarComponentSupportStateTests(unittest.TestCase):
         snapshot = state.complexity_snapshot()
 
         self.assertEqual(1, snapshot.component_count)
-        self.assertEqual(4, snapshot.estimated_product_size)
+        self.assertEqual(2, snapshot.estimated_product_size)
         self.assertEqual(
             1,
             snapshot.local_assignment_estimates[0].coupling_cause_count,

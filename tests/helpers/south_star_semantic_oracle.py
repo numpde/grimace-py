@@ -32,10 +32,6 @@ class SouthStarConformanceReport:
     grammar_conformance: SouthStarConformanceCheck
 
     @property
-    def annotation_conformance(self) -> SouthStarConformanceCheck:
-        return self.grammar_conformance
-
-    @property
     def accepted(self) -> bool:
         return all(
             (

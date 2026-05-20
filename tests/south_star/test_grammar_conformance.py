@@ -2,10 +2,6 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.south_star_annotation_conformance import (
-    ANNOTATION_CONFORMANCE_BASIS,
-    south_star_annotation_conformance,
-)
 from tests.helpers.south_star_semantic_oracle import south_star_conformance_report
 from tests.helpers.south_star_grammar_conformance import (
     SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
@@ -13,7 +9,7 @@ from tests.helpers.south_star_grammar_conformance import (
 )
 
 
-class SouthStarAnnotationConformanceTests(unittest.TestCase):
+class SouthStarGrammarConformanceTests(unittest.TestCase):
     def test_current_subset_accepts_directional_markers_on_atom_bonds(self) -> None:
         for smiles in (
             "F/C=C\\Cl",
@@ -21,7 +17,7 @@ class SouthStarAnnotationConformanceTests(unittest.TestCase):
             "C/C=N/O",
         ):
             with self.subTest(smiles=smiles):
-                self.assertTrue(south_star_annotation_conformance(smiles).passed)
+                self.assertTrue(south_star_grammar_conformance(smiles).passed)
 
     def test_current_subset_rejects_misplaced_directional_markers(self) -> None:
         for smiles in (
@@ -31,7 +27,7 @@ class SouthStarAnnotationConformanceTests(unittest.TestCase):
             "F//C=CCl",
         ):
             with self.subTest(smiles=smiles):
-                self.assertFalse(south_star_annotation_conformance(smiles).passed)
+                self.assertFalse(south_star_grammar_conformance(smiles).passed)
 
     def test_current_subset_accepts_ring_labels_brackets_and_fragments(self) -> None:
         for smiles in (
@@ -59,7 +55,7 @@ class SouthStarAnnotationConformanceTests(unittest.TestCase):
                 self.assertFalse(report.passed)
                 self.assertEqual(rejection_code, report.rejection_code)
 
-    def test_conformance_report_uses_rdkit_independent_annotation_basis(self) -> None:
+    def test_conformance_report_uses_rdkit_independent_grammar_basis(self) -> None:
         report = south_star_conformance_report(
             source_smiles="F/C=C\\Cl",
             candidate_smiles="F\\C=C/Cl",
@@ -70,4 +66,3 @@ class SouthStarAnnotationConformanceTests(unittest.TestCase):
             SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
             report.grammar_conformance.basis,
         )
-        self.assertEqual(ANNOTATION_CONFORMANCE_BASIS, report.grammar_conformance.basis)

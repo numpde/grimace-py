@@ -4,7 +4,6 @@ import unittest
 
 
 SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
-    "tests.south_star.test_annotation_conformance",
     "tests.south_star.test_annotation_policy_boundary",
     "tests.south_star.test_component_extraction",
     "tests.south_star.test_component_support_state",
@@ -16,6 +15,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_expanded_support_fixtures",
     "tests.south_star.test_first_domain_completeness",
     "tests.south_star.test_fragment_composition",
+    "tests.south_star.test_grammar_conformance",
     "tests.south_star.test_harness",
     "tests.south_star.test_marker_slot_equations",
     "tests.south_star.test_output_correctness_harness",

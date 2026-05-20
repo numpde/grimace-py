@@ -45,9 +45,9 @@ The seed enumerator:
   generation input;
 - enumerates roots and child/main-branch orders for the current connected
   acyclic tree subset;
-- enumerates nonstereo single/double-bond monocycles with acyclic branches by
-  choosing graph closure edges, traversing the remaining spanning tree, and
-  emitting `ring_open` / `ring_close` events;
+- enumerates simple single/double-bond monocycles with acyclic branches by
+  choosing supported graph closure edges, traversing the remaining spanning
+  tree, and emitting `ring_open` / `ring_close` events;
 - composes disconnected molecules from independently supported connected
   fragment supports under an explicit all-fragment-orders policy;
 - varies component-local marker assignments for the supported stereo features;
@@ -65,8 +65,10 @@ only. It is not the implementation strategy for a package API.
 The implemented private scope is deliberately narrow:
 
 - connected acyclic molecules;
-- nonstereo single/double-bond monocycles with acyclic branches and no ring
-  marker slots;
+- nonstereo single/double-bond monocycles with acyclic branches;
+- the first ring-stereo monocycle subset, where directional carrier markers may
+  be emitted as event-local `ring_open` marker slots, but stereo double bonds
+  are not themselves used as ring-closure edges;
 - disconnected molecules whose connected fragments are independently supported,
   composed with all fragment orders;
 - directional double-bond stereo represented by slash/backslash carriers;
@@ -134,9 +136,10 @@ Exact support evidence is split by domain:
   independent test oracle;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated-monocycle cases are checked against an
-  independent test oracle; unsaturated nonstereo monocycles, disconnected
-  composition, and tetrahedral centers are still graph-native regression
-  support with RDKit parse-back graph/stereo equivalence as evidence.
+  independent test oracle; unsaturated nonstereo monocycles, ring-stereo
+  monocycles, disconnected composition, and tetrahedral centers are still
+  graph-native regression support with RDKit parse-back graph/stereo equivalence
+  as evidence.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
@@ -162,7 +165,7 @@ enumerator needs a broader molecule and syntax surface:
 
 - polycyclic ring traversal;
 - independent completeness oracles for unsaturated nonstereo ring traversal;
-- ring-closure marker bases;
+- broader ring-closure marker bases, including stereo-double-bond closure edges;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - atom text beyond the current organic-subset seed;

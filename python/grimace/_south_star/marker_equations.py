@@ -182,9 +182,29 @@ def _equation_id(*, slot_id: str, component_ids: tuple[str, ...]) -> str:
 
 
 def _traversal_orientation_flip(slot: SouthStarMarkerSlot) -> bool:
+    if slot.syntax_position == "ring_open":
+        return _ring_open_orientation_flip(slot)
+
     flip = False
     for context in slot.adjacent_contexts:
         if (
+            slot.begin_atom_idx == context.center_atom_idx
+            and slot.end_atom_idx != context.double_neighbor_idx
+            and slot.begin_parent_idx != context.double_neighbor_idx
+        ):
+            flip = not flip
+    return flip
+
+
+def _ring_open_orientation_flip(slot: SouthStarMarkerSlot) -> bool:
+    flip = False
+    for context in slot.adjacent_contexts:
+        if (
+            slot.end_atom_idx == context.center_atom_idx
+            and slot.begin_atom_idx != context.double_neighbor_idx
+        ):
+            flip = not flip
+        elif (
             slot.begin_atom_idx == context.center_atom_idx
             and slot.end_atom_idx != context.double_neighbor_idx
             and slot.begin_parent_idx != context.double_neighbor_idx

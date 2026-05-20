@@ -401,6 +401,22 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     graph_signature(output),
                 )
 
+    def test_graph_native_traversal_enumerates_ring_stereo_monocycle(self) -> None:
+        case = _expanded_support_case("ring_stereo_monocycle_cyclooctene")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(
+                    semantic_signature(case.source_smiles),
+                    semantic_signature(output),
+                )
+
     def test_simple_ring_traversals_expose_real_ring_closure_events(self) -> None:
         case = SouthStarSemanticCase(
             case_id="cyclohexane",
@@ -446,6 +462,22 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         }
 
         self.assertIn("=", ring_open_texts)
+
+    def test_ring_closure_carriers_emit_event_local_marker_slots(self) -> None:
+        case = _expanded_support_case("ring_stereo_monocycle_cyclooctene")
+
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        ring_marker_slots = tuple(
+            event.marker_slot
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind == "ring_open" and event.marker_slot is not None
+        )
+
+        self.assertGreater(len(ring_marker_slots), 0)
+        self.assertTrue(
+            all(slot.syntax_position == "ring_open" for slot in ring_marker_slots)
+        )
 
     def test_graph_native_composes_markerless_disconnected_fragments(self) -> None:
         case = _expanded_support_case("markerless_disconnected_ring_and_atom")
@@ -529,7 +561,7 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         case = SouthStarSemanticCase(
             case_id="unsupported_ring",
             semantic_feature="unsupported ring traversal boundary",
-            source_smiles="C1/C=C\\CCCCC1",
+            source_smiles="C1CC2CCCC2C1",
             eligible_carrier_edges=(),
             maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
                 required_marker_edge_count=0,

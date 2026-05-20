@@ -251,7 +251,7 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         return ()
     if disconnected_fragments_have_supported_independent_traversal(mol):
         return ()
-    if is_nonstereo_monocycle_with_acyclic_branches(mol):
+    if is_supported_monocycle_with_acyclic_branches(mol):
         return ()
     return (
         SouthStarUnsupportedFeature(
@@ -267,6 +267,9 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
 
 
 def _ring_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
+    if is_supported_ring_stereo_monocycle_with_acyclic_branches(mol):
+        return ()
+
     features: list[SouthStarUnsupportedFeature] = []
     for bond in mol.GetBonds():
         if bond.GetStereo() == Chem.BondStereo.STEREONONE:
@@ -376,6 +379,29 @@ def is_saturated_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
 
 
 def is_nonstereo_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
+    if not _has_supported_monocycle_shape(mol):
+        return False
+    return all(bond.GetStereo() == Chem.BondStereo.STEREONONE for bond in mol.GetBonds())
+
+
+def is_supported_ring_stereo_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
+    if not _has_supported_monocycle_shape(mol):
+        return False
+    stereo_bonds = tuple(
+        bond
+        for bond in mol.GetBonds()
+        if bond.GetStereo() != Chem.BondStereo.STEREONONE
+    )
+    return bool(stereo_bonds) and all(bond.IsInRing() for bond in stereo_bonds)
+
+
+def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
+    return is_nonstereo_monocycle_with_acyclic_branches(
+        mol
+    ) or is_supported_ring_stereo_monocycle_with_acyclic_branches(mol)
+
+
+def _has_supported_monocycle_shape(mol: Chem.Mol) -> bool:
     if mol.GetNumAtoms() == 0:
         return False
     if len(Chem.GetMolFrags(mol)) != 1:
@@ -396,7 +422,6 @@ def is_nonstereo_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
         return False
     return all(
         bond.GetBondType() in SUPPORTED_BOND_TYPES
-        and bond.GetStereo() == Chem.BondStereo.STEREONONE
         for bond in mol.GetBonds()
     )
 

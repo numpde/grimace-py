@@ -13,6 +13,9 @@ from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_exact_support import (
+    load_south_star_expanded_support_cases,
+)
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 
@@ -41,7 +44,10 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
                     )
                     for equation in equations:
                         self.assertTrue(equation.equation_id)
-                        self.assertIn(equation.syntax_position, {"branch", "main"})
+                        self.assertIn(
+                            equation.syntax_position,
+                            {"branch", "main", "ring_open"},
+                        )
                         self.assertIn(equation.graph_marker, {"/", "\\"})
                         self.assertIn(equation.emitted_marker, {"/", "\\"})
                         self.assertEqual(
@@ -87,8 +93,37 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
             with self.subTest(equation_id=equation.equation_id):
                 self.assertGreater(len(equation.feature_terms), 1)
 
+    def test_ring_open_marker_slots_have_parity_equations(self) -> None:
+        case = _expanded_case("ring_stereo_monocycle_cyclooctene")
+        state = SouthStarComponentSupportState.from_mol(parse_smiles(case.source_smiles))
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+
+        ring_open_equations = []
+        for traversal in traversals:
+            equations = marker_slot_parity_equations_for_traversal(state, traversal)
+            ring_open_equations.extend(
+                equation
+                for equation in equations
+                if equation.syntax_position == "ring_open"
+            )
+
+        self.assertGreater(len(ring_open_equations), 0)
+        for equation in ring_open_equations:
+            with self.subTest(equation_id=equation.equation_id):
+                self.assertTrue(equation.slot_id.startswith("ring_open:"))
+                self.assertIn(equation.graph_marker, {"/", "\\"})
+                self.assertIn(equation.emitted_marker, {"/", "\\"})
+
 
 def _case(case_id: str):
     return next(
         case for case in load_south_star_semantic_cases() if case.case_id == case_id
+    )
+
+
+def _expanded_case(case_id: str):
+    return next(
+        case
+        for case in load_south_star_expanded_support_cases()
+        if case.case_id == case_id
     )

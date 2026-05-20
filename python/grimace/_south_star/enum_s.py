@@ -18,7 +18,7 @@ from grimace._south_star.fragments import (
     compose_disconnected_fragment_supports,
 )
 from grimace._south_star.support_gates import (
-    is_nonstereo_monocycle_with_acyclic_branches,
+    is_supported_monocycle_with_acyclic_branches,
 )
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
@@ -316,13 +316,11 @@ def _tree_traversals_for_marker_assignment(
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
     _assert_tree_traversal_supported(mol)
-    if is_nonstereo_monocycle_with_acyclic_branches(mol):
-        if marker_by_edge:
-            raise NotImplementedError(
-                "South Star nonstereo-ring traversal does not support marker slots yet"
-            )
-        return _saturated_monocycle_traversals(
+    if is_supported_monocycle_with_acyclic_branches(mol):
+        return _monocycle_traversals(
             mol,
+            state=state,
+            marker_by_edge=marker_by_edge,
             component_marker_assignments=component_marker_assignments,
         )
 
@@ -392,7 +390,7 @@ def _assert_tree_traversal_supported(mol: Chem.Mol) -> None:
         )
     if mol.GetNumBonds() == mol.GetNumAtoms() - 1:
         return
-    if is_nonstereo_monocycle_with_acyclic_branches(mol):
+    if is_supported_monocycle_with_acyclic_branches(mol):
         return
     if mol.GetNumBonds() != mol.GetNumAtoms() - 1:
         raise NotImplementedError(
@@ -577,22 +575,33 @@ def _child_event_variants(
     )
 
 
-def _saturated_monocycle_traversals(
+def _monocycle_traversals(
     mol: Chem.Mol,
     *,
+    state: SouthStarComponentSupportState,
+    marker_by_edge: dict[Edge, str],
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
-    ring_edges = _single_ring_edges(mol)
+    ring_edges = _supported_ring_closure_edges(mol)
+    carrier_contexts_by_edge = _carrier_contexts_by_edge(
+        mol,
+        marker_by_edge=marker_by_edge,
+    )
     return tuple(
-        SouthStarTreeTraversal(
-            root_atom_idx=root_idx,
-            events=_with_ring_closure_events(
-                mol,
-                fragment.events,
-                closure_edge=closure_edge,
+        _with_solved_marker_assignments(
+            state,
+            SouthStarTreeTraversal(
+                root_atom_idx=root_idx,
+                events=_with_ring_closure_events(
+                    mol,
+                    fragment.events,
+                    closure_edge=closure_edge,
+                    marker_by_edge=marker_by_edge,
+                    carrier_contexts_by_edge=carrier_contexts_by_edge,
+                ),
+                marker_assignments=(),
+                component_marker_assignments=component_marker_assignments,
             ),
-            marker_assignments=(),
-            component_marker_assignments=component_marker_assignments,
         )
         for root_idx in range(mol.GetNumAtoms())
         for closure_edge in ring_edges
@@ -602,8 +611,8 @@ def _saturated_monocycle_traversals(
             parent_idx=None,
             visited=frozenset(),
             blocked_edges=frozenset((closure_edge,)),
-            marker_by_edge={},
-            carrier_contexts_by_edge={},
+            marker_by_edge=marker_by_edge,
+            carrier_contexts_by_edge=carrier_contexts_by_edge,
             tetrahedral_facts_by_atom={},
         )
     )
@@ -624,11 +633,28 @@ def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
     )
 
 
+def _supported_ring_closure_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
+    return tuple(
+        edge
+        for edge in _single_ring_edges(mol)
+        if _ring_closure_edge_supported(mol, edge=edge)
+    )
+
+
+def _ring_closure_edge_supported(mol: Chem.Mol, *, edge: Edge) -> bool:
+    bond = mol.GetBondBetweenAtoms(*edge)
+    if bond is None:
+        raise ValueError(f"ring closure edge {edge!r} is not a bond")
+    return bond.GetStereo() == Chem.BondStereo.STEREONONE
+
+
 def _with_ring_closure_events(
     mol: Chem.Mol,
     events: tuple[SouthStarTraversalEvent, ...],
     *,
     closure_edge: Edge,
+    marker_by_edge: dict[Edge, str],
+    carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
 ) -> tuple[SouthStarTraversalEvent, ...]:
     endpoint_positions = tuple(
         (position, event.atom_idx)
@@ -654,6 +680,14 @@ def _with_ring_closure_events(
         begin_atom_idx=open_atom_idx,
         end_atom_idx=close_atom_idx,
         begin_parent_idx=traversal_parent_by_atom.get(open_atom_idx),
+        marker_slot=_ring_closure_marker_slot(
+            closure_edge=closure_edge,
+            begin_atom_idx=open_atom_idx,
+            end_atom_idx=close_atom_idx,
+            begin_parent_idx=traversal_parent_by_atom.get(open_atom_idx),
+            marker_by_edge=marker_by_edge,
+            carrier_contexts_by_edge=carrier_contexts_by_edge,
+        ),
         ring_closure=_ring_closure(closure_edge, role="open"),
     )
     close_event = SouthStarTraversalEvent(
@@ -676,6 +710,27 @@ def _with_ring_closure_events(
         elif event.atom_idx == close_atom_idx:
             with_closure_events.append(close_event)
     return tuple(with_closure_events)
+
+
+def _ring_closure_marker_slot(
+    *,
+    closure_edge: Edge,
+    begin_atom_idx: int,
+    end_atom_idx: int,
+    begin_parent_idx: int | None,
+    marker_by_edge: dict[Edge, str],
+    carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
+) -> SouthStarMarkerSlot | None:
+    if closure_edge not in marker_by_edge:
+        return None
+    return _marker_slot(
+        edge=closure_edge,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
+        syntax_position="ring_open",
+        carrier_contexts_by_edge=carrier_contexts_by_edge,
+    )
 
 
 def _ring_closure(

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import replace
+from functools import reduce
 from itertools import permutations
 from itertools import product
+from operator import mul
 
 from rdkit import Chem
 
@@ -88,11 +90,23 @@ class SouthStarTreeTraversal:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarEnumSGenerationDiagnostics:
+    fragment_count: int
+    fragment_output_counts: tuple[int, ...]
+    traversal_skeleton_count: int
+    marker_slot_count: int
+    local_assignment_count: int
+    solved_assignment_count: int
+    estimated_product_size: int
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarEnumSPrototypeResult:
     case_id: str
     outputs: tuple[str, ...]
     complexity_snapshot: SouthStarComponentComplexitySnapshot
     generation_basis: str
+    generation_diagnostics: SouthStarEnumSGenerationDiagnostics | None = None
     annotation_policy: str = DEFAULT_SOUTH_STAR_POLICY_SET.annotation_policy.name
     fragment_order_policy: str = (
         DEFAULT_SOUTH_STAR_POLICY_SET.fragment_order_policy.name
@@ -109,6 +123,12 @@ class _TraversalFragment:
 class _CombinedMarkerAssignment:
     marker_by_edge: dict[Edge, str]
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _SupportGeneration:
+    outputs: tuple[str, ...]
+    diagnostics: SouthStarEnumSGenerationDiagnostics
 
 
 def mol_to_smiles_enum_s_graph_native_for_case(
@@ -145,62 +165,111 @@ def _mol_to_smiles_enum_s_graph_native_for_mol(
         annotation_policy=policy_set.annotation_policy,
     )
     if len(Chem.GetMolFrags(mol)) > 1:
-        outputs = _disconnected_outputs_for_mol(mol, policy_set=policy_set)
+        generation = _disconnected_generation_for_mol(mol, policy_set=policy_set)
     else:
-        outputs = _connected_outputs_for_mol(
+        generation = _connected_generation_for_mol(
             mol,
             state=state,
             policy_set=policy_set,
         )
     return SouthStarEnumSPrototypeResult(
         case_id=case_id,
-        outputs=outputs,
+        outputs=generation.outputs,
         complexity_snapshot=state.complexity_snapshot(),
         generation_basis="south_star_graph_native_equation_solved_tree_traversal",
+        generation_diagnostics=generation.diagnostics,
         annotation_policy=policy_set.annotation_policy.name,
         fragment_order_policy=policy_set.fragment_order_policy.name,
         output_order_policy=policy_set.output_order_policy.name,
     )
 
 
-def _connected_outputs_for_mol(
+def _connected_generation_for_mol(
     mol: Chem.Mol,
     *,
     state: SouthStarComponentSupportState,
     policy_set: SouthStarPolicySet,
-) -> tuple[str, ...]:
-    return policy_set.output_order_policy.deduplicate(
-        traversal.render()
-        for traversal in _tree_traversals_for_mol(mol, state=state)
+) -> _SupportGeneration:
+    traversals = _tree_traversals_for_mol(mol, state=state)
+    raw_outputs = tuple(traversal.render() for traversal in traversals)
+    outputs = policy_set.output_order_policy.deduplicate(raw_outputs)
+    marker_slot_count = sum(
+        1
+        for traversal in traversals
+        for event in traversal.events
+        if event.marker_slot is not None
+    )
+    local_assignment_count = state.complexity_snapshot().estimated_product_size
+    return _SupportGeneration(
+        outputs=outputs,
+        diagnostics=SouthStarEnumSGenerationDiagnostics(
+            fragment_count=1,
+            fragment_output_counts=(len(outputs),),
+            traversal_skeleton_count=len(traversals),
+            marker_slot_count=marker_slot_count,
+            local_assignment_count=local_assignment_count,
+            solved_assignment_count=len(traversals),
+            estimated_product_size=len(raw_outputs),
+        ),
     )
 
 
-def _disconnected_outputs_for_mol(
+def _disconnected_generation_for_mol(
     mol: Chem.Mol,
     *,
     policy_set: SouthStarPolicySet,
-) -> tuple[str, ...]:
+) -> _SupportGeneration:
+    fragment_generations = tuple(
+        _connected_generation_for_mol(
+            fragment,
+            state=SouthStarComponentSupportState.from_mol(
+                fragment,
+                annotation_policy=policy_set.annotation_policy,
+            ),
+            policy_set=policy_set,
+        )
+        for fragment in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
+    )
     fragment_supports = tuple(
         SouthStarFragmentSupport(
             fragment_id=f"fragment:{fragment_idx}",
-            outputs=_connected_outputs_for_mol(
-                fragment,
-                state=SouthStarComponentSupportState.from_mol(
-                    fragment,
-                    annotation_policy=policy_set.annotation_policy,
-                ),
-                policy_set=policy_set,
-            ),
+            outputs=generation.outputs,
         )
-        for fragment_idx, fragment in enumerate(
-            Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
-        )
+        for fragment_idx, generation in enumerate(fragment_generations)
     )
-    return compose_disconnected_fragment_supports(
+    composition = compose_disconnected_fragment_supports(
         fragment_supports,
         fragment_order_policy=policy_set.fragment_order_policy,
         output_order_policy=policy_set.output_order_policy,
-    ).outputs
+    )
+    return _SupportGeneration(
+        outputs=composition.outputs,
+        diagnostics=SouthStarEnumSGenerationDiagnostics(
+            fragment_count=composition.fragment_count,
+            fragment_output_counts=composition.fragment_output_counts,
+            traversal_skeleton_count=sum(
+                generation.diagnostics.traversal_skeleton_count
+                for generation in fragment_generations
+            ),
+            marker_slot_count=sum(
+                generation.diagnostics.marker_slot_count
+                for generation in fragment_generations
+            ),
+            local_assignment_count=reduce(
+                mul,
+                (
+                    generation.diagnostics.local_assignment_count
+                    for generation in fragment_generations
+                ),
+                1,
+            ),
+            solved_assignment_count=sum(
+                generation.diagnostics.solved_assignment_count
+                for generation in fragment_generations
+            ),
+            estimated_product_size=composition.estimated_product_size,
+        ),
+    )
 
 
 def mol_to_smiles_enum_s_tree_traversals_for_case(

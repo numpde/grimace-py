@@ -97,6 +97,58 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
             result.output_order_policy,
         )
 
+    def test_graph_native_result_pins_first_domain_generation_diagnostics(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_semantic_cases()
+            if case.case_id == "isolated_alkene_z"
+        )
+        result = mol_to_smiles_enum_s_graph_native_for_case(case)
+
+        self.assertIsNotNone(result.generation_diagnostics)
+        diagnostics = result.generation_diagnostics
+        self.assertEqual(1, diagnostics.fragment_count)
+        self.assertEqual((12,), diagnostics.fragment_output_counts)
+        self.assertEqual(12, diagnostics.traversal_skeleton_count)
+        self.assertEqual(24, diagnostics.marker_slot_count)
+        self.assertEqual(2, diagnostics.local_assignment_count)
+        self.assertEqual(12, diagnostics.solved_assignment_count)
+        self.assertEqual(12, diagnostics.estimated_product_size)
+
+    def test_graph_native_result_pins_ring_generation_diagnostics(self) -> None:
+        case = _expanded_support_case("ring_stereo_monocycle_cyclooctene")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+
+        self.assertIsNotNone(result.generation_diagnostics)
+        diagnostics = result.generation_diagnostics
+        self.assertEqual(1, diagnostics.fragment_count)
+        self.assertEqual((98,), diagnostics.fragment_output_counts)
+        self.assertEqual(196, diagnostics.traversal_skeleton_count)
+        self.assertEqual(392, diagnostics.marker_slot_count)
+        self.assertEqual(2, diagnostics.local_assignment_count)
+        self.assertEqual(196, diagnostics.solved_assignment_count)
+        self.assertEqual(196, diagnostics.estimated_product_size)
+
+    def test_graph_native_result_pins_disconnected_generation_diagnostics(self) -> None:
+        case = _expanded_support_case("disconnected_stereo_fragment_and_atom")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+
+        self.assertIsNotNone(result.generation_diagnostics)
+        diagnostics = result.generation_diagnostics
+        self.assertEqual(2, diagnostics.fragment_count)
+        self.assertEqual((12, 1), diagnostics.fragment_output_counts)
+        self.assertEqual(13, diagnostics.traversal_skeleton_count)
+        self.assertEqual(24, diagnostics.marker_slot_count)
+        self.assertEqual(2, diagnostics.local_assignment_count)
+        self.assertEqual(13, diagnostics.solved_assignment_count)
+        self.assertEqual(24, diagnostics.estimated_product_size)
+
     def test_graph_native_tree_traversal_excludes_negative_semantic_witnesses(
         self,
     ) -> None:

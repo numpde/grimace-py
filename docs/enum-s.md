@@ -125,6 +125,22 @@ These names are engineering contract labels, not a plugin framework. They make
 the current behavior explicit in diagnostics and tests while preserving the
 existing default support order.
 
+## Complexity Diagnostics
+
+Graph-native EnumS results expose private generation diagnostics:
+
+- fragment count and per-fragment support counts;
+- traversal skeleton count;
+- marker-slot count;
+- local assignment count;
+- solved assignment count;
+- estimated product size before output-order deduplication.
+
+These diagnostics are engineering guardrails. They help detect accidental
+complexity shifts or hidden support-generation changes, but they are not
+semantic authority. Fixture support and independent oracles remain the
+correctness evidence.
+
 ## Conformance Evidence
 
 The current South Star oracle separates four checks:

@@ -39,6 +39,13 @@ class SouthStarMarkerSlotAssignment:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarRingClosure:
+    closure_id: str
+    label: str
+    role: str
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarTraversalEvent:
     kind: str
     text: str
@@ -48,6 +55,7 @@ class SouthStarTraversalEvent:
     end_atom_idx: int | None = None
     begin_parent_idx: int | None = None
     marker_slot: SouthStarMarkerSlot | None = None
+    ring_closure: SouthStarRingClosure | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,15 +147,43 @@ def render_south_star_traversal(
 
     rendered: list[str] = []
     for event in events:
-        if event.marker_slot is None:
-            rendered.append(event.text)
-        else:
-            if event.text:
-                raise ValueError(
-                    "marker-slot events must not carry rendered marker text"
-                )
-            rendered.append(markers_by_slot[event.marker_slot.slot_id])
+        rendered.append(_render_traversal_event(event, markers_by_slot))
     return "".join(rendered)
+
+
+def _render_traversal_event(
+    event: SouthStarTraversalEvent,
+    markers_by_slot: dict[str, str],
+) -> str:
+    if event.ring_closure is not None:
+        return _render_ring_closure_event(event, markers_by_slot)
+    if event.marker_slot is None:
+        return event.text
+    if event.text:
+        raise ValueError("marker-slot events must not carry rendered marker text")
+    return markers_by_slot[event.marker_slot.slot_id]
+
+
+def _render_ring_closure_event(
+    event: SouthStarTraversalEvent,
+    markers_by_slot: dict[str, str],
+) -> str:
+    closure = event.ring_closure
+    if closure is None:
+        raise ValueError("ring closure event requires ring_closure payload")
+    if event.kind not in {"ring_open", "ring_close"}:
+        raise ValueError("ring closure payload requires ring_open or ring_close event")
+    if closure.role not in {"open", "close"}:
+        raise ValueError("ring closure role must be open or close")
+    if not closure.closure_id:
+        raise ValueError("ring closure id must be nonempty")
+    if not closure.label:
+        raise ValueError("ring closure label must be nonempty")
+
+    marker = ""
+    if event.marker_slot is not None:
+        marker = markers_by_slot[event.marker_slot.slot_id]
+    return f"{marker}{event.text}{closure.label}"
 
 
 def _marker_assignments_by_slot(

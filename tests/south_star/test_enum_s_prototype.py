@@ -12,6 +12,7 @@ from grimace._south_star.enum_s import (
 from grimace._south_star.enum_s import render_south_star_traversal
 from grimace._south_star.enum_s import SouthStarMarkerSlot
 from grimace._south_star.enum_s import SouthStarMarkerSlotAssignment
+from grimace._south_star.enum_s import SouthStarRingClosure
 from grimace._south_star.enum_s import SouthStarTraversalEvent
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
@@ -261,6 +262,96 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     ),
                 ),
             )
+
+    def test_renderer_renders_ring_closure_labels_from_event_data(self) -> None:
+        events = (
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=0),
+            SouthStarTraversalEvent(
+                kind="ring_open",
+                text="",
+                edge=(0, 1),
+                begin_atom_idx=0,
+                end_atom_idx=1,
+                begin_parent_idx=None,
+                ring_closure=SouthStarRingClosure(
+                    closure_id="0-1",
+                    label="1",
+                    role="open",
+                ),
+            ),
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=1),
+            SouthStarTraversalEvent(
+                kind="ring_close",
+                text="",
+                edge=(0, 1),
+                begin_atom_idx=1,
+                end_atom_idx=0,
+                begin_parent_idx=0,
+                ring_closure=SouthStarRingClosure(
+                    closure_id="0-1",
+                    label="1",
+                    role="close",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            "C1C1",
+            render_south_star_traversal(events, marker_assignments=()),
+        )
+
+    def test_renderer_renders_ring_marker_slots_from_event_data(self) -> None:
+        slot_id = "ring_open:root->0->1"
+        slot = SouthStarMarkerSlot(
+            slot_id=slot_id,
+            edge=(0, 1),
+            begin_atom_idx=0,
+            end_atom_idx=1,
+            begin_parent_idx=None,
+            syntax_position="ring_open",
+            adjacent_contexts=(),
+        )
+        events = (
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=0),
+            SouthStarTraversalEvent(
+                kind="ring_open",
+                text="",
+                edge=(0, 1),
+                begin_atom_idx=0,
+                end_atom_idx=1,
+                begin_parent_idx=None,
+                marker_slot=slot,
+                ring_closure=SouthStarRingClosure(
+                    closure_id="0-1",
+                    label="1",
+                    role="open",
+                ),
+            ),
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=1),
+            SouthStarTraversalEvent(
+                kind="ring_close",
+                text="",
+                edge=(0, 1),
+                begin_atom_idx=1,
+                end_atom_idx=0,
+                begin_parent_idx=0,
+                ring_closure=SouthStarRingClosure(
+                    closure_id="0-1",
+                    label="1",
+                    role="close",
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            "C/1C1",
+            render_south_star_traversal(
+                events,
+                marker_assignments=(
+                    SouthStarMarkerSlotAssignment(slot_id=slot_id, marker="/"),
+                ),
+            ),
+        )
 
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,

@@ -13,8 +13,9 @@ not a public package API yet.
 
 The current public runtime remains `MolToSmilesEnum`, whose contract is RDKit
 writer parity for the supported `canonical=False, doRandom=True` regime.
-`MolToSmilesEnumS` must remain separate until it has a graph-native enumerator,
-a documented conformance oracle, and explicit unsupported-feature gates.
+`MolToSmilesEnumS` must remain separate until its graph-native enumerator covers
+the declared traversal support, its conformance oracle is documented, and its
+unsupported-feature gates are explicit.
 
 ## Intended Contract
 
@@ -40,7 +41,8 @@ The first package-facing class should stay narrow:
 - acyclic alkene-style carriers;
 - hetero imine or oxime-style carriers using the same directional semantics;
 - independent components and explicitly named coupled components, including
-  shared carrier edges.
+  shared carrier edges;
+- same-side alternate carrier edges under maximal carrier annotation.
 
 This is not yet support for all RDKit stereo surfaces.
 
@@ -94,13 +96,15 @@ The South Star conformance oracle has separate checks:
 - RDKit parseability, used as parser evidence;
 - non-isomeric canonical graph equivalence;
 - isomeric canonical stereo equivalence;
-- parser-backed annotation conformance for the current directional-marker
-  grammar.
+- RDKit-independent marker-placement conformance for the current South Star
+  directional-marker subset.
 
-RDKit parser behavior is currently evidence for grammar/annotation validity,
-not the definition of South Star validity. A stronger OpenSMILES-style grammar
-criterion can replace or augment that check later without changing the
-semantic graph/stereo checks.
+RDKit parser behavior remains evidence, not the definition of South Star
+validity. The current marker-placement check is deliberately narrower than a
+full OpenSMILES parser: it covers the atom, branch, double-bond, and
+slash/backslash forms emitted by the current South Star seed enumerator. A
+stronger OpenSMILES-style grammar criterion can replace or augment that check
+later without changing the semantic graph/stereo checks.
 
 ## Difference From `MolToSmilesEnum`
 
@@ -115,24 +119,29 @@ Expected comparison categories:
 - `intersection`: accepted by both surfaces;
 - `SouthStarOnly`: semantically valid but not in RDKit parity support;
 - `RDKitParityOnly`: emitted by RDKit parity support but not accepted by the
-  current South Star policy or fixture-backed prototype.
+  current South Star policy or graph-native seed enumerator.
 
 These categories are diagnostics. Equality is not the South Star goal.
 
 ## Current Implementation Boundary
 
-Current branch code has a witness-backed prototype helper, not the final
-enumerator:
+Current branch code has both a witness-backed comparison helper and a
+graph-native seed enumerator.
 
 - `tests.helpers.south_star_enum_s.mol_to_smiles_enum_s_prototype_for_case`
-  returns fixture-positive semantic witnesses;
-- it validates those witnesses through the South Star conformance oracle;
-- it exercises component support state and complexity snapshots;
-- it does not derive traversal strings graph-natively.
+  remains fixture-backed comparison/test support.
+- `tests.helpers.south_star_enum_s.mol_to_smiles_enum_s_graph_native_for_case`
+  derives outputs from the molecule graph and component marker assignments.
+- The graph-native seed does not use fixture-positive strings or
+  `MolToSmilesEnum` outputs as generation input.
+- The correctness harness and parity comparison diagnostics now consume the
+  graph-native seed by default.
 
-Before package exposure, this must be replaced by a graph-native enumerator
-that does not use fixture positives or `MolToSmilesEnum` outputs as generation
-input.
+This is still not package-ready. The graph-native seed currently emits one
+deterministic connected-acyclic atom-index traversal and varies component
+marker assignments. Before package exposure, graph-native enumeration must
+cover the declared root, branch-order, and traversal choices or the public
+contract must explicitly define a narrower surface.
 
 ## Naming
 

@@ -57,6 +57,13 @@ class SouthStarComponentComplexitySnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarComponentMarkerAssignment:
+    component_id: str
+    assignment_id: str
+    marker_by_edge: tuple[tuple[Edge, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarComponentSupportState:
     components: tuple[SouthStarSemanticStereoComponent, ...]
     annotation_policy: AnnotationPolicy
@@ -190,6 +197,26 @@ class SouthStarComponentSupportState:
                 ),
             )
             for component in affected
+        )
+
+    def component_marker_assignments(
+        self,
+    ) -> tuple[tuple[SouthStarComponentMarkerAssignment, ...], ...]:
+        return tuple(
+            tuple(
+                SouthStarComponentMarkerAssignment(
+                    component_id=component.component_id,
+                    assignment_id=assignment.assignment_id,
+                    marker_by_edge=tuple(
+                        (edge, marker_options[0])
+                        for edge, marker_options in sorted(
+                            assignment.marker_options_by_edge.items()
+                        )
+                    ),
+                )
+                for assignment in _component_marker_assignments(component)
+            )
+            for component in self.components
         )
 
     def complexity_snapshot(self) -> SouthStarComponentComplexitySnapshot:

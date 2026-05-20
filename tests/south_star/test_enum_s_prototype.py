@@ -5,6 +5,7 @@ import unittest
 from tests.helpers.south_star_component_support_state import (
     SouthStarComponentSupportState,
 )
+from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
@@ -41,3 +42,28 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
 
             with self.subTest(case_id=case.case_id):
                 self.assertEqual(expected, result.complexity_snapshot)
+
+    def test_graph_native_seed_generates_fixture_positive_semantic_outputs(self) -> None:
+        for case in load_south_star_semantic_cases():
+            result = mol_to_smiles_enum_s_graph_native_for_case(case)
+
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.case_id, result.case_id)
+                self.assertEqual(
+                    set(case.positive_semantic_smiles),
+                    set(result.outputs),
+                )
+                self.assertEqual(
+                    "south_star_graph_native_seed_traversal",
+                    result.generation_basis,
+                )
+
+    def test_graph_native_seed_excludes_negative_semantic_witnesses(self) -> None:
+        for case in load_south_star_semantic_cases():
+            result = mol_to_smiles_enum_s_graph_native_for_case(case)
+            negative_outputs = {
+                negative.smiles for negative in case.negative_semantic_smiles
+            }
+
+            with self.subTest(case_id=case.case_id):
+                self.assertFalse(negative_outputs.intersection(result.outputs))

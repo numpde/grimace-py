@@ -24,6 +24,26 @@ class _CarrierContext:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarTraversalEvent:
+    kind: str
+    text: str
+    atom_idx: int | None = None
+    edge: Edge | None = None
+    begin_atom_idx: int | None = None
+    end_atom_idx: int | None = None
+    begin_parent_idx: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarTreeTraversal:
+    root_atom_idx: int
+    events: tuple[SouthStarTraversalEvent, ...]
+
+    def render(self) -> str:
+        return "".join(event.text for event in self.events)
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarEnumSPrototypeResult:
     case_id: str
     outputs: tuple[str, ...]
@@ -66,12 +86,8 @@ def mol_to_smiles_enum_s_graph_native_for_case(
     state = SouthStarComponentSupportState.from_mol(mol)
     outputs = tuple(
         dict.fromkeys(
-            output
-            for marker_by_edge in _combined_marker_assignments(state)
-            for output in _emit_all_tree_smiles_for_marker_assignment(
-                mol,
-                marker_by_edge=marker_by_edge,
-            )
+            traversal.render()
+            for traversal in _tree_traversals_for_mol(mol, state=state)
         )
     )
     return SouthStarEnumSPrototypeResult(
@@ -79,6 +95,29 @@ def mol_to_smiles_enum_s_graph_native_for_case(
         outputs=outputs,
         complexity_snapshot=state.complexity_snapshot(),
         generation_basis="south_star_graph_native_tree_traversal",
+    )
+
+
+def mol_to_smiles_enum_s_tree_traversals_for_case(
+    case: SouthStarSemanticCase,
+) -> tuple[SouthStarTreeTraversal, ...]:
+    mol = parse_smiles(case.source_smiles)
+    state = SouthStarComponentSupportState.from_mol(mol)
+    return _tree_traversals_for_mol(mol, state=state)
+
+
+def _tree_traversals_for_mol(
+    mol: Chem.Mol,
+    *,
+    state: SouthStarComponentSupportState,
+) -> tuple[SouthStarTreeTraversal, ...]:
+    return tuple(
+        traversal
+        for marker_by_edge in _combined_marker_assignments(state)
+        for traversal in _tree_traversals_for_marker_assignment(
+            mol,
+            marker_by_edge=marker_by_edge,
+        )
     )
 
 
@@ -122,20 +161,23 @@ def _merge_assignment_markers(
             )
 
 
-def _emit_all_tree_smiles_for_marker_assignment(
+def _tree_traversals_for_marker_assignment(
     mol: Chem.Mol,
     *,
     marker_by_edge: dict[Edge, str],
-) -> tuple[str, ...]:
+) -> tuple[SouthStarTreeTraversal, ...]:
     _assert_tree_traversal_supported(mol)
     carrier_contexts_by_edge = _carrier_contexts_by_edge(
         mol,
         marker_by_edge=marker_by_edge,
     )
     return tuple(
-        output
+        SouthStarTreeTraversal(
+            root_atom_idx=root_idx,
+            events=events,
+        )
         for root_idx in range(mol.GetNumAtoms())
-        for output in _emit_atom_subtree_variants(
+        for events in _atom_subtree_event_variants(
             mol,
             atom_idx=root_idx,
             parent_idx=None,
@@ -161,7 +203,7 @@ def _assert_tree_traversal_supported(mol: Chem.Mol) -> None:
         )
 
 
-def _emit_atom_subtree_variants(
+def _atom_subtree_event_variants(
     mol: Chem.Mol,
     *,
     atom_idx: int,
@@ -169,9 +211,14 @@ def _emit_atom_subtree_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[str, ...]:
+) -> tuple[tuple[SouthStarTraversalEvent, ...], ...]:
     visited = visited | {atom_idx}
     atom_text = _atom_text(mol.GetAtomWithIdx(atom_idx))
+    atom_event = SouthStarTraversalEvent(
+        kind="atom",
+        text=atom_text,
+        atom_idx=atom_idx,
+    )
     children = tuple(
         neighbor.GetIdx()
         for neighbor in mol.GetAtomWithIdx(atom_idx).GetNeighbors()
@@ -188,14 +235,14 @@ def _emit_atom_subtree_variants(
     ):
         return ()
     if not children:
-        return (atom_text,)
+        return ((atom_event,),)
 
-    outputs: list[str] = []
+    variants: list[tuple[SouthStarTraversalEvent, ...]] = []
     for ordered_children in permutations(sorted(children)):
         branch_children = ordered_children[:-1]
         main_child = ordered_children[-1]
         branch_variants = tuple(
-            _prefixed_branch_variants(
+            _branch_event_variants(
                 mol,
                 begin_atom_idx=atom_idx,
                 end_atom_idx=child_idx,
@@ -206,7 +253,7 @@ def _emit_atom_subtree_variants(
             )
             for child_idx in branch_children
         )
-        main_variants = _prefixed_child_variants(
+        main_variants = _child_event_variants(
             mol,
             begin_atom_idx=atom_idx,
             end_atom_idx=main_child,
@@ -216,12 +263,15 @@ def _emit_atom_subtree_variants(
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
         for branch_group in product(*branch_variants):
-            for main_text in main_variants:
-                outputs.append(atom_text + "".join(branch_group) + main_text)
-    return tuple(dict.fromkeys(outputs))
+            branch_events = tuple(
+                event for branch in branch_group for event in branch
+            )
+            for main_events in main_variants:
+                variants.append((atom_event,) + branch_events + main_events)
+    return tuple(dict.fromkeys(variants))
 
 
-def _prefixed_branch_variants(
+def _branch_event_variants(
     mol: Chem.Mol,
     *,
     begin_atom_idx: int,
@@ -230,20 +280,20 @@ def _prefixed_branch_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[str, ...]:
+) -> tuple[tuple[SouthStarTraversalEvent, ...], ...]:
+    branch_open = SouthStarTraversalEvent(kind="branch_open", text="(")
+    branch_close = SouthStarTraversalEvent(kind="branch_close", text=")")
+    bond_event = _bond_event(
+        mol,
+        begin_atom_idx,
+        end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
+        marker_by_edge=marker_by_edge,
+        carrier_contexts_by_edge=carrier_contexts_by_edge,
+    )
     return tuple(
-        "("
-        + _bond_text(
-            mol,
-            begin_atom_idx,
-            end_atom_idx,
-            begin_parent_idx=begin_parent_idx,
-            marker_by_edge=marker_by_edge,
-            carrier_contexts_by_edge=carrier_contexts_by_edge,
-        )
-        + child_text
-        + ")"
-        for child_text in _emit_atom_subtree_variants(
+        (branch_open, bond_event) + child_events + (branch_close,)
+        for child_events in _atom_subtree_event_variants(
             mol,
             atom_idx=end_atom_idx,
             parent_idx=begin_atom_idx,
@@ -254,7 +304,7 @@ def _prefixed_branch_variants(
     )
 
 
-def _prefixed_child_variants(
+def _child_event_variants(
     mol: Chem.Mol,
     *,
     begin_atom_idx: int,
@@ -263,18 +313,18 @@ def _prefixed_child_variants(
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> tuple[str, ...]:
+) -> tuple[tuple[SouthStarTraversalEvent, ...], ...]:
+    bond_event = _bond_event(
+        mol,
+        begin_atom_idx,
+        end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
+        marker_by_edge=marker_by_edge,
+        carrier_contexts_by_edge=carrier_contexts_by_edge,
+    )
     return tuple(
-        _bond_text(
-            mol,
-            begin_atom_idx,
-            end_atom_idx,
-            begin_parent_idx=begin_parent_idx,
-            marker_by_edge=marker_by_edge,
-            carrier_contexts_by_edge=carrier_contexts_by_edge,
-        )
-        + child_text
-        for child_text in _emit_atom_subtree_variants(
+        (bond_event,) + child_events
+        for child_events in _atom_subtree_event_variants(
             mol,
             atom_idx=end_atom_idx,
             parent_idx=begin_atom_idx,
@@ -294,7 +344,7 @@ def _atom_text(atom: Chem.Atom) -> str:
     )
 
 
-def _bond_text(
+def _bond_event(
     mol: Chem.Mol,
     begin_atom_idx: int,
     end_atom_idx: int,
@@ -302,13 +352,13 @@ def _bond_text(
     begin_parent_idx: int | None,
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
-) -> str:
+) -> SouthStarTraversalEvent:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
     if bond is None:
         raise ValueError(f"edge {edge!r} is not a bond")
     if edge in marker_by_edge:
-        return _marker_for_traversal_edge(
+        text = _marker_for_traversal_edge(
             edge=edge,
             base_marker=marker_by_edge[edge],
             begin_atom_idx=begin_atom_idx,
@@ -316,13 +366,22 @@ def _bond_text(
             begin_parent_idx=begin_parent_idx,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
-    if bond.GetBondType() == Chem.BondType.DOUBLE:
-        return "="
-    if bond.GetBondType() == Chem.BondType.SINGLE:
-        return ""
-    raise NotImplementedError(
-        f"South Star graph-native tree traversal does not support bond "
-        f"{bond.GetBondType()}"
+    elif bond.GetBondType() == Chem.BondType.DOUBLE:
+        text = "="
+    elif bond.GetBondType() == Chem.BondType.SINGLE:
+        text = ""
+    else:
+        raise NotImplementedError(
+            f"South Star graph-native tree traversal does not support bond "
+            f"{bond.GetBondType()}"
+        )
+    return SouthStarTraversalEvent(
+        kind="bond",
+        text=text,
+        edge=edge,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
     )
 
 

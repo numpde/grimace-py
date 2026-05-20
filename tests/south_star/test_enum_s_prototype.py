@@ -7,6 +7,9 @@ from tests.helpers.south_star_component_support_state import (
 )
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_graph_native_for_case
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
+from tests.helpers.south_star_enum_s import (
+    mol_to_smiles_enum_s_tree_traversals_for_case,
+)
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
@@ -82,6 +85,39 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
 
         self.assertIn("Cl\\C=C/F", result.outputs)
         self.assertIn("Cl/C=C\\F", result.outputs)
+
+    def test_graph_native_outputs_are_rendered_from_traversal_events(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_semantic_cases()
+            if case.case_id == "branched_substituted_alkene"
+        )
+        result = mol_to_smiles_enum_s_graph_native_for_case(case)
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+
+        self.assertEqual(
+            result.outputs,
+            tuple(dict.fromkeys(traversal.render() for traversal in traversals)),
+        )
+
+    def test_graph_native_traversal_events_expose_tree_context(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_semantic_cases()
+            if case.case_id == "branched_substituted_alkene"
+        )
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        events = tuple(event for traversal in traversals for event in traversal.events)
+        event_kinds = {event.kind for event in events}
+
+        self.assertTrue({"atom", "bond", "branch_open", "branch_close"} <= event_kinds)
+        for event in events:
+            if event.kind == "atom":
+                self.assertIsNotNone(event.atom_idx)
+            elif event.kind == "bond":
+                self.assertIsNotNone(event.edge)
+                self.assertIsNotNone(event.begin_atom_idx)
+                self.assertIsNotNone(event.end_atom_idx)
 
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,

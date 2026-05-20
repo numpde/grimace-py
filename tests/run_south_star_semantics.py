@@ -12,6 +12,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_conformance_oracle",
     "tests.south_star.test_dependency_boundaries",
     "tests.south_star.test_enum_s_prototype",
+    "tests.south_star.test_expanded_support_fixtures",
     "tests.south_star.test_first_domain_completeness",
     "tests.south_star.test_fragment_composition",
     "tests.south_star.test_harness",

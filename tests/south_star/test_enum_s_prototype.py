@@ -16,11 +16,22 @@ from grimace._south_star.enum_s import SouthStarMarkerSlotAssignment
 from grimace._south_star.enum_s import SouthStarRingClosure
 from grimace._south_star.enum_s import SouthStarTraversalEvent
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
+from tests.helpers.south_star_exact_support import (
+    load_south_star_expanded_support_cases,
+)
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import semantic_signature
+
+
+def _expanded_support_case(case_id: str):
+    return next(
+        case
+        for case in load_south_star_expanded_support_cases()
+        if case.case_id == case_id
+    )
 
 
 class SouthStarEnumSPrototypeTests(unittest.TestCase):
@@ -357,13 +368,20 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         )
 
     def test_graph_native_traversal_enumerates_simple_saturated_ring(self) -> None:
-        result = mol_to_smiles_enum_s_graph_native("C1CCCCC1", case_id="cyclohexane")
+        case = _expanded_support_case("simple_saturated_monocycle_cyclohexane")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
 
-        self.assertEqual("cyclohexane", result.case_id)
-        self.assertEqual(("C1CCCCC1",), result.outputs)
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
         for output in result.outputs:
             with self.subTest(output=output):
-                self.assertEqual(graph_signature("C1CCCCC1"), graph_signature(output))
+                self.assertEqual(
+                    graph_signature(case.source_smiles),
+                    graph_signature(output),
+                )
 
     def test_simple_ring_traversals_expose_real_ring_closure_events(self) -> None:
         case = SouthStarSemanticCase(
@@ -399,65 +417,80 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         )
 
     def test_graph_native_composes_markerless_disconnected_fragments(self) -> None:
+        case = _expanded_support_case("markerless_disconnected_ring_and_atom")
         result = mol_to_smiles_enum_s_graph_native(
-            "C1CCCCC1.O",
-            case_id="cyclohexane_oxygen",
+            case.source_smiles,
+            case_id=case.case_id,
         )
 
-        self.assertEqual("cyclohexane_oxygen", result.case_id)
-        self.assertEqual(
-            (
-                "C1CCCCC1.O",
-                "O.C1CCCCC1",
-            ),
-            result.outputs,
-        )
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
         for output in result.outputs:
             with self.subTest(output=output):
                 self.assertEqual(
-                    graph_signature("C1CCCCC1.O"),
+                    graph_signature(case.source_smiles),
                     graph_signature(output),
                 )
 
     def test_graph_native_composes_disconnected_stereo_fragments(self) -> None:
-        source = "F/C=C\\Cl.O"
+        case = _expanded_support_case("disconnected_stereo_fragment_and_atom")
         result = mol_to_smiles_enum_s_graph_native(
-            source,
-            case_id="alkene_oxygen",
+            case.source_smiles,
+            case_id=case.case_id,
         )
 
-        self.assertEqual("alkene_oxygen", result.case_id)
-        self.assertEqual(24, len(result.outputs))
-        self.assertIn("F/C=C\\Cl.O", result.outputs)
-        self.assertIn("O.F/C=C\\Cl", result.outputs)
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
         for output in result.outputs:
             with self.subTest(output=output):
-                self.assertEqual(graph_signature(source), graph_signature(output))
-                self.assertEqual(semantic_signature(source), semantic_signature(output))
+                self.assertEqual(
+                    graph_signature(case.source_smiles),
+                    graph_signature(output),
+                )
+                self.assertEqual(
+                    semantic_signature(case.source_smiles),
+                    semantic_signature(output),
+                )
 
     def test_graph_native_preserves_implicit_h_tetrahedral_stereo(self) -> None:
-        source = "C[C@H](F)Cl"
-        result = mol_to_smiles_enum_s_graph_native(source, case_id="implicit_h_chiral")
+        case = _expanded_support_case("implicit_h_tetrahedral_center")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
 
-        self.assertEqual("implicit_h_chiral", result.case_id)
-        self.assertIn(source, result.outputs)
-        self.assertIn("[C@@H](C)(F)Cl", result.outputs)
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
         for output in result.outputs:
             with self.subTest(output=output):
-                self.assertEqual(graph_signature(source), graph_signature(output))
-                self.assertEqual(semantic_signature(source), semantic_signature(output))
+                self.assertEqual(
+                    graph_signature(case.source_smiles),
+                    graph_signature(output),
+                )
+                self.assertEqual(
+                    semantic_signature(case.source_smiles),
+                    semantic_signature(output),
+                )
 
     def test_graph_native_preserves_quaternary_tetrahedral_stereo(self) -> None:
-        source = "C[C@](F)(Cl)Br"
-        result = mol_to_smiles_enum_s_graph_native(source, case_id="quaternary_chiral")
+        case = _expanded_support_case("quaternary_tetrahedral_center")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
 
-        self.assertEqual("quaternary_chiral", result.case_id)
-        self.assertIn(source, result.outputs)
-        self.assertIn("[C@](C)(F)(Cl)Br", result.outputs)
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
         for output in result.outputs:
             with self.subTest(output=output):
-                self.assertEqual(graph_signature(source), graph_signature(output))
-                self.assertEqual(semantic_signature(source), semantic_signature(output))
+                self.assertEqual(
+                    graph_signature(case.source_smiles),
+                    graph_signature(output),
+                )
+                self.assertEqual(
+                    semantic_signature(case.source_smiles),
+                    semantic_signature(output),
+                )
 
     def test_graph_native_tree_traversal_rejects_unsupported_before_output(
         self,

@@ -6,8 +6,8 @@
       "case_id": "simple_saturated_monocycle_cyclohexane",
       "feature_area": "simple_saturated_monocycle",
       "source_smiles": "C1CCCCC1",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned current graph-native output for the first supported ring slice; no independent ring-support oracle is claimed yet.",
+      "support_authority": "independent_saturated_monocycle_oracle",
+      "evidence_notes": "Checked by the independent saturated-monocycle oracle: enumerate one broken ring edge, all tree traversal child orders, and closure digit placement from atom events.",
       "expected_support": [
         "C1CCCCC1",
         "C(CCCC1)C1",
@@ -20,8 +20,8 @@
       "case_id": "branched_saturated_monocycle_methylcyclohexane",
       "feature_area": "branched_saturated_monocycle",
       "source_smiles": "CC1CCCCC1",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned current graph-native output for a saturated monocycle with one acyclic branch.",
+      "support_authority": "independent_saturated_monocycle_oracle",
+      "evidence_notes": "Checked by the independent saturated-monocycle oracle for a saturated monocycle with one acyclic branch.",
       "expected_support": [
         "CC1CCCCC1",
         "CC(CCCC1)C1",

@@ -4,10 +4,17 @@ import unittest
 
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.support_gates import south_star_support_gate_report
+from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
+    SOUTH_STAR_PRIVATE_DOMAIN,
+    SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY,
+)
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
-from tests.helpers.south_star_domain_manifest import SOUTH_STAR_PRIVATE_DOMAIN
+from tests.helpers.south_star_expanded_domain_oracles import (
+    independent_saturated_monocycle_support_for_case,
+)
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import semantic_signature
@@ -27,10 +34,6 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertNotEqual((), cases)
         for case in cases:
             with self.subTest(case_id=case.case_id):
-                self.assertEqual(
-                    "graph_native_regression_with_semantic_parseback",
-                    case.support_authority,
-                )
                 self.assertIn(
                     case.support_authority,
                     SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
@@ -41,6 +44,31 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 )
                 self.assertNotEqual("", case.feature_area)
                 self.assertNotEqual("", case.evidence_notes)
+
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
+                case.support_authority == SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY
+                for case in cases
+            )
+        )
+
+    def test_independent_saturated_monocycle_oracle_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if case.support_authority != SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY:
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(
+                    frozenset(case.expected_support),
+                    frozenset(independent_saturated_monocycle_support_for_case(case)),
+                )
 
     def test_graph_native_support_matches_expanded_domain_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

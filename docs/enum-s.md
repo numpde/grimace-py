@@ -133,9 +133,10 @@ Exact support evidence is split by domain:
   connected acyclic directional-marker first domain and is checked against an
   independent test oracle;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
-  current graph-native regression support for saturated rings, disconnected
-  composition, and tetrahedral centers, with RDKit parse-back graph/stereo
-  equivalence as evidence. It is not yet an independent completeness oracle.
+  expanded semantic support. Saturated-monocycle cases are checked against an
+  independent test oracle; disconnected composition and tetrahedral centers are
+  still graph-native regression support with RDKit parse-back graph/stereo
+  equivalence as evidence.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
@@ -168,7 +169,7 @@ enumerator needs a broader molecule and syntax surface:
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;
 - independent completeness oracles beyond the first connected acyclic
-  directional-marker domain;
+  directional-marker and saturated-monocycle domains;
 - explicit fail-fast checks for every unsupported molecule class;
 - complexity diagnostics that expose component counts, local assignment counts,
   affected component counts, and estimated product size.

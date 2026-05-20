@@ -49,6 +49,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "disconnected_markerless_fragments",
             "disconnected_stereo_fragments",
             "tetrahedral_atom_stereo",
+            "unsaturated_nonstereo_monocycle",
         }
     ),
     annotation_policies=frozenset(

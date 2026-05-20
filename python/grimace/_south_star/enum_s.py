@@ -18,7 +18,7 @@ from grimace._south_star.fragments import (
     compose_disconnected_fragment_supports,
 )
 from grimace._south_star.support_gates import (
-    is_saturated_monocycle_with_acyclic_branches,
+    is_nonstereo_monocycle_with_acyclic_branches,
 )
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
@@ -316,10 +316,10 @@ def _tree_traversals_for_marker_assignment(
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
     _assert_tree_traversal_supported(mol)
-    if is_saturated_monocycle_with_acyclic_branches(mol):
+    if is_nonstereo_monocycle_with_acyclic_branches(mol):
         if marker_by_edge:
             raise NotImplementedError(
-                "South Star saturated-ring traversal does not support marker slots yet"
+                "South Star nonstereo-ring traversal does not support marker slots yet"
             )
         return _saturated_monocycle_traversals(
             mol,
@@ -392,12 +392,12 @@ def _assert_tree_traversal_supported(mol: Chem.Mol) -> None:
         )
     if mol.GetNumBonds() == mol.GetNumAtoms() - 1:
         return
-    if is_saturated_monocycle_with_acyclic_branches(mol):
+    if is_nonstereo_monocycle_with_acyclic_branches(mol):
         return
     if mol.GetNumBonds() != mol.GetNumAtoms() - 1:
         raise NotImplementedError(
             "South Star graph-native tree traversal currently requires one "
-            "connected acyclic component or one saturated monocycle"
+            "connected acyclic component or one nonstereo monocycle"
         )
 
 
@@ -612,7 +612,7 @@ def _saturated_monocycle_traversals(
 def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
     bond_rings = mol.GetRingInfo().BondRings()
     if len(bond_rings) != 1:
-        raise ValueError("South Star saturated-ring traversal expects one ring")
+        raise ValueError("South Star nonstereo-ring traversal expects one ring")
     return tuple(
         normalized_edge(
             (
@@ -696,9 +696,11 @@ def _ring_closure_bond_text(mol: Chem.Mol, edge: Edge) -> str:
         raise ValueError(f"ring closure edge {edge!r} is not a bond")
     if bond.GetBondType() == Chem.BondType.SINGLE:
         return ""
+    if bond.GetBondType() == Chem.BondType.DOUBLE:
+        return "="
     raise NotImplementedError(
-        "South Star simple ring traversal currently supports only single-bond "
-        "ring closures"
+        "South Star simple ring traversal currently supports only single- and "
+        "double-bond ring closures"
     )
 
 

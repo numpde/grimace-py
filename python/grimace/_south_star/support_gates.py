@@ -251,7 +251,7 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         return ()
     if disconnected_fragments_have_supported_independent_traversal(mol):
         return ()
-    if is_saturated_monocycle_with_acyclic_branches(mol):
+    if is_nonstereo_monocycle_with_acyclic_branches(mol):
         return ()
     return (
         SouthStarUnsupportedFeature(
@@ -259,7 +259,7 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
             atom_indices=ring_atom_indices,
             bond_indices=ring_bond_indices,
             reason=(
-                "only simple saturated monocycles have South Star ring traversal "
+                "only simple nonstereo monocycles have South Star ring traversal "
                 "support"
             ),
         ),
@@ -369,6 +369,13 @@ def _directional_carrier_bonds_for_stereo_bond(
 
 
 def is_saturated_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
+    return (
+        is_nonstereo_monocycle_with_acyclic_branches(mol)
+        and all(bond.GetBondType() == Chem.BondType.SINGLE for bond in mol.GetBonds())
+    )
+
+
+def is_nonstereo_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     if mol.GetNumAtoms() == 0:
         return False
     if len(Chem.GetMolFrags(mol)) != 1:
@@ -387,7 +394,11 @@ def is_saturated_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     ring_bonds = set(ring_info.BondRings()[0])
     if len(ring_atoms) != len(ring_bonds):
         return False
-    return all(bond.GetBondType() == Chem.BondType.SINGLE for bond in mol.GetBonds())
+    return all(
+        bond.GetBondType() in SUPPORTED_BOND_TYPES
+        and bond.GetStereo() == Chem.BondStereo.STEREONONE
+        for bond in mol.GetBonds()
+    )
 
 
 def disconnected_fragments_have_supported_independent_traversal(

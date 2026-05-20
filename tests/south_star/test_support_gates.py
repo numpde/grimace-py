@@ -75,6 +75,11 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
+    def test_unsaturated_nonstereo_monocycles_are_supported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1=CCCCC1"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
     def test_fused_rings_are_fail_fast_unsupported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C1CC2CCCC2C1"))
 
@@ -83,7 +88,6 @@ class SouthStarSupportGateTests(unittest.TestCase):
     def test_ring_stereo_has_specific_fail_fast_reason(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C1/C=C\\CCCCC1"))
 
-        self.assertUnsupportedCategory("ring_molecule", report.categories)
         self.assertUnsupportedCategory("ring_stereo", report.categories)
 
     def test_unsupported_atom_text_is_fail_fast_unsupported(self) -> None:

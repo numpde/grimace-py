@@ -383,6 +383,24 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     graph_signature(output),
                 )
 
+    def test_graph_native_traversal_enumerates_unsaturated_nonstereo_ring(
+        self,
+    ) -> None:
+        case = _expanded_support_case("unsaturated_nonstereo_monocycle_cyclohexene")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(
+                    graph_signature(case.source_smiles),
+                    graph_signature(output),
+                )
+
     def test_simple_ring_traversals_expose_real_ring_closure_events(self) -> None:
         case = SouthStarSemanticCase(
             case_id="cyclohexane",
@@ -415,6 +433,19 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         self.assertTrue(
             all(event.ring_closure.closure_id for event in ring_events)
         )
+
+    def test_unsaturated_ring_closure_events_carry_bond_text(self) -> None:
+        case = _expanded_support_case("unsaturated_nonstereo_monocycle_cyclohexene")
+
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        ring_open_texts = {
+            event.text
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind == "ring_open"
+        }
+
+        self.assertIn("=", ring_open_texts)
 
     def test_graph_native_composes_markerless_disconnected_fragments(self) -> None:
         case = _expanded_support_case("markerless_disconnected_ring_and_atom")

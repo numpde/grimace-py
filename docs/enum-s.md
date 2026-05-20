@@ -45,9 +45,9 @@ The seed enumerator:
   generation input;
 - enumerates roots and child/main-branch orders for the current connected
   acyclic tree subset;
-- enumerates saturated monocycles with acyclic branches by choosing graph
-  closure edges, traversing the remaining spanning tree, and emitting
-  `ring_open` / `ring_close` events;
+- enumerates nonstereo single/double-bond monocycles with acyclic branches by
+  choosing graph closure edges, traversing the remaining spanning tree, and
+  emitting `ring_open` / `ring_close` events;
 - composes disconnected molecules from independently supported connected
   fragment supports under an explicit all-fragment-orders policy;
 - varies component-local marker assignments for the supported stereo features;
@@ -65,7 +65,7 @@ only. It is not the implementation strategy for a package API.
 The implemented private scope is deliberately narrow:
 
 - connected acyclic molecules;
-- saturated monocycles with acyclic branches, no ring stereo, and no ring
+- nonstereo single/double-bond monocycles with acyclic branches and no ring
   marker slots;
 - disconnected molecules whose connected fragments are independently supported,
   composed with all fragment orders;
@@ -134,9 +134,9 @@ Exact support evidence is split by domain:
   independent test oracle;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated-monocycle cases are checked against an
-  independent test oracle; disconnected composition and tetrahedral centers are
-  still graph-native regression support with RDKit parse-back graph/stereo
-  equivalence as evidence.
+  independent test oracle; unsaturated nonstereo monocycles, disconnected
+  composition, and tetrahedral centers are still graph-native regression
+  support with RDKit parse-back graph/stereo equivalence as evidence.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
@@ -160,7 +160,8 @@ Star goal.
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native
 enumerator needs a broader molecule and syntax surface:
 
-- unsaturated and polycyclic ring traversal;
+- polycyclic ring traversal;
+- independent completeness oracles for unsaturated nonstereo ring traversal;
 - ring-closure marker bases;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;

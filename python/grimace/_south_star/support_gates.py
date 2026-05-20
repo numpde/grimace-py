@@ -395,18 +395,6 @@ def disconnected_fragments_have_supported_independent_traversal(
     if len(fragments) <= 1:
         return False
     return all(
-        not _has_source_stereo_features(fragment)
-        and south_star_support_gate_report(fragment).supported
+        south_star_support_gate_report(fragment).supported
         for fragment in fragments
-    )
-
-
-def _has_source_stereo_features(mol: Chem.Mol) -> bool:
-    return any(
-        bond.GetBondType() == Chem.BondType.DOUBLE
-        and bond.GetStereo() != Chem.BondStereo.STEREONONE
-        for bond in mol.GetBonds()
-    ) or any(
-        atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
-        for atom in mol.GetAtoms()
     )

@@ -45,8 +45,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertIn("query_atom", report.categories)
         self.assertIn("query_bond", report.categories)
 
-    def test_disconnected_molecules_are_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("C/C=C\\C.CCO"))
+    def test_supported_disconnected_stereo_fragments_are_inside_gate_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("F/C=C\\Cl.O"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_unsupported_disconnected_fragments_are_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C#N.O"))
 
         self.assertIn("disconnected_molecule", report.categories)
 

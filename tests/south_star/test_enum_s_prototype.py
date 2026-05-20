@@ -419,6 +419,22 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     graph_signature(output),
                 )
 
+    def test_graph_native_composes_disconnected_stereo_fragments(self) -> None:
+        source = "F/C=C\\Cl.O"
+        result = mol_to_smiles_enum_s_graph_native(
+            source,
+            case_id="alkene_oxygen",
+        )
+
+        self.assertEqual("alkene_oxygen", result.case_id)
+        self.assertEqual(24, len(result.outputs))
+        self.assertIn("F/C=C\\Cl.O", result.outputs)
+        self.assertIn("O.F/C=C\\Cl", result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(graph_signature(source), graph_signature(output))
+                self.assertEqual(semantic_signature(source), semantic_signature(output))
+
     def test_graph_native_preserves_implicit_h_tetrahedral_stereo(self) -> None:
         source = "C[C@H](F)Cl"
         result = mol_to_smiles_enum_s_graph_native(source, case_id="implicit_h_chiral")

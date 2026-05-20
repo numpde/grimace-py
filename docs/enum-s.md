@@ -184,6 +184,12 @@ Representative non-timing budgets live in
 They pin reviewable diagnostic counts for selected domains so support-surface
 expansion cannot hide multiplicative growth behind generic consistency checks.
 
+`tests.helpers.south_star_adversarial_corpus` generates deterministic triage
+candidates for roots, branch order, carrier placement, shared carriers, ring
+closures, tetrahedral ligand order, disconnected fragments, and unsupported
+feature triggers. These candidates are diagnostic inputs only; they do not
+define expected support sets.
+
 ## Package-Readiness Harness
 
 The private package-readiness command is:

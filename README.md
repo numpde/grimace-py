@@ -2,24 +2,17 @@
 
 SMILES enumeration with exact next-token decoding.
 
-`grimace` is a Rust-first RDKit add-on focused on exact rooted SMILES support
-and exact next-token decoding. In its current public form, it answers two
-questions that RDKit does not expose directly:
+`grimace` is a Rust-first RDKit add-on for exact rooted SMILES support and
+online next-token decoding. It provides:
 
-- What is the exact rooted SMILES support of this molecule under a given
-  RDKit-style writer regime?
-- Given the prefix emitted so far, what tokens are legal next continuations?
+- exact support enumeration for a molecule under RDKit-style writer flags
+- exact token inventories implied by that support
+- legal next-token choices from a current SMILES prefix
 
 By "support" we mean the full set of reachable rooted SMILES strings for the
 chosen writer flags. A "rooted SMILES" here is a SMILES string generated with a
 fixed starting atom for a connected molecule, or with one rooted fragment/local
 root inside the preserved fragment order for a disconnected molecule.
-
-`grimace` can:
-
-- enumerate that exact support
-- expose the exact token inventory implied by that support
-- decode online, one token at a time, from a current prefix
 
 Today, that public runtime is intentionally narrow: exact support and decoding
 for RDKit's `canonical=False, doRandom=True` writer regime under the current
@@ -31,16 +24,6 @@ There are two separate correctness ideas in this project:
   parse back to the intended graph and stereo assignment
 - RDKit writer parity: emitted strings should match RDKit's actual writer
   support for the supported regime
-
-The current public API is an RDKit writer-parity API. Some SMILES strings may
-be semantically valid and parse to the same molecule while still not belonging
-to RDKit's writer support. Those cases must be documented and tested as a
-separate semantic layer, not silently mixed into RDKit-parity claims.
-
-The reason this library exists is that RDKit does not provide either:
-
-- an exact rooted SMILES enumeration routine
-- an online next-token decoding API for SMILES prefixes
 
 `grimace` targets the current stable RDKit writer convention, currently
 `RDKit 2026.03.1`. Older slash/backslash serialization conventions are out of

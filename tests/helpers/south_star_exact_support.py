@@ -4,6 +4,12 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_EXPANDED_SUPPORT_POLICY,
+    SOUTH_STAR_FIRST_DOMAIN_POLICY,
+    SOUTH_STAR_PRIVATE_DOMAIN,
+)
+
 
 EXACT_FIRST_DOMAIN_FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -17,14 +23,6 @@ EXPANDED_SUPPORT_FIXTURE = (
     / "south_star_expanded_support"
     / "expanded_domain_v1.json"
 )
-EXPANDED_SUPPORT_POLICY = "south_star_expanded_domain_regression"
-
-EXPANDED_SUPPORT_AUTHORITIES = frozenset(
-    {
-        "graph_native_regression_with_semantic_parseback",
-    }
-)
-
 
 @dataclass(frozen=True, slots=True)
 class SouthStarExactSupportCase:
@@ -49,6 +47,8 @@ def load_south_star_exact_first_domain_cases(
     raw = json.loads(path.read_text())
     if raw["schema_version"] != 1:
         raise ValueError(f"unsupported South Star exact-support schema: {raw!r}")
+    if raw["policy"] != SOUTH_STAR_FIRST_DOMAIN_POLICY:
+        raise ValueError(f"unsupported South Star first-domain policy: {raw!r}")
     return tuple(
         SouthStarExactSupportCase(
             case_id=case["case_id"],
@@ -65,7 +65,7 @@ def load_south_star_expanded_support_cases(
     raw = json.loads(path.read_text())
     if raw["schema_version"] != 1:
         raise ValueError(f"unsupported South Star expanded-support schema: {raw!r}")
-    if raw["policy"] != EXPANDED_SUPPORT_POLICY:
+    if raw["policy"] != SOUTH_STAR_EXPANDED_SUPPORT_POLICY:
         raise ValueError(f"unsupported South Star expanded-support policy: {raw!r}")
     cases = tuple(_expanded_support_case(case) for case in raw["cases"])
     case_ids = tuple(case.case_id for case in cases)
@@ -89,14 +89,19 @@ def _expanded_support_case(raw_case: object) -> SouthStarExpandedSupportCase:
             f"duplicate expected support in South Star case {raw_case['case_id']!r}"
         )
     support_authority = raw_case["support_authority"]
-    if support_authority not in EXPANDED_SUPPORT_AUTHORITIES:
+    if support_authority not in SOUTH_STAR_PRIVATE_DOMAIN.support_authorities:
         raise ValueError(
             f"unsupported South Star expanded-support authority {support_authority!r}"
+        )
+    feature_area = raw_case["feature_area"]
+    if feature_area not in SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas:
+        raise ValueError(
+            f"unsupported South Star expanded-support feature area {feature_area!r}"
         )
     return SouthStarExpandedSupportCase(
         case_id=raw_case["case_id"],
         source_smiles=raw_case["source_smiles"],
-        feature_area=raw_case["feature_area"],
+        feature_area=feature_area,
         support_authority=support_authority,
         evidence_notes=raw_case["evidence_notes"],
         expected_support=expected_support,

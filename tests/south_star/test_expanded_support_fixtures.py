@@ -7,6 +7,7 @@ from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
+from tests.helpers.south_star_domain_manifest import SOUTH_STAR_PRIVATE_DOMAIN
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import semantic_signature
@@ -18,16 +19,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             case.feature_area for case in load_south_star_expanded_support_cases()
         }
 
-        self.assertTrue(
-            {
-                "simple_saturated_monocycle",
-                "branched_saturated_monocycle",
-                "disconnected_markerless_fragments",
-                "disconnected_stereo_fragments",
-                "tetrahedral_atom_stereo",
-            }
-            <= feature_areas
-        )
+        self.assertTrue(SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas <= feature_areas)
 
     def test_expanded_support_fixtures_have_explicit_authority(self) -> None:
         cases = load_south_star_expanded_support_cases()
@@ -38,6 +30,14 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertEqual(
                     "graph_native_regression_with_semantic_parseback",
                     case.support_authority,
+                )
+                self.assertIn(
+                    case.support_authority,
+                    SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+                )
+                self.assertIn(
+                    case.feature_area,
+                    SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas,
                 )
                 self.assertNotEqual("", case.feature_area)
                 self.assertNotEqual("", case.evidence_notes)

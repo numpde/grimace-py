@@ -32,6 +32,10 @@ seed enumerator until the semantic traversal surface is expanded.
 The current implementation lives behind the private internal
 `grimace._south_star` boundary and is used by tests and diagnostics. It is not
 imported from `grimace.__init__` and is not a package-ready runtime surface.
+The executable private contract is tracked by
+`tests.helpers.south_star_domain_manifest.SouthStarDomainManifest`; fixtures and
+support-gate tests use that manifest to keep policy names, fixture authorities,
+feature areas, and unsupported categories aligned.
 
 The seed enumerator:
 

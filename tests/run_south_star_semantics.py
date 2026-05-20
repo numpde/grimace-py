@@ -8,6 +8,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_component_extraction",
     "tests.south_star.test_component_support_state",
     "tests.south_star.test_comparison_labels",
+    "tests.south_star.test_complexity_guardrails",
     "tests.south_star.test_conformance_oracle",
     "tests.south_star.test_dependency_boundaries",
     "tests.south_star.test_domain_manifest",

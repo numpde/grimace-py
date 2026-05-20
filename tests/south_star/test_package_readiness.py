@@ -79,7 +79,7 @@ SOUTH_STAR_PUBLIC_API_PROMOTION_GATES: tuple[SouthStarPublicApiPromotionGate, ..
         evidence="Generation diagnostics expose product-size and assignment "
         "guardrails for representative promoted domains.",
         verification="PYTHONPATH=python:. python3 -m unittest "
-        "tests.south_star.test_package_readiness -q",
+        "tests.south_star.test_complexity_guardrails -q",
     ),
     SouthStarPublicApiPromotionGate(
         gate_id="documentation_contract",

@@ -93,11 +93,25 @@ class SouthStarTreeTraversal:
 class SouthStarEnumSGenerationDiagnostics:
     fragment_count: int
     fragment_output_counts: tuple[int, ...]
+    fragment_order_count: int
+    stereo_component_count: int
     traversal_skeleton_count: int
     marker_slot_count: int
     local_assignment_count: int
     solved_assignment_count: int
     estimated_product_size: int
+    raw_output_count: int
+    output_count: int
+
+    @property
+    def deduplication_drop_count(self) -> int:
+        return self.raw_output_count - self.output_count
+
+    @property
+    def deduplicated_output_ratio(self) -> float:
+        if self.raw_output_count == 0:
+            return 0.0
+        return self.output_count / self.raw_output_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,17 +225,22 @@ def _connected_generation_for_mol(
         for event in traversal.events
         if event.marker_slot is not None
     )
-    local_assignment_count = state.complexity_snapshot().estimated_product_size
+    complexity_snapshot = state.complexity_snapshot()
+    local_assignment_count = complexity_snapshot.estimated_product_size
     return _SupportGeneration(
         outputs=outputs,
         diagnostics=SouthStarEnumSGenerationDiagnostics(
             fragment_count=1,
             fragment_output_counts=(len(outputs),),
+            fragment_order_count=1,
+            stereo_component_count=complexity_snapshot.component_count,
             traversal_skeleton_count=len(traversals),
             marker_slot_count=marker_slot_count,
             local_assignment_count=local_assignment_count,
             solved_assignment_count=len(traversals),
             estimated_product_size=len(raw_outputs),
+            raw_output_count=len(raw_outputs),
+            output_count=len(outputs),
         ),
     )
 
@@ -272,6 +291,11 @@ def _disconnected_generation_for_mol(
         diagnostics=SouthStarEnumSGenerationDiagnostics(
             fragment_count=composition.fragment_count,
             fragment_output_counts=composition.fragment_output_counts,
+            fragment_order_count=composition.fragment_order_count,
+            stereo_component_count=sum(
+                generation.diagnostics.stereo_component_count
+                for generation in fragment_generations
+            ),
             traversal_skeleton_count=sum(
                 generation.diagnostics.traversal_skeleton_count
                 for generation in fragment_generations
@@ -293,6 +317,8 @@ def _disconnected_generation_for_mol(
                 for generation in fragment_generations
             ),
             estimated_product_size=composition.estimated_product_size,
+            raw_output_count=composition.estimated_product_size,
+            output_count=len(composition.outputs),
         ),
     )
 

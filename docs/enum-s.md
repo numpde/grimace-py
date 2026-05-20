@@ -159,16 +159,25 @@ existing default support order.
 Graph-native EnumS results expose private generation diagnostics:
 
 - fragment count and per-fragment support counts;
+- fragment-order count;
+- stereo-component count;
 - traversal skeleton count;
 - marker-slot count;
 - local assignment count;
 - solved assignment count;
+- raw output count before output-order deduplication;
+- output count after output-order deduplication;
+- deduplication drop count and deduplicated-output ratio;
 - estimated product size before output-order deduplication.
 
 These diagnostics are engineering guardrails. They help detect accidental
 complexity shifts or hidden support-generation changes, but they are not
 semantic authority. Fixture support and independent oracles remain the
 correctness evidence.
+
+Test-only complexity diagnostics may also record per-layer timings for fact
+extraction, generation, and conformance checks. Those timings are inspectable
+metadata, not correctness thresholds.
 
 ## Package-Readiness Harness
 

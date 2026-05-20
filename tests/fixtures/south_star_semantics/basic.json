@@ -3,6 +3,7 @@
   "cases": [
     {
       "id": "isolated_alkene_z",
+      "semantic_feature": "one isolated double-bond stereo component with one eligible carrier edge on each side",
       "source_smiles": "F/C=C\\Cl",
       "eligible_carrier_edges": [
         [0, 1],
@@ -34,6 +35,7 @@
     },
     {
       "id": "linear_diene_same_phase",
+      "semantic_feature": "two coupled double-bond stereo features sharing one carrier edge with the same visible marker phase",
       "source_smiles": "C/C=C/C=C/C",
       "eligible_carrier_edges": [
         [0, 1],
@@ -66,6 +68,7 @@
     },
     {
       "id": "branched_substituted_alkene",
+      "semantic_feature": "one double-bond stereo component with multiple eligible carrier edges on one side",
       "source_smiles": "Cl/C=C(\\F)/Br",
       "eligible_carrier_edges": [
         [0, 1],
@@ -98,6 +101,7 @@
     },
     {
       "id": "hetero_imine_carrier",
+      "semantic_feature": "one isolated hetero double-bond stereo component with directional single-bond carriers",
       "source_smiles": "C/C=N/O",
       "eligible_carrier_edges": [
         [0, 1],
@@ -129,6 +133,7 @@
     },
     {
       "id": "independent_two_alkenes",
+      "semantic_feature": "two independent double-bond stereo components with independently flippable marker assignments",
       "source_smiles": "F/C=C\\CC/C=C\\Cl",
       "eligible_carrier_edges": [
         [0, 1],
@@ -168,6 +173,7 @@
     },
     {
       "id": "linear_diene_opposite_phase",
+      "semantic_feature": "two coupled double-bond stereo features sharing one carrier edge with opposite visible marker phase",
       "source_smiles": "C/C=C\\C=C/C",
       "eligible_carrier_edges": [
         [0, 1],
@@ -204,6 +210,7 @@
     },
     {
       "id": "same_side_alternate_carriers",
+      "semantic_feature": "one double-bond stereo component with alternate same-side carriers under maximal annotation",
       "source_smiles": "C/C=C(\\C)/Cl",
       "eligible_carrier_edges": [
         [0, 1],
@@ -231,6 +238,114 @@
         {
           "smiles": "CC=C(C)Cl",
           "reason": "loses_double_bond_stereo"
+        }
+      ]
+    },
+    {
+      "id": "conjugated_triene_same_phase",
+      "semantic_feature": "three coupled double-bond stereo features connected by two shared carrier edges",
+      "source_smiles": "C/C=C/C=C/C=C/C",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [4, 5],
+        [6, 7]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 4
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "comparison_known_divergence",
+        "notes": "South Star graph-native support intentionally records semantic support; RDKit writer parity differs and is comparison metadata only."
+      },
+      "positive_semantic_smiles": [
+        "C/C=C/C=C/C=C/C",
+        "C\\C=C\\C=C\\C=C\\C"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "C/C=C\\C=C/C=C\\C",
+          "reason": "inverts_coupled_double_bond_stereo_assignments"
+        },
+        {
+          "smiles": "CC=CC=CC=CC",
+          "reason": "loses_double_bond_stereo"
+        }
+      ]
+    },
+    {
+      "id": "hetero_conjugated_enimine",
+      "semantic_feature": "coupled alkene and hetero imine stereo features sharing one carrier edge",
+      "source_smiles": "C/C=C/N=C/O",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [4, 5]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 3
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "comparison_known_divergence",
+        "notes": "South Star graph-native support intentionally records semantic support; RDKit writer parity differs and is comparison metadata only."
+      },
+      "positive_semantic_smiles": [
+        "C/C=C/N=C/O",
+        "C\\C=C\\N=C\\O"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "C/C=C\\N=C/O",
+          "reason": "inverts_coupled_alkene_imine_stereo"
+        },
+        {
+          "smiles": "CC=CN=CO",
+          "reason": "loses_alkene_and_imine_stereo"
+        }
+      ]
+    },
+    {
+      "id": "mixed_coupled_and_independent_alkenes",
+      "semantic_feature": "one coupled diene component and one independent alkene component in the same connected acyclic molecule",
+      "source_smiles": "F/C=C/C=C/C/C=C\\Cl",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3],
+        [4, 5],
+        [5, 6],
+        [7, 8]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 5
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "comparison_known_divergence",
+        "notes": "South Star graph-native support intentionally records semantic support; RDKit writer parity differs and is comparison metadata only."
+      },
+      "positive_semantic_smiles": [
+        "F/C=C/C=C/C/C=C\\Cl",
+        "F\\C=C\\C=C\\C/C=C\\Cl",
+        "F/C=C/C=C/C\\C=C/Cl",
+        "F\\C=C\\C=C\\C\\C=C/Cl"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "F/C=C\\C=C/C/C=C\\Cl",
+          "reason": "inverts_coupled_diene_stereo_component"
+        },
+        {
+          "smiles": "F/C=C/C=C/C/C=C/Cl",
+          "reason": "inverts_independent_alkene_stereo_component"
+        },
+        {
+          "smiles": "FC=CC=CCC=CCl",
+          "reason": "loses_all_double_bond_stereo_assignments"
         }
       ]
     }

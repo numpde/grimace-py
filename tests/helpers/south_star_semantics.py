@@ -27,10 +27,12 @@ class SouthStarAnnotationPolicyExpectation:
 @dataclass(frozen=True, slots=True)
 class SouthStarSemanticCase:
     case_id: str
+    semantic_feature: str
     source_smiles: str
     eligible_carrier_edges: tuple[tuple[int, int], ...]
     maximal_eligible_carrier: SouthStarAnnotationPolicyExpectation
     rdkit_writer_membership_status: str
+    rdkit_writer_membership_notes: str
     positive_semantic_smiles: tuple[str, ...]
     negative_semantic_smiles: tuple[SouthStarNegativeSemanticSmiles, ...]
 
@@ -75,6 +77,7 @@ def _load_case(raw_case: object, fixture_path: Path) -> SouthStarSemanticCase:
 
     return SouthStarSemanticCase(
         case_id=case_id,
+        semantic_feature=_required_string(raw_case, "semantic_feature", fixture_path),
         source_smiles=_required_string(raw_case, "source_smiles", fixture_path),
         eligible_carrier_edges=_required_edge_tuple(
             raw_case,
@@ -93,6 +96,11 @@ def _load_case(raw_case: object, fixture_path: Path) -> SouthStarSemanticCase:
         rdkit_writer_membership_status=_required_string(
             writer_membership,
             "status",
+            fixture_path,
+        ),
+        rdkit_writer_membership_notes=_required_string(
+            writer_membership,
+            "notes",
             fixture_path,
         ),
         positive_semantic_smiles=_required_string_tuple(

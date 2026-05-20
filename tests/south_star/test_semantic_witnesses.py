@@ -8,6 +8,17 @@ from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 
 class SouthStarSemanticWitnessTests(unittest.TestCase):
+    def test_cases_document_semantic_feature_and_writer_comparison_status(self) -> None:
+        allowed_writer_statuses = {"not_checked", "comparison_known_divergence"}
+        for case in load_south_star_semantic_cases():
+            with self.subTest(case_id=case.case_id):
+                self.assertNotEqual("", case.semantic_feature)
+                self.assertIn(
+                    case.rdkit_writer_membership_status,
+                    allowed_writer_statuses,
+                )
+                self.assertNotEqual("", case.rdkit_writer_membership_notes)
+
     def test_positive_witnesses_parse_to_intended_graph_and_stereo(self) -> None:
         for case in load_south_star_semantic_cases():
             source_graph = graph_signature(case.source_smiles)
@@ -43,4 +54,3 @@ class SouthStarSemanticWitnessTests(unittest.TestCase):
                     case.maximal_eligible_carrier.required_marker_edge_count,
                     len(case.eligible_carrier_edges),
                 )
-                self.assertEqual("not_checked", case.rdkit_writer_membership_status)

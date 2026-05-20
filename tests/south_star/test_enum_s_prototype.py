@@ -358,12 +358,14 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
     ) -> None:
         case = SouthStarSemanticCase(
             case_id="unsupported_ring",
+            semantic_feature="unsupported ring traversal boundary",
             source_smiles="C1/C=C\\CCCCC1",
             eligible_carrier_edges=(),
             maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
                 required_marker_edge_count=0,
             ),
             rdkit_writer_membership_status="not_checked",
+            rdkit_writer_membership_notes="Synthetic unsupported-boundary test case.",
             positive_semantic_smiles=(),
             negative_semantic_smiles=(),
         )

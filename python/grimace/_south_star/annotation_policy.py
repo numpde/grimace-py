@@ -33,6 +33,13 @@ class AnnotationPolicyDecision:
     allowed_markers: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class AnnotationPolicyCandidate:
+    name: str
+    status: str
+    description: str
+
+
 class AnnotationPolicy(Protocol):
     name: str
 
@@ -89,6 +96,72 @@ class MaximalEligibleCarrierAnnotationPolicy:
             marker_required=True,
             allowed_markers=allowed_markers,
         )
+
+
+class NoMarkerAnnotationPolicyStub:
+    """Diagnostic policy stub used to exercise policy modularity.
+
+    This is not a proposed package policy. It proves callers can swap the
+    annotation-policy layer without changing molecule facts, component
+    extraction, traversal events, or marker-equation solving.
+    """
+
+    name: str = "no_marker_policy_stub"
+
+    def decision(
+        self,
+        *,
+        carrier_opportunities: tuple[SemanticCarrierOpportunity, ...],
+        emitted_edge: EmittedEdgeBasis,
+        surviving_assignments: tuple[SurvivingSemanticAssignment, ...],
+    ) -> AnnotationPolicyDecision:
+        del carrier_opportunities, surviving_assignments
+        return AnnotationPolicyDecision(
+            edge=normalized_edge(emitted_edge.edge),
+            marker_required=False,
+            allowed_markers=(),
+        )
+
+
+SOUTH_STAR_ANNOTATION_POLICY_CANDIDATES: tuple[AnnotationPolicyCandidate, ...] = (
+    AnnotationPolicyCandidate(
+        name=MaximalEligibleCarrierAnnotationPolicy.name,
+        status="default",
+        description=(
+            "Emit markers for every eligible carrier that can express a "
+            "surviving semantic assignment."
+        ),
+    ),
+    AnnotationPolicyCandidate(
+        name="minimal_sufficient",
+        status="deferred_candidate",
+        description=(
+            "Emit a sufficient subset of markers while preserving the same "
+            "semantic assignment set."
+        ),
+    ),
+    AnnotationPolicyCandidate(
+        name="canonical_semantic",
+        status="deferred_candidate",
+        description=(
+            "Choose one deterministic semantic spelling from the policy space "
+            "without importing RDKit writer behavior."
+        ),
+    ),
+    AnnotationPolicyCandidate(
+        name="rdkit_writer_like",
+        status="comparison_candidate",
+        description=(
+            "Model RDKit-like marker placement as an explicit comparison policy, "
+            "not as South Star semantic authority."
+        ),
+    ),
+    AnnotationPolicyCandidate(
+        name=NoMarkerAnnotationPolicyStub.name,
+        status="test_stub",
+        description="Exercise policy injection without proposing public behavior.",
+    ),
+)
 
 
 def normalized_edge(edge: Edge) -> Edge:

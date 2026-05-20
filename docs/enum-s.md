@@ -143,6 +143,13 @@ This policy is intentionally modular. Future package work may add minimal,
 canonical, or writer-like annotation policies without changing the component
 fact model.
 
+Policy candidates are named in
+`grimace._south_star.annotation_policy.SOUTH_STAR_ANNOTATION_POLICY_CANDIDATES`.
+Only `maximal_eligible_carrier` is the current default. `minimal_sufficient` and
+`canonical_semantic` are deferred concepts, `rdkit_writer_like` is a comparison
+candidate rather than semantic authority, and `no_marker_policy_stub` exists
+only to test the policy boundary.
+
 The private runtime currently passes a small immutable policy set through the
 graph-native EnumS path:
 

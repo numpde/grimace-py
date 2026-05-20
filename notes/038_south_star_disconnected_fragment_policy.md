@@ -18,14 +18,32 @@ separately.
 
 ## Current Boundary
 
-The private South Star path currently fails fast on disconnected molecules:
+The private South Star path originally failed fast on disconnected molecules:
 
-- `south_star_support_gate_report()` reports `disconnected_molecule`;
-- graph-native `EnumS` requires exactly one connected component;
-- the first-domain oracle also requires exactly one connected component.
+- `south_star_support_gate_report()` reported `disconnected_molecule`;
+- graph-native `EnumS` required exactly one connected component;
+- the first-domain oracle required exactly one connected component.
 
-That is the right temporary boundary. The next step is not to remove the gate
-blindly; it is to introduce an explicit fragment composition layer.
+That was the right temporary boundary. The next step was not to remove the gate
+blindly; it was to introduce an explicit fragment composition layer.
+
+## Implementation Checkpoint
+
+The private `south-star` branch now has the first explicit fragment-composition
+layer:
+
+- disconnected molecules are split into connected fragments;
+- each fragment is enumerated independently through the connected South Star
+  path;
+- rendered fragment supports are composed with the named all-fragment-orders
+  policy;
+- disconnected markerless and disconnected stereo-fragment cases are pinned in
+  `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json`;
+- the connected traversal path still rejects already-disconnected inputs.
+
+The current policy is intentionally semantic and not RDKit writer parity. Later
+package work can add selectable fragment-order policies without changing the
+connected-fragment enumerator.
 
 ## Required Concept Split
 

@@ -12,11 +12,27 @@ Ring support should extend the traversal language. It should not be implemented
 as a finished-string mutation, and it should not borrow RDKit writer placement
 rules unless a later writer-policy layer explicitly asks for them.
 
-The current South Star implementation is intentionally limited to one connected
-acyclic component. `south_star_support_gate_report()` names rings as
-unsupported with `ring_molecule`, and directional ring carriers get the more
-specific `ring_stereo` category. That fail-fast boundary is correct until ring
-closure syntax is represented as first-class traversal data.
+The South Star implementation was initially limited to one connected acyclic
+component. `south_star_support_gate_report()` named rings as unsupported with
+`ring_molecule`, and directional ring carriers got the more specific
+`ring_stereo` category. That fail-fast boundary was correct until ring closure
+syntax was represented as first-class traversal data.
+
+## Implementation Checkpoint
+
+The private `south-star` branch now has a first graph-native ring slice:
+
+- connected saturated monocycles with acyclic branches are supported;
+- traversal chooses one graph ring edge as the closure edge and traverses the
+  remaining spanning tree;
+- closure syntax is emitted through `ring_open` and `ring_close` events carrying
+  graph edge identity, closure id, label, role, and traversal parent context;
+- simple cyclohexane and methylcyclohexane support is pinned in
+  `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json`;
+- fused rings, unsaturated rings, and ring stereo remain explicitly gated.
+
+This is still only the non-stereo ring-language slice. The marker-slot equation
+work for ring-closure carriers has not been implemented.
 
 ## Required Concept Split
 

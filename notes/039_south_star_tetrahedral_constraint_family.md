@@ -19,16 +19,32 @@ preserves the intended tetrahedral orientation?
 
 ## Current Boundary
 
-The current private South Star support gate reports `atom_stereo` and fails
-fast for molecules such as `C[C@H](F)Cl`. That boundary should remain until a
-dedicated atom-stereo component model exists.
+The private South Star support gate originally reported `atom_stereo` and
+failed fast for molecules such as `C[C@H](F)Cl`. That boundary was correct
+until a dedicated atom-stereo component model existed.
 
-The first implementation should be additive:
+The first implementation was designed to be additive:
 
 - keep directional double-bond components unchanged;
 - introduce tetrahedral components beside them;
 - let traversal events expose atom-local neighbor order facts;
 - solve atom-stereo token choices through an atom-stereo solver path.
+
+## Implementation Checkpoint
+
+The private `south-star` branch now has a first tetrahedral-center slice:
+
+- supported centers have exactly four ligands;
+- traversal computes the emitted ligand order for the atom event;
+- preserving `@` / `@@` tokens are chosen from the source ligand order and the
+  emitted ligand order;
+- implicit-hydrogen and quaternary-center support is pinned in
+  `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json`;
+- unsupported atom-stereo surfaces still fail fast through `atom_stereo`.
+
+This is not yet a full atom-stereo package surface. Ring-containing chiral
+centers, broader atom text, and an independent exact-support oracle for
+tetrahedral support remain future work.
 
 ## Required Concept Split
 

@@ -41,9 +41,16 @@ The seed enumerator:
   generation input;
 - enumerates roots and child/main-branch orders for the current connected
   acyclic tree subset;
+- enumerates saturated monocycles with acyclic branches by choosing graph
+  closure edges, traversing the remaining spanning tree, and emitting
+  `ring_open` / `ring_close` events;
+- composes disconnected molecules from independently supported connected
+  fragment supports under an explicit all-fragment-orders policy;
 - varies component-local marker assignments for the supported stereo features;
 - applies local carrier-orientation rules for markers emitted through branches
   or reversed tree edges;
+- emits `@` / `@@` atom-stereo tokens for the current tetrahedral-center
+  subset from traversal ligand-order facts;
 - renders strings from traversal events plus solved marker-slot assignments.
 
 The fixture-backed prototype remains in `tests.helpers` as comparison support
@@ -51,15 +58,21 @@ only. It is not the implementation strategy for a package API.
 
 ## First Supported Shape
 
-The intended first supported class is deliberately narrow:
+The implemented private scope is deliberately narrow:
 
-- one connected acyclic molecule;
+- connected acyclic molecules;
+- saturated monocycles with acyclic branches, no ring stereo, and no ring
+  marker slots;
+- disconnected molecules whose connected fragments are independently supported,
+  composed with all fragment orders;
 - directional double-bond stereo represented by slash/backslash carriers;
 - alkene-style carriers;
 - hetero imine or oxime-style carriers using the same directional semantics;
 - independent stereo components;
 - explicitly coupled components, including shared carrier edges;
 - same-side alternate carrier edges under maximal carrier annotation.
+- tetrahedral centers with exactly four ligands, including the current
+  implicit-hydrogen and quaternary-center slices.
 
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.
@@ -72,11 +85,11 @@ must not silently fall back to `MolToSmilesEnum` or return a partial support set
 Current unsupported categories include:
 
 - query atoms or query bonds;
-- tetrahedral atom stereo;
 - unsupported bond types;
 - dative or metal-containing stereo surfaces;
-- disconnected molecules;
-- ring stereo and ring-closure carrier bases;
+- fused/polycyclic rings;
+- unsaturated ring traversal and ring-closure carrier bases;
+- ring stereo;
 - aromatic directional surfaces;
 - any component whose marker equations cannot be stated locally.
 
@@ -110,6 +123,16 @@ The annotation conformance basis is
 full OpenSMILES parser and covers the atom, branch, double-bond, and
 slash/backslash forms emitted by the seed enumerator.
 
+Exact support evidence is split by domain:
+
+- `tests/fixtures/south_star_exact_first_domain/first_domain_v1.json` pins the
+  connected acyclic directional-marker first domain and is checked against an
+  independent test oracle;
+- `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
+  current graph-native regression support for saturated rings, disconnected
+  composition, and tetrahedral centers, with RDKit parse-back graph/stereo
+  equivalence as evidence. It is not yet an independent completeness oracle.
+
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
 
@@ -132,12 +155,16 @@ Star goal.
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native
 enumerator needs a broader molecule and syntax surface:
 
-- ring-closure traversal and marker bases;
-- disconnected molecule policy;
+- unsaturated and polycyclic ring traversal;
+- ring-closure marker bases;
+- selectable disconnected-fragment policies beyond the current all-orders
+  private default;
 - atom text beyond the current organic-subset seed;
 - supported aromatic directional surfaces, if any;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;
+- independent completeness oracles beyond the first connected acyclic
+  directional-marker domain;
 - explicit fail-fast checks for every unsupported molecule class;
 - complexity diagnostics that expose component counts, local assignment counts,
   affected component counts, and estimated product size.

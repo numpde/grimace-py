@@ -13,7 +13,6 @@ making one call into the other. The only intended consumers are South Star
 tests that need an implementation-independent support check.
 """
 
-from dataclasses import dataclass
 from itertools import permutations
 from itertools import product
 
@@ -34,12 +33,6 @@ from grimace._south_star.reference_model import SouthStarTraversalFragment
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
-
-@dataclass(frozen=True, slots=True)
-class _CombinedGraphAssignment:
-    marker_by_edge: dict[Edge, str]
-
-
 def independent_first_domain_support_for_case(
     case: SouthStarSemanticCase,
 ) -> tuple[str, ...]:
@@ -49,10 +42,10 @@ def independent_first_domain_support_for_case(
     _assert_first_domain_mol(mol)
 
     outputs = []
-    for graph_assignment in _combined_graph_assignments(state):
+    for marker_by_edge in _combined_marker_by_edge_assignments(state):
         carrier_contexts_by_edge = _carrier_contexts_by_edge(
             mol,
-            marker_by_edge=graph_assignment.marker_by_edge,
+            marker_by_edge=marker_by_edge,
         )
         for root_idx in range(mol.GetNumAtoms()):
             for fragment in _oracle_atom_variants(
@@ -60,31 +53,31 @@ def independent_first_domain_support_for_case(
                 atom_idx=root_idx,
                 parent_idx=None,
                 visited=frozenset(),
-                marker_by_edge=graph_assignment.marker_by_edge,
+                marker_by_edge=marker_by_edge,
                 carrier_contexts_by_edge=carrier_contexts_by_edge,
             ):
                 outputs.append(
                     _render_fragment(
                         fragment,
-                        marker_by_edge=graph_assignment.marker_by_edge,
+                        marker_by_edge=marker_by_edge,
                     )
                 )
     return tuple(dict.fromkeys(outputs))
 
 
-def _combined_graph_assignments(
+def _combined_marker_by_edge_assignments(
     state: SouthStarComponentSupportState,
-) -> tuple[_CombinedGraphAssignment, ...]:
+) -> tuple[dict[Edge, str], ...]:
     per_component = state.component_marker_assignments()
     if not per_component:
-        return (_CombinedGraphAssignment(marker_by_edge={}),)
+        return ({},)
 
     combined = []
     for assignment_group in product(*per_component):
         marker_by_edge: dict[Edge, str] = {}
         for assignment in assignment_group:
             _merge_assignment(marker_by_edge, assignment)
-        combined.append(_CombinedGraphAssignment(marker_by_edge=marker_by_edge))
+        combined.append(marker_by_edge)
     return tuple(combined)
 
 

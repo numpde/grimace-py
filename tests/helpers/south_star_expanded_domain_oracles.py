@@ -2,21 +2,27 @@ from __future__ import annotations
 
 """Independent test oracles for expanded South Star fixture domains.
 
-These helpers intentionally duplicate traversal/rendering concepts instead of
-calling `grimace._south_star.enum_s`. They are spec oracles for fixture
-completeness, not runtime code and not a second package implementation.
+These helpers intentionally keep independent traversal searches and renderers
+instead of calling `grimace._south_star.enum_s`. They consume the shared South
+Star reference record vocabulary where possible so they remain witnesses, not
+separate mini-worlds with their own event/slot types.
 """
 
 from dataclasses import dataclass
-from functools import reduce
 from itertools import permutations
 from itertools import product
-from operator import mul
 
 from rdkit import Chem
 
 from grimace._south_star.annotation_policy import Edge
 from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.fragments import SouthStarDisconnectedCompositionResult
+from grimace._south_star.fragments import SouthStarFragmentSupport
+from grimace._south_star.fragments import compose_disconnected_fragment_supports
+from grimace._south_star.reference_model import SouthStarCarrierContext
+from grimace._south_star.reference_model import SouthStarMarkerSlot
+from grimace._south_star.reference_model import SouthStarTraversalEvent
+from grimace._south_star.reference_model import SouthStarTraversalFragment
 from grimace._south_star.tetrahedral import IMPLICIT_HYDROGEN_LIGAND
 from grimace._south_star.tetrahedral import extract_tetrahedral_center_facts
 from grimace._south_star.tetrahedral import preserving_tetrahedral_token
@@ -29,27 +35,9 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 
 @dataclass(frozen=True, slots=True)
-class _RingToken:
-    text: str
-    atom_idx: int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _RingFragment:
-    tokens: tuple[_RingToken, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarDisconnectedCompositionOracleResult:
-    outputs: tuple[str, ...]
-    fragment_output_counts: tuple[int, ...]
-    fragment_order_policy: str
-    fragment_order_count: int
-    estimated_product_size: int
-
-
-@dataclass(frozen=True, slots=True)
 class SouthStarRingStereoOracleEquation:
+    """Witness-only projection of shared marker-slot equation fields."""
+
     equation_id: str
     slot_id: str
     edge: Edge
@@ -65,40 +53,6 @@ class SouthStarRingStereoOracleResult:
     equations: tuple[SouthStarRingStereoOracleEquation, ...]
     closure_edge_count: int
     marker_assignment_count: int
-
-
-@dataclass(frozen=True, slots=True)
-class _RingStereoCarrierContext:
-    center_atom_idx: int
-    double_neighbor_idx: int
-
-
-@dataclass(frozen=True, slots=True)
-class _RingStereoMarkerSlot:
-    slot_id: str
-    edge: Edge
-    begin_atom_idx: int
-    end_atom_idx: int
-    begin_parent_idx: int | None
-    syntax_position: str
-    adjacent_contexts: tuple[_RingStereoCarrierContext, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _RingStereoTraversalEvent:
-    kind: str
-    text: str = ""
-    atom_idx: int | None = None
-    edge: Edge | None = None
-    begin_atom_idx: int | None = None
-    end_atom_idx: int | None = None
-    begin_parent_idx: int | None = None
-    marker_slot: _RingStereoMarkerSlot | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _RingStereoTraversalFragment:
-    events: tuple[_RingStereoTraversalEvent, ...]
 
 
 def independent_saturated_monocycle_support_for_case(
@@ -124,26 +78,16 @@ def independent_saturated_monocycle_support_for_case(
 
 def independent_disconnected_composition_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> SouthStarDisconnectedCompositionOracleResult:
+) -> SouthStarDisconnectedCompositionResult:
     fragment_supports = _independent_fragment_supports_for_case(case)
-    fragment_orders = tuple(permutations(range(len(fragment_supports))))
-    outputs = tuple(
-        dict.fromkeys(
-            ".".join(output_group)
-            for order in fragment_orders
-            for output_group in product(
-                *(fragment_supports[fragment_idx] for fragment_idx in order)
+    return compose_disconnected_fragment_supports(
+        tuple(
+            SouthStarFragmentSupport(
+                fragment_id=f"fragment:{fragment_idx}",
+                outputs=support,
             )
+            for fragment_idx, support in enumerate(fragment_supports)
         )
-    )
-    fragment_output_counts = tuple(len(support) for support in fragment_supports)
-    return SouthStarDisconnectedCompositionOracleResult(
-        outputs=outputs,
-        fragment_output_counts=fragment_output_counts,
-        fragment_order_policy="all_fragment_orders",
-        fragment_order_count=len(fragment_orders),
-        estimated_product_size=len(fragment_orders)
-        * reduce(mul, fragment_output_counts, 1),
     )
 
 
@@ -417,7 +361,7 @@ def _ring_stereo_carrier_contexts_by_edge(
     mol: Chem.Mol,
     *,
     marker_by_edge: dict[Edge, str],
-) -> dict[Edge, tuple[_RingStereoCarrierContext, ...]]:
+) -> dict[Edge, tuple[SouthStarCarrierContext, ...]]:
     return {
         edge: _ring_stereo_carrier_contexts_for_edge(mol, edge=edge)
         for edge in marker_by_edge
@@ -428,7 +372,7 @@ def _ring_stereo_carrier_contexts_for_edge(
     mol: Chem.Mol,
     *,
     edge: Edge,
-) -> tuple[_RingStereoCarrierContext, ...]:
+) -> tuple[SouthStarCarrierContext, ...]:
     contexts = []
     for center_atom_idx, substituent_atom_idx in (edge, (edge[1], edge[0])):
         for neighbor in mol.GetAtomWithIdx(center_atom_idx).GetNeighbors():
@@ -440,7 +384,7 @@ def _ring_stereo_carrier_contexts_for_edge(
                 raise ValueError("neighbor relationship has no double-bond candidate")
             if bond.GetBondType() == Chem.BondType.DOUBLE:
                 contexts.append(
-                    _RingStereoCarrierContext(
+                    SouthStarCarrierContext(
                         center_atom_idx=center_atom_idx,
                         double_neighbor_idx=neighbor_idx,
                     )
@@ -475,8 +419,8 @@ def _ring_stereo_tree_fragments(
     visited: frozenset[int],
     blocked_edge: Edge,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> tuple[_RingStereoTraversalFragment, ...]:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalFragment, ...]:
     visited = visited | {atom_idx}
     children = tuple(
         neighbor.GetIdx()
@@ -496,13 +440,13 @@ def _ring_stereo_tree_fragments(
     ):
         return ()
 
-    atom_event = _RingStereoTraversalEvent(
+    atom_event = SouthStarTraversalEvent(
         kind="atom",
         text=_atom_text(mol.GetAtomWithIdx(atom_idx)),
         atom_idx=atom_idx,
     )
     if not children:
-        return (_RingStereoTraversalFragment(events=(atom_event,)),)
+        return (SouthStarTraversalFragment(events=(atom_event,)),)
 
     fragments = []
     for ordered_children in permutations(sorted(children)):
@@ -537,7 +481,7 @@ def _ring_stereo_tree_fragments(
             )
             for main_fragment in main_fragments:
                 fragments.append(
-                    _RingStereoTraversalFragment(
+                    SouthStarTraversalFragment(
                         events=(atom_event,) + branch_events + main_fragment.events,
                     )
                 )
@@ -553,8 +497,8 @@ def _ring_stereo_branch_fragments(
     visited: frozenset[int],
     blocked_edge: Edge,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> tuple[_RingStereoTraversalFragment, ...]:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalFragment, ...]:
     bond_event = _ring_stereo_bond_event(
         mol,
         begin_atom_idx=begin_atom_idx,
@@ -565,13 +509,13 @@ def _ring_stereo_branch_fragments(
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
     return tuple(
-        _RingStereoTraversalFragment(
+        SouthStarTraversalFragment(
             events=(
-                _RingStereoTraversalEvent(kind="branch_open", text="("),
+                SouthStarTraversalEvent(kind="branch_open", text="("),
                 bond_event,
             )
             + child_fragment.events
-            + (_RingStereoTraversalEvent(kind="branch_close", text=")"),),
+            + (SouthStarTraversalEvent(kind="branch_close", text=")"),),
         )
         for child_fragment in _ring_stereo_tree_fragments(
             mol,
@@ -594,8 +538,8 @@ def _ring_stereo_child_fragments(
     visited: frozenset[int],
     blocked_edge: Edge,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> tuple[_RingStereoTraversalFragment, ...]:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalFragment, ...]:
     bond_event = _ring_stereo_bond_event(
         mol,
         begin_atom_idx=begin_atom_idx,
@@ -606,7 +550,7 @@ def _ring_stereo_child_fragments(
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
     return tuple(
-        _RingStereoTraversalFragment(events=(bond_event,) + child_fragment.events)
+        SouthStarTraversalFragment(events=(bond_event,) + child_fragment.events)
         for child_fragment in _ring_stereo_tree_fragments(
             mol,
             atom_idx=end_atom_idx,
@@ -627,12 +571,13 @@ def _ring_stereo_bond_event(
     begin_parent_idx: int | None,
     syntax_position: str,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> _RingStereoTraversalEvent:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> SouthStarTraversalEvent:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     if edge in marker_by_edge:
-        return _RingStereoTraversalEvent(
+        return SouthStarTraversalEvent(
             kind="bond",
+            text="",
             edge=edge,
             begin_atom_idx=begin_atom_idx,
             end_atom_idx=end_atom_idx,
@@ -649,7 +594,7 @@ def _ring_stereo_bond_event(
     bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
     if bond is None:
         raise ValueError(f"edge {edge!r} is not a bond")
-    return _RingStereoTraversalEvent(
+    return SouthStarTraversalEvent(
         kind="bond",
         text=_bond_text(mol, begin_atom_idx, end_atom_idx),
         edge=edge,
@@ -661,12 +606,12 @@ def _ring_stereo_bond_event(
 
 def _ring_stereo_with_closure_events(
     mol: Chem.Mol,
-    events: tuple[_RingStereoTraversalEvent, ...],
+    events: tuple[SouthStarTraversalEvent, ...],
     *,
     closure_edge: Edge,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> tuple[_RingStereoTraversalEvent, ...]:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalEvent, ...]:
     endpoint_positions = tuple(
         (position, event.atom_idx)
         for position, event in enumerate(events)
@@ -684,7 +629,7 @@ def _ring_stereo_with_closure_events(
         and event.begin_atom_idx is not None
         and event.end_atom_idx is not None
     }
-    open_event = _RingStereoTraversalEvent(
+    open_event = SouthStarTraversalEvent(
         kind="ring_open",
         text=_bond_text(mol, *closure_edge),
         edge=closure_edge,
@@ -700,8 +645,9 @@ def _ring_stereo_with_closure_events(
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         ),
     )
-    close_event = _RingStereoTraversalEvent(
+    close_event = SouthStarTraversalEvent(
         kind="ring_close",
+        text="",
         edge=closure_edge,
         begin_atom_idx=close_atom_idx,
         end_atom_idx=open_atom_idx,
@@ -727,8 +673,8 @@ def _ring_stereo_closure_marker_slot(
     end_atom_idx: int,
     begin_parent_idx: int | None,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> _RingStereoMarkerSlot | None:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> SouthStarMarkerSlot | None:
     if closure_edge not in marker_by_edge:
         return None
     return _ring_stereo_marker_slot(
@@ -748,10 +694,10 @@ def _ring_stereo_marker_slot(
     end_atom_idx: int,
     begin_parent_idx: int | None,
     syntax_position: str,
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
-) -> _RingStereoMarkerSlot:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> SouthStarMarkerSlot:
     parent = "root" if begin_parent_idx is None else str(begin_parent_idx)
-    return _RingStereoMarkerSlot(
+    return SouthStarMarkerSlot(
         slot_id=f"{syntax_position}:{parent}->{begin_atom_idx}->{end_atom_idx}",
         edge=edge,
         begin_atom_idx=begin_atom_idx,
@@ -763,7 +709,7 @@ def _ring_stereo_marker_slot(
 
 
 def _ring_stereo_marker_assignments_for_events(
-    events: tuple[_RingStereoTraversalEvent, ...],
+    events: tuple[SouthStarTraversalEvent, ...],
     *,
     marker_by_edge: dict[Edge, str],
 ) -> tuple[dict[str, str], tuple[SouthStarRingStereoOracleEquation, ...]]:
@@ -804,7 +750,7 @@ def _ring_stereo_marker_assignments_for_events(
 
 
 def _ring_stereo_closure_open_atom_by_edge(
-    events: tuple[_RingStereoTraversalEvent, ...],
+    events: tuple[SouthStarTraversalEvent, ...],
 ) -> dict[Edge, int]:
     return {
         normalized_edge(event.edge): event.begin_atom_idx
@@ -817,7 +763,7 @@ def _ring_stereo_closure_open_atom_by_edge(
 
 
 def _render_ring_stereo_events(
-    events: tuple[_RingStereoTraversalEvent, ...],
+    events: tuple[SouthStarTraversalEvent, ...],
     *,
     marker_by_slot: dict[str, str],
 ) -> str:
@@ -838,7 +784,7 @@ def _render_ring_stereo_events(
 
 
 def _ring_stereo_traversal_orientation_flip(
-    slot: _RingStereoMarkerSlot,
+    slot: SouthStarMarkerSlot,
     *,
     ring_stereo_closure_open_atom_by_edge: dict[Edge, int],
 ) -> bool:
@@ -865,7 +811,7 @@ def _ring_stereo_traversal_orientation_flip(
 
 
 def _ring_stereo_ring_open_orientation_flip(
-    slot: _RingStereoMarkerSlot,
+    slot: SouthStarMarkerSlot,
 ) -> bool:
     flip = False
     for context in slot.adjacent_contexts:
@@ -888,7 +834,7 @@ def _ring_stereo_child_edge_allowed(
     begin_atom_idx: int,
     end_atom_idx: int,
     begin_parent_idx: int | None,
-    carrier_contexts_by_edge: dict[Edge, tuple[_RingStereoCarrierContext, ...]],
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
 ) -> bool:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     contexts = carrier_contexts_by_edge.get(edge, ())
@@ -951,7 +897,7 @@ def _tree_fragments_with_blocked_edge(
     parent_idx: int | None,
     visited: frozenset[int],
     blocked_edge: Edge,
-) -> tuple[_RingFragment, ...]:
+) -> tuple[SouthStarTraversalFragment, ...]:
     visited = visited | {atom_idx}
     children = tuple(
         neighbor.GetIdx()
@@ -960,9 +906,13 @@ def _tree_fragments_with_blocked_edge(
         and neighbor.GetIdx() not in visited
         and normalized_edge((atom_idx, neighbor.GetIdx())) != blocked_edge
     )
-    atom_token = _RingToken(_atom_text(mol.GetAtomWithIdx(atom_idx)), atom_idx=atom_idx)
+    atom_event = SouthStarTraversalEvent(
+        kind="atom",
+        text=_atom_text(mol.GetAtomWithIdx(atom_idx)),
+        atom_idx=atom_idx,
+    )
     if not children:
-        return (_RingFragment(tokens=(atom_token,)),)
+        return (SouthStarTraversalFragment(events=(atom_event,)),)
 
     fragments = []
     for ordered_children in permutations(sorted(children)):
@@ -986,13 +936,13 @@ def _tree_fragments_with_blocked_edge(
             blocked_edge=blocked_edge,
         )
         for branch_group in product(*branch_groups):
-            branch_tokens = tuple(
-                token for branch in branch_group for token in branch.tokens
+            branch_events = tuple(
+                event for branch in branch_group for event in branch.events
             )
             for main_fragment in main_fragments:
                 fragments.append(
-                    _RingFragment(
-                        tokens=(atom_token,) + branch_tokens + main_fragment.tokens,
+                    SouthStarTraversalFragment(
+                        events=(atom_event,) + branch_events + main_fragment.events,
                     )
                 )
     return tuple(dict.fromkeys(fragments))
@@ -1005,13 +955,20 @@ def _branch_fragments(
     end_atom_idx: int,
     visited: frozenset[int],
     blocked_edge: Edge,
-) -> tuple[_RingFragment, ...]:
-    bond_text = _bond_text(mol, begin_atom_idx, end_atom_idx)
+) -> tuple[SouthStarTraversalFragment, ...]:
+    bond_event = _plain_ring_bond_event(
+        mol,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+    )
     return tuple(
-        _RingFragment(
-            tokens=(_RingToken("("), _RingToken(bond_text))
-            + child_fragment.tokens
-            + (_RingToken(")"),)
+        SouthStarTraversalFragment(
+            events=(
+                SouthStarTraversalEvent(kind="branch_open", text="("),
+                bond_event,
+            )
+            + child_fragment.events
+            + (SouthStarTraversalEvent(kind="branch_close", text=")"),)
         )
         for child_fragment in _tree_fragments_with_blocked_edge(
             mol,
@@ -1030,10 +987,14 @@ def _child_fragments(
     end_atom_idx: int,
     visited: frozenset[int],
     blocked_edge: Edge,
-) -> tuple[_RingFragment, ...]:
-    bond_text = _bond_text(mol, begin_atom_idx, end_atom_idx)
+) -> tuple[SouthStarTraversalFragment, ...]:
+    bond_event = _plain_ring_bond_event(
+        mol,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+    )
     return tuple(
-        _RingFragment(tokens=(_RingToken(bond_text),) + child_fragment.tokens)
+        SouthStarTraversalFragment(events=(bond_event,) + child_fragment.events)
         for child_fragment in _tree_fragments_with_blocked_edge(
             mol,
             atom_idx=end_atom_idx,
@@ -1044,12 +1005,15 @@ def _child_fragments(
     )
 
 
-def _render_with_ring_digit(fragment: _RingFragment, closure_edge: Edge) -> str:
+def _render_with_ring_digit(
+    fragment: SouthStarTraversalFragment,
+    closure_edge: Edge,
+) -> str:
     rendered = []
     endpoint_count = 0
-    for token in fragment.tokens:
-        rendered.append(token.text)
-        if token.atom_idx in closure_edge:
+    for event in fragment.events:
+        rendered.append(event.text)
+        if event.atom_idx in closure_edge:
             endpoint_count += 1
             rendered.append("1")
     if endpoint_count != 2:
@@ -1057,6 +1021,22 @@ def _render_with_ring_digit(fragment: _RingFragment, closure_edge: Edge) -> str:
             f"closure edge {closure_edge!r} endpoints were not both rendered"
         )
     return "".join(rendered)
+
+
+def _plain_ring_bond_event(
+    mol: Chem.Mol,
+    *,
+    begin_atom_idx: int,
+    end_atom_idx: int,
+) -> SouthStarTraversalEvent:
+    edge = normalized_edge((begin_atom_idx, end_atom_idx))
+    return SouthStarTraversalEvent(
+        kind="bond",
+        text=_bond_text(mol, begin_atom_idx, end_atom_idx),
+        edge=edge,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+    )
 
 
 def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:

@@ -113,6 +113,11 @@ current atom-stereo slice: `[C@H]`, `[C@@H]`, `[C@]`, and `[C@@]`. Isotope,
 charge, radical, and atom-map modifiers are deliberately deferred and must fail
 before enumeration with named unsupported categories.
 
+Supported atom text is rendered through typed obligations rather than local
+string patches: organic-subset atoms have no bracket obligation, `[H]` records
+an element-required bracket obligation, and tetrahedral carbon text records a
+stereo-token obligation plus an implicit-hydrogen obligation when applicable.
+
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.
 

@@ -44,10 +44,11 @@ is probably fixture-driven and should be deferred.
    composing fixture-only fragment supports.
 
 4. **Extend atom-text facts before broad atom modifiers.**
-   Explicit bracket hydrogens have regression evidence, but charge, isotope,
-   atom map, radicals, and broader bracket rendering remain unsupported. These
-   should be handled as atom-text facts and renderer obligations, not by adding
-   isolated string cases.
+   Completed in `South Star 100`: atom text now has a typed renderer-obligation
+   boundary. Organic-subset atoms, explicit bracket hydrogen, and tetrahedral
+   carbon text are represented as atom-text obligations; charge, isotope, atom
+   map, radicals, and broader bracket rendering remain named fail-fast
+   categories until their modifier obligations are modeled.
 
 5. **Decide aromatic semantics before aromatic support.**
    Aromatic rings need a separate semantic model: lowercase aromatic grammar,

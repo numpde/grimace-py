@@ -11,6 +11,7 @@ from operator import mul
 from rdkit import Chem
 
 from grimace._south_star.atom_text import atom_text_for_supported_atom
+from grimace._south_star.atom_text import tetrahedral_atom_text_obligation
 from grimace._south_star.connected_traversal import (
     connected_graph_plan_from_events,
 )
@@ -1132,8 +1133,11 @@ def _atom_text_for_traversal(
         source_ligand_order=fact.source_ligand_order,
         emitted_ligand_order=emitted_ligand_order,
     )
-    hydrogen_text = "H" if fact.implicit_hydrogen_count else ""
-    return f"[{atom.GetSymbol()}{token}{hydrogen_text}]"
+    return tetrahedral_atom_text_obligation(
+        atom,
+        stereo_token=token,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+    ).emitted_text
 
 
 def _emitted_tetrahedral_ligand_order(

@@ -98,6 +98,22 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
         self.assertEqual("CHI_UNSPECIFIED", mapped_atom.chiral_tag)
         self.assertIn("unsupported_atom_map", facts.unsupported_categories)
 
+    def test_atom_text_facts_expose_deferred_modifier_inputs(self) -> None:
+        cases = (
+            ("[2H][H]", "isotope", 2, "unsupported_atom_isotope"),
+            ("[H+]", "formal_charge", 1, "unsupported_atom_charge"),
+            ("[H]", "radical_electron_count", 1, "unsupported_radical_atom"),
+            ("[CH3:7]C", "atom_map_number", 7, "unsupported_atom_map"),
+        )
+
+        for smiles, field_name, expected_value, expected_category in cases:
+            facts = SouthStarMoleculeFacts.from_mol(parse_smiles(smiles))
+            atom_fact = facts.atom_text_facts[0]
+
+            with self.subTest(smiles=smiles):
+                self.assertEqual(expected_value, getattr(atom_fact, field_name))
+                self.assertIn(expected_category, facts.unsupported_categories)
+
     def test_ring_system_facts_expose_polycyclic_witness_shape(self) -> None:
         facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CC2CCCC2C1"))
 

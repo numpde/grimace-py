@@ -42,6 +42,19 @@ class SouthStarAtomTextUnsupportedReason:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarAtomTextObligation:
+    atom_idx: int
+    fields: SouthStarAtomTextFields
+    emitted_text: str
+    token_family: str
+    bracket_obligations: tuple[str, ...]
+
+    @property
+    def uses_brackets(self) -> bool:
+        return self.emitted_text.startswith("[") and self.emitted_text.endswith("]")
+
+
 def south_star_atom_text_fields(atom: Chem.Atom) -> SouthStarAtomTextFields:
     return SouthStarAtomTextFields(
         atom_idx=atom.GetIdx(),
@@ -114,7 +127,9 @@ def unsupported_atom_text_reasons(
     return tuple(reasons)
 
 
-def atom_text_for_supported_atom(atom: Chem.Atom) -> str:
+def atom_text_obligation_for_supported_atom(
+    atom: Chem.Atom,
+) -> SouthStarAtomTextObligation:
     fields = south_star_atom_text_fields(atom)
     unsupported = unsupported_atom_text_reasons(fields)
     if unsupported:
@@ -128,7 +143,80 @@ def atom_text_for_supported_atom(atom: Chem.Atom) -> str:
             "South Star atom text rendering requires a non-aromatic atom"
         )
     if fields.symbol == "H":
-        return "[H]"
+        return SouthStarAtomTextObligation(
+            atom_idx=fields.atom_idx,
+            fields=fields,
+            emitted_text="[H]",
+            token_family="bracket_atom",
+            bracket_obligations=("element_requires_bracket",),
+        )
     if fields.symbol in SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS:
-        return fields.symbol
+        return SouthStarAtomTextObligation(
+            atom_idx=fields.atom_idx,
+            fields=fields,
+            emitted_text=fields.symbol,
+            token_family="organic_subset",
+            bracket_obligations=(),
+        )
     raise AssertionError(f"unhandled South Star atom text symbol {fields.symbol!r}")
+
+
+def tetrahedral_atom_text_obligation(
+    atom: Chem.Atom,
+    *,
+    stereo_token: str,
+    implicit_hydrogen_count: int,
+) -> SouthStarAtomTextObligation:
+    fields = south_star_atom_text_fields(atom)
+    _assert_supported_tetrahedral_atom_text_fields(
+        fields,
+        stereo_token=stereo_token,
+        implicit_hydrogen_count=implicit_hydrogen_count,
+    )
+    hydrogen_text = "H" if implicit_hydrogen_count else ""
+    hydrogen_obligation = (
+        ("implicit_hydrogen_text",) if implicit_hydrogen_count else ()
+    )
+    return SouthStarAtomTextObligation(
+        atom_idx=fields.atom_idx,
+        fields=fields,
+        emitted_text=f"[{fields.symbol}{stereo_token}{hydrogen_text}]",
+        token_family="bracket_atom",
+        bracket_obligations=(
+            "tetrahedral_stereo_token",
+            *hydrogen_obligation,
+        ),
+    )
+
+
+def _assert_supported_tetrahedral_atom_text_fields(
+    fields: SouthStarAtomTextFields,
+    *,
+    stereo_token: str,
+    implicit_hydrogen_count: int,
+) -> None:
+    unsupported = unsupported_atom_text_reasons(fields)
+    if unsupported:
+        categories = ", ".join(reason.category for reason in unsupported)
+        raise NotImplementedError(
+            f"South Star tetrahedral atom text unsupported for atom "
+            f"{fields.atom_idx}: {categories}"
+        )
+    if fields.is_aromatic:
+        raise NotImplementedError(
+            "South Star tetrahedral atom text rendering requires a non-aromatic atom"
+        )
+    if fields.symbol != "C":
+        raise NotImplementedError(
+            "South Star tetrahedral atom text currently supports carbon centers"
+        )
+    if stereo_token not in {"@", "@@"}:
+        raise ValueError(f"unsupported tetrahedral stereo token {stereo_token!r}")
+    if implicit_hydrogen_count not in {0, 1}:
+        raise ValueError(
+            "South Star tetrahedral atom text requires zero or one implicit hydrogen"
+        )
+
+
+def atom_text_for_supported_atom(atom: Chem.Atom) -> str:
+    return atom_text_obligation_for_supported_atom(atom).emitted_text

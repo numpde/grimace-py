@@ -8,6 +8,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
+    SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
@@ -21,6 +22,7 @@ from tests.helpers.south_star_exact_support import (
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
     disconnected_composition_algebra_proof_for_case,
+    independent_directional_component_product_proof_for_case,
     ring_core_proof_records_for_case,
     shared_disconnected_composition_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
@@ -421,6 +423,48 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         diagnostic.emitted_ligand_order,
                     )
                     self.assertEqual((), proof_input.ring_closure_ligand_atom_indices)
+
+    def test_independent_directional_component_product_proof_matches_fixtures(
+        self,
+    ) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            result = independent_directional_component_product_proof_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertFalse(result.expected_support_strings_used)
+                self.assertGreater(len(result.component_ids), 1)
+                self.assertEqual(
+                    (2,) * len(result.component_ids),
+                    result.component_local_assignment_counts,
+                )
+                self.assertEqual(4, result.component_assignment_product_size)
+                self.assertGreater(
+                    result.traversal_skeletons_per_component_assignment,
+                    0,
+                )
+                self.assertEqual(
+                    result.traversal_count,
+                    result.component_assignment_product_size
+                    * result.traversal_skeletons_per_component_assignment,
+                )
+                self.assertTrue(result.disjoint_component_carriers)
+                self.assertTrue(result.all_components_uncoupled)
+                self.assertTrue(result.all_equations_component_local)
+                self.assertTrue(
+                    result.all_traversals_have_component_product_assignment
+                )
+                self.assertTrue(result.all_solver_assignments_match_traversal)
+                self.assertEqual(result.marker_slot_count, result.equation_count)
+                self.assertEqual(result.traversal_count, result.solver_assignment_count)
+                self.assertGreater(result.marker_slot_count, result.traversal_count)
+                self.assertEqual(result.raw_output_count, result.output_count)
+                self.assertEqual(len(case.expected_support), result.output_count)
 
     def test_tetrahedral_token_obligation_outputs_preserve_semantics(self) -> None:
         case_ids = {

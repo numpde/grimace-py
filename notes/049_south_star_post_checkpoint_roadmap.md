@@ -16,8 +16,8 @@ disconnected-composition, nonstereo-monocycle, ring-stereo monocycle,
 star-shaped tetrahedral atom-stereo, ring/tetrahedral, and nonstereo
 polycyclic authority promotions, plus polycyclic ring-stereo promotion:
 
-- unified-reference-backed cases: `33`
-- shared-pipeline promotion candidates: `33`
+- unified-reference-backed cases: `34`
+- shared-pipeline promotion candidates: `34`
 - temporary-witness-backed cases: `0`
 - graph-native regression-backed cases: `0`
 - public API blocker cases: `0`

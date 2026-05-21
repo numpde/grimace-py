@@ -291,6 +291,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "ring_tetrahedral_monocycle_center",
                 "ring_adjacent_tetrahedral_monocycle",
                 "polycyclic_ring_stereo_bridge",
+                "independent_directional_components_diene",
             ),
             matrix.unified_reference_backed_case_ids,
         )

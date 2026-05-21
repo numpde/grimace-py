@@ -12,11 +12,14 @@ not reference-model vocabulary. Shared constraint-family records live under
 """
 
 from dataclasses import dataclass
+from functools import reduce
+from operator import mul
 
 from rdkit import Chem
 
 from grimace._south_star.annotation_policy import Edge
 from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.components import SouthStarSemanticStereoComponent
 from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
@@ -33,6 +36,7 @@ from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
+from grimace._south_star.parity_solver import solve_marker_slot_parity_equations
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.tetrahedral import SouthStarTetrahedralCenterFact
 from grimace._south_star.tetrahedral import (
@@ -83,6 +87,27 @@ class SouthStarTetrahedralAtomStereoProof:
     output_count: int
     expected_output_count: int
     fixture_cross_check_passed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarIndependentDirectionalComponentProductProof:
+    outputs: tuple[str, ...]
+    component_ids: tuple[str, ...]
+    component_local_assignment_counts: tuple[int, ...]
+    component_assignment_product_size: int
+    traversal_skeletons_per_component_assignment: int
+    traversal_count: int
+    marker_slot_count: int
+    equation_count: int
+    solver_assignment_count: int
+    raw_output_count: int
+    output_count: int
+    disjoint_component_carriers: bool
+    all_components_uncoupled: bool
+    all_equations_component_local: bool
+    all_traversals_have_component_product_assignment: bool
+    all_solver_assignments_match_traversal: bool
+    expected_support_strings_used: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,6 +541,111 @@ def _tetrahedral_token_from_atom_text(atom_text: str) -> str:
     if "@" in atom_text:
         return "@"
     raise ValueError(f"tetrahedral atom text has no token: {atom_text!r}")
+
+
+def independent_directional_component_product_proof_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarIndependentDirectionalComponentProductProof:
+    """Explain multi-component directional support through shared equations."""
+
+    mol = parse_smiles(case.source_smiles)
+    facts = SouthStarMoleculeFacts.from_mol(mol)
+    if (
+        not facts.graph_topology.connected
+        or not facts.graph_topology.acyclic_connected_tree
+    ):
+        raise NotImplementedError(
+            "independent directional-component proof requires one acyclic component"
+        )
+    state = SouthStarComponentSupportState.from_molecule_facts(facts)
+    if len(state.components) <= 1:
+        raise NotImplementedError(
+            "independent directional-component proof requires multiple components"
+        )
+
+    component_marker_assignments = state.component_marker_assignments()
+    component_local_assignment_counts = tuple(
+        len(assignments) for assignments in component_marker_assignments
+    )
+    component_assignment_product_size = reduce(
+        mul,
+        component_local_assignment_counts,
+        1,
+    )
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    equation_groups = tuple(
+        marker_slot_parity_equations_for_traversal(state, traversal)
+        for traversal in traversals
+    )
+    solver_results = tuple(
+        solve_marker_slot_parity_equations(equations)
+        for equations in equation_groups
+    )
+    raw_outputs = tuple(
+        render_south_star_tree_traversal(traversal) for traversal in traversals
+    )
+    outputs = tuple(dict.fromkeys(raw_outputs))
+    if len(traversals) % component_assignment_product_size:
+        raise AssertionError(
+            "independent directional-component traversals must factor into "
+            "component assignments times traversal skeletons"
+        )
+
+    return SouthStarIndependentDirectionalComponentProductProof(
+        outputs=outputs,
+        component_ids=tuple(component.component_id for component in state.components),
+        component_local_assignment_counts=component_local_assignment_counts,
+        component_assignment_product_size=component_assignment_product_size,
+        traversal_skeletons_per_component_assignment=(
+            len(traversals) // component_assignment_product_size
+        ),
+        traversal_count=len(traversals),
+        marker_slot_count=sum(len(equations) for equations in equation_groups),
+        equation_count=sum(len(equations) for equations in equation_groups),
+        solver_assignment_count=sum(
+            len(result.assignments) for result in solver_results
+        ),
+        raw_output_count=len(raw_outputs),
+        output_count=len(outputs),
+        disjoint_component_carriers=_components_have_disjoint_carriers(
+            state.components
+        ),
+        all_components_uncoupled=all(
+            not component.coupling_causes for component in state.components
+        ),
+        all_equations_component_local=all(
+            len(equation.component_ids) == 1
+            for equations in equation_groups
+            for equation in equations
+        ),
+        all_traversals_have_component_product_assignment=all(
+            len(traversal.component_marker_assignments) == len(state.components)
+            for traversal in traversals
+        ),
+        all_solver_assignments_match_traversal=all(
+            tuple(sorted(result.assignments[0].marker_by_slot))
+            == tuple(
+                sorted(
+                    (assignment.slot_id, assignment.marker)
+                    for assignment in traversal.marker_assignments
+                )
+            )
+            for traversal, result in zip(traversals, solver_results, strict=True)
+        ),
+        expected_support_strings_used=False,
+    )
+
+
+def _components_have_disjoint_carriers(
+    components: tuple[SouthStarSemanticStereoComponent, ...],
+) -> bool:
+    seen: set[Edge] = set()
+    for component in components:
+        for edge in component.eligible_carrier_edges:
+            if edge in seen:
+                return False
+            seen.add(edge)
+    return True
 
 
 def _assert_ring_stereo_monocycle_domain(mol: Chem.Mol) -> None:

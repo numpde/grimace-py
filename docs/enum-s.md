@@ -129,7 +129,8 @@ Current unsupported categories include:
   `unsupported_atom_isotope`, `unsupported_atom_charge`,
   `unsupported_radical_atom`, and `unsupported_atom_map`;
 - dative or metal-containing stereo surfaces;
-- fused/polycyclic rings, reported as `fused_or_polycyclic_ring`;
+- polycyclic rings outside the current non-aromatic nonstereo skeleton slice,
+  reported as `fused_or_polycyclic_ring`;
 - ring/tetrahedral interactions, including ring-member chiral atoms and
   ring-adjacent chiral atoms whose ligand order depends on a ring path, reported
   as `ring_tetrahedral_interaction`;
@@ -141,22 +142,22 @@ Current unsupported categories include:
 - any component whose marker equations cannot be stated locally.
 
 These unsupported categories are classification boundaries, not implementation
-targets by themselves. The current near-term ring work is simple monocycles and
-explicit ring-closure stereo carrier bases. Aromatic surfaces, fused/polycyclic
-ring systems, and ring/tetrahedral interactions require separate semantic
-models before enumeration should widen to them.
+targets by themselves. The current near-term ring work is simple monocycles,
+non-aromatic nonstereo polycyclic skeletons, and explicit ring-closure stereo
+carrier bases. Aromatic surfaces, polycyclic stereo, and ring/tetrahedral
+interactions require separate semantic models before enumeration should widen
+to them.
 
 The current aromatic stance is fail-fast exclusion of aromatic RDKit molecule
 facts. See `notes/040_south_star_aromatic_boundary.md` for the alternatives and
 why kekule-looking input text is not enough when normal RDKit parsing still
 sets aromatic flags.
 
-The current polycyclic stance is also fail-fast. Ring-system facts are named,
-but fused/polycyclic traversal still needs graph-native choices for spanning
-trees, closure edges, label allocation, and closure-event ordering before
-support should widen. Guardrail witnesses cover fused, spiro-like, and bridged
-polycyclic shapes; they must expose ring membership facts and return no partial
-support. See `notes/041_south_star_ring_system_model.md`.
+The current polycyclic stance supports non-aromatic nonstereo skeletons only.
+Ring-system facts are named, and graph-native traversal chooses spanning trees,
+non-tree closure edges, labels, and event-local closure endpoints without using
+RDKit writer order as authority. Polycyclic stereo and aromatic ring systems
+remain fail-fast boundaries. See `notes/041_south_star_ring_system_model.md`.
 
 ## Annotation Policy
 
@@ -199,6 +200,9 @@ Graph-native EnumS results expose private generation diagnostics:
 - fragment-order count;
 - stereo-component count;
 - traversal skeleton count;
+- unique spanning-tree count;
+- closure-edge count;
+- closure-label count;
 - marker-slot count;
 - local assignment count;
 - solved assignment count;
@@ -349,7 +353,7 @@ bar is not reduced to informal confidence.
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native
 enumerator needs a broader molecule and syntax surface:
 
-- polycyclic ring traversal;
+- broader polycyclic ring traversal, especially stereo and aromatic surfaces;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current neutral explicit-hydrogen and

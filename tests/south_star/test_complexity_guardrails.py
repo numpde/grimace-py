@@ -51,6 +51,9 @@ class SouthStarComplexityGuardrailTests(unittest.TestCase):
                     self.assertEqual(1, diagnostics.fragment_order_count)
                 else:
                     self.assertGreater(diagnostics.fragment_order_count, 1)
+                self.assertGreaterEqual(diagnostics.spanning_tree_count, 0)
+                self.assertGreaterEqual(diagnostics.closure_edge_count, 0)
+                self.assertGreaterEqual(diagnostics.closure_label_count, 0)
 
     def test_representative_generation_diagnostics_match_budget_fixture(self) -> None:
         support_cases_by_id = {
@@ -91,6 +94,10 @@ class SouthStarComplexityGuardrailTests(unittest.TestCase):
         self.assertIn("disconnected_stereo_fragment_and_atom", budget_case_ids)
         self.assertIn("implicit_h_tetrahedral_center", budget_case_ids)
         self.assertIn("unsaturated_nonstereo_monocycle_cyclohexene", budget_case_ids)
+        self.assertIn(
+            "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
+            budget_case_ids,
+        )
 
     def test_named_complexity_diagnostic_tracks_per_layer_timing(self) -> None:
         case = next(

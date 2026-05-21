@@ -4,9 +4,10 @@ Task: `South Star 73: Generalize ring-system traversal model`
 
 ## Current Boundary
 
-South Star currently supports simple monocycles only. Fused, bridged,
-spiro-like, and otherwise polycyclic ring systems remain fail-fast unsupported
-under `fused_or_polycyclic_ring`.
+South Star now supports simple monocycles and the first non-aromatic nonstereo
+polycyclic skeleton slice. Polycyclic stereo, aromatic ring systems,
+ring/tetrahedral interactions, and unsupported atom/bond text still remain
+fail-fast unsupported under their named categories.
 
 The important change is conceptual: ring-system information now has a named
 fact boundary. Future traversal work should consume ring-system facts instead
@@ -25,10 +26,11 @@ The ring-system fact model should describe graph structure, not writer policy:
   connected traversal will eventually need to choose;
 - whether the graph is a simple monocycle;
 - whether the graph is spiro-like;
-- whether the graph is fused/polycyclic and therefore outside current support.
+- whether the graph is fused/polycyclic and therefore needs a polycyclic
+  traversal path rather than the simple-monocycle path.
 
-That is not yet enough to enumerate polycycles. It is enough to keep the next
-modeling work honest about what must be chosen before rendering.
+That fact boundary is now enough for nonstereo skeleton traversal. It is not
+enough for polycyclic stereo or aromatic ring systems.
 
 ## Alternatives Considered
 
@@ -45,14 +47,16 @@ modeling work honest about what must be chosen before rendering.
    spanning trees, non-tree closure edges, label allocation, and closure-event
    ordering.
 
-3. Define a graph-native ring-system fact boundary first.
+3. Define a graph-native ring-system fact boundary first, then route support
+   through spanning-tree and closure-edge choices.
 
-   This is the current path. It keeps support narrow, but future code has a
-   named input shape for closure-edge selection and traversal-event generation.
+   This is the current path. It keeps support narrow, but supported polycyclic
+   skeletons now use named inputs for closure-edge selection and
+   traversal-event generation.
 
 ## Future Enumeration Choices
 
-Polycyclic support requires explicit choices before any renderer changes:
+Polycyclic skeleton support requires explicit choices before rendering:
 
 - choose a spanning tree for the connected component;
 - classify every non-tree ring edge as a closure edge;
@@ -64,9 +68,10 @@ Polycyclic support requires explicit choices before any renderer changes:
 Those choices belong in traversal and marker-slot layers, not in a post-render
 repair phase.
 
-## Guardrail Witness
+## Regression Witnesses
 
-The guardrail witnesses are deliberately unsupported:
+The first polycyclic witnesses are no longer unsupported merely because they
+are polycyclic. They are regression witnesses for the skeleton traversal path:
 
 - `C1CC2CCCC2C1` exposes a fused/polycyclic shape with shared ring atoms and a
   shared ring bond;
@@ -75,6 +80,8 @@ The guardrail witnesses are deliberately unsupported:
 - `C1CC2CCC1C2` exposes a bridged shape with multiple shared ring atoms and
   shared ring bonds.
 
-All three should expose ring-system facts with two rings, cyclomatic number
-two, and no partial support until the graph-native polycycle traversal model
-exists.
+All three should expose ring-system facts with two rings and cyclomatic number
+two. `C1CC2CCC1C2` is pinned as the first graph-native regression fixture.
+The remaining boundary is not "polycyclic" in general; it is polycyclic
+surfaces whose semantics require additional models, especially stereo,
+aromaticity, and ring/tetrahedral interactions.

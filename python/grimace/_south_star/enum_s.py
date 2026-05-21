@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import replace
 from functools import reduce
+from itertools import combinations
 from itertools import permutations
 from itertools import product
 from operator import mul
@@ -38,6 +39,7 @@ from grimace._south_star.ring_labels import DEFAULT_RING_CLOSURE_LABEL_POLICY
 from grimace._south_star.ring_labels import closure_id_for_edge
 from grimace._south_star.support_gates import (
     is_supported_monocycle_with_acyclic_branches,
+    is_supported_nonstereo_polycyclic_skeleton,
 )
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
@@ -74,6 +76,9 @@ class SouthStarEnumSGenerationDiagnostics:
     estimated_product_size: int
     raw_output_count: int
     output_count: int
+    spanning_tree_count: int = 0
+    closure_edge_count: int = 0
+    closure_label_count: int = 0
 
     @property
     def deduplication_drop_count(self) -> int:
@@ -110,6 +115,13 @@ class _CombinedMarkerAssignment:
 class _SupportGeneration:
     outputs: tuple[str, ...]
     diagnostics: SouthStarEnumSGenerationDiagnostics
+
+
+@dataclass(frozen=True, slots=True)
+class _ConnectedGraphPlanDiagnostics:
+    spanning_tree_count: int
+    closure_edge_count: int
+    closure_label_count: int
 
 
 def mol_to_smiles_enum_s_graph_native_for_case(
@@ -194,6 +206,7 @@ def _connected_generation_for_mol(
     )
     complexity_snapshot = state.complexity_snapshot()
     local_assignment_count = complexity_snapshot.estimated_product_size
+    graph_plan_diagnostics = _connected_graph_plan_diagnostics(traversals)
     return _SupportGeneration(
         outputs=outputs,
         diagnostics=SouthStarEnumSGenerationDiagnostics(
@@ -208,6 +221,9 @@ def _connected_generation_for_mol(
             estimated_product_size=len(raw_outputs),
             raw_output_count=len(raw_outputs),
             output_count=len(outputs),
+            spanning_tree_count=graph_plan_diagnostics.spanning_tree_count,
+            closure_edge_count=graph_plan_diagnostics.closure_edge_count,
+            closure_label_count=graph_plan_diagnostics.closure_label_count,
         ),
     )
 
@@ -286,6 +302,47 @@ def _disconnected_generation_for_mol(
             estimated_product_size=composition.estimated_product_size,
             raw_output_count=composition.estimated_product_size,
             output_count=len(composition.outputs),
+            spanning_tree_count=sum(
+                generation.diagnostics.spanning_tree_count
+                for generation in fragment_generations
+            ),
+            closure_edge_count=sum(
+                generation.diagnostics.closure_edge_count
+                for generation in fragment_generations
+            ),
+            closure_label_count=sum(
+                generation.diagnostics.closure_label_count
+                for generation in fragment_generations
+            ),
+        ),
+    )
+
+
+def _connected_graph_plan_diagnostics(
+    traversals: tuple[SouthStarTreeTraversal, ...],
+) -> _ConnectedGraphPlanDiagnostics:
+    plans = tuple(
+        traversal.connected_graph_plan
+        for traversal in traversals
+        if traversal.connected_graph_plan is not None
+    )
+    if not plans:
+        return _ConnectedGraphPlanDiagnostics(
+            spanning_tree_count=0,
+            closure_edge_count=0,
+            closure_label_count=0,
+        )
+    return _ConnectedGraphPlanDiagnostics(
+        spanning_tree_count=len(
+            {
+                frozenset(edge.edge for edge in plan.tree_edges)
+                for plan in plans
+            }
+        ),
+        closure_edge_count=max(len(plan.closure_edges) for plan in plans),
+        closure_label_count=max(
+            len({edge.label for edge in plan.closure_edges})
+            for plan in plans
         ),
     )
 
@@ -447,10 +504,22 @@ def _tree_traversals_for_marker_assignment(
 ) -> tuple[SouthStarTreeTraversal, ...]:
     _assert_tree_traversal_supported(mol, molecule_facts=molecule_facts)
     if is_supported_monocycle_with_acyclic_branches(mol):
-        return _monocycle_traversals(
+        return _ring_system_traversals(
             mol,
             molecule_facts=molecule_facts,
             state=state,
+            closure_edge_sets=tuple(
+                (edge,) for edge in _supported_single_ring_edges(mol)
+            ),
+            marker_by_edge=marker_by_edge,
+            component_marker_assignments=component_marker_assignments,
+        )
+    if is_supported_nonstereo_polycyclic_skeleton(mol):
+        return _ring_system_traversals(
+            mol,
+            molecule_facts=molecule_facts,
+            state=state,
+            closure_edge_sets=_supported_polycyclic_closure_edge_sets(mol),
             marker_by_edge=marker_by_edge,
             component_marker_assignments=component_marker_assignments,
         )
@@ -547,9 +616,12 @@ def _assert_tree_traversal_supported(
         return
     if is_supported_monocycle_with_acyclic_branches(mol):
         return
+    if is_supported_nonstereo_polycyclic_skeleton(mol):
+        return
     raise NotImplementedError(
         "South Star graph-native tree traversal currently requires one "
-        "connected acyclic component or one nonstereo monocycle"
+        "connected acyclic component, one supported monocycle, or one "
+        "supported nonstereo polycyclic skeleton"
     )
 
 
@@ -740,15 +812,15 @@ def _child_event_variants(
     )
 
 
-def _monocycle_traversals(
+def _ring_system_traversals(
     mol: Chem.Mol,
     *,
     molecule_facts: SouthStarMoleculeFacts,
     state: SouthStarComponentSupportState,
+    closure_edge_sets: tuple[tuple[Edge, ...], ...],
     marker_by_edge: dict[Edge, str],
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
 ) -> tuple[SouthStarTreeTraversal, ...]:
-    ring_edges = _supported_ring_closure_edges(mol)
     carrier_contexts_by_edge = _carrier_contexts_by_edge(
         mol,
         marker_by_edge=marker_by_edge,
@@ -761,10 +833,7 @@ def _monocycle_traversals(
                 events=_with_ring_closure_events(
                     mol,
                     fragment.events,
-                    closure_edge=closure_edge,
-                    closure_label=_ring_closure_label_for_single_edge(
-                        closure_edge
-                    ),
+                    closure_edges=closure_edges,
                     marker_by_edge=marker_by_edge,
                     carrier_contexts_by_edge=carrier_contexts_by_edge,
                 ),
@@ -773,25 +842,18 @@ def _monocycle_traversals(
             ),
         )
         for root_idx in molecule_facts.graph_topology.atom_indices
-        for closure_edge in ring_edges
+        for closure_edges in closure_edge_sets
         for fragment in _atom_subtree_event_variants(
             mol,
             atom_idx=root_idx,
             parent_idx=None,
             visited=frozenset(),
-            blocked_edges=frozenset((closure_edge,)),
+            blocked_edges=frozenset(closure_edges),
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
             tetrahedral_facts_by_atom={},
         )
     )
-
-
-def _ring_closure_label_for_single_edge(closure_edge: Edge) -> str:
-    (assignment,) = DEFAULT_RING_CLOSURE_LABEL_POLICY.assignments_for_edges(
-        (closure_edge,)
-    )
-    return assignment.label
 
 
 def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
@@ -809,12 +871,66 @@ def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
     )
 
 
-def _supported_ring_closure_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
+def _supported_single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
     return tuple(
         edge
         for edge in _single_ring_edges(mol)
         if _ring_closure_edge_supported(mol, edge=edge)
     )
+
+
+def _supported_polycyclic_closure_edge_sets(
+    mol: Chem.Mol,
+) -> tuple[tuple[Edge, ...], ...]:
+    closure_edge_count = mol.GetNumBonds() - mol.GetNumAtoms() + 1
+    if closure_edge_count <= 1:
+        raise ValueError("polycyclic closure-edge sets require cyclomatic number > 1")
+    candidate_edges = []
+    for bond in mol.GetBonds():
+        if not bond.IsInRing():
+            continue
+        edge = normalized_edge((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()))
+        if _ring_closure_edge_supported(mol, edge=edge):
+            candidate_edges.append(edge)
+    closure_edge_sets = tuple(
+        closure_edges
+        for closure_edges in combinations(tuple(candidate_edges), closure_edge_count)
+        if _blocked_edges_form_spanning_tree(
+            mol,
+            blocked_edges=frozenset(closure_edges),
+        )
+    )
+    if not closure_edge_sets:
+        raise NotImplementedError(
+            "South Star polycyclic traversal found no supported spanning-tree "
+            "closure-edge choices"
+        )
+    return closure_edge_sets
+
+
+def _blocked_edges_form_spanning_tree(
+    mol: Chem.Mol,
+    *,
+    blocked_edges: frozenset[Edge],
+) -> bool:
+    remaining_edge_count = mol.GetNumBonds() - len(blocked_edges)
+    if remaining_edge_count != mol.GetNumAtoms() - 1:
+        return False
+    if mol.GetNumAtoms() == 0:
+        return False
+    visited = {0}
+    stack = [0]
+    while stack:
+        atom_idx = stack.pop()
+        atom = mol.GetAtomWithIdx(atom_idx)
+        for neighbor in atom.GetNeighbors():
+            neighbor_idx = neighbor.GetIdx()
+            edge = normalized_edge((atom_idx, neighbor_idx))
+            if edge in blocked_edges or neighbor_idx in visited:
+                continue
+            visited.add(neighbor_idx)
+            stack.append(neighbor_idx)
+    return len(visited) == mol.GetNumAtoms()
 
 
 def _ring_closure_edge_supported(mol: Chem.Mol, *, edge: Edge) -> bool:
@@ -828,11 +944,58 @@ def _with_ring_closure_events(
     mol: Chem.Mol,
     events: tuple[SouthStarTraversalEvent, ...],
     *,
-    closure_edge: Edge,
-    closure_label: str,
+    closure_edges: tuple[Edge, ...],
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
 ) -> tuple[SouthStarTraversalEvent, ...]:
+    traversal_parent_by_atom = {
+        event.end_atom_idx: event.begin_atom_idx
+        for event in events
+        if event.kind == "bond"
+        and event.begin_atom_idx is not None
+        and event.end_atom_idx is not None
+    }
+    closure_events_by_atom: dict[int, list[SouthStarTraversalEvent]] = {}
+    label_assignments = DEFAULT_RING_CLOSURE_LABEL_POLICY.assignments_for_edges(
+        closure_edges
+    )
+    for assignment in label_assignments:
+        open_event, close_event = _ring_closure_event_pair(
+            mol,
+            events,
+            closure_edge=assignment.edge,
+            closure_label=assignment.label,
+            traversal_parent_by_atom=traversal_parent_by_atom,
+            marker_by_edge=marker_by_edge,
+            carrier_contexts_by_edge=carrier_contexts_by_edge,
+        )
+        if open_event.begin_atom_idx is None or close_event.begin_atom_idx is None:
+            raise AssertionError("ring closure events must carry begin atoms")
+        closure_events_by_atom.setdefault(open_event.begin_atom_idx, []).append(
+            open_event
+        )
+        closure_events_by_atom.setdefault(close_event.begin_atom_idx, []).append(
+            close_event
+        )
+    with_closure_events: list[SouthStarTraversalEvent] = []
+    for event in events:
+        with_closure_events.append(event)
+        if event.kind != "atom" or event.atom_idx is None:
+            continue
+        with_closure_events.extend(closure_events_by_atom.get(event.atom_idx, ()))
+    return tuple(with_closure_events)
+
+
+def _ring_closure_event_pair(
+    mol: Chem.Mol,
+    events: tuple[SouthStarTraversalEvent, ...],
+    *,
+    closure_edge: Edge,
+    closure_label: str,
+    traversal_parent_by_atom: dict[int, int],
+    marker_by_edge: dict[Edge, str],
+    carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
+) -> tuple[SouthStarTraversalEvent, SouthStarTraversalEvent]:
     endpoint_positions = tuple(
         (position, event.atom_idx)
         for position, event in enumerate(events)
@@ -843,13 +1006,6 @@ def _with_ring_closure_events(
             f"ring closure edge {closure_edge!r} endpoints are not both emitted"
         )
     (_, open_atom_idx), (_, close_atom_idx) = endpoint_positions
-    traversal_parent_by_atom = {
-        event.end_atom_idx: event.begin_atom_idx
-        for event in events
-        if event.kind == "bond"
-        and event.begin_atom_idx is not None
-        and event.end_atom_idx is not None
-    }
     open_event = SouthStarTraversalEvent(
         kind="ring_open",
         text=_ring_closure_bond_text(mol, closure_edge),
@@ -884,17 +1040,7 @@ def _with_ring_closure_events(
             role="close",
         ),
     )
-
-    with_closure_events: list[SouthStarTraversalEvent] = []
-    for event in events:
-        with_closure_events.append(event)
-        if event.kind != "atom":
-            continue
-        if event.atom_idx == open_atom_idx:
-            with_closure_events.append(open_event)
-        elif event.atom_idx == close_atom_idx:
-            with_closure_events.append(close_event)
-    return tuple(with_closure_events)
+    return open_event, close_event
 
 
 def _ring_closure_marker_slot(

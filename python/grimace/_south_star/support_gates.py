@@ -265,6 +265,8 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         return ()
     if is_supported_monocycle_with_acyclic_branches(mol):
         return ()
+    if is_supported_nonstereo_polycyclic_skeleton(mol):
+        return ()
     return (
         SouthStarUnsupportedFeature(
             category="ring_molecule",
@@ -303,6 +305,8 @@ def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeatur
         return ()
     ring_info = mol.GetRingInfo()
     if ring_info.NumRings() <= 1:
+        return ()
+    if is_supported_nonstereo_polycyclic_skeleton(mol):
         return ()
     ring_atom_indices = tuple(
         atom.GetIdx() for atom in mol.GetAtoms() if atom.IsInRing()
@@ -479,6 +483,33 @@ def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     return is_nonstereo_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_ring_stereo_monocycle_with_acyclic_branches(mol)
+
+
+def is_supported_nonstereo_polycyclic_skeleton(mol: Chem.Mol) -> bool:
+    if mol.GetNumAtoms() == 0:
+        return False
+    if len(Chem.GetMolFrags(mol)) != 1:
+        return False
+    ring_info = mol.GetRingInfo()
+    if ring_info.NumRings() <= 1:
+        return False
+    if any(
+        atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        for atom in mol.GetAtoms()
+    ):
+        return False
+    if any(bond.GetBondType() not in SUPPORTED_BOND_TYPES for bond in mol.GetBonds()):
+        return False
+    if any(
+        bond.GetStereo() != Chem.BondStereo.STEREONONE
+        for bond in mol.GetBonds()
+    ):
+        return False
+    if any(bond.GetBondDir() != Chem.BondDir.NONE for bond in mol.GetBonds()):
+        return False
+    return not any(atom.GetIsAromatic() for atom in mol.GetAtoms()) and not any(
+        bond.GetIsAromatic() for bond in mol.GetBonds()
+    )
 
 
 def _has_supported_monocycle_shape(

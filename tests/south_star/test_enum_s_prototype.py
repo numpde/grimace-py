@@ -132,6 +132,28 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         self.assertEqual(224, diagnostics.solved_assignment_count)
         self.assertEqual(224, diagnostics.estimated_product_size)
 
+    def test_graph_native_result_pins_polycyclic_generation_diagnostics(self) -> None:
+        case = _expanded_support_case(
+            "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane"
+        )
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+
+        self.assertIsNotNone(result.generation_diagnostics)
+        diagnostics = result.generation_diagnostics
+        self.assertEqual(1, diagnostics.fragment_count)
+        self.assertEqual((192,), diagnostics.fragment_output_counts)
+        self.assertEqual(456, diagnostics.traversal_skeleton_count)
+        self.assertEqual(0, diagnostics.marker_slot_count)
+        self.assertEqual(1, diagnostics.local_assignment_count)
+        self.assertEqual(456, diagnostics.solved_assignment_count)
+        self.assertEqual(456, diagnostics.estimated_product_size)
+        self.assertEqual(21, diagnostics.spanning_tree_count)
+        self.assertEqual(2, diagnostics.closure_edge_count)
+        self.assertEqual(2, diagnostics.closure_label_count)
+
     def test_graph_native_result_pins_disconnected_generation_diagnostics(self) -> None:
         case = _expanded_support_case("disconnected_stereo_fragment_and_atom")
         result = mol_to_smiles_enum_s_graph_native(
@@ -484,6 +506,39 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     semantic_signature(output),
                 )
 
+    def test_graph_native_traversal_enumerates_nonstereo_polycycle(self) -> None:
+        case = _expanded_support_case(
+            "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane"
+        )
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+
+        self.assertEqual(case.case_id, result.case_id)
+        self.assertEqual(case.expected_support, result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertEqual(
+                    graph_signature(case.source_smiles),
+                    graph_signature(output),
+                )
+
+    def test_graph_native_polycyclic_skeleton_examples_parse_back(self) -> None:
+        cases = (
+            "C1CC2CCCC2C1",
+            "C1CCC2(CC1)CCCC2",
+        )
+
+        for source_smiles in cases:
+            result = mol_to_smiles_enum_s_graph_native(source_smiles)
+            source_graph = graph_signature(source_smiles)
+
+            with self.subTest(source_smiles=source_smiles):
+                self.assertGreater(len(result.outputs), 0)
+                for output in result.outputs:
+                    self.assertEqual(source_graph, graph_signature(output))
+
     def test_simple_ring_traversals_expose_real_ring_closure_events(self) -> None:
         case = SouthStarSemanticCase(
             case_id="cyclohexane",
@@ -662,8 +717,8 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
     ) -> None:
         case = SouthStarSemanticCase(
             case_id="unsupported_ring",
-            semantic_feature="unsupported ring traversal boundary",
-            source_smiles="C1CC2CCCC2C1",
+            semantic_feature="unsupported aromatic ring traversal boundary",
+            source_smiles="c1ccc2ccccc2c1",
             eligible_carrier_edges=(),
             maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
                 required_marker_edge_count=0,
@@ -674,5 +729,5 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
             negative_semantic_smiles=(),
         )
 
-        with self.assertRaisesRegex(NotImplementedError, "ring_molecule"):
+        with self.assertRaisesRegex(NotImplementedError, "aromatic_ring_surface"):
             mol_to_smiles_enum_s_graph_native_for_case(case)

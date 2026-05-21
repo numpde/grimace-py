@@ -111,6 +111,24 @@
       }
     },
     {
+      "case_id": "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
+      "evidence_notes": "Regression-backed nonstereo polycyclic skeleton representative.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [192],
+        "fragment_order_count": 1,
+        "stereo_component_count": 0,
+        "traversal_skeleton_count": 456,
+        "marker_slot_count": 0,
+        "local_assignment_count": 1,
+        "solved_assignment_count": 456,
+        "estimated_product_size": 456,
+        "raw_output_count": 456,
+        "output_count": 192,
+        "deduplication_drop_count": 264
+      }
+    },
+    {
       "case_id": "implicit_h_tetrahedral_center",
       "evidence_notes": "Regression-backed tetrahedral atom-stereo representative.",
       "expected_generation_diagnostics": {

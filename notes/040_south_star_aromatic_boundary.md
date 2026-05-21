@@ -1,7 +1,8 @@
 # South Star Aromatic Boundary
 
 Tasks: `South Star 74: Decide aromatic semantic boundary`,
-`South Star 101: Decide aromatic semantic boundary`
+`South Star 101: Decide aromatic semantic boundary`,
+`South Star 106: Choose aromatic molecule-fact contract`
 
 ## Current Decision
 
@@ -22,6 +23,15 @@ kekule-looking aromatic input both become aromatic RDKit molecule facts under
 the current parser boundary. South Star should not infer a semantic support
 contract from the user's original text once RDKit has canonicalized those facts.
 
+`South Star 106` makes the molecule-fact split executable. Under normal
+sanitized RDKit parsing, both `c1ccccc1` and `C1=CC=CC=C1` produce aromatic
+atom facts, aromatic bond facts, and the same fail-fast aromatic categories.
+A deliberately kekulized molecule with aromatic flags cleared is a different
+input-preparation contract: its atom facts are non-aromatic and its bond facts
+are explicit single/double bonds. That contract is allowed to flow through the
+current non-aromatic ring machinery, but it is not the same as supporting
+aromatic RDKit molecule facts or aromatic atom text.
+
 ## Alternatives Considered
 
 1. Exclude aromaticity and require non-aromatic molecule facts.
@@ -30,7 +40,8 @@ contract from the user's original text once RDKit has canonicalized those facts.
    explicit RDKit aromatic flags, and it prevents accidental inheritance of
    RDKit's aromatic writer policy. A future non-aromatic kekule-like domain
    would need an explicit molecule-preparation contract that clears aromatic
-   flags before enumeration.
+   flags before enumeration. `South Star 106` records that this is a distinct
+   molecule-fact contract, not a source-spelling exception.
 
 2. Support kekulized semantic output only.
 

@@ -83,6 +83,19 @@ class SouthStarAuthorityPromotionCandidateInventoryItem:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarAuthorityPromotionChecklistRecord:
+    case_id: str
+    support_authority: str
+    shared_spine_coverage: str
+    fixture_string_generation_prohibited: bool
+    temporary_witness_as_cross_check_only: bool
+    semantic_parseback: str
+    output_count: int
+    estimated_product_size: int
+    unresolved_blockers: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarPipelineCoverageRecord:
     stage_id: str
     status: str
@@ -424,6 +437,62 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                     self.assertEqual("none", item.temporary_witness_dependency)
 
 
+    def test_authority_promotion_checklist_records_are_explicit(self) -> None:
+        records = south_star_authority_promotion_checklist_records()
+        records_by_id = {record.case_id: record for record in records}
+        inventory_by_id = {
+            item.case_id: item
+            for item in south_star_authority_promotion_candidate_inventory()
+        }
+
+        self.assertEqual(set(inventory_by_id), set(records_by_id))
+
+        alkene = records_by_id["isolated_alkene_z"]
+        self.assertEqual(
+            "temporary_witness_first_domain_shared_spine",
+            alkene.support_authority,
+        )
+        self.assertEqual("complete", alkene.shared_spine_coverage)
+        self.assertTrue(alkene.fixture_string_generation_prohibited)
+        self.assertTrue(alkene.temporary_witness_as_cross_check_only)
+        self.assertEqual("covered", alkene.semantic_parseback)
+        self.assertEqual(
+            ("support_authority_is_not_unified_reference",),
+            alkene.unresolved_blockers,
+        )
+
+        methyl = records_by_id["radical_atom_text_methyl"]
+        self.assertTrue(methyl.fixture_string_generation_prohibited)
+        self.assertFalse(methyl.temporary_witness_as_cross_check_only)
+        self.assertEqual("covered", methyl.semantic_parseback)
+        self.assertEqual((), methyl.unresolved_blockers)
+
+        for record in records:
+            with self.subTest(case_id=record.case_id):
+                inventory_item = inventory_by_id[record.case_id]
+                self.assertEqual(
+                    inventory_item.current_authority,
+                    record.support_authority,
+                )
+                self.assertEqual(
+                    inventory_item.shared_spine_coverage,
+                    record.shared_spine_coverage,
+                )
+                self.assertEqual(
+                    inventory_item.output_count,
+                    record.output_count,
+                )
+                self.assertEqual(
+                    inventory_item.estimated_product_size,
+                    record.estimated_product_size,
+                )
+                self.assertEqual(
+                    inventory_item.blockers,
+                    record.unresolved_blockers,
+                )
+                self.assertIn(record.semantic_parseback, {"covered", "missing"})
+
+
 def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
     first_domain_cases = load_south_star_exact_first_domain_cases()
     expanded_cases = load_south_star_expanded_support_cases()
@@ -509,6 +578,20 @@ def south_star_authority_promotion_candidate_inventory(
         )
 
     return tuple(items)
+
+
+def south_star_authority_promotion_checklist_records(
+) -> tuple[SouthStarAuthorityPromotionChecklistRecord, ...]:
+    checks_by_id = {
+        check.case_id: check for check in south_star_unified_reference_promotion_checks()
+    }
+    return tuple(
+        _authority_promotion_checklist_record(
+            inventory_item,
+            check=checks_by_id[inventory_item.case_id],
+        )
+        for inventory_item in south_star_authority_promotion_candidate_inventory()
+    )
 
 
 def south_star_unified_reference_promotion_checks(
@@ -599,6 +682,30 @@ def _authority_inventory_item(
         output_count=diagnostics.output_count,
         estimated_product_size=diagnostics.estimated_product_size,
         blockers=check.blockers,
+    )
+
+
+def _authority_promotion_checklist_record(
+    inventory_item: SouthStarAuthorityPromotionCandidateInventoryItem,
+    *,
+    check: SouthStarUnifiedReferencePromotionCheck,
+) -> SouthStarAuthorityPromotionChecklistRecord:
+    return SouthStarAuthorityPromotionChecklistRecord(
+        case_id=inventory_item.case_id,
+        support_authority=inventory_item.current_authority,
+        shared_spine_coverage=inventory_item.shared_spine_coverage,
+        fixture_string_generation_prohibited=(
+            inventory_item.fixture_string_generation_risk
+            == "none_detected_shared_spine_matches_expected_support"
+        ),
+        temporary_witness_as_cross_check_only=(
+            inventory_item.authority_class == "temporary_witness"
+            and inventory_item.shared_spine_coverage == "complete"
+        ),
+        semantic_parseback=_coverage_status(check, "semantic_evidence"),
+        output_count=inventory_item.output_count,
+        estimated_product_size=inventory_item.estimated_product_size,
+        unresolved_blockers=inventory_item.blockers,
     )
 
 

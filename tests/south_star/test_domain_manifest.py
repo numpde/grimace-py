@@ -16,6 +16,7 @@ from grimace._south_star.output_order import FirstOccurrenceOutputOrderPolicy
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_EXPANDED_SUPPORT_POLICY,
+    SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_FIRST_DOMAIN_POLICY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES,
@@ -99,12 +100,12 @@ class SouthStarDomainManifestTests(unittest.TestCase):
                 self.assertIn("shared", plan)
                 self.assertNotIn("permanent", plan.lower())
 
-    def test_first_domain_fixture_declares_temporary_witness_authority(self) -> None:
+    def test_first_domain_fixture_declares_unified_reference_authority(self) -> None:
         raw = json.loads(EXACT_FIRST_DOMAIN_FIXTURE.read_text())
 
-        self.assertIn(
+        self.assertEqual(
+            SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
             raw["support_authority"],
-            SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
         )
 
     def test_expanded_fixture_evidence_notes_match_authority_class(self) -> None:

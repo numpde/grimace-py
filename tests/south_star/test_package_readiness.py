@@ -8,6 +8,7 @@ from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS,
@@ -255,9 +256,13 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
 
     def test_readiness_matrix_reports_evidence_classes(self) -> None:
         matrix = south_star_package_readiness_matrix()
+        first_domain_case_ids = tuple(
+            case.case_id for case in load_south_star_exact_first_domain_cases()
+        )
 
         self.assertEqual(
-            (
+            first_domain_case_ids
+            + (
                 "explicit_bracket_hydrogen_h2",
                 "radical_atom_text_hydrogen",
                 "radical_atom_text_methyl",
@@ -280,12 +285,12 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             "simple_saturated_monocycle_cyclohexane",
             matrix.unified_reference_promotion_candidate_case_ids,
         )
-        self.assertIn("isolated_alkene_z", matrix.temporary_witness_case_ids)
+        self.assertNotIn("isolated_alkene_z", matrix.temporary_witness_case_ids)
         self.assertNotIn(
             "explicit_bracket_hydrogen_h2",
             matrix.regression_backed_case_ids,
         )
-        self.assertIn("isolated_alkene_z", matrix.public_api_blocker_case_ids)
+        self.assertNotIn("isolated_alkene_z", matrix.public_api_blocker_case_ids)
         self.assertNotIn(
             "radical_atom_text_methyl",
             matrix.public_api_blocker_case_ids,
@@ -326,7 +331,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                     SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
                 )
 
-    def test_unified_reference_promotion_checks_keep_temporary_witnesses_blocking(
+    def test_unified_reference_promotion_checks_classify_authority_blockers(
         self,
     ) -> None:
         checks = south_star_unified_reference_promotion_checks()
@@ -335,10 +340,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("isolated_alkene_z", checks_by_id)
         self.assertIn("simple_saturated_monocycle_cyclohexane", checks_by_id)
         self.assertIn("radical_atom_text_methyl", checks_by_id)
-        for case_id in (
-            "isolated_alkene_z",
-            "simple_saturated_monocycle_cyclohexane",
-        ):
+        for case_id in ("simple_saturated_monocycle_cyclohexane",):
             check = checks_by_id[case_id]
             with self.subTest(case_id=case_id):
                 self.assertTrue(check.shared_pipeline_generated)
@@ -354,6 +356,12 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                         record.stage_id for record in check.pipeline_coverage
                     ),
                 )
+
+        alkene = checks_by_id["isolated_alkene_z"]
+        self.assertTrue(alkene.shared_pipeline_generated)
+        self.assertTrue(alkene.promoted)
+        self.assertEqual((), alkene.blockers)
+        self.assertEqual(0, alkene.spine_bypass_count)
 
         promoted = checks_by_id["radical_atom_text_methyl"]
         self.assertTrue(promoted.shared_pipeline_generated)
@@ -424,20 +432,17 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         alkene = inventory_by_id["isolated_alkene_z"]
         self.assertEqual("exact_first_domain", alkene.fixture_family)
         self.assertEqual("first_domain_directional_bond_stereo", alkene.feature_area)
-        self.assertEqual("temporary_witness", alkene.authority_class)
+        self.assertEqual("unified_reference", alkene.authority_class)
         self.assertEqual(
             "none_detected_shared_spine_matches_expected_support",
             alkene.fixture_string_generation_risk,
         )
         self.assertEqual(
-            "temporary_witness_first_domain_shared_spine",
+            "none",
             alkene.temporary_witness_dependency,
         )
         self.assertEqual(alkene.output_count, alkene.estimated_product_size)
-        self.assertEqual(
-            ("support_authority_is_not_unified_reference",),
-            alkene.blockers,
-        )
+        self.assertEqual((), alkene.blockers)
 
         methyl = inventory_by_id["radical_atom_text_methyl"]
         self.assertEqual("expanded_support", methyl.fixture_family)
@@ -472,17 +477,14 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
 
         alkene = records_by_id["isolated_alkene_z"]
         self.assertEqual(
-            "temporary_witness_first_domain_shared_spine",
+            SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
             alkene.support_authority,
         )
         self.assertEqual("complete", alkene.shared_spine_coverage)
         self.assertTrue(alkene.fixture_string_generation_prohibited)
-        self.assertTrue(alkene.temporary_witness_as_cross_check_only)
+        self.assertFalse(alkene.temporary_witness_as_cross_check_only)
         self.assertEqual("covered", alkene.semantic_parseback)
-        self.assertEqual(
-            ("support_authority_is_not_unified_reference",),
-            alkene.unresolved_blockers,
-        )
+        self.assertEqual((), alkene.unresolved_blockers)
 
         methyl = records_by_id["radical_atom_text_methyl"]
         self.assertTrue(methyl.fixture_string_generation_prohibited)

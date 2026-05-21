@@ -9,8 +9,8 @@ from grimace._south_star.aromatic_policy import (
 
 SOUTH_STAR_FIRST_DOMAIN_POLICY = "south_star_first_domain_maximal_eligible_carrier"
 SOUTH_STAR_EXPANDED_SUPPORT_POLICY = "south_star_expanded_domain_regression"
-SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY = (
-    "temporary_witness_first_domain_shared_spine"
+SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_first_domain_directional_bond_stereo"
 )
 SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY = (
     "temporary_witness_disconnected_composition_shared_records"
@@ -45,6 +45,7 @@ SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
 
 SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
     {
+        SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     }
@@ -52,7 +53,6 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
 SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
     {
         SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
-        SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
         SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
         SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
@@ -71,11 +71,6 @@ SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
         "Fold into unified-reference fragment composition after fragment "
         "ordering and per-fragment traversal support are represented as shared "
         "facts and renderer inputs."
-    ),
-    SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY: (
-        "Fold into unified-reference first-domain completeness after the "
-        "independent witness emits only shared traversal, slot, equation, and "
-        "assignment records."
     ),
     SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY: (
         "Fold into unified-reference ring traversal after closure events, "

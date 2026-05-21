@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "policy": "south_star_first_domain_maximal_eligible_carrier",
-  "support_authority": "temporary_witness_first_domain_shared_spine",
+  "support_authority": "unified_reference_first_domain_directional_bond_stereo",
   "cases": [
     {
       "case_id": "isolated_alkene_z",

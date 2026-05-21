@@ -11,17 +11,17 @@ Task: `South Star 130: Deliberate post-checkpoint granular roadmap`
 After the 129/129a/129b/129c/129d/129e sequence, the readiness matrix is no
 longer blocked by stale shared-pipeline metadata.
 
-Current matrix:
+Current matrix after the first-domain authority promotion:
 
-- unified-reference-backed cases: `5`
+- unified-reference-backed cases: `12`
 - shared-pipeline promotion candidates: `26`
-- temporary-witness-backed cases: `18`
-- graph-native regression-backed cases: `3`
-- public API blocker cases: `21`
+- temporary-witness-backed cases: `13`
+- graph-native regression-backed cases: `1`
+- public API blocker cases: `14`
 
 Remaining blocker count:
 
-- `support_authority_is_not_unified_reference`: `21`
+- `support_authority_is_not_unified_reference`: `14`
 
 That is the right next frontier. The immediate post-checkpoint work should be
 authority migration under the one-truth reference model, not broad API export.
@@ -64,6 +64,10 @@ witness authority to unified-reference authority.
 This is the first real stereo proof. It must show that shared traversal events,
 marker slots, component facts, parity equations, annotation policy, solver
 assignments, and renderer output jointly define the full support set.
+
+Status: complete for the current first-domain fixture. The authority is now
+`unified_reference_first_domain_directional_bond_stereo`; the independent
+first-domain witness remains only as cross-check evidence.
 
 ### 130c: Promote Disconnected Composition Authority
 
@@ -118,4 +122,3 @@ If blockers remain numerous, the gate should close as no-export with exact
 remaining blockers. If blockers are reduced to a deliberately scoped subset,
 the gate can decide whether an experimental private-or-public surface is
 acceptable.
-

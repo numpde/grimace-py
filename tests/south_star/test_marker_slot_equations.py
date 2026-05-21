@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from functools import lru_cache
 import unittest
 
+import grimace._south_star.components as component_model
+import grimace._south_star.molecule_facts as molecule_fact_model
+from grimace._south_star.annotation_policy import (
+    MaximalEligibleCarrierAnnotationPolicy,
+)
 from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
+from grimace._south_star.enum_s import _ring_system_traversals
+from grimace._south_star.enum_s import _supported_polycyclic_closure_edge_sets
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_case,
@@ -13,11 +23,15 @@ from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
 from grimace._south_star.parity_solver import solve_marker_slot_parity_equations
+from grimace._south_star.reference_model import SouthStarTraversal
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
+
+
+POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES = "C1CCC/C=C\\C2CCCC2C1"
 
 
 class SouthStarMarkerSlotEquationTests(unittest.TestCase):
@@ -192,6 +206,82 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
                     },
                 )
 
+    def test_polycyclic_ring_open_carriers_have_component_equations(self) -> None:
+        state, traversals = _polycyclic_stereo_diagnostic_state_and_traversals()
+        ring_open_examples = tuple(
+            (traversal, equation)
+            for traversal in traversals
+            for equation in marker_slot_parity_equations_for_traversal(
+                state,
+                traversal,
+            )
+            if equation.syntax_position == "ring_open"
+        )
+
+        self.assertGreater(len(ring_open_examples), 0)
+        for traversal, equation in ring_open_examples[:20]:
+            ring_open_events_by_slot = {
+                event.marker_slot.slot_id: event
+                for event in traversal.events
+                if event.kind == "ring_open" and event.marker_slot is not None
+            }
+
+            with self.subTest(equation_id=equation.equation_id):
+                self.assertIn(equation.slot_id, ring_open_events_by_slot)
+                event = ring_open_events_by_slot[equation.slot_id]
+                self.assertIsNotNone(event.ring_closure)
+                self.assertTrue(equation.slot_id.startswith("ring_open:"))
+                self.assertEqual((3, 4), equation.edge)
+                self.assertEqual(("component:0",), equation.component_ids)
+                self.assertEqual(1, len(equation.feature_terms))
+                term = equation.feature_terms[0]
+                self.assertEqual("bond:4", term.feature_id)
+                self.assertEqual((4, 5), term.central_bond)
+                self.assertEqual("left", term.carrier_side)
+                self.assertEqual("/", term.source_marker)
+
+    def test_polycyclic_ring_open_carriers_solve_with_same_solver(self) -> None:
+        state, traversals = _polycyclic_stereo_diagnostic_state_and_traversals()
+        ring_open_traversals = tuple(
+            traversal
+            for traversal in traversals
+            if any(
+                event.kind == "ring_open" and event.marker_slot is not None
+                for event in traversal.events
+            )
+        )
+
+        self.assertGreater(len(ring_open_traversals), 0)
+        for traversal in ring_open_traversals[:20]:
+            equations = marker_slot_parity_equations_for_traversal(state, traversal)
+            solver_result = solve_marker_slot_parity_equations(equations)
+            expected_assignment = tuple(
+                sorted(
+                    (assignment.slot_id, assignment.marker)
+                    for assignment in traversal.marker_assignments
+                )
+            )
+
+            with self.subTest(rendered=traversal.render()):
+                self.assertTrue(
+                    any(
+                        equation.syntax_position == "ring_open"
+                        for equation in equations
+                    )
+                )
+                self.assertEqual(1, len(solver_result.assignments))
+                self.assertEqual(
+                    expected_assignment,
+                    solver_result.assignments[0].marker_by_slot,
+                )
+
+    def test_polycyclic_stereo_diagnostic_does_not_widen_public_support(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            "fused_or_polycyclic_ring|ring_stereo",
+        ):
+            mol_to_smiles_enum_s_graph_native(POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES)
+
 
 def _case(case_id: str):
     return next(
@@ -205,3 +295,44 @@ def _expanded_case(case_id: str):
         for case in load_south_star_expanded_support_cases()
         if case.case_id == case_id
     )
+
+
+@lru_cache(maxsize=1)
+def _polycyclic_stereo_diagnostic_state_and_traversals():
+    # This deliberately bypasses the public support gate to test the internal
+    # equation language before polycyclic stereo is promoted to supported output.
+    mol = parse_smiles(POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES)
+    facts = molecule_fact_model.SouthStarMoleculeFacts.from_mol(mol)
+    features = component_model._source_stereo_features(mol)
+    components = component_model._componentize_features(features)
+    if len(components) != 1:
+        raise AssertionError("polycyclic stereo diagnostic expects one component")
+    diagnostic_facts = replace(
+        facts,
+        components=components,
+        carrier_opportunities=molecule_fact_model._carrier_opportunities(
+            components
+        ),
+    )
+    state = SouthStarComponentSupportState(
+        molecule_facts=diagnostic_facts,
+        annotation_policy=MaximalEligibleCarrierAnnotationPolicy(),
+    )
+    assignment = state.component_marker_assignments()[0][0]
+    traversals = _ring_system_traversals(
+        mol,
+        molecule_facts=diagnostic_facts,
+        state=state,
+        closure_edge_sets=_supported_polycyclic_closure_edge_sets(mol),
+        marker_by_edge=dict(assignment.marker_by_edge),
+        component_marker_assignments=(assignment,),
+    )
+    return state, _assert_traversal_tuple(traversals)
+
+
+def _assert_traversal_tuple(
+    traversals: tuple[SouthStarTraversal, ...],
+) -> tuple[SouthStarTraversal, ...]:
+    if not traversals:
+        raise AssertionError("polycyclic stereo diagnostic produced no traversals")
+    return traversals

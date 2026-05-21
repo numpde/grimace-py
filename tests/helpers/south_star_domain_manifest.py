@@ -140,6 +140,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "unsaturated_nonstereo_monocycle",
             "explicit_bracket_hydrogen",
             "radical_atom_text",
+            "charged_atom_text",
         }
     ),
     annotation_policies=frozenset(

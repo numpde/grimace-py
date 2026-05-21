@@ -102,6 +102,7 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
         cases = (
             ("[2H][H]", "isotope", 2),
             ("[H+]", "formal_charge", 1),
+            ("[Cl-]", "formal_charge", -1),
             ("[CH3:7]C", "atom_map_number", 7),
         )
 

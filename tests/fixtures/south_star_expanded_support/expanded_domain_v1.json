@@ -692,6 +692,37 @@
       ]
     },
     {
+      "case_id": "charged_atom_text_chloride",
+      "feature_area": "charged_atom_text",
+      "source_smiles": "[Cl-]",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for the first charged atom-text slice: formal charge is represented by the bracket atom charge suffix and checked by semantic parse-back evidence.",
+      "expected_support": [
+        "[Cl-]"
+      ]
+    },
+    {
+      "case_id": "charged_atom_text_ammonium",
+      "feature_area": "charged_atom_text",
+      "source_smiles": "[NH4+]",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for the first charged atom-text slice with explicit hydrogens: formal charge and explicit-H count are represented by typed bracket atom obligations and checked by semantic parse-back evidence.",
+      "expected_support": [
+        "[NH4+]"
+      ]
+    },
+    {
+      "case_id": "charged_atom_text_methylammonium",
+      "feature_area": "charged_atom_text",
+      "source_smiles": "[NH3+]C",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for a connected charged atom-text slice: formal charge and explicit-H count remain local atom-text obligations while root choice is handled by graph traversal.",
+      "expected_support": [
+        "[NH3+]C",
+        "C[NH3+]"
+      ]
+    },
+    {
       "case_id": "implicit_h_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@H](F)Cl",

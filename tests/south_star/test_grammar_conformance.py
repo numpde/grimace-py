@@ -38,6 +38,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "[H][H]",
             "[2H][H]",
             "[H+]",
+            "[Cl-]",
             "[CH3:1]C",
             "[NH4+]",
             "C#N",

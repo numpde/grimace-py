@@ -103,6 +103,8 @@ The implemented private scope is deliberately narrow:
   implicit-hydrogen and quaternary-center slices;
 - explicit bracket hydrogen atoms in the narrow neutral, non-isotopic,
   non-radical form emitted as `[H]`;
+- charged bracket atom text in the first formal-charge slice, currently pinned
+  by `[Cl-]`, `[NH4+]`, and `[NH3+]C` examples;
 - radical bracket atom text in the first valence-derived slice, currently
   pinned by `[H]`, `[CH3]`, and `[O]` examples.
 
@@ -114,9 +116,10 @@ atom-map inputs additionally become typed atom-text modifier obligations, each
 tied back to the source `SouthStarAtomTextFields` record. Supported bracket
 atom text currently covers neutral `[H]`, the tetrahedral carbon forms emitted
 by the current atom-stereo slice (`[C@H]`, `[C@@H]`, `[C@]`, and `[C@@]`),
-renderer-capable isotope/charge/map forms, and the first radical forms whose
-radical count is represented by bracket atom valence, explicit-hydrogen count,
-and bond context rather than by a separate radical token.
+renderer-capable isotope/charge/map forms, and the first radical forms. Charge
+is represented by the bracket atom charge suffix. Radical count is represented
+by bracket atom valence, explicit-hydrogen count, and bond context rather than
+by a separate radical token.
 
 Supported atom text is rendered through typed obligations rather than local
 string patches: organic-subset atoms have no bracket obligation, `[H]` records
@@ -376,7 +379,7 @@ enumerator needs a broader molecule and syntax surface:
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
-  renderer-capable modifier, and first radical slices;
+  charged, renderer-capable modifier, and first radical slices;
 - aromatic ring and aromatic directional-surface models, if any;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more

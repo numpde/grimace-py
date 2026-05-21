@@ -83,6 +83,14 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 "bracket_atom_charge_suffix",
             ),
             (
+                "[Cl-]",
+                "charge",
+                "formal_charge",
+                -1,
+                None,
+                "bracket_atom_charge_suffix",
+            ),
+            (
                 "[CH3:1]C",
                 "atom_map",
                 "atom_map_number",
@@ -151,6 +159,12 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         cases = (
             ("[2H][H]", "[2H]", ("bracket_atom", "isotope_prefix")),
             ("[H+]", "[H+]", ("bracket_atom", "charge_suffix")),
+            ("[Cl-]", "[Cl-]", ("bracket_atom", "charge_suffix")),
+            (
+                "[NH4+]",
+                "[NH4+]",
+                ("bracket_atom", "explicit_hydrogen_count", "charge_suffix"),
+            ),
             (
                 "[CH3:1]C",
                 "[CH3:1]",

@@ -167,6 +167,8 @@ class SouthStarSupportGateTests(unittest.TestCase):
         cases = (
             "[2H][H]",
             "[H+]",
+            "[Cl-]",
+            "[NH4+]",
             "[CH3:1]C",
         )
 

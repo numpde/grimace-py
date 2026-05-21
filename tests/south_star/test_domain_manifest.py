@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 import unittest
 
@@ -19,6 +20,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
 from tests.helpers.south_star_exact_support import (
+    EXACT_FIRST_DOMAIN_FIXTURE,
     load_south_star_exact_first_domain_cases,
     load_south_star_expanded_support_cases,
 )
@@ -65,6 +67,27 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             with self.subTest(authority=authority):
                 self.assertNotIn("independent_", authority)
                 self.assertFalse(authority.endswith("_oracle"))
+
+    def test_first_domain_fixture_declares_temporary_witness_evidence(self) -> None:
+        raw = json.loads(EXACT_FIRST_DOMAIN_FIXTURE.read_text())
+
+        self.assertIn(
+            raw["support_evidence"],
+            SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+        )
+
+    def test_expanded_fixture_evidence_notes_match_authority_class(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            with self.subTest(case_id=case.case_id):
+                if case.support_authority in SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES:
+                    self.assertIn("Temporary witness evidence", case.evidence_notes)
+                elif case.support_authority in SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES:
+                    self.assertIn("Pinned graph-native output", case.evidence_notes)
+                else:
+                    self.assertIn(
+                        case.support_authority,
+                        SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
+                    )
 
     def test_manifest_names_fragment_order_policy(self) -> None:
         self.assertIn(

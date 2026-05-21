@@ -73,6 +73,11 @@ test or note explicitly states it is a semantic-equivalence check.
   to mirror it"; it does not mean "out of scope."
 - Avoid duplicating expected SMILES sets across tests. Put them in fixtures and
   share loaders/assertion helpers.
+- For South Star fixtures, `support_authority` is an evidence-class label, not
+  final correctness authority. Do not add `independent_*_oracle` or `*_oracle`
+  authority names. Use `temporary_witness_*` only for explicitly temporary
+  witness helpers, and name in notes/docs how the witness should fold into the
+  shared fact/event/constraint/solver/renderer model.
 
 ## Testing
 

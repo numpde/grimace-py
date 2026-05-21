@@ -10,6 +10,9 @@ from operator import mul
 from rdkit import Chem
 
 from grimace._south_star.atom_text import atom_text_for_supported_atom
+from grimace._south_star.connected_traversal import (
+    connected_graph_plan_from_events,
+)
 from grimace._south_star.component_support_state import (
     SouthStarComponentComplexitySnapshot,
     SouthStarComponentMarkerAssignment,
@@ -24,6 +27,7 @@ from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.policies import DEFAULT_SOUTH_STAR_POLICY_SET
 from grimace._south_star.policies import SouthStarPolicySet
 from grimace._south_star.reference_model import SouthStarCarrierContext
+from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.reference_model import SouthStarMarkerSlot
 from grimace._south_star.reference_model import SouthStarMarkerSlotAssignment
 from grimace._south_star.reference_model import SouthStarRingClosure
@@ -44,6 +48,8 @@ from grimace._south_star.tetrahedral import (
 
 @dataclass(frozen=True, slots=True)
 class SouthStarTreeTraversal(SouthStarTraversal):
+    connected_graph_plan: SouthStarConnectedGraphTraversalPlan | None = None
+
     def render(self) -> str:
         return render_south_star_traversal(
             self.events,
@@ -457,7 +463,7 @@ def _tree_traversals_for_marker_assignment(
     return tuple(
         _with_solved_marker_assignments(
             state,
-            SouthStarTreeTraversal(
+            _tree_traversal(
                 root_atom_idx=root_idx,
                 events=fragment.events,
                 marker_assignments=(),
@@ -475,6 +481,25 @@ def _tree_traversals_for_marker_assignment(
             carrier_contexts_by_edge=carrier_contexts_by_edge,
             tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
         )
+    )
+
+
+def _tree_traversal(
+    *,
+    root_atom_idx: int,
+    events: tuple[SouthStarTraversalEvent, ...],
+    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...],
+    component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
+) -> SouthStarTreeTraversal:
+    return SouthStarTreeTraversal(
+        root_atom_idx=root_atom_idx,
+        events=events,
+        marker_assignments=marker_assignments,
+        component_marker_assignments=component_marker_assignments,
+        connected_graph_plan=connected_graph_plan_from_events(
+            root_atom_idx=root_atom_idx,
+            events=events,
+        ),
     )
 
 
@@ -731,7 +756,7 @@ def _monocycle_traversals(
     return tuple(
         _with_solved_marker_assignments(
             state,
-            SouthStarTreeTraversal(
+            _tree_traversal(
                 root_atom_idx=root_idx,
                 events=_with_ring_closure_events(
                     mol,

@@ -1274,6 +1274,7 @@ def _emitted_tetrahedral_ligand_order(
             parent_atom_idx=parent_idx,
             child_atom_indices=ordered_children,
             ring_closure_ligand_atom_indices=(),
+            ring_closure_labels=(),
             implicit_hydrogen_count=implicit_hydrogen_count,
         )
     )

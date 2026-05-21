@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
+from grimace._south_star.connected_traversal import connected_graph_plan_from_events
+from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.reference_model import SouthStarTraversalEvent
 
 
@@ -56,6 +58,7 @@ class SouthStarTetrahedralTraversalObservation:
     parent_atom_idx: int | None
     child_atom_indices: tuple[int, ...]
     ring_closure_ligand_atom_indices: tuple[int, ...]
+    ring_closure_labels: tuple[str, ...]
     implicit_hydrogen_count: int
 
 
@@ -151,33 +154,70 @@ def tetrahedral_traversal_observation_from_events(
     center_atom_idx: int,
     implicit_hydrogen_count: int,
 ) -> SouthStarTetrahedralTraversalObservation:
+    plan = connected_graph_plan_from_events(
+        root_atom_idx=_root_atom_idx_from_events(events),
+        events=tuple(events),
+    )
+    return tetrahedral_traversal_observation_from_connected_graph_plan(
+        plan,
+        center_atom_idx=center_atom_idx,
+        implicit_hydrogen_count=implicit_hydrogen_count,
+    )
+
+
+def tetrahedral_traversal_observation_from_connected_graph_plan(
+    plan: SouthStarConnectedGraphTraversalPlan,
+    *,
+    center_atom_idx: int,
+    implicit_hydrogen_count: int,
+) -> SouthStarTetrahedralTraversalObservation:
+    if center_atom_idx not in plan.atom_order:
+        raise ValueError(
+            f"tetrahedral center {center_atom_idx} is not in traversal atom order"
+        )
+
+    parent_edges = tuple(
+        edge for edge in plan.tree_edges if edge.end_atom_idx == center_atom_idx
+    )
+    if len(parent_edges) > 1:
+        raise ValueError(
+            f"tetrahedral center {center_atom_idx} has multiple traversal parents"
+        )
+    closure_endpoints = tuple(
+        endpoint
+        for endpoint in plan.closure_endpoints
+        if endpoint.atom_idx == center_atom_idx
+    )
+    return SouthStarTetrahedralTraversalObservation(
+        center_atom_idx=center_atom_idx,
+        parent_atom_idx=(
+            parent_edges[0].begin_atom_idx if parent_edges else None
+        ),
+        child_atom_indices=tuple(
+            edge.end_atom_idx
+            for edge in plan.tree_edges
+            if edge.begin_atom_idx == center_atom_idx
+        ),
+        ring_closure_ligand_atom_indices=tuple(
+            endpoint.partner_atom_idx for endpoint in closure_endpoints
+        ),
+        ring_closure_labels=tuple(endpoint.label for endpoint in closure_endpoints),
+        implicit_hydrogen_count=implicit_hydrogen_count,
+    )
+
+
+def _root_atom_idx_from_events(events: Sequence[SouthStarTraversalEvent]) -> int:
     atom_event_positions = tuple(
         position
         for position, event in enumerate(events)
-        if event.kind == "atom" and event.atom_idx == center_atom_idx
+        if event.kind == "atom" and event.atom_idx is not None
     )
-    if len(atom_event_positions) != 1:
-        raise ValueError(
-            f"expected exactly one atom event for tetrahedral center "
-            f"{center_atom_idx}, found {len(atom_event_positions)}"
-        )
-    atom_event_position = atom_event_positions[0]
-    return SouthStarTetrahedralTraversalObservation(
-        center_atom_idx=center_atom_idx,
-        parent_atom_idx=_traversal_parent_atom_idx(
-            events[:atom_event_position],
-            center_atom_idx=center_atom_idx,
-        ),
-        child_atom_indices=_traversal_child_atom_indices(
-            events[atom_event_position + 1 :],
-            center_atom_idx=center_atom_idx,
-        ),
-        ring_closure_ligand_atom_indices=_traversal_ring_closure_ligand_atom_indices(
-            events[atom_event_position + 1 :],
-            center_atom_idx=center_atom_idx,
-        ),
-        implicit_hydrogen_count=implicit_hydrogen_count,
-    )
+    if not atom_event_positions:
+        raise ValueError("tetrahedral traversal observation requires atom events")
+    first_atom = events[atom_event_positions[0]].atom_idx
+    if first_atom is None:
+        raise AssertionError("atom event position must carry an atom index")
+    return first_atom
 
 
 def _ring_tetrahedral_interaction_obligation(
@@ -278,43 +318,3 @@ def _validate_tetrahedral_token(token: str) -> None:
     if token not in TETRAHEDRAL_TOKENS:
         raise ValueError(f"tetrahedral token must be one of {TETRAHEDRAL_TOKENS}")
 
-
-def _traversal_parent_atom_idx(
-    events_before_center: Sequence[SouthStarTraversalEvent],
-    *,
-    center_atom_idx: int,
-) -> int | None:
-    for event in reversed(events_before_center):
-        if event.kind != "bond":
-            continue
-        if event.end_atom_idx == center_atom_idx:
-            return event.begin_atom_idx
-    return None
-
-
-def _traversal_child_atom_indices(
-    events_after_center: Sequence[SouthStarTraversalEvent],
-    *,
-    center_atom_idx: int,
-) -> tuple[int, ...]:
-    return tuple(
-        event.end_atom_idx
-        for event in events_after_center
-        if event.kind == "bond"
-        and event.begin_atom_idx == center_atom_idx
-        and event.end_atom_idx is not None
-    )
-
-
-def _traversal_ring_closure_ligand_atom_indices(
-    events_after_center: Sequence[SouthStarTraversalEvent],
-    *,
-    center_atom_idx: int,
-) -> tuple[int, ...]:
-    return tuple(
-        event.end_atom_idx
-        for event in events_after_center
-        if event.kind in {"ring_open", "ring_close"}
-        and event.begin_atom_idx == center_atom_idx
-        and event.end_atom_idx is not None
-    )

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import unittest
 
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.support_gates import south_star_support_gate_report
-from grimace._south_star.reference_model import SouthStarTraversalEvent
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
     RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS,
@@ -12,9 +13,11 @@ from grimace._south_star.tetrahedral import (
     extract_tetrahedral_center_facts,
     preserving_tetrahedral_token,
     tetrahedral_token_preserves_orientation,
-    tetrahedral_traversal_observation_from_events,
+    tetrahedral_traversal_observation_from_connected_graph_plan,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
+from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
 
 class SouthStarTetrahedralFactTests(unittest.TestCase):
@@ -129,87 +132,44 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             obligation.required_fact_and_event_fields,
         )
 
-    def test_tetrahedral_traversal_observation_places_root_ring_closure_ligands(
+    def test_tetrahedral_traversal_observation_uses_plan_root_closure_ligands(
         self,
     ) -> None:
-        events = (
-            SouthStarTraversalEvent(kind="atom", text="[C@H]", atom_idx=1),
-            SouthStarTraversalEvent(
-                kind="ring_open",
-                text="",
-                begin_atom_idx=1,
-                end_atom_idx=4,
-            ),
-            SouthStarTraversalEvent(kind="branch_open", text="("),
-            SouthStarTraversalEvent(
-                kind="bond",
-                text="",
-                begin_atom_idx=1,
-                end_atom_idx=0,
-                syntax_position="branch",
-            ),
-            SouthStarTraversalEvent(kind="atom", text="F", atom_idx=0),
-            SouthStarTraversalEvent(kind="branch_close", text=")"),
-            SouthStarTraversalEvent(
-                kind="bond",
-                text="",
-                begin_atom_idx=1,
-                end_atom_idx=2,
-                syntax_position="main",
-            ),
-            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=2),
-        )
+        traversal = _traversal_by_render("FC1CCCCC1", "C1(F)CCCCC1")
+        plan = traversal.connected_graph_plan
+        self.assertIsNotNone(plan)
+        assert plan is not None
 
-        observation = tetrahedral_traversal_observation_from_events(
-            events,
+        observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+            plan,
             center_atom_idx=1,
             implicit_hydrogen_count=1,
         )
 
         self.assertIsNone(observation.parent_atom_idx)
         self.assertEqual((0, 2), observation.child_atom_indices)
-        self.assertEqual((4,), observation.ring_closure_ligand_atom_indices)
+        self.assertEqual((6,), observation.ring_closure_ligand_atom_indices)
+        self.assertEqual(("1",), observation.ring_closure_labels)
         self.assertEqual(
             (
                 IMPLICIT_HYDROGEN_LIGAND,
-                "atom:4",
+                "atom:6",
                 "atom:0",
                 "atom:2",
             ),
             emitted_tetrahedral_ligand_order_from_observation(observation),
         )
 
-    def test_tetrahedral_traversal_observation_places_parent_and_implicit_h_last(
+    def test_tetrahedral_traversal_observation_uses_plan_parent_and_closure(
         self,
     ) -> None:
-        events = (
-            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=0),
-            SouthStarTraversalEvent(
-                kind="bond",
-                text="",
-                begin_atom_idx=0,
-                end_atom_idx=1,
-                syntax_position="main",
-            ),
-            SouthStarTraversalEvent(kind="atom", text="[C@H]", atom_idx=1),
-            SouthStarTraversalEvent(
-                kind="ring_close",
-                text="",
-                begin_atom_idx=1,
-                end_atom_idx=6,
-            ),
-            SouthStarTraversalEvent(
-                kind="bond",
-                text="",
-                begin_atom_idx=1,
-                end_atom_idx=2,
-                syntax_position="main",
-            ),
-            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=2),
-        )
+        traversal = _traversal_by_render("FC1CCCCC1", "FC1CCCCC1")
+        plan = traversal.connected_graph_plan
+        self.assertIsNotNone(plan)
+        assert plan is not None
 
-        observation = tetrahedral_traversal_observation_from_events(
-            events,
+        observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+            plan,
             center_atom_idx=1,
             implicit_hydrogen_count=1,
         )
@@ -217,6 +177,7 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
         self.assertEqual(0, observation.parent_atom_idx)
         self.assertEqual((2,), observation.child_atom_indices)
         self.assertEqual((6,), observation.ring_closure_ligand_atom_indices)
+        self.assertEqual(("1",), observation.ring_closure_labels)
         self.assertEqual(
             (
                 "atom:0",
@@ -226,6 +187,36 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             ),
             emitted_tetrahedral_ligand_order_from_observation(observation),
         )
+
+    def test_ring_tetrahedral_support_still_fails_before_gate_widening(self) -> None:
+        with self.assertRaisesRegex(
+            NotImplementedError,
+            "ring_tetrahedral_interaction",
+        ):
+            mol_to_smiles_enum_s_graph_native("F[C@H]1CCCC(C)C1")
+
+
+def _traversal_by_render(source_smiles: str, rendered: str):
+    for traversal in mol_to_smiles_enum_s_tree_traversals_for_case(
+        SouthStarSemanticCase(
+            case_id="fluorocyclohexane",
+            semantic_feature="monocycle traversal observation",
+            source_smiles=source_smiles,
+            eligible_carrier_edges=(),
+            maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
+                required_marker_edge_count=0,
+            ),
+            rdkit_writer_membership_status="not_checked",
+            rdkit_writer_membership_notes=(
+                "Synthetic traversal-observation provenance case."
+            ),
+            positive_semantic_smiles=(),
+            negative_semantic_smiles=(),
+        )
+    ):
+        if traversal.render() == rendered:
+            return traversal
+    raise AssertionError(f"missing traversal rendering {rendered!r}")
 
 
 if __name__ == "__main__":

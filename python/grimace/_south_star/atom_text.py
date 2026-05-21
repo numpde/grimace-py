@@ -21,6 +21,8 @@ SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
         "[C@]",
         "[C@@]",
         "[CH3:1]",
+        "[CH3]",
+        "[O]",
     }
 )
 SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
@@ -126,11 +128,11 @@ _ATOM_TEXT_MODIFIER_OBLIGATION_SPECS = (
     _AtomTextModifierObligationSpec(
         modifier_name="radical",
         field_name="radical_electron_count",
-        unsupported_category="unsupported_radical_atom",
-        renderer_requirement="radical_valence_bracket_semantics",
+        unsupported_category=None,
+        renderer_requirement="bracket_atom_radical_valence_semantics",
         reason=(
-            "radical atom text requires an element/valence-specific bracket "
-            "semantics policy"
+            "radical atom text is represented by bracket atom valence, explicit "
+            "hydrogen, and bond context"
         ),
     ),
     _AtomTextModifierObligationSpec(
@@ -289,6 +291,7 @@ def _requires_bracket_atom_text(fields: SouthStarAtomTextFields) -> bool:
         or fields.formal_charge != 0
         or fields.atom_map_number != 0
         or fields.explicit_hydrogen_count != 0
+        or fields.radical_electron_count != 0
     )
 
 
@@ -321,6 +324,8 @@ def _bracket_atom_text_obligation(
         obligations.append("charge_suffix")
     if fields.atom_map_number != 0:
         obligations.append("atom_map_suffix")
+    if fields.radical_electron_count != 0:
+        obligations.append("radical_valence_semantics")
     if not is_south_star_bracket_atom_text_token(text):
         raise AssertionError(f"rendered unsupported South Star atom text {text!r}")
     return SouthStarAtomTextObligation(

@@ -124,7 +124,7 @@ class SouthStarConformanceOracleTests(unittest.TestCase):
     def test_small_support_oracle_checks_completeness_without_runtime_renderer(
         self,
     ) -> None:
-        cases = ("C#N", "[2H][H]", "[CH3:1]C", "[H+]")
+        cases = ("C#N", "[2H][H]", "[CH3:1]C", "[H+]", "[CH3]", "[O]")
 
         for smiles in cases:
             observed = mol_to_smiles_enum_s_graph_native(smiles).outputs

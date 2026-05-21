@@ -90,6 +90,14 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 None,
                 "bracket_atom_map_suffix",
             ),
+            (
+                "[CH3]",
+                "radical",
+                "radical_electron_count",
+                1,
+                None,
+                "bracket_atom_radical_valence_semantics",
+            ),
         )
 
         for (
@@ -122,8 +130,8 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 )
                 self.assertNotIn(expected_category, categories)
 
-    def test_radical_modifier_remains_named_unsupported_sub_boundary(self) -> None:
-        fields = south_star_atom_text_fields(parse_smiles("[H]").GetAtomWithIdx(0))
+    def test_radical_modifier_is_renderer_capable_semantic_field(self) -> None:
+        fields = south_star_atom_text_fields(parse_smiles("[CH3]").GetAtomWithIdx(0))
         obligations = atom_text_modifier_obligations(fields)
         categories = {
             reason.category for reason in unsupported_atom_text_reasons(fields)
@@ -132,16 +140,12 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         self.assertEqual(1, len(obligations))
         obligation = obligations[0]
         self.assertEqual("radical", obligation.modifier_name)
-        self.assertEqual("unsupported_radical_atom", obligation.unsupported_category)
+        self.assertIsNone(obligation.unsupported_category)
         self.assertEqual(
-            "radical_valence_bracket_semantics",
+            "bracket_atom_radical_valence_semantics",
             obligation.renderer_requirement,
         )
-        self.assertEqual(
-            "unsupported_radical_atom",
-            obligation.unsupported_reason.category,
-        )
-        self.assertIn("unsupported_radical_atom", categories)
+        self.assertNotIn("unsupported_radical_atom", categories)
 
     def test_bracket_modifier_renderer_uses_structured_fields(self) -> None:
         cases = (
@@ -152,6 +156,16 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 "[CH3:1]",
                 ("bracket_atom", "explicit_hydrogen_count", "atom_map_suffix"),
             ),
+            (
+                "[CH3]",
+                "[CH3]",
+                (
+                    "bracket_atom",
+                    "explicit_hydrogen_count",
+                    "radical_valence_semantics",
+                ),
+            ),
+            ("[O]", "[O]", ("bracket_atom", "radical_valence_semantics")),
         )
 
         for smiles, expected_text, expected_obligations in cases:
@@ -170,9 +184,16 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
 
         self.assertEqual((), atom_text_modifier_obligations(fields))
 
-    def test_modifier_obligations_do_not_enable_renderer_support(self) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "unsupported_radical_atom"):
-            atom_text_obligation_for_supported_atom(parse_smiles("[H]").GetAtomWithIdx(0))
+    def test_radical_renderer_uses_bracket_valence_semantics(self) -> None:
+        obligation = atom_text_obligation_for_supported_atom(
+            parse_smiles("[H]").GetAtomWithIdx(0)
+        )
+
+        self.assertEqual("[H]", obligation.emitted_text)
+        self.assertEqual(
+            ("bracket_atom", "element_requires_bracket", "radical_valence_semantics"),
+            obligation.bracket_obligations,
+        )
 
 
 if __name__ == "__main__":

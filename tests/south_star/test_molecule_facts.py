@@ -113,12 +113,12 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
                 self.assertEqual(expected_value, getattr(atom_fact, field_name))
                 self.assertTrue(facts.supported, facts.unsupported_categories)
 
-    def test_atom_text_facts_keep_radical_modifier_unsupported(self) -> None:
-        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("[H]"))
+    def test_atom_text_facts_expose_radical_modifier_inputs(self) -> None:
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("[CH3]"))
         atom_fact = facts.atom_text_facts[0]
 
         self.assertEqual(1, atom_fact.radical_electron_count)
-        self.assertIn("unsupported_radical_atom", facts.unsupported_categories)
+        self.assertTrue(facts.supported, facts.unsupported_categories)
 
     def test_ring_system_facts_expose_polycyclic_witness_shape(self) -> None:
         facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CC2CCCC2C1"))

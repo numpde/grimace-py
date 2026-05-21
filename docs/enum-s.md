@@ -102,18 +102,21 @@ The implemented private scope is deliberately narrow:
 - tetrahedral centers with exactly four ligands, including the current
   implicit-hydrogen and quaternary-center slices;
 - explicit bracket hydrogen atoms in the narrow neutral, non-isotopic,
-  non-radical form emitted as `[H]`.
+  non-radical form emitted as `[H]`;
+- radical bracket atom text in the first valence-derived slice, currently
+  pinned by `[H]`, `[CH3]`, and `[O]` examples.
 
 Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
 The current contract records isotope, element symbol, chirality token,
 explicit-hydrogen count, formal charge, radical electron count, atom-map
 number, and aromaticity as explicit fields. Isotope, charge, radical, and
 atom-map inputs additionally become typed atom-text modifier obligations, each
-tied back to the source `SouthStarAtomTextFields` record. The only supported
-bracket atom texts today are neutral `[H]` and the tetrahedral carbon forms
-emitted by the current atom-stereo slice: `[C@H]`, `[C@@H]`, `[C@]`, and
-`[C@@]`. Modifier rendering is deliberately deferred and must still fail before
-enumeration with named unsupported categories.
+tied back to the source `SouthStarAtomTextFields` record. Supported bracket
+atom text currently covers neutral `[H]`, the tetrahedral carbon forms emitted
+by the current atom-stereo slice (`[C@H]`, `[C@@H]`, `[C@]`, and `[C@@]`),
+renderer-capable isotope/charge/map forms, and the first radical forms whose
+radical count is represented by bracket atom valence, explicit-hydrogen count,
+and bond context rather than by a separate radical token.
 
 Supported atom text is rendered through typed obligations rather than local
 string patches: organic-subset atoms have no bracket obligation, `[H]` records
@@ -132,9 +135,6 @@ Current unsupported categories include:
 
 - query atoms or query bonds;
 - unsupported bond types;
-- atom isotopes, charges, radicals, and atom maps, reported as
-  `unsupported_atom_isotope`, `unsupported_atom_charge`,
-  `unsupported_radical_atom`, and `unsupported_atom_map`;
 - dative or metal-containing stereo surfaces;
 - polycyclic rings outside the current non-aromatic nonstereo skeleton slice,
   reported as `fused_or_polycyclic_ring`;
@@ -375,10 +375,8 @@ enumerator needs a broader molecule and syntax surface:
 - broader polycyclic ring traversal, especially stereo and aromatic surfaces;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
-- bracket atom text beyond the current neutral explicit-hydrogen and
-  tetrahedral-center slices, with isotope, charge, radical, and atom-map
-  modifiers named as typed obligations but still deliberately unsupported by
-  the renderer;
+- bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
+  renderer-capable modifier, and first radical slices;
 - aromatic ring and aromatic directional-surface models, if any;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more

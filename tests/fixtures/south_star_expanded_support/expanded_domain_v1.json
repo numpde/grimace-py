@@ -662,6 +662,36 @@
       ]
     },
     {
+      "case_id": "radical_atom_text_hydrogen",
+      "feature_area": "radical_atom_text",
+      "source_smiles": "[H]",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for the smallest radical atom-text slice: isolated bracket hydrogen parses back as a one-electron radical by bracket atom valence semantics.",
+      "expected_support": [
+        "[H]"
+      ]
+    },
+    {
+      "case_id": "radical_atom_text_methyl",
+      "feature_area": "radical_atom_text",
+      "source_smiles": "[CH3]",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for the first radical atom-text slice: radical electron count is represented by bracket atom valence, explicit hydrogen count, and semantic parse-back evidence rather than a separate radical token.",
+      "expected_support": [
+        "[CH3]"
+      ]
+    },
+    {
+      "case_id": "radical_atom_text_oxygen",
+      "feature_area": "radical_atom_text",
+      "source_smiles": "[O]",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
+      "evidence_notes": "Pinned graph-native output for the first radical atom-text slice: radical electron count is represented by bracket atom valence and semantic parse-back evidence rather than a separate radical token.",
+      "expected_support": [
+        "[O]"
+      ]
+    },
+    {
       "case_id": "implicit_h_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@H](F)Cl",

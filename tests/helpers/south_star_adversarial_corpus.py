@@ -242,10 +242,10 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
                 mutation_path=("seed", "unsupported_bond_type"),
             ),
             SouthStarAdversarialVariant(
-                variant_id="radical_atom",
-                source_smiles="[H]",
+                variant_id="dative_bond",
+                source_smiles="N->[O]",
                 axes=("unsupported_feature_trigger",),
-                mutation_path=("seed", "unsupported_radical_atom"),
+                mutation_path=("seed", "dative_bond"),
             ),
             SouthStarAdversarialVariant(
                 variant_id="aromatic_ring",

@@ -139,6 +139,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "ring_tetrahedral_monocycle",
             "unsaturated_nonstereo_monocycle",
             "explicit_bracket_hydrogen",
+            "radical_atom_text",
         }
     ),
     annotation_policies=frozenset(
@@ -178,7 +179,6 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "ring_tetrahedral_interaction",
             "unsupported_atom_text",
             "unsupported_bond_type",
-            "unsupported_radical_atom",
             "unstated_component_equation",
         }
     ),

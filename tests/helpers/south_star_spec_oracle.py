@@ -151,8 +151,6 @@ def _oracle_atom_text(atom: Chem.Atom) -> str:
         raise NotImplementedError("small support oracle excludes aromatic atoms")
     if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED:
         raise NotImplementedError("small support oracle excludes atom stereo")
-    if atom.GetNumRadicalElectrons() != 0:
-        raise NotImplementedError("small support oracle excludes radical atoms")
     symbol = atom.GetSymbol()
     if symbol not in {"H", "B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
         raise NotImplementedError(f"small support oracle excludes atom {symbol!r}")
@@ -160,7 +158,10 @@ def _oracle_atom_text(atom: Chem.Atom) -> str:
     charge = atom.GetFormalCharge()
     hydrogens = atom.GetNumExplicitHs()
     atom_map = atom.GetAtomMapNum()
-    needs_bracket = symbol == "H" or isotope or charge or hydrogens or atom_map
+    radical = atom.GetNumRadicalElectrons()
+    needs_bracket = (
+        symbol == "H" or isotope or charge or hydrogens or atom_map or radical
+    )
     if not needs_bracket:
         return symbol
     return (

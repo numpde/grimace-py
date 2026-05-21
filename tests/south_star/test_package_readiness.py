@@ -225,9 +225,10 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertIn("isolated_alkene_z", matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
+        self.assertIn("radical_atom_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)
         self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)
-        self.assertIn("unsupported_radical_atom", matrix.unsupported_categories)
+        self.assertNotIn("unsupported_radical_atom", matrix.unsupported_categories)
         self.assertEqual(
             (
                 "maximal_eligible_carrier",

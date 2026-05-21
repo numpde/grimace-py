@@ -175,10 +175,10 @@ class SouthStarSupportGateTests(unittest.TestCase):
                 report = south_star_support_gate_report(parse_smiles(smiles))
                 self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_radical_bracket_atom_modifier_is_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("[H]"))
+    def test_radical_bracket_atom_modifier_is_inside_gate_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("[CH3]"))
 
-        self.assertUnsupportedCategory("unsupported_radical_atom", report.categories)
+        self.assertTrue(report.supported, report.unsupported_features)
 
     def test_unsupported_bond_types_are_fail_fast_unsupported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C$C"))

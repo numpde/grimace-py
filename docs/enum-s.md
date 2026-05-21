@@ -120,7 +120,10 @@ The implemented private scope is deliberately narrow:
 - charged bracket atom text in the first formal-charge slice, currently pinned
   by `[Cl-]`, `[NH4+]`, and `[NH3+]C` examples;
 - radical bracket atom text in the first valence-derived slice, currently
-  pinned by `[H]`, `[CH3]`, and `[O]` examples.
+  pinned by `[H]`, `[CH3]`, and `[O]` examples;
+- markerless aromatic monocycles whose sanitized RDKit molecule facts are
+  unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
+  pinned by benzene.
 
 Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
 The current contract records isotope, element symbol, chirality token,
@@ -139,6 +142,9 @@ Supported atom text is rendered through typed obligations rather than local
 string patches: organic-subset atoms have no bracket obligation, `[H]` records
 an element-required bracket obligation, and tetrahedral carbon text records a
 stereo-token obligation plus an implicit-hydrogen obligation when applicable.
+The first aromatic slice uses the same obligation boundary: supported aromatic
+atoms emit lowercase aromatic atom text, and supported aromatic bonds use
+elided aromatic bond text.
 
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.
@@ -160,22 +166,27 @@ Current unsupported categories include:
   as `ring_tetrahedral_interaction`;
 - ring stereo outside the supported monocycle subset, reported as
   `ring_stereo`;
-- aromatic rings, reported as `aromatic_ring_surface`;
-- aromatic directional surfaces, reported separately as
+- aromatic rings outside the active markerless aromatic-monocycle slice,
+  reported as `aromatic_ring_surface`;
+- aromatic directional surfaces, including directional markers on otherwise
+  supported aromatic monocycles, reported separately as
   `aromatic_directional_surface`;
 - any component whose marker equations cannot be stated locally.
 
 These unsupported categories are classification boundaries, not implementation
 targets by themselves. The current near-term ring work is simple monocycles,
-non-aromatic nonstereo polycyclic skeletons, and explicit ring-closure stereo
-carrier bases. Aromatic surfaces, polycyclic stereo, and ring/tetrahedral
-interactions require separate semantic models before enumeration should widen
-to them.
+non-aromatic nonstereo polycyclic skeletons, markerless aromatic monocycles,
+and explicit ring-closure stereo carrier bases. Broader aromatic surfaces,
+polycyclic stereo, and ring/tetrahedral interactions require separate semantic
+models before enumeration should widen to them.
 
-The current aromatic stance is fail-fast exclusion of aromatic RDKit molecule
-facts. See `notes/040_south_star_aromatic_boundary.md` for the alternatives and
-why kekule-looking input text is not enough when normal RDKit parsing still
-sets aromatic flags.
+The current aromatic stance is a narrow active policy, not broad aromatic
+support. Sanitized markerless aromatic monocycles are supported through the
+`aromatic_text_policy` contract. Aromatic branches, fused aromatic systems,
+modified aromatic atoms, and aromatic directional overlays remain fail-fast
+boundaries. See `notes/040_south_star_aromatic_boundary.md` for the
+alternatives and why kekule-looking input text is not a separate molecule-fact
+contract when normal RDKit parsing still sets aromatic flags.
 
 The current polycyclic stance supports non-aromatic nonstereo skeletons only.
 Ring-system facts are named, and graph-native traversal chooses spanning trees,
@@ -267,13 +278,12 @@ notice hidden generate/filter behavior or accidental combinatorial growth.
 They do not justify a release note claim that `MolToSmilesEnumS` is fast,
 faster than RDKit, or production-ready.
 
-Before any EnumS performance claim, the project needs a separate semantic
-enumerator benchmark artifact. At minimum it should name the command, machine,
+The current semantic enumerator benchmark artifact is
+`notes/perf_reports/south_star_enum_s_v1.json`. It names the command, machine,
 RDKit version, Python version, repeat count, fixture/case set, supported policy
-set, output counts, and whether each row is singleton atom text, acyclic
-directional stereo, ring traversal, disconnected composition, tetrahedral
-atom-stereo, or unsupported-boundary triage. Comparisons to `MolToSmilesEnum`
-or RDKit writer sampling must be labeled as comparison metadata, not semantic
+set, output counts, and per-case feature areas. It is development evidence for
+the private semantic enumerator only. Comparisons to `MolToSmilesEnum` or
+RDKit writer sampling must be labeled as comparison metadata, not semantic
 correctness evidence.
 
 Release notes for changes touching the private EnumS path should avoid speed
@@ -289,8 +299,10 @@ PYTHONPATH=python:. python3 -m unittest tests.run_south_star_package_readiness -
 
 It aggregates the current pre-public `MolToSmilesEnumS` checks:
 
-- exact support equality where temporary witness helpers exist;
-- graph/stereo parse-back checks for regression-backed fixture domains;
+- private boundary checks for the provisional `MolToSmilesEnumS` contract;
+- exact support equality where shared unified-reference or temporary witness
+  helpers exist;
+- graph/stereo parse-back checks for semantic fixture domains;
 - unsupported-feature gate checks;
 - policy-name diagnostics;
 - generation complexity guardrails.
@@ -339,14 +351,17 @@ Exact support evidence is split by domain:
   helper that emits shared traversal/slot records;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated and unsaturated nonstereo-monocycle,
-  ring-stereo monocycle, and disconnected-composition cases are checked against
-  temporary witness helpers that consume shared traversal, slot, and
-  fragment-composition records; current star-shaped tetrahedral-center cases
-  are checked against a temporary tetrahedral witness helper. The nonstereo
-  monocycle witness checks broken ring-edge choice, tree traversal order,
-  closure digit placement, and closure bond text. The ring-stereo witness
-  checks closure-event marker slots, central-double-bond closure events, and
-  parity-equation projections by slot id.
+  markerless aromatic-monocycle, ring-stereo monocycle, disconnected-
+  composition, atom-text, bond-text, and combined-stereo cases are checked
+  against shared unified-reference helpers where promoted and temporary
+  witness helpers where not yet promoted. The nonstereo monocycle witness
+  checks broken ring-edge choice, tree traversal order, closure digit
+  placement, and closure bond text. The aromatic monocycle witness checks
+  sanitized aromatic molecule facts, lowercase aromatic atom-text obligations,
+  elided aromatic bond text, parse-back evidence, and first-occurrence
+  deduplication. The ring-stereo witness checks closure-event marker slots,
+  central-double-bond closure events, and parity-equation projections by slot
+  id.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
@@ -415,7 +430,9 @@ enumerator needs a broader molecule and syntax surface:
   private default;
 - bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
   charged, renderer-capable modifier, and first radical slices;
-- aromatic ring and aromatic directional-surface models, if any;
+- aromatic coverage beyond markerless monocycles, especially branches, fused
+  aromatic systems, modified aromatic atoms, and aromatic directional-surface
+  models;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;

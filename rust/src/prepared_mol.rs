@@ -134,17 +134,6 @@ impl PreparedMolFragmentData {
         )?;
         let prepared_graph =
             PreparedSmilesGraphData::from_any(&required_item(dict, "prepared_graph")?)?;
-        if atom_indices.len() != prepared_graph.atom_count() {
-            return Err(PyValueError::new_err(
-                "PreparedMol fragment atom_indices length does not match graph atom_count",
-            ));
-        }
-        let unique_indices = atom_indices.iter().copied().collect::<BTreeSet<_>>();
-        if unique_indices.len() != atom_indices.len() {
-            return Err(PyValueError::new_err(
-                "PreparedMol fragment atom indices must be unique",
-            ));
-        }
         Ok(Self {
             atom_indices,
             prepared_graph,
@@ -188,16 +177,58 @@ impl PreparedMolData {
                 self.schema_version
             )));
         }
+        if self.fragments.is_empty() {
+            return Err(PyValueError::new_err(
+                "PreparedMol must contain at least one fragment",
+            ));
+        }
 
         let mut atom_indices_seen = BTreeSet::new();
+        let mut previous_fragment_first_atom_idx: Option<usize> = None;
         for fragment in &self.fragments {
             self.writer_flags.validate_graph(&fragment.prepared_graph)?;
+            if fragment.atom_indices.len() != fragment.prepared_graph.atom_count() {
+                return Err(PyValueError::new_err(
+                    "PreparedMol fragment atom_indices length does not match graph atom_count",
+                ));
+            }
+            if fragment.atom_indices.is_empty() && self.fragments.len() != 1 {
+                return Err(PyValueError::new_err(
+                    "PreparedMol empty fragment is valid only for an empty molecule",
+                ));
+            }
+            if !fragment
+                .atom_indices
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+            {
+                return Err(PyValueError::new_err(
+                    "PreparedMol fragment atom indices must be sorted",
+                ));
+            }
+            if let Some(first_atom_idx) = fragment.atom_indices.first().copied() {
+                if let Some(previous_atom_idx) = previous_fragment_first_atom_idx {
+                    if first_atom_idx <= previous_atom_idx {
+                        return Err(PyValueError::new_err(
+                            "PreparedMol fragments must be ordered by atom index",
+                        ));
+                    }
+                }
+                previous_fragment_first_atom_idx = Some(first_atom_idx);
+            }
             for atom_idx in &fragment.atom_indices {
                 if !atom_indices_seen.insert(*atom_idx) {
                     return Err(PyValueError::new_err(
                         "PreparedMol fragment atom indices overlap",
                     ));
                 }
+            }
+        }
+        for (expected_idx, actual_idx) in atom_indices_seen.iter().copied().enumerate() {
+            if expected_idx != actual_idx {
+                return Err(PyValueError::new_err(
+                    "PreparedMol fragment atom indices must cover all molecule atoms",
+                ));
             }
         }
         Ok(())
@@ -789,6 +820,23 @@ mod tests {
         }
     }
 
+    fn empty_graph() -> PreparedSmilesGraphData {
+        let mut graph = single_atom_graph();
+        graph.identity_smiles = String::new();
+        graph.atom_count = 0;
+        graph.atom_atomic_numbers = Vec::new();
+        graph.atom_is_aromatic = Vec::new();
+        graph.atom_isotopes = Vec::new();
+        graph.atom_formal_charges = Vec::new();
+        graph.atom_total_hs = Vec::new();
+        graph.atom_radical_electrons = Vec::new();
+        graph.atom_map_numbers = Vec::new();
+        graph.atom_tokens = Vec::new();
+        graph.neighbors = Vec::new();
+        graph.neighbor_bond_tokens = Vec::new();
+        graph
+    }
+
     fn prepared_mol_with_fragments(fragments: Vec<PreparedMolFragmentData>) -> PreparedMolData {
         PreparedMolData {
             schema_version: PREPARED_MOL_SCHEMA_VERSION,
@@ -814,6 +862,39 @@ mod tests {
     }
 
     #[test]
+    fn rejects_empty_fragment_list() {
+        let prepared = prepared_mol_with_fragments(Vec::new());
+
+        assert!(prepared.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_fragment_atom_count_mismatch() {
+        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
+            atom_indices: Vec::new(),
+            prepared_graph: single_atom_graph(),
+        }]);
+
+        assert!(prepared.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_empty_fragment_inside_nonempty_molecule() {
+        let prepared = prepared_mol_with_fragments(vec![
+            PreparedMolFragmentData {
+                atom_indices: Vec::new(),
+                prepared_graph: empty_graph(),
+            },
+            PreparedMolFragmentData {
+                atom_indices: vec![0],
+                prepared_graph: single_atom_graph(),
+            },
+        ]);
+
+        assert!(prepared.validate().is_err());
+    }
+
+    #[test]
     fn rejects_overlapping_fragment_atom_indices() {
         let prepared = prepared_mol_with_fragments(vec![
             PreparedMolFragmentData {
@@ -825,6 +906,54 @@ mod tests {
                 prepared_graph: single_atom_graph(),
             },
         ]);
+
+        assert!(prepared.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_out_of_order_fragments() {
+        let prepared = prepared_mol_with_fragments(vec![
+            PreparedMolFragmentData {
+                atom_indices: vec![1],
+                prepared_graph: single_atom_graph(),
+            },
+            PreparedMolFragmentData {
+                atom_indices: vec![0],
+                prepared_graph: single_atom_graph(),
+            },
+        ]);
+
+        assert!(prepared.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_unsorted_fragment_atom_indices() {
+        let mut graph = single_atom_graph();
+        graph.atom_count = 2;
+        graph.atom_atomic_numbers = vec![6, 6];
+        graph.atom_is_aromatic = vec![false, false];
+        graph.atom_isotopes = vec![0, 0];
+        graph.atom_formal_charges = vec![0, 0];
+        graph.atom_total_hs = vec![4, 4];
+        graph.atom_radical_electrons = vec![0, 0];
+        graph.atom_map_numbers = vec![0, 0];
+        graph.atom_tokens = vec!["C".to_owned(), "C".to_owned()];
+        graph.neighbors = vec![Vec::new(), Vec::new()];
+        graph.neighbor_bond_tokens = vec![Vec::new(), Vec::new()];
+        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
+            atom_indices: vec![1, 0],
+            prepared_graph: graph,
+        }]);
+
+        assert!(prepared.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_missing_global_atom_indices() {
+        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
+            atom_indices: vec![1],
+            prepared_graph: single_atom_graph(),
+        }]);
 
         assert!(prepared.validate().is_err());
     }

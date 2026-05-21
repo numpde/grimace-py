@@ -61,3 +61,11 @@ The full `F[C@H]1CCCC(/C=C/Cl)C1` witness remains gated. Its remaining blocker
 is the intended next composition step: ring-local tetrahedral renderer
 obligations plus exocyclic directional marker equations on the same ring
 traversal spine.
+
+## Update After `South Star 164`
+
+`South Star 164` admits the full `F[C@H]1CCCC(/C=C/Cl)C1` witness after the
+exocyclic branch proof exists. The support gate now names the combined
+ring-local tetrahedral plus exocyclic directional monocycle scope, and fixture
+evidence checks that marker-equation and tetrahedral renderer-obligation proofs
+agree on the same rendered support.

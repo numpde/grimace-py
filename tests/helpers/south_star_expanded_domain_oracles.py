@@ -137,6 +137,20 @@ class SouthStarDirectionalTetrahedralCompositionProof:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarRingTetrahedralExocyclicDirectionalProof:
+    outputs: tuple[str, ...]
+    closure_edge_count: int
+    closure_edge_set_count: int
+    marker_slot_count: int
+    marker_assignment_count: int
+    tetrahedral_diagnostic_count: int
+    tetrahedral_proof_input_count: int
+    same_outputs_from_marker_and_tetrahedral_proofs: bool
+    tetrahedral_fixture_cross_check_passed: bool
+    expected_support_strings_used: bool
+
+
+@dataclass(frozen=True, slots=True)
 class TemporarySouthStarDisconnectedCompositionWitnessEvidence:
     outputs: tuple[str, ...]
     fragment_count: int
@@ -533,6 +547,29 @@ def shared_exocyclic_directional_monocycle_support_for_case(
     mol = parse_smiles(case.source_smiles)
     _assert_exocyclic_directional_monocycle_domain(mol)
     return _shared_ring_stereo_support_for_case(case, mol=mol)
+
+
+def shared_ring_tetrahedral_exocyclic_directional_support_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarRingTetrahedralExocyclicDirectionalProof:
+    marker_proof = shared_exocyclic_directional_monocycle_support_for_case(case)
+    tetrahedral_proof = shared_tetrahedral_atom_stereo_support_for_case(case)
+    return SouthStarRingTetrahedralExocyclicDirectionalProof(
+        outputs=marker_proof.outputs,
+        closure_edge_count=marker_proof.closure_edge_count,
+        closure_edge_set_count=marker_proof.closure_edge_set_count,
+        marker_slot_count=marker_proof.marker_slot_count,
+        marker_assignment_count=marker_proof.marker_assignment_count,
+        tetrahedral_diagnostic_count=len(tetrahedral_proof.diagnostics),
+        tetrahedral_proof_input_count=len(tetrahedral_proof.proof_inputs),
+        same_outputs_from_marker_and_tetrahedral_proofs=(
+            marker_proof.outputs == tetrahedral_proof.outputs
+        ),
+        tetrahedral_fixture_cross_check_passed=(
+            tetrahedral_proof.fixture_cross_check_passed
+        ),
+        expected_support_strings_used=False,
+    )
 
 
 def shared_polycyclic_ring_stereo_support_for_case(

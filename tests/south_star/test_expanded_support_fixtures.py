@@ -16,6 +16,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
+    SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
@@ -34,6 +35,7 @@ from tests.helpers.south_star_expanded_domain_oracles import (
     shared_nonstereo_monocycle_support_for_case,
     shared_polycyclic_ring_stereo_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
+    shared_ring_tetrahedral_exocyclic_directional_support_for_case,
     shared_saturated_monocycle_support_for_case,
     shared_tetrahedral_atom_stereo_support_for_case,
 )
@@ -421,6 +423,32 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         for equation in result.equations
                     )
                 )
+
+    def test_ring_tetrahedral_exocyclic_directional_proof_matches_fixtures(
+        self,
+    ) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            result = shared_ring_tetrahedral_exocyclic_directional_support_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertGreater(result.closure_edge_count, 0)
+                self.assertGreater(result.closure_edge_set_count, 1)
+                self.assertGreater(result.marker_slot_count, 0)
+                self.assertEqual(2, result.marker_assignment_count)
+                self.assertGreater(result.tetrahedral_diagnostic_count, 0)
+                self.assertEqual(
+                    result.tetrahedral_diagnostic_count,
+                    result.tetrahedral_proof_input_count,
+                )
+                self.assertTrue(result.same_outputs_from_marker_and_tetrahedral_proofs)
+                self.assertTrue(result.tetrahedral_fixture_cross_check_passed)
+                self.assertFalse(result.expected_support_strings_used)
 
     def test_polycyclic_ring_stereo_proof_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

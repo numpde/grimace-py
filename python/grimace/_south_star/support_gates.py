@@ -364,7 +364,9 @@ def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeatur
 def _ring_tetrahedral_interaction_features(
     mol: Chem.Mol,
 ) -> tuple[SouthStarUnsupportedFeature, ...]:
-    if is_supported_tetrahedral_monocycle_with_acyclic_branches(mol):
+    if is_supported_tetrahedral_monocycle_with_acyclic_branches(
+        mol
+    ) or is_supported_tetrahedral_exocyclic_directional_monocycle(mol):
         return ()
     return tuple(
         SouthStarUnsupportedFeature(
@@ -535,12 +537,29 @@ def is_supported_exocyclic_directional_monocycle_with_acyclic_branches(
     return len(stereo_bonds) == 1 and not stereo_bonds[0].IsInRing()
 
 
+def is_supported_tetrahedral_exocyclic_directional_monocycle(
+    mol: Chem.Mol,
+) -> bool:
+    if not extract_ring_tetrahedral_interaction_obligations(mol):
+        return False
+    if not _has_supported_monocycle_shape(mol, allow_tetrahedral_stereo=True):
+        return False
+    stereo_bonds = tuple(
+        bond
+        for bond in mol.GetBonds()
+        if bond.GetStereo() != Chem.BondStereo.STEREONONE
+    )
+    return len(stereo_bonds) == 1 and not stereo_bonds[0].IsInRing()
+
+
 def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     return is_nonstereo_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_ring_stereo_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_exocyclic_directional_monocycle_with_acyclic_branches(
+        mol
+    ) or is_supported_tetrahedral_exocyclic_directional_monocycle(
         mol
     ) or is_supported_tetrahedral_monocycle_with_acyclic_branches(mol)
 

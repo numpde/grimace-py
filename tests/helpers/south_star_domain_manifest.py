@@ -60,6 +60,9 @@ SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_exocyclic_directional_monocycle_obligations"
 )
+SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_ring_tetrahedral_exocyclic_directional_obligations"
+)
 
 SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
     {
@@ -69,6 +72,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
@@ -107,6 +111,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "directional_tetrahedral_composition",
         "explicit_bracket_hydrogen",
         "exocyclic_directional_monocycle",
+        "ring_tetrahedral_exocyclic_directional",
         "atom_map_text",
         "isotope_atom_text",
         "independent_directional_stereo_components",
@@ -162,6 +167,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "disconnected_stereo_fragments",
             "directional_tetrahedral_composition",
             "exocyclic_directional_monocycle",
+            "ring_tetrahedral_exocyclic_directional",
             "ring_stereo_monocycle",
             "nonstereo_polycyclic_skeleton",
             "polycyclic_ring_stereo",

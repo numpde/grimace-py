@@ -68,6 +68,21 @@ class SouthStarUnifiedReferencePromotionCheck:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarAuthorityPromotionCandidateInventoryItem:
+    case_id: str
+    fixture_family: str
+    feature_area: str
+    current_authority: str
+    authority_class: str
+    shared_spine_coverage: str
+    fixture_string_generation_risk: str
+    temporary_witness_dependency: str
+    output_count: int
+    estimated_product_size: int
+    blockers: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarPipelineCoverageRecord:
     stage_id: str
     status: str
@@ -356,6 +371,59 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                     )
 
 
+    def test_authority_promotion_inventory_is_reviewable(self) -> None:
+        inventory = south_star_authority_promotion_candidate_inventory()
+        inventory_by_id = {item.case_id: item for item in inventory}
+
+        expected_case_ids = {
+            case.case_id
+            for case in (
+                *load_south_star_exact_first_domain_cases(),
+                *load_south_star_expanded_support_cases(),
+            )
+        }
+        self.assertEqual(expected_case_ids, set(inventory_by_id))
+        self.assertEqual(len(expected_case_ids), len(inventory))
+
+        alkene = inventory_by_id["isolated_alkene_z"]
+        self.assertEqual("exact_first_domain", alkene.fixture_family)
+        self.assertEqual("first_domain_directional_bond_stereo", alkene.feature_area)
+        self.assertEqual("temporary_witness", alkene.authority_class)
+        self.assertEqual(
+            "none_detected_shared_spine_matches_expected_support",
+            alkene.fixture_string_generation_risk,
+        )
+        self.assertEqual(
+            "temporary_witness_first_domain_shared_spine",
+            alkene.temporary_witness_dependency,
+        )
+        self.assertEqual(alkene.output_count, alkene.estimated_product_size)
+        self.assertEqual(
+            ("support_authority_is_not_unified_reference",),
+            alkene.blockers,
+        )
+
+        methyl = inventory_by_id["radical_atom_text_methyl"]
+        self.assertEqual("expanded_support", methyl.fixture_family)
+        self.assertEqual("radical_atom_text", methyl.feature_area)
+        self.assertEqual("unified_reference", methyl.authority_class)
+        self.assertEqual("none", methyl.temporary_witness_dependency)
+        self.assertEqual((), methyl.blockers)
+
+        for item in inventory:
+            with self.subTest(case_id=item.case_id):
+                self.assertIn(
+                    item.shared_spine_coverage,
+                    {"complete", "incomplete"},
+                )
+                self.assertGreater(item.output_count, 0)
+                self.assertGreater(item.estimated_product_size, 0)
+                if item.authority_class == "temporary_witness":
+                    self.assertNotEqual("none", item.temporary_witness_dependency)
+                if item.authority_class == "unified_reference":
+                    self.assertEqual("none", item.temporary_witness_dependency)
+
+
 def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
     first_domain_cases = load_south_star_exact_first_domain_cases()
     expanded_cases = load_south_star_expanded_support_cases()
@@ -405,6 +473,42 @@ def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
             "first_occurrence_deduplication",
         ),
     )
+
+
+def south_star_authority_promotion_candidate_inventory(
+) -> tuple[SouthStarAuthorityPromotionCandidateInventoryItem, ...]:
+    checks_by_id = {
+        check.case_id: check for check in south_star_unified_reference_promotion_checks()
+    }
+    items: list[SouthStarAuthorityPromotionCandidateInventoryItem] = []
+
+    for case in load_south_star_exact_first_domain_cases():
+        items.append(
+            _authority_inventory_item(
+                case_id=case.case_id,
+                source_smiles=case.source_smiles,
+                fixture_family="exact_first_domain",
+                feature_area="first_domain_directional_bond_stereo",
+                current_authority=case.support_authority,
+                expected_support=case.expected_support,
+                check=checks_by_id[case.case_id],
+            )
+        )
+
+    for case in load_south_star_expanded_support_cases():
+        items.append(
+            _authority_inventory_item(
+                case_id=case.case_id,
+                source_smiles=case.source_smiles,
+                fixture_family="expanded_support",
+                feature_area=case.feature_area,
+                current_authority=case.support_authority,
+                expected_support=case.expected_support,
+                check=checks_by_id[case.case_id],
+            )
+        )
+
+    return tuple(items)
 
 
 def south_star_unified_reference_promotion_checks(
@@ -459,6 +563,45 @@ def south_star_unified_reference_promotion_checks(
     return tuple(checks)
 
 
+def _authority_inventory_item(
+    *,
+    case_id: str,
+    source_smiles: str,
+    fixture_family: str,
+    feature_area: str,
+    current_authority: str,
+    expected_support: tuple[str, ...],
+    check: SouthStarUnifiedReferencePromotionCheck,
+) -> SouthStarAuthorityPromotionCandidateInventoryItem:
+    result = mol_to_smiles_enum_s_graph_native(source_smiles, case_id=case_id)
+    diagnostics = result.generation_diagnostics
+    if diagnostics is None:
+        raise AssertionError("authority inventory requires generation diagnostics")
+    if result.outputs != expected_support:
+        raise AssertionError(
+            f"authority inventory case {case_id!r} no longer matches expected support"
+        )
+    return SouthStarAuthorityPromotionCandidateInventoryItem(
+        case_id=case_id,
+        fixture_family=fixture_family,
+        feature_area=feature_area,
+        current_authority=current_authority,
+        authority_class=_authority_class(current_authority),
+        shared_spine_coverage=(
+            "complete" if check.shared_pipeline_generated else "incomplete"
+        ),
+        fixture_string_generation_risk=(
+            "none_detected_shared_spine_matches_expected_support"
+            if check.shared_pipeline_generated
+            else "risk_expected_support_remains_generation_oracle"
+        ),
+        temporary_witness_dependency=_temporary_witness_dependency(current_authority),
+        output_count=diagnostics.output_count,
+        estimated_product_size=diagnostics.estimated_product_size,
+        blockers=check.blockers,
+    )
+
+
 def _promotion_check(
     *,
     case_id: str,
@@ -485,6 +628,22 @@ def _promotion_check(
         promoted=not blockers,
         blockers=tuple(blockers),
     )
+
+
+def _authority_class(current_authority: str) -> str:
+    if current_authority in SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES:
+        return "unified_reference"
+    if current_authority in SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES:
+        return "temporary_witness"
+    if current_authority == SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY:
+        return "regression_witness"
+    raise AssertionError(f"unclassified South Star authority {current_authority!r}")
+
+
+def _temporary_witness_dependency(current_authority: str) -> str:
+    if current_authority in SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES:
+        return current_authority
+    return "none"
 
 
 def _pipeline_coverage_for_case(

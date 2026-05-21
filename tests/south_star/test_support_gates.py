@@ -142,6 +142,25 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertTrue(report.supported, report.unsupported_features)
         self.assertNotIn("ring_molecule", report.categories)
 
+    def test_exocyclic_directional_branch_on_monocycle_stays_gated(
+        self,
+    ) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CC(/C=C/Cl)CCC1"))
+
+        self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertNotIn("ring_stereo", report.categories)
+
+    def test_ring_tetrahedral_with_directional_branch_stays_gated(
+        self,
+    ) -> None:
+        report = south_star_support_gate_report(parse_smiles("F[C@H]1CCCC(/C=C/Cl)C1"))
+
+        self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertUnsupportedCategory(
+            "ring_tetrahedral_interaction",
+            report.categories,
+        )
+
     def test_fused_ring_tetrahedral_interaction_keeps_ring_system_blocker(
         self,
     ) -> None:

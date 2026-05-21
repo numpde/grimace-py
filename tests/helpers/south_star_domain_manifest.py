@@ -55,6 +55,45 @@ SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     }
 )
+SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
+    SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY: (
+        "Fold into unified-reference fragment composition after fragment "
+        "ordering and per-fragment traversal support are represented as shared "
+        "facts and renderer inputs."
+    ),
+    SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY: (
+        "Fold into unified-reference first-domain completeness after the "
+        "independent witness emits only shared traversal, slot, equation, and "
+        "assignment records."
+    ),
+    SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY: (
+        "Fold into unified-reference ring traversal after closure events, "
+        "label policy, and bond-text obligations are represented by the shared "
+        "spine."
+    ),
+    SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY: (
+        "Fold into unified-reference polycyclic stereo after closure-edge "
+        "choices and marker equations solve through the shared traversal "
+        "records."
+    ),
+    SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY: (
+        "Fold into unified-reference ring stereo after closure marker slots "
+        "and parity equations are first-class shared constraint records."
+    ),
+    SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY: (
+        "Fold into unified-reference ring/tetrahedral support after emitted "
+        "ligand order is represented as an atom-stereo obligation over shared "
+        "ring traversal events."
+    ),
+    SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY: (
+        "Fold into unified-reference saturated ring traversal after closure "
+        "edge selection and ring-label placement are shared traversal records."
+    ),
+    SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY: (
+        "Fold into unified-reference atom stereo after tetrahedral ligand-order "
+        "constraints are solved as shared atom-stereo obligations."
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)

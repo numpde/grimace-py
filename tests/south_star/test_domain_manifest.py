@@ -19,6 +19,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_FIRST_DOMAIN_POLICY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES,
+    SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
@@ -77,6 +78,17 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             with self.subTest(authority=authority):
                 self.assertNotIn("independent_", authority)
                 self.assertFalse(authority.endswith("_oracle"))
+
+    def test_temporary_witness_authorities_have_fold_in_plans(self) -> None:
+        self.assertEqual(
+            SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+            frozenset(SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS),
+        )
+        for authority, plan in SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS.items():
+            with self.subTest(authority=authority):
+                self.assertIn("unified-reference", plan)
+                self.assertIn("shared", plan)
+                self.assertNotIn("permanent", plan.lower())
 
     def test_first_domain_fixture_declares_temporary_witness_authority(self) -> None:
         raw = json.loads(EXACT_FIRST_DOMAIN_FIXTURE.read_text())

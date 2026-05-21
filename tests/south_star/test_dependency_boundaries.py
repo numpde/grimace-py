@@ -17,6 +17,13 @@ SOUTH_STAR_REFERENCE_MODEL_PATH = (
     / "_south_star"
     / "reference_model.py"
 )
+SOUTH_STAR_MARKER_EQUATIONS_PATH = (
+    SOUTH_STAR_TEST_ROOT.parent.parent
+    / "python"
+    / "grimace"
+    / "_south_star"
+    / "marker_equations.py"
+)
 COMPARISON_HELPER_NAMES: frozenset[str] = frozenset(
     {
         "south_star_comparison.py",
@@ -129,6 +136,11 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
                     "South Star reference model records must not import runtime, "
                     f"solver, RDKit, support-gate, or test surfaces: {module_name!r}",
                 )
+
+    def test_marker_equations_do_not_import_enum_s_generator(self) -> None:
+        modules = _imported_modules(SOUTH_STAR_MARKER_EQUATIONS_PATH)
+
+        self.assertNotIn("grimace._south_star.enum_s", modules)
 
     def test_shared_traversal_record_does_not_render(self) -> None:
         for record_type in (SouthStarTraversal, SouthStarConnectedGraphTraversalPlan):

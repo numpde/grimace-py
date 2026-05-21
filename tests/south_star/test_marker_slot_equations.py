@@ -14,9 +14,6 @@ from grimace._south_star.enum_s import _supported_polycyclic_closure_edge_sets
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.marker_equations import (
-    marker_slot_parity_equations_for_case,
-)
-from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
@@ -27,6 +24,9 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import south_star_conformance_report
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
+)
+from tests.helpers.south_star_marker_equations import (
+    marker_slot_parity_equations_for_case,
 )
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 

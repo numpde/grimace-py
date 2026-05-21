@@ -5,14 +5,18 @@ import unittest
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import load_south_star_expanded_support_cases
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 from tests.helpers.south_star_unified_reference import (
+    is_markerless_acyclic_tree_domain,
     is_single_atom_atom_text_domain,
     is_two_atom_markerless_atom_text_domain,
+    markerless_acyclic_tree_support_from_shared_spine,
     single_atom_atom_text_support_from_facts,
     two_atom_markerless_atom_text_support_from_facts,
 )
@@ -25,6 +29,15 @@ SINGLE_ATOM_ATOM_TEXT_CASE_IDS = frozenset(
         "radical_atom_text_oxygen",
         "charged_atom_text_chloride",
         "charged_atom_text_ammonium",
+    }
+)
+
+MARKERLESS_ACYCLIC_TREE_CASE_IDS = frozenset(
+    {
+        "markerless_acyclic_ethanol",
+        "markerless_acyclic_isopropanol",
+        "markerless_acyclic_acetone",
+        "markerless_acyclic_acetonitrile",
     }
 )
 
@@ -96,6 +109,43 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                     case.support_authority,
                 )
 
+    def test_markerless_acyclic_tree_cases_have_shared_spine_support(
+        self,
+    ) -> None:
+        cases = {
+            case.case_id: case
+            for case in load_south_star_expanded_support_cases()
+            if case.case_id in MARKERLESS_ACYCLIC_TREE_CASE_IDS
+        }
+        self.assertEqual(MARKERLESS_ACYCLIC_TREE_CASE_IDS, frozenset(cases))
+
+        for case in cases.values():
+            with self.subTest(case_id=case.case_id):
+                facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+                self.assertTrue(is_markerless_acyclic_tree_domain(facts))
+                proof = markerless_acyclic_tree_support_from_shared_spine(case)
+
+                self.assertFalse(proof.expected_support_strings_used)
+                self.assertEqual(case.expected_support, proof.support)
+                self.assertEqual(proof.output_count, len(case.expected_support))
+                self.assertGreaterEqual(proof.raw_output_count, proof.output_count)
+                self.assertEqual(facts.graph_topology.atom_count, proof.atom_count)
+                self.assertEqual(facts.graph_topology.bond_count, proof.bond_count)
+                self.assertGreater(proof.traversal_count, 0)
+                self.assertGreater(proof.bond_event_count, 0)
+                if proof.atom_count > 3:
+                    self.assertGreater(proof.branch_event_count, 0)
+
+                result = mol_to_smiles_enum_s_graph_native(
+                    case.source_smiles,
+                    case_id=case.case_id,
+                )
+                self.assertEqual(proof.support, result.outputs)
+                self.assertEqual(
+                    SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
+                    case.support_authority,
+                )
+
     def test_single_atom_atom_text_domain_rejects_wider_atom_text_cases(self) -> None:
         cases = {
             case.case_id: case for case in load_south_star_expanded_support_cases()
@@ -126,6 +176,26 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
         self.assertFalse(is_two_atom_markerless_atom_text_domain(facts))
         with self.assertRaisesRegex(NotImplementedError, "two-atom"):
             two_atom_markerless_atom_text_support_from_facts(facts)
+
+    def test_markerless_acyclic_tree_domain_rejects_stereo_and_ring_cases(
+        self,
+    ) -> None:
+        cases_by_id = {
+            case.case_id: case for case in load_south_star_expanded_support_cases()
+        }
+        cases_by_id.update(
+            {case.case_id: case for case in load_south_star_semantic_cases()}
+        )
+        for case_id in (
+            "isolated_alkene_z",
+            "simple_saturated_monocycle_cyclohexane",
+        ):
+            case = cases_by_id[case_id]
+            with self.subTest(case_id=case_id):
+                facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+                self.assertFalse(is_markerless_acyclic_tree_domain(facts))
+                with self.assertRaisesRegex(NotImplementedError, "acyclic-tree"):
+                    markerless_acyclic_tree_support_from_shared_spine(case)
 
 
 if __name__ == "__main__":

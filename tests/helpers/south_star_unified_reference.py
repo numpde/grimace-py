@@ -3,13 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from grimace._south_star.atom_text import atom_text_obligation_for_supported_fields
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
+from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 
 @dataclass(frozen=True, slots=True)
 class SouthStarSingleAtomAtomTextSupport:
     emitted_text: str
     support: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarMarkerlessAcyclicTreeSupportProof:
+    case_id: str
+    atom_count: int
+    bond_count: int
+    traversal_count: int
+    bond_event_count: int
+    branch_event_count: int
+    raw_output_count: int
+    output_count: int
+    support: tuple[str, ...]
+    expected_support_strings_used: bool
 
 
 def is_single_atom_atom_text_domain(facts: SouthStarMoleculeFacts) -> bool:
@@ -79,6 +96,71 @@ def two_atom_markerless_atom_text_support_from_facts(
         f"{atom_text_by_idx[end_idx]}{bond_text}{atom_text_by_idx[begin_idx]}",
     )
     return tuple(dict.fromkeys(outputs))
+
+
+def is_markerless_acyclic_tree_domain(facts: SouthStarMoleculeFacts) -> bool:
+    topology = facts.graph_topology
+    return (
+        facts.supported
+        and topology.connected
+        and topology.acyclic_connected_tree
+        and topology.atom_count >= 3
+        and len(facts.atom_text_facts) == topology.atom_count
+        and len(facts.bond_text_facts) == topology.bond_count
+        and not topology.ring_system.has_rings
+        and not facts.components
+        and not facts.carrier_opportunities
+        and not facts.tetrahedral_center_facts
+    )
+
+
+def markerless_acyclic_tree_support_from_shared_spine(
+    case: object,
+) -> SouthStarMarkerlessAcyclicTreeSupportProof:
+    mol = parse_smiles(case.source_smiles)
+    facts = SouthStarMoleculeFacts.from_mol(mol)
+    if not is_markerless_acyclic_tree_domain(facts):
+        raise NotImplementedError(
+            "markerless acyclic-tree unified reference requires one connected "
+            "acyclic molecule, at least three atoms, supported atom/bond text, "
+            "and no stereo constraints"
+        )
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    if any(
+        event.marker_slot is not None or event.renderer_input is not None
+        for traversal in traversals
+        for event in traversal.events
+    ):
+        raise AssertionError(
+            "markerless acyclic-tree proof must not use stereo marker slots or "
+            "renderer-input obligations"
+        )
+    raw_outputs = tuple(
+        render_south_star_tree_traversal(traversal) for traversal in traversals
+    )
+    support = tuple(dict.fromkeys(raw_outputs))
+    return SouthStarMarkerlessAcyclicTreeSupportProof(
+        case_id=case.case_id,
+        atom_count=facts.graph_topology.atom_count,
+        bond_count=facts.graph_topology.bond_count,
+        traversal_count=len(traversals),
+        bond_event_count=sum(
+            1
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind == "bond"
+        ),
+        branch_event_count=sum(
+            1
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind in {"branch_open", "branch_close"}
+        ),
+        raw_output_count=len(raw_outputs),
+        output_count=len(support),
+        support=support,
+        expected_support_strings_used=False,
+    )
 
 
 def _bond_text_from_fact(bond_type: str) -> str:

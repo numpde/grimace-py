@@ -11,10 +11,11 @@ Task: `South Star 130: Deliberate post-checkpoint granular roadmap`
 After the 129/129a/129b/129c/129d/129e sequence, the readiness matrix is no
 longer blocked by stale shared-pipeline metadata.
 
-Current matrix after the first-domain authority promotion:
+Current matrix after the first-domain and markerless acyclic-tree authority
+promotions:
 
-- unified-reference-backed cases: `12`
-- shared-pipeline promotion candidates: `26`
+- unified-reference-backed cases: `16`
+- shared-pipeline promotion candidates: `30`
 - temporary-witness-backed cases: `13`
 - graph-native regression-backed cases: `1`
 - public API blocker cases: `14`
@@ -46,15 +47,19 @@ The straight line is:
 Goal: extend the single-atom atom-text proof to connected markerless atom/bond
 text cases.
 
-Initial targets:
+Initial targets were:
 
 - `explicit_bracket_hydrogen_h2`;
 - `charged_atom_text_methylammonium`;
-- later neutral organic-subset acyclic markerless cases.
+- neutral organic-subset acyclic markerless cases.
 
 This should derive support from molecule facts, atom-text facts, bond-text
 facts, traversal events, and renderer output. It should not use expected
 fixture strings as generation input.
+
+Status: complete for the current markerless acyclic-tree fixture slice:
+ethanol, isopropanol, acetone, and acetonitrile are now
+`unified_reference_markerless_acyclic_tree`.
 
 ### 130b: Promote First-Domain Directional Stereo Authority
 

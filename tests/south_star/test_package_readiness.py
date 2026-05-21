@@ -264,6 +264,10 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             first_domain_case_ids
             + (
                 "explicit_bracket_hydrogen_h2",
+                "markerless_acyclic_ethanol",
+                "markerless_acyclic_isopropanol",
+                "markerless_acyclic_acetone",
+                "markerless_acyclic_acetonitrile",
                 "radical_atom_text_hydrogen",
                 "radical_atom_text_methyl",
                 "radical_atom_text_oxygen",
@@ -301,6 +305,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)
+        self.assertIn("markerless_acyclic_tree", matrix.supported_feature_areas)
         self.assertIn("radical_atom_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)
         self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)

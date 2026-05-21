@@ -662,6 +662,62 @@
       ]
     },
     {
+      "case_id": "markerless_acyclic_ethanol",
+      "feature_area": "markerless_acyclic_tree",
+      "source_smiles": "CCO",
+      "support_authority": "unified_reference_markerless_acyclic_tree",
+      "evidence_notes": "Unified-reference markerless acyclic-tree evidence: support is rendered from shared molecule facts, tree traversals, atom/bond text, branch events, and first-occurrence dedup; no fixture strings are used as generation input.",
+      "expected_support": [
+        "CCO",
+        "C(C)O",
+        "C(O)C",
+        "OCC"
+      ]
+    },
+    {
+      "case_id": "markerless_acyclic_isopropanol",
+      "feature_area": "markerless_acyclic_tree",
+      "source_smiles": "CC(C)O",
+      "support_authority": "unified_reference_markerless_acyclic_tree",
+      "evidence_notes": "Unified-reference markerless acyclic-tree evidence for a branched tree: support is rendered from shared molecule facts, tree traversals, atom/bond text, branch events, and first-occurrence dedup.",
+      "expected_support": [
+        "CC(C)O",
+        "CC(O)C",
+        "C(C)(C)O",
+        "C(C)(O)C",
+        "C(O)(C)C",
+        "OC(C)C"
+      ]
+    },
+    {
+      "case_id": "markerless_acyclic_acetone",
+      "feature_area": "markerless_acyclic_tree",
+      "source_smiles": "CC(=O)C",
+      "support_authority": "unified_reference_markerless_acyclic_tree",
+      "evidence_notes": "Unified-reference markerless acyclic-tree evidence for explicit double-bond text: support is rendered from shared molecule facts, tree traversals, atom/bond text, branch events, and first-occurrence dedup.",
+      "expected_support": [
+        "CC(=O)C",
+        "CC(C)=O",
+        "C(C)(=O)C",
+        "C(C)(C)=O",
+        "C(=O)(C)C",
+        "O=C(C)C"
+      ]
+    },
+    {
+      "case_id": "markerless_acyclic_acetonitrile",
+      "feature_area": "markerless_acyclic_tree",
+      "source_smiles": "CC#N",
+      "support_authority": "unified_reference_markerless_acyclic_tree",
+      "evidence_notes": "Unified-reference markerless acyclic-tree evidence for explicit triple-bond text: support is rendered from shared molecule facts, tree traversals, atom/bond text, branch events, and first-occurrence dedup.",
+      "expected_support": [
+        "CC#N",
+        "C(C)#N",
+        "C(#N)C",
+        "N#CC"
+      ]
+    },
+    {
       "case_id": "radical_atom_text_hydrogen",
       "feature_area": "radical_atom_text",
       "source_smiles": "[H]",

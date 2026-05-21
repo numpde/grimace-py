@@ -64,10 +64,14 @@ from tests.helpers.south_star_unified_reference import (
 
 
 @dataclass(frozen=True, slots=True)
-class TemporarySouthStarRingStereoWitnessResult:
+class SouthStarRingStereoSupportProof:
     outputs: tuple[str, ...]
     equations: tuple[SouthStarMarkerSlotParityEquation, ...]
     closure_edge_count: int
+    closure_edge_set_count: int
+    closure_edges_per_traversal: int
+    closure_label_count: int
+    marker_slot_count: int
     marker_assignment_count: int
 
 
@@ -315,39 +319,93 @@ def _fragment_support_authority(*, source_smiles: str, outputs: tuple[str, ...])
 
 def shared_ring_stereo_monocycle_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> TemporarySouthStarRingStereoWitnessResult:
+) -> SouthStarRingStereoSupportProof:
     """Check ring-stereo fixtures through shared traversal/equation records."""
     mol = parse_smiles(case.source_smiles)
     _assert_ring_stereo_monocycle_domain(mol)
+    return _shared_ring_stereo_support_for_case(case, mol=mol)
+
+
+def shared_polycyclic_ring_stereo_support_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarRingStereoSupportProof:
+    """Check polycyclic ring-stereo fixtures through shared equations."""
+    mol = parse_smiles(case.source_smiles)
+    if len(Chem.GetMolFrags(mol)) != 1:
+        raise NotImplementedError("polycyclic ring-stereo proof requires one component")
+    if len(mol.GetRingInfo().BondRings()) <= 1:
+        raise NotImplementedError("polycyclic ring-stereo proof requires >1 ring")
+    return _shared_ring_stereo_support_for_case(case, mol=mol)
+
+
+def _shared_ring_stereo_support_for_case(
+    case: SouthStarExpandedSupportCase,
+    *,
+    mol: Chem.Mol,
+) -> SouthStarRingStereoSupportProof:
     state = SouthStarComponentSupportState.from_mol(mol)
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    plans = tuple(
+        traversal.connected_graph_plan
+        for traversal in traversals
+        if traversal.connected_graph_plan is not None
+    )
+    closure_events = tuple(
+        event
+        for traversal in traversals
+        for event in traversal.events
+        if event.ring_closure is not None
+    )
+    equations = tuple(
+        dict.fromkeys(
+            equation
+            for traversal in traversals
+            for equation in marker_slot_parity_equations_for_traversal(
+                state,
+                traversal,
+            )
+        )
+    )
 
-    return TemporarySouthStarRingStereoWitnessResult(
+    return SouthStarRingStereoSupportProof(
         outputs=tuple(
             dict.fromkeys(
                 render_south_star_tree_traversal(traversal)
                 for traversal in traversals
             )
         ),
-        equations=tuple(
-            dict.fromkeys(
-                equation
-                for traversal in traversals
-                for equation in marker_slot_parity_equations_for_traversal(
-                    state,
-                    traversal,
-                )
-            )
-        ),
+        equations=equations,
         closure_edge_count=len(
             {
                 normalized_edge(event.edge)
-                for traversal in traversals
-                for event in traversal.events
+                for event in closure_events
                 if event.ring_closure is not None
                 and event.ring_closure.role == "open"
                 and event.edge is not None
             }
+        ),
+        closure_edge_set_count=len(
+            {
+                frozenset(edge.edge for edge in plan.closure_edges)
+                for plan in plans
+            }
+        ),
+        closure_edges_per_traversal=max(
+            (len(plan.closure_edges) for plan in plans),
+            default=0,
+        ),
+        closure_label_count=len(
+            {
+                event.ring_closure.label
+                for event in closure_events
+                if event.ring_closure is not None
+            }
+        ),
+        marker_slot_count=sum(
+            1
+            for traversal in traversals
+            for event in traversal.events
+            if event.marker_slot is not None
         ),
         marker_assignment_count=state.complexity_snapshot().estimated_product_size,
     )

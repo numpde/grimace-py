@@ -10,7 +10,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
-    SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
+    SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
@@ -24,6 +24,7 @@ from tests.helpers.south_star_expanded_domain_oracles import (
     ring_core_proof_records_for_case,
     shared_disconnected_composition_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
+    shared_polycyclic_ring_stereo_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
     shared_saturated_monocycle_support_for_case,
     shared_tetrahedral_atom_stereo_support_for_case,
@@ -109,7 +110,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY
+                == SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -320,6 +321,39 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 result = shared_ring_stereo_monocycle_support_for_case(case)
                 self.assertEqual(case.expected_support, result.outputs)
                 self.assertGreater(result.closure_edge_count, 0)
+                self.assertEqual(2, result.marker_assignment_count)
+                self.assertGreater(len(result.equations), 0)
+                self.assertTrue(
+                    any(
+                        equation.syntax_position == "ring_open"
+                        and equation.slot_id.startswith("ring_open:")
+                        for equation in result.equations
+                    )
+                )
+                for equation in result.equations:
+                    self.assertIn(equation.graph_marker, {"/", "\\"})
+                    self.assertIn(equation.emitted_marker, {"/", "\\"})
+                    self.assertEqual(
+                        equation.traversal_orientation_flip,
+                        equation.graph_marker != equation.emitted_marker,
+                    )
+
+    def test_polycyclic_ring_stereo_proof_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                result = shared_polycyclic_ring_stereo_support_for_case(case)
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertGreater(result.closure_edge_count, 2)
+                self.assertGreater(result.closure_edge_set_count, 1)
+                self.assertEqual(2, result.closure_edges_per_traversal)
+                self.assertEqual(2, result.closure_label_count)
+                self.assertGreater(result.marker_slot_count, 0)
                 self.assertEqual(2, result.marker_assignment_count)
                 self.assertGreater(len(result.equations), 0)
                 self.assertTrue(

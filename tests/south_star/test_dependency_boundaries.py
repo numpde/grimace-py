@@ -159,7 +159,6 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
         self.assertEqual(
             {
                 "TemporarySouthStarDisconnectedCompositionWitnessEvidence",
-                "TemporarySouthStarRingStereoWitnessResult",
             },
             {name for name in class_names if name.startswith("TemporarySouthStar")},
         )

@@ -39,8 +39,8 @@ SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_ring_tetrahedral_monocycle_obligations"
 )
-SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY = (
-    "temporary_witness_polycyclic_ring_stereo_shared_records"
+SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_polycyclic_ring_stereo_marker_obligations"
 )
 SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_single_atom_atom_text"
@@ -56,6 +56,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
@@ -66,7 +67,6 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
 SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
     {
         SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
-        SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
     }
 )
 SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
@@ -79,11 +79,6 @@ SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
         "Fold into unified-reference fragment composition after fragment "
         "ordering and per-fragment traversal support are represented as shared "
         "facts and renderer inputs."
-    ),
-    SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY: (
-        "Fold into unified-reference polycyclic stereo after closure-edge "
-        "choices and marker equations solve through the shared traversal "
-        "records."
     ),
 }
 

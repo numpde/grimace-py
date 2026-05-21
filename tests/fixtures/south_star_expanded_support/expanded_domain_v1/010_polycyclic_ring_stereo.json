@@ -6,8 +6,8 @@
       "case_id": "polycyclic_ring_stereo_bridge",
       "feature_area": "polycyclic_ring_stereo",
       "source_smiles": "C1CCC/C=C\\C2C1C2",
-      "support_authority": "temporary_witness_polycyclic_ring_stereo_shared_records",
-      "evidence_notes": "Temporary witness evidence from the shared polycyclic ring traversal plan: ring-local stereo double-bond carriers enter as closure marker slots, marker equations solve through the common parity solver, and emitted slash/backslash syntax is assigned through marker-slot records rather than a diagnostic bypass.",
+      "support_authority": "unified_reference_polycyclic_ring_stereo_marker_obligations",
+      "evidence_notes": "Unified-reference polycyclic ring-stereo evidence: shared polycyclic ring traversal plans provide closure-edge sets and labels, ring-local stereo double-bond carriers enter as closure marker slots, marker equations solve through the common parity solver, emitted slash/backslash syntax is assigned through marker-slot records, and the fixture is retained only as a support cross-check.",
       "expected_support": [
         "C1C2CC2\\C=C/CCC1",
         "C1C2C(\\C=C/CCC1)C2",

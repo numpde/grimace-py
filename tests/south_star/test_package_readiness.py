@@ -287,6 +287,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "quaternary_tetrahedral_center",
                 "ring_tetrahedral_monocycle_center",
                 "ring_adjacent_tetrahedral_monocycle",
+                "polycyclic_ring_stereo_bridge",
             ),
             matrix.unified_reference_backed_case_ids,
         )
@@ -336,6 +337,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
             matrix.public_api_blocker_case_ids,
         )
+        self.assertEqual((), matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)
         self.assertIn("markerless_acyclic_tree", matrix.supported_feature_areas)

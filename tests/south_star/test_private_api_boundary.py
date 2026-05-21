@@ -34,7 +34,7 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
 
     def test_private_api_fails_fast_for_unsupported_surfaces(self) -> None:
         with self.assertRaisesRegex(NotImplementedError, "unsupported_bond_type"):
-            mol_to_smiles_enum_s_private(parse_smiles("C#N"))
+            mol_to_smiles_enum_s_private(parse_smiles("C$C"))
 
     def test_private_api_requires_rdkit_mol(self) -> None:
         with self.assertRaisesRegex(TypeError, "RDKit Mol"):

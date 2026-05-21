@@ -116,10 +116,10 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         reports = (
             south_star_support_gate_report(Chem.MolFromSmarts("[#6]-[#8]")),
             south_star_support_gate_report(parse_smiles("[NH3]->[Cu]")),
-            south_star_support_gate_report(parse_smiles("C#N.O")),
+            south_star_support_gate_report(parse_smiles("C$C.O")),
             south_star_support_gate_report(parse_smiles("C1/C=C\\CCCCC1")),
             south_star_support_gate_report(parse_smiles("[SiH3]C")),
-            south_star_support_gate_report(parse_smiles("C#N")),
+            south_star_support_gate_report(parse_smiles("C$C")),
             south_star_support_gate_report(parse_smiles("[2H][H]")),
             south_star_support_gate_report(parse_smiles("[H+]")),
             south_star_support_gate_report(parse_smiles("[H]")),

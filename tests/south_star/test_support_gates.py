@@ -61,7 +61,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertTrue(report.supported, report.unsupported_features)
 
     def test_unsupported_disconnected_fragments_are_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("C#N.O"))
+        report = south_star_support_gate_report(parse_smiles("C$C.O"))
 
         self.assertUnsupportedCategory("disconnected_molecule", report.categories)
 
@@ -181,7 +181,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertUnsupportedCategory("unsupported_radical_atom", report.categories)
 
     def test_unsupported_bond_types_are_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("C#N"))
+        report = south_star_support_gate_report(parse_smiles("C$C"))
 
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
 

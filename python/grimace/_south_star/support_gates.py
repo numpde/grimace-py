@@ -11,15 +11,14 @@ from grimace._south_star.atom_text import (
     south_star_atom_text_fields,
     unsupported_atom_text_reasons,
 )
+from grimace._south_star.bond_text import SOUTH_STAR_SUPPORTED_BOND_TYPES
 from grimace._south_star.tetrahedral import (
     extract_ring_tetrahedral_interaction_obligations,
     tetrahedral_atom_supported,
 )
 
 
-SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = frozenset(
-    {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
-)
+SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = SOUTH_STAR_SUPPORTED_BOND_TYPES
 METAL_ATOMIC_NUMBERS: frozenset[int] = frozenset(
     {
         3,

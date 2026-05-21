@@ -201,7 +201,7 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
         )
 
     def test_unsupported_categories_are_available_before_enumeration(self) -> None:
-        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C#N"))
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C$C"))
 
         self.assertIn("unsupported_bond_type", facts.unsupported_categories)
         with self.assertRaisesRegex(NotImplementedError, "unsupported_bond_type"):

@@ -12,6 +12,8 @@ from rdkit import Chem
 
 from grimace._south_star.atom_text import atom_text_for_supported_atom
 from grimace._south_star.atom_text import tetrahedral_atom_text_obligation
+from grimace._south_star.bond_text import bond_text_for_supported_bond
+from grimace._south_star.bond_text import SOUTH_STAR_SUPPORTED_BOND_TYPES
 from grimace._south_star.connected_traversal import (
     connected_graph_plan_from_events,
 )
@@ -1169,7 +1171,7 @@ def _ring_closure_edge_supported(mol: Chem.Mol, *, edge: Edge) -> bool:
     bond = mol.GetBondBetweenAtoms(*edge)
     if bond is None:
         raise ValueError(f"ring closure edge {edge!r} is not a bond")
-    return bond.GetBondType() in {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
+    return bond.GetBondType() in SOUTH_STAR_SUPPORTED_BOND_TYPES
 
 
 def _with_ring_closure_events(
@@ -1313,14 +1315,7 @@ def _ring_closure_bond_text(mol: Chem.Mol, edge: Edge) -> str:
     bond = mol.GetBondBetweenAtoms(*edge)
     if bond is None:
         raise ValueError(f"ring closure edge {edge!r} is not a bond")
-    if bond.GetBondType() == Chem.BondType.SINGLE:
-        return ""
-    if bond.GetBondType() == Chem.BondType.DOUBLE:
-        return "="
-    raise NotImplementedError(
-        "South Star simple ring traversal currently supports only single- and "
-        "double-bond ring closures"
-    )
+    return bond_text_for_supported_bond(bond)
 
 
 def _atom_event(
@@ -1452,15 +1447,8 @@ def _bond_event(
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
         text = ""
-    elif bond.GetBondType() == Chem.BondType.DOUBLE:
-        text = "="
-    elif bond.GetBondType() == Chem.BondType.SINGLE:
-        text = ""
     else:
-        raise NotImplementedError(
-            f"South Star graph-native tree traversal does not support bond "
-            f"{bond.GetBondType()}"
-        )
+        text = bond_text_for_supported_bond(bond)
     return SouthStarTraversalEvent(
         kind="bond",
         text=text,

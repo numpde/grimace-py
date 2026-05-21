@@ -120,6 +120,14 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                         semantic_signature(output),
                     )
 
+    def test_graph_native_renders_triple_bond_through_bond_text_policy(self) -> None:
+        result = mol_to_smiles_enum_s_graph_native("C#N")
+
+        self.assertEqual(("C#N", "N#C"), result.outputs)
+        for output in result.outputs:
+            self.assertEqual(graph_signature("C#N"), graph_signature(output))
+            self.assertEqual(semantic_signature("C#N"), semantic_signature(output))
+
     def test_graph_native_result_pins_first_domain_generation_diagnostics(self) -> None:
         case = next(
             case

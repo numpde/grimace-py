@@ -40,6 +40,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "[H+]",
             "[CH3:1]C",
             "[NH4+]",
+            "C#N",
             "O.F/C=C\\Cl",
         ):
             with self.subTest(smiles=smiles):

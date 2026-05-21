@@ -236,8 +236,8 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
         seed_id="unsupported_feature_triggers",
         variants=(
             SouthStarAdversarialVariant(
-                variant_id="triple_bond",
-                source_smiles="C#N",
+                variant_id="quadruple_bond",
+                source_smiles="C$C",
                 axes=("unsupported_feature_trigger",),
                 mutation_path=("seed", "unsupported_bond_type"),
             ),

@@ -11,6 +11,8 @@ import importlib
 from collections.abc import Iterator, Sequence
 from typing import Any
 
+from grimace._prepared_mol import PreparedMol, PrepareMol
+
 try:
     _RUNTIME = importlib.import_module("grimace._runtime")
 except ImportError as exc:  # pragma: no cover - exercised only in broken installs
@@ -256,5 +258,7 @@ __all__ = [
     "MolToSmilesEnum",
     "MolToSmilesTokenInventory",
     "MolToSmilesTokenInventorySuperset",
+    "PreparedMol",
+    "PrepareMol",
     "SmilesDeviation",
 ]

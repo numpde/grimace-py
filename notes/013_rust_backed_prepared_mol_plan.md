@@ -16,8 +16,8 @@ Move ownership of the prepared object toward Rust so reading and runtime
 consumption do not depend on Python dataclass records. RDKit remains allowed
 only during `PrepareMol`.
 
-Current state
--------------
+Starting state
+--------------
 
 - Python `PrepareMol` uses RDKit to split fragments and prepare each connected
   fragment.
@@ -72,9 +72,9 @@ object from:
 - original atom indices per fragment
 - Rust `PreparedSmilesGraph` objects or dict-compatible graph payloads
 
-The first byte format can continue to be JSON internally if needed, but byte
-encoding and validation should be owned by Rust. That keeps the public contract
-stable while making future compact binary replacement local to Rust.
+The byte format should be owned by Rust. A compact binary encoding is preferable
+once Rust owns the object, because it makes `from_bytes()` a direct Rust decode
+rather than a Python JSON parse.
 
 Implementation steps
 --------------------
@@ -99,3 +99,16 @@ Non-goals for this pass
 - No RDKit-free preparation yet.
 - No stable compact binary format promise yet.
 - No extra public structural accessors.
+
+Implemented result
+------------------
+
+- Python `PreparedMol` is now an opaque wrapper around `_core.PreparedMol`.
+- Python no longer stores writer-flag or fragment dataclass records.
+- Runtime helper accessors read writer flags, fragment atom indices, and
+  prepared graphs from the Rust object.
+- `to_bytes()` emits a versioned Rust binary payload.
+- `from_bytes()` decodes and validates the binary payload in Rust.
+- Tests cover connected, disconnected, stereo, writer flags, byte round trips,
+  malformed binary payloads, malformed structural payloads, and no late RDKit
+  preparation after `PrepareMol`.

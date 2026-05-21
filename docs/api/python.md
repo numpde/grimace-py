@@ -26,6 +26,8 @@ Current top-level exports:
 - `MolToSmilesDeviation`
 - `MolToSmilesTokenInventory`
 - `MolToSmilesTokenInventorySuperset`
+- `PreparedMol`
+- `PrepareMol`
 - `SmilesDeviation`
 
 The compiled extension `grimace._core` is required. There is no
@@ -58,6 +60,31 @@ Other Python versions and non-Linux platforms are expected source-build paths,
 not part of the current release asset or CI matrix.
 Python `3.11` is in that source-build category today: declared, but not part of
 the current CI matrix.
+
+## PreparedMol
+
+`PrepareMol(mol, *, isomericSmiles=True, kekuleSmiles=False, allBondsExplicit=False, allHsExplicit=False, ignoreAtomMapNumbers=False)`
+
+This prepares an RDKit molecule once under a fixed writer surface and returns
+an opaque `PreparedMol`.
+
+```python
+prepared = grimace.PrepareMol(mol, isomericSmiles=False)
+payload = prepared.to_bytes()
+restored = grimace.PreparedMol.from_bytes(payload)
+```
+
+`PreparedMol` is accepted anywhere the public runtime accepts a molecule:
+`MolToSmilesEnum`, both decoders, token inventories, and
+`MolToSmilesDeviation`.
+
+The writer-surface flags passed to `PrepareMol` are baked into the prepared
+object. Runtime calls with conflicting writer flags raise `ValueError`.
+`rootedAtAtom`, `canonical`, and `doRandom` remain runtime options.
+
+`PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
+core. The object is opaque: fragment data, writer flags, and schema fields are
+not public Python attributes.
 
 ## MolToSmilesEnum
 

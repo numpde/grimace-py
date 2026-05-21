@@ -46,6 +46,14 @@ This is not yet a full atom-stereo package surface. Ring-containing chiral
 centers, broader atom text, and an independent exact-support oracle for
 tetrahedral support remain future work.
 
+`South Star 107` adds the traversal-observation shape needed for ring-containing
+centers without enabling them. `SouthStarTetrahedralTraversalObservation`
+records the parent ligand, ordered child ligands, ring-closure ligands, and
+implicit-hydrogen count. The existing acyclic runtime path now derives emitted
+ligand order through that observation helper with no ring-closure ligands, while
+ring/tetrahedral witnesses remain fail-fast until the rest of the semantic
+identity and package-readiness gates are deliberately widened.
+
 ## Required Concept Split
 
 Directional double-bond components:

@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
+from grimace._south_star.reference_model import SouthStarTraversalEvent
+
 
 TETRAHEDRAL_TOKENS: frozenset[str] = frozenset({"@", "@@"})
 IMPLICIT_HYDROGEN_LIGAND = "implicit_hydrogen"
@@ -19,6 +21,7 @@ RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS: tuple[str, ...] = (
     "parent_atom_idx",
     "child_atom_indices",
     "ring_closure_events",
+    "ring_closure_ligand_atom_indices",
     "ring_closure_labels",
 )
 
@@ -45,6 +48,15 @@ class SouthStarRingTetrahedralInteractionObligation:
     required_fact_and_event_fields: tuple[str, ...] = (
         RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS
     )
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarTetrahedralTraversalObservation:
+    center_atom_idx: int
+    parent_atom_idx: int | None
+    child_atom_indices: tuple[int, ...]
+    ring_closure_ligand_atom_indices: tuple[int, ...]
+    implicit_hydrogen_count: int
 
 
 def extract_tetrahedral_center_facts(
@@ -113,6 +125,58 @@ def tetrahedral_token_preserves_orientation(
         source_token=source_token,
         source_ligand_order=source_ligand_order,
         emitted_ligand_order=emitted_ligand_order,
+    )
+
+
+def emitted_tetrahedral_ligand_order_from_observation(
+    observation: SouthStarTetrahedralTraversalObservation,
+) -> tuple[str, ...]:
+    emitted = []
+    if observation.parent_atom_idx is None and observation.implicit_hydrogen_count:
+        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
+    if observation.parent_atom_idx is not None:
+        emitted.append(f"atom:{observation.parent_atom_idx}")
+    emitted.extend(
+        f"atom:{atom_idx}" for atom_idx in observation.ring_closure_ligand_atom_indices
+    )
+    emitted.extend(f"atom:{atom_idx}" for atom_idx in observation.child_atom_indices)
+    if observation.parent_atom_idx is not None and observation.implicit_hydrogen_count:
+        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
+    return tuple(emitted)
+
+
+def tetrahedral_traversal_observation_from_events(
+    events: Sequence[SouthStarTraversalEvent],
+    *,
+    center_atom_idx: int,
+    implicit_hydrogen_count: int,
+) -> SouthStarTetrahedralTraversalObservation:
+    atom_event_positions = tuple(
+        position
+        for position, event in enumerate(events)
+        if event.kind == "atom" and event.atom_idx == center_atom_idx
+    )
+    if len(atom_event_positions) != 1:
+        raise ValueError(
+            f"expected exactly one atom event for tetrahedral center "
+            f"{center_atom_idx}, found {len(atom_event_positions)}"
+        )
+    atom_event_position = atom_event_positions[0]
+    return SouthStarTetrahedralTraversalObservation(
+        center_atom_idx=center_atom_idx,
+        parent_atom_idx=_traversal_parent_atom_idx(
+            events[:atom_event_position],
+            center_atom_idx=center_atom_idx,
+        ),
+        child_atom_indices=_traversal_child_atom_indices(
+            events[atom_event_position + 1 :],
+            center_atom_idx=center_atom_idx,
+        ),
+        ring_closure_ligand_atom_indices=_traversal_ring_closure_ligand_atom_indices(
+            events[atom_event_position + 1 :],
+            center_atom_idx=center_atom_idx,
+        ),
+        implicit_hydrogen_count=implicit_hydrogen_count,
     )
 
 
@@ -213,3 +277,44 @@ def _flipped_tetrahedral_token(token: str) -> str:
 def _validate_tetrahedral_token(token: str) -> None:
     if token not in TETRAHEDRAL_TOKENS:
         raise ValueError(f"tetrahedral token must be one of {TETRAHEDRAL_TOKENS}")
+
+
+def _traversal_parent_atom_idx(
+    events_before_center: Sequence[SouthStarTraversalEvent],
+    *,
+    center_atom_idx: int,
+) -> int | None:
+    for event in reversed(events_before_center):
+        if event.kind != "bond":
+            continue
+        if event.end_atom_idx == center_atom_idx:
+            return event.begin_atom_idx
+    return None
+
+
+def _traversal_child_atom_indices(
+    events_after_center: Sequence[SouthStarTraversalEvent],
+    *,
+    center_atom_idx: int,
+) -> tuple[int, ...]:
+    return tuple(
+        event.end_atom_idx
+        for event in events_after_center
+        if event.kind == "bond"
+        and event.begin_atom_idx == center_atom_idx
+        and event.end_atom_idx is not None
+    )
+
+
+def _traversal_ring_closure_ligand_atom_indices(
+    events_after_center: Sequence[SouthStarTraversalEvent],
+    *,
+    center_atom_idx: int,
+) -> tuple[int, ...]:
+    return tuple(
+        event.end_atom_idx
+        for event in events_after_center
+        if event.kind in {"ring_open", "ring_close"}
+        and event.begin_atom_idx == center_atom_idx
+        and event.end_atom_idx is not None
+    )

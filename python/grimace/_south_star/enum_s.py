@@ -43,8 +43,9 @@ from grimace._south_star.support_gates import (
     is_supported_nonstereo_polycyclic_skeleton,
 )
 from grimace._south_star.tetrahedral import (
-    IMPLICIT_HYDROGEN_LIGAND,
     SouthStarTetrahedralCenterFact,
+    SouthStarTetrahedralTraversalObservation,
+    emitted_tetrahedral_ligand_order_from_observation,
     preserving_tetrahedral_token,
 )
 
@@ -1205,6 +1206,7 @@ def _atom_text_for_traversal(
         return _atom_text(atom)
 
     emitted_ligand_order = _emitted_tetrahedral_ligand_order(
+        center_atom_idx=fact.center_atom_idx,
         parent_idx=parent_idx,
         ordered_children=ordered_children,
         implicit_hydrogen_count=fact.implicit_hydrogen_count,
@@ -1223,19 +1225,20 @@ def _atom_text_for_traversal(
 
 def _emitted_tetrahedral_ligand_order(
     *,
+    center_atom_idx: int,
     parent_idx: int | None,
     ordered_children: tuple[int, ...],
     implicit_hydrogen_count: int,
 ) -> tuple[str, ...]:
-    emitted = []
-    if parent_idx is None and implicit_hydrogen_count:
-        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
-    if parent_idx is not None:
-        emitted.append(f"atom:{parent_idx}")
-    emitted.extend(f"atom:{child_idx}" for child_idx in ordered_children)
-    if parent_idx is not None and implicit_hydrogen_count:
-        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
-    return tuple(emitted)
+    return emitted_tetrahedral_ligand_order_from_observation(
+        SouthStarTetrahedralTraversalObservation(
+            center_atom_idx=center_atom_idx,
+            parent_atom_idx=parent_idx,
+            child_atom_indices=ordered_children,
+            ring_closure_ligand_atom_indices=(),
+            implicit_hydrogen_count=implicit_hydrogen_count,
+        )
+    )
 
 
 def _tetrahedral_facts_by_atom(

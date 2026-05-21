@@ -3,13 +3,16 @@ from __future__ import annotations
 import unittest
 
 from grimace._south_star.support_gates import south_star_support_gate_report
+from grimace._south_star.reference_model import SouthStarTraversalEvent
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
     RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS,
+    emitted_tetrahedral_ligand_order_from_observation,
     extract_ring_tetrahedral_interaction_obligations,
     extract_tetrahedral_center_facts,
     preserving_tetrahedral_token,
     tetrahedral_token_preserves_orientation,
+    tetrahedral_traversal_observation_from_events,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 
@@ -124,6 +127,104 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
         self.assertEqual(
             RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS,
             obligation.required_fact_and_event_fields,
+        )
+
+    def test_tetrahedral_traversal_observation_places_root_ring_closure_ligands(
+        self,
+    ) -> None:
+        events = (
+            SouthStarTraversalEvent(kind="atom", text="[C@H]", atom_idx=1),
+            SouthStarTraversalEvent(
+                kind="ring_open",
+                text="",
+                begin_atom_idx=1,
+                end_atom_idx=4,
+            ),
+            SouthStarTraversalEvent(kind="branch_open", text="("),
+            SouthStarTraversalEvent(
+                kind="bond",
+                text="",
+                begin_atom_idx=1,
+                end_atom_idx=0,
+                syntax_position="branch",
+            ),
+            SouthStarTraversalEvent(kind="atom", text="F", atom_idx=0),
+            SouthStarTraversalEvent(kind="branch_close", text=")"),
+            SouthStarTraversalEvent(
+                kind="bond",
+                text="",
+                begin_atom_idx=1,
+                end_atom_idx=2,
+                syntax_position="main",
+            ),
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=2),
+        )
+
+        observation = tetrahedral_traversal_observation_from_events(
+            events,
+            center_atom_idx=1,
+            implicit_hydrogen_count=1,
+        )
+
+        self.assertIsNone(observation.parent_atom_idx)
+        self.assertEqual((0, 2), observation.child_atom_indices)
+        self.assertEqual((4,), observation.ring_closure_ligand_atom_indices)
+        self.assertEqual(
+            (
+                IMPLICIT_HYDROGEN_LIGAND,
+                "atom:4",
+                "atom:0",
+                "atom:2",
+            ),
+            emitted_tetrahedral_ligand_order_from_observation(observation),
+        )
+
+    def test_tetrahedral_traversal_observation_places_parent_and_implicit_h_last(
+        self,
+    ) -> None:
+        events = (
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=0),
+            SouthStarTraversalEvent(
+                kind="bond",
+                text="",
+                begin_atom_idx=0,
+                end_atom_idx=1,
+                syntax_position="main",
+            ),
+            SouthStarTraversalEvent(kind="atom", text="[C@H]", atom_idx=1),
+            SouthStarTraversalEvent(
+                kind="ring_close",
+                text="",
+                begin_atom_idx=1,
+                end_atom_idx=6,
+            ),
+            SouthStarTraversalEvent(
+                kind="bond",
+                text="",
+                begin_atom_idx=1,
+                end_atom_idx=2,
+                syntax_position="main",
+            ),
+            SouthStarTraversalEvent(kind="atom", text="C", atom_idx=2),
+        )
+
+        observation = tetrahedral_traversal_observation_from_events(
+            events,
+            center_atom_idx=1,
+            implicit_hydrogen_count=1,
+        )
+
+        self.assertEqual(0, observation.parent_atom_idx)
+        self.assertEqual((2,), observation.child_atom_indices)
+        self.assertEqual((6,), observation.ring_closure_ligand_atom_indices)
+        self.assertEqual(
+            (
+                "atom:0",
+                "atom:6",
+                "atom:2",
+                IMPLICIT_HYDROGEN_LIGAND,
+            ),
+            emitted_tetrahedral_ligand_order_from_observation(observation),
         )
 
 

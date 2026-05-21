@@ -69,6 +69,11 @@ is probably fixture-driven and should be deferred.
    fields needed by a future implementation. The support gate still fails fast
    with `ring_tetrahedral_interaction`; no local ring traversal repair was
    added.
+   `South Star 107` adds a traversal-observation record that turns parent
+   atom, ordered children, ring-closure ligands, and implicit hydrogen count
+   into emitted ligand order. Existing acyclic tetrahedral rendering uses the
+   same helper with no ring-closure ligands; ring/tetrahedral molecules still
+   fail fast.
 
 7. **Handle stereo on polycyclic ring systems after ring and tetrahedral
    obligations are unified.**

@@ -2,7 +2,8 @@
 
 Tasks: `South Star 74: Decide aromatic semantic boundary`,
 `South Star 101: Decide aromatic semantic boundary`,
-`South Star 106: Choose aromatic molecule-fact contract`
+`South Star 106: Choose aromatic molecule-fact contract`,
+`South Star 121: Define aromatic policy family contract`
 
 ## Current Decision
 
@@ -31,6 +32,17 @@ input-preparation contract: its atom facts are non-aromatic and its bond facts
 are explicit single/double bonds. That contract is allowed to flow through the
 current non-aromatic ring machinery, but it is not the same as supporting
 aromatic RDKit molecule facts or aromatic atom text.
+
+`South Star 121` keeps that split as the active policy-family contract. The
+current package boundary is `non_aromatic_molecule_facts`: South Star consumes
+RDKit molecule facts, and aromatic atom or bond facts fail fast. The nearest
+future aromatic-adjacent support path is therefore not "accept kekule-looking
+source text"; it is a named preparation boundary such as
+`non_aromatic_kekule_facts`, where aromatic flags have already been cleared and
+the bond-order assignment is part of the caller-visible contract. A real
+`aromatic_text_policy` remains a separate family because it would define
+lowercase atom text, aromatic bond text/elision, and aromatic/Kekule semantic
+equivalence directly.
 
 ## Alternatives Considered
 
@@ -86,6 +98,20 @@ of the following explicitly:
 
 Until those are named, `aromatic_ring_surface` and
 `aromatic_directional_surface` are the correct behavior.
+
+For the current contract, the named answers are:
+
+- molecule-fact contract: `non_aromatic_molecule_facts`;
+- atom-text policy: existing non-aromatic organic/bracket atom text only;
+- bond-text policy: existing explicit single/double non-aromatic bond text only;
+- semantic equivalence relation: ordinary parse-back graph/stereo identity for
+  non-aromatic facts only;
+- maximal annotation policy: no aromatic directional carrier family yet, so
+  aromatic directional markers remain unsupported overlays.
+
+This means `non_aromatic_kekule_facts` can be explored as a future input
+preparation policy without weakening the fail-fast boundary for ordinary
+sanitized aromatic RDKit molecules.
 
 ## Boundary Tests
 

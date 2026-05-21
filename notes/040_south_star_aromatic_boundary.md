@@ -8,11 +8,11 @@ Tasks: `South Star 74: Decide aromatic semantic boundary`,
 
 ## Current Decision
 
-The first aromatic RDKit molecule-fact slice is now supported only for
-markerless aromatic monocycles with optional acyclic supported branches.
-Broader aromatic rings, fused aromatic systems, modified aromatic atoms, and
-aromatic directional overlays still fail fast with `aromatic_ring_surface` and/or
-`aromatic_directional_surface`.
+The first aromatic RDKit molecule-fact slices are now supported for markerless
+aromatic monocycles with optional acyclic supported branches and for narrow
+unmodified fused aromatic ring systems. Modified aromatic atoms, aromatic
+directional overlays, and broader aromatic surfaces still fail fast with
+`aromatic_ring_surface` and/or `aromatic_directional_surface`.
 
 This is a boundary decision, not a claim that aromatic SMILES are outside the
 long-term South Star target. The current implementation depends on RDKit for
@@ -67,8 +67,10 @@ facts, lowercase aromatic atom text, elided aromatic bond text, ring traversal
 events, parse-back evidence, and first-occurrence deduplication. `South Star
 171` adds hetero aromatic monocycle witnesses for pyridine and furan under the
 same policy. `South Star 176` extends the same policy to one-methyl branch
-witnesses for benzene, pyridine, and furan. This is still not broad aromatic
-support.
+witnesses for benzene, pyridine, and furan. `South Star 182` admits a narrow
+fused-aromatic ring-system slice for unmodified sanitized aromatic facts,
+reusing the shared polycyclic closure-traversal spine. This is still not broad
+aromatic support.
 
 ## Alternatives Considered
 
@@ -124,7 +126,8 @@ of the following explicitly:
 
 Until those are named for a broader aromatic family, `aromatic_ring_surface`
 and `aromatic_directional_surface` remain the correct behavior outside the
-current markerless aromatic-monocycle-with-branches slice.
+current markerless aromatic-monocycle-with-branches and narrow
+fused-aromatic-ring-system slices.
 
 For the current contract, the named answers are:
 
@@ -167,10 +170,9 @@ The support gate should keep these distinctions visible:
   RDKit represents it as aromatic despite the kekule-looking input text.
 - `c1ccccc1C` is supported as a markerless aromatic monocycle with an acyclic
   supported branch.
-- `c1ccc2ccccc2c1` remains unsupported as `aromatic_ring_surface` because
-  fused aromatic systems are not in the first active aromatic-text slice.
+- `c1ccc2ccccc2c1` is supported as an unmodified fused aromatic ring system.
 - `c1cc[nH]c1` remains unsupported as `aromatic_ring_surface` because modified
-  aromatic atom text is not in the first active aromatic-text slice.
+  aromatic atom text is not in the active aromatic-text slices.
 - aromatic bonds with directional markers are reported as
   `aromatic_directional_surface` in addition to the aromatic ring surface.
 

@@ -126,7 +126,10 @@ The implemented private scope is deliberately narrow:
 - markerless aromatic monocycles whose sanitized RDKit molecule facts are
   unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
   pinned by benzene, pyridine, furan, and corresponding one-methyl branch
-  cases.
+  cases;
+- narrow fused aromatic ring systems with unmodified aromatic atoms, elided
+  aromatic bond text, and no directional overlays, currently pinned by
+  naphthalene, quinoline-like, and benzofuran-like witnesses.
 
 Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
 The current contract records isotope, element symbol, chirality token,
@@ -162,15 +165,17 @@ Current unsupported categories include:
 - query atoms or query bonds;
 - unsupported bond types;
 - dative or metal-containing stereo surfaces;
-- polycyclic rings outside the current non-aromatic nonstereo skeleton slice,
-  reported as `fused_or_polycyclic_ring`;
+- polycyclic rings outside the current non-aromatic nonstereo skeleton,
+  polycyclic ring-stereo, and narrow fused-aromatic slices, reported as
+  `fused_or_polycyclic_ring`;
 - ring/tetrahedral interactions, including ring-member chiral atoms and
   ring-adjacent chiral atoms whose ligand order depends on a ring path, reported
   as `ring_tetrahedral_interaction`;
 - ring stereo outside the supported monocycle subset, reported as
   `ring_stereo`;
-- aromatic rings outside the active markerless-aromatic-monocycle plus
-  supported-branch slice, reported as `aromatic_ring_surface`;
+- aromatic rings outside the active markerless-aromatic-monocycle,
+  supported-branch, and narrow fused-aromatic slices, reported as
+  `aromatic_ring_surface`;
 - aromatic directional surfaces, including directional markers on otherwise
   supported aromatic monocycles, reported separately as
   `aromatic_directional_surface`;
@@ -178,25 +183,28 @@ Current unsupported categories include:
 
 These unsupported categories are classification boundaries, not implementation
 targets by themselves. The current near-term ring work is simple monocycles,
-non-aromatic nonstereo polycyclic skeletons, markerless aromatic monocycles
-with supported acyclic branches, and explicit ring-closure stereo carrier
-bases. Broader aromatic surfaces, polycyclic stereo, and ring/tetrahedral
-interactions require separate semantic models before enumeration should widen
-to them.
+non-aromatic nonstereo polycyclic skeletons, narrow fused aromatic ring
+systems, markerless aromatic monocycles with supported acyclic branches, and
+explicit ring-closure stereo carrier bases. Broader aromatic surfaces,
+polycyclic stereo, and ring/tetrahedral interactions require separate semantic
+models before enumeration should widen to them.
 
 The current aromatic stance is a narrow active policy, not broad aromatic
 support. Sanitized markerless aromatic monocycles with supported acyclic
-branches are supported through the `aromatic_text_policy` contract. Fused
-aromatic systems, modified aromatic atoms, and aromatic directional overlays
-remain fail-fast boundaries. See `notes/040_south_star_aromatic_boundary.md`
-for the alternatives and why kekule-looking input text is not a separate
-molecule-fact contract when normal RDKit parsing still sets aromatic flags.
+branches and narrow unmodified fused aromatic systems are supported through the
+`aromatic_text_policy` contract. Modified aromatic atoms and aromatic
+directional overlays remain fail-fast boundaries. See
+`notes/040_south_star_aromatic_boundary.md` for the alternatives and why
+kekule-looking input text is not a separate molecule-fact contract when normal
+RDKit parsing still sets aromatic flags.
 
-The current polycyclic stance supports non-aromatic nonstereo skeletons only.
-Ring-system facts are named, and graph-native traversal chooses spanning trees,
-non-tree closure edges, labels, and event-local closure endpoints without using
-RDKit writer order as authority. Polycyclic stereo and aromatic ring systems
-remain fail-fast boundaries. See `notes/041_south_star_ring_system_model.md`.
+The current polycyclic stance supports non-aromatic nonstereo skeletons and
+narrow unmodified fused aromatic ring systems through the same
+closure-traversal spine. Ring-system facts are named, and graph-native
+traversal chooses spanning trees, non-tree closure edges, labels, and
+event-local closure endpoints without using RDKit writer order as authority.
+Broader polycyclic stereo and ring/tetrahedral interactions remain fail-fast
+boundaries. See `notes/041_south_star_ring_system_model.md`.
 
 ## Annotation Policy
 
@@ -430,15 +438,16 @@ bar is not reduced to informal confidence.
 Before `MolToSmilesEnumS` can become a documented package API, the graph-native
 enumerator needs a broader molecule and syntax surface:
 
-- broader polycyclic ring traversal, especially stereo and aromatic surfaces;
+- broader polycyclic ring traversal, especially stereo and ring/tetrahedral
+  surfaces;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
   charged, renderer-capable modifier, first radical, and first non-organic
   bracket-only symbol slices;
 - aromatic coverage beyond markerless monocycles with acyclic supported
-  branches, especially fused aromatic systems, modified aromatic atoms, and
-  aromatic directional-surface models;
+  branches and narrow unmodified fused ring systems, especially modified
+  aromatic atoms and aromatic directional-surface models;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;

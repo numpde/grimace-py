@@ -12,6 +12,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
@@ -48,6 +49,7 @@ from tests.helpers.south_star_spec_oracle import (
     south_star_small_support_completeness_report,
 )
 from tests.helpers.south_star_unified_reference import (
+    fused_aromatic_support_from_shared_spine,
     nonstereo_polycyclic_support_from_shared_spine,
 )
 
@@ -235,6 +237,36 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertEqual(0, proof.marker_slot_count)
                 self.assertEqual(0, proof.renderer_input_count)
                 self.assertGreater(proof.raw_output_count, proof.output_count)
+
+    def test_fused_aromatic_support_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                proof = fused_aromatic_support_from_shared_spine(case)
+                self.assertEqual(case.expected_support, proof.support)
+                self.assertFalse(proof.expected_support_strings_used)
+                self.assertGreater(proof.closure_edge_set_count, 1)
+                self.assertEqual(2, proof.closure_edge_count)
+                self.assertEqual(2, proof.closure_label_count)
+                self.assertEqual(proof.atom_count, proof.atom_text_obligation_count)
+                self.assertEqual(proof.bond_count, proof.bond_text_obligation_count)
+                self.assertEqual(("aromatic_subset",), proof.atom_token_families)
+                self.assertEqual(("elided_aromatic_bond",), proof.bond_token_families)
+                self.assertEqual(
+                    proof.traversal_count * proof.atom_count,
+                    proof.atom_event_count,
+                )
+                self.assertEqual(
+                    proof.traversal_count * proof.closure_edge_count * 2,
+                    proof.closure_event_count,
+                )
+                self.assertEqual(0, proof.marker_slot_count)
+                self.assertEqual(0, proof.renderer_input_count)
 
     def test_disconnected_composition_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

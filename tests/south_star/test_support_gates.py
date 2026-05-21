@@ -230,10 +230,17 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_fused_aromatic_rings_remain_outside_first_aromatic_scope(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("c1ccc2ccccc2c1"))
+    def test_unmodified_fused_aromatic_rings_are_inside_gate_scope(self) -> None:
+        cases = (
+            "c1ccc2ccccc2c1",
+            "c1ccc2ncccc2c1",
+            "c1ccc2occc2c1",
+        )
 
-        self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
+        for smiles in cases:
+            with self.subTest(smiles=smiles):
+                report = south_star_support_gate_report(parse_smiles(smiles))
+                self.assertTrue(report.supported, report.unsupported_features)
 
     def test_modified_aromatic_atoms_remain_outside_first_aromatic_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("c1cc[nH]c1"))

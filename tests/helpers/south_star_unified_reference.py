@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from grimace._south_star.atom_text import SouthStarAtomTextFields
@@ -61,6 +62,7 @@ class SouthStarMarkerlessAcyclicTreeSupportProof:
     atom_text_modifier_obligation_count: int
     atom_text_bracket_obligation_count: int
     bond_text_obligation_count: int
+    atom_token_families: tuple[str, ...]
     bond_token_families: tuple[str, ...]
     raw_output_count: int
     output_count: int
@@ -83,6 +85,7 @@ class SouthStarNonstereoMonocycleSupportProof:
     atom_text_modifier_obligation_count: int
     atom_text_bracket_obligation_count: int
     bond_text_obligation_count: int
+    atom_token_families: tuple[str, ...]
     bond_token_families: tuple[str, ...]
     marker_slot_count: int
     renderer_input_count: int
@@ -110,6 +113,7 @@ class SouthStarNonstereoPolycyclicSupportProof:
     atom_text_modifier_obligation_count: int
     atom_text_bracket_obligation_count: int
     bond_text_obligation_count: int
+    atom_token_families: tuple[str, ...]
     bond_token_families: tuple[str, ...]
     marker_slot_count: int
     renderer_input_count: int
@@ -270,6 +274,30 @@ def is_nonstereo_polycyclic_ring_traversal_domain(
     )
 
 
+def is_fused_aromatic_ring_traversal_domain(
+    facts: SouthStarMoleculeFacts,
+) -> bool:
+    topology = facts.graph_topology
+    return (
+        facts.supported
+        and topology.connected
+        and topology.ring_system.fused_or_polycyclic
+        and topology.cyclomatic_number > 1
+        and len(facts.atom_text_facts) == topology.atom_count
+        and len(facts.bond_text_facts) == topology.bond_count
+        and all(atom.is_aromatic for atom in facts.atom_text_facts)
+        and all(
+            bond.bond_type == "AROMATIC"
+            and bond.bond_dir == "NONE"
+            and bond.is_aromatic
+            for bond in facts.bond_text_facts
+        )
+        and not facts.components
+        and not facts.carrier_opportunities
+        and not facts.tetrahedral_center_facts
+    )
+
+
 def markerless_acyclic_tree_support_from_shared_spine(
     case: object,
 ) -> SouthStarMarkerlessAcyclicTreeSupportProof:
@@ -328,6 +356,9 @@ def markerless_acyclic_tree_support_from_shared_spine(
             len(obligation.bracket_obligations) for obligation in atom_obligations
         ),
         bond_text_obligation_count=len(bond_obligations),
+        atom_token_families=tuple(
+            sorted({obligation.token_family for obligation in atom_obligations})
+        ),
         bond_token_families=tuple(
             sorted({obligation.token_family for obligation in bond_obligations})
         ),
@@ -393,6 +424,9 @@ def nonstereo_monocycle_support_from_shared_spine(
             len(obligation.bracket_obligations) for obligation in atom_obligations
         ),
         bond_text_obligation_count=len(bond_obligations),
+        atom_token_families=tuple(
+            sorted({obligation.token_family for obligation in atom_obligations})
+        ),
         bond_token_families=tuple(
             sorted({obligation.token_family for obligation in bond_obligations})
         ),
@@ -414,13 +448,36 @@ def nonstereo_monocycle_support_from_shared_spine(
 def nonstereo_polycyclic_support_from_shared_spine(
     case: object,
 ) -> SouthStarNonstereoPolycyclicSupportProof:
+    return _polycyclic_closure_support_from_shared_spine(
+        case,
+        domain_predicate=is_nonstereo_polycyclic_ring_traversal_domain,
+        domain_name="nonstereo-polycyclic",
+    )
+
+
+def fused_aromatic_support_from_shared_spine(
+    case: object,
+) -> SouthStarNonstereoPolycyclicSupportProof:
+    return _polycyclic_closure_support_from_shared_spine(
+        case,
+        domain_predicate=is_fused_aromatic_ring_traversal_domain,
+        domain_name="fused-aromatic",
+    )
+
+
+def _polycyclic_closure_support_from_shared_spine(
+    case: object,
+    *,
+    domain_predicate: Callable[[SouthStarMoleculeFacts], bool],
+    domain_name: str,
+) -> SouthStarNonstereoPolycyclicSupportProof:
     mol = parse_smiles(case.source_smiles)
     facts = SouthStarMoleculeFacts.from_mol(mol)
-    if not is_nonstereo_polycyclic_ring_traversal_domain(facts):
+    if not domain_predicate(facts):
         raise NotImplementedError(
-            "nonstereo-polycyclic unified reference requires one connected "
-            "polycyclic molecule, supported atom text, single/double "
-            "nonaromatic bond text, and no stereo constraints"
+            f"{domain_name} unified reference requires one connected "
+            "polycyclic molecule, supported atom/bond text, no stereo "
+            "constraints, and a named ring-system policy"
         )
 
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
@@ -483,6 +540,9 @@ def nonstereo_polycyclic_support_from_shared_spine(
             len(obligation.bracket_obligations) for obligation in atom_obligations
         ),
         bond_text_obligation_count=len(bond_obligations),
+        atom_token_families=tuple(
+            sorted({obligation.token_family for obligation in atom_obligations})
+        ),
         bond_token_families=tuple(
             sorted({obligation.token_family for obligation in bond_obligations})
         ),
@@ -556,6 +616,14 @@ def _bond_text_obligation_from_fact(
             bond_type=fact.bond_type,
             emitted_text="#",
             token_family="explicit_triple_bond",
+        )
+    if fact.bond_type == "AROMATIC":
+        return SouthStarBondTextRendererObligationSummary(
+            bond_idx=fact.bond_idx,
+            edge=fact.edge,
+            bond_type=fact.bond_type,
+            emitted_text="",
+            token_family="elided_aromatic_bond",
         )
     raise NotImplementedError(
         f"unsupported markerless bond type {fact.bond_type!r}"

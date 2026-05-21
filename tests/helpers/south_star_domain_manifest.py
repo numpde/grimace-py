@@ -67,6 +67,9 @@ SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY = 
 SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_aromatic_text_monocycle_obligations"
 )
+SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_fused_aromatic_closure_traversal"
+)
 
 SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
     {
@@ -78,6 +81,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
@@ -120,6 +124,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "double_bond_text",
         "explicit_bracket_hydrogen",
         "exocyclic_directional_monocycle",
+        "fused_aromatic_ring_system",
         "ring_tetrahedral_exocyclic_directional",
         "atom_map_text",
         "isotope_atom_text",
@@ -180,6 +185,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "directional_tetrahedral_composition",
             "double_bond_text",
             "exocyclic_directional_monocycle",
+            "fused_aromatic_ring_system",
             "ring_tetrahedral_exocyclic_directional",
             "ring_stereo_monocycle",
             "nonstereo_polycyclic_skeleton",

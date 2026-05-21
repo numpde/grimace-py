@@ -100,3 +100,22 @@ Expected implementation shape:
 
 Do not bundle this with modified aromatic atom text. That is a separate
 aromatic atom-text policy slice.
+
+## Implementation Follow-Up
+
+`South Star 182` implements the recommended narrow slice. The implementation
+adds a named fused-aromatic support predicate, routes the family through the
+existing polycyclic closure-traversal spine, and pins the three probe witnesses
+as unified-reference fixtures.
+
+The slice remains deliberately narrow:
+
+- supported: unmodified sanitized fused aromatic ring systems with lowercase
+  aromatic atom text and elided aromatic bond text;
+- unsupported: modified aromatic atom text such as `[nH]`;
+- unsupported: aromatic directional overlays;
+- unsupported: metal, dative, query, and broader aromatic surfaces.
+
+This keeps the probe's conclusion intact: fused aromatic systems did not need a
+new traversal architecture, but broader aromaticity still needs separate
+policy/model work.

@@ -91,7 +91,7 @@ The reason is not current fixture correctness. The current fixture surface is
 clean. The reason is that important ordinary surfaces are still intentionally
 gated:
 
-- fused aromatic systems;
+- broader aromatic systems beyond the narrow unmodified fused-ring slice;
 - aromatic modified atoms;
 - aromatic directional overlays;
 - broader non-organic bracket atom text beyond the first `Si`/`Se` slice;

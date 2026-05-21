@@ -4,10 +4,11 @@ Task: `South Star 73: Generalize ring-system traversal model`
 
 ## Current Boundary
 
-South Star now supports simple monocycles and the first non-aromatic nonstereo
-polycyclic skeleton slice. Polycyclic stereo, aromatic ring systems,
-ring/tetrahedral interactions, and unsupported atom/bond text still remain
-fail-fast unsupported under their named categories.
+South Star now supports simple monocycles, the first non-aromatic nonstereo
+polycyclic skeleton slice, and a narrow unmodified fused aromatic ring-system
+slice. Broader polycyclic stereo, ring/tetrahedral interactions, modified
+aromatic atom text, aromatic directional overlays, and unsupported atom/bond
+text still remain fail-fast unsupported under their named categories.
 
 The important change is conceptual: ring-system information now has a named
 fact boundary. Future traversal work should consume ring-system facts instead
@@ -29,8 +30,9 @@ The ring-system fact model should describe graph structure, not writer policy:
 - whether the graph is fused/polycyclic and therefore needs a polycyclic
   traversal path rather than the simple-monocycle path.
 
-That fact boundary is now enough for nonstereo skeleton traversal. It is not
-enough for polycyclic stereo or aromatic ring systems.
+That fact boundary is now enough for nonstereo skeleton traversal and narrow
+fused aromatic closure traversal. It is not enough for broader polycyclic
+stereo, aromatic directional overlays, or modified aromatic atom text.
 
 ## Alternatives Considered
 
@@ -51,8 +53,8 @@ enough for polycyclic stereo or aromatic ring systems.
    through spanning-tree and closure-edge choices.
 
    This is the current path. It keeps support narrow, but supported polycyclic
-   skeletons now use named inputs for closure-edge selection and
-   traversal-event generation.
+   skeletons and narrow fused aromatic systems now use named inputs for
+   closure-edge selection and traversal-event generation.
 
 ## Future Enumeration Choices
 
@@ -85,3 +87,16 @@ two. `C1CC2CCC1C2` is pinned as the first graph-native regression fixture.
 The remaining boundary is not "polycyclic" in general; it is polycyclic
 surfaces whose semantics require additional models, especially stereo,
 aromaticity, and ring/tetrahedral interactions.
+
+`South Star 182` adds the first fused aromatic witnesses under the same
+closure-traversal spine:
+
+- `c1ccc2ccccc2c1` for an all-carbon fused aromatic system;
+- `c1ccc2ncccc2c1` for a fused aromatic system with unmodified aromatic
+  nitrogen;
+- `c1ccc2occc2c1` for a fused aromatic system with unmodified aromatic oxygen.
+
+These are not RDKit writer-parity cases. They are South Star semantic fixtures
+for sanitized aromatic molecule facts, lowercase aromatic atom text, elided
+aromatic bond text, graph-native closure choices, and parse-back semantic
+acceptance.

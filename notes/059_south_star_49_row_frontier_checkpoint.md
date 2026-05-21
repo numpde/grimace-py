@@ -98,3 +98,18 @@ The export recommendation remains private continuation. The new rows reduce
 frontier breadth, but they do not yet make the semantic enumerator broad enough
 for a stable public API. An experimental export still needs an explicit
 Decision row.
+
+## Follow-Up After South Star 182
+
+`South Star 182` promotes the first fused aromatic subfamily from frontier to
+the checked private surface. The current counts are now:
+
+- exact first-domain directional cases: `5`;
+- expanded-support cases: `47`;
+- total benchmark/readiness rows: `52`.
+
+The new supported family is narrow: unmodified sanitized fused aromatic ring
+systems with lowercase aromatic atom text, elided aromatic bond text, no
+directional overlays, and no modified aromatic atom text. The remaining
+aromatic frontier is therefore modified aromatic atom text, aromatic
+directional overlays, and broader aromatic systems outside that named slice.

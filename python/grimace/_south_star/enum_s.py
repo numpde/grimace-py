@@ -42,6 +42,7 @@ from grimace._south_star.reference_model import SouthStarTraversalFragment
 from grimace._south_star.ring_labels import DEFAULT_RING_CLOSURE_LABEL_POLICY
 from grimace._south_star.ring_labels import closure_id_for_edge
 from grimace._south_star.support_gates import (
+    is_supported_fused_aromatic_ring_system,
     is_supported_monocycle_with_acyclic_branches,
     is_supported_nonstereo_polycyclic_skeleton,
     is_supported_polycyclic_ring_stereo_skeleton,
@@ -696,7 +697,9 @@ def _tree_traversals_for_marker_assignment(
         )
     if is_supported_nonstereo_polycyclic_skeleton(
         mol
-    ) or is_supported_polycyclic_ring_stereo_skeleton(mol):
+    ) or is_supported_polycyclic_ring_stereo_skeleton(
+        mol
+    ) or is_supported_fused_aromatic_ring_system(mol):
         return _ring_system_traversals(
             mol,
             molecule_facts=molecule_facts,
@@ -801,6 +804,8 @@ def _assert_tree_traversal_supported(
     if is_supported_nonstereo_polycyclic_skeleton(mol):
         return
     if is_supported_polycyclic_ring_stereo_skeleton(mol):
+        return
+    if is_supported_fused_aromatic_ring_system(mol):
         return
     raise NotImplementedError(
         "South Star graph-native tree traversal currently requires one "

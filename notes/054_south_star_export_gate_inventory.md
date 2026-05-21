@@ -39,28 +39,30 @@ Executed checks:
 
 Results:
 
-- South Star package readiness: `140` tests passed.
+- South Star package readiness: `140` tests passed at the original inventory
+  checkpoint; `South Star 182` keeps the same runner green at `141` tests after
+  adding fused aromatic cases.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `44`.
-- Total checked semantic fixture cases: `49`.
+- Expanded-support cases: `47`.
+- Total checked semantic fixture cases: `52`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `49`;
-- shared-pipeline promotion candidates: `49`;
+- unified-reference-backed cases: `52`;
+- shared-pipeline promotion candidates: `52`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
-- supported feature areas: `24`;
+- supported feature areas: `25`;
 - support-gate blocker categories: `16`.
 
 Authority inventory:
 
-- authority classes: `49` unified-reference cases;
-- shared-spine coverage: `49` complete cases;
+- authority classes: `52` unified-reference cases;
+- shared-spine coverage: `52` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 
@@ -77,6 +79,7 @@ Supported feature areas currently declared:
 - `double_bond_text`
 - `exocyclic_directional_monocycle`
 - `explicit_bracket_hydrogen`
+- `fused_aromatic_ring_system`
 - `independent_directional_stereo_components`
 - `isotope_atom_text`
 - `markerless_acyclic_tree`
@@ -128,8 +131,8 @@ Keep `MolToSmilesEnumS` private for now.
 
 The next export-gate review should happen after at least one of these changes:
 
-1. broaden aromatic coverage beyond markerless monocycles with supported
-   branches;
+1. broaden aromatic coverage beyond markerless monocycles, supported branches,
+   and narrow unmodified fused ring systems;
 2. reduce the unsupported atom/bond-text frontier;
 3. decide the public maturity label and naming contract;
 4. write release-facing docs that describe the unsupported frontier as a

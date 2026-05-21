@@ -103,4 +103,13 @@ extension.
   acyclic non-aromatic branches;
 - toluene, methyl-pyridine, and methyl-furan fixtures pin the expanded support;
 - fused aromatic systems, modified aromatic atom text, and aromatic
-  directional overlays remain separate gated families.
+  directional overlays remained separate gated families at that checkpoint.
+
+`South Star 182` then implemented the first narrow fused aromatic slice:
+
+- unmodified sanitized fused aromatic ring systems are admitted through the
+  same aromatic text policy and polycyclic closure-traversal spine;
+- naphthalene, quinoline-like, and benzofuran-like fixtures pin the expanded
+  support;
+- modified aromatic atom text and aromatic directional overlays remain separate
+  gated families.

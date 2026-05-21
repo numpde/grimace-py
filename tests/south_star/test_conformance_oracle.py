@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from tests.helpers.south_star_semantic_oracle import (
     semantic_oracle_accepts,
     south_star_conformance_report,
@@ -9,7 +10,9 @@ from tests.helpers.south_star_semantic_oracle import (
 from tests.helpers.south_star_spec_oracle import (
     SOUTH_STAR_SPEC_ORACLE_BASIS,
     SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+    SOUTH_STAR_SMALL_SUPPORT_ORACLE_BASIS,
     south_star_spec_oracle_report,
+    south_star_small_support_completeness_report,
 )
 from tests.helpers.south_star_grammar_conformance import (
     SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
@@ -117,3 +120,25 @@ class SouthStarConformanceOracleTests(unittest.TestCase):
             ("stereo_equivalence",),
             report.rejected_candidates[0].rejection_reasons,
         )
+
+    def test_small_support_oracle_checks_completeness_without_runtime_renderer(
+        self,
+    ) -> None:
+        cases = ("C#N", "[2H][H]", "[CH3:1]C", "[H+]")
+
+        for smiles in cases:
+            observed = mol_to_smiles_enum_s_graph_native(smiles).outputs
+            report = south_star_small_support_completeness_report(
+                source_smiles=smiles,
+                observed_support=observed,
+            )
+
+            with self.subTest(smiles=smiles):
+                self.assertEqual(SOUTH_STAR_SMALL_SUPPORT_ORACLE_BASIS, report.basis)
+                self.assertEqual(
+                    SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+                    report.generation_authority,
+                )
+                self.assertTrue(report.complete)
+                self.assertEqual((), report.missing_candidates)
+                self.assertEqual((), report.extra_candidates)

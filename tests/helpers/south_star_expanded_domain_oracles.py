@@ -26,6 +26,8 @@ from grimace._south_star.enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
     render_south_star_tree_traversal,
 )
+from grimace._south_star.fragments import SouthStarFragmentSupport
+from grimace._south_star.fragments import compose_disconnected_fragment_supports
 from grimace._south_star.marker_equations import SouthStarMarkerSlotParityEquation
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
@@ -42,6 +44,9 @@ from grimace._south_star.tetrahedral import (
 from grimace._south_star.tetrahedral import tetrahedral_traversal_token_diagnostic
 from tests.helpers.south_star_exact_support import (
     SouthStarExpandedSupportCase,
+)
+from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 
@@ -69,6 +74,22 @@ class TemporarySouthStarDisconnectedCompositionWitnessEvidence:
     fragment_order_policy: str
     fragment_order_count: int
     estimated_product_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarDisconnectedCompositionAlgebraProof:
+    case_id: str
+    support_authority: str
+    fragment_count: int
+    fragment_source_smiles: tuple[str, ...]
+    fragment_output_counts: tuple[int, ...]
+    fragment_order_policy: str
+    fragment_order_count: int
+    output_order_policy: str
+    estimated_product_size: int
+    composed_outputs: tuple[str, ...]
+    graph_native_outputs: tuple[str, ...]
+    support_authority_promoted: bool
 
 
 def shared_saturated_monocycle_support_for_case(
@@ -118,6 +139,52 @@ def shared_disconnected_composition_support_for_case(
         fragment_order_policy=result.fragment_order_policy,
         fragment_order_count=diagnostics.fragment_order_count,
         estimated_product_size=diagnostics.estimated_product_size,
+    )
+
+
+def disconnected_composition_algebra_proof_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarDisconnectedCompositionAlgebraProof:
+    """Recompose disconnected support from opaque fragment supports."""
+
+    graph_native = shared_disconnected_composition_support_for_case(case)
+    fragment_supports = []
+    for record in graph_native.fragment_generation_records:
+        fragment_result = mol_to_smiles_enum_s_graph_native(
+            record.source_fragment_smiles,
+            case_id=f"{case.case_id}:{record.fragment_id}",
+        )
+        if len(fragment_result.outputs) != record.output_count:
+            raise AssertionError(
+                f"fragment {record.fragment_id!r} output count changed while "
+                "building disconnected composition proof"
+            )
+        fragment_supports.append(
+            SouthStarFragmentSupport(
+                fragment_id=record.fragment_id,
+                outputs=fragment_result.outputs,
+            )
+        )
+
+    composition = compose_disconnected_fragment_supports(tuple(fragment_supports))
+    return SouthStarDisconnectedCompositionAlgebraProof(
+        case_id=case.case_id,
+        support_authority=case.support_authority,
+        fragment_count=composition.fragment_count,
+        fragment_source_smiles=tuple(
+            record.source_fragment_smiles
+            for record in graph_native.fragment_generation_records
+        ),
+        fragment_output_counts=composition.fragment_output_counts,
+        fragment_order_policy=composition.fragment_order_policy,
+        fragment_order_count=composition.fragment_order_count,
+        output_order_policy=composition.output_order_policy,
+        estimated_product_size=composition.estimated_product_size,
+        composed_outputs=composition.outputs,
+        graph_native_outputs=graph_native.outputs,
+        support_authority_promoted=(
+            case.support_authority in SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES
+        ),
     )
 
 

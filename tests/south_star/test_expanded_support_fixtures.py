@@ -19,6 +19,7 @@ from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
+    disconnected_composition_algebra_proof_for_case,
     shared_disconnected_composition_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
@@ -181,6 +182,43 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         and record.source_fragment_smiles
                         for record in result.fragment_generation_records
                     )
+                )
+
+    def test_disconnected_composition_algebra_reconstructs_fixture_support(
+        self,
+    ) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                proof = disconnected_composition_algebra_proof_for_case(case)
+
+                self.assertEqual(case.support_authority, proof.support_authority)
+                self.assertFalse(proof.support_authority_promoted)
+                self.assertEqual(case.expected_support, proof.composed_outputs)
+                self.assertEqual(proof.graph_native_outputs, proof.composed_outputs)
+                self.assertEqual(2, proof.fragment_count)
+                self.assertEqual(2, proof.fragment_order_count)
+                self.assertEqual("all_fragment_orders", proof.fragment_order_policy)
+                self.assertEqual(
+                    "first_occurrence_deduplication",
+                    proof.output_order_policy,
+                )
+                self.assertEqual(
+                    len(case.expected_support),
+                    proof.estimated_product_size,
+                )
+                self.assertEqual(
+                    len(proof.fragment_source_smiles),
+                    proof.fragment_count,
+                )
+                self.assertEqual(
+                    len(proof.fragment_output_counts),
+                    proof.fragment_count,
                 )
 
     def test_ring_stereo_monocycle_witness_matches_fixtures(self) -> None:

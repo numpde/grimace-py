@@ -12,6 +12,7 @@ from tests.helpers.south_star_first_domain_oracle import (
 from tests.helpers.south_star_first_domain_proof_inputs import (
     first_domain_marker_equation_proofs_from_shared_spine,
     first_domain_proof_inputs_from_shared_spine,
+    first_domain_renderer_proof_from_shared_spine,
 )
 from tests.helpers.south_star_semantic_oracle import semantic_oracle_accepts
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
@@ -126,6 +127,46 @@ class SouthStarFirstDomainCompletenessTests(unittest.TestCase):
                         record.traversal_marker_by_slot,
                         record.solved_marker_by_slot,
                     )
+
+    def test_first_domain_renderer_is_complete_from_proof_backed_traversals(
+        self,
+    ) -> None:
+        semantic_cases = {
+            case.case_id: case for case in load_south_star_semantic_cases()
+        }
+        for exact_case in load_south_star_exact_first_domain_cases():
+            semantic_case = semantic_cases[exact_case.case_id]
+            renderer_proof = first_domain_renderer_proof_from_shared_spine(
+                semantic_case
+            )
+            graph_native_result = mol_to_smiles_enum_s_graph_native_for_case(
+                semantic_case
+            )
+            oracle_support = independent_first_domain_support_for_case(semantic_case)
+
+            with self.subTest(case_id=exact_case.case_id):
+                self.assertEqual(exact_case.case_id, renderer_proof.case_id)
+                self.assertFalse(renderer_proof.expected_support_strings_used)
+                self.assertTrue(
+                    renderer_proof.all_rendered_outputs_have_marker_equation_proofs
+                )
+                self.assertGreater(renderer_proof.proof_record_count, 0)
+                self.assertGreaterEqual(
+                    renderer_proof.raw_output_count,
+                    renderer_proof.deduped_output_count,
+                )
+                self.assertEqual(
+                    graph_native_result.outputs,
+                    renderer_proof.rendered_outputs,
+                )
+                self.assertEqual(
+                    exact_case.expected_support,
+                    renderer_proof.rendered_outputs,
+                )
+                self.assertEqual(
+                    frozenset(oracle_support),
+                    frozenset(renderer_proof.rendered_outputs),
+                )
 
 
 if __name__ == "__main__":

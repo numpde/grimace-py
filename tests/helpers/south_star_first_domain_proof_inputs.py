@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from grimace._south_star.enum_s import SouthStarTreeTraversal
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
@@ -49,6 +51,17 @@ class SouthStarFirstDomainMarkerEquationProofRecord:
     solved_marker_by_slot: tuple[tuple[str, str], ...]
     traversal_marker_by_slot: tuple[tuple[str, str], ...]
     assignments_match_traversal: bool
+    expected_support_strings_used: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarFirstDomainRendererProofRecord:
+    case_id: str
+    raw_output_count: int
+    deduped_output_count: int
+    proof_record_count: int
+    rendered_outputs: tuple[str, ...]
+    all_rendered_outputs_have_marker_equation_proofs: bool
     expected_support_strings_used: bool
 
 
@@ -101,8 +114,21 @@ def first_domain_marker_equation_proofs_from_shared_spine(
 
     mol = parse_smiles(case.source_smiles)
     state = SouthStarComponentSupportState.from_mol(mol)
+    return _marker_equation_proof_records_from_traversals(
+        case_id=case.case_id,
+        state=state,
+        traversals=mol_to_smiles_enum_s_tree_traversals_for_case(case),
+    )
+
+
+def _marker_equation_proof_records_from_traversals(
+    *,
+    case_id: str,
+    state: SouthStarComponentSupportState,
+    traversals: tuple[SouthStarTreeTraversal, ...],
+) -> tuple[SouthStarFirstDomainMarkerEquationProofRecord, ...]:
     records = []
-    for traversal in mol_to_smiles_enum_s_tree_traversals_for_case(case):
+    for traversal in traversals:
         equations = marker_slot_parity_equations_for_traversal(state, traversal)
         solver_result = solve_marker_slot_parity_equations(equations)
         solved_marker_by_slot = (
@@ -118,7 +144,7 @@ def first_domain_marker_equation_proofs_from_shared_spine(
         )
         records.append(
             SouthStarFirstDomainMarkerEquationProofRecord(
-                case_id=case.case_id,
+                case_id=case_id,
                 root_atom_idx=traversal.root_atom_idx,
                 marker_slot_count=sum(
                     1
@@ -138,3 +164,49 @@ def first_domain_marker_equation_proofs_from_shared_spine(
             )
         )
     return tuple(records)
+
+
+def first_domain_renderer_proof_from_shared_spine(
+    case: SouthStarSemanticCase,
+) -> SouthStarFirstDomainRendererProofRecord:
+    """Render first-domain support from proof-backed traversals, not fixtures."""
+
+    mol = parse_smiles(case.source_smiles)
+    state = SouthStarComponentSupportState.from_mol(mol)
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    proof_records = _marker_equation_proof_records_from_traversals(
+        case_id=case.case_id,
+        state=state,
+        traversals=traversals,
+    )
+    if len(traversals) != len(proof_records):
+        raise AssertionError(
+            "first-domain renderer proof requires one marker-equation proof "
+            "record per traversal"
+        )
+    all_traversals_are_proof_backed = all(
+        record.assignments_match_traversal
+        and record.traversal_marker_by_slot
+        == tuple(
+            sorted(
+                (assignment.slot_id, assignment.marker)
+                for assignment in traversal.marker_assignments
+            )
+        )
+        for traversal, record in zip(traversals, proof_records, strict=True)
+    )
+    raw_outputs = tuple(
+        render_south_star_tree_traversal(traversal) for traversal in traversals
+    )
+    rendered_outputs = tuple(dict.fromkeys(raw_outputs))
+    return SouthStarFirstDomainRendererProofRecord(
+        case_id=case.case_id,
+        raw_output_count=len(raw_outputs),
+        deduped_output_count=len(rendered_outputs),
+        proof_record_count=len(proof_records),
+        rendered_outputs=rendered_outputs,
+        all_rendered_outputs_have_marker_equation_proofs=(
+            all_traversals_are_proof_backed
+        ),
+        expected_support_strings_used=False,
+    )

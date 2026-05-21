@@ -1,6 +1,7 @@
 # South Star Polycyclic Stereo Obligations
 
-Task: `South Star 103: Plan polycyclic stereo obligations`
+Task: `South Star 103: Plan polycyclic stereo obligations`,
+`South Star 108: Expose polycyclic closure-choice diagnostics`
 
 ## Boundary
 
@@ -55,6 +56,8 @@ Diagnostics should continue to expose the layers separately:
 - `spanning_tree_count`;
 - `closure_edge_count`;
 - `closure_label_count`;
+- per-traversal closure-edge-set records, including root atom, closure edges,
+  closure ids, and closure labels;
 - `traversal_skeleton_count`;
 - `marker_slot_count`;
 - `local_assignment_count`;
@@ -84,10 +87,15 @@ definition of the final surface.
 ## Minimal Implementation Sequence
 
 1. Expose per-traversal closure-edge-set identity in diagnostics/tests.
+   Completed in `South Star 108`: `SouthStarClosureEdgeSetRecord` exposes the
+   root atom, closure edges, closure ids, and closure labels for every connected
+   traversal plan. The nonstereo polycyclic skeleton tests now assert that those
+   records align with the existing traversal count and unique spanning-tree
+   count. This is diagnostic structure only; no polycyclic stereo support is
+   enabled.
 2. Extend marker-slot equation tests to include closure carrier positions in
    polycyclic traversals.
 3. Add one external-stereo/polycycle witness as fail-fast until equations are
    stated for every traversal choice.
 4. Promote the witness only after the same semantic component equations solve
    through both ordinary bond events and ring-closure events.
-

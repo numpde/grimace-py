@@ -211,6 +211,7 @@ Graph-native EnumS results expose private generation diagnostics:
 - unique spanning-tree count;
 - closure-edge count;
 - closure-label count;
+- per-traversal closure-edge-set records for connected graph plans;
 - marker-slot count;
 - local assignment count;
 - solved assignment count;

@@ -74,6 +74,24 @@ class SouthStarFragmentGenerationRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarClosureEdgeSetRecord:
+    root_atom_idx: int
+    closure_edges: tuple[Edge, ...]
+    closure_ids: tuple[str, ...]
+    closure_labels: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not (
+            len(self.closure_edges)
+            == len(self.closure_ids)
+            == len(self.closure_labels)
+        ):
+            raise ValueError("closure-edge set records require aligned fields")
+        if len(set(self.closure_labels)) != len(self.closure_labels):
+            raise ValueError("closure-edge set records require unique labels")
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarEnumSGenerationDiagnostics:
     fragment_count: int
     fragment_output_counts: tuple[int, ...]
@@ -90,6 +108,7 @@ class SouthStarEnumSGenerationDiagnostics:
     spanning_tree_count: int = 0
     closure_edge_count: int = 0
     closure_label_count: int = 0
+    closure_edge_set_records: tuple[SouthStarClosureEdgeSetRecord, ...] = ()
 
     def __post_init__(self) -> None:
         if self.fragment_count != len(self.fragment_output_counts):
@@ -146,6 +165,7 @@ class _ConnectedGraphPlanDiagnostics:
     spanning_tree_count: int
     closure_edge_count: int
     closure_label_count: int
+    closure_edge_set_records: tuple[SouthStarClosureEdgeSetRecord, ...]
 
 
 def mol_to_smiles_enum_s_graph_native_for_case(
@@ -251,6 +271,9 @@ def _connected_generation_for_mol(
             spanning_tree_count=graph_plan_diagnostics.spanning_tree_count,
             closure_edge_count=graph_plan_diagnostics.closure_edge_count,
             closure_label_count=graph_plan_diagnostics.closure_label_count,
+            closure_edge_set_records=(
+                graph_plan_diagnostics.closure_edge_set_records
+            ),
         ),
     )
 
@@ -352,6 +375,11 @@ def _disconnected_generation_for_mol(
                 generation.diagnostics.closure_label_count
                 for generation in fragment_generations
             ),
+            closure_edge_set_records=tuple(
+                record
+                for generation in fragment_generations
+                for record in generation.diagnostics.closure_edge_set_records
+            ),
         ),
     )
 
@@ -414,6 +442,7 @@ def _connected_graph_plan_diagnostics(
             spanning_tree_count=0,
             closure_edge_count=0,
             closure_label_count=0,
+            closure_edge_set_records=(),
         )
     return _ConnectedGraphPlanDiagnostics(
         spanning_tree_count=len(
@@ -425,6 +454,15 @@ def _connected_graph_plan_diagnostics(
         closure_edge_count=max(len(plan.closure_edges) for plan in plans),
         closure_label_count=max(
             len({edge.label for edge in plan.closure_edges})
+            for plan in plans
+        ),
+        closure_edge_set_records=tuple(
+            SouthStarClosureEdgeSetRecord(
+                root_atom_idx=plan.root_atom_idx,
+                closure_edges=tuple(edge.edge for edge in plan.closure_edges),
+                closure_ids=tuple(edge.closure_id for edge in plan.closure_edges),
+                closure_labels=tuple(edge.label for edge in plan.closure_edges),
+            )
             for plan in plans
         ),
     )

@@ -153,6 +153,24 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         self.assertEqual(21, diagnostics.spanning_tree_count)
         self.assertEqual(2, diagnostics.closure_edge_count)
         self.assertEqual(2, diagnostics.closure_label_count)
+        self.assertEqual(
+            diagnostics.traversal_skeleton_count,
+            len(diagnostics.closure_edge_set_records),
+        )
+        self.assertEqual(
+            diagnostics.spanning_tree_count,
+            len(
+                {
+                    frozenset(record.closure_edges)
+                    for record in diagnostics.closure_edge_set_records
+                }
+            ),
+        )
+        for record in diagnostics.closure_edge_set_records:
+            with self.subTest(record=record):
+                self.assertEqual(2, len(record.closure_edges))
+                self.assertEqual(2, len(record.closure_ids))
+                self.assertEqual({"1", "2"}, set(record.closure_labels))
 
     def test_graph_native_result_pins_disconnected_generation_diagnostics(self) -> None:
         case = _expanded_support_case("disconnected_stereo_fragment_and_atom")

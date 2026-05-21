@@ -168,19 +168,27 @@ def PrepareMol(
         ignore_atom_map_numbers=writer_flags.ignore_atom_map_numbers,
     )
 
-    atom_indices_by_fragment = Chem.GetMolFrags(mol)
-    fragment_mols = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
-    fragments = tuple(
-        _PreparedMolFragment(
-            atom_indices=tuple(int(atom_idx) for atom_idx in atom_indices),
-            prepared_graph=runtime.prepare_smiles_graph(fragment_mol, flags=runtime_flags),
+    if mol.GetNumAtoms() == 0:
+        fragments = (
+            _PreparedMolFragment(
+                atom_indices=(),
+                prepared_graph=runtime.prepare_smiles_graph(mol, flags=runtime_flags),
+            ),
         )
-        for atom_indices, fragment_mol in zip(
-            atom_indices_by_fragment,
-            fragment_mols,
-            strict=True,
+    else:
+        atom_indices_by_fragment = Chem.GetMolFrags(mol)
+        fragment_mols = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+        fragments = tuple(
+            _PreparedMolFragment(
+                atom_indices=tuple(int(atom_idx) for atom_idx in atom_indices),
+                prepared_graph=runtime.prepare_smiles_graph(fragment_mol, flags=runtime_flags),
+            )
+            for atom_indices, fragment_mol in zip(
+                atom_indices_by_fragment,
+                fragment_mols,
+                strict=True,
+            )
         )
-    )
     return PreparedMol(
         schema_version=_PREPARED_MOL_SCHEMA_VERSION,
         writer_flags=writer_flags,

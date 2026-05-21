@@ -12,6 +12,7 @@ from typing import Protocol, TypeAlias, cast
 from rdkit import Chem
 
 _core = importlib.import_module("grimace._core")
+from grimace._prepared_mol import PreparedMol
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
@@ -93,7 +94,7 @@ def _runtime_surface_kind(
 
 @dataclass(frozen=True, slots=True)
 class _FragmentPlan:
-    mol: Chem.Mol
+    fragment: object
     rooted_at_atom: int | None
 
 
@@ -187,6 +188,8 @@ def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
 
 
 def _is_disconnected_molecule(mol_or_prepared: object) -> bool:
+    if isinstance(mol_or_prepared, PreparedMol):
+        return len(mol_or_prepared.fragments) > 1
     return isinstance(mol_or_prepared, Chem.Mol) and len(Chem.GetMolFrags(mol_or_prepared)) > 1
 
 
@@ -215,9 +218,64 @@ def _fragment_plans_for_molecule(
     return tuple(plans)
 
 
+def _fragment_plans_for_prepared_mol(
+    prepared: PreparedMol,
+    *,
+    rooted_at_atom: int | None,
+) -> tuple[_FragmentPlan, ...]:
+    if rooted_at_atom is None:
+        return tuple(
+            _FragmentPlan(fragment.prepared_graph, None)
+            for fragment in prepared.fragments
+        )
+    if len(prepared.fragments) == 1 and len(prepared.fragments[0].atom_indices) == 0:
+        if rooted_at_atom == 0:
+            return (_FragmentPlan(prepared.fragments[0].prepared_graph, 0),)
+        raise IndexError("root_idx out of range")
+
+    global_to_local: dict[int, tuple[int, int]] = {}
+    for fragment_idx, fragment in enumerate(prepared.fragments):
+        for local_idx, global_idx in enumerate(fragment.atom_indices):
+            global_to_local[global_idx] = (fragment_idx, local_idx)
+
+    if rooted_at_atom not in global_to_local:
+        raise IndexError("root_idx out of range")
+
+    rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
+    plans: list[_FragmentPlan] = []
+    for fragment_idx, fragment in enumerate(prepared.fragments):
+        if fragment_idx == rooted_fragment_idx:
+            plans.append(_FragmentPlan(fragment.prepared_graph, rooted_local_idx))
+        else:
+            plans.append(_FragmentPlan(fragment.prepared_graph, None))
+    return tuple(plans)
+
+
+def _connected_prepared_mol_plan(
+    prepared: PreparedMol,
+    *,
+    rooted_at_atom: int,
+) -> _FragmentPlan:
+    rooted_at_atom_or_none = None if rooted_at_atom < 0 else rooted_at_atom
+    plans = _fragment_plans_for_prepared_mol(
+        prepared,
+        rooted_at_atom=rooted_at_atom_or_none,
+    )
+    if len(plans) != 1:
+        raise NotImplementedError(
+            "connected PreparedMol runtime requires one prepared fragment"
+        )
+    plan = plans[0]
+    if plan.rooted_at_atom is None:
+        return _FragmentPlan(plan.fragment, -1)
+    return plan
+
+
 def _atom_count(mol_or_prepared: object) -> int:
     if isinstance(mol_or_prepared, Chem.Mol):
         return mol_or_prepared.GetNumAtoms()
+    if isinstance(mol_or_prepared, PreparedMol):
+        return sum(len(fragment.atom_indices) for fragment in mol_or_prepared.fragments)
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
         return mol_or_prepared.atom_count
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
@@ -244,22 +302,22 @@ def _connected_fragment_support(
             ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
         )
 
+    # For all-roots support, build or unwrap the prepared graph once and reuse
+    # it across roots instead of reparsing the same fragment each time.
     atom_count = _atom_count(fragment_mol)
-    if atom_count == 0:
-        return {
-            ""
-        }
-
-    # For all-roots support on an RDKit molecule, build the prepared graph once
-    # and reuse it across roots instead of reparsing the same fragment each time.
-    prepared_or_fragment = (
-        prepare_smiles_graph(fragment_mol, flags=flags)
-        if isinstance(fragment_mol, Chem.Mol)
-        else fragment_mol
-    )
+    if isinstance(fragment_mol, Chem.Mol):
+        prepared_or_fragment = prepare_smiles_graph(fragment_mol, flags=flags)
+    elif isinstance(fragment_mol, PreparedMol):
+        prepared_or_fragment = _connected_prepared_mol_plan(
+            fragment_mol,
+            rooted_at_atom=-1,
+        ).fragment
+    else:
+        prepared_or_fragment = fragment_mol
 
     support: set[str] = set()
-    for local_root_idx in range(atom_count):
+    local_root_indices = (0,) if atom_count == 0 else range(atom_count)
+    for local_root_idx in local_root_indices:
         support.update(
             mol_to_smiles_support(
                 prepared_or_fragment,
@@ -277,16 +335,19 @@ def _connected_fragment_support(
 
 
 def _fragmented_mol_to_smiles_support(
-    mol: Chem.Mol,
+    mol_or_prepared: object,
     *,
     flags: MolToSmilesFlags,
 ) -> set[str]:
     fragment_supports: list[tuple[str, ...]] = []
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
 
-    for plan in _fragment_plans_for_token_inventory(mol, rooted_at_atom=rooted_at_atom):
+    for plan in _fragment_plans_for_disconnected_input(
+        mol_or_prepared,
+        rooted_at_atom=rooted_at_atom,
+    ):
         support = _connected_fragment_support(
-            plan.mol,
+            plan.fragment,
             flags=flags,
             rooted_at_atom=plan.rooted_at_atom,
         )
@@ -295,52 +356,24 @@ def _fragmented_mol_to_smiles_support(
     return {".".join(parts) for parts in product(*fragment_supports)}
 
 
-def _fragment_plans_for_token_inventory(
-    mol: Chem.Mol,
+def _fragment_plans_for_disconnected_input(
+    mol_or_prepared: object,
     *,
     rooted_at_atom: int | None,
 ) -> tuple[_FragmentPlan, ...]:
+    if isinstance(mol_or_prepared, PreparedMol):
+        return _fragment_plans_for_prepared_mol(
+            mol_or_prepared,
+            rooted_at_atom=rooted_at_atom,
+        )
+
+    mol = cast(Chem.Mol, mol_or_prepared)
     if rooted_at_atom is None:
         return tuple(
             _FragmentPlan(fragment_mol, None)
             for fragment_mol in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
         )
     return _fragment_plans_for_molecule(mol, rooted_at_atom=rooted_at_atom)
-
-
-def _fragmented_mol_to_smiles_token_inventory(
-    mol: Chem.Mol,
-    *,
-    isomeric_smiles: bool,
-    kekule_smiles: bool,
-    rooted_at_atom: int | None,
-    canonical: bool,
-    all_bonds_explicit: bool,
-    all_hs_explicit: bool,
-    do_random: bool,
-    ignore_atom_map_numbers: bool,
-) -> tuple[str, ...]:
-    inventory: set[str] = set()
-
-    for plan in _fragment_plans_for_token_inventory(mol, rooted_at_atom=rooted_at_atom):
-        inventory.update(
-            mol_to_smiles_token_inventory(
-                plan.mol,
-                isomeric_smiles=isomeric_smiles,
-                kekule_smiles=kekule_smiles,
-                rooted_at_atom=plan.rooted_at_atom,
-                canonical=canonical,
-                all_bonds_explicit=all_bonds_explicit,
-                all_hs_explicit=all_hs_explicit,
-                do_random=do_random,
-                ignore_atom_map_numbers=ignore_atom_map_numbers,
-            )
-        )
-
-    if len(Chem.GetMolFrags(mol)) > 1:
-        inventory.add(".")
-
-    return tuple(sorted(inventory))
 
 
 class MolToSmilesChoice:
@@ -720,6 +753,14 @@ def _instantiate_core_object(
     stereo_type: type,
     nonstereo_type: type,
 ) -> object:
+    if isinstance(mol_or_prepared, PreparedMol):
+        plan = _connected_prepared_mol_plan(
+            mol_or_prepared,
+            rooted_at_atom=flags.rooted_at_atom,
+        )
+        mol_or_prepared = plan.fragment
+        flags = flags.with_rooted_at_atom(cast(int, plan.rooted_at_atom))
+
     prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
     core_type = stereo_type if prepared.surface_kind == CONNECTED_STEREO_SURFACE else nonstereo_type
     return core_type(prepared, flags.rooted_at_atom)
@@ -769,8 +810,13 @@ def _make_fragment_state_adapter(
     if atom_count == 0:
         return _make_connected_state_adapter(fragment_mol, flags.with_rooted_at_atom(0))
 
+    fragment_for_preparation = (
+        _connected_prepared_mol_plan(fragment_mol, rooted_at_atom=-1).fragment
+        if isinstance(fragment_mol, PreparedMol)
+        else fragment_mol
+    )
     prepared_fragment = prepare_smiles_graph(
-        fragment_mol,
+        fragment_for_preparation,
         flags=flags.with_rooted_at_atom(0),
     )
     if prepared_fragment.surface_kind == CONNECTED_NONSTEREO_SURFACE:
@@ -786,17 +832,20 @@ def _make_fragment_state_adapter(
 
 
 def _make_disconnected_decoder(
-    mol: Chem.Mol,
+    mol_or_prepared: object,
     flags: MolToSmilesFlags,
 ) -> _DisconnectedStateAdapter:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
     fragment_states = tuple(
         _make_fragment_state_adapter(
-            plan.mol,
+            plan.fragment,
             flags=flags,
             rooted_at_atom=plan.rooted_at_atom,
         )
-        for plan in _fragment_plans_for_token_inventory(mol, rooted_at_atom=rooted_at_atom)
+        for plan in _fragment_plans_for_disconnected_input(
+            mol_or_prepared,
+            rooted_at_atom=rooted_at_atom,
+        )
     )
     return _DisconnectedStateAdapter(fragment_states)
 
@@ -807,7 +856,7 @@ def _make_decoder_state_impl(
     flags: MolToSmilesFlags,
 ) -> object:
     if _is_disconnected_molecule(mol_or_prepared):
-        return _make_disconnected_decoder(cast(Chem.Mol, mol_or_prepared), flags)
+        return _make_disconnected_decoder(mol_or_prepared, flags)
     if flags.rooted_at_atom < 0:
         return _make_fragment_state_adapter(
             mol_or_prepared,
@@ -1073,25 +1122,35 @@ def _connected_mol_to_smiles_token_inventory_superset(
     *,
     flags: MolToSmilesFlags,
 ) -> tuple[str, ...]:
+    rooted_at_atom = flags.rooted_at_atom
+    if isinstance(mol_or_prepared, PreparedMol):
+        plan = _connected_prepared_mol_plan(
+            mol_or_prepared,
+            rooted_at_atom=flags.rooted_at_atom,
+        )
+        rooted_at_atom = cast(int, plan.rooted_at_atom)
+        mol_or_prepared = plan.fragment
+        flags = flags.with_rooted_at_atom(rooted_at_atom)
+
     prepared = _prepare_reference_graph_for_static_inventory(
         mol_or_prepared,
         flags=flags,
     )
     return _prepared_token_inventory_superset(
         prepared,
-        rooted_at_atom=flags.rooted_at_atom,
+        rooted_at_atom=rooted_at_atom,
     )
 
 
 def _fragmented_mol_to_smiles_token_inventory_superset(
-    mol: Chem.Mol,
+    mol_or_prepared: object,
     *,
     flags: MolToSmilesFlags,
 ) -> tuple[str, ...]:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
     inventory: set[str] = set()
-    fragment_plans = _fragment_plans_for_token_inventory(
-        mol,
+    fragment_plans = _fragment_plans_for_disconnected_input(
+        mol_or_prepared,
         rooted_at_atom=rooted_at_atom,
     )
 
@@ -1099,7 +1158,7 @@ def _fragmented_mol_to_smiles_token_inventory_superset(
         fragment_root = -1 if plan.rooted_at_atom is None else plan.rooted_at_atom
         inventory.update(
             _connected_mol_to_smiles_token_inventory_superset(
-                plan.mol,
+                plan.fragment,
                 flags=flags.with_rooted_at_atom(fragment_root),
             )
         )
@@ -1138,7 +1197,7 @@ def mol_to_smiles_enum(
             return iter(
                 sorted(
                     _fragmented_mol_to_smiles_support(
-                        cast(Chem.Mol, mol_or_prepared),
+                        mol_or_prepared,
                         flags=flags,
                     )
                 )
@@ -1146,7 +1205,7 @@ def mol_to_smiles_enum(
         return iter(
             sorted(
                 _fragmented_mol_to_smiles_support(
-                    cast(Chem.Mol, mol_or_prepared),
+                    mol_or_prepared,
                     flags=flags,
                 )
             )
@@ -1257,7 +1316,7 @@ def mol_to_smiles_token_inventory_superset(
     _validate_supported_flags(flags)
     if _is_disconnected_molecule(mol_or_prepared):
         return _fragmented_mol_to_smiles_token_inventory_superset(
-            cast(Chem.Mol, mol_or_prepared),
+            mol_or_prepared,
             flags=flags,
         )
     return _connected_mol_to_smiles_token_inventory_superset(

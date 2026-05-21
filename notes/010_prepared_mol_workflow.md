@@ -1,5 +1,5 @@
-PreparedMol workflow
-====================
+PreparedMol inevitables
+=======================
 
 Purpose
 -------
@@ -34,14 +34,11 @@ Disconnected molecules are part of the model. A prepared molecule stores ordered
 prepared fragments, not just one connected graph. Each fragment keeps enough
 identity to relate fragment-local graph data back to the original atom indices.
 
-Design direction
+Inevitable shape
 ----------------
 
-The long-term representation should be Rust-native and cheap to load. Python
-dict materialization is useful for tests and migration, but it should not define
-the fast storage format.
-
-The working shape is:
+To support disconnected molecules without RDKit after preparation, the prepared
+shape must contain:
 
 ```text
 PreparedMol
@@ -54,38 +51,63 @@ PreparedMolFragment
   prepared_graph
 ```
 
-`prepared_graph` should eventually be decoded directly into the Rust runtime
-shape. A compact JSON or dict round-trip may be useful as a compatibility
-bridge, but not as the performance target.
+The exact Python/Rust classes are implementation details. The data obligations
+are not: version, writer flags, ordered fragments, original atom indices, and
+prepared graph data.
 
-Workflow
---------
+Inevitable work
+---------------
 
-1. Add new-file-only design and tests while parallel runtime work is active.
-   This can define the API contract without touching existing runtime files.
+1. Define the prepared shape.
+   The object needs schema/version metadata, writer flags, ordered fragments,
+   original atom-index mappings, and one prepared graph per fragment.
 
-2. Prototype storage formats on real dataset samples. Compare bytes per
-   molecule, read speed, allocation cost, and bulk compression. Include random
-   and sequential samples.
+2. Implement preparation.
+   `PrepareMol(mol, writer flags...)` may use RDKit. It must split fragments in
+   RDKit order, prepare each connected fragment under the selected writer
+   surface, preserve original atom indices, and store no RDKit molecule.
 
-3. Implement the Rust prepared representation and validation. The Rust layer
-   should own the loaded shape, schema evolution, and fast decode path.
+3. Validate loaded objects.
+   Serialized objects need early rejection for unsupported schema versions,
+   malformed flags, malformed fragments, atom-index/graph mismatches, and graph
+   writer flags that disagree with the outer prepared molecule.
 
-4. Add a small Python facade:
+4. Implement serialization.
+   A single-object `to_bytes()` / `from_bytes()` path is needed for caches,
+   fixtures, tests, and format evolution. The first format can be simple, but it
+   must be versioned.
 
-   ```python
-   prepared = grimace.PrepareMol(mol, isomericSmiles=True)
-   prepared.write(path)
-   prepared = grimace.PreparedMol.read(path)
-   ```
+5. Expose the minimal API.
+   Once public, the surface should be small: `PreparedMol`, `PrepareMol`, and
+   serialization methods on `PreparedMol`.
 
-5. Wire `PreparedMol` into the public runtime APIs once conflicts are unlikely:
-   `MolToSmilesEnum`, `MolToSmilesTokenInventoryEstimate`,
-   `MolToSmilesTokenSuperset`, decoder construction, and deviation diagnostics.
+6. Prove no RDKit after preparation.
+   Tests should check that a prepared object stores only prepared graph data and
+   primitive/container metadata, not `Chem.Mol`.
 
-6. Add a bulk store after the single-object semantics are stable. For 100M-scale
-   datasets, block-compressed batches with an index are likely more important
-   than a perfect standalone object envelope.
+7. Wire runtime consumption.
+   `PreparedMol` must eventually be accepted by:
+   `MolToSmilesEnum`, `MolToSmilesTokenInventory`,
+   `MolToSmilesTokenInventorySuperset`, decoder construction, and deviation
+   diagnostics.
+   Without this, it is only a stored artifact.
+
+8. Optimize storage after semantics settle.
+   Fast reads are inevitable. The exact encoding is not. Rust-native decoding
+   and block-compressed bulk storage can follow once the object contract is
+   stable.
+
+Choices, not inevitables
+------------------------
+
+- The private module name.
+- Whether the public constructor is `PrepareMol(...)` or
+  `PreparedMol.from_mol(...)`.
+- The first byte encoding.
+- Whether `write()` / `read()` are included immediately or after `to_bytes()` /
+  `from_bytes()`.
+- Whether the first implementation stores Python dict-compatible graph payloads
+  or decodes directly into Rust.
 
 Test requirements
 -----------------

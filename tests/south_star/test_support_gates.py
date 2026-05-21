@@ -112,6 +112,15 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
+    def test_polycyclic_with_external_alkene_stereo_stays_fail_fast(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("F/C=C\\C1CC2CCC1C2"))
+
+        self.assertUnsupportedCategory(
+            "fused_or_polycyclic_ring",
+            report.categories,
+        )
+        self.assertNotIn("ring_stereo", report.categories)
+
     def test_ring_tetrahedral_interactions_are_specific_unsupported_surface(
         self,
     ) -> None:

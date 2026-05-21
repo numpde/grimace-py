@@ -66,9 +66,12 @@ is probably fixture-driven and should be deferred.
 
 7. **Handle stereo on polycyclic ring systems after ring and tetrahedral
    obligations are unified.**
-   Nonstereo polycyclic skeleton traversal is a graph problem. Polycyclic stereo
-   adds coupled marker obligations across multiple closure choices and should
-   wait until the simpler stereo-obligation families are unified.
+   Planned in `South Star 103`:
+   `notes/044_south_star_polycyclic_stereo_obligations.md` defines the
+   obligation shape, expected complexity layers, and guardrail witnesses.
+   Polycyclic stereo should solve marker obligations per traversal skeleton and
+   closure-edge choice; it should not be implemented as a post-render filter or
+   repair.
 
 ## Follow-Up Backlog Shape
 

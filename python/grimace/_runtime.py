@@ -292,8 +292,6 @@ def _connected_prepared_mol_fragment(
 
 
 def _atom_count(mol_or_prepared: object) -> int:
-    if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
-        return mol_or_prepared.GetNumAtoms()
     if isinstance(mol_or_prepared, PreparedMol):
         return sum(
             len(fragment.atom_indices)

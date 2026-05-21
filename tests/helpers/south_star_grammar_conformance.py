@@ -14,7 +14,7 @@ _ATOM_TOKENS: frozenset[str] = (
 _TWO_CHAR_ATOM_TOKENS: frozenset[str] = frozenset(
     token for token in _ATOM_TOKENS if len(token) == 2
 )
-_BOND_TOKENS: frozenset[str] = frozenset({"=", "#", "/", "\\"})
+_BOND_TOKENS: frozenset[str] = frozenset({"=", "#", "$", "/", "\\"})
 _RING_LABEL_TOKENS: frozenset[str] = frozenset("123456789")
 
 @dataclass(frozen=True, slots=True)

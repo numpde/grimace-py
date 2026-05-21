@@ -124,3 +124,16 @@ first-occurrence deduplication.
 The remaining aromatic frontier is therefore broader aromatic atom-symbol
 breadth such as `[se]`, aromatic directional overlays, and broader aromatic
 systems outside the currently named fused-ring and modified-atom-text slices.
+
+## Follow-Up After South Star 186
+
+`South Star 186` promotes the narrow ordinary quadruple-bond text case
+`C$C` from frontier to checked private surface. The remaining bond-type
+frontier is no longer ordinary `$` text; it is query/unspecified, dative, and
+other nonstandard bond semantics.
+
+The current counts are now:
+
+- exact first-domain directional cases: `5`;
+- expanded-support cases: `54`;
+- total benchmark/readiness rows: `59`.

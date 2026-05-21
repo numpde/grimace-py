@@ -15,6 +15,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertIn(category, SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories)
         self.assertIn(category, categories)
 
+    def unsupported_bond_type_mol(self) -> Chem.Mol:
+        mol = Chem.RWMol()
+        begin_idx = mol.AddAtom(Chem.Atom(6))
+        end_idx = mol.AddAtom(Chem.Atom(6))
+        mol.AddBond(begin_idx, end_idx, Chem.BondType.UNSPECIFIED)
+        return mol.GetMol()
+
     def test_current_semantic_fixtures_are_inside_first_gate_scope(self) -> None:
         for case in load_south_star_semantic_cases():
             report = south_star_support_gate_report(parse_smiles(case.source_smiles))
@@ -61,7 +68,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertTrue(report.supported, report.unsupported_features)
 
     def test_unsupported_disconnected_fragments_are_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("C$C.O"))
+        report = south_star_support_gate_report(parse_smiles("[Na+].O"))
 
         self.assertUnsupportedCategory("disconnected_molecule", report.categories)
 
@@ -203,9 +210,14 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertTrue(report.supported, report.unsupported_features)
 
     def test_unsupported_bond_types_are_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("C$C"))
+        report = south_star_support_gate_report(self.unsupported_bond_type_mol())
 
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
+
+    def test_quadruple_bond_text_is_inside_gate_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C$C"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
 
     def test_markerless_aromatic_monocycle_is_inside_gate_scope(self) -> None:
         cases = (

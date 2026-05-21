@@ -48,6 +48,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "c1cc[n:7]cc1",
             "c1cc[nH+]cc1",
             "C#N",
+            "C$C",
             "O.F/C=C\\Cl",
         ):
             with self.subTest(smiles=smiles):

@@ -26,9 +26,9 @@ small witnesses. It is an implementation guide, not a support change.
 | `atom_stereo` | `CCF` with atom 1 manually tagged tetrahedral | Missing or invalid atom-stereo fact family outside the supported tetrahedral slices. | Audit atom-stereo tags that RDKit can carry but South Star should reject or model. |
 | `unsupported_atom_text` | `[GeH3]C` | Mostly a text-policy breadth gap for element/modifier rendering beyond the first non-organic bracket-only slice. | Atom-text frontier slice. |
 | `metal_atom` | `[NH3]->[Cu]` | Metal chemistry and coordination semantics. | Metal/dative semantic family; do not fold into ordinary atom text. |
-| `unsupported_bond_type` | `C$C` | Bond-text and bond-semantics gap for non single/double/triple/aromatic types. | Bond-text frontier slice for ordinary bond orders; dative remains separate. |
+| `unsupported_bond_type` | constructed `UNSPECIFIED` bond / `C~C` | Bond-semantics gap for query, unspecified, or non ordinary writer bond types. Ordinary single/double/triple/quadruple/aromatic text is no longer the blocker. | Query bond semantics and nonstandard bond-order policy; dative remains separate. |
 | `dative_bond` | `[NH3]->[Cu]` | Coordination semantics plus known serializer quirks. | Metal/dative semantic family. |
-| `disconnected_molecule` | `C$C.O` | Composition is blocked because at least one fragment is unsupported. | Usually disappears when fragment families become supported; not a standalone first target. |
+| `disconnected_molecule` | `[Na+].O` | Composition is blocked because at least one fragment is unsupported. | Usually disappears when fragment families become supported; not a standalone first target. |
 | `ring_molecule` | `C1CC2CCCC2[C@H]1F` | Ring topology/stereo interaction outside current supported ring system. | Ring/tetrahedral and polycyclic interaction family. |
 | `fused_or_polycyclic_ring` | `F/C=C\\C1CC2CCC1C2` | Polycyclic plus exocyclic stereo outside current supported polycyclic skeleton/stereo slices. | Polycyclic plus exocyclic-directional family. |
 | `ring_tetrahedral_interaction` | `C1CC2CCCC2[C@H]1F` | Ring-local ligand-order dependence outside the current monocycle proof family. | Ring/tetrahedral interaction expansion. |

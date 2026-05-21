@@ -46,16 +46,17 @@ Supported examples:
 - `[SeH]`
 - `C=C`
 - `C#N`
+- `C$C`
+- `c1cc[nH]c1`
 
 Unsupported examples:
 
 - `[Na+]`: `unsupported_atom_text`, `metal_atom`
 - `[Mg+2]`: `unsupported_atom_text`, `metal_atom`
-- `C$C`: `unsupported_bond_type`
+- `C~C`: `query_bond`, `unsupported_bond_type`
 - `[NH3]->[B]`: `unsupported_bond_type`, `dative_bond`
 - `[NH3]->[Cu]`: `unsupported_atom_text`, `unsupported_bond_type`,
   `metal_atom`, `dative_bond`
-- `c1cc[nH]c1`: `aromatic_ring_surface`
 
 ## Classification
 
@@ -76,8 +77,8 @@ This is the safest text-policy implementation slice.
 
 - `Si` and `Se` are supported only as bracket atom text;
 - `[SiH3]C` and `[SeH]` are pinned as unified-reference fixtures;
-- metals, dative bonds, query atoms/bonds, quadruple bonds, and modified
-  aromatic atoms remain separate gated families.
+- metals, dative bonds, query atoms/bonds, and aromatic policy breadth remain
+  separate gated families.
 
 ### Metals
 
@@ -94,15 +95,15 @@ renderer expansion.
 ### Quadruple Bonds
 
 `C$C` is the clean ordinary bond-text frontier. It is a real RDKit bond type
-with a distinct text token. It may be implementable as a small bond-text slice,
-but it is less important than bracket atom-symbol breadth because it is rare
-and may need a clearer OpenSMILES compatibility statement.
+with a distinct text token. `South Star 186` implements the narrow ordinary
+carbon-carbon slice as `quadruple_bond_text`; query and dative bond surfaces
+remain separate blockers.
 
 ### Aromatic Modified Atom Text
 
-`c1cc[nH]c1` is not an ordinary atom-text slice under the current gate. It is
-part of aromatic expansion because the atom is in an aromatic molecule-fact
-contract. It should not be bundled with non-aromatic `[SiH3]C`.
+`c1cc[nH]c1` is not an ordinary atom-text slice. `South Star 184` implements it
+as part of aromatic expansion because the atom is in an aromatic molecule-fact
+contract; it should stay separate from non-aromatic `[SiH3]C`.
 
 ## Recommended Next Text Slice
 
@@ -113,8 +114,8 @@ The original recommended text-breadth slice was non-metal bracket atom symbols:
 3. require bracket spelling for those symbols;
 4. update grammar conformance and atom-text obligation tests;
 5. add unified-reference fixtures and package-readiness rows;
-6. keep metals, dative bonds, query atoms/bonds, and aromatic modified atoms
-   gated.
+6. keep metals, dative bonds, query atoms/bonds, and aromatic policy breadth
+   separate.
 
 This was a separate implementation row from aromatic branches. It is a small
 renderer-policy expansion, not a chemistry/stereo-model expansion.

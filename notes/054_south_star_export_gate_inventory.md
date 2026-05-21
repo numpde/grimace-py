@@ -40,29 +40,30 @@ Executed checks:
 Results:
 
 - South Star package readiness: `140` tests passed at the original inventory
-  checkpoint; `South Star 184` keeps the runner green at `143` tests after
-  adding fused aromatic and modified-aromatic atom-text cases.
+  checkpoint; `South Star 186` keeps the runner green at `145` tests after
+  adding fused aromatic, modified-aromatic atom-text, and quadruple bond-text
+  cases.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `53`.
-- Total checked semantic fixture cases: `58`.
+- Expanded-support cases: `54`.
+- Total checked semantic fixture cases: `59`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `58`;
-- shared-pipeline promotion candidates: `58`;
+- unified-reference-backed cases: `59`;
+- shared-pipeline promotion candidates: `59`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
-- supported feature areas: `28`;
+- supported feature areas: `29`;
 - support-gate blocker categories: `16`.
 
 Authority inventory:
 
-- authority classes: `58` unified-reference cases;
-- shared-spine coverage: `58` complete cases;
+- authority classes: `59` unified-reference cases;
+- shared-spine coverage: `59` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 
@@ -87,6 +88,7 @@ Supported feature areas currently declared:
 - `modified_aromatic_atom_text`
 - `nonstereo_polycyclic_skeleton`
 - `polycyclic_ring_stereo`
+- `quadruple_bond_text`
 - `radical_atom_text`
 - `ring_stereo_monocycle`
 - `ring_tetrahedral_exocyclic_directional`

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import grimace
+from rdkit import Chem
 from grimace._south_star.api import mol_to_smiles_enum_s_private
 from grimace._south_star.api import south_star_private_api_contract
 from grimace._south_star.support_gates import SouthStarUnsupportedFeatureError
@@ -13,6 +14,13 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 
 class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
+    def unsupported_bond_type_mol(self) -> Chem.Mol:
+        mol = Chem.RWMol()
+        begin_idx = mol.AddAtom(Chem.Atom(6))
+        end_idx = mol.AddAtom(Chem.Atom(6))
+        mol.AddBond(begin_idx, end_idx, Chem.BondType.UNSPECIFIED)
+        return mol.GetMol()
+
     def test_private_api_is_not_exported_from_public_package(self) -> None:
         self.assertFalse(hasattr(grimace, "MolToSmilesEnumS"))
         self.assertFalse(hasattr(grimace, "mol_to_smiles_enum_s_private"))
@@ -78,7 +86,7 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
             SouthStarUnsupportedFeatureError,
             "unsupported_bond_type",
         ) as cm:
-            mol_to_smiles_enum_s_private(parse_smiles("C$C"))
+            mol_to_smiles_enum_s_private(self.unsupported_bond_type_mol())
 
         self.assertEqual(frozenset({"unsupported_bond_type"}), cm.exception.categories)
         self.assertEqual(

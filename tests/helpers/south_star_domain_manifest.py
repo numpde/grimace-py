@@ -49,6 +49,9 @@ SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_two_atom_markerless_atom_text"
 )
+SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_two_atom_bond_text"
+)
 SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_directional_component_product"
 )
@@ -94,6 +97,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     }
 )
@@ -138,6 +142,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "non_organic_bracket_atom_text",
         "nonstereo_polycyclic_skeleton",
         "polycyclic_ring_stereo",
+        "quadruple_bond_text",
         "radical_atom_text",
         "ring_stereo_monocycle",
         "ring_tetrahedral_monocycle",
@@ -208,6 +213,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "non_organic_bracket_atom_text",
             "radical_atom_text",
             "charged_atom_text",
+            "quadruple_bond_text",
             "triple_bond_text",
         }
     ),

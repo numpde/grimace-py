@@ -84,3 +84,19 @@ This is an implementable renderer-policy slice, not a Decision row. The only
 minor design choice is whether to reuse the existing two-atom markerless
 atom-text authority for a `$` bond, or rename/generalize it before pinning the
 fixture. Prefer the small generalization if the current name reads as too narrow.
+
+## Follow-Up After South Star 186
+
+`South Star 186` implements the recommended narrow slice:
+
+- `$` is now a declared South Star bond token and renders through
+  `explicit_quadruple_bond`;
+- `Chem.BondType.QUADRUPLE` is admitted for otherwise supported molecules;
+- `C$C` is pinned as `quadruple_bond_text_carbon_carbon` under
+  `unified_reference_two_atom_bond_text`;
+- blocker tests now use query/unspecified or constructed unsupported bond
+  types instead of treating ordinary `$` text as unsupported.
+
+The metal and bracket-heavy quadruple examples remain out of scope for this
+slice because their blockers are atom-text and metal policy boundaries, not
+ordinary quadruple bond text.

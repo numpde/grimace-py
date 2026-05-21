@@ -178,6 +178,16 @@ def two_atom_markerless_atom_text_support_from_facts(
     return two_atom_markerless_atom_text_support_proof_from_facts(facts).support
 
 
+def is_two_atom_bond_text_domain(facts: SouthStarMoleculeFacts) -> bool:
+    return is_two_atom_markerless_atom_text_domain(facts)
+
+
+def two_atom_bond_text_support_proof_from_facts(
+    facts: SouthStarMoleculeFacts,
+) -> SouthStarTwoAtomMarkerlessAtomTextSupportProof:
+    return two_atom_markerless_atom_text_support_proof_from_facts(facts)
+
+
 def two_atom_markerless_atom_text_support_proof_from_facts(
     facts: SouthStarMoleculeFacts,
 ) -> SouthStarTwoAtomMarkerlessAtomTextSupportProof:
@@ -661,6 +671,14 @@ def _bond_text_obligation_from_fact(
             bond_type=fact.bond_type,
             emitted_text="#",
             token_family="explicit_triple_bond",
+        )
+    if fact.bond_type == "QUADRUPLE":
+        return SouthStarBondTextRendererObligationSummary(
+            bond_idx=fact.bond_idx,
+            edge=fact.edge,
+            bond_type=fact.bond_type,
+            emitted_text="$",
+            token_family="explicit_quadruple_bond",
         )
     if fact.bond_type == "AROMATIC":
         return SouthStarBondTextRendererObligationSummary(

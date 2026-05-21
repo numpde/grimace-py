@@ -123,6 +123,8 @@ The implemented private scope is deliberately narrow:
   pinned by `[H]`, `[CH3]`, and `[O]` examples;
 - bracket-only non-organic atom symbols in the first non-metal slice, currently
   pinned by `[SiH3]C` and `[SeH]`;
+- ordinary quadruple bond text in the narrow two-atom slice, currently pinned
+  by `C$C`;
 - markerless aromatic monocycles whose sanitized RDKit molecule facts are
   unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
   pinned by benzene, pyridine, furan, and corresponding one-methyl branch
@@ -167,7 +169,8 @@ must not silently fall back to `MolToSmilesEnum` or return a partial support set
 Current unsupported categories include:
 
 - query atoms or query bonds;
-- unsupported bond types;
+- unsupported bond types beyond ordinary single, double, triple, quadruple,
+  and aromatic bonds;
 - dative or metal-containing stereo surfaces;
 - polycyclic rings outside the current non-aromatic nonstereo skeleton,
   polycyclic ring-stereo, and narrow fused-aromatic slices, reported as
@@ -402,7 +405,9 @@ Star goal.
 The diagnostic helper is `tests.helpers.south_star_comparison`. It may import
 the public `grimace.MolToSmilesEnum` writer-parity surface, but core South Star
 helpers and semantic tests must not. Diagnostic reports are allowed to expose
-differences; those differences are metadata, not semantic failures.
+differences or an unavailable public-parity comparison for unsupported
+`MolToSmilesEnum` surfaces; those differences are metadata, not semantic
+failures.
 
 ## Public API Promotion Gate
 
@@ -452,12 +457,13 @@ enumerator needs a broader molecule and syntax surface:
   charged, renderer-capable modifier, first radical, and first non-organic
   bracket-only symbol slices;
 - aromatic coverage beyond markerless monocycles with acyclic supported
-  branches and narrow unmodified fused ring systems, especially modified
-  aromatic atoms and aromatic directional-surface models;
+  branches, first modified-aromatic atom-text cases, and narrow unmodified
+  fused ring systems, especially broader aromatic atom vocabularies and
+  aromatic directional-surface models;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;
-- shared-reference support evidence beyond the current temporary witness cases;
+- shared-reference support evidence for each newly promoted feature area;
 - explicit fail-fast checks for every unsupported molecule class;
 - complexity diagnostics that expose component counts, local assignment counts,
   affected component counts, and estimated product size.

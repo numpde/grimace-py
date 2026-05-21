@@ -43,6 +43,8 @@ class SouthStarSupportMembershipClassification:
 @dataclass(frozen=True, slots=True)
 class SouthStarParityComparisonReport:
     case_id: str
+    rdkit_parity_available: bool
+    rdkit_parity_unavailable_reason: str
     south_star_support_size: int
     rdkit_parity_support_size: int
     intersection_size: int
@@ -50,6 +52,13 @@ class SouthStarParityComparisonReport:
     rdkit_parity_only: tuple[str, ...]
     intersection: tuple[str, ...]
     classifications: tuple[SouthStarSupportMembershipClassification, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarPublicParitySupport:
+    support: frozenset[str]
+    available: bool
+    unavailable_reason: str
 
 
 def south_star_comparison_labels(
@@ -108,13 +117,16 @@ def _parity_comparison_report(
     south_star_outputs: tuple[str, ...],
 ) -> SouthStarParityComparisonReport:
     south_star_support = frozenset(south_star_outputs)
-    rdkit_parity_support = _grimace_public_parity_support(source_smiles)
+    public_parity = _grimace_public_parity_support_or_unavailable(source_smiles)
+    rdkit_parity_support = public_parity.support
     intersection = south_star_support.intersection(rdkit_parity_support)
     south_star_only = south_star_support.difference(rdkit_parity_support)
     rdkit_parity_only = rdkit_parity_support.difference(south_star_support)
 
     return SouthStarParityComparisonReport(
         case_id=case_id,
+        rdkit_parity_available=public_parity.available,
+        rdkit_parity_unavailable_reason=public_parity.unavailable_reason,
         south_star_support_size=len(south_star_support),
         rdkit_parity_support_size=len(rdkit_parity_support),
         intersection_size=len(intersection),
@@ -200,4 +212,22 @@ def _grimace_public_parity_support(source_smiles: str) -> frozenset[str]:
             doRandom=True,
             isomericSmiles=True,
         )
+    )
+
+
+def _grimace_public_parity_support_or_unavailable(
+    source_smiles: str,
+) -> SouthStarPublicParitySupport:
+    try:
+        support = _grimace_public_parity_support(source_smiles)
+    except (NotImplementedError, ValueError) as exc:
+        return SouthStarPublicParitySupport(
+            support=frozenset(),
+            available=False,
+            unavailable_reason=f"{type(exc).__name__}: {exc}",
+        )
+    return SouthStarPublicParitySupport(
+        support=support,
+        available=True,
+        unavailable_reason="",
     )

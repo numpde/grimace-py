@@ -80,6 +80,7 @@ SOUTH_STAR_ADVERSARIAL_REQUIRED_SUPPORTED_FEATURE_TARGETS: frozenset[str] = (
             "charged_atom_text",
             "disconnected_stereo_fragments",
             "explicit_bracket_hydrogen",
+            "quadruple_bond_text",
             "radical_atom_text",
             "ring_stereo_monocycle",
             "tetrahedral_atom_stereo",
@@ -346,14 +347,26 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
         ),
     ),
     SouthStarAdversarialSeed(
-        seed_id="unsupported_feature_triggers",
+        seed_id="bond_text_orders",
         variants=(
             SouthStarAdversarialVariant(
                 variant_id="quadruple_bond",
                 source_smiles="C$C",
+                axes=("root_choice",),
+                mutation_path=("seed", "explicit_quadruple_bond"),
+                boundary_targets=("quadruple_bond_text",),
+            ),
+        ),
+    ),
+    SouthStarAdversarialSeed(
+        seed_id="unsupported_feature_triggers",
+        variants=(
+            SouthStarAdversarialVariant(
+                variant_id="query_unspecified_bond",
+                source_smiles="C~C",
                 axes=("unsupported_feature_trigger",),
-                mutation_path=("seed", "unsupported_bond_type"),
-                boundary_targets=("unsupported_bond_type",),
+                mutation_path=("seed", "query_unspecified_bond"),
+                boundary_targets=("query_bond", "unsupported_bond_type"),
             ),
             SouthStarAdversarialVariant(
                 variant_id="dative_bond",

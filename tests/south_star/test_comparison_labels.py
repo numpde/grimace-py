@@ -104,3 +104,20 @@ class SouthStarComparisonLabelTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 self.assertEqual(case.case_id, report.case_id)
                 self.assertDiagnosticPartition(report)
+
+    def test_public_parity_unavailability_is_explicit_metadata(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_expanded_support_cases()
+            if case.case_id == "quadruple_bond_text_carbon_carbon"
+        )
+        report = south_star_expanded_parity_comparison_report(case)
+
+        self.assertFalse(report.rdkit_parity_available)
+        self.assertIn(
+            "Unsupported bond type: QUADRUPLE",
+            report.rdkit_parity_unavailable_reason,
+        )
+        self.assertEqual(case.expected_support, report.south_star_only)
+        self.assertEqual((), report.intersection)
+        self.assertEqual((), report.rdkit_parity_only)

@@ -29,6 +29,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+    SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
@@ -159,6 +160,14 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
         )
         self.assertIn(
+            SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
+        )
+        self.assertIn(
+            SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+        )
+        self.assertIn(
             SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
             SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
         )
@@ -211,10 +220,10 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         reports = (
             south_star_support_gate_report(Chem.MolFromSmarts("[#6]-[#8]")),
             south_star_support_gate_report(parse_smiles("[NH3]->[Cu]")),
-            south_star_support_gate_report(parse_smiles("C$C.O")),
+            south_star_support_gate_report(parse_smiles("[Na+].O")),
             south_star_support_gate_report(parse_smiles("C1/C=C\\CCCCC1")),
             south_star_support_gate_report(parse_smiles("[SiH3]C")),
-            south_star_support_gate_report(parse_smiles("C$C")),
+            south_star_support_gate_report(_unsupported_bond_type_mol()),
             south_star_support_gate_report(parse_smiles("[2H][H]")),
             south_star_support_gate_report(parse_smiles("[H+]")),
             south_star_support_gate_report(parse_smiles("[H]")),
@@ -260,6 +269,14 @@ class SouthStarDomainManifestTests(unittest.TestCase):
 
 def _empty_molecule() -> Chem.Mol:
     return Chem.Mol()
+
+
+def _unsupported_bond_type_mol() -> Chem.Mol:
+    mol = Chem.RWMol()
+    begin_idx = mol.AddAtom(Chem.Atom(6))
+    end_idx = mol.AddAtom(Chem.Atom(6))
+    mol.AddBond(begin_idx, end_idx, Chem.BondType.UNSPECIFIED)
+    return mol.GetMol()
 
 
 if __name__ == "__main__":

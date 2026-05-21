@@ -316,6 +316,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "modified_aromatic_atom_text_mapped_pyridine",
                 "modified_aromatic_atom_text_pyridinium_h",
                 "modified_aromatic_atom_text_pyridine_n_oxide",
+                "quadruple_bond_text_carbon_carbon",
             ),
             matrix.unified_reference_backed_case_ids,
         )
@@ -378,6 +379,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("markerless_acyclic_tree", matrix.supported_feature_areas)
         self.assertIn("modified_aromatic_atom_text", matrix.supported_feature_areas)
         self.assertIn("non_organic_bracket_atom_text", matrix.supported_feature_areas)
+        self.assertIn("quadruple_bond_text", matrix.supported_feature_areas)
         self.assertIn("radical_atom_text", matrix.supported_feature_areas)
         self.assertIn("triple_bond_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)

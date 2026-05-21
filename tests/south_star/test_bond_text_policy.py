@@ -15,6 +15,7 @@ class SouthStarBondTextPolicyTests(unittest.TestCase):
             ("CC", Chem.BondType.SINGLE, "", "elided_single_bond"),
             ("C=C", Chem.BondType.DOUBLE, "=", "explicit_double_bond"),
             ("C#N", Chem.BondType.TRIPLE, "#", "explicit_triple_bond"),
+            ("C$C", Chem.BondType.QUADRUPLE, "$", "explicit_quadruple_bond"),
             ("c1ccccc1", Chem.BondType.AROMATIC, "", "elided_aromatic_bond"),
         )
 
@@ -29,9 +30,13 @@ class SouthStarBondTextPolicyTests(unittest.TestCase):
                 self.assertEqual(expected_text, bond_text_for_supported_bond(bond))
 
     def test_unsupported_bond_text_remains_fail_fast(self) -> None:
-        bond = parse_smiles("C$C").GetBondWithIdx(0)
+        mol = Chem.RWMol()
+        begin_idx = mol.AddAtom(Chem.Atom(6))
+        end_idx = mol.AddAtom(Chem.Atom(6))
+        mol.AddBond(begin_idx, end_idx, Chem.BondType.UNSPECIFIED)
+        bond = mol.GetMol().GetBondWithIdx(0)
 
-        with self.assertRaisesRegex(NotImplementedError, "QUADRUPLE"):
+        with self.assertRaisesRegex(NotImplementedError, "UNSPECIFIED"):
             bond_text_obligation_for_supported_bond(bond)
 
 

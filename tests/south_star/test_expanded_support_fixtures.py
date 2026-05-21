@@ -22,6 +22,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
@@ -146,6 +147,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             any(
                 case.support_authority
                 == SOUTH_STAR_MODIFIED_AROMATIC_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )

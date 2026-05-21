@@ -45,8 +45,7 @@ from grimace._south_star.support_gates import (
 from grimace._south_star.tetrahedral import (
     SouthStarTetrahedralCenterFact,
     SouthStarTetrahedralTraversalObservation,
-    emitted_tetrahedral_ligand_order_from_observation,
-    preserving_tetrahedral_token,
+    tetrahedral_token_constraint_records,
 )
 
 
@@ -1243,40 +1242,34 @@ def _atom_text_for_traversal(
     if fact is None:
         return _atom_text(atom)
 
-    emitted_ligand_order = _emitted_tetrahedral_ligand_order(
+    observation = _tetrahedral_traversal_observation(
         center_atom_idx=fact.center_atom_idx,
         parent_idx=parent_idx,
         ordered_children=ordered_children,
         implicit_hydrogen_count=fact.implicit_hydrogen_count,
     )
-    token = preserving_tetrahedral_token(
-        source_token=fact.source_token,
-        source_ligand_order=fact.source_ligand_order,
-        emitted_ligand_order=emitted_ligand_order,
-    )
+    records = tetrahedral_token_constraint_records(fact, observation)
     return tetrahedral_atom_text_obligation(
         atom,
-        stereo_token=token,
+        stereo_token=records.renderer_input.value,
         implicit_hydrogen_count=fact.implicit_hydrogen_count,
     ).emitted_text
 
 
-def _emitted_tetrahedral_ligand_order(
+def _tetrahedral_traversal_observation(
     *,
     center_atom_idx: int,
     parent_idx: int | None,
     ordered_children: tuple[int, ...],
     implicit_hydrogen_count: int,
-) -> tuple[str, ...]:
-    return emitted_tetrahedral_ligand_order_from_observation(
-        SouthStarTetrahedralTraversalObservation(
-            center_atom_idx=center_atom_idx,
-            parent_atom_idx=parent_idx,
-            child_atom_indices=ordered_children,
-            ring_closure_ligand_atom_indices=(),
-            ring_closure_labels=(),
-            implicit_hydrogen_count=implicit_hydrogen_count,
-        )
+) -> SouthStarTetrahedralTraversalObservation:
+    return SouthStarTetrahedralTraversalObservation(
+        center_atom_idx=center_atom_idx,
+        parent_atom_idx=parent_idx,
+        child_atom_indices=ordered_children,
+        ring_closure_ligand_atom_indices=(),
+        ring_closure_labels=(),
+        implicit_hydrogen_count=implicit_hydrogen_count,
     )
 
 

@@ -6,8 +6,12 @@ from dataclasses import dataclass
 from rdkit import Chem
 
 from grimace._south_star.connected_traversal import connected_graph_plan_from_events
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintAssignment
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintEquation
 from grimace._south_star.constraint_vocabulary import SouthStarConstraintFamily
 from grimace._south_star.constraint_vocabulary import SouthStarConstraintObligation
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintSyntaxSlot
+from grimace._south_star.constraint_vocabulary import SouthStarRendererInput
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.reference_model import SouthStarTraversalEvent
 
@@ -66,6 +70,15 @@ class SouthStarTetrahedralTraversalObservation:
     ring_closure_ligand_atom_indices: tuple[int, ...]
     ring_closure_labels: tuple[str, ...]
     implicit_hydrogen_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarTetrahedralTokenConstraintRecords:
+    syntax_slot: SouthStarConstraintSyntaxSlot
+    obligations: tuple[SouthStarConstraintObligation, ...]
+    equation: SouthStarConstraintEquation
+    assignment: SouthStarConstraintAssignment
+    renderer_input: SouthStarRendererInput
 
 
 def extract_tetrahedral_center_facts(
@@ -145,6 +158,84 @@ def constraint_obligation_for_ring_tetrahedral_interaction(
         obligation_id=f"ring_tetrahedral:{obligation.center_atom_idx}",
         subject_id=f"atom:{obligation.center_atom_idx}",
         required_fact_ids=obligation.required_fact_and_event_fields,
+    )
+
+
+def tetrahedral_token_constraint_records(
+    fact: SouthStarTetrahedralCenterFact,
+    observation: SouthStarTetrahedralTraversalObservation,
+) -> SouthStarTetrahedralTokenConstraintRecords:
+    if fact.center_atom_idx != observation.center_atom_idx:
+        raise ValueError("tetrahedral fact and observation center atoms differ")
+    emitted_ligand_order = emitted_tetrahedral_ligand_order_from_observation(
+        observation
+    )
+    slot_id = _tetrahedral_token_slot_id(observation)
+    obligation = constraint_obligation_for_tetrahedral_token(fact, observation)
+    token = preserving_tetrahedral_token(
+        source_token=fact.source_token,
+        source_ligand_order=fact.source_ligand_order,
+        emitted_ligand_order=emitted_ligand_order,
+    )
+    assignment = SouthStarConstraintAssignment(
+        family_id=TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+        assignment_id=f"tetrahedral_token_assignment:{slot_id}:{token}",
+        syntax_slot_id=slot_id,
+        value=token,
+    )
+    return SouthStarTetrahedralTokenConstraintRecords(
+        syntax_slot=SouthStarConstraintSyntaxSlot(
+            family_id=TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+            slot_id=slot_id,
+            slot_kind="tetrahedral_stereo_token",
+            syntax_position="atom_text",
+            atom_idx=fact.center_atom_idx,
+        ),
+        obligations=(obligation,),
+        equation=SouthStarConstraintEquation(
+            family_id=TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+            equation_id=f"tetrahedral_token_equation:{slot_id}",
+            obligation_ids=(obligation.obligation_id,),
+            syntax_slot_ids=(slot_id,),
+        ),
+        assignment=assignment,
+        renderer_input=SouthStarRendererInput(
+            family_id=TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+            syntax_slot_id=slot_id,
+            token_family="tetrahedral_stereo_token",
+            value=assignment.value,
+        ),
+    )
+
+
+def constraint_obligation_for_tetrahedral_token(
+    fact: SouthStarTetrahedralCenterFact,
+    observation: SouthStarTetrahedralTraversalObservation,
+) -> SouthStarConstraintObligation:
+    if fact.center_atom_idx != observation.center_atom_idx:
+        raise ValueError("tetrahedral fact and observation center atoms differ")
+    return SouthStarConstraintObligation(
+        family_id=TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+        obligation_id=_tetrahedral_token_slot_id(observation),
+        subject_id=f"atom:{fact.center_atom_idx}",
+        required_fact_ids=(
+            f"tetrahedral_center:{fact.center_atom_idx}",
+            f"source_token:{fact.source_token}",
+            "source_ligand_order:" + ",".join(fact.source_ligand_order),
+            "emitted_ligand_order:"
+            + ",".join(emitted_tetrahedral_ligand_order_from_observation(observation)),
+            f"parent_atom:{observation.parent_atom_idx}",
+            "child_atoms:"
+            + ",".join(str(atom_idx) for atom_idx in observation.child_atom_indices),
+            "ring_closure_ligands:"
+            + ",".join(
+                str(atom_idx)
+                for atom_idx in observation.ring_closure_ligand_atom_indices
+            ),
+            "ring_closure_labels:" + ",".join(observation.ring_closure_labels),
+            f"implicit_hydrogen_count:{observation.implicit_hydrogen_count}",
+        ),
+        syntax_slot_ids=(_tetrahedral_token_slot_id(observation),),
     )
 
 
@@ -235,6 +326,20 @@ def _root_atom_idx_from_events(events: Sequence[SouthStarTraversalEvent]) -> int
     if first_atom is None:
         raise AssertionError("atom event position must carry an atom index")
     return first_atom
+
+
+def _tetrahedral_token_slot_id(
+    observation: SouthStarTetrahedralTraversalObservation,
+) -> str:
+    ligand_order = emitted_tetrahedral_ligand_order_from_observation(observation)
+    return (
+        f"tetrahedral_token:{observation.center_atom_idx}:"
+        f"{_ligand_order_text(ligand_order)}"
+    )
+
+
+def _ligand_order_text(ligand_order: Sequence[str]) -> str:
+    return ",".join(ligand_order)
 
 
 def _ring_tetrahedral_interaction_obligation(

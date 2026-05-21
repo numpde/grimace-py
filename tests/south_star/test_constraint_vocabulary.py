@@ -29,7 +29,19 @@ from grimace._south_star.tetrahedral import (
 from grimace._south_star.tetrahedral import (
     extract_ring_tetrahedral_interaction_obligations,
 )
+from grimace._south_star.tetrahedral import (
+    extract_tetrahedral_center_facts,
+)
+from grimace._south_star.tetrahedral import (
+    tetrahedral_token_constraint_records,
+)
+from grimace._south_star.tetrahedral import (
+    tetrahedral_traversal_observation_from_connected_graph_plan,
+)
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
+from tests.helpers.south_star_semantics import SouthStarSemanticCase
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 
@@ -145,6 +157,59 @@ class SouthStarConstraintVocabularyTests(unittest.TestCase):
         )
         self.assertEqual((), structural_obligation.syntax_slot_ids)
 
+    def test_tetrahedral_token_choice_projects_to_shared_vocabulary(self) -> None:
+        mol = parse_smiles("C[C@H](F)Cl")
+        fact = extract_tetrahedral_center_facts(mol)[0]
+        traversal = _traversal_by_render("C[C@H](F)Cl", "C[C@H](F)Cl")
+        plan = traversal.connected_graph_plan
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+            plan,
+            center_atom_idx=fact.center_atom_idx,
+            implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        )
+
+        records = tetrahedral_token_constraint_records(fact, observation)
+
+        self.assertEqual(
+            TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+            records.syntax_slot.family_id,
+        )
+        self.assertTrue(
+            records.syntax_slot.slot_id.startswith("tetrahedral_token:1:")
+        )
+        self.assertIn(
+            "atom:0,atom:2,atom:3,implicit_hydrogen",
+            records.syntax_slot.slot_id,
+        )
+        self.assertEqual("tetrahedral_stereo_token", records.syntax_slot.slot_kind)
+        self.assertEqual("atom_text", records.syntax_slot.syntax_position)
+        self.assertEqual(1, records.syntax_slot.atom_idx)
+        self.assertEqual(
+            (records.syntax_slot.slot_id,),
+            records.equation.syntax_slot_ids,
+        )
+        self.assertEqual(
+            tuple(obligation.obligation_id for obligation in records.obligations),
+            records.equation.obligation_ids,
+        )
+        self.assertEqual("@", records.assignment.value)
+        self.assertEqual(records.syntax_slot.slot_id, records.assignment.syntax_slot_id)
+        self.assertEqual(records.assignment.value, records.renderer_input.value)
+        self.assertEqual(
+            "tetrahedral_stereo_token",
+            records.renderer_input.token_family,
+        )
+        self.assertIn(
+            "source_ligand_order:atom:0,atom:2,atom:3,implicit_hydrogen",
+            records.obligations[0].required_fact_ids,
+        )
+        self.assertIn(
+            "emitted_ligand_order:atom:0,atom:2,atom:3,implicit_hydrogen",
+            records.obligations[0].required_fact_ids,
+        )
+
     def test_assignment_and_renderer_input_are_structural_records_only(self) -> None:
         assignment = SouthStarConstraintAssignment(
             family_id="example_family",
@@ -168,6 +233,27 @@ def _semantic_case(case_id: str):
     return next(
         case for case in load_south_star_semantic_cases() if case.case_id == case_id
     )
+
+
+def _traversal_by_render(source_smiles: str, rendered: str):
+    for traversal in mol_to_smiles_enum_s_tree_traversals_for_case(
+        SouthStarSemanticCase(
+            case_id="constraint_vocabulary_tetrahedral",
+            semantic_feature="tetrahedral token constraint vocabulary",
+            source_smiles=source_smiles,
+            eligible_carrier_edges=(),
+            maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
+                required_marker_edge_count=0,
+            ),
+            rdkit_writer_membership_status="not_checked",
+            rdkit_writer_membership_notes="Synthetic constraint vocabulary test.",
+            positive_semantic_smiles=(),
+            negative_semantic_smiles=(),
+        )
+    ):
+        if traversal.render() == rendered:
+            return traversal
+    raise AssertionError(f"missing traversal rendering {rendered!r}")
 
 
 if __name__ == "__main__":

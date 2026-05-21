@@ -4,9 +4,18 @@ import ast
 from pathlib import Path
 import unittest
 
+from grimace._south_star.reference_model import SouthStarTraversal
+
 
 SOUTH_STAR_TEST_ROOT = Path(__file__).resolve().parent
 SOUTH_STAR_HELPER_ROOT = SOUTH_STAR_TEST_ROOT.parent / "helpers"
+SOUTH_STAR_REFERENCE_MODEL_PATH = (
+    SOUTH_STAR_TEST_ROOT.parent.parent
+    / "python"
+    / "grimace"
+    / "_south_star"
+    / "reference_model.py"
+)
 COMPARISON_HELPER_NAMES: frozenset[str] = frozenset(
     {
         "south_star_comparison.py",
@@ -33,6 +42,14 @@ FORBIDDEN_CORE_HELPER_IMPORT_PREFIXES: tuple[str, ...] = (
     "grimace._deviation",
     "grimace._reference",
     "grimace._runtime",
+)
+FORBIDDEN_REFERENCE_MODEL_IMPORT_PREFIXES: tuple[str, ...] = (
+    "rdkit",
+    "grimace._south_star.enum_s",
+    "grimace._south_star.marker_equations",
+    "grimace._south_star.parity_solver",
+    "grimace._south_star.support_gates",
+    "tests",
 )
 
 
@@ -100,3 +117,19 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
         )
 
         self.assertEqual(tuple(sorted(COMPARISON_HELPER_NAMES)), runtime_importers)
+
+    def test_reference_model_has_narrow_record_only_import_boundary(self) -> None:
+        modules = _imported_modules(SOUTH_STAR_REFERENCE_MODEL_PATH)
+        for module_name in modules:
+            with self.subTest(module_name=module_name):
+                self.assertFalse(
+                    module_name.startswith(FORBIDDEN_REFERENCE_MODEL_IMPORT_PREFIXES),
+                    "South Star reference model records must not import runtime, "
+                    f"solver, RDKit, support-gate, or test surfaces: {module_name!r}",
+                )
+
+    def test_shared_traversal_record_does_not_render(self) -> None:
+        self.assertFalse(
+            hasattr(SouthStarTraversal, "render"),
+            "rendering belongs to enum_s/renderer code, not shared records",
+        )

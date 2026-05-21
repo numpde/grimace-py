@@ -22,6 +22,13 @@ from grimace._south_star.fragments import (
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.policies import DEFAULT_SOUTH_STAR_POLICY_SET
 from grimace._south_star.policies import SouthStarPolicySet
+from grimace._south_star.reference_model import SouthStarCarrierContext
+from grimace._south_star.reference_model import SouthStarMarkerSlot
+from grimace._south_star.reference_model import SouthStarMarkerSlotAssignment
+from grimace._south_star.reference_model import SouthStarRingClosure
+from grimace._south_star.reference_model import SouthStarTraversal
+from grimace._south_star.reference_model import SouthStarTraversalEvent
+from grimace._south_star.reference_model import SouthStarTraversalFragment
 from grimace._south_star.support_gates import (
     is_supported_monocycle_with_acyclic_branches,
 )
@@ -33,60 +40,16 @@ from grimace._south_star.tetrahedral import (
 
 
 @dataclass(frozen=True, slots=True)
-class _CarrierContext:
-    center_atom_idx: int
-    double_neighbor_idx: int
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarMarkerSlot:
-    slot_id: str
-    edge: Edge
-    begin_atom_idx: int
-    end_atom_idx: int
-    begin_parent_idx: int | None
-    syntax_position: str
-    adjacent_contexts: tuple[_CarrierContext, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarMarkerSlotAssignment:
-    slot_id: str
-    marker: str
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarRingClosure:
-    closure_id: str
-    label: str
-    role: str
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarTraversalEvent:
-    kind: str
-    text: str
-    atom_idx: int | None = None
-    edge: Edge | None = None
-    begin_atom_idx: int | None = None
-    end_atom_idx: int | None = None
-    begin_parent_idx: int | None = None
-    marker_slot: SouthStarMarkerSlot | None = None
-    ring_closure: SouthStarRingClosure | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarTreeTraversal:
-    root_atom_idx: int
-    events: tuple[SouthStarTraversalEvent, ...]
-    marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...]
-    component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...]
-
+class SouthStarTreeTraversal(SouthStarTraversal):
     def render(self) -> str:
         return render_south_star_traversal(
             self.events,
             marker_assignments=self.marker_assignments,
         )
+
+
+_CarrierContext = SouthStarCarrierContext
+_TraversalFragment = SouthStarTraversalFragment
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,11 +89,6 @@ class SouthStarEnumSPrototypeResult:
         DEFAULT_SOUTH_STAR_POLICY_SET.fragment_order_policy.name
     )
     output_order_policy: str = DEFAULT_SOUTH_STAR_POLICY_SET.output_order_policy.name
-
-
-@dataclass(frozen=True, slots=True)
-class _TraversalFragment:
-    events: tuple[SouthStarTraversalEvent, ...]
 
 
 @dataclass(frozen=True, slots=True)

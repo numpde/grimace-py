@@ -11,9 +11,9 @@ from grimace._south_star.component_support_state import (
 )
 from grimace._south_star.components import SouthStarSemanticStereoComponent
 from grimace._south_star.components import SouthStarSourceStereoFeature
-from grimace._south_star.enum_s import SouthStarMarkerSlot
-from grimace._south_star.enum_s import SouthStarTreeTraversal
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.reference_model import SouthStarMarkerSlot
+from grimace._south_star.reference_model import SouthStarTraversal
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +56,7 @@ def marker_slot_parity_equations_for_case(
 
 def marker_slot_parity_equations_for_traversal(
     state: SouthStarComponentSupportState,
-    traversal: SouthStarTreeTraversal,
+    traversal: SouthStarTraversal,
 ) -> tuple[SouthStarMarkerSlotParityEquation, ...]:
     graph_marker_by_edge = _graph_marker_by_edge(traversal)
     components_by_edge = _components_by_edge(state)
@@ -118,7 +118,7 @@ def expected_marker_from_equation(
     return equation.graph_marker
 
 
-def _graph_marker_by_edge(traversal: SouthStarTreeTraversal) -> dict[Edge, str]:
+def _graph_marker_by_edge(traversal: SouthStarTraversal) -> dict[Edge, str]:
     marker_by_edge: dict[Edge, str] = {}
     for assignment in traversal.component_marker_assignments:
         for edge, marker in assignment.marker_by_edge:
@@ -190,7 +190,7 @@ def _equation_id(*, slot_id: str, component_ids: tuple[str, ...]) -> str:
 
 
 def _ring_stereo_closure_open_atom_by_edge(
-    traversal: SouthStarTreeTraversal,
+    traversal: SouthStarTraversal,
 ) -> dict[Edge, int]:
     return {
         normalized_edge(event.edge): event.begin_atom_idx

@@ -139,10 +139,12 @@ atom-map inputs additionally become typed atom-text modifier obligations, each
 tied back to the source `SouthStarAtomTextFields` record. Supported bracket
 atom text currently covers neutral `[H]`, the tetrahedral carbon forms emitted
 by the current atom-stereo slice (`[C@H]`, `[C@@H]`, `[C@]`, and `[C@@]`),
-renderer-capable isotope/charge/map forms, and the first radical forms. Charge
-is represented by the bracket atom charge suffix. Radical count is represented
-by bracket atom valence, explicit-hydrogen count, and bond context rather than
-by a separate radical token.
+renderer-capable isotope/charge/map forms, the first radical forms, and an
+internal bracket-aromatic atom-text token policy for examples such as `[nH]`,
+`[15nH]`, `[n:7]`, and `[nH+]`. Charge is represented by the bracket atom
+charge suffix. Radical count is represented by bracket atom valence,
+explicit-hydrogen count, and bond context rather than by a separate radical
+token.
 
 Supported atom text is rendered through typed obligations rather than local
 string patches: organic-subset atoms have no bracket obligation, `[H]` records
@@ -150,7 +152,9 @@ an element-required bracket obligation, and tetrahedral carbon text records a
 stereo-token obligation plus an implicit-hydrogen obligation when applicable.
 The first aromatic slice uses the same obligation boundary: supported aromatic
 atoms emit lowercase aromatic atom text, and supported aromatic bonds use
-elided aromatic bond text.
+elided aromatic bond text. Bracket-aromatic atom text is grammar-valid and has
+typed atom-text obligations, but molecule support for modified aromatic atoms
+remains gated until fixture-backed support is added.
 
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.

@@ -91,3 +91,12 @@ Implement, but split it from broader aromatic element breadth.
 
 This should spawn implementation Backlog rows. The current probe row should not
 directly widen support.
+
+## Follow-Up After South Star 183
+
+`South Star 183` implements the first token/grammar boundary from this split:
+bracket aromatic tokens over the current `b/c/n/o/p/s` vocabulary are now valid
+South Star grammar tokens and direct atom-text obligations. This does not admit
+modified aromatic molecules into `MolToSmilesEnumS` support. The support gate
+still reports `[nH]`-style molecules as `aromatic_ring_surface` until
+fixture-backed support is added by a separate row.

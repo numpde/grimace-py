@@ -43,6 +43,10 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "[NH4+]",
             "[SeH]",
             "[SiH3]C",
+            "c1cc[nH]c1",
+            "c1cc[15nH]c1",
+            "c1cc[n:7]cc1",
+            "c1cc[nH+]cc1",
             "C#N",
             "O.F/C=C\\Cl",
         ):

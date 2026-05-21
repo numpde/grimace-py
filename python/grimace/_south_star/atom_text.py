@@ -14,6 +14,14 @@ SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
 SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"Se", "Si"}
 )
+SOUTH_STAR_BRACKET_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
+    {
+        "[nH]",
+        "[15nH]",
+        "[n:7]",
+        "[nH+]",
+    }
+)
 # Representative bracket-atom examples. The accepted bracket-token language is
 # the predicate below, because isotope, charge, hydrogen, and map values are
 # field-derived rather than a finite token list.
@@ -35,6 +43,7 @@ SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
         "[O]",
         "[SeH]",
         "[SiH3]",
+        *SOUTH_STAR_BRACKET_AROMATIC_ATOM_TEXT_TOKENS,
     }
 )
 SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
@@ -265,9 +274,7 @@ def _aromatic_atom_text_obligation(
     fields: SouthStarAtomTextFields,
 ) -> SouthStarAtomTextObligation:
     if _requires_bracket_atom_text(fields):
-        raise NotImplementedError(
-            "South Star aromatic atom text currently requires unmodified atoms"
-        )
+        return _bracket_aromatic_atom_text_obligation(fields)
     token = fields.symbol.lower()
     if token not in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
         raise NotImplementedError(
@@ -293,7 +300,10 @@ def is_south_star_bracket_atom_text_token(token: str) -> bool:
         rest = rest[1:]
 
     symbol = ""
-    for candidate in sorted(SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS, key=len, reverse=True):
+    bracket_symbols = (
+        SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS | SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+    )
+    for candidate in sorted(bracket_symbols, key=len, reverse=True):
         if rest.startswith(candidate):
             symbol = candidate
             rest = rest[len(candidate) :]
@@ -301,10 +311,14 @@ def is_south_star_bracket_atom_text_token(token: str) -> bool:
     if not symbol:
         return False
 
-    if rest.startswith("@@"):
-        rest = rest[2:]
-    elif rest.startswith("@"):
-        rest = rest[1:]
+    is_aromatic_symbol = symbol in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+    if rest.startswith("@@") or rest.startswith("@"):
+        if is_aromatic_symbol:
+            return False
+        if rest.startswith("@@"):
+            rest = rest[2:]
+        else:
+            rest = rest[1:]
 
     if rest.startswith("H"):
         rest = rest[1:]
@@ -378,6 +392,47 @@ def _bracket_atom_text_obligation(
         fields=fields,
         emitted_text=text,
         token_family="bracket_atom",
+        bracket_obligations=tuple(obligations),
+    )
+
+
+def _bracket_aromatic_atom_text_obligation(
+    fields: SouthStarAtomTextFields,
+) -> SouthStarAtomTextObligation:
+    token = fields.symbol.lower()
+    if token not in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
+        raise NotImplementedError(
+            f"South Star aromatic atom text unsupported for symbol {fields.symbol!r}"
+        )
+    text = (
+        "["
+        f"{_isotope_text(fields)}"
+        f"{token}"
+        f"{_hydrogen_text(fields)}"
+        f"{_charge_text(fields.formal_charge)}"
+        f"{_atom_map_text(fields.atom_map_number)}"
+        "]"
+    )
+    obligations = ["bracket_aromatic_atom"]
+    if fields.isotope != 0:
+        obligations.append("isotope_prefix")
+    if fields.explicit_hydrogen_count != 0:
+        obligations.append("explicit_hydrogen_count")
+    if fields.formal_charge != 0:
+        obligations.append("charge_suffix")
+    if fields.atom_map_number != 0:
+        obligations.append("atom_map_suffix")
+    if fields.radical_electron_count != 0:
+        obligations.append("radical_valence_semantics")
+    if not is_south_star_bracket_atom_text_token(text):
+        raise AssertionError(
+            f"rendered unsupported South Star aromatic atom text {text!r}"
+        )
+    return SouthStarAtomTextObligation(
+        atom_idx=fields.atom_idx,
+        fields=fields,
+        emitted_text=text,
+        token_family="bracket_aromatic_atom",
         bracket_obligations=tuple(obligations),
     )
 

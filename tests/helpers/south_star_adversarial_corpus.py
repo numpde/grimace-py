@@ -364,9 +364,9 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
             ),
             SouthStarAdversarialVariant(
                 variant_id="aromatic_ring",
-                source_smiles="c1ccccc1",
+                source_smiles="[se]1cccc1",
                 axes=("unsupported_feature_trigger", "ring_closure_choice"),
-                mutation_path=("seed", "aromatic_ring"),
+                mutation_path=("seed", "aromatic_element_breadth"),
                 boundary_targets=("aromatic_ring_surface",),
             ),
         ),

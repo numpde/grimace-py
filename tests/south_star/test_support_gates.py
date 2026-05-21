@@ -242,8 +242,22 @@ class SouthStarSupportGateTests(unittest.TestCase):
                 report = south_star_support_gate_report(parse_smiles(smiles))
                 self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_modified_aromatic_atoms_remain_outside_first_aromatic_scope(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("c1cc[nH]c1"))
+    def test_modified_aromatic_atoms_are_inside_first_atom_text_scope(self) -> None:
+        cases = (
+            "c1cc[nH]c1",
+            "c1cc[15nH]c1",
+            "[nH:7]1cccc1",
+            "c1cc[nH+]cc1",
+            "c1cc[n+]([O-])cc1",
+        )
+
+        for smiles in cases:
+            with self.subTest(smiles=smiles):
+                report = south_star_support_gate_report(parse_smiles(smiles))
+                self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_aromatic_element_breadth_remains_outside_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("[se]1cccc1"))
 
         self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
 

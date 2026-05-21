@@ -20,6 +20,8 @@ The supported private fixture surface is now:
   non-organic bracket-only symbol, double-bond, and triple-bond text cases;
 - markerless aromatic monocycle text cases with optional acyclic supported
   branches;
+- modified-aromatic atom-text cases over the current bracket-aromatic nitrogen
+  vocabulary;
 - narrow fused aromatic ring-system cases with unmodified aromatic atom text and
   elided aromatic bond text;
 - simple and branched nonstereo monocycles;
@@ -42,14 +44,14 @@ back any current fixture case.
 
 As of the current South Star checkpoint:
 
-- expanded-support cases: `47`;
+- expanded-support cases: `53`;
 - exact first-domain cases: `5`;
-- total semantic benchmark rows: `52`;
+- total semantic benchmark rows: `58`;
 - public API blocker cases in the readiness matrix: `0`;
 - temporary-witness-backed current cases: `0`;
 - regression-witness-backed current cases: `0`.
 
-The benchmark artifact is now pinned as evidence over the same 52 current
+The benchmark artifact is now pinned as evidence over the same 58 current
 semantic fixture cases. It records policy set, command, environment metadata,
 per-case output counts, and timings. It is not evidence for RDKit writer parity
 or for package-level speed claims.
@@ -65,7 +67,7 @@ evidence.
 The next high-value surfaces are:
 
 - broader atom/bond text combinations;
-- modified aromatic atom text and aromatic directional overlays as separate
-  aromatic policy slices;
+- broader aromatic atom-symbol breadth and aromatic directional overlays as
+  separate aromatic policy slices;
 - documentation of the private EnumS contract before any export decision;
 - an export-gate blocker inventory after the boundary/docs pass.

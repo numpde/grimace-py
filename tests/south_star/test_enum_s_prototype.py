@@ -876,8 +876,8 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
     ) -> None:
         case = SouthStarSemanticCase(
             case_id="unsupported_ring",
-            semantic_feature="unsupported modified aromatic atom text boundary",
-            source_smiles="c1cc[nH]c1",
+            semantic_feature="unsupported aromatic element breadth boundary",
+            source_smiles="[se]1cccc1",
             eligible_carrier_edges=(),
             maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
                 required_marker_edge_count=0,

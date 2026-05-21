@@ -152,9 +152,9 @@ an element-required bracket obligation, and tetrahedral carbon text records a
 stereo-token obligation plus an implicit-hydrogen obligation when applicable.
 The first aromatic slice uses the same obligation boundary: supported aromatic
 atoms emit lowercase aromatic atom text, and supported aromatic bonds use
-elided aromatic bond text. Bracket-aromatic atom text is grammar-valid and has
-typed atom-text obligations, but molecule support for modified aromatic atoms
-remains gated until fixture-backed support is added.
+elided aromatic bond text. The first modified-aromatic atom-text slice admits
+pinned bracket-aromatic nitrogen cases such as `[nH]`, `[15nH]`, `[n:7]`,
+`[nH+]`, and `[n+]([O-])` through the same typed atom-text obligation boundary.
 
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.
@@ -178,8 +178,8 @@ Current unsupported categories include:
 - ring stereo outside the supported monocycle subset, reported as
   `ring_stereo`;
 - aromatic rings outside the active markerless-aromatic-monocycle,
-  supported-branch, and narrow fused-aromatic slices, reported as
-  `aromatic_ring_surface`;
+  supported-branch, modified-aromatic atom-text, and narrow fused-aromatic
+  slices, reported as `aromatic_ring_surface`;
 - aromatic directional surfaces, including directional markers on otherwise
   supported aromatic monocycles, reported separately as
   `aromatic_directional_surface`;
@@ -195,9 +195,10 @@ models before enumeration should widen to them.
 
 The current aromatic stance is a narrow active policy, not broad aromatic
 support. Sanitized markerless aromatic monocycles with supported acyclic
-branches and narrow unmodified fused aromatic systems are supported through the
-`aromatic_text_policy` contract. Modified aromatic atoms and aromatic
-directional overlays remain fail-fast boundaries. See
+branches, a first bracket-aromatic atom-text slice, and narrow unmodified fused
+aromatic systems are supported through the `aromatic_text_policy` contract.
+Broader aromatic atom-symbol breadth and aromatic directional overlays remain
+fail-fast boundaries. See
 `notes/040_south_star_aromatic_boundary.md` for the alternatives and why
 kekule-looking input text is not a separate molecule-fact contract when normal
 RDKit parsing still sets aromatic flags.
@@ -367,16 +368,17 @@ Exact support evidence is split by domain:
   helper that emits shared traversal/slot records;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated and unsaturated nonstereo-monocycle,
-  markerless aromatic-monocycle and aromatic-branch, ring-stereo monocycle,
-  disconnected-composition, atom-text, bond-text, and combined-stereo cases
-  are checked against shared unified-reference helpers where promoted and
-  temporary witness helpers where not yet promoted. The nonstereo monocycle
+  markerless aromatic-monocycle and aromatic-branch, modified-aromatic atom-text,
+  ring-stereo monocycle, disconnected-composition, atom-text, bond-text, and
+  combined-stereo cases are checked against shared unified-reference helpers
+  where promoted and temporary witness helpers where not yet promoted. The
+  nonstereo monocycle
   witness checks broken ring-edge choice, tree traversal order, closure digit
   placement, and closure bond text. The aromatic monocycle witness checks
   sanitized aromatic molecule facts, lowercase aromatic atom-text obligations,
-  elided aromatic bond text, supported branch atom/bond obligations, parse-back
-  evidence, and first-occurrence deduplication. The ring-stereo witness checks
-  closure-event marker slots,
+  bracket-aromatic atom-text obligations, elided aromatic bond text, supported
+  branch atom/bond obligations, parse-back evidence, and first-occurrence
+  deduplication. The ring-stereo witness checks closure-event marker slots,
   central-double-bond closure events, and parity-equation projections by slot
   id.
 

@@ -40,34 +40,35 @@ Executed checks:
 Results:
 
 - South Star package readiness: `140` tests passed at the original inventory
-  checkpoint; `South Star 182` keeps the same runner green at `141` tests after
-  adding fused aromatic cases.
+  checkpoint; `South Star 184` keeps the runner green at `143` tests after
+  adding fused aromatic and modified-aromatic atom-text cases.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `47`.
-- Total checked semantic fixture cases: `52`.
+- Expanded-support cases: `53`.
+- Total checked semantic fixture cases: `58`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `52`;
-- shared-pipeline promotion candidates: `52`;
+- unified-reference-backed cases: `58`;
+- shared-pipeline promotion candidates: `58`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
-- supported feature areas: `25`;
+- supported feature areas: `28`;
 - support-gate blocker categories: `16`.
 
 Authority inventory:
 
-- authority classes: `52` unified-reference cases;
-- shared-spine coverage: `52` complete cases;
+- authority classes: `58` unified-reference cases;
+- shared-spine coverage: `58` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 
 Supported feature areas currently declared:
 
+- `aromatic_text_branch`
 - `aromatic_text_monocycle`
 - `atom_map_text`
 - `branched_saturated_monocycle`
@@ -83,6 +84,7 @@ Supported feature areas currently declared:
 - `independent_directional_stereo_components`
 - `isotope_atom_text`
 - `markerless_acyclic_tree`
+- `modified_aromatic_atom_text`
 - `nonstereo_polycyclic_skeleton`
 - `polycyclic_ring_stereo`
 - `radical_atom_text`

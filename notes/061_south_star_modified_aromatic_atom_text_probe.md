@@ -40,9 +40,10 @@ The South Star semantic oracle rejects the outputs only because the declared
 grammar currently excludes bracket aromatic atom tokens such as `[nH]`,
 `[15nH]`, `[n:7]`, and `[nH+]`.
 
-## Current Runtime Boundary
+## Runtime Boundary At Probe Time
 
-The runtime correctly fails today:
+At probe time, before `South Star 183` and `South Star 184`, the runtime
+correctly failed:
 
 - `_aromatic_atom_text_supported` requires unmodified aromatic atoms;
 - `_aromatic_atom_text_obligation` raises when `_requires_bracket_atom_text`
@@ -53,7 +54,7 @@ The runtime correctly fails today:
 - the support gate reports these cases as `aromatic_ring_surface`, not as a
   distinct atom-text frontier.
 
-That is a clean fail-fast boundary, but it is now too coarse for the next
+That was a clean fail-fast boundary, but it was too coarse for the next
 implementation slice.
 
 ## Interpretation
@@ -100,3 +101,26 @@ South Star grammar tokens and direct atom-text obligations. This does not admit
 modified aromatic molecules into `MolToSmilesEnumS` support. The support gate
 still reports `[nH]`-style molecules as `aromatic_ring_surface` until
 fixture-backed support is added by a separate row.
+
+## Follow-Up After South Star 184
+
+`South Star 184` adds that fixture-backed support for the first modified
+aromatic atom-text slice. The checked cases are:
+
+- `c1cc[nH]c1`;
+- `c1cc[15nH]c1`;
+- `[nH:7]1cccc1`;
+- `c1cc[n:7]cc1`;
+- `c1cc[nH+]cc1`;
+- `c1cc[n+]([O-])cc1`.
+
+They are pinned under
+`tests/fixtures/south_star_expanded_support/expanded_domain_v1/080_modified_aromatic_atom_text.json`
+with `unified_reference_modified_aromatic_atom_text_obligations` authority. The
+proof path reuses the shared monocycle/branch traversal spine and adds no
+renderer-local exception: support comes from sanitized aromatic molecule facts,
+bracket-aromatic atom-text obligations, existing modifier obligations, elided
+aromatic bond text, parse-back evidence, and first-occurrence deduplication.
+
+`[se]1cccc1` remains outside this slice. It is an aromatic atom-symbol breadth
+question, not just a modified atom-text rendering question.

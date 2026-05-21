@@ -94,8 +94,8 @@ Expected implementation shape:
 3. Add a unified-reference proof helper or extend the existing polycyclic
    proof helper so aromatic bond/atom obligations are explicit.
 4. Pin fixtures for the three witnesses.
-5. Update support-gate tests so modified aromatic atoms and aromatic
-   directional overlays remain gated.
+5. Update support-gate tests so modified aromatic atoms remain separate from the
+   fused-ring slice and aromatic directional overlays remain gated.
 6. Refresh readiness counts, benchmark artifact, docs, and notes.
 
 Do not bundle this with modified aromatic atom text. That is a separate
@@ -112,7 +112,8 @@ The slice remains deliberately narrow:
 
 - supported: unmodified sanitized fused aromatic ring systems with lowercase
   aromatic atom text and elided aromatic bond text;
-- unsupported: modified aromatic atom text such as `[nH]`;
+- unsupported in this fused slice: modified aromatic atom text within fused
+  aromatic systems;
 - unsupported: aromatic directional overlays;
 - unsupported: metal, dative, query, and broader aromatic surfaces.
 

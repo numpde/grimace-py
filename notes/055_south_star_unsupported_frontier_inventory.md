@@ -33,7 +33,7 @@ small witnesses. It is an implementation guide, not a support change.
 | `fused_or_polycyclic_ring` | `F/C=C\\C1CC2CCC1C2` | Polycyclic plus exocyclic stereo outside current supported polycyclic skeleton/stereo slices. | Polycyclic plus exocyclic-directional family. |
 | `ring_tetrahedral_interaction` | `C1CC2CCCC2[C@H]1F` | Ring-local ligand-order dependence outside the current monocycle proof family. | Ring/tetrahedral interaction expansion. |
 | `ring_stereo` | `C1CC2CCCC2[C@H]1F` with a ring bond manually tagged `STEREOZ` | Ring stereo in an unsupported ring/stereo context. | Ring-stereo expansion after ring-system family is named. |
-| `aromatic_ring_surface` | `c1cc[nH]c1` | Aromatic coverage beyond markerless unmodified monocycles, supported branches, and narrow unmodified fused ring systems. | Modified aromatic atom-text policy slice. |
+| `aromatic_ring_surface` | `[se]1cccc1` | Aromatic coverage beyond markerless unmodified monocycles, supported branches, first modified-aromatic atom-text cases, and narrow unmodified fused ring systems. | Aromatic element-breadth or directional policy slice. |
 | `aromatic_directional_surface` | `c1ccccc1` with an aromatic bond manually tagged directional | Aromatic directional overlay has no named semantic constraint family. | Aromatic directional policy, separate from markerless text. |
 | `unstated_component_equation` | `FC=CCl` with the double bond manually tagged `STEREOZ` but no slash/backslash carrier basis | Internal molecule fact has stereo but no observable marker basis in the current equation language. | Decide whether this is invalid input for EnumS or a new non-token stereo fact family. |
 
@@ -59,9 +59,10 @@ They have different semantic contracts and different risk profiles.
 The next lowest-regret implementation path is still aromatic expansion, but not
 "all aromaticity." Split it first:
 
-1. modified aromatic atom text such as `[nH]`;
+1. broader aromatic atom-symbol breadth such as `[se]`;
 2. aromatic directional overlays;
-3. broader aromatic systems outside the narrow unmodified fused-ring slice.
+3. broader aromatic systems outside the narrow fused-ring and modified-atom-text
+   slices.
 
 The already-admitted fused aromatic subfamily reuses the same spine: molecule
 facts, traversal events, lowercase aromatic atom-text obligations, elided
@@ -70,6 +71,6 @@ The next aromatic subfamily should keep that same proof shape instead of
 adding renderer-local exceptions.
 
 The next parallel planning path is atom/bond text breadth. It is likely easier
-than modified aromatic atom text, but it is less strategically important for
+than aromatic directional overlays, but it is less strategically important for
 the current South Star frontier because the semantic structure is mostly
 renderer policy.

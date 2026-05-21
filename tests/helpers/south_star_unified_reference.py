@@ -251,6 +251,28 @@ def is_nonstereo_monocycle_ring_traversal_domain(
     )
 
 
+def is_modified_aromatic_atom_text_monocycle_domain(
+    facts: SouthStarMoleculeFacts,
+) -> bool:
+    topology = facts.graph_topology
+    return (
+        facts.supported
+        and topology.connected
+        and topology.ring_system.simple_monocycle
+        and len(facts.atom_text_facts) == topology.atom_count
+        and len(facts.bond_text_facts) == topology.bond_count
+        and any(
+            atom_text_obligation_for_supported_fields(atom).token_family
+            == "bracket_aromatic_atom"
+            for atom in facts.atom_text_facts
+            if atom.is_aromatic
+        )
+        and not facts.components
+        and not facts.carrier_opportunities
+        and not facts.tetrahedral_center_facts
+    )
+
+
 def is_nonstereo_polycyclic_ring_traversal_domain(
     facts: SouthStarMoleculeFacts,
 ) -> bool:
@@ -372,13 +394,36 @@ def markerless_acyclic_tree_support_from_shared_spine(
 def nonstereo_monocycle_support_from_shared_spine(
     case: object,
 ) -> SouthStarNonstereoMonocycleSupportProof:
+    return _monocycle_support_from_shared_spine(
+        case,
+        domain_predicate=is_nonstereo_monocycle_ring_traversal_domain,
+        domain_name="nonstereo-monocycle",
+    )
+
+
+def modified_aromatic_atom_text_support_from_shared_spine(
+    case: object,
+) -> SouthStarNonstereoMonocycleSupportProof:
+    return _monocycle_support_from_shared_spine(
+        case,
+        domain_predicate=is_modified_aromatic_atom_text_monocycle_domain,
+        domain_name="modified-aromatic-atom-text",
+    )
+
+
+def _monocycle_support_from_shared_spine(
+    case: object,
+    *,
+    domain_predicate: Callable[[SouthStarMoleculeFacts], bool],
+    domain_name: str,
+) -> SouthStarNonstereoMonocycleSupportProof:
     mol = parse_smiles(case.source_smiles)
     facts = SouthStarMoleculeFacts.from_mol(mol)
-    if not is_nonstereo_monocycle_ring_traversal_domain(facts):
+    if not domain_predicate(facts):
         raise NotImplementedError(
-            "nonstereo-monocycle unified reference requires one connected "
-            "simple monocycle, supported atom text, single/double nonaromatic "
-            "bond text, and no stereo constraints"
+            f"{domain_name} unified reference requires one connected supported "
+            "monocycle, supported atom/bond text, no stereo constraints, and a "
+            "named atom-text policy"
         )
 
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)

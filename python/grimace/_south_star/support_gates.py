@@ -7,6 +7,7 @@ from rdkit import Chem
 from grimace._south_star.aromatic_policy import SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
 from grimace._south_star.atom_text import (
     SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS,
+    atom_text_obligation_for_supported_fields,
     south_star_atom_text_fields,
     unsupported_atom_text_reasons,
 )
@@ -412,7 +413,7 @@ def _aromatic_ring_features(
             bond_indices=tuple(bond.GetIdx() for bond in aromatic_bonds),
             reason=(
                 f"active South Star aromatic contract {contract.name!r} "
-                "currently supports markerless aromatic monocycles only"
+                "currently supports named aromatic text slices only"
             ),
         ),
     )
@@ -603,14 +604,30 @@ def is_supported_aromatic_monocycle(mol: Chem.Mol) -> bool:
 
 def _aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
     fields = south_star_atom_text_fields(atom)
+    if not fields.is_aromatic:
+        return False
+    if fields.symbol.lower() not in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
+        return False
+    if fields.radical_electron_count != 0:
+        return False
+    try:
+        atom_text_obligation_for_supported_fields(fields)
+    except NotImplementedError:
+        return False
+    return True
+
+
+def _unmodified_aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
+    fields = south_star_atom_text_fields(atom)
     return (
         fields.is_aromatic
         and fields.symbol.lower() in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
         and fields.isotope == 0
+        and fields.explicit_hydrogen_count == 0
         and fields.formal_charge == 0
         and fields.radical_electron_count == 0
         and fields.atom_map_number == 0
-        and fields.explicit_hydrogen_count == 0
+        and fields.chiral_tag == "CHI_UNSPECIFIED"
     )
 
 
@@ -725,7 +742,7 @@ def _has_supported_fused_aromatic_shape(mol: Chem.Mol) -> bool:
     ):
         return False
     return (
-        all(_aromatic_atom_text_supported(atom) for atom in mol.GetAtoms())
+        all(_unmodified_aromatic_atom_text_supported(atom) for atom in mol.GetAtoms())
         and all(bond.GetIsAromatic() for bond in mol.GetBonds())
         and all(bond.GetBondType() in SUPPORTED_BOND_TYPES for bond in mol.GetBonds())
     )

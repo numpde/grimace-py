@@ -39,8 +39,8 @@ unified-reference/readiness machinery. They do not change the public
 The remaining frontier is still broad enough that `MolToSmilesEnumS` should
 stay private:
 
-- fused aromatic systems;
-- modified aromatic atom text such as `[nH]`;
+- broader aromatic systems outside the narrow fused-ring slice;
+- broader aromatic atom-symbol breadth such as `[se]`;
 - aromatic directional overlays;
 - broader ordinary atom text beyond the first `Si`/`Se` slice;
 - ordinary bond text beyond single/double/triple/aromatic, especially `$`;
@@ -105,11 +105,22 @@ Decision row.
 the checked private surface. The current counts are now:
 
 - exact first-domain directional cases: `5`;
-- expanded-support cases: `47`;
-- total benchmark/readiness rows: `52`.
+- expanded-support cases: `53`;
+- total benchmark/readiness rows: `58`.
 
 The new supported family is narrow: unmodified sanitized fused aromatic ring
 systems with lowercase aromatic atom text, elided aromatic bond text, no
-directional overlays, and no modified aromatic atom text. The remaining
-aromatic frontier is therefore modified aromatic atom text, aromatic
-directional overlays, and broader aromatic systems outside that named slice.
+directional overlays, and no modified aromatic atom text.
+
+## Follow-Up After South Star 184
+
+`South Star 184` promotes the first modified-aromatic atom-text subfamily from
+frontier to the checked private surface. The admitted cases cover pinned
+bracket-aromatic nitrogen forms (`[nH]`, `[15nH]`, `[n:7]`, `[nH+]`, and
+`[n+]([O-])`) through the shared monocycle/branch traversal spine, typed
+atom-text obligations, elided aromatic bond text, parse-back evidence, and
+first-occurrence deduplication.
+
+The remaining aromatic frontier is therefore broader aromatic atom-symbol
+breadth such as `[se]`, aromatic directional overlays, and broader aromatic
+systems outside the currently named fused-ring and modified-atom-text slices.

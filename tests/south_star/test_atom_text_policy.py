@@ -4,6 +4,7 @@ import unittest
 
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
+from grimace._south_star.atom_text import atom_text_modifier_obligations
 from grimace._south_star.atom_text import atom_text_for_supported_atom
 from grimace._south_star.atom_text import atom_text_obligation_for_supported_atom
 from grimace._south_star.atom_text import south_star_atom_text_fields
@@ -61,6 +62,77 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
 
     def test_policy_names_deferred_bracket_modifiers(self) -> None:
         cases = (
+            (
+                "[2H][H]",
+                "isotope",
+                "isotope",
+                2,
+                "unsupported_atom_isotope",
+            ),
+            (
+                "[H+]",
+                "charge",
+                "formal_charge",
+                1,
+                "unsupported_atom_charge",
+            ),
+            (
+                "[H]",
+                "radical",
+                "radical_electron_count",
+                1,
+                "unsupported_radical_atom",
+            ),
+            (
+                "[CH3:1]C",
+                "atom_map",
+                "atom_map_number",
+                1,
+                "unsupported_atom_map",
+            ),
+        )
+
+        for (
+            smiles,
+            expected_modifier,
+            expected_field,
+            expected_value,
+            expected_category,
+        ) in cases:
+            mol = parse_smiles(smiles)
+            fields = south_star_atom_text_fields(mol.GetAtomWithIdx(0))
+            obligations = atom_text_modifier_obligations(fields)
+            categories = {
+                reason.category for reason in unsupported_atom_text_reasons(fields)
+            }
+
+            with self.subTest(smiles=smiles):
+                self.assertEqual(1, len(obligations))
+                obligation = obligations[0]
+                self.assertIs(fields, obligation.fields)
+                self.assertEqual(fields.atom_idx, obligation.atom_idx)
+                self.assertEqual(expected_modifier, obligation.modifier_name)
+                self.assertEqual(expected_field, obligation.field_name)
+                self.assertEqual(expected_value, obligation.value)
+                self.assertEqual(expected_category, obligation.unsupported_category)
+                self.assertEqual(
+                    "bracket_atom_modifier_renderer",
+                    obligation.renderer_requirement,
+                )
+                self.assertEqual(
+                    expected_category,
+                    obligation.unsupported_reason.category,
+                )
+                self.assertIn(expected_category, categories)
+
+    def test_supported_atom_text_has_no_modifier_obligation(self) -> None:
+        mol = parse_smiles("CC")
+        fields = south_star_atom_text_fields(mol.GetAtomWithIdx(0))
+
+        self.assertEqual((), atom_text_modifier_obligations(fields))
+
+    def test_modifier_obligations_do_not_enable_renderer_support(self) -> None:
+        cases = (
             ("[2H][H]", "unsupported_atom_isotope"),
             ("[H+]", "unsupported_atom_charge"),
             ("[H]", "unsupported_radical_atom"),
@@ -69,13 +141,10 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
 
         for smiles, expected_category in cases:
             mol = parse_smiles(smiles)
-            fields = south_star_atom_text_fields(mol.GetAtomWithIdx(0))
-            categories = {
-                reason.category for reason in unsupported_atom_text_reasons(fields)
-            }
 
             with self.subTest(smiles=smiles):
-                self.assertIn(expected_category, categories)
+                with self.assertRaisesRegex(NotImplementedError, expected_category):
+                    atom_text_obligation_for_supported_atom(mol.GetAtomWithIdx(0))
 
 
 if __name__ == "__main__":

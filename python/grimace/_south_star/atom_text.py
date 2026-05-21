@@ -43,6 +43,36 @@ class SouthStarAtomTextUnsupportedReason:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarAtomTextModifierObligation:
+    fields: SouthStarAtomTextFields
+    modifier_name: str
+    field_name: str
+    value: int
+    unsupported_category: str
+    renderer_requirement: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if self.value == 0:
+            raise ValueError("atom-text modifier obligations require nonzero input")
+        if getattr(self.fields, self.field_name) != self.value:
+            raise ValueError(
+                "atom-text modifier obligation value must match source fields"
+            )
+
+    @property
+    def atom_idx(self) -> int:
+        return self.fields.atom_idx
+
+    @property
+    def unsupported_reason(self) -> SouthStarAtomTextUnsupportedReason:
+        return SouthStarAtomTextUnsupportedReason(
+            category=self.unsupported_category,
+            reason=self.reason,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarAtomTextObligation:
     atom_idx: int
     fields: SouthStarAtomTextFields
@@ -53,6 +83,54 @@ class SouthStarAtomTextObligation:
     @property
     def uses_brackets(self) -> bool:
         return self.emitted_text.startswith("[") and self.emitted_text.endswith("]")
+
+
+@dataclass(frozen=True, slots=True)
+class _AtomTextModifierObligationSpec:
+    modifier_name: str
+    field_name: str
+    unsupported_category: str
+    reason: str
+
+
+_ATOM_TEXT_MODIFIER_OBLIGATION_SPECS = (
+    _AtomTextModifierObligationSpec(
+        modifier_name="isotope",
+        field_name="isotope",
+        unsupported_category="unsupported_atom_isotope",
+        reason=(
+            "isotopic atom text is outside the current South Star "
+            "bracket-atom grammar contract"
+        ),
+    ),
+    _AtomTextModifierObligationSpec(
+        modifier_name="charge",
+        field_name="formal_charge",
+        unsupported_category="unsupported_atom_charge",
+        reason=(
+            "charged atom text is outside the current South Star "
+            "bracket-atom grammar contract"
+        ),
+    ),
+    _AtomTextModifierObligationSpec(
+        modifier_name="radical",
+        field_name="radical_electron_count",
+        unsupported_category="unsupported_radical_atom",
+        reason=(
+            "radical atom text is outside the current South Star "
+            "bracket-atom grammar contract"
+        ),
+    ),
+    _AtomTextModifierObligationSpec(
+        modifier_name="atom_map",
+        field_name="atom_map_number",
+        unsupported_category="unsupported_atom_map",
+        reason=(
+            "atom-map text is outside the current South Star "
+            "bracket-atom grammar contract"
+        ),
+    ),
+)
 
 
 def south_star_atom_text_fields(atom: Chem.Atom) -> SouthStarAtomTextFields:
@@ -73,47 +151,10 @@ def south_star_atom_text_fields(atom: Chem.Atom) -> SouthStarAtomTextFields:
 def unsupported_atom_text_reasons(
     fields: SouthStarAtomTextFields,
 ) -> tuple[SouthStarAtomTextUnsupportedReason, ...]:
-    reasons = []
-    if fields.isotope != 0:
-        reasons.append(
-            SouthStarAtomTextUnsupportedReason(
-                category="unsupported_atom_isotope",
-                reason=(
-                    "isotopic atom text is outside the current South Star "
-                    "bracket-atom grammar contract"
-                ),
-            )
-        )
-    if fields.formal_charge != 0:
-        reasons.append(
-            SouthStarAtomTextUnsupportedReason(
-                category="unsupported_atom_charge",
-                reason=(
-                    "charged atom text is outside the current South Star "
-                    "bracket-atom grammar contract"
-                ),
-            )
-        )
-    if fields.radical_electron_count != 0:
-        reasons.append(
-            SouthStarAtomTextUnsupportedReason(
-                category="unsupported_radical_atom",
-                reason=(
-                    "radical atom text is outside the current South Star "
-                    "bracket-atom grammar contract"
-                ),
-            )
-        )
-    if fields.atom_map_number != 0:
-        reasons.append(
-            SouthStarAtomTextUnsupportedReason(
-                category="unsupported_atom_map",
-                reason=(
-                    "atom-map text is outside the current South Star "
-                    "bracket-atom grammar contract"
-                ),
-            )
-        )
+    reasons = [
+        obligation.unsupported_reason
+        for obligation in atom_text_modifier_obligations(fields)
+    ]
     if fields.symbol not in SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS:
         reasons.append(
             SouthStarAtomTextUnsupportedReason(
@@ -125,6 +166,28 @@ def unsupported_atom_text_reasons(
             )
         )
     return tuple(reasons)
+
+
+def atom_text_modifier_obligations(
+    fields: SouthStarAtomTextFields,
+) -> tuple[SouthStarAtomTextModifierObligation, ...]:
+    obligations: list[SouthStarAtomTextModifierObligation] = []
+    for spec in _ATOM_TEXT_MODIFIER_OBLIGATION_SPECS:
+        value = getattr(fields, spec.field_name)
+        if value == 0:
+            continue
+        obligations.append(
+            SouthStarAtomTextModifierObligation(
+                fields=fields,
+                modifier_name=spec.modifier_name,
+                field_name=spec.field_name,
+                value=value,
+                unsupported_category=spec.unsupported_category,
+                renderer_requirement="bracket_atom_modifier_renderer",
+                reason=spec.reason,
+            )
+        )
+    return tuple(obligations)
 
 
 def atom_text_obligation_for_supported_atom(

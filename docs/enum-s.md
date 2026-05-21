@@ -107,11 +107,13 @@ The implemented private scope is deliberately narrow:
 Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
 The current contract records isotope, element symbol, chirality token,
 explicit-hydrogen count, formal charge, radical electron count, atom-map
-number, and aromaticity as explicit fields. The only supported bracket atom
-texts today are neutral `[H]` and the tetrahedral carbon forms emitted by the
-current atom-stereo slice: `[C@H]`, `[C@@H]`, `[C@]`, and `[C@@]`. Isotope,
-charge, radical, and atom-map modifiers are deliberately deferred and must fail
-before enumeration with named unsupported categories.
+number, and aromaticity as explicit fields. Isotope, charge, radical, and
+atom-map inputs additionally become typed atom-text modifier obligations, each
+tied back to the source `SouthStarAtomTextFields` record. The only supported
+bracket atom texts today are neutral `[H]` and the tetrahedral carbon forms
+emitted by the current atom-stereo slice: `[C@H]`, `[C@@H]`, `[C@]`, and
+`[C@@]`. Modifier rendering is deliberately deferred and must still fail before
+enumeration with named unsupported categories.
 
 Supported atom text is rendered through typed obligations rather than local
 string patches: organic-subset atoms have no bracket obligation, `[H]` records
@@ -368,7 +370,8 @@ enumerator needs a broader molecule and syntax surface:
   private default;
 - bracket atom text beyond the current neutral explicit-hydrogen and
   tetrahedral-center slices, with isotope, charge, radical, and atom-map
-  modifiers still deliberately deferred;
+  modifiers named as typed obligations but still deliberately unsupported by
+  the renderer;
 - aromatic ring and aromatic directional-surface models, if any;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more

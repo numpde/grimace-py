@@ -50,7 +50,11 @@ is probably fixture-driven and should be deferred.
    boundary. Organic-subset atoms, explicit bracket hydrogen, and tetrahedral
    carbon text are represented as atom-text obligations; charge, isotope, atom
    map, radicals, and broader bracket rendering remain named fail-fast
-   categories until their modifier obligations are modeled.
+   categories until their modifier rendering is modeled.
+   `South Star 105` adds those typed modifier obligations for isotope, formal
+   charge, radical electrons, and atom maps. They are diagnostic obligations
+   tied to `SouthStarAtomTextFields`, not renderer support; all four modifier
+   families still fail fast before enumeration.
 
 5. **Decide aromatic semantics before aromatic support.**
    Completed in `South Star 101`: `notes/040_south_star_aromatic_boundary.md`

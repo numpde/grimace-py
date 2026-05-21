@@ -69,6 +69,45 @@ def _prepared_mol_fragments(prepared: PreparedMol) -> tuple[_PreparedMolFragment
     return prepared._fragments
 
 
+def _prepared_mol_writer_flag_values(
+    prepared: PreparedMol,
+) -> tuple[bool, bool, bool, bool, bool]:
+    return (
+        prepared._writer_flags.isomeric_smiles,
+        prepared._writer_flags.kekule_smiles,
+        prepared._writer_flags.all_bonds_explicit,
+        prepared._writer_flags.all_hs_explicit,
+        prepared._writer_flags.ignore_atom_map_numbers,
+    )
+
+
+def _is_rdkit_mol(value: object) -> bool:
+    return isinstance(value, Chem.Mol)
+
+
+def _rdkit_mol_requires_stereo_surface(mol: Chem.Mol) -> bool:
+    return any(
+        bond.GetStereo() != Chem.BondStereo.STEREONONE
+        or bond.GetBondDir() != Chem.BondDir.NONE
+        for bond in mol.GetBonds()
+    )
+
+
+def _rdkit_mol_fragment_count(mol: Chem.Mol) -> int:
+    return len(Chem.GetMolFrags(mol))
+
+
+def _rdkit_mol_fragments(mol: Chem.Mol) -> tuple[tuple[int, ...], ...]:
+    return tuple(
+        tuple(int(atom_idx) for atom_idx in fragment)
+        for fragment in Chem.GetMolFrags(mol)
+    )
+
+
+def _rdkit_mol_fragment_mols(mol: Chem.Mol) -> tuple[Chem.Mol, ...]:
+    return tuple(Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False))
+
+
 def _make_prepared_mol(
     *,
     schema_version: int,
@@ -199,11 +238,11 @@ def PrepareMol(
             ),
         )
     else:
-        atom_indices_by_fragment = Chem.GetMolFrags(mol)
-        fragment_mols = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+        atom_indices_by_fragment = _rdkit_mol_fragments(mol)
+        fragment_mols = _rdkit_mol_fragment_mols(mol)
         fragments = tuple(
             _PreparedMolFragment(
-                atom_indices=tuple(int(atom_idx) for atom_idx in atom_indices),
+                atom_indices=atom_indices,
                 prepared_graph=runtime.prepare_smiles_graph(fragment_mol, flags=runtime_flags),
             )
             for atom_indices, fragment_mol in zip(

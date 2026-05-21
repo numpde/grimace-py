@@ -9,10 +9,14 @@ from itertools import product
 from numbers import Integral
 from typing import Protocol, TypeAlias, cast
 
-from rdkit import Chem
+import grimace._prepared_mol as _prepared_mol_module
 
 _core = importlib.import_module("grimace._core")
-from grimace._prepared_mol import PreparedMol, _prepared_mol_fragments
+from grimace._prepared_mol import (
+    PreparedMol,
+    _prepared_mol_fragments,
+    _prepared_mol_writer_flag_values,
+)
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
@@ -70,11 +74,8 @@ def _requires_stereo_runtime_surface(
         return True
     if not flags.all_bonds_explicit:
         return False
-    if isinstance(mol_or_prepared, Chem.Mol):
-        return any(
-            bond.GetStereo() != Chem.BondStereo.STEREONONE or bond.GetBondDir() != Chem.BondDir.NONE
-            for bond in mol_or_prepared.GetBonds()
-        )
+    if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
+        return _prepared_mol_module._rdkit_mol_requires_stereo_surface(mol_or_prepared)
     if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
         return False
     return any(bond_dir != "NONE" for bond_dir in _prepared_bond_dirs(mol_or_prepared))
@@ -144,6 +145,44 @@ def _validate_writer_flags(
         )
 
 
+def _validate_prepared_mol_writer_flags(
+    prepared: PreparedMol,
+    flags: MolToSmilesFlags,
+) -> None:
+    actual = _prepared_mol_writer_flag_values(prepared)
+    expected = (
+        bool(flags.isomeric_smiles),
+        bool(flags.kekule_smiles),
+        bool(flags.all_bonds_explicit),
+        bool(flags.all_hs_explicit),
+        bool(flags.ignore_atom_map_numbers),
+    )
+    if actual != expected:
+        raise ValueError(
+            "PreparedMol writer flags do not match the requested public runtime options"
+        )
+
+
+def _prepare_runtime_input(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> object:
+    if isinstance(mol_or_prepared, PreparedMol):
+        _validate_prepared_mol_writer_flags(mol_or_prepared, flags)
+        return mol_or_prepared
+    if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
+        return _prepared_mol_module.PrepareMol(
+            mol_or_prepared,
+            isomericSmiles=flags.isomeric_smiles,
+            kekuleSmiles=flags.kekule_smiles,
+            allBondsExplicit=flags.all_bonds_explicit,
+            allHsExplicit=flags.all_hs_explicit,
+            ignoreAtomMapNumbers=flags.ignore_atom_map_numbers,
+        )
+    return mol_or_prepared
+
+
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
     for name, value in (
         ("isomericSmiles", flags.isomeric_smiles),
@@ -178,10 +217,10 @@ def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
         )
 
 
-def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
+def _ensure_singly_connected_molecule(mol: object) -> None:
     if mol.GetNumAtoms() == 0:
         return
-    if len(Chem.GetMolFrags(mol)) != 1:
+    if _prepared_mol_module._rdkit_mol_fragment_count(mol) != 1:
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only singly-connected molecules"
         )
@@ -190,19 +229,22 @@ def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
 def _is_disconnected_molecule(mol_or_prepared: object) -> bool:
     if isinstance(mol_or_prepared, PreparedMol):
         return len(_prepared_mol_fragments(mol_or_prepared)) > 1
-    return isinstance(mol_or_prepared, Chem.Mol) and len(Chem.GetMolFrags(mol_or_prepared)) > 1
+    return (
+        _prepared_mol_module._is_rdkit_mol(mol_or_prepared)
+        and _prepared_mol_module._rdkit_mol_fragment_count(mol_or_prepared) > 1
+    )
 
 
 def _fragment_plans_for_molecule(
-    mol: Chem.Mol,
+    mol: object,
     *,
     rooted_at_atom: int,
 ) -> tuple[_FragmentPlan, ...]:
     if rooted_at_atom < 0 or rooted_at_atom >= mol.GetNumAtoms():
         raise IndexError("root_idx out of range")
 
-    fragments = Chem.GetMolFrags(mol)
-    fragment_mols = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+    fragments = _prepared_mol_module._rdkit_mol_fragments(mol)
+    fragment_mols = _prepared_mol_module._rdkit_mol_fragment_mols(mol)
     global_to_local: dict[int, tuple[int, int]] = {}
     for fragment_idx, fragment_atom_indices in enumerate(fragments):
         for local_idx, global_idx in enumerate(fragment_atom_indices):
@@ -273,7 +315,7 @@ def _connected_prepared_mol_plan(
 
 
 def _atom_count(mol_or_prepared: object) -> int:
-    if isinstance(mol_or_prepared, Chem.Mol):
+    if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
         return mol_or_prepared.GetNumAtoms()
     if isinstance(mol_or_prepared, PreparedMol):
         return sum(
@@ -309,7 +351,7 @@ def _connected_fragment_support(
     # For all-roots support, build or unwrap the prepared graph once and reuse
     # it across roots instead of reparsing the same fragment each time.
     atom_count = _atom_count(fragment_mol)
-    if isinstance(fragment_mol, Chem.Mol):
+    if _prepared_mol_module._is_rdkit_mol(fragment_mol):
         prepared_or_fragment = prepare_smiles_graph(fragment_mol, flags=flags)
     elif isinstance(fragment_mol, PreparedMol):
         prepared_or_fragment = _connected_prepared_mol_plan(
@@ -371,13 +413,12 @@ def _fragment_plans_for_disconnected_input(
             rooted_at_atom=rooted_at_atom,
         )
 
-    mol = cast(Chem.Mol, mol_or_prepared)
     if rooted_at_atom is None:
         return tuple(
             _FragmentPlan(fragment_mol, None)
-            for fragment_mol in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+            for fragment_mol in _prepared_mol_module._rdkit_mol_fragment_mols(mol_or_prepared)
         )
-    return _fragment_plans_for_molecule(mol, rooted_at_atom=rooted_at_atom)
+    return _fragment_plans_for_molecule(mol_or_prepared, rooted_at_atom=rooted_at_atom)
 
 
 class MolToSmilesChoice:
@@ -898,7 +939,10 @@ class _PublicDecoderBase:
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
         _validate_supported_flags(flags)
-        self._state = _make_decoder_state_impl(mol_or_prepared, flags=flags)
+        self._state = _make_decoder_state_impl(
+            _prepare_runtime_input(mol_or_prepared, flags=flags),
+            flags=flags,
+        )
         self._choices_cache = None
 
     @classmethod
@@ -1196,6 +1240,7 @@ def mol_to_smiles_enum(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     _validate_supported_flags(flags)
+    mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     if _is_disconnected_molecule(mol_or_prepared):
         if flags.rooted_at_atom < 0:
             return iter(
@@ -1280,6 +1325,7 @@ def mol_to_smiles_token_inventory(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     _validate_supported_flags(flags)
+    mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     return _exact_token_inventory_from_decoder(
         mol_or_prepared,
         isomeric_smiles=isomeric_smiles,
@@ -1318,6 +1364,7 @@ def mol_to_smiles_token_inventory_superset(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
     _validate_supported_flags(flags)
+    mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     if _is_disconnected_molecule(mol_or_prepared):
         return _fragmented_mol_to_smiles_token_inventory_superset(
             mol_or_prepared,

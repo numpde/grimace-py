@@ -91,10 +91,10 @@ The reason is not current fixture correctness. The current fixture surface is
 clean. The reason is that important ordinary surfaces are still intentionally
 gated:
 
-- aromatic branches and fused aromatic systems;
+- fused aromatic systems;
 - aromatic modified atoms;
 - aromatic directional overlays;
-- non-organic bracket atom text;
+- broader non-organic bracket atom text beyond the first `Si`/`Se` slice;
 - metal and dative chemistry;
 - query semantics;
 - some ring-system/stereo interactions;
@@ -108,4 +108,3 @@ The next useful Decision row should be opened only when one of these is true:
 
 Until then, export work should remain Backlog implementation or documentation
 work, not a standing Decision.
-

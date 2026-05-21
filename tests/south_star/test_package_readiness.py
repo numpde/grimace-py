@@ -30,6 +30,7 @@ SOUTH_STAR_SHARED_PIPELINE_RING_FEATURE_AREAS = frozenset(
     {
         "branched_saturated_monocycle",
         "nonstereo_polycyclic_skeleton",
+        "polycyclic_ring_stereo",
         "ring_tetrahedral_monocycle",
         "simple_saturated_monocycle",
         "unsaturated_nonstereo_monocycle",
@@ -225,6 +226,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertIn("isolated_alkene_z", matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
+        self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)
         self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)
         self.assertIn("unsupported_atom_charge", matrix.unsupported_categories)
         self.assertEqual(

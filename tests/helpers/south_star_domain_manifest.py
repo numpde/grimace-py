@@ -29,6 +29,9 @@ SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY = (
 SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY = (
     "temporary_witness_ring_tetrahedral_monocycle_shared_records"
 )
+SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY = (
+    "temporary_witness_polycyclic_ring_stereo_shared_records"
+)
 
 SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset()
 SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
@@ -36,6 +39,7 @@ SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
         SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
+        SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
         SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
         SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
         SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY,
@@ -86,6 +90,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "disconnected_stereo_fragments",
             "ring_stereo_monocycle",
             "nonstereo_polycyclic_skeleton",
+            "polycyclic_ring_stereo",
             "tetrahedral_atom_stereo",
             "ring_tetrahedral_monocycle",
             "unsaturated_nonstereo_monocycle",

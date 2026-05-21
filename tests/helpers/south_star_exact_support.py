@@ -24,6 +24,7 @@ EXPANDED_SUPPORT_FIXTURE = (
     / "south_star_expanded_support"
     / "expanded_domain_v1.json"
 )
+EXPANDED_SUPPORT_FIXTURE_SHARD_DIR = EXPANDED_SUPPORT_FIXTURE.with_suffix("")
 
 @dataclass(frozen=True, slots=True)
 class SouthStarExactSupportCase:
@@ -65,16 +66,34 @@ def load_south_star_exact_first_domain_cases(
 def load_south_star_expanded_support_cases(
     path: Path = EXPANDED_SUPPORT_FIXTURE,
 ) -> tuple[SouthStarExpandedSupportCase, ...]:
+    cases = tuple(
+        case
+        for fixture_path in _expanded_support_fixture_paths(path)
+        for case in _load_expanded_support_cases_from_path(fixture_path)
+    )
+    case_ids = tuple(case.case_id for case in cases)
+    if len(set(case_ids)) != len(case_ids):
+        raise ValueError("duplicate South Star expanded-support case ids")
+    return cases
+
+
+def _expanded_support_fixture_paths(path: Path) -> tuple[Path, ...]:
+    paths = [path]
+    shard_dir = path.with_suffix("")
+    if shard_dir.is_dir():
+        paths.extend(sorted(shard_dir.glob("*.json")))
+    return tuple(paths)
+
+
+def _load_expanded_support_cases_from_path(
+    path: Path,
+) -> tuple[SouthStarExpandedSupportCase, ...]:
     raw = json.loads(path.read_text())
     if raw["schema_version"] != 1:
         raise ValueError(f"unsupported South Star expanded-support schema: {raw!r}")
     if raw["policy"] != SOUTH_STAR_EXPANDED_SUPPORT_POLICY:
         raise ValueError(f"unsupported South Star expanded-support policy: {raw!r}")
-    cases = tuple(_expanded_support_case(case) for case in raw["cases"])
-    case_ids = tuple(case.case_id for case in cases)
-    if len(set(case_ids)) != len(case_ids):
-        raise ValueError("duplicate South Star expanded-support case ids")
-    return cases
+    return tuple(_expanded_support_case(case) for case in raw["cases"])
 
 
 def _expanded_support_case(raw_case: object) -> SouthStarExpandedSupportCase:

@@ -99,6 +99,7 @@ class SouthStarComplexityGuardrailTests(unittest.TestCase):
             "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
             budget_case_ids,
         )
+        self.assertIn("polycyclic_ring_stereo_bridge", budget_case_ids)
 
     def test_named_complexity_diagnostic_tracks_per_layer_timing(self) -> None:
         case = next(

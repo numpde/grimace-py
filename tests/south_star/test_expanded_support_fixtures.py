@@ -8,6 +8,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
+    SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
@@ -86,6 +87,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             any(
                 case.support_authority
                 == SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY
                 for case in cases
             )
         )

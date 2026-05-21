@@ -17,7 +17,7 @@ The supported private fixture surface is now:
 - markerless acyclic trees;
 - single- and two-atom atom-text cases;
 - selected isotope, radical, charged, atom-map, explicit-H, combined modifier,
-  double-bond, and triple-bond text cases;
+  non-organic bracket-only symbol, double-bond, and triple-bond text cases;
 - markerless aromatic monocycle text cases with optional acyclic supported
   branches;
 - simple and branched nonstereo monocycles;
@@ -38,16 +38,16 @@ back any current fixture case.
 
 ## Reconciled Counts
 
-As of the `South Star 164` checkpoint:
+As of the current South Star checkpoint:
 
-- expanded-support cases: `42`;
+- expanded-support cases: `44`;
 - exact first-domain cases: `5`;
-- total semantic benchmark rows: `47`;
+- total semantic benchmark rows: `49`;
 - public API blocker cases in the readiness matrix: `0`;
 - temporary-witness-backed current cases: `0`;
 - regression-witness-backed current cases: `0`.
 
-The benchmark artifact is now pinned as evidence over the same 47 current
+The benchmark artifact is now pinned as evidence over the same 49 current
 semantic fixture cases. It records policy set, command, environment metadata,
 per-case output counts, and timings. It is not evidence for RDKit writer parity
 or for package-level speed claims.

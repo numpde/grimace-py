@@ -42,15 +42,15 @@ Results:
 - South Star package readiness: `140` tests passed.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `42`.
-- Total checked semantic fixture cases: `47`.
+- Expanded-support cases: `44`.
+- Total checked semantic fixture cases: `49`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `47`;
-- shared-pipeline promotion candidates: `47`;
+- unified-reference-backed cases: `49`;
+- shared-pipeline promotion candidates: `49`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
@@ -59,8 +59,8 @@ Readiness matrix:
 
 Authority inventory:
 
-- authority classes: `47` unified-reference cases;
-- shared-spine coverage: `47` complete cases;
+- authority classes: `49` unified-reference cases;
+- shared-spine coverage: `49` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 

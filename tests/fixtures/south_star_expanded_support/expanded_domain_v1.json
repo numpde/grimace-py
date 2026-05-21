@@ -1052,6 +1052,27 @@
       ]
     },
     {
+      "case_id": "non_organic_bracket_atom_text_silyl_methane",
+      "feature_area": "non_organic_bracket_atom_text",
+      "source_smiles": "[SiH3]C",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: non-organic Si symbol text is bracket-only, explicit-H count remains a local atom-text obligation, and both traversal roots are rendered from atom-text and bond-text facts.",
+      "expected_support": [
+        "[SiH3]C",
+        "C[SiH3]"
+      ]
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_selenium_hydride",
+      "feature_area": "non_organic_bracket_atom_text",
+      "source_smiles": "[SeH]",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: non-organic Se symbol text is bracket-only and radical valence semantics plus explicit-H count are represented by typed bracket atom obligations.",
+      "expected_support": [
+        "[SeH]"
+      ]
+    },
+    {
       "case_id": "triple_bond_text_hydrogen_cyanide",
       "feature_area": "triple_bond_text",
       "source_smiles": "C#N",

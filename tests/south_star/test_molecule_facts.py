@@ -104,6 +104,8 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
             ("[H+]", "formal_charge", 1),
             ("[Cl-]", "formal_charge", -1),
             ("[CH3:7]C", "atom_map_number", 7),
+            ("[SiH3]C", "explicit_hydrogen_count", 3),
+            ("[SeH]", "radical_electron_count", 1),
         )
 
         for smiles, field_name, expected_value in cases:

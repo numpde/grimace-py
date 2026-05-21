@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from grimace._south_star.atom_text import SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import atom_text_modifier_obligations
@@ -51,6 +52,34 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         self.assertEqual("organic_subset", obligation.token_family)
         self.assertEqual((), obligation.bracket_obligations)
         self.assertFalse(obligation.uses_brackets)
+
+    def test_non_organic_symbol_renderer_requires_bracket_text(self) -> None:
+        cases = (
+            ("[SiH3]C", "[SiH3]", ("non_organic_symbol_requires_bracket",)),
+            (
+                "[SeH]",
+                "[SeH]",
+                (
+                    "non_organic_symbol_requires_bracket",
+                    "radical_valence_semantics",
+                ),
+            ),
+        )
+
+        for smiles, expected_text, required_obligations in cases:
+            atom = parse_smiles(smiles).GetAtomWithIdx(0)
+            obligation = atom_text_obligation_for_supported_atom(atom)
+
+            with self.subTest(smiles=smiles):
+                self.assertIn(atom.GetSymbol(), SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS)
+                self.assertEqual(expected_text, obligation.emitted_text)
+                self.assertEqual("bracket_atom", obligation.token_family)
+                for required_obligation in required_obligations:
+                    self.assertIn(
+                        required_obligation,
+                        obligation.bracket_obligations,
+                    )
+                self.assertTrue(obligation.uses_brackets)
 
     def test_aromatic_subset_renderer_uses_lowercase_atom_text(self) -> None:
         mol = parse_smiles("c1ccccc1")
@@ -231,6 +260,25 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 ),
             ),
             ("[O]", "[O]", ("bracket_atom", "radical_valence_semantics")),
+            (
+                "[SiH3]C",
+                "[SiH3]",
+                (
+                    "bracket_atom",
+                    "non_organic_symbol_requires_bracket",
+                    "explicit_hydrogen_count",
+                ),
+            ),
+            (
+                "[SeH]",
+                "[SeH]",
+                (
+                    "bracket_atom",
+                    "non_organic_symbol_requires_bracket",
+                    "explicit_hydrogen_count",
+                    "radical_valence_semantics",
+                ),
+            ),
         )
 
         for smiles, expected_text, expected_obligations in cases:

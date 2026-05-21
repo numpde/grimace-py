@@ -41,6 +41,8 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "[Cl-]",
             "[CH3:1]C",
             "[NH4+]",
+            "[SeH]",
+            "[SiH3]C",
             "C#N",
             "O.F/C=C\\Cl",
         ):
@@ -51,7 +53,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
         cases = (
             ("C1CC", "unpaired_ring_label"),
             ("C..O", "dot_context"),
-            ("[SiH4]", "unsupported_token"),
+            ("[Na+]", "unsupported_token"),
             ("C//C", "consecutive_bonds"),
         )
 

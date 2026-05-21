@@ -175,7 +175,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
         )
 
     def test_unsupported_atom_text_is_fail_fast_unsupported(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("[SiH3]C"))
+        report = south_star_support_gate_report(parse_smiles("[Na+]"))
 
         self.assertUnsupportedCategory("unsupported_atom_text", report.categories)
 
@@ -188,6 +188,8 @@ class SouthStarSupportGateTests(unittest.TestCase):
             "[Cl-]",
             "[NH4+]",
             "[CH3:1]C",
+            "[SeH]",
+            "[SiH3]C",
         )
 
         for smiles in cases:

@@ -121,6 +121,8 @@ The implemented private scope is deliberately narrow:
   by `[Cl-]`, `[NH4+]`, and `[NH3+]C` examples;
 - radical bracket atom text in the first valence-derived slice, currently
   pinned by `[H]`, `[CH3]`, and `[O]` examples;
+- bracket-only non-organic atom symbols in the first non-metal slice, currently
+  pinned by `[SiH3]C` and `[SeH]`;
 - markerless aromatic monocycles whose sanitized RDKit molecule facts are
   unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
   pinned by benzene, pyridine, furan, and corresponding one-methyl branch
@@ -432,7 +434,8 @@ enumerator needs a broader molecule and syntax surface:
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
-  charged, renderer-capable modifier, and first radical slices;
+  charged, renderer-capable modifier, first radical, and first non-organic
+  bracket-only symbol slices;
 - aromatic coverage beyond markerless monocycles with acyclic supported
   branches, especially fused aromatic systems, modified aromatic atoms, and
   aromatic directional-surface models;

@@ -281,6 +281,8 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "explicit_bracket_hydrogen_h2",
                 "isotope_atom_text_methane",
                 "atom_map_text_ethane",
+                "non_organic_bracket_atom_text_silyl_methane",
+                "non_organic_bracket_atom_text_selenium_hydride",
                 "triple_bond_text_hydrogen_cyanide",
                 "double_bond_text_formaldimine",
                 "combined_atom_text_isotope_map_ethane",
@@ -364,6 +366,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("double_bond_text", matrix.supported_feature_areas)
         self.assertIn("isotope_atom_text", matrix.supported_feature_areas)
         self.assertIn("markerless_acyclic_tree", matrix.supported_feature_areas)
+        self.assertIn("non_organic_bracket_atom_text", matrix.supported_feature_areas)
         self.assertIn("radical_atom_text", matrix.supported_feature_areas)
         self.assertIn("triple_bond_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)

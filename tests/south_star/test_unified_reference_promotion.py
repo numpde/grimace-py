@@ -34,6 +34,7 @@ SINGLE_ATOM_ATOM_TEXT_CASE_IDS = frozenset(
         "charged_atom_text_chloride",
         "charged_atom_text_ammonium",
         "isotope_atom_text_methane",
+        "non_organic_bracket_atom_text_selenium_hydride",
     }
 )
 
@@ -126,6 +127,7 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
             "double_bond_text_formaldimine",
             "combined_atom_text_isotope_map_ethane",
             "combined_atom_text_isotope_charge_methylammonium",
+            "non_organic_bracket_atom_text_silyl_methane",
         ):
             case = cases[case_id]
             with self.subTest(case_id=case_id):

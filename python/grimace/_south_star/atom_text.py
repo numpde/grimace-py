@@ -11,6 +11,9 @@ SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
 SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"b", "c", "n", "o", "p", "s"}
 )
+SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
+    {"Se", "Si"}
+)
 # Representative bracket-atom examples. The accepted bracket-token language is
 # the predicate below, because isotope, charge, hydrogen, and map values are
 # field-derived rather than a finite token list.
@@ -30,10 +33,16 @@ SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
         "[CH3:1]",
         "[CH3]",
         "[O]",
+        "[SeH]",
+        "[SiH3]",
     }
 )
 SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
-    {"H", *SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS}
+    {
+        "H",
+        *SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS,
+        *SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS,
+    }
 )
 
 
@@ -319,6 +328,7 @@ def is_south_star_bracket_atom_text_token(token: str) -> bool:
 def _requires_bracket_atom_text(fields: SouthStarAtomTextFields) -> bool:
     return (
         fields.symbol == "H"
+        or fields.symbol in SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS
         or fields.isotope != 0
         or fields.formal_charge != 0
         or fields.atom_map_number != 0
@@ -338,6 +348,9 @@ def _bracket_atom_text_obligation(
         and fields.explicit_hydrogen_count == 0
     ):
         obligations.append("element_requires_bracket")
+
+    if fields.symbol in SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS:
+        obligations.append("non_organic_symbol_requires_bracket")
 
     text = (
         "["

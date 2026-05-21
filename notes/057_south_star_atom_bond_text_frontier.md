@@ -19,6 +19,8 @@ The current atom-text policy is broader than the original seed:
 - atom-map suffixes;
 - explicit hydrogen counts;
 - tetrahedral carbon atom text.
+- bracket-only non-organic atom symbols in the first non-metal slice: `Si`
+  and `Se`.
 
 The current bond-text policy covers:
 
@@ -40,13 +42,13 @@ Supported examples:
 - `[Br-]`
 - `[I-]`
 - `[OH-]`
+- `[SiH3]C`
+- `[SeH]`
 - `C=C`
 - `C#N`
 
 Unsupported examples:
 
-- `[SiH3]C`: `unsupported_atom_text`
-- `[SeH]`: `unsupported_atom_text`
 - `[Na+]`: `unsupported_atom_text`, `metal_atom`
 - `[Mg+2]`: `unsupported_atom_text`, `metal_atom`
 - `C$C`: `unsupported_bond_type`
@@ -59,8 +61,9 @@ Unsupported examples:
 
 ### Ordinary Atom-Text Breadth
 
-`[SiH3]C` and `[SeH]` are the clean ordinary atom-text frontier. They do not
-require new graph traversal or stereo semantics. They require:
+`[SiH3]C` and `[SeH]` were the clean ordinary atom-text frontier before
+`South Star 177`. They did not require new graph traversal or stereo
+semantics. The required implementation shape was:
 
 - expanding supported bracket atom symbols;
 - expanding the declared grammar-conformance atom-symbol basis;
@@ -68,6 +71,13 @@ require new graph traversal or stereo semantics. They require:
 - deciding whether the symbols are bracket-only or can ever be bare tokens.
 
 This is the safest text-policy implementation slice.
+
+`South Star 177` implements this slice narrowly:
+
+- `Si` and `Se` are supported only as bracket atom text;
+- `[SiH3]C` and `[SeH]` are pinned as unified-reference fixtures;
+- metals, dative bonds, query atoms/bonds, quadruple bonds, and modified
+  aromatic atoms remain separate gated families.
 
 ### Metals
 
@@ -96,8 +106,7 @@ contract. It should not be bundled with non-aromatic `[SiH3]C`.
 
 ## Recommended Next Text Slice
 
-If the project chooses text breadth next, implement non-metal bracket atom
-symbols first:
+The original recommended text-breadth slice was non-metal bracket atom symbols:
 
 1. add a named `non_organic_bracket_atom_text` feature area;
 2. start with `[SiH3]C` and `[SeH]`;
@@ -107,6 +116,5 @@ symbols first:
 6. keep metals, dative bonds, query atoms/bonds, and aromatic modified atoms
    gated.
 
-This should be a separate implementation row from aromatic branches. It is a
-small renderer-policy expansion, not a chemistry/stereo-model expansion.
-
+This was a separate implementation row from aromatic branches. It is a small
+renderer-policy expansion, not a chemistry/stereo-model expansion.

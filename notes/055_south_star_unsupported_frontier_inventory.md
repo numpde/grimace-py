@@ -24,7 +24,7 @@ small witnesses. It is an implementation guide, not a support change.
 | `query_atom` | SMARTS `[#6]-[#8]` | Query semantics, not a fixed molecule graph. | Keep separate from ordinary SMILES enumeration unless a query-SMILES product is defined. |
 | `query_bond` | SMARTS `[#6]-[#8]` | Query semantics, not a fixed bond-order graph. | Same query-SMILES product boundary as `query_atom`. |
 | `atom_stereo` | `CCF` with atom 1 manually tagged tetrahedral | Missing or invalid atom-stereo fact family outside the supported tetrahedral slices. | Audit atom-stereo tags that RDKit can carry but South Star should reject or model. |
-| `unsupported_atom_text` | `[SiH3]C` | Mostly a text-policy breadth gap for element/modifier rendering. | Atom-text frontier slice. |
+| `unsupported_atom_text` | `[GeH3]C` | Mostly a text-policy breadth gap for element/modifier rendering beyond the first non-organic bracket-only slice. | Atom-text frontier slice. |
 | `metal_atom` | `[NH3]->[Cu]` | Metal chemistry and coordination semantics. | Metal/dative semantic family; do not fold into ordinary atom text. |
 | `unsupported_bond_type` | `C$C` | Bond-text and bond-semantics gap for non single/double/triple/aromatic types. | Bond-text frontier slice for ordinary bond orders; dative remains separate. |
 | `dative_bond` | `[NH3]->[Cu]` | Coordination semantics plus known serializer quirks. | Metal/dative semantic family. |

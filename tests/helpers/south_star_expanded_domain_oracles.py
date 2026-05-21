@@ -36,12 +36,14 @@ from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.tetrahedral import SouthStarTetrahedralCenterFact
 from grimace._south_star.tetrahedral import (
+    SouthStarTetrahedralTraversalProofInput,
     SouthStarTetrahedralTraversalTokenDiagnostic,
 )
 from grimace._south_star.tetrahedral import extract_tetrahedral_center_facts
 from grimace._south_star.tetrahedral import (
     tetrahedral_traversal_observation_from_connected_graph_plan,
 )
+from grimace._south_star.tetrahedral import tetrahedral_traversal_proof_input
 from grimace._south_star.tetrahedral import tetrahedral_traversal_token_diagnostic
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
@@ -73,6 +75,10 @@ class TemporarySouthStarRingStereoWitnessResult:
 class TemporarySouthStarTetrahedralWitnessResult:
     outputs: tuple[str, ...]
     diagnostics: tuple[SouthStarTetrahedralTraversalTokenDiagnostic, ...]
+    proof_inputs: tuple[SouthStarTetrahedralTraversalProofInput, ...]
+    output_count: int
+    expected_output_count: int
+    fixture_cross_check_passed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,20 +356,26 @@ def shared_ring_stereo_monocycle_support_for_case(
 def shared_tetrahedral_atom_stereo_support_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> TemporarySouthStarTetrahedralWitnessResult:
-    """Check tetrahedral fixtures through shared traversal-token diagnostics."""
+    """Check tetrahedral fixtures through shared traversal-token proof inputs.
+
+    This remains fixture evidence, not an independent support generator. Outputs
+    come from the graph-native traversal path; the fixture is only a cross-check
+    while tetrahedral authority is still temporary-witness-backed.
+    """
     mol = parse_smiles(case.source_smiles)
     facts = extract_tetrahedral_center_facts(mol)
     if not facts:
         raise NotImplementedError("tetrahedral traversal check requires centers")
     facts_by_atom = {fact.center_atom_idx: fact for fact in facts}
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    outputs = tuple(
+        dict.fromkeys(
+            render_south_star_tree_traversal(traversal)
+            for traversal in traversals
+        )
+    )
     return TemporarySouthStarTetrahedralWitnessResult(
-        outputs=tuple(
-            dict.fromkeys(
-                render_south_star_tree_traversal(traversal)
-                for traversal in traversals
-            )
-        ),
+        outputs=outputs,
         diagnostics=tuple(
             _tetrahedral_token_diagnostic_for_atom_event(
                 traversal.connected_graph_plan,
@@ -377,6 +389,21 @@ def shared_tetrahedral_atom_stereo_support_for_case(
             and event.atom_idx in facts_by_atom
             and event.atom_idx is not None
         ),
+        proof_inputs=tuple(
+            _tetrahedral_proof_input_for_atom_event(
+                traversal.connected_graph_plan,
+                center_atom_idx=event.atom_idx,
+                facts_by_atom=facts_by_atom,
+            )
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind == "atom"
+            and event.atom_idx in facts_by_atom
+            and event.atom_idx is not None
+        ),
+        output_count=len(outputs),
+        expected_output_count=len(case.expected_support),
+        fixture_cross_check_passed=outputs == case.expected_support,
     )
 
 
@@ -406,6 +433,23 @@ def _tetrahedral_token_diagnostic_for_atom_event(
             f"expected {diagnostic.expected_token!r} for atom {center_atom_idx}"
         )
     return diagnostic
+
+
+def _tetrahedral_proof_input_for_atom_event(
+    connected_graph_plan: SouthStarConnectedGraphTraversalPlan | None,
+    *,
+    center_atom_idx: int,
+    facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
+) -> SouthStarTetrahedralTraversalProofInput:
+    fact = facts_by_atom[center_atom_idx]
+    if connected_graph_plan is None:
+        raise ValueError("tetrahedral proof input requires connected graph plan")
+    observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+        connected_graph_plan,
+        center_atom_idx=center_atom_idx,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+    )
+    return tetrahedral_traversal_proof_input(fact, observation)
 
 
 def _tetrahedral_token_from_atom_text(atom_text: str) -> str:

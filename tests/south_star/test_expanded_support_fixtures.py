@@ -320,7 +320,14 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 result = shared_tetrahedral_atom_stereo_support_for_case(case)
                 self.assertEqual(case.expected_support, result.outputs)
+                self.assertEqual(len(case.expected_support), result.output_count)
+                self.assertEqual(
+                    len(case.expected_support),
+                    result.expected_output_count,
+                )
+                self.assertTrue(result.fixture_cross_check_passed)
                 self.assertGreater(len(result.diagnostics), 0)
+                self.assertEqual(len(result.diagnostics), len(result.proof_inputs))
                 for diagnostic in result.diagnostics:
                     self.assertTrue(diagnostic.preserves_orientation)
                     self.assertEqual(
@@ -328,6 +335,49 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         diagnostic.emitted_token,
                     )
                     self.assertIn(diagnostic.emitted_token, {"@", "@@"})
+                for proof_input, diagnostic in zip(
+                    result.proof_inputs,
+                    result.diagnostics,
+                ):
+                    self.assertEqual(
+                        proof_input.expected_token,
+                        proof_input.renderer_input.value,
+                    )
+                    self.assertEqual(
+                        proof_input.expected_token,
+                        diagnostic.expected_token,
+                    )
+                    self.assertEqual(
+                        proof_input.emitted_ligand_order,
+                        diagnostic.emitted_ligand_order,
+                    )
+                    self.assertEqual((), proof_input.ring_closure_ligand_atom_indices)
+
+    def test_tetrahedral_token_obligation_outputs_preserve_semantics(self) -> None:
+        case_ids = {
+            "implicit_h_tetrahedral_center",
+            "quaternary_tetrahedral_center",
+        }
+        for case in load_south_star_expanded_support_cases():
+            if case.case_id not in case_ids:
+                continue
+
+            result = shared_tetrahedral_atom_stereo_support_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(result.expected_output_count, result.output_count)
+                self.assertTrue(result.fixture_cross_check_passed)
+
+            for output in result.outputs:
+                with self.subTest(case_id=case.case_id, output=output):
+                    parse_smiles(output)
+                    self.assertEqual(
+                        graph_signature(case.source_smiles),
+                        graph_signature(output),
+                    )
+                    self.assertEqual(
+                        semantic_signature(case.source_smiles),
+                        semantic_signature(output),
+                    )
 
     def test_tetrahedral_traversal_support_rejects_wrong_parity_tokens(self) -> None:
         cases = {

@@ -79,6 +79,16 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
         )
         self.assertIn("DOUBLE", {bond.bond_type for bond in facts.bond_text_facts})
 
+    def test_atom_text_facts_expose_bracket_modifier_inputs(self) -> None:
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("[CH3:7]C"))
+        mapped_atom = facts.atom_text_facts[0]
+
+        self.assertEqual("C", mapped_atom.symbol)
+        self.assertEqual(7, mapped_atom.atom_map_number)
+        self.assertEqual(3, mapped_atom.explicit_hydrogen_count)
+        self.assertEqual("CHI_UNSPECIFIED", mapped_atom.chiral_tag)
+        self.assertIn("unsupported_atom_map", facts.unsupported_categories)
+
     def test_ring_system_facts_expose_polycyclic_witness_shape(self) -> None:
         facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CC2CCCC2C1"))
 

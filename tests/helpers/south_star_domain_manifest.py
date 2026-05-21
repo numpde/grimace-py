@@ -118,6 +118,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "ring_tetrahedral_interaction",
             "unsupported_atom_charge",
             "unsupported_atom_isotope",
+            "unsupported_atom_map",
             "unsupported_atom_text",
             "unsupported_bond_type",
             "unsupported_radical_atom",

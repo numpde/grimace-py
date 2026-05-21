@@ -2,23 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
+from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
+
 
 SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS = "south_star_declared_subset_grammar_v1"
-_ATOM_TOKENS: frozenset[str] = frozenset(
-    {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
+_ATOM_TOKENS: frozenset[str] = SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
+_TWO_CHAR_ATOM_TOKENS: frozenset[str] = frozenset(
+    token for token in _ATOM_TOKENS if len(token) == 2
 )
-_TWO_CHAR_ATOM_TOKENS: frozenset[str] = frozenset({"Cl", "Br"})
 _BOND_TOKENS: frozenset[str] = frozenset({"=", "/", "\\"})
 _RING_LABEL_TOKENS: frozenset[str] = frozenset("123456789")
-_BRACKET_ATOM_TOKENS: frozenset[str] = frozenset(
-    {
-        "[H]",
-        "[C@H]",
-        "[C@@H]",
-        "[C@]",
-        "[C@@]",
-    }
-)
+_BRACKET_ATOM_TOKENS: frozenset[str] = SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 
 
 @dataclass(frozen=True, slots=True)

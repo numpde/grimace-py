@@ -7,6 +7,8 @@ from rdkit import Chem
 from grimace._south_star.annotation_policy import Edge
 from grimace._south_star.annotation_policy import SemanticCarrierOpportunity
 from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.atom_text import SouthStarAtomTextFields
+from grimace._south_star.atom_text import south_star_atom_text_fields
 from grimace._south_star.components import (
     SouthStarComponentExtraction,
     SouthStarSemanticStereoComponent,
@@ -22,15 +24,7 @@ from grimace._south_star.tetrahedral import (
 )
 
 
-@dataclass(frozen=True, slots=True)
-class SouthStarAtomTextFact:
-    atom_idx: int
-    atomic_number: int
-    symbol: str
-    isotope: int
-    formal_charge: int
-    radical_electron_count: int
-    is_aromatic: bool
+SouthStarAtomTextFact = SouthStarAtomTextFields
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,18 +164,7 @@ def _assert_shared_support_report(
 
 
 def _atom_text_facts(mol: Chem.Mol) -> tuple[SouthStarAtomTextFact, ...]:
-    return tuple(
-        SouthStarAtomTextFact(
-            atom_idx=atom.GetIdx(),
-            atomic_number=atom.GetAtomicNum(),
-            symbol=atom.GetSymbol(),
-            isotope=atom.GetIsotope(),
-            formal_charge=atom.GetFormalCharge(),
-            radical_electron_count=atom.GetNumRadicalElectrons(),
-            is_aromatic=atom.GetIsAromatic(),
-        )
-        for atom in mol.GetAtoms()
-    )
+    return tuple(south_star_atom_text_fields(atom) for atom in mol.GetAtoms())
 
 
 def _bond_text_facts(mol: Chem.Mol) -> tuple[SouthStarBondTextFact, ...]:

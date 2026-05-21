@@ -154,6 +154,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
             ("[2H][H]", "unsupported_atom_isotope"),
             ("[H+]", "unsupported_atom_charge"),
             ("[H]", "unsupported_radical_atom"),
+            ("[CH3:1]C", "unsupported_atom_map"),
         )
 
         for smiles, category in cases:

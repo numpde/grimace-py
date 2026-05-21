@@ -97,6 +97,15 @@ The implemented private scope is deliberately narrow:
 - explicit bracket hydrogen atoms in the narrow neutral, non-isotopic,
   non-radical form emitted as `[H]`.
 
+Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
+The current contract records isotope, element symbol, chirality token,
+explicit-hydrogen count, formal charge, radical electron count, atom-map
+number, and aromaticity as explicit fields. The only supported bracket atom
+texts today are neutral `[H]` and the tetrahedral carbon forms emitted by the
+current atom-stereo slice: `[C@H]`, `[C@@H]`, `[C@]`, and `[C@@]`. Isotope,
+charge, radical, and atom-map modifiers are deliberately deferred and must fail
+before enumeration with named unsupported categories.
+
 This is not yet support for all RDKit stereo surfaces, all OpenSMILES syntax,
 or all legal semantic SMILES for arbitrary molecules.
 
@@ -109,9 +118,9 @@ Current unsupported categories include:
 
 - query atoms or query bonds;
 - unsupported bond types;
-- atom isotopes, charges, and radicals, reported as
-  `unsupported_atom_isotope`, `unsupported_atom_charge`, and
-  `unsupported_radical_atom`;
+- atom isotopes, charges, radicals, and atom maps, reported as
+  `unsupported_atom_isotope`, `unsupported_atom_charge`,
+  `unsupported_radical_atom`, and `unsupported_atom_map`;
 - dative or metal-containing stereo surfaces;
 - fused/polycyclic rings, reported as `fused_or_polycyclic_ring`;
 - ring/tetrahedral interactions, including ring-member chiral atoms and
@@ -335,7 +344,8 @@ enumerator needs a broader molecule and syntax surface:
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current neutral explicit-hydrogen and
-  tetrahedral-center slices;
+  tetrahedral-center slices, with isotope, charge, radical, and atom-map
+  modifiers still deliberately deferred;
 - aromatic ring and aromatic directional-surface models, if any;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more

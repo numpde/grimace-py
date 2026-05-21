@@ -9,6 +9,7 @@ from operator import mul
 
 from rdkit import Chem
 
+from grimace._south_star.atom_text import atom_text_for_supported_atom
 from grimace._south_star.component_support_state import (
     SouthStarComponentComplexitySnapshot,
     SouthStarComponentMarkerAssignment,
@@ -969,19 +970,7 @@ def _tetrahedral_facts_by_atom(
 
 
 def _atom_text(atom: Chem.Atom) -> str:
-    symbol = atom.GetSymbol()
-    if symbol in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
-        return symbol
-    if (
-        symbol == "H"
-        and atom.GetIsotope() == 0
-        and atom.GetFormalCharge() == 0
-        and atom.GetNumRadicalElectrons() == 0
-    ):
-        return "[H]"
-    raise NotImplementedError(
-        f"South Star graph-native seed traversal does not support atom {symbol!r}"
-    )
+    return atom_text_for_supported_atom(atom)
 
 
 def _bond_event(

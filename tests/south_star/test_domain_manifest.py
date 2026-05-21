@@ -116,6 +116,7 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             south_star_support_gate_report(parse_smiles("[2H][H]")),
             south_star_support_gate_report(parse_smiles("[H+]")),
             south_star_support_gate_report(parse_smiles("[H]")),
+            south_star_support_gate_report(parse_smiles("[CH3:1]C")),
             south_star_support_gate_report(parse_smiles("c1ccccc1")),
             south_star_support_gate_report(parse_smiles("C1CC2CCCC2C1")),
             south_star_support_gate_report(parse_smiles("F[C@H]1CCCC(C)C1")),

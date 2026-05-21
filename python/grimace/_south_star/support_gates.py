@@ -4,12 +4,13 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
+from grimace._south_star.atom_text import (
+    south_star_atom_text_fields,
+    unsupported_atom_text_reasons,
+)
 from grimace._south_star.tetrahedral import tetrahedral_atom_supported
 
 
-SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
-    {"H", "B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
-)
 SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = frozenset(
     {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}
 )
@@ -102,10 +103,7 @@ def south_star_support_gate_report(mol: Chem.Mol) -> SouthStarSupportGateReport:
     unsupported: list[SouthStarUnsupportedFeature] = []
     unsupported.extend(_query_features(mol))
     unsupported.extend(_empty_molecule_features(mol))
-    unsupported.extend(_unsupported_atom_isotope_features(mol))
-    unsupported.extend(_unsupported_atom_charge_features(mol))
-    unsupported.extend(_unsupported_radical_atom_features(mol))
-    unsupported.extend(_unsupported_atom_text_features(mol))
+    unsupported.extend(_unsupported_atom_text_policy_features(mol))
     unsupported.extend(_atom_stereo_features(mol))
     unsupported.extend(_metal_features(mol))
     unsupported.extend(_bond_type_features(mol))
@@ -159,73 +157,22 @@ def _empty_molecule_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature
     )
 
 
-def _unsupported_atom_text_features(
+def _unsupported_atom_text_policy_features(
     mol: Chem.Mol,
 ) -> tuple[SouthStarUnsupportedFeature, ...]:
-    return tuple(
-        SouthStarUnsupportedFeature(
-            category="unsupported_atom_text",
-            atom_indices=(atom.GetIdx(),),
-            bond_indices=(),
-            reason=f"atom symbol {atom.GetSymbol()!r} is outside first South Star scope",
-        )
-        for atom in mol.GetAtoms()
-        if atom.GetSymbol() not in SUPPORTED_ATOM_SYMBOLS
-    )
-
-
-def _unsupported_atom_isotope_features(
-    mol: Chem.Mol,
-) -> tuple[SouthStarUnsupportedFeature, ...]:
-    return tuple(
-        SouthStarUnsupportedFeature(
-            category="unsupported_atom_isotope",
-            atom_indices=(atom.GetIdx(),),
-            bond_indices=(),
-            reason=(
-                "isotopic atom text requires a separate South Star bracket-atom "
-                "grammar contract"
-            ),
-        )
-        for atom in mol.GetAtoms()
-        if atom.GetIsotope() != 0
-    )
-
-
-def _unsupported_atom_charge_features(
-    mol: Chem.Mol,
-) -> tuple[SouthStarUnsupportedFeature, ...]:
-    return tuple(
-        SouthStarUnsupportedFeature(
-            category="unsupported_atom_charge",
-            atom_indices=(atom.GetIdx(),),
-            bond_indices=(),
-            reason=(
-                "charged atom text requires a separate South Star bracket-atom "
-                "grammar contract"
-            ),
-        )
-        for atom in mol.GetAtoms()
-        if atom.GetFormalCharge() != 0
-    )
-
-
-def _unsupported_radical_atom_features(
-    mol: Chem.Mol,
-) -> tuple[SouthStarUnsupportedFeature, ...]:
-    return tuple(
-        SouthStarUnsupportedFeature(
-            category="unsupported_radical_atom",
-            atom_indices=(atom.GetIdx(),),
-            bond_indices=(),
-            reason=(
-                "radical atom text requires a separate South Star bracket-atom "
-                "grammar contract"
-            ),
-        )
-        for atom in mol.GetAtoms()
-        if atom.GetNumRadicalElectrons() != 0
-    )
+    features: list[SouthStarUnsupportedFeature] = []
+    for atom in mol.GetAtoms():
+        fields = south_star_atom_text_fields(atom)
+        for reason in unsupported_atom_text_reasons(fields):
+            features.append(
+                SouthStarUnsupportedFeature(
+                    category=reason.category,
+                    atom_indices=(fields.atom_idx,),
+                    bond_indices=(),
+                    reason=reason.reason,
+                )
+            )
+    return tuple(features)
 
 
 def _atom_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:

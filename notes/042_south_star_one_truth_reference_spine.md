@@ -233,6 +233,47 @@ Initial contents should be records only, not generation logic:
 Do not move the solver, policies, molecule facts, or generation algorithm into
 this module. The point is a shared language, not a monolith.
 
+Also do not move rendering behavior into this module. The current
+`SouthStarTreeTraversal.render()` method is convenient prototype API, but it
+couples the traversal record to the renderer. The shared record should be inert:
+it may carry events and assignments, but rendering should stay in a renderer
+function/module that consumes the record.
+
+The initial module should have a narrow import surface:
+
+- `dataclasses`;
+- standard-library typing if needed;
+- `Edge` from `annotation_policy.py`.
+
+It should not import RDKit, `enum_s.py`, `marker_equations.py`,
+`parity_solver.py`, test helpers, fixture loaders, or support gates. If that
+boundary feels too small during implementation, that is a signal that logic is
+being moved too early.
+
+## Dependency Direction
+
+After `84B`, the intended dependency direction is:
+
+```text
+molecule_facts/components/tetrahedral
+        |
+        v
+reference_model records  <--- annotation policy types
+        |
+        v
+traversal builders -> constraint builders -> solvers -> renderer
+        |
+        v
+enum_s prototype result
+
+test witnesses may import the shared records, but shared records must not import
+test witnesses.
+```
+
+`reference_model.py` is not the one-truth solver. It is the record vocabulary
+that prevents every feature witness from inventing its own traversal/event/slot
+language.
+
 ## Planned Follow-Up File Moves
 
 ### `South Star 84B`
@@ -248,7 +289,8 @@ aliases first:
 - `SouthStarRingClosure`
 - `SouthStarTraversalEvent`
 - `_TraversalFragment` -> `SouthStarTraversalFragment`
-- `SouthStarTreeTraversal` -> `SouthStarTraversal` or a compatibility wrapper
+- `SouthStarTreeTraversal` -> compatibility wrapper or alias around an inert
+  shared traversal record
 
 Update imports in:
 
@@ -256,7 +298,14 @@ Update imports in:
 - `python/grimace/_south_star/marker_equations.py`
 - tests that import `SouthStarMarkerSlot` or `SouthStarTreeTraversal`
 
-Acceptance: no support changes and focused South Star tests still pass.
+Acceptance:
+
+- no support changes;
+- `reference_model.py` has no RDKit, `enum_s.py`, solver, or test-helper
+  imports;
+- shared traversal records have no `.render()` behavior;
+- compatibility aliases/wrappers keep existing callers stable;
+- focused South Star tests still pass.
 
 ### `South Star 84C`
 
@@ -271,8 +320,13 @@ The helper may keep independent traversal search, but local record types should
 not duplicate the shared vocabulary. If a local adapter remains, name it as
 witness-only glue.
 
-Acceptance: first-domain fixture support is unchanged, and assignment-level
-tests still compare runtime/custom/Z3/reference results.
+Acceptance:
+
+- first-domain fixture support is unchanged;
+- the helper's independent search still exists as witness evidence;
+- duplicated carrier-context and marker-slot dataclasses are gone or are
+  narrow adapters around shared records;
+- assignment-level tests still compare runtime/custom/Z3/reference results.
 
 ### `South Star 84D`
 
@@ -294,7 +348,14 @@ Expected cleanups:
   `SouthStarDisconnectedCompositionResult`;
 - express tetrahedral output checks as facts/obligations over traversal events.
 
-Acceptance: current expanded fixtures remain witnesses, not authorities.
+Acceptance:
+
+- current expanded fixtures remain witnesses, not authorities;
+- nonstereo ring traversal uses shared event/fragment records even before ring
+  stereo constraints are fully unified;
+- tetrahedral witness code may remain independent search, but any emitted
+  ligand-order obligation is named as a constraint-family concept rather than
+  hidden in renderer text assembly.
 
 ### `South Star 84E`
 

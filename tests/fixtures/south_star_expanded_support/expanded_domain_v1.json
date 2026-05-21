@@ -421,8 +421,8 @@
       "case_id": "disconnected_stereo_fragment_and_atom",
       "feature_area": "disconnected_stereo_fragments",
       "source_smiles": "F/C=C\\Cl.O",
-      "support_authority": "temporary_witness_disconnected_composition_shared_records",
-      "evidence_notes": "Temporary witness evidence from shared disconnected-fragment composition over first-domain stereo-fragment support plus markerless atom support under all_fragment_orders.",
+      "support_authority": "unified_reference_disconnected_composition",
+      "evidence_notes": "Unified-reference disconnected-composition evidence: every fragment support is unified-reference-backed, and disconnected output is derived from all fragment orders, Cartesian product, dot rendering, and first-occurrence dedup.",
       "expected_support": [
         "F/C=C\\Cl.O",
         "C(\\F)=C\\Cl.O",

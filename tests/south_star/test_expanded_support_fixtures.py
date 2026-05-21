@@ -6,6 +6,7 @@ from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
+    SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
@@ -37,6 +38,13 @@ from tests.helpers.south_star_spec_oracle import (
 
 
 class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
+    DISCONNECTED_COMPOSITION_AUTHORITIES = frozenset(
+        {
+            SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
+            SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
+        }
+    )
+
     def test_expanded_support_fixture_covers_required_feature_areas(self) -> None:
         feature_areas = {
             case.feature_area for case in load_south_star_expanded_support_cases()
@@ -146,7 +154,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         for case in load_south_star_expanded_support_cases():
             if (
                 case.support_authority
-                != SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY
+                not in self.DISCONNECTED_COMPOSITION_AUTHORITIES
             ):
                 continue
 
@@ -190,7 +198,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         for case in load_south_star_expanded_support_cases():
             if (
                 case.support_authority
-                != SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY
+                not in self.DISCONNECTED_COMPOSITION_AUTHORITIES
             ):
                 continue
 
@@ -198,7 +206,11 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 proof = disconnected_composition_algebra_proof_for_case(case)
 
                 self.assertEqual(case.support_authority, proof.support_authority)
-                self.assertFalse(proof.support_authority_promoted)
+                self.assertEqual(
+                    case.support_authority
+                    == SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
+                    proof.support_authority_promoted,
+                )
                 self.assertEqual(case.expected_support, proof.composed_outputs)
                 self.assertEqual(proof.graph_native_outputs, proof.composed_outputs)
                 self.assertEqual(2, proof.fragment_count)
@@ -220,6 +232,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                     len(proof.fragment_output_counts),
                     proof.fragment_count,
                 )
+                if proof.support_authority_promoted:
+                    self.assertTrue(
+                        all(
+                            authority.startswith("unified_reference_")
+                            for authority in proof.fragment_support_authorities
+                        )
+                    )
 
     def test_ring_stereo_monocycle_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

@@ -263,6 +263,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertEqual(
             first_domain_case_ids
             + (
+                "disconnected_stereo_fragment_and_atom",
                 "explicit_bracket_hydrogen_h2",
                 "markerless_acyclic_ethanol",
                 "markerless_acyclic_isopropanol",

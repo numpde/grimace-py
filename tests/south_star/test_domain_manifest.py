@@ -15,6 +15,7 @@ from grimace._south_star.fragments import AllFragmentOrderPolicy
 from grimace._south_star.output_order import FirstOccurrenceOutputOrderPolicy
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_EXPANDED_SUPPORT_POLICY,
     SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_FIRST_DOMAIN_POLICY,
@@ -146,6 +147,10 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         )
         self.assertIn(
             SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
+        )
+        self.assertIn(
+            SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
             SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
         )
 

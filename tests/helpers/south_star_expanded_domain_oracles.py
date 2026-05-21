@@ -32,6 +32,7 @@ from grimace._south_star.marker_equations import SouthStarMarkerSlotParityEquati
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.tetrahedral import SouthStarTetrahedralCenterFact
 from grimace._south_star.tetrahedral import (
@@ -42,13 +43,19 @@ from grimace._south_star.tetrahedral import (
     tetrahedral_traversal_observation_from_connected_graph_plan,
 )
 from grimace._south_star.tetrahedral import tetrahedral_traversal_token_diagnostic
-from tests.helpers.south_star_exact_support import (
-    SouthStarExpandedSupportCase,
-)
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
+from tests.helpers.south_star_exact_support import (
+    SouthStarExpandedSupportCase,
+    load_south_star_exact_first_domain_cases,
+)
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_unified_reference import (
+    is_single_atom_atom_text_domain,
+    single_atom_atom_text_support_from_facts,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +89,7 @@ class SouthStarDisconnectedCompositionAlgebraProof:
     support_authority: str
     fragment_count: int
     fragment_source_smiles: tuple[str, ...]
+    fragment_support_authorities: tuple[str, ...]
     fragment_output_counts: tuple[int, ...]
     fragment_order_policy: str
     fragment_order_count: int
@@ -149,6 +157,7 @@ def disconnected_composition_algebra_proof_for_case(
 
     graph_native = shared_disconnected_composition_support_for_case(case)
     fragment_supports = []
+    fragment_authorities = []
     for record in graph_native.fragment_generation_records:
         fragment_result = mol_to_smiles_enum_s_graph_native(
             record.source_fragment_smiles,
@@ -165,6 +174,12 @@ def disconnected_composition_algebra_proof_for_case(
                 outputs=fragment_result.outputs,
             )
         )
+        fragment_authorities.append(
+            _fragment_support_authority(
+                source_smiles=record.source_fragment_smiles,
+                outputs=fragment_result.outputs,
+            )
+        )
 
     composition = compose_disconnected_fragment_supports(tuple(fragment_supports))
     return SouthStarDisconnectedCompositionAlgebraProof(
@@ -175,6 +190,7 @@ def disconnected_composition_algebra_proof_for_case(
             record.source_fragment_smiles
             for record in graph_native.fragment_generation_records
         ),
+        fragment_support_authorities=tuple(fragment_authorities),
         fragment_output_counts=composition.fragment_output_counts,
         fragment_order_policy=composition.fragment_order_policy,
         fragment_order_count=composition.fragment_order_count,
@@ -186,6 +202,23 @@ def disconnected_composition_algebra_proof_for_case(
             case.support_authority in SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES
         ),
     )
+
+
+def _fragment_support_authority(*, source_smiles: str, outputs: tuple[str, ...]) -> str:
+    facts = SouthStarMoleculeFacts.from_mol(parse_smiles(source_smiles))
+    if is_single_atom_atom_text_domain(facts):
+        support = single_atom_atom_text_support_from_facts(facts)
+        if support.support == outputs:
+            return SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY
+
+    for exact_case in load_south_star_exact_first_domain_cases():
+        if (
+            exact_case.source_smiles == source_smiles
+            and exact_case.expected_support == outputs
+        ):
+            return exact_case.support_authority
+
+    return "unproven_fragment_support"
 
 
 def shared_ring_stereo_monocycle_support_for_case(

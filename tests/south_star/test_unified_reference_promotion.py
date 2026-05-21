@@ -169,7 +169,14 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 self.assertEqual(facts.graph_topology.atom_count, proof.atom_count)
                 self.assertEqual(facts.graph_topology.bond_count, proof.bond_count)
                 self.assertGreater(proof.traversal_count, 0)
+                self.assertEqual(proof.atom_count, proof.atom_text_obligation_count)
+                self.assertEqual(proof.bond_count, proof.bond_text_obligation_count)
+                self.assertEqual(
+                    proof.traversal_count * proof.atom_count,
+                    proof.atom_event_count,
+                )
                 self.assertGreater(proof.bond_event_count, 0)
+                self.assertTrue(proof.bond_token_families)
                 if proof.atom_count > 3:
                     self.assertGreater(proof.branch_event_count, 0)
 
@@ -202,6 +209,13 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 self.assertEqual(1, proof.ring_count)
                 self.assertEqual(proof.output_count, len(case.expected_support))
                 self.assertGreaterEqual(proof.raw_output_count, proof.output_count)
+                self.assertEqual(proof.atom_count, proof.atom_text_obligation_count)
+                self.assertEqual(proof.bond_count, proof.bond_text_obligation_count)
+                self.assertEqual(
+                    proof.traversal_count * proof.atom_count,
+                    proof.atom_event_count,
+                )
+                self.assertTrue(proof.bond_token_families)
                 self.assertEqual(2 * proof.traversal_count, proof.closure_event_count)
                 self.assertGreater(proof.closure_event_count, 0)
                 self.assertEqual(0, proof.marker_slot_count)

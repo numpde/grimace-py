@@ -211,6 +211,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertGreater(proof.closure_edge_set_count, 1)
                 self.assertEqual(2, proof.closure_edge_count)
                 self.assertEqual(2, proof.closure_label_count)
+                self.assertEqual(proof.atom_count, proof.atom_text_obligation_count)
+                self.assertEqual(proof.bond_count, proof.bond_text_obligation_count)
+                self.assertEqual(
+                    proof.traversal_count * proof.atom_count,
+                    proof.atom_event_count,
+                )
+                self.assertIn("elided_single_bond", proof.bond_token_families)
                 self.assertEqual(
                     proof.traversal_count * proof.closure_edge_count * 2,
                     proof.closure_event_count,

@@ -4,9 +4,13 @@ import unittest
 
 from tests.helpers.south_star_adversarial_corpus import (
     SOUTH_STAR_ADVERSARIAL_AXES,
+    SOUTH_STAR_ADVERSARIAL_BOUNDARY_TARGETS,
+    SOUTH_STAR_ADVERSARIAL_REQUIRED_SUPPORTED_FEATURE_TARGETS,
+    SOUTH_STAR_ADVERSARIAL_REQUIRED_UNSUPPORTED_CATEGORY_TARGETS,
     generate_south_star_adversarial_candidates,
     south_star_adversarial_triage,
 )
+from tests.helpers.south_star_domain_manifest import SOUTH_STAR_PRIVATE_DOMAIN
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 
@@ -28,11 +32,28 @@ class SouthStarAdversarialCorpusTests(unittest.TestCase):
 
         self.assertEqual(SOUTH_STAR_ADVERSARIAL_AXES, observed_axes)
 
+    def test_generator_covers_declared_boundary_targets(self) -> None:
+        candidates = generate_south_star_adversarial_candidates()
+        observed_targets = frozenset(
+            target for candidate in candidates for target in candidate.boundary_targets
+        )
+
+        self.assertTrue(observed_targets <= SOUTH_STAR_ADVERSARIAL_BOUNDARY_TARGETS)
+        self.assertTrue(
+            SOUTH_STAR_ADVERSARIAL_REQUIRED_SUPPORTED_FEATURE_TARGETS
+            <= observed_targets
+        )
+        self.assertTrue(
+            SOUTH_STAR_ADVERSARIAL_REQUIRED_UNSUPPORTED_CATEGORY_TARGETS
+            <= observed_targets
+        )
+
     def test_generated_candidates_are_triage_inputs_not_support_fixtures(self) -> None:
         for candidate in generate_south_star_adversarial_candidates():
             with self.subTest(candidate_id=candidate.candidate_id):
                 self.assertFalse(hasattr(candidate, "expected_support"))
                 self.assertTrue(candidate.mutation_path)
+                self.assertTrue(candidate.boundary_targets)
                 parse_smiles(candidate.source_smiles)
 
     def test_triage_exposes_supported_and_unsupported_boundary_cases(self) -> None:
@@ -71,10 +92,17 @@ class SouthStarAdversarialCorpusTests(unittest.TestCase):
             for report in unsupported_reports
             for category in report.unsupported_categories
         }
+        targeted_categories = {
+            target
+            for report in unsupported_reports
+            for target in report.candidate.boundary_targets
+            if target in SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories
+        }
 
         self.assertIn("unsupported_bond_type", observed_categories)
         self.assertIn("dative_bond", observed_categories)
         self.assertIn("aromatic_ring_surface", observed_categories)
+        self.assertTrue(targeted_categories <= observed_categories)
 
 
 if __name__ == "__main__":

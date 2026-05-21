@@ -61,6 +61,9 @@ The seed enumerator:
 - names connected-graph traversal plans as shared syntax-skeleton data:
   roots, tree edges, closure edges, closure endpoints, and event-local renderer
   inputs are records, not completed-string patches;
+- assigns ring-closure labels through a named first-encounter policy before
+  rendering, so traversal construction owns label allocation and the renderer
+  consumes event data only;
 - enumerates roots and child/main-branch orders for the current connected
   acyclic tree subset;
 - enumerates simple single/double-bond monocycles with acyclic branches by

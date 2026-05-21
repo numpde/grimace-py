@@ -30,6 +30,8 @@ from grimace._south_star.reference_model import SouthStarRingClosure
 from grimace._south_star.reference_model import SouthStarTraversal
 from grimace._south_star.reference_model import SouthStarTraversalEvent
 from grimace._south_star.reference_model import SouthStarTraversalFragment
+from grimace._south_star.ring_labels import DEFAULT_RING_CLOSURE_LABEL_POLICY
+from grimace._south_star.ring_labels import closure_id_for_edge
 from grimace._south_star.support_gates import (
     is_supported_monocycle_with_acyclic_branches,
 )
@@ -735,6 +737,9 @@ def _monocycle_traversals(
                     mol,
                     fragment.events,
                     closure_edge=closure_edge,
+                    closure_label=_ring_closure_label_for_single_edge(
+                        closure_edge
+                    ),
                     marker_by_edge=marker_by_edge,
                     carrier_contexts_by_edge=carrier_contexts_by_edge,
                 ),
@@ -755,6 +760,13 @@ def _monocycle_traversals(
             tetrahedral_facts_by_atom={},
         )
     )
+
+
+def _ring_closure_label_for_single_edge(closure_edge: Edge) -> str:
+    (assignment,) = DEFAULT_RING_CLOSURE_LABEL_POLICY.assignments_for_edges(
+        (closure_edge,)
+    )
+    return assignment.label
 
 
 def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
@@ -792,6 +804,7 @@ def _with_ring_closure_events(
     events: tuple[SouthStarTraversalEvent, ...],
     *,
     closure_edge: Edge,
+    closure_label: str,
     marker_by_edge: dict[Edge, str],
     carrier_contexts_by_edge: dict[Edge, tuple[_CarrierContext, ...]],
 ) -> tuple[SouthStarTraversalEvent, ...]:
@@ -827,7 +840,11 @@ def _with_ring_closure_events(
             marker_by_edge=marker_by_edge,
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         ),
-        ring_closure=_ring_closure(closure_edge, role="open"),
+        ring_closure=_ring_closure(
+            closure_edge,
+            label=closure_label,
+            role="open",
+        ),
     )
     close_event = SouthStarTraversalEvent(
         kind="ring_close",
@@ -836,7 +853,11 @@ def _with_ring_closure_events(
         begin_atom_idx=close_atom_idx,
         end_atom_idx=open_atom_idx,
         begin_parent_idx=traversal_parent_by_atom.get(close_atom_idx),
-        ring_closure=_ring_closure(closure_edge, role="close"),
+        ring_closure=_ring_closure(
+            closure_edge,
+            label=closure_label,
+            role="close",
+        ),
     )
 
     with_closure_events: list[SouthStarTraversalEvent] = []
@@ -875,11 +896,12 @@ def _ring_closure_marker_slot(
 def _ring_closure(
     closure_edge: Edge,
     *,
+    label: str,
     role: str,
 ) -> SouthStarRingClosure:
     return SouthStarRingClosure(
-        closure_id=f"{closure_edge[0]}-{closure_edge[1]}",
-        label="1",
+        closure_id=closure_id_for_edge(closure_edge),
+        label=label,
         role=role,
     )
 

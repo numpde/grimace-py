@@ -268,6 +268,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "unsaturated_nonstereo_monocycle_cyclohexene",
                 "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
                 "unsaturated_nonstereo_monocycle_cyclohexadiene",
+                "markerless_disconnected_ring_and_atom",
                 "disconnected_stereo_fragment_and_atom",
                 "explicit_bracket_hydrogen_h2",
                 "markerless_acyclic_ethanol",

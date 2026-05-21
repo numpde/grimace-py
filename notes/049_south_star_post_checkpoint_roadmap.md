@@ -11,18 +11,18 @@ Task: `South Star 130: Deliberate post-checkpoint granular roadmap`
 After the 129/129a/129b/129c/129d/129e sequence, the readiness matrix is no
 longer blocked by stale shared-pipeline metadata.
 
-Current matrix after the first-domain, markerless acyclic-tree, first
+Current matrix after the first-domain, markerless acyclic-tree,
 disconnected-composition, and nonstereo-monocycle authority promotions:
 
-- unified-reference-backed cases: `22`
+- unified-reference-backed cases: `23`
 - shared-pipeline promotion candidates: `30`
-- temporary-witness-backed cases: `7`
+- temporary-witness-backed cases: `6`
 - graph-native regression-backed cases: `1`
-- public API blocker cases: `8`
+- public API blocker cases: `7`
 
 Remaining blocker count:
 
-- `support_authority_is_not_unified_reference`: `8`
+- `support_authority_is_not_unified_reference`: `7`
 
 That is the right next frontier. The immediate post-checkpoint work should be
 authority migration under the one-truth reference model, not broad API export.
@@ -83,10 +83,13 @@ The composition proof should be separate from per-fragment support: all fragment
 orders, Cartesian product of fragment supports, dot rendering, and
 first-occurrence deduplication.
 
-Status: partial. `disconnected_stereo_fragment_and_atom` is now
+Status: complete for the current two disconnected fixtures.
+`disconnected_stereo_fragment_and_atom` is
 `unified_reference_disconnected_composition` because its first-domain stereo
-fragment and markerless atom fragment are unified-reference-backed. The
-ring-plus-atom disconnected case remains blocked on ring-fragment authority.
+fragment and markerless atom fragment are unified-reference-backed.
+`markerless_disconnected_ring_and_atom` is also
+`unified_reference_disconnected_composition` because the ring fragment is now
+nonstereo-monocycle unified-reference-backed.
 
 ### 130d: Promote Ring Traversal Authority
 

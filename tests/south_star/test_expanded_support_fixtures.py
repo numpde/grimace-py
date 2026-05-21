@@ -77,7 +77,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY
+                == SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )

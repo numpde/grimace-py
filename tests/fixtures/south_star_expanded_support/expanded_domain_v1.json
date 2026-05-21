@@ -402,8 +402,8 @@
       "case_id": "markerless_disconnected_ring_and_atom",
       "feature_area": "disconnected_markerless_fragments",
       "source_smiles": "C1CCCCC1.O",
-      "support_authority": "temporary_witness_disconnected_composition_shared_records",
-      "evidence_notes": "Temporary witness evidence from shared disconnected-fragment composition over connected-fragment fixture supports under all_fragment_orders.",
+      "support_authority": "unified_reference_disconnected_composition",
+      "evidence_notes": "Unified-reference disconnected-composition evidence: every fragment support is unified-reference-backed, including the nonstereo monocycle fragment, and disconnected output is derived from all fragment orders, Cartesian product, dot rendering, and first-occurrence dedup.",
       "expected_support": [
         "C1CCCCC1.O",
         "C(CCCC1)C1.O",

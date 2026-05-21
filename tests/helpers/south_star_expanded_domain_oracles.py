@@ -44,6 +44,7 @@ from grimace._south_star.tetrahedral import (
 )
 from grimace._south_star.tetrahedral import tetrahedral_traversal_token_diagnostic
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
@@ -53,7 +54,9 @@ from tests.helpers.south_star_exact_support import (
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_unified_reference import (
+    is_nonstereo_monocycle_ring_traversal_domain,
     is_single_atom_atom_text_domain,
+    nonstereo_monocycle_support_from_shared_spine,
     single_atom_atom_text_support_from_facts,
 )
 
@@ -81,6 +84,12 @@ class TemporarySouthStarDisconnectedCompositionWitnessEvidence:
     fragment_order_policy: str
     fragment_order_count: int
     estimated_product_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarFragmentAuthorityCase:
+    case_id: str
+    source_smiles: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +286,16 @@ def _fragment_support_authority(*, source_smiles: str, outputs: tuple[str, ...])
         support = single_atom_atom_text_support_from_facts(facts)
         if support.support == outputs:
             return SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY
+
+    if is_nonstereo_monocycle_ring_traversal_domain(facts):
+        support = nonstereo_monocycle_support_from_shared_spine(
+            SouthStarFragmentAuthorityCase(
+                case_id=f"fragment_authority:{source_smiles}",
+                source_smiles=source_smiles,
+            )
+        )
+        if support.support == outputs:
+            return SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
 
     for exact_case in load_south_star_exact_first_domain_cases():
         if (

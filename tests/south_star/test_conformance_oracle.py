@@ -6,6 +6,11 @@ from tests.helpers.south_star_semantic_oracle import (
     semantic_oracle_accepts,
     south_star_conformance_report,
 )
+from tests.helpers.south_star_spec_oracle import (
+    SOUTH_STAR_SPEC_ORACLE_BASIS,
+    SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+    south_star_spec_oracle_report,
+)
 from tests.helpers.south_star_grammar_conformance import (
     SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS,
 )
@@ -91,4 +96,24 @@ class SouthStarConformanceOracleTests(unittest.TestCase):
                 source_smiles="C/C=N/O",
                 candidate_smiles="C/C=N\\O",
             )
+        )
+
+    def test_spec_oracle_is_evidence_not_generation_authority(self) -> None:
+        report = south_star_spec_oracle_report(
+            source_smiles="F/C=C\\Cl",
+            candidate_smiles=("F\\C=C/Cl", "F/C=C/Cl"),
+        )
+
+        self.assertEqual(SOUTH_STAR_SPEC_ORACLE_BASIS, report.basis)
+        self.assertEqual(
+            SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+            report.generation_authority,
+        )
+        self.assertEqual(2, report.candidate_count)
+        self.assertEqual(1, report.accepted_count)
+        self.assertFalse(report.all_accepted)
+        self.assertEqual(1, len(report.rejected_candidates))
+        self.assertEqual(
+            ("stereo_equivalence",),
+            report.rejected_candidates[0].rejection_reasons,
         )

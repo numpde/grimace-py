@@ -19,6 +19,7 @@ from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_spec_oracle import south_star_spec_oracle_report
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 
@@ -458,6 +459,10 @@ def _pipeline_coverage_for_case(
         case.source_smiles,
         case_id=case.case_id,
     )
+    spec_oracle_report = south_star_spec_oracle_report(
+        source_smiles=case.source_smiles,
+        candidate_smiles=result.outputs,
+    )
     diagnostics = result.generation_diagnostics
     if diagnostics is None:
         raise AssertionError("graph-native generation must return diagnostics")
@@ -524,8 +529,19 @@ def _pipeline_coverage_for_case(
         ),
         SouthStarPipelineCoverageRecord(
             stage_id="semantic_evidence",
-            status="covered" if result.outputs == expected_support else "missing",
-            evidence="graph-native outputs match checked-in expected support",
+            status=(
+                "covered"
+                if result.outputs == expected_support
+                and spec_oracle_report.all_accepted
+                else "missing"
+            ),
+            evidence=(
+                "spec_oracle_accepted="
+                f"{spec_oracle_report.accepted_count}/"
+                f"{spec_oracle_report.candidate_count}; "
+                "generation_authority="
+                f"{spec_oracle_report.generation_authority}"
+            ),
         ),
     )
 

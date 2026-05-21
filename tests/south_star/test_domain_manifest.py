@@ -20,6 +20,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES,
     SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS,
+    SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
@@ -117,6 +118,17 @@ class SouthStarDomainManifestTests(unittest.TestCase):
                         case.support_authority,
                         SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
                     )
+                    self.assertIn("Unified-reference", case.evidence_notes)
+
+    def test_manifest_names_first_unified_reference_authority(self) -> None:
+        self.assertIn(
+            SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
+        )
+        self.assertIn(
+            SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+        )
 
     def test_manifest_names_fragment_order_policy(self) -> None:
         self.assertIn(

@@ -211,6 +211,12 @@ def atom_text_obligation_for_supported_atom(
     atom: Chem.Atom,
 ) -> SouthStarAtomTextObligation:
     fields = south_star_atom_text_fields(atom)
+    return atom_text_obligation_for_supported_fields(fields)
+
+
+def atom_text_obligation_for_supported_fields(
+    fields: SouthStarAtomTextFields,
+) -> SouthStarAtomTextObligation:
     unsupported = unsupported_atom_text_reasons(fields)
     if unsupported:
         categories = ", ".join(reason.category for reason in unsupported)

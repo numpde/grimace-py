@@ -665,8 +665,8 @@
       "case_id": "radical_atom_text_hydrogen",
       "feature_area": "radical_atom_text",
       "source_smiles": "[H]",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the smallest radical atom-text slice: isolated bracket hydrogen parses back as a one-electron radical by bracket atom valence semantics.",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: one supported atom, zero bonds, one traversal root, and singleton support derived from SouthStarAtomTextFields.",
       "expected_support": [
         "[H]"
       ]
@@ -675,8 +675,8 @@
       "case_id": "radical_atom_text_methyl",
       "feature_area": "radical_atom_text",
       "source_smiles": "[CH3]",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first radical atom-text slice: radical electron count is represented by bracket atom valence, explicit hydrogen count, and semantic parse-back evidence rather than a separate radical token.",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: radical electron count is represented by bracket atom valence, explicit hydrogen count, and singleton support derived from SouthStarAtomTextFields.",
       "expected_support": [
         "[CH3]"
       ]
@@ -685,8 +685,8 @@
       "case_id": "radical_atom_text_oxygen",
       "feature_area": "radical_atom_text",
       "source_smiles": "[O]",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first radical atom-text slice: radical electron count is represented by bracket atom valence and semantic parse-back evidence rather than a separate radical token.",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: radical electron count is represented by bracket atom valence and singleton support derived from SouthStarAtomTextFields.",
       "expected_support": [
         "[O]"
       ]
@@ -695,8 +695,8 @@
       "case_id": "charged_atom_text_chloride",
       "feature_area": "charged_atom_text",
       "source_smiles": "[Cl-]",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first charged atom-text slice: formal charge is represented by the bracket atom charge suffix and checked by semantic parse-back evidence.",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: formal charge is represented by the bracket atom charge suffix and singleton support derived from SouthStarAtomTextFields.",
       "expected_support": [
         "[Cl-]"
       ]
@@ -705,8 +705,8 @@
       "case_id": "charged_atom_text_ammonium",
       "feature_area": "charged_atom_text",
       "source_smiles": "[NH4+]",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first charged atom-text slice with explicit hydrogens: formal charge and explicit-H count are represented by typed bracket atom obligations and checked by semantic parse-back evidence.",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: formal charge and explicit-H count are represented by typed bracket atom obligations and singleton support derived from SouthStarAtomTextFields.",
       "expected_support": [
         "[NH4+]"
       ]

@@ -32,6 +32,7 @@ SOUTH_STAR_SEMANTIC_MODULES: tuple[str, ...] = (
     "tests.south_star.test_support_boundary",
     "tests.south_star.test_support_gates",
     "tests.south_star.test_tetrahedral_facts",
+    "tests.south_star.test_unified_reference_promotion",
     "tests.south_star.test_z3_equation_oracle",
 )
 

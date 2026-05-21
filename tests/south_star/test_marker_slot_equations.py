@@ -12,6 +12,7 @@ from grimace._south_star.marker_equations import (
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
+from grimace._south_star.parity_solver import solve_marker_slot_parity_equations
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
@@ -113,6 +114,44 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
                 self.assertTrue(equation.slot_id.startswith("ring_open:"))
                 self.assertIn(equation.graph_marker, {"/", "\\"})
                 self.assertIn(equation.emitted_marker, {"/", "\\"})
+
+    def test_ring_open_marker_slots_solve_through_shared_parity_solver(self) -> None:
+        case = _expanded_case("ring_stereo_monocycle_cyclooctene")
+        state = SouthStarComponentSupportState.from_mol(parse_smiles(case.source_smiles))
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        ring_open_traversals = tuple(
+            traversal
+            for traversal in traversals
+            if any(
+                event.marker_slot is not None
+                and event.marker_slot.syntax_position == "ring_open"
+                for event in traversal.events
+            )
+        )
+
+        self.assertGreater(len(ring_open_traversals), 0)
+        for traversal in ring_open_traversals:
+            equations = marker_slot_parity_equations_for_traversal(state, traversal)
+            solver_result = solve_marker_slot_parity_equations(equations)
+            expected_assignment = tuple(
+                sorted(
+                    (assignment.slot_id, assignment.marker)
+                    for assignment in traversal.marker_assignments
+                )
+            )
+
+            with self.subTest(root=traversal.root_atom_idx):
+                self.assertTrue(
+                    any(
+                        equation.syntax_position == "ring_open"
+                        for equation in equations
+                    )
+                )
+                self.assertEqual(1, len(solver_result.assignments))
+                self.assertEqual(
+                    expected_assignment,
+                    solver_result.assignments[0].marker_by_slot,
+                )
 
     def test_stereo_double_bond_ring_closure_uses_carrier_equations(
         self,

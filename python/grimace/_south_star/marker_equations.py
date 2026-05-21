@@ -13,6 +13,7 @@ from grimace._south_star.components import SouthStarSemanticStereoComponent
 from grimace._south_star.components import SouthStarSourceStereoFeature
 from grimace._south_star.constraint_vocabulary import SouthStarConstraintEquation
 from grimace._south_star.constraint_vocabulary import SouthStarConstraintFamily
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintObligation
 from grimace._south_star.constraint_vocabulary import SouthStarConstraintSyntaxSlot
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.reference_model import SouthStarMarkerSlot
@@ -50,6 +51,13 @@ class SouthStarMarkerSlotParityEquation:
     traversal_orientation_flip: bool
     component_ids: tuple[str, ...]
     feature_terms: tuple[SouthStarFeatureCarrierTerm, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarDirectionalMarkerConstraintRecords:
+    syntax_slot: SouthStarConstraintSyntaxSlot
+    obligations: tuple[SouthStarConstraintObligation, ...]
+    equation: SouthStarConstraintEquation
 
 
 def marker_slot_parity_equations_for_case(
@@ -127,6 +135,31 @@ def expected_marker_from_equation(
     return equation.graph_marker
 
 
+def directional_marker_constraint_records_for_equation(
+    equation: SouthStarMarkerSlotParityEquation,
+) -> SouthStarDirectionalMarkerConstraintRecords:
+    obligations = tuple(
+        constraint_obligation_for_feature_carrier_term(
+            term,
+            slot_id=equation.slot_id,
+            carrier_edge=equation.edge,
+        )
+        for term in equation.feature_terms
+    )
+    return SouthStarDirectionalMarkerConstraintRecords(
+        syntax_slot=constraint_syntax_slot_for_marker_equation(equation),
+        obligations=obligations,
+        equation=SouthStarConstraintEquation(
+            family_id=DIRECTIONAL_MARKER_CONSTRAINT_FAMILY.family_id,
+            equation_id=equation.equation_id,
+            obligation_ids=tuple(
+                obligation.obligation_id for obligation in obligations
+            ),
+            syntax_slot_ids=(equation.slot_id,),
+        ),
+    )
+
+
 def constraint_syntax_slot_for_marker_equation(
     equation: SouthStarMarkerSlotParityEquation,
 ) -> SouthStarConstraintSyntaxSlot:
@@ -142,14 +175,39 @@ def constraint_syntax_slot_for_marker_equation(
 def constraint_equation_for_marker_equation(
     equation: SouthStarMarkerSlotParityEquation,
 ) -> SouthStarConstraintEquation:
-    return SouthStarConstraintEquation(
+    return directional_marker_constraint_records_for_equation(equation).equation
+
+
+def constraint_obligation_for_feature_carrier_term(
+    term: SouthStarFeatureCarrierTerm,
+    *,
+    slot_id: str,
+    carrier_edge: Edge,
+) -> SouthStarConstraintObligation:
+    return SouthStarConstraintObligation(
         family_id=DIRECTIONAL_MARKER_CONSTRAINT_FAMILY.family_id,
-        equation_id=equation.equation_id,
-        obligation_ids=tuple(
-            dict.fromkeys(term.feature_id for term in equation.feature_terms)
+        obligation_id=(
+            f"directional_marker:{term.component_id}:{term.feature_id}:{slot_id}"
         ),
-        syntax_slot_ids=(equation.slot_id,),
+        subject_id=_edge_subject_id(carrier_edge),
+        required_fact_ids=(
+            f"component:{term.component_id}",
+            f"feature:{term.feature_id}",
+            f"central_bond:{_edge_text(term.central_bond)}",
+            f"carrier_side:{term.carrier_side}",
+            f"source_marker:{term.source_marker}",
+            f"required_stereo_phase:{term.required_stereo_phase}",
+        ),
+        syntax_slot_ids=(slot_id,),
     )
+
+
+def _edge_subject_id(edge: Edge) -> str:
+    return f"edge:{_edge_text(edge)}"
+
+
+def _edge_text(edge: Edge) -> str:
+    return f"{edge[0]}-{edge[1]}"
 
 
 def _graph_marker_by_edge(traversal: SouthStarTraversal) -> dict[Edge, str]:

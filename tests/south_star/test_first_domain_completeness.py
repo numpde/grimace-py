@@ -9,6 +9,9 @@ from tests.helpers.south_star_exact_support import (
 from tests.helpers.south_star_first_domain_oracle import (
     independent_first_domain_support_for_case,
 )
+from tests.helpers.south_star_first_domain_proof_inputs import (
+    first_domain_proof_inputs_from_shared_spine,
+)
 from tests.helpers.south_star_semantic_oracle import semantic_oracle_accepts
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
@@ -53,6 +56,36 @@ class SouthStarFirstDomainCompletenessTests(unittest.TestCase):
                             candidate_smiles=smiles,
                         )
                     )
+
+    def test_first_domain_proof_inputs_come_from_shared_spine(self) -> None:
+        semantic_cases = {
+            case.case_id: case for case in load_south_star_semantic_cases()
+        }
+        for exact_case in load_south_star_exact_first_domain_cases():
+            semantic_case = semantic_cases[exact_case.case_id]
+            proof_inputs = first_domain_proof_inputs_from_shared_spine(semantic_case)
+
+            with self.subTest(case_id=exact_case.case_id):
+                self.assertEqual(exact_case.case_id, proof_inputs.case_id)
+                self.assertEqual(exact_case.source_smiles, proof_inputs.source_smiles)
+                self.assertFalse(proof_inputs.expected_support_strings_used)
+                self.assertEqual(
+                    "maximal_eligible_carrier",
+                    proof_inputs.annotation_policy_name,
+                )
+                self.assertGreater(proof_inputs.atom_count, 0)
+                self.assertGreater(proof_inputs.bond_count, 0)
+                self.assertGreater(proof_inputs.component_count, 0)
+                self.assertGreater(proof_inputs.carrier_opportunity_count, 0)
+                self.assertGreater(proof_inputs.traversal_count, 0)
+                self.assertGreater(proof_inputs.traversal_event_count, 0)
+                self.assertGreater(proof_inputs.marker_slot_count, 0)
+                self.assertGreater(proof_inputs.carrier_context_count, 0)
+                self.assertEqual(0, proof_inputs.renderer_input_count)
+                self.assertEqual(
+                    proof_inputs.marker_slot_count,
+                    proof_inputs.equation_count,
+                )
 
 
 if __name__ == "__main__":

@@ -58,13 +58,6 @@ from grimace._south_star.tetrahedral import (
 class SouthStarTreeTraversal(SouthStarTraversal):
     connected_graph_plan: SouthStarConnectedGraphTraversalPlan | None = None
 
-    def render(self) -> str:
-        return render_south_star_traversal(
-            self.events,
-            marker_assignments=self.marker_assignments,
-            renderer_inputs=_renderer_inputs_from_events(self.events),
-        )
-
 
 _CarrierContext = SouthStarCarrierContext
 _TraversalFragment = SouthStarTraversalFragment
@@ -251,7 +244,9 @@ def _connected_generation_for_mol(
         molecule_facts=molecule_facts,
         state=state,
     )
-    raw_outputs = tuple(traversal.render() for traversal in traversals)
+    raw_outputs = tuple(
+        render_south_star_tree_traversal(traversal) for traversal in traversals
+    )
     outputs = policy_set.output_order_policy.deduplicate(raw_outputs)
     marker_slot_count = sum(
         1
@@ -514,6 +509,14 @@ def render_south_star_traversal(
     for event in events:
         rendered.append(_render_traversal_event(event, markers_by_slot))
     return "".join(rendered)
+
+
+def render_south_star_tree_traversal(traversal: SouthStarTraversal) -> str:
+    return render_south_star_traversal(
+        traversal.events,
+        marker_assignments=traversal.marker_assignments,
+        renderer_inputs=_renderer_inputs_from_events(traversal.events),
+    )
 
 
 def _render_traversal_event(

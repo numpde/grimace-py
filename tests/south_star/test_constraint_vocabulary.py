@@ -36,6 +36,7 @@ from grimace._south_star.tetrahedral import (
     tetrahedral_traversal_observation_from_connected_graph_plan,
 )
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from tests.helpers.south_star_marker_equations import (
     marker_slot_parity_equations_for_case,
 )
@@ -251,7 +252,7 @@ def _traversal_by_render(source_smiles: str, rendered: str):
             negative_semantic_smiles=(),
         )
     ):
-        if traversal.render() == rendered:
+        if render_south_star_tree_traversal(traversal) == rendered:
             return traversal
     raise AssertionError(f"missing traversal rendering {rendered!r}")
 

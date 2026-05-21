@@ -20,6 +20,7 @@ from grimace._south_star.enum_s import (
     SouthStarFragmentGenerationRecord,
     mol_to_smiles_enum_s_graph_native,
     mol_to_smiles_enum_s_tree_traversals_for_case,
+    render_south_star_tree_traversal,
 )
 from grimace._south_star.marker_equations import SouthStarMarkerSlotParityEquation
 from grimace._south_star.marker_equations import (
@@ -106,7 +107,7 @@ def _shared_traversal_support_for_case(
 ) -> tuple[str, ...]:
     return tuple(
         dict.fromkeys(
-            traversal.render()
+            render_south_star_tree_traversal(traversal)
             for traversal in mol_to_smiles_enum_s_tree_traversals_for_case(case)
         )
     )
@@ -143,7 +144,12 @@ def shared_ring_stereo_monocycle_support_for_case(
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
 
     return SouthStarRingStereoOracleResult(
-        outputs=tuple(dict.fromkeys(traversal.render() for traversal in traversals)),
+        outputs=tuple(
+            dict.fromkeys(
+                render_south_star_tree_traversal(traversal)
+                for traversal in traversals
+            )
+        ),
         equations=tuple(
             dict.fromkeys(
                 equation
@@ -179,7 +185,12 @@ def shared_tetrahedral_atom_stereo_support_for_case(
     facts_by_atom = {fact.center_atom_idx: fact for fact in facts}
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
     return SouthStarTetrahedralTraversalResult(
-        outputs=tuple(dict.fromkeys(traversal.render() for traversal in traversals)),
+        outputs=tuple(
+            dict.fromkeys(
+                render_south_star_tree_traversal(traversal)
+                for traversal in traversals
+            )
+        ),
         obligations=tuple(
             _tetrahedral_obligation_for_atom_event(
                 traversal.connected_graph_plan,

@@ -13,6 +13,7 @@ from grimace._south_star.enum_s import _ring_system_traversals
 from grimace._south_star.enum_s import _supported_polycyclic_closure_edge_sets
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
@@ -262,7 +263,7 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
                 )
             )
 
-            with self.subTest(rendered=traversal.render()):
+            with self.subTest(rendered=render_south_star_tree_traversal(traversal)):
                 self.assertTrue(
                     any(
                         equation.syntax_position == "ring_open"

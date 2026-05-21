@@ -4,6 +4,7 @@ import ast
 from pathlib import Path
 import unittest
 
+from grimace._south_star.enum_s import SouthStarTreeTraversal
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.reference_model import SouthStarTraversal
 
@@ -143,7 +144,11 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
         self.assertNotIn("grimace._south_star.enum_s", modules)
 
     def test_shared_traversal_record_does_not_render(self) -> None:
-        for record_type in (SouthStarTraversal, SouthStarConnectedGraphTraversalPlan):
+        for record_type in (
+            SouthStarTraversal,
+            SouthStarConnectedGraphTraversalPlan,
+            SouthStarTreeTraversal,
+        ):
             with self.subTest(record_type=record_type.__name__):
                 self.assertFalse(
                     hasattr(record_type, "render"),

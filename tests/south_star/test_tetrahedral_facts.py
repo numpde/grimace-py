@@ -13,6 +13,7 @@ from grimace._south_star.enum_s import _ring_system_traversals
 from grimace._south_star.enum_s import _supported_single_ring_edges
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.support_gates import south_star_support_gate_report
 from grimace._south_star.tetrahedral import (
@@ -206,7 +207,7 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
 
         self.assertTrue(traversals)
         for traversal in traversals:
-            with self.subTest(rendered=traversal.render()):
+            with self.subTest(rendered=render_south_star_tree_traversal(traversal)):
                 renderer_inputs = tuple(
                     event.renderer_input
                     for event in traversal.events
@@ -216,7 +217,7 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
 
     def test_ring_tetrahedral_plan_closure_ligands_select_token(self) -> None:
         traversals_by_render = {
-            traversal.render(): traversal
+            render_south_star_tree_traversal(traversal): traversal
             for traversal in _ring_tetrahedral_diagnostic_traversals(
                 "F[C@H]1CCCC(C)C1"
             )
@@ -285,7 +286,7 @@ def _traversal_by_render(source_smiles: str, rendered: str):
             negative_semantic_smiles=(),
         )
     ):
-        if traversal.render() == rendered:
+        if render_south_star_tree_traversal(traversal) == rendered:
             return traversal
     raise AssertionError(f"missing traversal rendering {rendered!r}")
 

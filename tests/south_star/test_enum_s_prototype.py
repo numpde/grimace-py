@@ -12,6 +12,7 @@ from grimace._south_star.enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
 from grimace._south_star.enum_s import render_south_star_traversal
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.reference_model import SouthStarMarkerSlot
 from grimace._south_star.reference_model import SouthStarMarkerSlotAssignment
 from grimace._south_star.reference_model import SouthStarRingClosure
@@ -282,7 +283,12 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
 
         self.assertEqual(
             result.outputs,
-            tuple(dict.fromkeys(traversal.render() for traversal in traversals)),
+            tuple(
+                dict.fromkeys(
+                    render_south_star_tree_traversal(traversal)
+                    for traversal in traversals
+                )
+            ),
         )
 
     def test_graph_native_traversal_events_expose_tree_context(self) -> None:
@@ -511,7 +517,7 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                 marker_assignments=traversal.marker_assignments,
             )
         self.assertEqual(
-            traversal.render(),
+            render_south_star_tree_traversal(traversal),
             render_south_star_traversal(
                 traversal.events,
                 marker_assignments=traversal.marker_assignments,

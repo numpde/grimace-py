@@ -16,6 +16,13 @@ policy, and exact-by-construction enumeration.
 RDKit writer parity remains important comparison metadata. It is not the South
 Star oracle.
 
+The South Star reference should also not become a collection of feature-local
+mini-oracles. Per-domain oracles are acceptable only as temporary witnesses
+while a feature boundary is being understood. The target is one mathematical
+support model: one molecule fact model, one traversal/event language, one
+constraint model, one annotation-policy layer, and one renderer. Test cases
+exercise that model; they do not define it.
+
 ## Target Contract
 
 Provisional surface:
@@ -47,15 +54,75 @@ fast with a named unsupported reason.
 - No fixture-positive generation.
 - No RDKit writer support as the semantic oracle.
 - No hidden RDKit serializer quirks in semantic code.
+- No case-by-case authority as the long-term correctness model.
 - No runtime path that generates junk and then depends on parsing/filtering to
   recover correctness.
 - No partial support sets for unsupported surfaces.
 - Every emitted string must belong by construction.
 - Completeness must be measured against the declared grammar and annotation
-  policy, not against a handful of examples.
+  policy, not against a handful of examples or feature-specific oracle scripts.
 - RDKit parseability is evidence, not definition.
 - RDKit writer parity is comparison metadata, not pass/fail authority for South
   Star.
+
+## One-Truth Reference Model
+
+The long-term South Star reference is a single mathematical support model. It
+should answer:
+
+```text
+given molecule facts, traversal events, semantic constraints, and an annotation
+policy, which rendered strings belong to the declared South Star language?
+```
+
+It should have these shared inputs and outputs:
+
+- `SouthStarMoleculeFacts` as the only molecule/semantic fact boundary;
+- a traversal/event stream as the only syntax skeleton;
+- marker, atom-stereo, ring-closure, fragment, and atom-text obligations as
+  typed constraints over that stream;
+- one solver/enumerator over those constraints;
+- one annotation policy deciding which satisfying assignments are in the
+  language;
+- one renderer that prints only from events plus solved assignments.
+
+Feature families such as directional double-bond stereo, tetrahedral atom
+stereo, ring closure syntax, disconnected fragments, bracket atom text, and
+aromatic text are constraint/fact families inside this model. They are not
+separate correctness authorities.
+
+The reference implementation may have internal modules by feature for
+readability. That modularity is acceptable only if the modules feed the same
+fact/event/constraint/solver/renderer pipeline. A tetrahedral helper may derive
+tetrahedral constraints; it should not define a separate tetrahedral support
+universe. A ring helper may derive closure events; it should not define a
+separate ring support universe.
+
+## Witnesses Versus Authority
+
+Fixtures and per-feature oracle helpers currently serve a useful purpose:
+
+- expose gaps in unsupported surfaces;
+- pin representative strings while the general model is incomplete;
+- prevent regressions during refactors;
+- make feature-specific reasoning reviewable.
+
+They are scaffolding. They should be treated as witnesses for the one-truth
+model, not as the final source of truth.
+
+The intended migration is:
+
+1. keep existing feature-local oracle tests as guardrails;
+2. extract the common fact/event/constraint concepts they duplicate;
+3. replace per-domain expected-support authority with the unified support
+   model;
+4. keep the old fixtures as regression witnesses against the unified model;
+5. delete or demote feature-local oracles once they no longer provide
+   independent information.
+
+Adding another feature-local oracle is acceptable only when it is explicitly
+temporary and the task also names how its concepts fold into the unified model.
+If a new oracle would just add another permanent mini-world, do not add it.
 
 ## Current Position
 
@@ -103,7 +170,7 @@ Initial unsupported categories:
 
 ## Proper Layer Split
 
-South Star should be implemented as five separable layers.
+South Star should be implemented as separable layers under one reference model.
 
 ### 1. Molecule Facts
 
@@ -171,6 +238,14 @@ That means every eligible carrier slot required by the policy is marked. Later
 policies may be minimal, canonical, or RDKit-writer-like, but they must share
 the same fact, traversal, slot, and constraint layers.
 
+### 6. Renderer
+
+Owns final text emission from traversal events plus solved assignments.
+
+The renderer should not make semantic choices, search for repairs, or decide
+which strings belong. It prints the single model's accepted event/assignment
+pairs.
+
 ## Z3 And Runtime Solver
 
 Z3 should be kept as an independent specification oracle, not as the runtime
@@ -195,8 +270,8 @@ For the first closed domain, completeness means:
 - every satisfying assignment is rendered;
 - no non-satisfying assignment is rendered;
 - every rendered string passes graph/stereo conformance;
-- the implementation output equals an independent reference enumerator for
-  small exhaustive cases.
+- the implementation output equals the one-truth reference model for small
+  exhaustive cases.
 
 Fixtures are witnesses and regression cases. They are not the source of truth.
 
@@ -238,19 +313,24 @@ The existing carrier-orientation behavior should become data:
 
 The goal is to make branch/reversed-edge handling inspectable as equations.
 
-### Phase 3: Independent Solver Check
+### Phase 3: Unified Reference Model
 
-Add a Z3-backed reference for small current-domain fixtures.
+Build the first executable one-truth reference model for the current closed
+domain. Z3 may be used as the backend for small exhaustive cases, but the
+important point is not Z3 specifically. The important point is that all feature
+families feed the same fact/event/constraint vocabulary.
 
 For each fixture:
 
 - build traversal slots;
-- build equations;
-- enumerate satisfying assignments with Z3;
+- build typed constraints;
+- enumerate satisfying assignments with the reference model;
 - enumerate satisfying assignments with the custom solver;
 - assert equality at the assignment level before rendering strings.
 
 This is the main guardrail against replacing one procedural patch with another.
+It is also the guardrail against replacing the South Star target with a growing
+set of case-by-case independent oracles.
 
 ### Phase 4: Runtime-Like Solver
 
@@ -277,11 +357,14 @@ already-selected tokens.
 
 For small connected acyclic cases:
 
-- enumerate all traversal skeletons independently;
-- enumerate all marker assignments independently;
+- enumerate all traversal skeletons through the shared traversal/event model;
+- enumerate all assignments through the shared constraint model;
 - compare implementation support exactly;
 - verify graph/stereo conformance for every output;
 - verify selected negative witnesses stay excluded.
+
+Feature-specific witnesses should become rows in these tests, not separate
+support authorities.
 
 ### Phase 7: Internal Package Boundary
 
@@ -292,6 +375,11 @@ or the eventual Rust/Python equivalent.
 Do not expose `MolToSmilesEnumS` publicly yet.
 
 ## Major Generalization Milestones
+
+Every milestone below must widen the same one-truth model. The sequence is not
+"add one more oracle." The sequence is "add one more feature family to the
+shared fact/event/constraint language, then prove the existing witnesses and new
+adversarial witnesses follow from that model."
 
 ### Rings
 
@@ -305,6 +393,8 @@ They require:
 - carrier equations that can reference closure syntax positions.
 
 Rings should be added as traversal-language work, not as string patching.
+Ring fixtures should test closure-event choices in the shared model, not define
+a separate ring oracle permanently.
 
 ### Disconnected Molecules
 
@@ -321,8 +411,9 @@ writer-like policy asks for it.
 
 Tetrahedral stereo is a different constraint family.
 
-Do not mix it into directional double-bond carrier work until the directional
-layer is closed, tested, and internally packaged.
+It should still feed the same event/constraint/reference pipeline. Do not leave
+tetrahedral support as a separate fixture-backed mini-oracle once the unified
+model can express atom-stereo ligand-order constraints.
 
 ## What Not To Do
 
@@ -330,6 +421,7 @@ layer is closed, tested, and internally packaged.
   helpers.
 - Do not add more local branch/case repairs without translating them into slot
   facts or equations.
+- Do not keep adding permanent per-domain support authorities.
 - Do not use RDKit string support to define South Star completeness.
 - Do not treat parsed-object equivalence as a substitute for a declared
   grammar and annotation policy.
@@ -358,3 +450,20 @@ Acceptance:
 - the note-level layer split is visible in code names.
 
 This is the bridge from a working seed to South Star proper.
+
+## Current Correction
+
+Recent work added several independent per-domain oracles. That improved the
+evidence quality versus graph-native regression fixtures, but it is not the
+final South Star shape. The next planning pass should stop treating
+"independent oracle per domain" as the roadmap and instead consolidate toward
+the one-truth reference model described above.
+
+Near-term tasks should therefore be reframed:
+
+- extract duplicated traversal/rendering concepts from per-domain oracles into
+  shared fact/event/constraint records;
+- make current feature-local oracles call or compare against that shared model;
+- ensure new feature work adds constraints to the common model rather than a new
+  standalone oracle;
+- keep fixture cases as witness coverage only.

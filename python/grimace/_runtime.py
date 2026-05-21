@@ -46,6 +46,7 @@ class _AdapterDecoderState(_BaseDecoderState, Protocol):
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]: ...
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]: ...
 
+
 @dataclass(frozen=True, slots=True)
 class MolToSmilesFlags:
     isomeric_smiles: bool = True
@@ -226,10 +227,11 @@ def _ensure_singly_connected_molecule(mol: object) -> None:
         )
 
 
-def _is_disconnected_molecule(mol_or_prepared: object) -> bool:
+def _as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
     if isinstance(mol_or_prepared, PreparedMol):
-        return len(_prepared_mol_fragments(mol_or_prepared)) > 1
-    return False
+        if len(_prepared_mol_fragments(mol_or_prepared)) > 1:
+            return mol_or_prepared
+    return None
 
 
 def _fragment_plans_for_prepared_mol(
@@ -352,16 +354,16 @@ def _connected_fragment_support(
     return support
 
 
-def _fragmented_mol_to_smiles_support(
-    mol_or_prepared: object,
+def _fragmented_prepared_mol_to_smiles_support(
+    prepared: PreparedMol,
     *,
     flags: MolToSmilesFlags,
 ) -> set[str]:
     fragment_supports: list[tuple[str, ...]] = []
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
 
-    for plan in _fragment_plans_for_disconnected_input(
-        mol_or_prepared,
+    for plan in _fragment_plans_for_prepared_mol(
+        prepared,
         rooted_at_atom=rooted_at_atom,
     ):
         support = _connected_fragment_support(
@@ -372,20 +374,6 @@ def _fragmented_mol_to_smiles_support(
         fragment_supports.append(tuple(sorted(support)))
 
     return {".".join(parts) for parts in product(*fragment_supports)}
-
-
-def _fragment_plans_for_disconnected_input(
-    mol_or_prepared: object,
-    *,
-    rooted_at_atom: int | None,
-) -> tuple[_FragmentPlan, ...]:
-    if isinstance(mol_or_prepared, PreparedMol):
-        return _fragment_plans_for_prepared_mol(
-            mol_or_prepared,
-            rooted_at_atom=rooted_at_atom,
-        )
-
-    raise TypeError("Disconnected runtime input must be PreparedMol")
 
 
 class MolToSmilesChoice:
@@ -844,7 +832,7 @@ def _make_fragment_state_adapter(
 
 
 def _make_disconnected_decoder(
-    mol_or_prepared: object,
+    prepared: PreparedMol,
     flags: MolToSmilesFlags,
 ) -> _DisconnectedStateAdapter:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
@@ -854,8 +842,8 @@ def _make_disconnected_decoder(
             flags=flags,
             rooted_at_atom=plan.rooted_at_atom,
         )
-        for plan in _fragment_plans_for_disconnected_input(
-            mol_or_prepared,
+        for plan in _fragment_plans_for_prepared_mol(
+            prepared,
             rooted_at_atom=rooted_at_atom,
         )
     )
@@ -867,8 +855,9 @@ def _make_decoder_state_impl(
     *,
     flags: MolToSmilesFlags,
 ) -> object:
-    if _is_disconnected_molecule(mol_or_prepared):
-        return _make_disconnected_decoder(mol_or_prepared, flags)
+    disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
+    if disconnected is not None:
+        return _make_disconnected_decoder(disconnected, flags)
     if flags.rooted_at_atom < 0:
         return _make_fragment_state_adapter(
             mol_or_prepared,
@@ -1157,15 +1146,15 @@ def _connected_mol_to_smiles_token_inventory_superset(
     )
 
 
-def _fragmented_mol_to_smiles_token_inventory_superset(
-    mol_or_prepared: object,
+def _fragmented_prepared_mol_to_smiles_token_inventory_superset(
+    prepared: PreparedMol,
     *,
     flags: MolToSmilesFlags,
 ) -> tuple[str, ...]:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
     inventory: set[str] = set()
-    fragment_plans = _fragment_plans_for_disconnected_input(
-        mol_or_prepared,
+    fragment_plans = _fragment_plans_for_prepared_mol(
+        prepared,
         rooted_at_atom=rooted_at_atom,
     )
 
@@ -1208,11 +1197,12 @@ def mol_to_smiles_enum(
     )
     _validate_supported_flags(flags)
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
-    if _is_disconnected_molecule(mol_or_prepared):
+    disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
+    if disconnected is not None:
         return iter(
             sorted(
-                _fragmented_mol_to_smiles_support(
-                    mol_or_prepared,
+                _fragmented_prepared_mol_to_smiles_support(
+                    disconnected,
                     flags=flags,
                 )
             )
@@ -1323,9 +1313,10 @@ def mol_to_smiles_token_inventory_superset(
     )
     _validate_supported_flags(flags)
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
-    if _is_disconnected_molecule(mol_or_prepared):
-        return _fragmented_mol_to_smiles_token_inventory_superset(
-            mol_or_prepared,
+    disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
+    if disconnected is not None:
+        return _fragmented_prepared_mol_to_smiles_token_inventory_superset(
+            disconnected,
             flags=flags,
         )
     return _connected_mol_to_smiles_token_inventory_superset(

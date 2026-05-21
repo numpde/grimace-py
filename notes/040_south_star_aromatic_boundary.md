@@ -3,7 +3,8 @@
 Tasks: `South Star 74: Decide aromatic semantic boundary`,
 `South Star 101: Decide aromatic semantic boundary`,
 `South Star 106: Choose aromatic molecule-fact contract`,
-`South Star 121: Define aromatic policy family contract`
+`South Star 121: Define aromatic policy family contract`,
+`South Star 151d: Model aromatic ring rendering policy`
 
 ## Current Decision
 
@@ -43,6 +44,14 @@ the bond-order assignment is part of the caller-visible contract. A real
 `aromatic_text_policy` remains a separate family because it would define
 lowercase atom text, aromatic bond text/elision, and aromatic/Kekule semantic
 equivalence directly.
+
+`South Star 151d` makes the policy family explicit in code without changing the
+active gate. The family now has one active contract,
+`non_aromatic_molecule_facts`, and two named candidate contracts:
+`non_aromatic_kekule_facts` for caller-prepared non-aromatic Kekule molecule
+facts, and `aromatic_text_policy` for sanitized aromatic molecule facts plus
+lowercase/aromatic rendering semantics. The manifest exposes only active
+contracts; candidates are planning boundaries, not runtime support.
 
 ## Alternatives Considered
 

@@ -10,6 +10,7 @@ from rdkit import Chem
 from grimace._south_star.annotation_policy import MaximalEligibleCarrierAnnotationPolicy
 from grimace._south_star.aromatic_policy import (
     DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+    SOUTH_STAR_AROMATIC_POLICY_FAMILY_CONTRACTS,
 )
 from grimace._south_star.fragments import AllFragmentOrderPolicy
 from grimace._south_star.output_order import FirstOccurrenceOutputOrderPolicy
@@ -191,6 +192,14 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         )
         self.assertIn(
             DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT.name,
+            SOUTH_STAR_PRIVATE_DOMAIN.aromatic_policy_contracts,
+        )
+        self.assertEqual(
+            frozenset(
+                contract.name
+                for contract in SOUTH_STAR_AROMATIC_POLICY_FAMILY_CONTRACTS
+                if contract.status == "active"
+            ),
             SOUTH_STAR_PRIVATE_DOMAIN.aromatic_policy_contracts,
         )
         self.assertIn(

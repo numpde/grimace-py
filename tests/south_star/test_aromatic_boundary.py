@@ -6,6 +6,7 @@ from rdkit import Chem
 
 from grimace._south_star.aromatic_policy import (
     DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+    SOUTH_STAR_AROMATIC_POLICY_FAMILY_CONTRACTS,
 )
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.support_gates import south_star_support_gate_report
@@ -17,6 +18,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         contract = DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT
 
         self.assertEqual("non_aromatic_molecule_facts", contract.name)
+        self.assertEqual("active", contract.status)
         self.assertEqual("non_aromatic_molecule_facts", contract.molecule_fact_contract)
         self.assertEqual(
             "non_aromatic_organic_and_bracket_atom_text",
@@ -35,6 +37,43 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             contract.directional_surface_policy,
         )
         self.assertFalse(contract.supports_aromatic_facts)
+
+    def test_policy_family_names_future_aromatic_boundaries(self) -> None:
+        contracts_by_name = {
+            contract.name: contract
+            for contract in SOUTH_STAR_AROMATIC_POLICY_FAMILY_CONTRACTS
+        }
+
+        self.assertEqual(
+            {
+                "non_aromatic_molecule_facts",
+                "non_aromatic_kekule_facts",
+                "aromatic_text_policy",
+            },
+            set(contracts_by_name),
+        )
+        self.assertEqual(
+            "active",
+            contracts_by_name["non_aromatic_molecule_facts"].status,
+        )
+        self.assertEqual(
+            "caller_prepared_non_aromatic_kekule_facts",
+            contracts_by_name["non_aromatic_kekule_facts"].molecule_fact_contract,
+        )
+        self.assertFalse(
+            contracts_by_name["non_aromatic_kekule_facts"].supports_aromatic_facts
+        )
+        self.assertEqual(
+            "sanitized_aromatic_molecule_facts",
+            contracts_by_name["aromatic_text_policy"].molecule_fact_contract,
+        )
+        self.assertTrue(
+            contracts_by_name["aromatic_text_policy"].supports_aromatic_facts
+        )
+        self.assertEqual(
+            "candidate",
+            contracts_by_name["aromatic_text_policy"].status,
+        )
 
     def test_sanitized_aromatic_and_kekule_spelling_share_aromatic_facts(
         self,

@@ -6,6 +6,7 @@ from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
 )
@@ -14,9 +15,11 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 from tests.helpers.south_star_unified_reference import (
     is_markerless_acyclic_tree_domain,
+    is_nonstereo_monocycle_ring_traversal_domain,
     is_single_atom_atom_text_domain,
     is_two_atom_markerless_atom_text_domain,
     markerless_acyclic_tree_support_from_shared_spine,
+    nonstereo_monocycle_support_from_shared_spine,
     single_atom_atom_text_support_from_facts,
     two_atom_markerless_atom_text_support_from_facts,
 )
@@ -38,6 +41,16 @@ MARKERLESS_ACYCLIC_TREE_CASE_IDS = frozenset(
         "markerless_acyclic_isopropanol",
         "markerless_acyclic_acetone",
         "markerless_acyclic_acetonitrile",
+    }
+)
+
+NONSTEREO_MONOCYCLE_CASE_IDS = frozenset(
+    {
+        "simple_saturated_monocycle_cyclohexane",
+        "branched_saturated_monocycle_methylcyclohexane",
+        "unsaturated_nonstereo_monocycle_cyclohexene",
+        "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
+        "unsaturated_nonstereo_monocycle_cyclohexadiene",
     }
 )
 
@@ -146,6 +159,44 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                     case.support_authority,
                 )
 
+    def test_nonstereo_monocycle_cases_have_shared_spine_support(self) -> None:
+        cases = {
+            case.case_id: case
+            for case in load_south_star_expanded_support_cases()
+            if case.case_id in NONSTEREO_MONOCYCLE_CASE_IDS
+        }
+        self.assertEqual(NONSTEREO_MONOCYCLE_CASE_IDS, frozenset(cases))
+
+        for case in cases.values():
+            with self.subTest(case_id=case.case_id):
+                facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+                self.assertTrue(is_nonstereo_monocycle_ring_traversal_domain(facts))
+                proof = nonstereo_monocycle_support_from_shared_spine(case)
+
+                self.assertFalse(proof.expected_support_strings_used)
+                self.assertEqual(case.expected_support, proof.support)
+                self.assertEqual(1, proof.ring_count)
+                self.assertEqual(proof.output_count, len(case.expected_support))
+                self.assertGreaterEqual(proof.raw_output_count, proof.output_count)
+                self.assertEqual(2 * proof.traversal_count, proof.closure_event_count)
+                self.assertGreater(proof.closure_event_count, 0)
+                self.assertEqual(0, proof.marker_slot_count)
+                self.assertEqual(0, proof.renderer_input_count)
+                self.assertEqual(
+                    case.feature_area == "unsaturated_nonstereo_monocycle",
+                    any(text == "=" for text in proof.closure_open_bond_texts),
+                )
+
+                result = mol_to_smiles_enum_s_graph_native(
+                    case.source_smiles,
+                    case_id=case.case_id,
+                )
+                self.assertEqual(proof.support, result.outputs)
+                self.assertEqual(
+                    SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+                    case.support_authority,
+                )
+
     def test_single_atom_atom_text_domain_rejects_wider_atom_text_cases(self) -> None:
         cases = {
             case.case_id: case for case in load_south_star_expanded_support_cases()
@@ -196,6 +247,17 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 self.assertFalse(is_markerless_acyclic_tree_domain(facts))
                 with self.assertRaisesRegex(NotImplementedError, "acyclic-tree"):
                     markerless_acyclic_tree_support_from_shared_spine(case)
+
+    def test_nonstereo_monocycle_domain_rejects_stereo_ring_case(self) -> None:
+        cases_by_id = {
+            case.case_id: case for case in load_south_star_expanded_support_cases()
+        }
+        case = cases_by_id["ring_stereo_monocycle_cyclooctene"]
+
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+        self.assertFalse(is_nonstereo_monocycle_ring_traversal_domain(facts))
+        with self.assertRaisesRegex(NotImplementedError, "nonstereo-monocycle"):
+            nonstereo_monocycle_support_from_shared_spine(case)
 
 
 if __name__ == "__main__":

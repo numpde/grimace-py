@@ -29,6 +29,23 @@ class SouthStarMarkerlessAcyclicTreeSupportProof:
     expected_support_strings_used: bool
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarNonstereoMonocycleSupportProof:
+    case_id: str
+    atom_count: int
+    bond_count: int
+    ring_count: int
+    traversal_count: int
+    closure_event_count: int
+    closure_open_bond_texts: tuple[str, ...]
+    marker_slot_count: int
+    renderer_input_count: int
+    raw_output_count: int
+    output_count: int
+    support: tuple[str, ...]
+    expected_support_strings_used: bool
+
+
 def is_single_atom_atom_text_domain(facts: SouthStarMoleculeFacts) -> bool:
     topology = facts.graph_topology
     return (
@@ -114,6 +131,28 @@ def is_markerless_acyclic_tree_domain(facts: SouthStarMoleculeFacts) -> bool:
     )
 
 
+def is_nonstereo_monocycle_ring_traversal_domain(
+    facts: SouthStarMoleculeFacts,
+) -> bool:
+    topology = facts.graph_topology
+    return (
+        facts.supported
+        and topology.connected
+        and topology.ring_system.simple_monocycle
+        and len(facts.atom_text_facts) == topology.atom_count
+        and len(facts.bond_text_facts) == topology.bond_count
+        and all(
+            bond.bond_type in {"SINGLE", "DOUBLE"}
+            and bond.bond_dir == "NONE"
+            and not bond.is_aromatic
+            for bond in facts.bond_text_facts
+        )
+        and not facts.components
+        and not facts.carrier_opportunities
+        and not facts.tetrahedral_center_facts
+    )
+
+
 def markerless_acyclic_tree_support_from_shared_spine(
     case: object,
 ) -> SouthStarMarkerlessAcyclicTreeSupportProof:
@@ -155,6 +194,54 @@ def markerless_acyclic_tree_support_from_shared_spine(
             for traversal in traversals
             for event in traversal.events
             if event.kind in {"branch_open", "branch_close"}
+        ),
+        raw_output_count=len(raw_outputs),
+        output_count=len(support),
+        support=support,
+        expected_support_strings_used=False,
+    )
+
+
+def nonstereo_monocycle_support_from_shared_spine(
+    case: object,
+) -> SouthStarNonstereoMonocycleSupportProof:
+    mol = parse_smiles(case.source_smiles)
+    facts = SouthStarMoleculeFacts.from_mol(mol)
+    if not is_nonstereo_monocycle_ring_traversal_domain(facts):
+        raise NotImplementedError(
+            "nonstereo-monocycle unified reference requires one connected "
+            "simple monocycle, supported atom text, single/double nonaromatic "
+            "bond text, and no stereo constraints"
+        )
+
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    closure_events = tuple(
+        event
+        for traversal in traversals
+        for event in traversal.events
+        if event.ring_closure is not None
+    )
+    raw_outputs = tuple(
+        render_south_star_tree_traversal(traversal) for traversal in traversals
+    )
+    support = tuple(dict.fromkeys(raw_outputs))
+    return SouthStarNonstereoMonocycleSupportProof(
+        case_id=case.case_id,
+        atom_count=facts.graph_topology.atom_count,
+        bond_count=facts.graph_topology.bond_count,
+        ring_count=facts.graph_topology.ring_count,
+        traversal_count=len(traversals),
+        closure_event_count=len(closure_events),
+        closure_open_bond_texts=tuple(
+            event.text for event in closure_events if event.kind == "ring_open"
+        ),
+        marker_slot_count=sum(
+            1 for traversal in traversals for event in traversal.events
+            if event.marker_slot is not None
+        ),
+        renderer_input_count=sum(
+            1 for traversal in traversals for event in traversal.events
+            if event.renderer_input is not None
         ),
         raw_output_count=len(raw_outputs),
         output_count=len(support),

@@ -11,18 +11,18 @@ Task: `South Star 130: Deliberate post-checkpoint granular roadmap`
 After the 129/129a/129b/129c/129d/129e sequence, the readiness matrix is no
 longer blocked by stale shared-pipeline metadata.
 
-Current matrix after the first-domain, markerless acyclic-tree, and first
-disconnected-composition authority promotions:
+Current matrix after the first-domain, markerless acyclic-tree, first
+disconnected-composition, and nonstereo-monocycle authority promotions:
 
-- unified-reference-backed cases: `17`
+- unified-reference-backed cases: `22`
 - shared-pipeline promotion candidates: `30`
-- temporary-witness-backed cases: `12`
+- temporary-witness-backed cases: `7`
 - graph-native regression-backed cases: `1`
-- public API blocker cases: `13`
+- public API blocker cases: `8`
 
 Remaining blocker count:
 
-- `support_authority_is_not_unified_reference`: `13`
+- `support_authority_is_not_unified_reference`: `8`
 
 That is the right next frontier. The immediate post-checkpoint work should be
 authority migration under the one-truth reference model, not broad API export.
@@ -97,6 +97,14 @@ into the shared traversal/ring-label model.
 This is larger than markerless acyclic work because closure-edge choice,
 first-encounter labels, closure bond text, and possible marker slots must all
 be first-class shared records.
+
+Status: partial. Saturated and unsaturated nonstereo simple-monocycle cases are
+now `unified_reference_nonstereo_monocycle_ring_traversal`. The proof derives
+support from molecule facts, shared connected-graph traversal plans,
+ring-closure labels, closure bond text, renderer events, and first-occurrence
+deduplication. Ring stereo, ring/tetrahedral interactions, disconnected
+ring-fragment composition, and polycyclic rings remain outside this promoted
+slice.
 
 ### 130e: Promote Tetrahedral Atom-Stereo Authority
 

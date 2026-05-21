@@ -8,12 +8,11 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
-    SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
+    SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
-    SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import (
@@ -47,8 +46,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
     )
     RING_CORE_AUTHORITIES = frozenset(
         {
-            SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY,
-            SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
+            SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         }
     )
 
@@ -79,13 +77,6 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY
-                for case in cases
-            )
-        )
-        self.assertTrue(
-            any(
-                case.support_authority
                 == SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY
                 for case in cases
             )
@@ -99,7 +90,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY
+                == SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -134,10 +125,17 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
 
     def test_saturated_monocycle_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():
-            if case.support_authority != SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY:
+            if case.feature_area not in {
+                "simple_saturated_monocycle",
+                "branched_saturated_monocycle",
+            }:
                 continue
 
             with self.subTest(case_id=case.case_id):
+                self.assertEqual(
+                    SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+                    case.support_authority,
+                )
                 self.assertEqual(
                     frozenset(case.expected_support),
                     frozenset(shared_saturated_monocycle_support_for_case(case)),
@@ -145,13 +143,14 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
 
     def test_nonstereo_monocycle_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():
-            if (
-                case.support_authority
-                != SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY
-            ):
+            if case.feature_area != "unsaturated_nonstereo_monocycle":
                 continue
 
             with self.subTest(case_id=case.case_id):
+                self.assertEqual(
+                    SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+                    case.support_authority,
+                )
                 self.assertEqual(
                     frozenset(case.expected_support),
                     frozenset(shared_nonstereo_monocycle_support_for_case(case)),

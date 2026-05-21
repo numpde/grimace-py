@@ -263,6 +263,11 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertEqual(
             first_domain_case_ids
             + (
+                "simple_saturated_monocycle_cyclohexane",
+                "branched_saturated_monocycle_methylcyclohexane",
+                "unsaturated_nonstereo_monocycle_cyclohexene",
+                "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
+                "unsaturated_nonstereo_monocycle_cyclohexadiene",
                 "disconnected_stereo_fragment_and_atom",
                 "explicit_bracket_hydrogen_h2",
                 "markerless_acyclic_ethanol",
@@ -350,11 +355,8 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             check = checks_by_id[case_id]
             with self.subTest(case_id=case_id):
                 self.assertTrue(check.shared_pipeline_generated)
-                self.assertFalse(check.promoted)
-                self.assertIn(
-                    "support_authority_is_not_unified_reference",
-                    check.blockers,
-                )
+                self.assertTrue(check.promoted)
+                self.assertEqual((), check.blockers)
                 self.assertEqual(0, check.spine_bypass_count)
                 self.assertEqual(
                     SOUTH_STAR_PIPELINE_PROVENANCE_STAGES,

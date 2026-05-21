@@ -10,6 +10,7 @@ from tests.helpers.south_star_first_domain_oracle import (
     independent_first_domain_support_for_case,
 )
 from tests.helpers.south_star_first_domain_proof_inputs import (
+    first_domain_marker_equation_proofs_from_shared_spine,
     first_domain_proof_inputs_from_shared_spine,
 )
 from tests.helpers.south_star_semantic_oracle import semantic_oracle_accepts
@@ -86,6 +87,45 @@ class SouthStarFirstDomainCompletenessTests(unittest.TestCase):
                     proof_inputs.marker_slot_count,
                     proof_inputs.equation_count,
                 )
+
+    def test_first_domain_marker_equations_derive_assignments(self) -> None:
+        semantic_cases = {
+            case.case_id: case for case in load_south_star_semantic_cases()
+        }
+        for exact_case in load_south_star_exact_first_domain_cases():
+            semantic_case = semantic_cases[exact_case.case_id]
+            proof_inputs = first_domain_proof_inputs_from_shared_spine(semantic_case)
+            proof_records = first_domain_marker_equation_proofs_from_shared_spine(
+                semantic_case
+            )
+
+            with self.subTest(case_id=exact_case.case_id):
+                self.assertEqual(proof_inputs.traversal_count, len(proof_records))
+                self.assertEqual(
+                    proof_inputs.equation_count,
+                    sum(record.equation_count for record in proof_records),
+                )
+                self.assertTrue(
+                    all(
+                        not record.expected_support_strings_used
+                        for record in proof_records
+                    )
+                )
+
+            for record in proof_records:
+                with self.subTest(
+                    case_id=exact_case.case_id,
+                    root_atom_idx=record.root_atom_idx,
+                ):
+                    self.assertGreater(record.marker_slot_count, 0)
+                    self.assertEqual(record.marker_slot_count, record.equation_count)
+                    self.assertNotEqual((), record.component_ids)
+                    self.assertEqual(1, record.solved_assignment_count)
+                    self.assertTrue(record.assignments_match_traversal)
+                    self.assertEqual(
+                        record.traversal_marker_by_slot,
+                        record.solved_marker_by_slot,
+                    )
 
 
 if __name__ == "__main__":

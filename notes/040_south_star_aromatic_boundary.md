@@ -53,6 +53,12 @@ facts, and `aromatic_text_policy` for sanitized aromatic molecule facts plus
 lowercase/aromatic rendering semantics. The manifest exposes only active
 contracts; candidates are planning boundaries, not runtime support.
 
+`South Star 167` turns those planning boundaries into implementation-ready
+contracts. Each policy-family member now names its support-gate categories,
+required fixture fields, and required proof obligations. This still does not
+enable aromatic output support. It makes the next implementation slice auditable
+before any support gate is relaxed.
+
 ## Alternatives Considered
 
 1. Exclude aromaticity and require non-aromatic molecule facts.
@@ -121,6 +127,24 @@ For the current contract, the named answers are:
 This means `non_aromatic_kekule_facts` can be explored as a future input
 preparation policy without weakening the fail-fast boundary for ordinary
 sanitized aromatic RDKit molecules.
+
+For the candidate `aromatic_text_policy`, the named answers are:
+
+- molecule-fact contract: `sanitized_aromatic_molecule_facts`;
+- atom-text policy: lowercase aromatic atom text;
+- bond-text policy: aromatic bond elision or explicit aromatic bond text;
+- semantic equivalence relation: aromatic or Kekule parse-back semantic
+  identity;
+- maximal annotation policy: aromatic directional overlays are still undecided
+  and remain represented by `aromatic_directional_surface` until a constraint
+  family is named.
+
+Any fixture admitted under that candidate must carry an aromatic fact
+signature, expected support, semantic parse-back evidence, and the equivalence
+relation it uses. Any proof must expose the sanitized aromatic fact boundary,
+lowercase atom-text obligations, aromatic bond-text obligations, and
+aromatic/Kekule parse-back equivalence. Otherwise it is not ready to relax the
+active support gate.
 
 ## Boundary Tests
 

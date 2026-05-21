@@ -36,6 +36,15 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             "unsupported_aromatic_directional_overlay",
             contract.directional_surface_policy,
         )
+        self.assertEqual(
+            ("aromatic_ring_surface", "aromatic_directional_surface"),
+            contract.support_gate_categories,
+        )
+        self.assertIn("semantic_parseback", contract.required_fixture_fields)
+        self.assertIn(
+            "non_aromatic_parseback_identity",
+            contract.required_proof_obligations,
+        )
         self.assertFalse(contract.supports_aromatic_facts)
 
     def test_policy_family_names_future_aromatic_boundaries(self) -> None:
@@ -63,6 +72,16 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         self.assertFalse(
             contracts_by_name["non_aromatic_kekule_facts"].supports_aromatic_facts
         )
+        self.assertIn(
+            "preparation_contract",
+            contracts_by_name["non_aromatic_kekule_facts"].required_fixture_fields,
+        )
+        self.assertIn(
+            "caller_prepared_kekule_fact_boundary",
+            contracts_by_name[
+                "non_aromatic_kekule_facts"
+            ].required_proof_obligations,
+        )
         self.assertEqual(
             "sanitized_aromatic_molecule_facts",
             contracts_by_name["aromatic_text_policy"].molecule_fact_contract,
@@ -74,6 +93,42 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             "candidate",
             contracts_by_name["aromatic_text_policy"].status,
         )
+        self.assertEqual(
+            ("aromatic_directional_surface",),
+            contracts_by_name["aromatic_text_policy"].support_gate_categories,
+        )
+        self.assertIn(
+            "aromatic_fact_signature",
+            contracts_by_name["aromatic_text_policy"].required_fixture_fields,
+        )
+        self.assertIn(
+            "lowercase_aromatic_atom_text_obligations",
+            contracts_by_name["aromatic_text_policy"].required_proof_obligations,
+        )
+        self.assertIn(
+            "aromatic_or_kekule_parseback_equivalence",
+            contracts_by_name["aromatic_text_policy"].required_proof_obligations,
+        )
+
+    def test_policy_family_contracts_are_implementation_ready(self) -> None:
+        for contract in SOUTH_STAR_AROMATIC_POLICY_FAMILY_CONTRACTS:
+            with self.subTest(contract=contract.name):
+                self.assertIn(contract.status, {"active", "candidate"})
+                self.assertTrue(contract.molecule_fact_contract)
+                self.assertTrue(contract.atom_text_policy)
+                self.assertTrue(contract.bond_text_policy)
+                self.assertTrue(contract.semantic_equivalence_relation)
+                self.assertTrue(contract.directional_surface_policy)
+                self.assertTrue(contract.required_fixture_fields)
+                self.assertTrue(contract.required_proof_obligations)
+                self.assertEqual(
+                    len(set(contract.required_fixture_fields)),
+                    len(contract.required_fixture_fields),
+                )
+                self.assertEqual(
+                    len(set(contract.required_proof_obligations)),
+                    len(contract.required_proof_obligations),
+                )
 
     def test_sanitized_aromatic_and_kekule_spelling_share_aromatic_facts(
         self,

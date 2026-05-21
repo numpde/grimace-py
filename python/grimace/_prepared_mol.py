@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import json
+from numbers import Integral
 from typing import Any
 
 from rdkit import Chem
@@ -149,11 +150,14 @@ def PrepareMol(
         raise TypeError("PrepareMol requires an RDKit Chem.Mol")
 
     writer_flags = _PreparedMolWriterFlags(
-        isomeric_smiles=bool(isomericSmiles),
-        kekule_smiles=bool(kekuleSmiles),
-        all_bonds_explicit=bool(allBondsExplicit),
-        all_hs_explicit=bool(allHsExplicit),
-        ignore_atom_map_numbers=bool(ignoreAtomMapNumbers),
+        isomeric_smiles=_coerce_bool_flag("isomericSmiles", isomericSmiles),
+        kekule_smiles=_coerce_bool_flag("kekuleSmiles", kekuleSmiles),
+        all_bonds_explicit=_coerce_bool_flag("allBondsExplicit", allBondsExplicit),
+        all_hs_explicit=_coerce_bool_flag("allHsExplicit", allHsExplicit),
+        ignore_atom_map_numbers=_coerce_bool_flag(
+            "ignoreAtomMapNumbers",
+            ignoreAtomMapNumbers,
+        ),
     )
     runtime = importlib.import_module("grimace._runtime")
     runtime_flags = runtime.MolToSmilesFlags(
@@ -182,6 +186,17 @@ def PrepareMol(
         writer_flags=writer_flags,
         fragments=fragments,
     )
+
+
+def _coerce_bool_flag(name: str, value: object) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, Integral):
+        raise TypeError(
+            f"PrepareMol requires {name} to follow RDKit's Python binding "
+            "and be a bool, int, or None"
+        )
+    return bool(value)
 
 
 def _require_bool(data: dict[object, object], key: str) -> bool:

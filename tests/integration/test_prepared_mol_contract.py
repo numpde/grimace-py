@@ -277,6 +277,45 @@ class PreparedMolContractTests(unittest.TestCase):
         self.assertFalse(hasattr(prepared.writer_flags, "canonical"))
         self.assertFalse(hasattr(prepared.writer_flags, "do_random"))
 
+    def test_prepare_mol_coerces_integral_writer_flags_like_rdkit(self) -> None:
+        flag_cases = (
+            ("isomericSmiles", 0, False),
+            ("kekuleSmiles", 1, True),
+            ("allBondsExplicit", None, False),
+            ("allHsExplicit", 1, True),
+            ("ignoreAtomMapNumbers", 0, False),
+        )
+
+        for flag_name, provided_value, expected_value in flag_cases:
+            with self.subTest(flag_name=flag_name, provided_value=provided_value):
+                prepared = self._prepare("CCO", **{flag_name: provided_value})
+                writer_flag_name = {
+                    "isomericSmiles": "isomeric_smiles",
+                    "kekuleSmiles": "kekule_smiles",
+                    "allBondsExplicit": "all_bonds_explicit",
+                    "allHsExplicit": "all_hs_explicit",
+                    "ignoreAtomMapNumbers": "ignore_atom_map_numbers",
+                }[flag_name]
+
+                self.assertEqual(
+                    expected_value,
+                    getattr(prepared.writer_flags, writer_flag_name),
+                )
+
+    def test_prepare_mol_rejects_non_integral_writer_flags(self) -> None:
+        invalid_cases = (
+            ("isomericSmiles", 0.0),
+            ("kekuleSmiles", "false"),
+            ("allBondsExplicit", 1.0),
+            ("allHsExplicit", "true"),
+            ("ignoreAtomMapNumbers", 1.0),
+        )
+
+        for flag_name, invalid_value in invalid_cases:
+            with self.subTest(flag_name=flag_name, invalid_value=invalid_value):
+                with self.assertRaisesRegex(TypeError, flag_name):
+                    self._prepare("CCO", **{flag_name: invalid_value})
+
     def test_prepared_mol_does_not_store_rdkit_mol(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
 

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-"""Independent test oracles for expanded South Star fixture domains.
+"""Test evidence helpers for expanded South Star fixture domains.
 
-These helpers intentionally keep independent traversal searches and renderers
-instead of calling `grimace._south_star.enum_s`. They consume the shared South
-Star reference record vocabulary where possible so they remain witnesses, not
-separate mini-worlds with their own event/slot types.
+The remaining `independent_*` helpers are temporary witnesses. Helpers without
+that prefix intentionally consume shared EnumS traversal/equation records so
+they do not grow into separate support universes.
 """
 
 from dataclasses import dataclass
 from itertools import permutations
-from itertools import product
 
 from rdkit import Chem
 
@@ -29,8 +27,6 @@ from grimace._south_star.marker_equations import SouthStarMarkerSlotParityEquati
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
-from grimace._south_star.reference_model import SouthStarTraversalEvent
-from grimace._south_star.reference_model import SouthStarTraversalFragment
 from grimace._south_star.tetrahedral import IMPLICIT_HYDROGEN_LIGAND
 from grimace._south_star.tetrahedral import extract_tetrahedral_center_facts
 from grimace._south_star.tetrahedral import preserving_tetrahedral_token
@@ -50,41 +46,33 @@ class SouthStarRingStereoOracleResult:
     marker_assignment_count: int
 
 
-def independent_saturated_monocycle_support_for_case(
+def shared_saturated_monocycle_support_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> tuple[str, ...]:
-    """Enumerate saturated-monocycle support without using EnumS traversal."""
     mol = parse_smiles(case.source_smiles)
     _assert_saturated_monocycle_domain(mol)
 
-    return _independent_nonstereo_monocycle_support_for_mol(mol)
+    return _shared_traversal_support_for_case(case)
 
 
-def independent_nonstereo_monocycle_support_for_case(
+def shared_nonstereo_monocycle_support_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> tuple[str, ...]:
-    """Enumerate nonstereo-monocycle support from shared traversal records."""
     mol = parse_smiles(case.source_smiles)
     _assert_nonstereo_monocycle_domain(mol)
 
-    return _independent_nonstereo_monocycle_support_for_mol(mol)
+    return _shared_traversal_support_for_case(case)
 
 
-def _independent_nonstereo_monocycle_support_for_mol(
-    mol: Chem.Mol,
+def _shared_traversal_support_for_case(
+    case: SouthStarExpandedSupportCase,
 ) -> tuple[str, ...]:
-    outputs = []
-    for root_idx in range(mol.GetNumAtoms()):
-        for closure_edge in _single_ring_edges(mol):
-            for fragment in _tree_fragments_with_blocked_edge(
-                mol,
-                atom_idx=root_idx,
-                parent_idx=None,
-                visited=frozenset(),
-                blocked_edge=closure_edge,
-            ):
-                outputs.append(_render_with_ring_digit(mol, fragment, closure_edge))
-    return tuple(dict.fromkeys(outputs))
+    return tuple(
+        dict.fromkeys(
+            traversal.render()
+            for traversal in mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        )
+    )
 
 
 def independent_disconnected_composition_support_for_case(
@@ -333,206 +321,35 @@ def _exact_first_domain_support(case_id: str) -> tuple[str, ...]:
     )
 
 
-def _tree_fragments_with_blocked_edge(
-    mol: Chem.Mol,
-    *,
-    atom_idx: int,
-    parent_idx: int | None,
-    visited: frozenset[int],
-    blocked_edge: Edge,
-) -> tuple[SouthStarTraversalFragment, ...]:
-    visited = visited | {atom_idx}
-    children = tuple(
-        neighbor.GetIdx()
-        for neighbor in mol.GetAtomWithIdx(atom_idx).GetNeighbors()
-        if neighbor.GetIdx() != parent_idx
-        and neighbor.GetIdx() not in visited
-        and normalized_edge((atom_idx, neighbor.GetIdx())) != blocked_edge
-    )
-    atom_event = SouthStarTraversalEvent(
-        kind="atom",
-        text=_atom_text(mol.GetAtomWithIdx(atom_idx)),
-        atom_idx=atom_idx,
-    )
-    if not children:
-        return (SouthStarTraversalFragment(events=(atom_event,)),)
-
-    fragments = []
-    for ordered_children in permutations(sorted(children)):
-        branch_children = ordered_children[:-1]
-        main_child = ordered_children[-1]
-        branch_groups = tuple(
-            _branch_fragments(
-                mol,
-                begin_atom_idx=atom_idx,
-                end_atom_idx=child_idx,
-                visited=visited,
-                blocked_edge=blocked_edge,
-            )
-            for child_idx in branch_children
-        )
-        main_fragments = _child_fragments(
-            mol,
-            begin_atom_idx=atom_idx,
-            end_atom_idx=main_child,
-            visited=visited,
-            blocked_edge=blocked_edge,
-        )
-        for branch_group in product(*branch_groups):
-            branch_events = tuple(
-                event for branch in branch_group for event in branch.events
-            )
-            for main_fragment in main_fragments:
-                fragments.append(
-                    SouthStarTraversalFragment(
-                        events=(atom_event,) + branch_events + main_fragment.events,
-                    )
-                )
-    return tuple(dict.fromkeys(fragments))
-
-
-def _branch_fragments(
-    mol: Chem.Mol,
-    *,
-    begin_atom_idx: int,
-    end_atom_idx: int,
-    visited: frozenset[int],
-    blocked_edge: Edge,
-) -> tuple[SouthStarTraversalFragment, ...]:
-    bond_event = _plain_ring_bond_event(
-        mol,
-        begin_atom_idx=begin_atom_idx,
-        end_atom_idx=end_atom_idx,
-    )
-    return tuple(
-        SouthStarTraversalFragment(
-            events=(
-                SouthStarTraversalEvent(kind="branch_open", text="("),
-                bond_event,
-            )
-            + child_fragment.events
-            + (SouthStarTraversalEvent(kind="branch_close", text=")"),)
-        )
-        for child_fragment in _tree_fragments_with_blocked_edge(
-            mol,
-            atom_idx=end_atom_idx,
-            parent_idx=begin_atom_idx,
-            visited=visited,
-            blocked_edge=blocked_edge,
-        )
-    )
-
-
-def _child_fragments(
-    mol: Chem.Mol,
-    *,
-    begin_atom_idx: int,
-    end_atom_idx: int,
-    visited: frozenset[int],
-    blocked_edge: Edge,
-) -> tuple[SouthStarTraversalFragment, ...]:
-    bond_event = _plain_ring_bond_event(
-        mol,
-        begin_atom_idx=begin_atom_idx,
-        end_atom_idx=end_atom_idx,
-    )
-    return tuple(
-        SouthStarTraversalFragment(events=(bond_event,) + child_fragment.events)
-        for child_fragment in _tree_fragments_with_blocked_edge(
-            mol,
-            atom_idx=end_atom_idx,
-            parent_idx=begin_atom_idx,
-            visited=visited,
-            blocked_edge=blocked_edge,
-        )
-    )
-
-
-def _render_with_ring_digit(
-    mol: Chem.Mol,
-    fragment: SouthStarTraversalFragment,
-    closure_edge: Edge,
-) -> str:
-    rendered = []
-    endpoint_count = 0
-    for event in fragment.events:
-        rendered.append(event.text)
-        if event.atom_idx in closure_edge:
-            endpoint_count += 1
-            if endpoint_count == 1:
-                rendered.append(_bond_text(mol, *closure_edge))
-            rendered.append("1")
-    if endpoint_count != 2:
-        raise ValueError(
-            f"closure edge {closure_edge!r} endpoints were not both rendered"
-        )
-    return "".join(rendered)
-
-
-def _plain_ring_bond_event(
-    mol: Chem.Mol,
-    *,
-    begin_atom_idx: int,
-    end_atom_idx: int,
-) -> SouthStarTraversalEvent:
-    edge = normalized_edge((begin_atom_idx, end_atom_idx))
-    return SouthStarTraversalEvent(
-        kind="bond",
-        text=_bond_text(mol, begin_atom_idx, end_atom_idx),
-        edge=edge,
-        begin_atom_idx=begin_atom_idx,
-        end_atom_idx=end_atom_idx,
-    )
-
-
-def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
-    bond_rings = mol.GetRingInfo().BondRings()
-    if len(bond_rings) != 1:
-        raise ValueError("nonstereo-monocycle witness expects one ring")
-    return tuple(
-        normalized_edge(
-            (
-                mol.GetBondWithIdx(bond_idx).GetBeginAtomIdx(),
-                mol.GetBondWithIdx(bond_idx).GetEndAtomIdx(),
-            )
-        )
-        for bond_idx in bond_rings[0]
-    )
-
-
 def _assert_saturated_monocycle_domain(mol: Chem.Mol) -> None:
     _assert_nonstereo_monocycle_domain(mol)
     for bond in mol.GetBonds():
         if bond.GetBondType() != Chem.BondType.SINGLE:
             raise NotImplementedError(
-                "saturated-monocycle oracle supports only single bonds"
+                "saturated monocycle check supports only single bonds"
             )
 
 
 def _assert_nonstereo_monocycle_domain(mol: Chem.Mol) -> None:
     if len(Chem.GetMolFrags(mol)) != 1:
-        raise NotImplementedError("nonstereo-monocycle witness requires one component")
-    ring_edges = frozenset(_single_ring_edges(mol))
-    if not ring_edges:
-        raise NotImplementedError("nonstereo-monocycle witness requires a ring")
+        raise NotImplementedError("nonstereo monocycle check requires one component")
+    if len(mol.GetRingInfo().BondRings()) != 1:
+        raise NotImplementedError("nonstereo monocycle check requires one ring")
     for atom in mol.GetAtoms():
         _atom_text(atom)
     for bond in mol.GetBonds():
-        edge = normalized_edge((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()))
         if bond.GetBondType() not in {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}:
             raise NotImplementedError(
-                "nonstereo-monocycle witness supports only single and double bonds"
+                "nonstereo monocycle check supports only single and double bonds"
             )
         if bond.GetStereo() != Chem.BondStereo.STEREONONE:
             raise NotImplementedError(
-                "nonstereo-monocycle witness does not support bond stereo"
+                "nonstereo monocycle check does not support bond stereo"
             )
         if bond.GetBondDir() != Chem.BondDir.NONE:
             raise NotImplementedError(
-                "nonstereo-monocycle witness does not support directional bonds"
+                "nonstereo monocycle check does not support directional bonds"
             )
-        if bond.IsInRing() != (edge in ring_edges):
-            raise ValueError(f"inconsistent ring membership for bond {edge!r}")
 
 
 def _atom_text(atom: Chem.Atom) -> str:
@@ -556,24 +373,3 @@ def _atom_text(atom: Chem.Atom) -> str:
     if symbol in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
         return symbol
     raise NotImplementedError(f"unsupported nonstereo-monocycle atom {symbol!r}")
-
-
-def _bond_text(mol: Chem.Mol, begin_atom_idx: int, end_atom_idx: int) -> str:
-    bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
-    if bond is None:
-        raise ValueError(f"atoms {begin_atom_idx}, {end_atom_idx} are not bonded")
-    if bond.GetBondType() == Chem.BondType.SINGLE:
-        return ""
-    if bond.GetBondType() == Chem.BondType.DOUBLE:
-        return "="
-    raise NotImplementedError(
-        f"unsupported saturated-monocycle bond {bond.GetBondType()}"
-    )
-
-
-def _flipped_marker(marker: str) -> str:
-    if marker == "/":
-        return "\\"
-    if marker == "\\":
-        return "/"
-    raise ValueError(f"unsupported directional marker {marker!r}")

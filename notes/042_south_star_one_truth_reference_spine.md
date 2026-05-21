@@ -122,16 +122,13 @@ same record language as the runtime path.
 
 ### Expanded-Domain Witness Duplication
 
-`tests/helpers/south_star_expanded_domain_oracles.py` contains several local
-mini-worlds:
+`tests/helpers/south_star_expanded_domain_oracles.py` still contains several
+local mini-worlds, but saturated and nonstereo ring traversal have been folded
+into shared traversal/rendering records:
 
-- saturated ring traversal:
-  - `_RingToken`
-  - `_RingFragment`
-  - `_tree_fragments_with_blocked_edge`
-  - `_branch_fragments`
-  - `_child_fragments`
-  - `_render_with_ring_digit`
+- nonstereo and saturated ring checks:
+  - `shared_saturated_monocycle_support_for_case`
+  - `shared_nonstereo_monocycle_support_for_case`
 - disconnected composition:
   - `SouthStarDisconnectedCompositionOracleResult`
   - `_independent_fragment_supports_for_case`
@@ -329,7 +326,6 @@ Route expanded witnesses through the same records:
 
 Expected cleanups:
 
-- replace `_RingToken` / `_RingFragment` with traversal events/fragments;
 - replace `SouthStarDisconnectedCompositionOracleResult` with
   `SouthStarDisconnectedCompositionResult`;
 - express tetrahedral output checks as facts/obligations over traversal events.
@@ -386,9 +382,9 @@ fold-in note should fail review/tests.
 The following helpers remain useful during migration:
 
 - `independent_first_domain_support_for_case`
-- `independent_saturated_monocycle_support_for_case`
-- `independent_nonstereo_monocycle_support_for_case`
 - `independent_disconnected_composition_support_for_case`
+- `shared_saturated_monocycle_support_for_case`
+- `shared_nonstereo_monocycle_support_for_case`
 - `shared_ring_stereo_monocycle_support_for_case`
 - `independent_tetrahedral_atom_stereo_support_for_case`
 

@@ -29,11 +29,9 @@ is probably fixture-driven and should be deferred.
 ## Proposed Order
 
 1. **Retire nonstereo ring temporary witnesses.**
-   Nonstereo monocycle and saturated-monocycle fixture checks still use local
-   traversal/rendering helpers. The runtime now has the shared connected-graph
-   traversal, ring-label policy, and renderer. This is the closest cleanup to
-   the current work and should turn some temporary witness evidence into real
-   unified-reference candidates.
+   Completed in `South Star 97`: nonstereo monocycle and saturated-monocycle
+   fixture checks now use shared connected-graph traversal, ring-label policy,
+   and renderer records rather than local traversal/rendering helpers.
 
 2. **Lift tetrahedral atom stereo into traversal obligations.**
    Acyclic tetrahedral support exists, but the fixture oracle still has a local

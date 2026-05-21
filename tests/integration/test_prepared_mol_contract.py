@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
+import json
 import unittest
 
 import grimace
@@ -226,6 +227,16 @@ class PreparedMolContractTests(unittest.TestCase):
     def test_prepared_mol_does_not_store_rdkit_mol(self) -> None:
         self._assert_no_rdkit_mol_is_stored(self._prepare("CCO.N", isomericSmiles=False))
 
+    def test_prepared_mol_wraps_rust_storage(self) -> None:
+        prepared = self._prepare("CCO.N", isomericSmiles=False)
+
+        self.assertEqual(("_inner",), grimace.PreparedMol.__slots__)
+        self.assertEqual("grimace._core", type(prepared._inner).__module__)
+        self.assertEqual("PreparedMol", type(prepared._inner).__name__)
+        self.assertEqual(2, prepared._inner.fragment_count())
+        self.assertEqual((0, 1, 2), tuple(prepared._inner.fragment_atom_indices(0)))
+        self.assertEqual((3,), tuple(prepared._inner.fragment_atom_indices(1)))
+
     def test_from_bytes_rejects_non_bytes_and_malformed_payloads(self) -> None:
         with self.assertRaises(TypeError):
             grimace.PreparedMol.from_bytes(bytearray())
@@ -234,6 +245,60 @@ class PreparedMolContractTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(ValueError):
                     grimace.PreparedMol.from_bytes(payload)
+
+    def test_from_bytes_rejects_malformed_structural_payloads(self) -> None:
+        prepared = self._prepare("CCO.N", isomericSmiles=False)
+        base_payload = json.loads(prepared.to_bytes().decode("utf-8"))
+
+        malformed_payloads = {
+            "missing_fragments": {
+                key: value for key, value in base_payload.items() if key != "fragments"
+            },
+            "bad_schema_version": {**base_payload, "schema_version": 999},
+            "bool_schema_version": {**base_payload, "schema_version": True},
+            "bad_writer_flag_type": {
+                **base_payload,
+                "writer_flags": {
+                    **base_payload["writer_flags"],
+                    "isomeric_smiles": 0,
+                },
+            },
+            "bad_fragments_type": {**base_payload, "fragments": {}},
+            "bad_atom_indices_type": {
+                **base_payload,
+                "fragments": [
+                    {**base_payload["fragments"][0], "atom_indices": {}},
+                    base_payload["fragments"][1],
+                ],
+            },
+            "atom_index_bool": {
+                **base_payload,
+                "fragments": [
+                    {**base_payload["fragments"][0], "atom_indices": [True, 1, 2]},
+                    base_payload["fragments"][1],
+                ],
+            },
+            "atom_count_mismatch": {
+                **base_payload,
+                "fragments": [
+                    {**base_payload["fragments"][0], "atom_indices": []},
+                    base_payload["fragments"][1],
+                ],
+            },
+            "overlapping_atom_indices": {
+                **base_payload,
+                "fragments": [
+                    base_payload["fragments"][0],
+                    {**base_payload["fragments"][1], "atom_indices": [0]},
+                ],
+            },
+        }
+
+        for name, payload in malformed_payloads.items():
+            with self.subTest(name=name):
+                data = json.dumps(payload).encode("utf-8")
+                with self.assertRaises(ValueError):
+                    grimace.PreparedMol.from_bytes(data)
 
 
 if __name__ == "__main__":

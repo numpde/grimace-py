@@ -568,7 +568,7 @@ impl PreparedSmilesGraphData {
         }
     }
 
-    fn to_pydict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+    pub(crate) fn to_pydict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("schema_version", self.schema_version)?;
         dict.set_item("surface_kind", &self.surface_kind)?;
@@ -663,6 +663,12 @@ impl PreparedSmilesGraphData {
 #[pyclass(name = "PreparedSmilesGraph", module = "grimace._core", frozen)]
 pub struct PyPreparedSmilesGraph {
     data: PreparedSmilesGraphData,
+}
+
+impl PyPreparedSmilesGraph {
+    pub(crate) fn from_data(data: PreparedSmilesGraphData) -> Self {
+        Self { data }
+    }
 }
 
 #[pymethods]

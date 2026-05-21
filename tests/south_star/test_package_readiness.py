@@ -273,6 +273,9 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "disconnected_stereo_fragment_and_atom",
                 "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
                 "explicit_bracket_hydrogen_h2",
+                "isotope_atom_text_methane",
+                "atom_map_text_ethane",
+                "triple_bond_text_hydrogen_cyanide",
                 "markerless_acyclic_ethanol",
                 "markerless_acyclic_isopropanol",
                 "markerless_acyclic_acetone",
@@ -339,9 +342,12 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertEqual((), matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
+        self.assertIn("atom_map_text", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)
+        self.assertIn("isotope_atom_text", matrix.supported_feature_areas)
         self.assertIn("markerless_acyclic_tree", matrix.supported_feature_areas)
         self.assertIn("radical_atom_text", matrix.supported_feature_areas)
+        self.assertIn("triple_bond_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)
         self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)
         self.assertNotIn(

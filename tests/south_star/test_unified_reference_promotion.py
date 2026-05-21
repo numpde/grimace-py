@@ -33,6 +33,7 @@ SINGLE_ATOM_ATOM_TEXT_CASE_IDS = frozenset(
         "radical_atom_text_oxygen",
         "charged_atom_text_chloride",
         "charged_atom_text_ammonium",
+        "isotope_atom_text_methane",
     }
 )
 
@@ -83,7 +84,11 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                     support.bracket_obligation_count,
                     len(support.atom_text_obligations[0].bracket_obligations),
                 )
-                if case.feature_area in {"charged_atom_text", "radical_atom_text"}:
+                if case.feature_area in {
+                    "charged_atom_text",
+                    "isotope_atom_text",
+                    "radical_atom_text",
+                }:
                     self.assertGreaterEqual(support.modifier_obligation_count, 1)
 
                 result = mol_to_smiles_enum_s_graph_native(
@@ -116,6 +121,8 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
         for case_id in (
             "explicit_bracket_hydrogen_h2",
             "charged_atom_text_methylammonium",
+            "atom_map_text_ethane",
+            "triple_bond_text_hydrogen_cyanide",
         ):
             case = cases[case_id]
             with self.subTest(case_id=case_id):
@@ -124,16 +131,25 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 support = two_atom_markerless_atom_text_support_proof_from_facts(facts)
                 self.assertEqual(case.expected_support, support.support)
                 self.assertEqual(2, len(support.atom_text_obligations))
+                expected_bond_token_family = (
+                    "explicit_triple_bond"
+                    if case_id == "triple_bond_text_hydrogen_cyanide"
+                    else "elided_single_bond"
+                )
                 self.assertEqual(
-                    "elided_single_bond",
+                    expected_bond_token_family,
                     support.bond_text_obligation.token_family,
                 )
-                self.assertGreaterEqual(support.bracket_obligation_count, 1)
+                if case_id != "triple_bond_text_hydrogen_cyanide":
+                    self.assertGreaterEqual(support.bracket_obligation_count, 1)
                 self.assertEqual(
                     support.support,
                     two_atom_markerless_atom_text_support_from_facts(facts),
                 )
-                if case_id == "charged_atom_text_methylammonium":
+                if case_id in {
+                    "atom_map_text_ethane",
+                    "charged_atom_text_methylammonium",
+                }:
                     self.assertGreaterEqual(support.modifier_obligation_count, 1)
 
                 result = mol_to_smiles_enum_s_graph_native(

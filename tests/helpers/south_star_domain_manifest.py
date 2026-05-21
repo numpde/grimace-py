@@ -89,6 +89,8 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "disconnected_markerless_fragments",
         "disconnected_stereo_fragments",
         "explicit_bracket_hydrogen",
+        "atom_map_text",
+        "isotope_atom_text",
         "markerless_acyclic_tree",
         "nonstereo_polycyclic_skeleton",
         "polycyclic_ring_stereo",
@@ -97,6 +99,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "ring_tetrahedral_monocycle",
         "simple_saturated_monocycle",
         "tetrahedral_atom_stereo",
+        "triple_bond_text",
         "unsaturated_nonstereo_monocycle",
     }
 )
@@ -145,9 +148,12 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "ring_tetrahedral_monocycle",
             "unsaturated_nonstereo_monocycle",
             "explicit_bracket_hydrogen",
+            "atom_map_text",
+            "isotope_atom_text",
             "markerless_acyclic_tree",
             "radical_atom_text",
             "charged_atom_text",
+            "triple_bond_text",
         }
     ),
     annotation_policies=frozenset(

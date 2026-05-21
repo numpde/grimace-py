@@ -662,6 +662,38 @@
       ]
     },
     {
+      "case_id": "isotope_atom_text_methane",
+      "feature_area": "isotope_atom_text",
+      "source_smiles": "[13CH4]",
+      "support_authority": "unified_reference_single_atom_atom_text",
+      "evidence_notes": "Unified-reference single-atom atom-text evidence: isotope prefix and explicit-H count are represented by typed bracket atom obligations and singleton support derived from SouthStarAtomTextFields.",
+      "expected_support": [
+        "[13CH4]"
+      ]
+    },
+    {
+      "case_id": "atom_map_text_ethane",
+      "feature_area": "atom_map_text",
+      "source_smiles": "[CH3:7]C",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: atom-map suffix and explicit-H count remain local atom-text obligations while both traversal roots are rendered from atom-text and bond-text facts.",
+      "expected_support": [
+        "[CH3:7]C",
+        "C[CH3:7]"
+      ]
+    },
+    {
+      "case_id": "triple_bond_text_hydrogen_cyanide",
+      "feature_area": "triple_bond_text",
+      "source_smiles": "C#N",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: explicit triple-bond text is represented by the shared bond-text obligation and both traversal roots are rendered from atom-text and bond-text facts.",
+      "expected_support": [
+        "C#N",
+        "N#C"
+      ]
+    },
+    {
       "case_id": "markerless_acyclic_ethanol",
       "feature_area": "markerless_acyclic_tree",
       "source_smiles": "CCO",

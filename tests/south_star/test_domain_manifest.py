@@ -19,6 +19,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_FIRST_DOMAIN_POLICY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES,
+    SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS,
     SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
@@ -62,6 +63,12 @@ class SouthStarDomainManifestTests(unittest.TestCase):
                     case.support_authority,
                     SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
                 )
+
+    def test_shared_pipeline_eligibility_covers_expanded_feature_areas(self) -> None:
+        self.assertEqual(
+            SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas,
+            SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS,
+        )
 
     def test_manifest_classifies_support_evidence_authorities(self) -> None:
         classified_authorities = (

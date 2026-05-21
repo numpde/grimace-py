@@ -95,6 +95,24 @@ SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
     ),
 }
 
+SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = frozenset(
+    {
+        "branched_saturated_monocycle",
+        "charged_atom_text",
+        "disconnected_markerless_fragments",
+        "disconnected_stereo_fragments",
+        "explicit_bracket_hydrogen",
+        "nonstereo_polycyclic_skeleton",
+        "polycyclic_ring_stereo",
+        "radical_atom_text",
+        "ring_stereo_monocycle",
+        "ring_tetrahedral_monocycle",
+        "simple_saturated_monocycle",
+        "tetrahedral_atom_stereo",
+        "unsaturated_nonstereo_monocycle",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SouthStarDomainManifest:

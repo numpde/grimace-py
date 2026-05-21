@@ -10,6 +10,7 @@ from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
+    SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
@@ -24,16 +25,6 @@ from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 SOUTH_STAR_SHARED_PIPELINE_GENERATION_BASIS = (
     "south_star_graph_native_equation_solved_tree_traversal"
-)
-SOUTH_STAR_SHARED_PIPELINE_RING_FEATURE_AREAS = frozenset(
-    {
-        "branched_saturated_monocycle",
-        "nonstereo_polycyclic_skeleton",
-        "polycyclic_ring_stereo",
-        "ring_tetrahedral_monocycle",
-        "simple_saturated_monocycle",
-        "unsaturated_nonstereo_monocycle",
-    }
 )
 SOUTH_STAR_PIPELINE_PROVENANCE_STAGES: tuple[str, ...] = (
     "molecule_facts",
@@ -211,11 +202,11 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             matrix.unified_reference_promotion_candidate_case_ids,
         )
         self.assertIn(
-            "simple_saturated_monocycle_cyclohexane",
+            "explicit_bracket_hydrogen_h2",
             matrix.unified_reference_promotion_candidate_case_ids,
         )
-        self.assertNotIn(
-            "explicit_bracket_hydrogen_h2",
+        self.assertIn(
+            "simple_saturated_monocycle_cyclohexane",
             matrix.unified_reference_promotion_candidate_case_ids,
         )
         self.assertIn("isolated_alkene_z", matrix.temporary_witness_case_ids)
@@ -418,7 +409,8 @@ def south_star_unified_reference_promotion_checks(
                 case_id=case.case_id,
                 current_authority=case.support_authority,
                 shared_pipeline_generated=(
-                    case.feature_area in SOUTH_STAR_SHARED_PIPELINE_RING_FEATURE_AREAS
+                    case.feature_area
+                    in SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS
                     and result.generation_basis
                     == SOUTH_STAR_SHARED_PIPELINE_GENERATION_BASIS
                     and result.outputs == case.expected_support

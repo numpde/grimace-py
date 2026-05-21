@@ -72,7 +72,7 @@ class TemporarySouthStarRingStereoWitnessResult:
 
 
 @dataclass(frozen=True, slots=True)
-class TemporarySouthStarTetrahedralWitnessResult:
+class SouthStarTetrahedralAtomStereoProof:
     outputs: tuple[str, ...]
     diagnostics: tuple[SouthStarTetrahedralTraversalTokenDiagnostic, ...]
     proof_inputs: tuple[SouthStarTetrahedralTraversalProofInput, ...]
@@ -355,7 +355,7 @@ def shared_ring_stereo_monocycle_support_for_case(
 
 def shared_tetrahedral_atom_stereo_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> TemporarySouthStarTetrahedralWitnessResult:
+) -> SouthStarTetrahedralAtomStereoProof:
     """Check tetrahedral fixtures through shared traversal-token proof inputs.
 
     This remains fixture evidence, not an independent support generator. Outputs
@@ -374,7 +374,7 @@ def shared_tetrahedral_atom_stereo_support_for_case(
             for traversal in traversals
         )
     )
-    return TemporarySouthStarTetrahedralWitnessResult(
+    return SouthStarTetrahedralAtomStereoProof(
         outputs=outputs,
         diagnostics=tuple(
             _tetrahedral_token_diagnostic_for_atom_event(

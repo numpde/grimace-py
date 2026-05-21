@@ -160,7 +160,6 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
             {
                 "TemporarySouthStarDisconnectedCompositionWitnessEvidence",
                 "TemporarySouthStarRingStereoWitnessResult",
-                "TemporarySouthStarTetrahedralWitnessResult",
             },
             {name for name in class_names if name.startswith("TemporarySouthStar")},
         )

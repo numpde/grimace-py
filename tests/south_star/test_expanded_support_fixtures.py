@@ -13,7 +13,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
-    SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY,
+    SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
@@ -118,7 +118,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY
+                == SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -309,11 +309,11 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         equation.graph_marker != equation.emitted_marker,
                     )
 
-    def test_tetrahedral_atom_stereo_witness_matches_fixtures(self) -> None:
+    def test_tetrahedral_atom_stereo_proof_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():
             if (
                 case.support_authority
-                != SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY
+                != SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY
             ):
                 continue
 

@@ -12,17 +12,18 @@ After the 129/129a/129b/129c/129d/129e sequence, the readiness matrix is no
 longer blocked by stale shared-pipeline metadata.
 
 Current matrix after the first-domain, markerless acyclic-tree,
-disconnected-composition, and nonstereo-monocycle authority promotions:
+disconnected-composition, nonstereo-monocycle, ring-stereo monocycle, and
+star-shaped tetrahedral atom-stereo authority promotions:
 
-- unified-reference-backed cases: `24`
+- unified-reference-backed cases: `26`
 - shared-pipeline promotion candidates: `30`
-- temporary-witness-backed cases: `5`
+- temporary-witness-backed cases: `3`
 - graph-native regression-backed cases: `1`
-- public API blocker cases: `6`
+- public API blocker cases: `4`
 
 Remaining blocker count:
 
-- `support_authority_is_not_unified_reference`: `6`
+- `support_authority_is_not_unified_reference`: `4`
 
 That is the right next frontier. The immediate post-checkpoint work should be
 authority migration under the one-truth reference model, not broad API export.
@@ -118,6 +119,13 @@ authority to shared atom-stereo obligations over traversal ligand order.
 
 This should prove that `@` / `@@` output is derived from typed ligand-order
 facts and renderer obligations, not from fixture-local witness logic.
+
+Status: complete for the current non-ring star-shaped tetrahedral cases:
+`implicit_h_tetrahedral_center` and `quaternary_tetrahedral_center` are now
+`unified_reference_tetrahedral_atom_stereo_obligations`. The proof records
+derive `@` / `@@` from source ligand order, traversal/emitted ligand order,
+implicit-H placement, renderer inputs, and semantic parse-back. Ring/tetrahedral
+interactions remain outside this promoted slice.
 
 ### 130f: Define EnumS Benchmark Artifact
 

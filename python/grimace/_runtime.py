@@ -268,11 +268,11 @@ def _fragment_plans_for_prepared_mol(
     return tuple(plans)
 
 
-def _connected_prepared_mol_plan(
+def _connected_prepared_mol_fragment(
     prepared: PreparedMol,
     *,
     rooted_at_atom: int,
-) -> _FragmentPlan:
+) -> tuple[object, int]:
     rooted_at_atom_or_none = None if rooted_at_atom < 0 else rooted_at_atom
     plans = _fragment_plans_for_prepared_mol(
         prepared,
@@ -284,8 +284,8 @@ def _connected_prepared_mol_plan(
         )
     plan = plans[0]
     if plan.rooted_at_atom is None:
-        return _FragmentPlan(plan.fragment, -1)
-    return plan
+        return plan.fragment, -1
+    return plan.fragment, plan.rooted_at_atom
 
 
 def _atom_count(mol_or_prepared: object) -> int:
@@ -310,17 +310,11 @@ def _connected_fragment_support(
     rooted_at_atom: int | None,
 ) -> set[str]:
     if rooted_at_atom is not None:
-        return mol_to_smiles_support(
+        walker = _make_walker(
             fragment_mol,
-            isomeric_smiles=flags.isomeric_smiles,
-            kekule_smiles=flags.kekule_smiles,
-            rooted_at_atom=rooted_at_atom,
-            canonical=flags.canonical,
-            all_bonds_explicit=flags.all_bonds_explicit,
-            all_hs_explicit=flags.all_hs_explicit,
-            do_random=flags.do_random,
-            ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
+            flags.with_rooted_at_atom(rooted_at_atom),
         )
+        return set(walker.enumerate_support())
 
     # For all-roots support, build or unwrap the prepared graph once and reuse
     # it across roots instead of reparsing the same fragment each time.
@@ -328,29 +322,21 @@ def _connected_fragment_support(
     if _prepared_mol_module._is_rdkit_mol(fragment_mol):
         prepared_or_fragment = prepare_smiles_graph(fragment_mol, flags=flags)
     elif isinstance(fragment_mol, PreparedMol):
-        prepared_or_fragment = _connected_prepared_mol_plan(
+        prepared_or_fragment, _ = _connected_prepared_mol_fragment(
             fragment_mol,
             rooted_at_atom=-1,
-        ).fragment
+        )
     else:
         prepared_or_fragment = fragment_mol
 
     support: set[str] = set()
     local_root_indices = (0,) if atom_count == 0 else range(atom_count)
     for local_root_idx in local_root_indices:
-        support.update(
-            mol_to_smiles_support(
-                prepared_or_fragment,
-                isomeric_smiles=flags.isomeric_smiles,
-                kekule_smiles=flags.kekule_smiles,
-                rooted_at_atom=local_root_idx,
-                canonical=flags.canonical,
-                all_bonds_explicit=flags.all_bonds_explicit,
-                all_hs_explicit=flags.all_hs_explicit,
-                do_random=flags.do_random,
-                ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
-            )
+        walker = _make_walker(
+            prepared_or_fragment,
+            flags.with_rooted_at_atom(local_root_idx),
         )
+        support.update(walker.enumerate_support())
     return support
 
 
@@ -754,12 +740,12 @@ def _instantiate_core_object(
     nonstereo_type: type,
 ) -> object:
     if isinstance(mol_or_prepared, PreparedMol):
-        plan = _connected_prepared_mol_plan(
+        fragment, rooted_at_atom = _connected_prepared_mol_fragment(
             mol_or_prepared,
             rooted_at_atom=flags.rooted_at_atom,
         )
-        mol_or_prepared = plan.fragment
-        flags = flags.with_rooted_at_atom(cast(int, plan.rooted_at_atom))
+        mol_or_prepared = fragment
+        flags = flags.with_rooted_at_atom(rooted_at_atom)
 
     prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
     core_type = stereo_type if prepared.surface_kind == CONNECTED_STEREO_SURFACE else nonstereo_type
@@ -810,11 +796,12 @@ def _make_fragment_state_adapter(
     if atom_count == 0:
         return _make_connected_state_adapter(fragment_mol, flags.with_rooted_at_atom(0))
 
-    fragment_for_preparation = (
-        _connected_prepared_mol_plan(fragment_mol, rooted_at_atom=-1).fragment
-        if isinstance(fragment_mol, PreparedMol)
-        else fragment_mol
-    )
+    fragment_for_preparation = fragment_mol
+    if isinstance(fragment_mol, PreparedMol):
+        fragment_for_preparation, _ = _connected_prepared_mol_fragment(
+            fragment_mol,
+            rooted_at_atom=-1,
+        )
     prepared_fragment = prepare_smiles_graph(
         fragment_for_preparation,
         flags=flags.with_rooted_at_atom(0),
@@ -1115,12 +1102,11 @@ def _connected_mol_to_smiles_token_inventory_superset(
 ) -> tuple[str, ...]:
     rooted_at_atom = flags.rooted_at_atom
     if isinstance(mol_or_prepared, PreparedMol):
-        plan = _connected_prepared_mol_plan(
+        fragment, rooted_at_atom = _connected_prepared_mol_fragment(
             mol_or_prepared,
             rooted_at_atom=flags.rooted_at_atom,
         )
-        rooted_at_atom = cast(int, plan.rooted_at_atom)
-        mol_or_prepared = plan.fragment
+        mol_or_prepared = fragment
         flags = flags.with_rooted_at_atom(rooted_at_atom)
 
     prepared = _prepare_reference_graph_for_static_inventory(

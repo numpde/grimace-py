@@ -259,11 +259,12 @@ Exact support evidence is split by domain:
   independent test oracle;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated-monocycle, ring-stereo monocycle, and
-  disconnected-composition cases are checked against independent test oracles.
-  The ring-stereo oracle checks closure-event marker slots, central-double-bond
-  closure events, and parity equations by slot id; unsaturated nonstereo
-  monocycles and tetrahedral centers are still graph-native regression support
-  with RDKit parse-back graph/stereo equivalence as evidence.
+  disconnected-composition cases are checked against independent test oracles;
+  current star-shaped tetrahedral-center cases are checked against an
+  independent tetrahedral oracle. The ring-stereo oracle checks closure-event
+  marker slots, central-double-bond closure events, and parity equations by
+  slot id. Unsaturated nonstereo monocycles are still graph-native regression
+  support with RDKit parse-back graph/stereo equivalence as evidence.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.

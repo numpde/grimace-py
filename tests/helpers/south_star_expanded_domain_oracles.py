@@ -17,6 +17,9 @@ from rdkit import Chem
 
 from grimace._south_star.annotation_policy import Edge
 from grimace._south_star.annotation_policy import normalized_edge
+from grimace._south_star.tetrahedral import IMPLICIT_HYDROGEN_LIGAND
+from grimace._south_star.tetrahedral import extract_tetrahedral_center_facts
+from grimace._south_star.tetrahedral import preserving_tetrahedral_token
 from tests.helpers.south_star_exact_support import (
     SouthStarExpandedSupportCase,
     load_south_star_exact_first_domain_cases,
@@ -207,6 +210,47 @@ def independent_ring_stereo_monocycle_support_for_case(
     )
 
 
+def independent_tetrahedral_atom_stereo_support_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> tuple[str, ...]:
+    """Enumerate current star-shaped tetrahedral support independently.
+
+    This oracle is intentionally limited to one tetrahedral center whose
+    explicit ligands are terminal atoms. It derives `@`/`@@` from emitted ligand
+    order and does not call EnumS traversal or rendering.
+    """
+    mol = parse_smiles(case.source_smiles)
+    fact = _single_star_tetrahedral_fact(mol)
+    center_idx = fact.center_atom_idx
+    neighbor_indices = fact.explicit_neighbor_atom_indices
+
+    outputs: list[str] = []
+    for root_idx in range(mol.GetNumAtoms()):
+        if root_idx == center_idx:
+            for ordered_neighbors in permutations(neighbor_indices):
+                outputs.append(
+                    _render_tetrahedral_center_root(
+                        mol,
+                        center_idx=center_idx,
+                        ordered_neighbors=ordered_neighbors,
+                    )
+                )
+            continue
+        if root_idx not in neighbor_indices:
+            raise NotImplementedError("tetrahedral oracle requires a star graph")
+        child_indices = tuple(idx for idx in neighbor_indices if idx != root_idx)
+        for ordered_children in permutations(child_indices):
+            outputs.append(
+                _render_tetrahedral_ligand_root(
+                    mol,
+                    root_idx=root_idx,
+                    center_idx=center_idx,
+                    ordered_children=ordered_children,
+                )
+            )
+    return tuple(dict.fromkeys(outputs))
+
+
 def _independent_fragment_supports_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> tuple[tuple[str, ...], ...]:
@@ -223,6 +267,120 @@ def _independent_fragment_supports_for_case(
     raise NotImplementedError(
         f"no disconnected-composition oracle fragment supports for {case.case_id!r}"
     )
+
+
+def _single_star_tetrahedral_fact(mol: Chem.Mol):
+    facts = extract_tetrahedral_center_facts(mol)
+    if len(facts) != 1:
+        raise NotImplementedError("tetrahedral oracle requires exactly one center")
+    fact = facts[0]
+    center_idx = fact.center_atom_idx
+    for neighbor_idx in fact.explicit_neighbor_atom_indices:
+        neighbor = mol.GetAtomWithIdx(neighbor_idx)
+        if neighbor.GetDegree() != 1:
+            raise NotImplementedError(
+                "tetrahedral oracle currently requires terminal explicit ligands"
+            )
+        if mol.GetBondBetweenAtoms(center_idx, neighbor_idx) is None:
+            raise ValueError("tetrahedral ligand is not bonded to the center")
+    return fact
+
+
+def _render_tetrahedral_center_root(
+    mol: Chem.Mol,
+    *,
+    center_idx: int,
+    ordered_neighbors: tuple[int, ...],
+) -> str:
+    center_text = _tetrahedral_center_text(
+        mol,
+        center_idx=center_idx,
+        parent_idx=None,
+        ordered_children=ordered_neighbors,
+    )
+    return _render_center_with_ordered_ligands(
+        mol,
+        center_text=center_text,
+        ordered_ligands=ordered_neighbors,
+    )
+
+
+def _render_tetrahedral_ligand_root(
+    mol: Chem.Mol,
+    *,
+    root_idx: int,
+    center_idx: int,
+    ordered_children: tuple[int, ...],
+) -> str:
+    center_text = _tetrahedral_center_text(
+        mol,
+        center_idx=center_idx,
+        parent_idx=root_idx,
+        ordered_children=ordered_children,
+    )
+    return _atom_text(mol.GetAtomWithIdx(root_idx)) + _render_center_with_ordered_ligands(
+        mol,
+        center_text=center_text,
+        ordered_ligands=ordered_children,
+    )
+
+
+def _render_center_with_ordered_ligands(
+    mol: Chem.Mol,
+    *,
+    center_text: str,
+    ordered_ligands: tuple[int, ...],
+) -> str:
+    if not ordered_ligands:
+        return center_text
+    branch_text = "".join(
+        f"({_atom_text(mol.GetAtomWithIdx(atom_idx))})"
+        for atom_idx in ordered_ligands[:-1]
+    )
+    return center_text + branch_text + _atom_text(
+        mol.GetAtomWithIdx(ordered_ligands[-1])
+    )
+
+
+def _tetrahedral_center_text(
+    mol: Chem.Mol,
+    *,
+    center_idx: int,
+    parent_idx: int | None,
+    ordered_children: tuple[int, ...],
+) -> str:
+    fact = _single_star_tetrahedral_fact(mol)
+    if fact.center_atom_idx != center_idx:
+        raise ValueError("tetrahedral center index mismatch")
+    emitted_ligand_order = _emitted_tetrahedral_ligand_order(
+        parent_idx=parent_idx,
+        ordered_children=ordered_children,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+    )
+    token = preserving_tetrahedral_token(
+        source_token=fact.source_token,
+        source_ligand_order=fact.source_ligand_order,
+        emitted_ligand_order=emitted_ligand_order,
+    )
+    hydrogen_text = "H" if fact.implicit_hydrogen_count else ""
+    return f"[{mol.GetAtomWithIdx(center_idx).GetSymbol()}{token}{hydrogen_text}]"
+
+
+def _emitted_tetrahedral_ligand_order(
+    *,
+    parent_idx: int | None,
+    ordered_children: tuple[int, ...],
+    implicit_hydrogen_count: int,
+) -> tuple[str, ...]:
+    emitted = []
+    if parent_idx is None and implicit_hydrogen_count:
+        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
+    if parent_idx is not None:
+        emitted.append(f"atom:{parent_idx}")
+    emitted.extend(f"atom:{child_idx}" for child_idx in ordered_children)
+    if parent_idx is not None and implicit_hydrogen_count:
+        emitted.append(IMPLICIT_HYDROGEN_LIGAND)
+    return tuple(emitted)
 
 
 def _ring_stereo_source_markers_by_edge(mol: Chem.Mol) -> dict[Edge, str]:

@@ -10,6 +10,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY,
     SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY,
+    SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
@@ -18,10 +19,12 @@ from tests.helpers.south_star_expanded_domain_oracles import (
     independent_disconnected_composition_support_for_case,
     independent_ring_stereo_monocycle_support_for_case,
     independent_saturated_monocycle_support_for_case,
+    independent_tetrahedral_atom_stereo_support_for_case,
 )
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import semantic_signature
+from tests.helpers.south_star_semantic_identity import south_star_semantic_identity_report
 
 
 class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
@@ -73,6 +76,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             any(
                 case.support_authority
                 == SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY
                 for case in cases
             )
         )
@@ -134,6 +144,44 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         equation.traversal_orientation_flip,
                         equation.graph_marker != equation.emitted_marker,
                     )
+
+    def test_independent_tetrahedral_atom_stereo_oracle_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(
+                    case.expected_support,
+                    independent_tetrahedral_atom_stereo_support_for_case(case),
+                )
+
+    def test_tetrahedral_oracle_rejects_wrong_parity_tokens(self) -> None:
+        cases = {
+            "implicit_h_tetrahedral_center": "C[C@@H](F)Cl",
+            "quaternary_tetrahedral_center": "C[C@@](F)(Cl)Br",
+        }
+        expanded_cases = {
+            case.case_id: case for case in load_south_star_expanded_support_cases()
+        }
+
+        for case_id, wrong_parity_smiles in cases.items():
+            case = expanded_cases[case_id]
+            report = south_star_semantic_identity_report(
+                source_smiles=case.source_smiles,
+                candidate_smiles=wrong_parity_smiles,
+            )
+
+            with self.subTest(case_id=case_id):
+                self.assertNotIn(
+                    wrong_parity_smiles,
+                    independent_tetrahedral_atom_stereo_support_for_case(case),
+                )
+                self.assertTrue(report.graph_identity.passed)
+                self.assertFalse(report.stereo_identity.passed)
 
     def test_graph_native_support_matches_expanded_domain_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

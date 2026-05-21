@@ -311,8 +311,8 @@
       "case_id": "implicit_h_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@H](F)Cl",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned current graph-native traversal over emitted ligand orders for a tetrahedral center with one implicit hydrogen.",
+      "support_authority": "independent_tetrahedral_atom_stereo_oracle",
+      "evidence_notes": "Checked by the independent star-shaped tetrahedral oracle: enumerate explicit ligand roots and center roots, derive @/@@ from emitted ligand order, and place the implicit hydrogen in the local ligand-order basis.",
       "expected_support": [
         "C[C@H](F)Cl",
         "C[C@@H](Cl)F",
@@ -332,8 +332,8 @@
       "case_id": "quaternary_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@](F)(Cl)Br",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
-      "evidence_notes": "Pinned current graph-native traversal over emitted ligand orders for a quaternary tetrahedral center.",
+      "support_authority": "independent_tetrahedral_atom_stereo_oracle",
+      "evidence_notes": "Checked by the independent star-shaped tetrahedral oracle: enumerate explicit ligand roots and center roots, derive @/@@ from emitted ligand order, and cover all quaternary-center ligand permutations.",
       "expected_support": [
         "C[C@](F)(Cl)Br",
         "C[C@@](F)(Br)Cl",

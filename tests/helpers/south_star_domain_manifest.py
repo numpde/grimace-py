@@ -18,6 +18,9 @@ SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY = (
 SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY = (
     "independent_ring_stereo_monocycle_oracle"
 )
+SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY = (
+    "independent_tetrahedral_atom_stereo_oracle"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
             SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY,
             SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY,
+            SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY,
         }
     ),
     expanded_feature_areas=frozenset(

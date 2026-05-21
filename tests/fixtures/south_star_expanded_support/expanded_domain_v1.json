@@ -694,6 +694,39 @@
       ]
     },
     {
+      "case_id": "double_bond_text_formaldimine",
+      "feature_area": "double_bond_text",
+      "source_smiles": "C=N",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom/bond text evidence: explicit double-bond text is represented by the shared bond-text obligation and both traversal roots are rendered from atom-text and bond-text facts.",
+      "expected_support": [
+        "C=N",
+        "N=C"
+      ]
+    },
+    {
+      "case_id": "combined_atom_text_isotope_map_ethane",
+      "feature_area": "combined_atom_text_modifiers",
+      "source_smiles": "[13CH3:7]C",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: isotope prefix, explicit-H count, and atom-map suffix are represented by typed bracket atom obligations while both traversal roots are rendered from atom-text and bond-text facts.",
+      "expected_support": [
+        "[13CH3:7]C",
+        "C[13CH3:7]"
+      ]
+    },
+    {
+      "case_id": "combined_atom_text_isotope_charge_methylammonium",
+      "feature_area": "combined_atom_text_modifiers",
+      "source_smiles": "[15NH3+]C",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: isotope prefix, explicit-H count, and charge suffix are represented by typed bracket atom obligations while both traversal roots are rendered from atom-text and bond-text facts.",
+      "expected_support": [
+        "[15NH3+]C",
+        "C[15NH3+]"
+      ]
+    },
+    {
       "case_id": "markerless_acyclic_ethanol",
       "feature_area": "markerless_acyclic_tree",
       "source_smiles": "CCO",

@@ -68,53 +68,69 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         cases = (
             (
                 "[2H][H]",
-                "isotope",
-                "isotope",
-                2,
-                None,
-                "bracket_atom_isotope_prefix",
+                ("isotope",),
+                ("isotope",),
+                (2,),
+                (None,),
+                ("bracket_atom_isotope_prefix",),
             ),
             (
                 "[H+]",
-                "charge",
-                "formal_charge",
-                1,
-                None,
-                "bracket_atom_charge_suffix",
+                ("charge",),
+                ("formal_charge",),
+                (1,),
+                (None,),
+                ("bracket_atom_charge_suffix",),
             ),
             (
                 "[Cl-]",
-                "charge",
-                "formal_charge",
-                -1,
-                None,
-                "bracket_atom_charge_suffix",
+                ("charge",),
+                ("formal_charge",),
+                (-1,),
+                (None,),
+                ("bracket_atom_charge_suffix",),
             ),
             (
                 "[CH3:1]C",
-                "atom_map",
-                "atom_map_number",
-                1,
-                None,
-                "bracket_atom_map_suffix",
+                ("atom_map",),
+                ("atom_map_number",),
+                (1,),
+                (None,),
+                ("bracket_atom_map_suffix",),
+            ),
+            (
+                "[13CH3:7]C",
+                ("isotope", "atom_map"),
+                ("isotope", "atom_map_number"),
+                (13, 7),
+                (None, None),
+                ("bracket_atom_isotope_prefix", "bracket_atom_map_suffix"),
+            ),
+            (
+                "[15NH3+]C",
+                ("isotope", "charge"),
+                ("isotope", "formal_charge"),
+                (15, 1),
+                (None, None),
+                ("bracket_atom_isotope_prefix", "bracket_atom_charge_suffix"),
             ),
             (
                 "[CH3]",
-                "radical",
-                "radical_electron_count",
-                1,
-                None,
-                "bracket_atom_radical_valence_semantics",
+                ("radical",),
+                ("radical_electron_count",),
+                (1,),
+                (None,),
+                ("bracket_atom_radical_valence_semantics",),
             ),
         )
 
         for (
             smiles,
-            expected_modifier,
-            expected_field,
-            expected_value,
-            expected_category,
-            expected_renderer_requirement,
+            expected_modifiers,
+            expected_fields,
+            expected_values,
+            expected_categories,
+            expected_renderer_requirements,
         ) in cases:
             mol = parse_smiles(smiles)
             fields = south_star_atom_text_fields(mol.GetAtomWithIdx(0))
@@ -124,19 +140,21 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
             }
 
             with self.subTest(smiles=smiles):
-                self.assertEqual(1, len(obligations))
-                obligation = obligations[0]
-                self.assertIs(fields, obligation.fields)
-                self.assertEqual(fields.atom_idx, obligation.atom_idx)
-                self.assertEqual(expected_modifier, obligation.modifier_name)
-                self.assertEqual(expected_field, obligation.field_name)
-                self.assertEqual(expected_value, obligation.value)
-                self.assertEqual(expected_category, obligation.unsupported_category)
-                self.assertEqual(
-                    expected_renderer_requirement,
-                    obligation.renderer_requirement,
-                )
-                self.assertNotIn(expected_category, categories)
+                self.assertEqual(len(expected_modifiers), len(obligations))
+                for idx, obligation in enumerate(obligations):
+                    self.assertIs(fields, obligation.fields)
+                    self.assertEqual(fields.atom_idx, obligation.atom_idx)
+                    self.assertEqual(expected_modifiers[idx], obligation.modifier_name)
+                    self.assertEqual(expected_fields[idx], obligation.field_name)
+                    self.assertEqual(expected_values[idx], obligation.value)
+                    self.assertEqual(
+                        expected_categories[idx], obligation.unsupported_category
+                    )
+                    self.assertEqual(
+                        expected_renderer_requirements[idx],
+                        obligation.renderer_requirement,
+                    )
+                    self.assertNotIn(expected_categories[idx], categories)
 
     def test_radical_modifier_is_renderer_capable_semantic_field(self) -> None:
         fields = south_star_atom_text_fields(parse_smiles("[CH3]").GetAtomWithIdx(0))
@@ -169,6 +187,26 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 "[CH3:1]C",
                 "[CH3:1]",
                 ("bracket_atom", "explicit_hydrogen_count", "atom_map_suffix"),
+            ),
+            (
+                "[13CH3:7]C",
+                "[13CH3:7]",
+                (
+                    "bracket_atom",
+                    "isotope_prefix",
+                    "explicit_hydrogen_count",
+                    "atom_map_suffix",
+                ),
+            ),
+            (
+                "[15NH3+]C",
+                "[15NH3+]",
+                (
+                    "bracket_atom",
+                    "isotope_prefix",
+                    "explicit_hydrogen_count",
+                    "charge_suffix",
+                ),
             ),
             (
                 "[CH3]",

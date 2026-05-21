@@ -123,6 +123,9 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
             "charged_atom_text_methylammonium",
             "atom_map_text_ethane",
             "triple_bond_text_hydrogen_cyanide",
+            "double_bond_text_formaldimine",
+            "combined_atom_text_isotope_map_ethane",
+            "combined_atom_text_isotope_charge_methylammonium",
         ):
             case = cases[case_id]
             with self.subTest(case_id=case_id):
@@ -134,13 +137,18 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 expected_bond_token_family = (
                     "explicit_triple_bond"
                     if case_id == "triple_bond_text_hydrogen_cyanide"
+                    else "explicit_double_bond"
+                    if case_id == "double_bond_text_formaldimine"
                     else "elided_single_bond"
                 )
                 self.assertEqual(
                     expected_bond_token_family,
                     support.bond_text_obligation.token_family,
                 )
-                if case_id != "triple_bond_text_hydrogen_cyanide":
+                if case_id not in {
+                    "triple_bond_text_hydrogen_cyanide",
+                    "double_bond_text_formaldimine",
+                }:
                     self.assertGreaterEqual(support.bracket_obligation_count, 1)
                 self.assertEqual(
                     support.support,
@@ -149,6 +157,8 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 if case_id in {
                     "atom_map_text_ethane",
                     "charged_atom_text_methylammonium",
+                    "combined_atom_text_isotope_map_ethane",
+                    "combined_atom_text_isotope_charge_methylammonium",
                 }:
                     self.assertGreaterEqual(support.modifier_obligation_count, 1)
 

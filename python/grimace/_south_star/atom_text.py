@@ -15,6 +15,8 @@ SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {
         "[H]",
         "[2H]",
+        "[13CH3:7]",
+        "[15NH3+]",
         "[H+]",
         "[Cl-]",
         "[NH4+]",

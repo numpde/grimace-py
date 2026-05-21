@@ -4,6 +4,7 @@ import unittest
 
 
 SOUTH_STAR_PACKAGE_READINESS_MODULES: tuple[str, ...] = (
+    "tests.south_star.test_benchmark_artifact",
     "tests.south_star.test_complexity_guardrails",
     "tests.south_star.test_domain_manifest",
     "tests.south_star.test_expanded_support_fixtures",

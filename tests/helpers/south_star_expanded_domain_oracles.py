@@ -526,6 +526,15 @@ def shared_ring_stereo_monocycle_support_for_case(
     return _shared_ring_stereo_support_for_case(case, mol=mol)
 
 
+def shared_exocyclic_directional_monocycle_support_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarRingStereoSupportProof:
+    """Check exocyclic branch stereo through ring traversal plus equations."""
+    mol = parse_smiles(case.source_smiles)
+    _assert_exocyclic_directional_monocycle_domain(mol)
+    return _shared_ring_stereo_support_for_case(case, mol=mol)
+
+
 def shared_polycyclic_ring_stereo_support_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> SouthStarRingStereoSupportProof:
@@ -954,6 +963,20 @@ def _assert_ring_stereo_monocycle_domain(mol: Chem.Mol) -> None:
         raise NotImplementedError("ring-stereo oracle requires one component")
     if len(mol.GetRingInfo().BondRings()) != 1:
         raise NotImplementedError("ring-stereo oracle requires one ring")
+
+
+def _assert_exocyclic_directional_monocycle_domain(mol: Chem.Mol) -> None:
+    _assert_ring_stereo_monocycle_domain(mol)
+    stereo_bonds = tuple(
+        bond
+        for bond in mol.GetBonds()
+        if bond.GetStereo() != Chem.BondStereo.STEREONONE
+    )
+    if len(stereo_bonds) != 1 or stereo_bonds[0].IsInRing():
+        raise NotImplementedError(
+            "exocyclic directional monocycle proof requires exactly one "
+            "non-ring stereo bond"
+        )
 
 
 def _assert_saturated_monocycle_domain(mol: Chem.Mol) -> None:

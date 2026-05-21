@@ -50,3 +50,14 @@ The next principled slice is not "allow
 
 These tests are boundary tests, not a claim that the witnesses are permanently
 out of scope.
+
+## Update After `South Star 163`
+
+`South Star 163` admits the narrower exocyclic directional-branch monocycle
+case, `C1CC(/C=C/Cl)CCC1`, after proving it through the existing monocycle
+closure traversal plus branch-local marker equations.
+
+The full `F[C@H]1CCCC(/C=C/Cl)C1` witness remains gated. Its remaining blocker
+is the intended next composition step: ring-local tetrahedral renderer
+obligations plus exocyclic directional marker equations on the same ring
+traversal spine.

@@ -11,6 +11,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
@@ -29,6 +30,7 @@ from tests.helpers.south_star_expanded_domain_oracles import (
     independent_directional_component_product_proof_for_case,
     ring_core_proof_records_for_case,
     shared_disconnected_composition_support_for_case,
+    shared_exocyclic_directional_monocycle_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
     shared_polycyclic_ring_stereo_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
@@ -394,6 +396,31 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         equation.traversal_orientation_flip,
                         equation.graph_marker != equation.emitted_marker,
                     )
+
+    def test_exocyclic_directional_monocycle_proof_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            result = shared_exocyclic_directional_monocycle_support_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertGreater(result.closure_edge_count, 0)
+                self.assertGreater(result.closure_edge_set_count, 1)
+                self.assertEqual(1, result.closure_edges_per_traversal)
+                self.assertEqual(1, result.closure_label_count)
+                self.assertGreater(result.marker_slot_count, 0)
+                self.assertEqual(2, result.marker_assignment_count)
+                self.assertGreater(len(result.equations), 0)
+                self.assertTrue(
+                    all(
+                        not equation.syntax_position.startswith("ring_")
+                        for equation in result.equations
+                    )
+                )
 
     def test_polycyclic_ring_stereo_proof_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

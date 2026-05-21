@@ -522,10 +522,25 @@ def is_supported_ring_stereo_monocycle_with_acyclic_branches(mol: Chem.Mol) -> b
     return bool(stereo_bonds) and all(bond.IsInRing() for bond in stereo_bonds)
 
 
+def is_supported_exocyclic_directional_monocycle_with_acyclic_branches(
+    mol: Chem.Mol,
+) -> bool:
+    if not _has_supported_monocycle_shape(mol):
+        return False
+    stereo_bonds = tuple(
+        bond
+        for bond in mol.GetBonds()
+        if bond.GetStereo() != Chem.BondStereo.STEREONONE
+    )
+    return len(stereo_bonds) == 1 and not stereo_bonds[0].IsInRing()
+
+
 def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     return is_nonstereo_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_ring_stereo_monocycle_with_acyclic_branches(
+        mol
+    ) or is_supported_exocyclic_directional_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_tetrahedral_monocycle_with_acyclic_branches(mol)
 

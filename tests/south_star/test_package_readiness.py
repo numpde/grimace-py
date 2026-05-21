@@ -294,6 +294,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "independent_directional_components_diene",
                 "directional_tetrahedral_acyclic",
                 "disconnected_directional_tetrahedral_fragments",
+                "exocyclic_directional_monocycle_branch",
             ),
             matrix.unified_reference_backed_case_ids,
         )

@@ -21,6 +21,7 @@ from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from grimace._south_star.annotation_policy import Edge, normalized_edge
+from grimace._south_star.constraint_vocabulary import SouthStarRendererInput
 from grimace._south_star.fragments import (
     SouthStarFragmentSupport,
     compose_disconnected_fragment_supports,
@@ -57,6 +58,7 @@ class SouthStarTreeTraversal(SouthStarTraversal):
         return render_south_star_traversal(
             self.events,
             marker_assignments=self.marker_assignments,
+            renderer_inputs=_renderer_inputs_from_events(self.events),
         )
 
 
@@ -165,6 +167,12 @@ class _ConnectedGraphPlanDiagnostics:
     closure_edge_count: int
     closure_label_count: int
     closure_edge_set_records: tuple[SouthStarClosureEdgeSetRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _AtomEventRenderPayload:
+    text: str
+    renderer_input: SouthStarRendererInput | None = None
 
 
 def mol_to_smiles_enum_s_graph_native_for_case(
@@ -484,6 +492,7 @@ def render_south_star_traversal(
     events: tuple[SouthStarTraversalEvent, ...],
     *,
     marker_assignments: tuple[SouthStarMarkerSlotAssignment, ...],
+    renderer_inputs: tuple[SouthStarRendererInput, ...] = (),
 ) -> str:
     markers_by_slot = _marker_assignments_by_slot(marker_assignments)
     required_slot_ids = {
@@ -495,6 +504,7 @@ def render_south_star_traversal(
         raise ValueError(
             "marker assignments must exactly cover traversal marker slots"
         )
+    _validate_renderer_inputs(events, renderer_inputs)
 
     rendered: list[str] = []
     for event in events:
@@ -552,6 +562,49 @@ def _marker_assignments_by_slot(
             )
         markers_by_slot[assignment.slot_id] = assignment.marker
     return markers_by_slot
+
+
+def _validate_renderer_inputs(
+    events: tuple[SouthStarTraversalEvent, ...],
+    renderer_inputs: tuple[SouthStarRendererInput, ...],
+) -> None:
+    expected_by_slot = {
+        event.renderer_input.syntax_slot_id: event.renderer_input
+        for event in events
+        if event.renderer_input is not None
+    }
+    provided_by_slot = _renderer_inputs_by_slot(renderer_inputs)
+    if set(provided_by_slot) != set(expected_by_slot):
+        raise ValueError(
+            "renderer inputs must exactly cover traversal renderer slots"
+        )
+    for slot_id, expected in expected_by_slot.items():
+        provided = provided_by_slot[slot_id]
+        if provided != expected:
+            raise ValueError(
+                f"renderer input for slot {slot_id!r} does not match traversal"
+            )
+
+
+def _renderer_inputs_from_events(
+    events: tuple[SouthStarTraversalEvent, ...],
+) -> tuple[SouthStarRendererInput, ...]:
+    return tuple(
+        event.renderer_input for event in events if event.renderer_input is not None
+    )
+
+
+def _renderer_inputs_by_slot(
+    renderer_inputs: tuple[SouthStarRendererInput, ...],
+) -> dict[str, SouthStarRendererInput]:
+    by_slot: dict[str, SouthStarRendererInput] = {}
+    for renderer_input in renderer_inputs:
+        if renderer_input.syntax_slot_id in by_slot:
+            raise ValueError(
+                f"duplicate renderer input for slot {renderer_input.syntax_slot_id!r}"
+            )
+        by_slot[renderer_input.syntax_slot_id] = renderer_input
+    return by_slot
 
 
 def _tree_traversals_for_mol(
@@ -1219,15 +1272,17 @@ def _atom_event(
     ordered_children: tuple[int, ...],
     tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
 ) -> SouthStarTraversalEvent:
+    payload = _atom_text_for_traversal(
+        mol.GetAtomWithIdx(atom_idx),
+        parent_idx=parent_idx,
+        ordered_children=ordered_children,
+        tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
+    )
     return SouthStarTraversalEvent(
         kind="atom",
-        text=_atom_text_for_traversal(
-            mol.GetAtomWithIdx(atom_idx),
-            parent_idx=parent_idx,
-            ordered_children=ordered_children,
-            tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
-        ),
+        text=payload.text,
         atom_idx=atom_idx,
+        renderer_input=payload.renderer_input,
     )
 
 
@@ -1237,10 +1292,10 @@ def _atom_text_for_traversal(
     parent_idx: int | None,
     ordered_children: tuple[int, ...],
     tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
-) -> str:
+) -> _AtomEventRenderPayload:
     fact = tetrahedral_facts_by_atom.get(atom.GetIdx())
     if fact is None:
-        return _atom_text(atom)
+        return _AtomEventRenderPayload(text=_atom_text(atom))
 
     observation = _tetrahedral_traversal_observation(
         center_atom_idx=fact.center_atom_idx,
@@ -1249,11 +1304,14 @@ def _atom_text_for_traversal(
         implicit_hydrogen_count=fact.implicit_hydrogen_count,
     )
     records = tetrahedral_token_constraint_records(fact, observation)
-    return tetrahedral_atom_text_obligation(
-        atom,
-        stereo_token=records.renderer_input.value,
-        implicit_hydrogen_count=fact.implicit_hydrogen_count,
-    ).emitted_text
+    return _AtomEventRenderPayload(
+        text=tetrahedral_atom_text_obligation(
+            atom,
+            stereo_token=records.renderer_input.value,
+            implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        ).emitted_text,
+        renderer_input=records.renderer_input,
+    )
 
 
 def _tetrahedral_traversal_observation(

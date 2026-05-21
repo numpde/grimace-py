@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from grimace._south_star.constraint_vocabulary import SouthStarRendererInput
 from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
@@ -411,6 +412,82 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
                     ),
                 ),
             )
+
+    def test_renderer_requires_exact_tetrahedral_renderer_inputs(self) -> None:
+        renderer_input = SouthStarRendererInput(
+            family_id="tetrahedral_traversal_token",
+            syntax_slot_id="tetrahedral_token:1:atom:0,atom:2,atom:3,implicit_hydrogen",
+            token_family="tetrahedral_stereo_token",
+            value="@",
+        )
+        events = (
+            SouthStarTraversalEvent(
+                kind="atom",
+                text="[C@H]",
+                atom_idx=1,
+                renderer_input=renderer_input,
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "renderer inputs"):
+            render_south_star_traversal(events, marker_assignments=())
+        with self.assertRaisesRegex(ValueError, "duplicate renderer input"):
+            render_south_star_traversal(
+                events,
+                marker_assignments=(),
+                renderer_inputs=(renderer_input, renderer_input),
+            )
+        with self.assertRaisesRegex(ValueError, "does not match traversal"):
+            render_south_star_traversal(
+                events,
+                marker_assignments=(),
+                renderer_inputs=(
+                    SouthStarRendererInput(
+                        family_id=renderer_input.family_id,
+                        syntax_slot_id=renderer_input.syntax_slot_id,
+                        token_family=renderer_input.token_family,
+                        value="@@",
+                    ),
+                ),
+            )
+
+        self.assertEqual(
+            "[C@H]",
+            render_south_star_traversal(
+                events,
+                marker_assignments=(),
+                renderer_inputs=(renderer_input,),
+            ),
+        )
+
+    def test_graph_native_tetrahedral_events_carry_renderer_inputs(self) -> None:
+        case = _expanded_support_case("implicit_h_tetrahedral_center")
+        traversal = next(
+            traversal
+            for traversal in mol_to_smiles_enum_s_tree_traversals_for_case(case)
+            if any(event.renderer_input is not None for event in traversal.events)
+        )
+        renderer_inputs = tuple(
+            event.renderer_input
+            for event in traversal.events
+            if event.renderer_input is not None
+        )
+
+        self.assertEqual(1, len(renderer_inputs))
+        self.assertIn(renderer_inputs[0].value, {"@", "@@"})
+        with self.assertRaisesRegex(ValueError, "renderer inputs"):
+            render_south_star_traversal(
+                traversal.events,
+                marker_assignments=traversal.marker_assignments,
+            )
+        self.assertEqual(
+            traversal.render(),
+            render_south_star_traversal(
+                traversal.events,
+                marker_assignments=traversal.marker_assignments,
+                renderer_inputs=renderer_inputs,
+            ),
+        )
 
     def test_renderer_renders_ring_closure_labels_from_event_data(self) -> None:
         events = (

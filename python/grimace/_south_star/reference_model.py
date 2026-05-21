@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from grimace._south_star.annotation_policy import Edge
+from grimace._south_star.constraint_vocabulary import SouthStarRendererInput
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +85,7 @@ class SouthStarTraversalEvent:
     syntax_position: str = ""
     marker_slot: SouthStarMarkerSlot | None = None
     ring_closure: SouthStarRingClosure | None = None
+    renderer_input: SouthStarRendererInput | None = None
 
 
 @dataclass(frozen=True, slots=True)

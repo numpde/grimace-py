@@ -18,10 +18,10 @@ from tests.helpers.south_star_exact_support import (
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
     independent_disconnected_composition_support_for_case,
-    independent_tetrahedral_atom_stereo_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
     shared_saturated_monocycle_support_for_case,
+    shared_tetrahedral_atom_stereo_support_for_case,
 )
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
@@ -177,12 +177,18 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 continue
 
             with self.subTest(case_id=case.case_id):
-                self.assertEqual(
-                    case.expected_support,
-                    independent_tetrahedral_atom_stereo_support_for_case(case),
-                )
+                result = shared_tetrahedral_atom_stereo_support_for_case(case)
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertGreater(len(result.obligations), 0)
+                for obligation in result.obligations:
+                    self.assertTrue(obligation.preserves_orientation)
+                    self.assertEqual(
+                        obligation.expected_token,
+                        obligation.emitted_token,
+                    )
+                    self.assertIn(obligation.emitted_token, {"@", "@@"})
 
-    def test_tetrahedral_oracle_rejects_wrong_parity_tokens(self) -> None:
+    def test_tetrahedral_traversal_support_rejects_wrong_parity_tokens(self) -> None:
         cases = {
             "implicit_h_tetrahedral_center": "C[C@@H](F)Cl",
             "quaternary_tetrahedral_center": "C[C@@](F)(Cl)Br",
@@ -201,7 +207,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case_id):
                 self.assertNotIn(
                     wrong_parity_smiles,
-                    independent_tetrahedral_atom_stereo_support_for_case(case),
+                    shared_tetrahedral_atom_stereo_support_for_case(case).outputs,
                 )
                 self.assertTrue(report.graph_identity.passed)
                 self.assertFalse(report.stereo_identity.passed)

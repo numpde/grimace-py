@@ -136,11 +136,9 @@ into shared traversal/rendering records:
   - `SouthStarRingStereoOracleResult`
   - `shared_ring_stereo_monocycle_support_for_case`
 - tetrahedral support:
-  - `_single_star_tetrahedral_fact`
-  - `_render_tetrahedral_center_root`
-  - `_render_tetrahedral_ligand_root`
-  - `_render_center_with_ordered_ligands`
-  - `_tetrahedral_center_text`
+  - `SouthStarTetrahedralTraversalObligation`
+  - `SouthStarTetrahedralTraversalResult`
+  - `shared_tetrahedral_atom_stereo_support_for_case`
   - `_emitted_tetrahedral_ligand_order`
 
 The saturated ring and ring-stereo records overlap directly with the runtime
@@ -328,7 +326,6 @@ Expected cleanups:
 
 - replace `SouthStarDisconnectedCompositionOracleResult` with
   `SouthStarDisconnectedCompositionResult`;
-- express tetrahedral output checks as facts/obligations over traversal events.
 
 Acceptance:
 
@@ -386,7 +383,7 @@ The following helpers remain useful during migration:
 - `shared_saturated_monocycle_support_for_case`
 - `shared_nonstereo_monocycle_support_for_case`
 - `shared_ring_stereo_monocycle_support_for_case`
-- `independent_tetrahedral_atom_stereo_support_for_case`
+- `shared_tetrahedral_atom_stereo_support_for_case`
 
 They should be treated as witness scaffolding. Their long-term value is to
 prove the shared model did not lose a known case, not to define separate

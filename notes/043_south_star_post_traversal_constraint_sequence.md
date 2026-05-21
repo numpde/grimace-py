@@ -34,10 +34,9 @@ is probably fixture-driven and should be deferred.
    and renderer records rather than local traversal/rendering helpers.
 
 2. **Lift tetrahedral atom stereo into traversal obligations.**
-   Acyclic tetrahedral support exists, but the fixture oracle still has a local
-   renderer. The principled target is not a tetrahedral string helper; it is an
-   obligation over traversal ligand order that chooses `@`/`@@` through the
-   shared event model.
+   Completed in `South Star 98`: acyclic tetrahedral fixture checks now use
+   shared traversal output plus explicit ligand-order/token obligations instead
+   of a local tetrahedral string renderer.
 
 3. **Model disconnected composition as unified reference composition.**
    Runtime already composes per-fragment supports under an explicit

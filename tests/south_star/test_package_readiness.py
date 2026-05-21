@@ -271,6 +271,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "ring_stereo_monocycle_cyclooctene",
                 "markerless_disconnected_ring_and_atom",
                 "disconnected_stereo_fragment_and_atom",
+                "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
                 "explicit_bracket_hydrogen_h2",
                 "markerless_acyclic_ethanol",
                 "markerless_acyclic_isopropanol",
@@ -329,6 +330,10 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertNotIn(
             "ring_adjacent_tetrahedral_monocycle",
+            matrix.public_api_blocker_case_ids,
+        )
+        self.assertNotIn(
+            "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
             matrix.public_api_blocker_case_ids,
         )
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)

@@ -13,17 +13,18 @@ longer blocked by stale shared-pipeline metadata.
 
 Current matrix after the first-domain, markerless acyclic-tree,
 disconnected-composition, nonstereo-monocycle, ring-stereo monocycle,
-star-shaped tetrahedral atom-stereo, and ring/tetrahedral authority promotions:
+star-shaped tetrahedral atom-stereo, ring/tetrahedral, and nonstereo
+polycyclic authority promotions:
 
-- unified-reference-backed cases: `28`
+- unified-reference-backed cases: `29`
 - shared-pipeline promotion candidates: `30`
 - temporary-witness-backed cases: `1`
-- graph-native regression-backed cases: `1`
-- public API blocker cases: `2`
+- graph-native regression-backed cases: `0`
+- public API blocker cases: `1`
 
 Remaining blocker count:
 
-- `support_authority_is_not_unified_reference`: `2`
+- `support_authority_is_not_unified_reference`: `1`
 
 That is the right next frontier. The immediate post-checkpoint work should be
 authority migration under the one-truth reference model, not broad API export.
@@ -109,8 +110,10 @@ ring-stereo monocycle fixture is also
 derive support from molecule facts, shared connected-graph traversal plans,
 ring-closure labels, closure bond text, marker slots where needed, parity
 equations where needed, renderer events, and first-occurrence deduplication.
-Ring/tetrahedral interactions are now promoted separately; polycyclic rings
-remain outside this promoted slice.
+Ring/tetrahedral interactions are now promoted separately. The first
+nonstereo-polycyclic skeleton is also promoted as
+`unified_reference_nonstereo_polycyclic_closure_traversal`; polycyclic ring
+stereo remains outside this promoted slice.
 
 ### 130e: Promote Tetrahedral Atom-Stereo Authority
 

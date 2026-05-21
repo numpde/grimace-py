@@ -454,8 +454,8 @@
       "case_id": "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
       "feature_area": "nonstereo_polycyclic_skeleton",
       "source_smiles": "C1CC2CCC1C2",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first non-aromatic nonstereo polycyclic skeleton slice: enumerate spanning-tree choices plus two non-tree closure edges through the connected-graph traversal plan and ring-label policy.",
+      "support_authority": "unified_reference_nonstereo_polycyclic_closure_traversal",
+      "evidence_notes": "Unified-reference nonstereo polycyclic evidence: shared traversal plans enumerate spanning-tree choices plus two non-tree closure edges, first-encounter ring labels, closure bond text, parse-back semantics, and first-occurrence output deduplication.",
       "expected_support": [
         "C1C(CC2)CC2C1",
         "C1C(CC2C1)CC2",

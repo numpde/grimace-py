@@ -6,8 +6,8 @@
       "case_id": "simple_saturated_monocycle_cyclohexane",
       "feature_area": "simple_saturated_monocycle",
       "source_smiles": "C1CCCCC1",
-      "support_authority": "independent_saturated_monocycle_oracle",
-      "evidence_notes": "Checked by the independent saturated-monocycle oracle: enumerate one broken ring edge, all tree traversal child orders, and closure digit placement from atom events.",
+      "support_authority": "temporary_witness_saturated_monocycle_shared_records",
+      "evidence_notes": "Temporary witness evidence from the saturated-monocycle helper: enumerate one broken ring edge, all tree traversal child orders, and closure digit placement from shared traversal events.",
       "expected_support": [
         "C1CCCCC1",
         "C(CCCC1)C1",
@@ -20,8 +20,8 @@
       "case_id": "branched_saturated_monocycle_methylcyclohexane",
       "feature_area": "branched_saturated_monocycle",
       "source_smiles": "CC1CCCCC1",
-      "support_authority": "independent_saturated_monocycle_oracle",
-      "evidence_notes": "Checked by the independent saturated-monocycle oracle for a saturated monocycle with one acyclic branch.",
+      "support_authority": "temporary_witness_saturated_monocycle_shared_records",
+      "evidence_notes": "Temporary witness evidence from the saturated-monocycle helper for a saturated monocycle with one acyclic branch.",
       "expected_support": [
         "CC1CCCCC1",
         "CC(CCCC1)C1",
@@ -89,7 +89,7 @@
       "case_id": "unsaturated_nonstereo_monocycle_cyclohexene",
       "feature_area": "unsaturated_nonstereo_monocycle",
       "source_smiles": "C1=CCCCC1",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
       "evidence_notes": "Pinned graph-native output for the first unsaturated nonstereo monocycle slice; ring stereo remains separately gated.",
       "expected_support": [
         "C1=CCCCC1",
@@ -128,8 +128,8 @@
       "case_id": "ring_stereo_monocycle_cyclooctene",
       "feature_area": "ring_stereo_monocycle",
       "source_smiles": "C1/C=C\\CCCCC1",
-      "support_authority": "independent_ring_stereo_monocycle_oracle",
-      "evidence_notes": "Checked by the independent ring-stereo monocycle oracle from closure-event marker slots and parity equations, including the central stereo double bond as a ring-closure edge.",
+      "support_authority": "temporary_witness_ring_stereo_monocycle_shared_records",
+      "evidence_notes": "Temporary witness evidence from the ring-stereo monocycle helper using shared closure events, marker slots, and parity-equation projections, including the central stereo double bond as a ring-closure edge.",
       "expected_support": [
         "C1/C=C\\CCCCC1",
         "C(/C=C\\CCCC1)C1",
@@ -249,8 +249,8 @@
       "case_id": "markerless_disconnected_ring_and_atom",
       "feature_area": "disconnected_markerless_fragments",
       "source_smiles": "C1CCCCC1.O",
-      "support_authority": "independent_disconnected_composition_oracle",
-      "evidence_notes": "Checked by the independent disconnected-composition oracle from connected-fragment fixture supports under all_fragment_orders.",
+      "support_authority": "temporary_witness_disconnected_composition_shared_records",
+      "evidence_notes": "Temporary witness evidence from shared disconnected-fragment composition over connected-fragment fixture supports under all_fragment_orders.",
       "expected_support": [
         "C1CCCCC1.O",
         "C(CCCC1)C1.O",
@@ -268,8 +268,8 @@
       "case_id": "disconnected_stereo_fragment_and_atom",
       "feature_area": "disconnected_stereo_fragments",
       "source_smiles": "F/C=C\\Cl.O",
-      "support_authority": "independent_disconnected_composition_oracle",
-      "evidence_notes": "Checked by the independent disconnected-composition oracle from first-domain stereo-fragment support plus markerless atom support under all_fragment_orders.",
+      "support_authority": "temporary_witness_disconnected_composition_shared_records",
+      "evidence_notes": "Temporary witness evidence from shared disconnected-fragment composition over first-domain stereo-fragment support plus markerless atom support under all_fragment_orders.",
       "expected_support": [
         "F/C=C\\Cl.O",
         "C(\\F)=C\\Cl.O",
@@ -301,7 +301,7 @@
       "case_id": "explicit_bracket_hydrogen_h2",
       "feature_area": "explicit_bracket_hydrogen",
       "source_smiles": "[H][H]",
-      "support_authority": "graph_native_regression_with_semantic_parseback",
+      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
       "evidence_notes": "Pinned graph-native output for the first explicit bracket-hydrogen grammar slice: neutral, non-isotopic, non-radical explicit hydrogen atoms only.",
       "expected_support": [
         "[H][H]"
@@ -311,8 +311,8 @@
       "case_id": "implicit_h_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@H](F)Cl",
-      "support_authority": "independent_tetrahedral_atom_stereo_oracle",
-      "evidence_notes": "Checked by the independent star-shaped tetrahedral oracle: enumerate explicit ligand roots and center roots, derive @/@@ from emitted ligand order, and place the implicit hydrogen in the local ligand-order basis.",
+      "support_authority": "temporary_witness_tetrahedral_atom_stereo",
+      "evidence_notes": "Temporary witness evidence from the star-shaped tetrahedral helper: enumerate explicit ligand roots and center roots, derive @/@@ from emitted ligand order, and place the implicit hydrogen in the local ligand-order basis.",
       "expected_support": [
         "C[C@H](F)Cl",
         "C[C@@H](Cl)F",
@@ -332,8 +332,8 @@
       "case_id": "quaternary_tetrahedral_center",
       "feature_area": "tetrahedral_atom_stereo",
       "source_smiles": "C[C@](F)(Cl)Br",
-      "support_authority": "independent_tetrahedral_atom_stereo_oracle",
-      "evidence_notes": "Checked by the independent star-shaped tetrahedral oracle: enumerate explicit ligand roots and center roots, derive @/@@ from emitted ligand order, and cover all quaternary-center ligand permutations.",
+      "support_authority": "temporary_witness_tetrahedral_atom_stereo",
+      "evidence_notes": "Temporary witness evidence from the star-shaped tetrahedral helper: enumerate explicit ligand roots and center roots, derive @/@@ from emitted ligand order, and cover all quaternary-center ligand permutations.",
       "expected_support": [
         "C[C@](F)(Cl)Br",
         "C[C@@](F)(Br)Cl",

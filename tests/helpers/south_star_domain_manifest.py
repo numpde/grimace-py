@@ -5,21 +5,39 @@ from dataclasses import dataclass
 
 SOUTH_STAR_FIRST_DOMAIN_POLICY = "south_star_first_domain_maximal_eligible_carrier"
 SOUTH_STAR_EXPANDED_SUPPORT_POLICY = "south_star_expanded_domain_regression"
-SOUTH_STAR_FIRST_DOMAIN_ORACLE_AUTHORITY = "independent_first_domain_oracle"
-SOUTH_STAR_DISCONNECTED_COMPOSITION_ORACLE_AUTHORITY = (
-    "independent_disconnected_composition_oracle"
+SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY = (
+    "temporary_witness_first_domain_shared_spine"
+)
+SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY = (
+    "temporary_witness_disconnected_composition_shared_records"
 )
 SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY = (
-    "graph_native_regression_with_semantic_parseback"
+    "graph_native_regression_witness_with_semantic_parseback"
 )
-SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY = (
-    "independent_saturated_monocycle_oracle"
+SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY = (
+    "temporary_witness_saturated_monocycle_shared_records"
 )
-SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY = (
-    "independent_ring_stereo_monocycle_oracle"
+SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY = (
+    "temporary_witness_ring_stereo_monocycle_shared_records"
 )
-SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY = (
-    "independent_tetrahedral_atom_stereo_oracle"
+SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY = (
+    "temporary_witness_tetrahedral_atom_stereo"
+)
+
+SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset()
+SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
+    {
+        SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
+        SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY,
+        SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
+        SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY,
+        SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY,
+    }
+)
+SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
+    {
+        SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
+    }
 )
 
 
@@ -47,12 +65,9 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     ),
     support_authorities=frozenset(
         {
-            SOUTH_STAR_DISCONNECTED_COMPOSITION_ORACLE_AUTHORITY,
-            SOUTH_STAR_FIRST_DOMAIN_ORACLE_AUTHORITY,
-            SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
-            SOUTH_STAR_RING_STEREO_MONOCYCLE_ORACLE_AUTHORITY,
-            SOUTH_STAR_SATURATED_MONOCYCLE_ORACLE_AUTHORITY,
-            SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_ORACLE_AUTHORITY,
+            *SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES,
+            *SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+            *SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
         }
     ),
     expanded_feature_areas=frozenset(

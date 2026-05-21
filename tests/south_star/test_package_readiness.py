@@ -8,6 +8,8 @@ from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
+    SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+    SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
@@ -18,7 +20,8 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 @dataclass(frozen=True, slots=True)
 class SouthStarReadinessMatrix:
-    oracle_backed_case_ids: tuple[str, ...]
+    unified_reference_backed_case_ids: tuple[str, ...]
+    temporary_witness_case_ids: tuple[str, ...]
     regression_backed_case_ids: tuple[str, ...]
     supported_feature_areas: tuple[str, ...]
     unsupported_categories: tuple[str, ...]
@@ -60,9 +63,9 @@ SOUTH_STAR_PUBLIC_API_PROMOTION_GATES: tuple[SouthStarPublicApiPromotionGate, ..
         "tests.south_star.test_output_correctness_harness -q",
     ),
     SouthStarPublicApiPromotionGate(
-        gate_id="independent_support_completeness",
-        evidence="Every promoted supported domain has an independent "
-        "support-completeness oracle, not graph-native regression authority.",
+        gate_id="support_evidence_classification",
+        evidence="Every promoted supported domain classifies support evidence as "
+        "unified-reference-backed, temporary witness, or regression witness.",
         verification="PYTHONPATH=python:. python3 -m unittest "
         "tests.south_star.test_first_domain_completeness "
         "tests.south_star.test_expanded_support_fixtures -q",
@@ -115,7 +118,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "supported_domain_manifest",
                 "grammar_conformance",
                 "semantic_identity",
-                "independent_support_completeness",
+                "support_evidence_classification",
                 "unsupported_category_completeness",
                 "complexity_guardrails",
                 "documentation_contract",
@@ -135,7 +138,8 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
     def test_readiness_matrix_reports_evidence_classes(self) -> None:
         matrix = south_star_package_readiness_matrix()
 
-        self.assertIn("isolated_alkene_z", matrix.oracle_backed_case_ids)
+        self.assertEqual((), matrix.unified_reference_backed_case_ids)
+        self.assertIn("isolated_alkene_z", matrix.temporary_witness_case_ids)
         self.assertIn(
             "explicit_bracket_hydrogen_h2",
             matrix.regression_backed_case_ids,
@@ -172,10 +176,17 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
 def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
     first_domain_cases = load_south_star_exact_first_domain_cases()
     expanded_cases = load_south_star_expanded_support_cases()
-    oracle_backed_case_ids = tuple(case.case_id for case in first_domain_cases) + tuple(
+    unified_reference_backed_case_ids = tuple(
         case.case_id
         for case in expanded_cases
-        if case.support_authority != SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY
+        if case.support_authority in SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES
+    )
+    temporary_witness_case_ids = tuple(
+        case.case_id for case in first_domain_cases
+    ) + tuple(
+        case.case_id
+        for case in expanded_cases
+        if case.support_authority in SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES
     )
     regression_backed_case_ids = tuple(
         case.case_id
@@ -183,7 +194,8 @@ def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
         if case.support_authority == SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY
     )
     return SouthStarReadinessMatrix(
-        oracle_backed_case_ids=oracle_backed_case_ids,
+        unified_reference_backed_case_ids=unified_reference_backed_case_ids,
+        temporary_witness_case_ids=temporary_witness_case_ids,
         regression_backed_case_ids=regression_backed_case_ids,
         supported_feature_areas=tuple(
             sorted(SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas)

@@ -14,6 +14,9 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_EXPANDED_SUPPORT_POLICY,
     SOUTH_STAR_FIRST_DOMAIN_POLICY,
     SOUTH_STAR_PRIVATE_DOMAIN,
+    SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES,
+    SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+    SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
@@ -46,6 +49,22 @@ class SouthStarDomainManifestTests(unittest.TestCase):
                     case.support_authority,
                     SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
                 )
+
+    def test_manifest_classifies_support_evidence_authorities(self) -> None:
+        classified_authorities = (
+            SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES
+            | SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES
+            | SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES
+        )
+
+        self.assertEqual(
+            SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+            classified_authorities,
+        )
+        for authority in SOUTH_STAR_PRIVATE_DOMAIN.support_authorities:
+            with self.subTest(authority=authority):
+                self.assertNotIn("independent_", authority)
+                self.assertFalse(authority.endswith("_oracle"))
 
     def test_manifest_names_fragment_order_policy(self) -> None:
         self.assertIn(

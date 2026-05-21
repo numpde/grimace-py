@@ -191,8 +191,9 @@ Graph-native EnumS results expose private generation diagnostics:
 
 These diagnostics are engineering guardrails. They help detect accidental
 complexity shifts or hidden support-generation changes, but they are not
-semantic authority. Fixture support and independent oracles remain the
-correctness evidence.
+semantic authority. Fixture support is evidence against the shared South Star
+model. Temporary witness helpers remain useful, but they are not permanent
+sources of truth.
 
 Test-only complexity diagnostics may also record per-layer timings for fact
 extraction, generation, and conformance checks. Those timings are inspectable
@@ -219,16 +220,17 @@ PYTHONPATH=python:. python3 -m unittest tests.run_south_star_package_readiness -
 
 It aggregates the current pre-public `MolToSmilesEnumS` checks:
 
-- exact support equality where independent oracles exist;
+- exact support equality where temporary witness helpers exist;
 - graph/stereo parse-back checks for regression-backed fixture domains;
 - unsupported-feature gate checks;
 - policy-name diagnostics;
 - generation complexity guardrails.
 
-The harness also exposes a readiness matrix that separates oracle-backed cases
-from graph-native regression-backed cases. That distinction is part of the
-current maturity signal: regression-backed domains are usable as evidence, but
-not equivalent to independent completeness oracles.
+The harness also exposes a readiness matrix that separates
+unified-reference-backed cases, temporary witness-backed cases, and
+graph-native regression-backed cases. That distinction is part of the current
+maturity signal: temporary witnesses and regression fixtures are useful
+evidence, but neither is the final South Star source of truth.
 
 ## Conformance Evidence
 
@@ -255,16 +257,18 @@ definition of grammar membership or support completeness.
 Exact support evidence is split by domain:
 
 - `tests/fixtures/south_star_exact_first_domain/first_domain_v1.json` pins the
-  connected acyclic directional-marker first domain and is checked against an
-  independent test oracle;
+  connected acyclic directional-marker first domain and is checked against a
+  temporary witness helper that emits shared traversal/slot records;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated-monocycle, ring-stereo monocycle, and
-  disconnected-composition cases are checked against independent test oracles;
-  current star-shaped tetrahedral-center cases are checked against an
-  independent tetrahedral oracle. The ring-stereo oracle checks closure-event
-  marker slots, central-double-bond closure events, and parity equations by
-  slot id. Unsaturated nonstereo monocycles are still graph-native regression
-  support with RDKit parse-back graph/stereo equivalence as evidence.
+  disconnected-composition cases are checked against temporary witness helpers
+  that consume shared traversal, slot, and fragment-composition records;
+  current star-shaped tetrahedral-center cases are checked against a temporary
+  tetrahedral witness helper. The ring-stereo witness checks closure-event
+  marker slots, central-double-bond closure events, and parity-equation
+  projections by slot id. Unsaturated nonstereo monocycles are still
+  graph-native regression support with RDKit parse-back graph/stereo
+  equivalence as evidence.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
@@ -307,10 +311,10 @@ The gate has these required parts:
 | Gate | Required evidence |
 | --- | --- |
 | Private boundary | `MolToSmilesEnumS` is not exported from `grimace.__init__` until all other gates pass. |
-| Supported domain manifest | Supported feature areas, support authorities, policy names, and unsupported categories are declared in one manifest. |
+| Supported domain manifest | Supported feature areas, support-evidence classes, policy names, and unsupported categories are declared in one manifest. |
 | Grammar conformance | Every output is in the declared South Star grammar subset. |
 | Semantic identity | Every output parses back to the intended graph and stereo assignment under the named parser dependency. |
-| Independent support completeness | Every promoted supported domain has an independent support oracle. Graph-native regression-backed cases are not promotion evidence. |
+| Support evidence classification | Every promoted supported domain classifies support evidence as unified-reference-backed, temporary witness, or graph-native regression witness. Temporary witnesses are not final authority. |
 | Unsupported-category completeness | Every out-of-domain molecule class fails before enumeration with a named category. |
 | Complexity guardrails | Generation diagnostics expose fragment counts, traversal skeletons, marker slots, assignment counts, solved counts, and estimated products for representative cases. |
 | Documentation | Docs name the contract, policy set, supported domains, unsupported domains, parser dependency, and difference from RDKit writer parity. |
@@ -328,7 +332,7 @@ Before `MolToSmilesEnumS` can become a documented package API, the graph-native
 enumerator needs a broader molecule and syntax surface:
 
 - polycyclic ring traversal;
-- independent completeness oracles for unsaturated nonstereo ring traversal;
+- unified-model support for unsaturated nonstereo ring traversal;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current neutral explicit-hydrogen and
@@ -337,8 +341,7 @@ enumerator needs a broader molecule and syntax surface:
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;
-- independent completeness oracles beyond the first connected acyclic
-  directional-marker and saturated-monocycle domains;
+- shared-reference support evidence beyond the current temporary witness cases;
 - explicit fail-fast checks for every unsupported molecule class;
 - complexity diagnostics that expose component counts, local assignment counts,
   affected component counts, and estimated product size.

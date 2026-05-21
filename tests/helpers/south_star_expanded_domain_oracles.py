@@ -803,7 +803,7 @@ def _ring_stereo_traversal_orientation_flip(
             (context.center_atom_idx, context.double_neighbor_idx)
         )
         open_atom_idx = ring_stereo_closure_open_atom_by_edge.get(central_edge)
-        # The independent oracle models the same semantic phase rule as the
+        # The temporary witness models the same semantic phase rule as the
         # runtime: closing the stereo double bond flips one endpoint basis.
         if open_atom_idx == context.center_atom_idx:
             flip = not flip

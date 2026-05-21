@@ -6,6 +6,7 @@ from pathlib import Path
 
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_EXPANDED_SUPPORT_POLICY,
+    SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY,
     SOUTH_STAR_FIRST_DOMAIN_POLICY,
     SOUTH_STAR_PRIVATE_DOMAIN,
 )
@@ -49,6 +50,8 @@ def load_south_star_exact_first_domain_cases(
         raise ValueError(f"unsupported South Star exact-support schema: {raw!r}")
     if raw["policy"] != SOUTH_STAR_FIRST_DOMAIN_POLICY:
         raise ValueError(f"unsupported South Star first-domain policy: {raw!r}")
+    if raw["support_evidence"] != SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY:
+        raise ValueError(f"unsupported South Star first-domain evidence: {raw!r}")
     return tuple(
         SouthStarExactSupportCase(
             case_id=case["case_id"],

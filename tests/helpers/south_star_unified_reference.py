@@ -2,16 +2,49 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from grimace._south_star.atom_text import SouthStarAtomTextFields
+from grimace._south_star.atom_text import atom_text_modifier_obligations
 from grimace._south_star.atom_text import atom_text_obligation_for_supported_fields
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
+from grimace._south_star.molecule_facts import SouthStarBondTextFact
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarAtomTextRendererObligationSummary:
+    atom_idx: int
+    emitted_text: str
+    token_family: str
+    bracket_obligations: tuple[str, ...]
+    modifier_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarBondTextRendererObligationSummary:
+    bond_idx: int
+    edge: tuple[int, int]
+    bond_type: str
+    emitted_text: str
+    token_family: str
 
 
 @dataclass(frozen=True, slots=True)
 class SouthStarSingleAtomAtomTextSupport:
     emitted_text: str
+    atom_text_obligations: tuple[SouthStarAtomTextRendererObligationSummary, ...]
+    modifier_obligation_count: int
+    bracket_obligation_count: int
+    support: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarTwoAtomMarkerlessAtomTextSupportProof:
+    atom_text_obligations: tuple[SouthStarAtomTextRendererObligationSummary, ...]
+    bond_text_obligation: SouthStarBondTextRendererObligationSummary
+    modifier_obligation_count: int
+    bracket_obligation_count: int
     support: tuple[str, ...]
 
 
@@ -89,11 +122,13 @@ def single_atom_atom_text_support_from_facts(
             "single-atom atom-text unified reference requires one supported "
             "atom, zero bonds, one fragment, and no stereo constraints"
         )
-    [fields] = facts.atom_text_facts
-    emitted_text = atom_text_obligation_for_supported_fields(fields).emitted_text
+    [atom_obligation] = _atom_text_obligation_summaries(facts)
     return SouthStarSingleAtomAtomTextSupport(
-        emitted_text=emitted_text,
-        support=(emitted_text,),
+        emitted_text=atom_obligation.emitted_text,
+        atom_text_obligations=(atom_obligation,),
+        modifier_obligation_count=len(atom_obligation.modifier_names),
+        bracket_obligation_count=len(atom_obligation.bracket_obligations),
+        support=(atom_obligation.emitted_text,),
     )
 
 
@@ -116,23 +151,42 @@ def is_two_atom_markerless_atom_text_domain(facts: SouthStarMoleculeFacts) -> bo
 def two_atom_markerless_atom_text_support_from_facts(
     facts: SouthStarMoleculeFacts,
 ) -> tuple[str, ...]:
+    return two_atom_markerless_atom_text_support_proof_from_facts(facts).support
+
+
+def two_atom_markerless_atom_text_support_proof_from_facts(
+    facts: SouthStarMoleculeFacts,
+) -> SouthStarTwoAtomMarkerlessAtomTextSupportProof:
     if not is_two_atom_markerless_atom_text_domain(facts):
         raise NotImplementedError(
             "two-atom markerless atom-text unified reference requires two "
             "supported atoms, one bond, one fragment, and no stereo constraints"
         )
     [bond_fact] = facts.bond_text_facts
-    bond_text = _bond_text_from_fact(bond_fact.bond_type)
+    bond_obligation = _bond_text_obligation_from_fact(bond_fact)
+    atom_obligations = _atom_text_obligation_summaries(facts)
     atom_text_by_idx = {
-        fields.atom_idx: atom_text_obligation_for_supported_fields(fields).emitted_text
-        for fields in facts.atom_text_facts
+        obligation.atom_idx: obligation.emitted_text
+        for obligation in atom_obligations
     }
     begin_idx, end_idx = bond_fact.edge
     outputs = (
-        f"{atom_text_by_idx[begin_idx]}{bond_text}{atom_text_by_idx[end_idx]}",
-        f"{atom_text_by_idx[end_idx]}{bond_text}{atom_text_by_idx[begin_idx]}",
+        f"{atom_text_by_idx[begin_idx]}{bond_obligation.emitted_text}"
+        f"{atom_text_by_idx[end_idx]}",
+        f"{atom_text_by_idx[end_idx]}{bond_obligation.emitted_text}"
+        f"{atom_text_by_idx[begin_idx]}",
     )
-    return tuple(dict.fromkeys(outputs))
+    return SouthStarTwoAtomMarkerlessAtomTextSupportProof(
+        atom_text_obligations=atom_obligations,
+        bond_text_obligation=bond_obligation,
+        modifier_obligation_count=sum(
+            len(obligation.modifier_names) for obligation in atom_obligations
+        ),
+        bracket_obligation_count=sum(
+            len(obligation.bracket_obligations) for obligation in atom_obligations
+        ),
+        support=tuple(dict.fromkeys(outputs)),
+    )
 
 
 def is_markerless_acyclic_tree_domain(facts: SouthStarMoleculeFacts) -> bool:
@@ -362,11 +416,58 @@ def nonstereo_polycyclic_support_from_shared_spine(
     )
 
 
-def _bond_text_from_fact(bond_type: str) -> str:
-    if bond_type == "SINGLE":
-        return ""
-    if bond_type == "DOUBLE":
-        return "="
-    if bond_type == "TRIPLE":
-        return "#"
-    raise NotImplementedError(f"unsupported markerless bond type {bond_type!r}")
+def _atom_text_obligation_summaries(
+    facts: SouthStarMoleculeFacts,
+) -> tuple[SouthStarAtomTextRendererObligationSummary, ...]:
+    return tuple(
+        _atom_text_obligation_summary(fields)
+        for fields in facts.atom_text_facts
+    )
+
+
+def _atom_text_obligation_summary(
+    fields: SouthStarAtomTextFields,
+) -> SouthStarAtomTextRendererObligationSummary:
+    obligation = atom_text_obligation_for_supported_fields(fields)
+    return SouthStarAtomTextRendererObligationSummary(
+        atom_idx=obligation.atom_idx,
+        emitted_text=obligation.emitted_text,
+        token_family=obligation.token_family,
+        bracket_obligations=obligation.bracket_obligations,
+        modifier_names=tuple(
+            modifier.modifier_name
+            for modifier in atom_text_modifier_obligations(fields)
+        ),
+    )
+
+
+def _bond_text_obligation_from_fact(
+    fact: SouthStarBondTextFact,
+) -> SouthStarBondTextRendererObligationSummary:
+    if fact.bond_type == "SINGLE":
+        return SouthStarBondTextRendererObligationSummary(
+            bond_idx=fact.bond_idx,
+            edge=fact.edge,
+            bond_type=fact.bond_type,
+            emitted_text="",
+            token_family="elided_single_bond",
+        )
+    if fact.bond_type == "DOUBLE":
+        return SouthStarBondTextRendererObligationSummary(
+            bond_idx=fact.bond_idx,
+            edge=fact.edge,
+            bond_type=fact.bond_type,
+            emitted_text="=",
+            token_family="explicit_double_bond",
+        )
+    if fact.bond_type == "TRIPLE":
+        return SouthStarBondTextRendererObligationSummary(
+            bond_idx=fact.bond_idx,
+            edge=fact.edge,
+            bond_type=fact.bond_type,
+            emitted_text="#",
+            token_family="explicit_triple_bond",
+        )
+    raise NotImplementedError(
+        f"unsupported markerless bond type {fact.bond_type!r}"
+    )

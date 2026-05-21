@@ -22,6 +22,7 @@ from tests.helpers.south_star_unified_reference import (
     nonstereo_monocycle_support_from_shared_spine,
     single_atom_atom_text_support_from_facts,
     two_atom_markerless_atom_text_support_from_facts,
+    two_atom_markerless_atom_text_support_proof_from_facts,
 )
 
 
@@ -73,6 +74,17 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
 
                 support = single_atom_atom_text_support_from_facts(facts)
                 self.assertEqual(case.expected_support, support.support)
+                self.assertEqual(1, len(support.atom_text_obligations))
+                self.assertEqual(
+                    support.emitted_text,
+                    support.atom_text_obligations[0].emitted_text,
+                )
+                self.assertEqual(
+                    support.bracket_obligation_count,
+                    len(support.atom_text_obligations[0].bracket_obligations),
+                )
+                if case.feature_area in {"charged_atom_text", "radical_atom_text"}:
+                    self.assertGreaterEqual(support.modifier_obligation_count, 1)
 
                 result = mol_to_smiles_enum_s_graph_native(
                     case.source_smiles,
@@ -109,14 +121,26 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
             with self.subTest(case_id=case_id):
                 facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
                 self.assertTrue(is_two_atom_markerless_atom_text_domain(facts))
-                support = two_atom_markerless_atom_text_support_from_facts(facts)
-                self.assertEqual(case.expected_support, support)
+                support = two_atom_markerless_atom_text_support_proof_from_facts(facts)
+                self.assertEqual(case.expected_support, support.support)
+                self.assertEqual(2, len(support.atom_text_obligations))
+                self.assertEqual(
+                    "elided_single_bond",
+                    support.bond_text_obligation.token_family,
+                )
+                self.assertGreaterEqual(support.bracket_obligation_count, 1)
+                self.assertEqual(
+                    support.support,
+                    two_atom_markerless_atom_text_support_from_facts(facts),
+                )
+                if case_id == "charged_atom_text_methylammonium":
+                    self.assertGreaterEqual(support.modifier_obligation_count, 1)
 
                 result = mol_to_smiles_enum_s_graph_native(
                     case.source_smiles,
                     case_id=case.case_id,
                 )
-                self.assertEqual(support, result.outputs)
+                self.assertEqual(support.support, result.outputs)
                 self.assertEqual(
                     SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
                     case.support_authority,

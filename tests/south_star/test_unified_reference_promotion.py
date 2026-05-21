@@ -6,12 +6,15 @@ from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import load_south_star_expanded_support_cases
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_unified_reference import (
     is_single_atom_atom_text_domain,
+    is_two_atom_markerless_atom_text_domain,
     single_atom_atom_text_support_from_facts,
+    two_atom_markerless_atom_text_support_from_facts,
 )
 
 
@@ -66,6 +69,33 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                     case.support_authority,
                 )
 
+    def test_two_atom_markerless_atom_text_cases_have_facts_derived_support(
+        self,
+    ) -> None:
+        cases = {
+            case.case_id: case for case in load_south_star_expanded_support_cases()
+        }
+        for case_id in (
+            "explicit_bracket_hydrogen_h2",
+            "charged_atom_text_methylammonium",
+        ):
+            case = cases[case_id]
+            with self.subTest(case_id=case_id):
+                facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+                self.assertTrue(is_two_atom_markerless_atom_text_domain(facts))
+                support = two_atom_markerless_atom_text_support_from_facts(facts)
+                self.assertEqual(case.expected_support, support)
+
+                result = mol_to_smiles_enum_s_graph_native(
+                    case.source_smiles,
+                    case_id=case.case_id,
+                )
+                self.assertEqual(support, result.outputs)
+                self.assertEqual(
+                    SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+                    case.support_authority,
+                )
+
     def test_single_atom_atom_text_domain_rejects_wider_atom_text_cases(self) -> None:
         cases = {
             case.case_id: case for case in load_south_star_expanded_support_cases()
@@ -84,6 +114,18 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
                     case.support_authority,
                 )
+
+    def test_two_atom_markerless_atom_text_domain_rejects_stereo_case(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_expanded_support_cases()
+            if case.case_id == "implicit_h_tetrahedral_center"
+        )
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles(case.source_smiles))
+
+        self.assertFalse(is_two_atom_markerless_atom_text_domain(facts))
+        with self.assertRaisesRegex(NotImplementedError, "two-atom"):
+            two_atom_markerless_atom_text_support_from_facts(facts)
 
 
 if __name__ == "__main__":

@@ -207,11 +207,13 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
 
         self.assertEqual(
             (
+                "explicit_bracket_hydrogen_h2",
                 "radical_atom_text_hydrogen",
                 "radical_atom_text_methyl",
                 "radical_atom_text_oxygen",
                 "charged_atom_text_chloride",
                 "charged_atom_text_ammonium",
+                "charged_atom_text_methylammonium",
             ),
             matrix.unified_reference_backed_case_ids,
         )
@@ -228,13 +230,17 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             matrix.unified_reference_promotion_candidate_case_ids,
         )
         self.assertIn("isolated_alkene_z", matrix.temporary_witness_case_ids)
-        self.assertIn(
+        self.assertNotIn(
             "explicit_bracket_hydrogen_h2",
             matrix.regression_backed_case_ids,
         )
         self.assertIn("isolated_alkene_z", matrix.public_api_blocker_case_ids)
         self.assertNotIn(
             "radical_atom_text_methyl",
+            matrix.public_api_blocker_case_ids,
+        )
+        self.assertNotIn(
+            "charged_atom_text_methylammonium",
             matrix.public_api_blocker_case_ids,
         )
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)

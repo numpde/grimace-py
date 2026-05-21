@@ -655,8 +655,8 @@
       "case_id": "explicit_bracket_hydrogen_h2",
       "feature_area": "explicit_bracket_hydrogen",
       "source_smiles": "[H][H]",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for the first explicit bracket-hydrogen grammar slice: neutral, non-isotopic, non-radical explicit hydrogen atoms only.",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: two supported atoms, one single bond, two traversal roots, and support derived from SouthStarAtomTextFields plus bond-text facts.",
       "expected_support": [
         "[H][H]"
       ]
@@ -715,8 +715,8 @@
       "case_id": "charged_atom_text_methylammonium",
       "feature_area": "charged_atom_text",
       "source_smiles": "[NH3+]C",
-      "support_authority": "graph_native_regression_witness_with_semantic_parseback",
-      "evidence_notes": "Pinned graph-native output for a connected charged atom-text slice: formal charge and explicit-H count remain local atom-text obligations while root choice is handled by graph traversal.",
+      "support_authority": "unified_reference_two_atom_markerless_atom_text",
+      "evidence_notes": "Unified-reference two-atom markerless atom-text evidence: formal charge and explicit-H count remain local atom-text obligations while both traversal roots are rendered from atom-text and bond-text facts.",
       "expected_support": [
         "[NH3+]C",
         "C[NH3+]"

@@ -23,6 +23,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
+    SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
 from tests.helpers.south_star_exact_support import (
@@ -127,6 +128,14 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         )
         self.assertIn(
             SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+        )
+        self.assertIn(
+            SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
+        )
+        self.assertIn(
+            SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
             SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
         )
 

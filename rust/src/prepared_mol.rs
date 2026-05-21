@@ -65,7 +65,8 @@ fn required_usize(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<usize> {
             "PreparedMol field {key:?} must be an integer"
         )));
     }
-    value.extract()
+    value
+        .extract()
         .map_err(|_| PyValueError::new_err(format!("PreparedMol field {key:?} must be an integer")))
 }
 
@@ -237,7 +238,7 @@ impl PreparedMolData {
             all_hs_explicit: reader.read_bool()?,
             ignore_atom_map_numbers: reader.read_bool()?,
         };
-        let fragment_count = reader.read_usize()?;
+        let fragment_count = reader.read_len(8)?;
         let mut fragments = Vec::with_capacity(fragment_count);
         for _ in 0..fragment_count {
             let atom_indices = reader.read_vec_usize()?;
@@ -443,6 +444,20 @@ impl<'a> BinaryReader<'a> {
         Ok(out)
     }
 
+    fn remaining(&self) -> usize {
+        self.data.len() - self.offset
+    }
+
+    fn read_len(&mut self, min_item_bytes: usize) -> PyResult<usize> {
+        let len = self.read_usize()?;
+        if len > self.remaining() / min_item_bytes {
+            return Err(PyValueError::new_err(
+                "Malformed PreparedMol binary length is out of range",
+            ));
+        }
+        Ok(len)
+    }
+
     fn finish(&self) -> PyResult<()> {
         if self.offset != self.data.len() {
             return Err(PyValueError::new_err(
@@ -511,7 +526,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_string(&mut self) -> PyResult<String> {
-        let len = self.read_usize()?;
+        let len = self.read_len(1)?;
         let bytes = self.read_exact(len)?;
         std::str::from_utf8(bytes)
             .map(str::to_owned)
@@ -519,7 +534,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_bool(&mut self) -> PyResult<Vec<bool>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(1)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push(self.read_bool()?);
@@ -528,7 +543,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_i32(&mut self) -> PyResult<Vec<i32>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(4)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push(self.read_i32()?);
@@ -537,7 +552,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_usize(&mut self) -> PyResult<Vec<usize>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(8)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push(self.read_usize()?);
@@ -546,7 +561,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_string(&mut self) -> PyResult<Vec<String>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(8)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push(self.read_string()?);
@@ -555,7 +570,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_vec_usize(&mut self) -> PyResult<Vec<Vec<usize>>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(8)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push(self.read_vec_usize()?);
@@ -564,7 +579,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_vec_string(&mut self) -> PyResult<Vec<Vec<String>>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(8)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push(self.read_vec_string()?);
@@ -573,7 +588,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_usize_pairs(&mut self) -> PyResult<Vec<(usize, usize)>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(16)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push((self.read_usize()?, self.read_usize()?));
@@ -582,7 +597,7 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn read_vec_isize_pairs(&mut self) -> PyResult<Vec<(isize, isize)>> {
-        let len = self.read_usize()?;
+        let len = self.read_len(16)?;
         let mut out = Vec::with_capacity(len);
         for _ in 0..len {
             out.push((self.read_isize()?, self.read_isize()?));
@@ -709,12 +724,11 @@ impl PyPreparedMol {
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedMolData, PreparedMolFragmentData, PreparedMolWriterFlags,
+        BinaryReader, PreparedMolData, PreparedMolFragmentData, PreparedMolWriterFlags,
         PREPARED_MOL_SCHEMA_VERSION,
     };
     use crate::prepared_graph::{
-        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE,
-        PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+        PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
 
     fn writer_flags() -> PreparedMolWriterFlags {
@@ -775,9 +789,7 @@ mod tests {
         }
     }
 
-    fn prepared_mol_with_fragments(
-        fragments: Vec<PreparedMolFragmentData>,
-    ) -> PreparedMolData {
+    fn prepared_mol_with_fragments(fragments: Vec<PreparedMolFragmentData>) -> PreparedMolData {
         PreparedMolData {
             schema_version: PREPARED_MOL_SCHEMA_VERSION,
             writer_flags: writer_flags(),
@@ -858,5 +870,13 @@ mod tests {
         let mut bad_magic = encoded;
         bad_magic[0] = b'X';
         assert!(PreparedMolData::from_binary(&bad_magic).is_err());
+    }
+
+    #[test]
+    fn binary_reader_rejects_length_larger_than_remaining_payload() {
+        let data = u64::MAX.to_le_bytes();
+
+        assert!(BinaryReader::new(&data).read_string().is_err());
+        assert!(BinaryReader::new(&data).read_vec_usize().is_err());
     }
 }

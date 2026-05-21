@@ -251,6 +251,13 @@ class PreparedMolContractTests(unittest.TestCase):
         valid_payload = bytearray(self._prepare("CCO", isomericSmiles=False).to_bytes())
         bad_version = bytearray(valid_payload)
         bad_version[len(b"GRIMACEPM\0")] = 99
+        oversized_fragment_count = (
+            b"GRIMACEPM\0"
+            + (1).to_bytes(4, "little")
+            + (1).to_bytes(8, "little")
+            + b"\0\0\0\0\0"
+            + ((1 << 64) - 1).to_bytes(8, "little")
+        )
 
         for payload in (
             b"",
@@ -258,6 +265,7 @@ class PreparedMolContractTests(unittest.TestCase):
             bytes(valid_payload[:-1]),
             bytes(valid_payload) + b"\0",
             bytes(bad_version),
+            oversized_fragment_count,
         ):
             with self.subTest(payload=payload):
                 with self.assertRaises(ValueError):

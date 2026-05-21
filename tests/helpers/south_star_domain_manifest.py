@@ -51,12 +51,16 @@ SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_directional_component_product"
 )
+SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_directional_tetrahedral_composition"
+)
 
 SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
     {
         SOUTH_STAR_FIRST_DOMAIN_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
@@ -92,6 +96,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "charged_atom_text",
         "disconnected_markerless_fragments",
         "disconnected_stereo_fragments",
+        "directional_tetrahedral_composition",
         "explicit_bracket_hydrogen",
         "atom_map_text",
         "isotope_atom_text",
@@ -146,6 +151,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "branched_saturated_monocycle",
             "disconnected_markerless_fragments",
             "disconnected_stereo_fragments",
+            "directional_tetrahedral_composition",
             "ring_stereo_monocycle",
             "nonstereo_polycyclic_skeleton",
             "polycyclic_ring_stereo",

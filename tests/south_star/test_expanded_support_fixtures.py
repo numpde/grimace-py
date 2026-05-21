@@ -9,6 +9,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
@@ -21,6 +22,7 @@ from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
+    directional_tetrahedral_composition_proof_for_case,
     disconnected_composition_algebra_proof_for_case,
     independent_directional_component_product_proof_for_case,
     ring_core_proof_records_for_case,
@@ -463,6 +465,41 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertEqual(result.marker_slot_count, result.equation_count)
                 self.assertEqual(result.traversal_count, result.solver_assignment_count)
                 self.assertGreater(result.marker_slot_count, result.traversal_count)
+                self.assertEqual(result.raw_output_count, result.output_count)
+                self.assertEqual(len(case.expected_support), result.output_count)
+
+    def test_directional_tetrahedral_composition_proof_matches_fixtures(
+        self,
+    ) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            result = directional_tetrahedral_composition_proof_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertFalse(result.expected_support_strings_used)
+                self.assertGreater(len(result.directional_component_ids), 0)
+                self.assertGreater(len(result.tetrahedral_center_atom_indices), 0)
+                self.assertEqual(2, result.component_assignment_product_size)
+                self.assertTrue(result.all_traversals_have_directional_obligations)
+                self.assertTrue(result.all_traversals_have_tetrahedral_obligations)
+                self.assertTrue(result.all_solver_assignments_match_traversal)
+                self.assertTrue(result.all_tetrahedral_tokens_preserve_orientation)
+                self.assertTrue(result.all_tetrahedral_renderer_inputs_match_proof)
+                self.assertEqual(result.marker_slot_count, result.equation_count)
+                self.assertEqual(result.traversal_count, result.solver_assignment_count)
+                self.assertEqual(
+                    result.renderer_input_count,
+                    result.tetrahedral_proof_input_count,
+                )
+                self.assertEqual(
+                    result.renderer_input_count,
+                    result.tetrahedral_diagnostic_count,
+                )
                 self.assertEqual(result.raw_output_count, result.output_count)
                 self.assertEqual(len(case.expected_support), result.output_count)
 

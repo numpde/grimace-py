@@ -111,6 +111,29 @@ class SouthStarIndependentDirectionalComponentProductProof:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarDirectionalTetrahedralCompositionProof:
+    outputs: tuple[str, ...]
+    directional_component_ids: tuple[str, ...]
+    tetrahedral_center_atom_indices: tuple[int, ...]
+    component_assignment_product_size: int
+    traversal_count: int
+    marker_slot_count: int
+    equation_count: int
+    solver_assignment_count: int
+    renderer_input_count: int
+    tetrahedral_proof_input_count: int
+    tetrahedral_diagnostic_count: int
+    raw_output_count: int
+    output_count: int
+    all_traversals_have_directional_obligations: bool
+    all_traversals_have_tetrahedral_obligations: bool
+    all_solver_assignments_match_traversal: bool
+    all_tetrahedral_tokens_preserve_orientation: bool
+    all_tetrahedral_renderer_inputs_match_proof: bool
+    expected_support_strings_used: bool
+
+
+@dataclass(frozen=True, slots=True)
 class TemporarySouthStarDisconnectedCompositionWitnessEvidence:
     outputs: tuple[str, ...]
     fragment_count: int
@@ -646,6 +669,132 @@ def _components_have_disjoint_carriers(
                 return False
             seen.add(edge)
     return True
+
+
+def directional_tetrahedral_composition_proof_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarDirectionalTetrahedralCompositionProof:
+    """Explain mixed directional/tetrahedral support through one event spine."""
+
+    mol = parse_smiles(case.source_smiles)
+    facts = SouthStarMoleculeFacts.from_mol(mol)
+    if (
+        not facts.graph_topology.connected
+        or not facts.graph_topology.acyclic_connected_tree
+    ):
+        raise NotImplementedError(
+            "directional/tetrahedral proof requires one acyclic component"
+        )
+    state = SouthStarComponentSupportState.from_molecule_facts(facts)
+    tetrahedral_facts = extract_tetrahedral_center_facts(mol)
+    if not state.components:
+        raise NotImplementedError("directional/tetrahedral proof requires markers")
+    if not tetrahedral_facts:
+        raise NotImplementedError(
+            "directional/tetrahedral proof requires tetrahedral centers"
+        )
+
+    facts_by_atom = {fact.center_atom_idx: fact for fact in tetrahedral_facts}
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    equation_groups = tuple(
+        marker_slot_parity_equations_for_traversal(state, traversal)
+        for traversal in traversals
+    )
+    solver_results = tuple(
+        solve_marker_slot_parity_equations(equations)
+        for equations in equation_groups
+    )
+    tetrahedral_proof_inputs = tuple(
+        _tetrahedral_proof_input_for_atom_event(
+            traversal.connected_graph_plan,
+            center_atom_idx=event.atom_idx,
+            facts_by_atom=facts_by_atom,
+        )
+        for traversal in traversals
+        for event in traversal.events
+        if event.kind == "atom"
+        and event.atom_idx in facts_by_atom
+        and event.atom_idx is not None
+    )
+    tetrahedral_diagnostics = tuple(
+        _tetrahedral_token_diagnostic_for_atom_event(
+            traversal.connected_graph_plan,
+            center_atom_idx=event.atom_idx,
+            emitted_token=_tetrahedral_token_from_atom_text(event.text),
+            facts_by_atom=facts_by_atom,
+        )
+        for traversal in traversals
+        for event in traversal.events
+        if event.kind == "atom"
+        and event.atom_idx in facts_by_atom
+        and event.atom_idx is not None
+    )
+    raw_outputs = tuple(
+        render_south_star_tree_traversal(traversal) for traversal in traversals
+    )
+    outputs = tuple(dict.fromkeys(raw_outputs))
+    component_assignment_product_size = reduce(
+        mul,
+        (len(assignments) for assignments in state.component_marker_assignments()),
+        1,
+    )
+
+    return SouthStarDirectionalTetrahedralCompositionProof(
+        outputs=outputs,
+        directional_component_ids=tuple(
+            component.component_id for component in state.components
+        ),
+        tetrahedral_center_atom_indices=tuple(
+            fact.center_atom_idx for fact in tetrahedral_facts
+        ),
+        component_assignment_product_size=component_assignment_product_size,
+        traversal_count=len(traversals),
+        marker_slot_count=sum(len(equations) for equations in equation_groups),
+        equation_count=sum(len(equations) for equations in equation_groups),
+        solver_assignment_count=sum(
+            len(result.assignments) for result in solver_results
+        ),
+        renderer_input_count=sum(
+            1
+            for traversal in traversals
+            for event in traversal.events
+            if event.renderer_input is not None
+        ),
+        tetrahedral_proof_input_count=len(tetrahedral_proof_inputs),
+        tetrahedral_diagnostic_count=len(tetrahedral_diagnostics),
+        raw_output_count=len(raw_outputs),
+        output_count=len(outputs),
+        all_traversals_have_directional_obligations=all(
+            any(event.marker_slot is not None for event in traversal.events)
+            for traversal in traversals
+        ),
+        all_traversals_have_tetrahedral_obligations=all(
+            any(
+                event.renderer_input is not None
+                and event.atom_idx in facts_by_atom
+                for event in traversal.events
+            )
+            for traversal in traversals
+        ),
+        all_solver_assignments_match_traversal=all(
+            tuple(sorted(result.assignments[0].marker_by_slot))
+            == tuple(
+                sorted(
+                    (assignment.slot_id, assignment.marker)
+                    for assignment in traversal.marker_assignments
+                )
+            )
+            for traversal, result in zip(traversals, solver_results, strict=True)
+        ),
+        all_tetrahedral_tokens_preserve_orientation=all(
+            diagnostic.preserves_orientation for diagnostic in tetrahedral_diagnostics
+        ),
+        all_tetrahedral_renderer_inputs_match_proof=all(
+            proof_input.expected_token == proof_input.renderer_input.value
+            for proof_input in tetrahedral_proof_inputs
+        ),
+        expected_support_strings_used=False,
+    )
 
 
 def _assert_ring_stereo_monocycle_domain(mol: Chem.Mol) -> None:

@@ -73,7 +73,7 @@ class SouthStarAdversarialCorpusTests(unittest.TestCase):
         }
 
         self.assertIn("unsupported_bond_type", observed_categories)
-        self.assertIn("unsupported_atom_charge", observed_categories)
+        self.assertIn("unsupported_radical_atom", observed_categories)
         self.assertIn("aromatic_ring_surface", observed_categories)
 
 

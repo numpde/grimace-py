@@ -161,18 +161,24 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertUnsupportedCategory("unsupported_atom_text", report.categories)
 
-    def test_unsupported_bracket_atom_modifiers_are_fail_fast_unsupported(self) -> None:
+    def test_renderer_capable_bracket_atom_modifiers_are_inside_gate_scope(
+        self,
+    ) -> None:
         cases = (
-            ("[2H][H]", "unsupported_atom_isotope"),
-            ("[H+]", "unsupported_atom_charge"),
-            ("[H]", "unsupported_radical_atom"),
-            ("[CH3:1]C", "unsupported_atom_map"),
+            "[2H][H]",
+            "[H+]",
+            "[CH3:1]C",
         )
 
-        for smiles, category in cases:
+        for smiles in cases:
             with self.subTest(smiles=smiles):
                 report = south_star_support_gate_report(parse_smiles(smiles))
-                self.assertUnsupportedCategory(category, report.categories)
+                self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_radical_bracket_atom_modifier_is_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("[H]"))
+
+        self.assertUnsupportedCategory("unsupported_radical_atom", report.categories)
 
     def test_unsupported_bond_types_are_fail_fast_unsupported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C#N"))

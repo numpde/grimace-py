@@ -36,6 +36,10 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "C[C@H](F)Cl",
             "[C@@H](C)(F)Cl",
             "[H][H]",
+            "[2H][H]",
+            "[H+]",
+            "[CH3:1]C",
+            "[NH4+]",
             "O.F/C=C\\Cl",
         ):
             with self.subTest(smiles=smiles):
@@ -45,7 +49,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
         cases = (
             ("C1CC", "unpaired_ring_label"),
             ("C..O", "dot_context"),
-            ("[NH4+]", "unsupported_token"),
+            ("[SiH4]", "unsupported_token"),
             ("C//C", "consecutive_bonds"),
         )
 

@@ -7,6 +7,7 @@ from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import atom_text_modifier_obligations
 from grimace._south_star.atom_text import atom_text_for_supported_atom
 from grimace._south_star.atom_text import atom_text_obligation_for_supported_atom
+from grimace._south_star.atom_text import is_south_star_bracket_atom_text_token
 from grimace._south_star.atom_text import south_star_atom_text_fields
 from grimace._south_star.atom_text import tetrahedral_atom_text_obligation
 from grimace._south_star.atom_text import unsupported_atom_text_reasons
@@ -32,7 +33,10 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         self.assertEqual("[H]", atom_text_for_supported_atom(mol.GetAtomWithIdx(0)))
         self.assertEqual("[H]", obligation.emitted_text)
         self.assertEqual("bracket_atom", obligation.token_family)
-        self.assertEqual(("element_requires_bracket",), obligation.bracket_obligations)
+        self.assertEqual(
+            ("bracket_atom", "element_requires_bracket"),
+            obligation.bracket_obligations,
+        )
         self.assertTrue(obligation.uses_brackets)
 
     def test_organic_subset_renderer_has_no_bracket_obligation(self) -> None:
@@ -60,35 +64,31 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         )
         self.assertTrue(obligation.uses_brackets)
 
-    def test_policy_names_deferred_bracket_modifiers(self) -> None:
+    def test_policy_names_renderer_capable_bracket_modifiers(self) -> None:
         cases = (
             (
                 "[2H][H]",
                 "isotope",
                 "isotope",
                 2,
-                "unsupported_atom_isotope",
+                None,
+                "bracket_atom_isotope_prefix",
             ),
             (
                 "[H+]",
                 "charge",
                 "formal_charge",
                 1,
-                "unsupported_atom_charge",
-            ),
-            (
-                "[H]",
-                "radical",
-                "radical_electron_count",
-                1,
-                "unsupported_radical_atom",
+                None,
+                "bracket_atom_charge_suffix",
             ),
             (
                 "[CH3:1]C",
                 "atom_map",
                 "atom_map_number",
                 1,
-                "unsupported_atom_map",
+                None,
+                "bracket_atom_map_suffix",
             ),
         )
 
@@ -98,6 +98,7 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
             expected_field,
             expected_value,
             expected_category,
+            expected_renderer_requirement,
         ) in cases:
             mol = parse_smiles(smiles)
             fields = south_star_atom_text_fields(mol.GetAtomWithIdx(0))
@@ -116,14 +117,52 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 self.assertEqual(expected_value, obligation.value)
                 self.assertEqual(expected_category, obligation.unsupported_category)
                 self.assertEqual(
-                    "bracket_atom_modifier_renderer",
+                    expected_renderer_requirement,
                     obligation.renderer_requirement,
                 )
-                self.assertEqual(
-                    expected_category,
-                    obligation.unsupported_reason.category,
-                )
-                self.assertIn(expected_category, categories)
+                self.assertNotIn(expected_category, categories)
+
+    def test_radical_modifier_remains_named_unsupported_sub_boundary(self) -> None:
+        fields = south_star_atom_text_fields(parse_smiles("[H]").GetAtomWithIdx(0))
+        obligations = atom_text_modifier_obligations(fields)
+        categories = {
+            reason.category for reason in unsupported_atom_text_reasons(fields)
+        }
+
+        self.assertEqual(1, len(obligations))
+        obligation = obligations[0]
+        self.assertEqual("radical", obligation.modifier_name)
+        self.assertEqual("unsupported_radical_atom", obligation.unsupported_category)
+        self.assertEqual(
+            "radical_valence_bracket_semantics",
+            obligation.renderer_requirement,
+        )
+        self.assertEqual(
+            "unsupported_radical_atom",
+            obligation.unsupported_reason.category,
+        )
+        self.assertIn("unsupported_radical_atom", categories)
+
+    def test_bracket_modifier_renderer_uses_structured_fields(self) -> None:
+        cases = (
+            ("[2H][H]", "[2H]", ("bracket_atom", "isotope_prefix")),
+            ("[H+]", "[H+]", ("bracket_atom", "charge_suffix")),
+            (
+                "[CH3:1]C",
+                "[CH3:1]",
+                ("bracket_atom", "explicit_hydrogen_count", "atom_map_suffix"),
+            ),
+        )
+
+        for smiles, expected_text, expected_obligations in cases:
+            atom = parse_smiles(smiles).GetAtomWithIdx(0)
+            obligation = atom_text_obligation_for_supported_atom(atom)
+
+            with self.subTest(smiles=smiles):
+                self.assertEqual(expected_text, obligation.emitted_text)
+                self.assertEqual(expected_obligations, obligation.bracket_obligations)
+                self.assertTrue(obligation.uses_brackets)
+                self.assertTrue(is_south_star_bracket_atom_text_token(expected_text))
 
     def test_supported_atom_text_has_no_modifier_obligation(self) -> None:
         mol = parse_smiles("CC")
@@ -132,19 +171,8 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         self.assertEqual((), atom_text_modifier_obligations(fields))
 
     def test_modifier_obligations_do_not_enable_renderer_support(self) -> None:
-        cases = (
-            ("[2H][H]", "unsupported_atom_isotope"),
-            ("[H+]", "unsupported_atom_charge"),
-            ("[H]", "unsupported_radical_atom"),
-            ("[CH3:1]C", "unsupported_atom_map"),
-        )
-
-        for smiles, expected_category in cases:
-            mol = parse_smiles(smiles)
-
-            with self.subTest(smiles=smiles):
-                with self.assertRaisesRegex(NotImplementedError, expected_category):
-                    atom_text_obligation_for_supported_atom(mol.GetAtomWithIdx(0))
+        with self.assertRaisesRegex(NotImplementedError, "unsupported_radical_atom"):
+            atom_text_obligation_for_supported_atom(parse_smiles("[H]").GetAtomWithIdx(0))
 
 
 if __name__ == "__main__":

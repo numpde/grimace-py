@@ -8,13 +8,19 @@ from rdkit import Chem
 SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
 )
+# Representative bracket-atom examples. The accepted bracket-token language is
+# the predicate below, because isotope, charge, hydrogen, and map values are
+# field-derived rather than a finite token list.
 SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {
         "[H]",
+        "[2H]",
+        "[H+]",
         "[C@H]",
         "[C@@H]",
         "[C@]",
         "[C@@]",
+        "[CH3:1]",
     }
 )
 SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
@@ -48,7 +54,7 @@ class SouthStarAtomTextModifierObligation:
     modifier_name: str
     field_name: str
     value: int
-    unsupported_category: str
+    unsupported_category: str | None
     renderer_requirement: str
     reason: str
 
@@ -66,6 +72,10 @@ class SouthStarAtomTextModifierObligation:
 
     @property
     def unsupported_reason(self) -> SouthStarAtomTextUnsupportedReason:
+        if self.unsupported_category is None:
+            raise ValueError(
+                "renderer-capable atom-text modifier has no unsupported reason"
+            )
         return SouthStarAtomTextUnsupportedReason(
             category=self.unsupported_category,
             reason=self.reason,
@@ -89,7 +99,8 @@ class SouthStarAtomTextObligation:
 class _AtomTextModifierObligationSpec:
     modifier_name: str
     field_name: str
-    unsupported_category: str
+    unsupported_category: str | None
+    renderer_requirement: str
     reason: str
 
 
@@ -97,37 +108,38 @@ _ATOM_TEXT_MODIFIER_OBLIGATION_SPECS = (
     _AtomTextModifierObligationSpec(
         modifier_name="isotope",
         field_name="isotope",
-        unsupported_category="unsupported_atom_isotope",
+        unsupported_category=None,
+        renderer_requirement="bracket_atom_isotope_prefix",
         reason=(
-            "isotopic atom text is outside the current South Star "
-            "bracket-atom grammar contract"
+            "isotopic atom text is rendered as a bracket-atom isotope prefix"
         ),
     ),
     _AtomTextModifierObligationSpec(
         modifier_name="charge",
         field_name="formal_charge",
-        unsupported_category="unsupported_atom_charge",
+        unsupported_category=None,
+        renderer_requirement="bracket_atom_charge_suffix",
         reason=(
-            "charged atom text is outside the current South Star "
-            "bracket-atom grammar contract"
+            "charged atom text is rendered as a bracket-atom charge suffix"
         ),
     ),
     _AtomTextModifierObligationSpec(
         modifier_name="radical",
         field_name="radical_electron_count",
         unsupported_category="unsupported_radical_atom",
+        renderer_requirement="radical_valence_bracket_semantics",
         reason=(
-            "radical atom text is outside the current South Star "
-            "bracket-atom grammar contract"
+            "radical atom text requires an element/valence-specific bracket "
+            "semantics policy"
         ),
     ),
     _AtomTextModifierObligationSpec(
         modifier_name="atom_map",
         field_name="atom_map_number",
-        unsupported_category="unsupported_atom_map",
+        unsupported_category=None,
+        renderer_requirement="bracket_atom_map_suffix",
         reason=(
-            "atom-map text is outside the current South Star "
-            "bracket-atom grammar contract"
+            "atom-map text is rendered as a bracket-atom map suffix"
         ),
     ),
 )
@@ -154,6 +166,7 @@ def unsupported_atom_text_reasons(
     reasons = [
         obligation.unsupported_reason
         for obligation in atom_text_modifier_obligations(fields)
+        if obligation.unsupported_category is not None
     ]
     if fields.symbol not in SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS:
         reasons.append(
@@ -183,7 +196,7 @@ def atom_text_modifier_obligations(
                 field_name=spec.field_name,
                 value=value,
                 unsupported_category=spec.unsupported_category,
-                renderer_requirement="bracket_atom_modifier_renderer",
+                renderer_requirement=spec.renderer_requirement,
                 reason=spec.reason,
             )
         )
@@ -205,6 +218,8 @@ def atom_text_obligation_for_supported_atom(
         raise NotImplementedError(
             "South Star atom text rendering requires a non-aromatic atom"
         )
+    if _requires_bracket_atom_text(fields):
+        return _bracket_atom_text_obligation(fields)
     if fields.symbol == "H":
         return SouthStarAtomTextObligation(
             atom_idx=fields.atom_idx,
@@ -222,6 +237,125 @@ def atom_text_obligation_for_supported_atom(
             bracket_obligations=(),
         )
     raise AssertionError(f"unhandled South Star atom text symbol {fields.symbol!r}")
+
+
+def is_south_star_bracket_atom_text_token(token: str) -> bool:
+    if not (token.startswith("[") and token.endswith("]")):
+        return False
+    body = token[1:-1]
+    if not body:
+        return False
+    rest = body
+    while rest and rest[0].isdigit():
+        rest = rest[1:]
+
+    symbol = ""
+    for candidate in sorted(SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS, key=len, reverse=True):
+        if rest.startswith(candidate):
+            symbol = candidate
+            rest = rest[len(candidate) :]
+            break
+    if not symbol:
+        return False
+
+    if rest.startswith("@@"):
+        rest = rest[2:]
+    elif rest.startswith("@"):
+        rest = rest[1:]
+
+    if rest.startswith("H"):
+        rest = rest[1:]
+        while rest and rest[0].isdigit():
+            rest = rest[1:]
+
+    if rest.startswith("+") or rest.startswith("-"):
+        rest = rest[1:]
+        while rest and rest[0].isdigit():
+            rest = rest[1:]
+
+    if rest.startswith(":"):
+        rest = rest[1:]
+        if not rest or not rest.isdigit():
+            return False
+        rest = ""
+
+    return rest == ""
+
+
+def _requires_bracket_atom_text(fields: SouthStarAtomTextFields) -> bool:
+    return (
+        fields.symbol == "H"
+        or fields.isotope != 0
+        or fields.formal_charge != 0
+        or fields.atom_map_number != 0
+        or fields.explicit_hydrogen_count != 0
+    )
+
+
+def _bracket_atom_text_obligation(
+    fields: SouthStarAtomTextFields,
+) -> SouthStarAtomTextObligation:
+    obligations: list[str] = ["bracket_atom"]
+    if fields.symbol == "H" and (
+        fields.isotope == 0
+        and fields.formal_charge == 0
+        and fields.atom_map_number == 0
+        and fields.explicit_hydrogen_count == 0
+    ):
+        obligations.append("element_requires_bracket")
+
+    text = (
+        "["
+        f"{_isotope_text(fields)}"
+        f"{fields.symbol}"
+        f"{_hydrogen_text(fields)}"
+        f"{_charge_text(fields.formal_charge)}"
+        f"{_atom_map_text(fields.atom_map_number)}"
+        "]"
+    )
+    if fields.isotope != 0:
+        obligations.append("isotope_prefix")
+    if fields.explicit_hydrogen_count != 0:
+        obligations.append("explicit_hydrogen_count")
+    if fields.formal_charge != 0:
+        obligations.append("charge_suffix")
+    if fields.atom_map_number != 0:
+        obligations.append("atom_map_suffix")
+    if not is_south_star_bracket_atom_text_token(text):
+        raise AssertionError(f"rendered unsupported South Star atom text {text!r}")
+    return SouthStarAtomTextObligation(
+        atom_idx=fields.atom_idx,
+        fields=fields,
+        emitted_text=text,
+        token_family="bracket_atom",
+        bracket_obligations=tuple(obligations),
+    )
+
+
+def _isotope_text(fields: SouthStarAtomTextFields) -> str:
+    return "" if fields.isotope == 0 else str(fields.isotope)
+
+
+def _hydrogen_text(fields: SouthStarAtomTextFields) -> str:
+    if fields.explicit_hydrogen_count == 0:
+        return ""
+    if fields.explicit_hydrogen_count == 1:
+        return "H"
+    return f"H{fields.explicit_hydrogen_count}"
+
+
+def _charge_text(charge: int) -> str:
+    if charge == 0:
+        return ""
+    sign = "+" if charge > 0 else "-"
+    magnitude = abs(charge)
+    return sign if magnitude == 1 else f"{sign}{magnitude}"
+
+
+def _atom_map_text(atom_map_number: int) -> str:
+    if atom_map_number == 0:
+        return ""
+    return f":{atom_map_number}"
 
 
 def tetrahedral_atom_text_obligation(

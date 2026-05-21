@@ -98,6 +98,28 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
             result.output_order_policy,
         )
 
+    def test_graph_native_renders_bracket_atom_modifiers_from_atom_text_fields(
+        self,
+    ) -> None:
+        cases = (
+            ("[2H][H]", ("[2H][H]", "[H][2H]")),
+            ("[H+]", ("[H+]",)),
+            ("[CH3:1]C", ("[CH3:1]C", "C[CH3:1]")),
+            ("[NH4+]", ("[NH4+]",)),
+        )
+
+        for smiles, expected_outputs in cases:
+            result = mol_to_smiles_enum_s_graph_native(smiles)
+
+            with self.subTest(smiles=smiles):
+                self.assertEqual(expected_outputs, result.outputs)
+                for output in result.outputs:
+                    self.assertEqual(graph_signature(smiles), graph_signature(output))
+                    self.assertEqual(
+                        semantic_signature(smiles),
+                        semantic_signature(output),
+                    )
+
     def test_graph_native_result_pins_first_domain_generation_diagnostics(self) -> None:
         case = next(
             case

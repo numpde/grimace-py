@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
+from grimace._south_star.atom_text import is_south_star_bracket_atom_text_token
 
 
 SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS = "south_star_declared_subset_grammar_v1"
@@ -13,8 +13,6 @@ _TWO_CHAR_ATOM_TOKENS: frozenset[str] = frozenset(
 )
 _BOND_TOKENS: frozenset[str] = frozenset({"=", "/", "\\"})
 _RING_LABEL_TOKENS: frozenset[str] = frozenset("123456789")
-_BRACKET_ATOM_TOKENS: frozenset[str] = SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
-
 
 @dataclass(frozen=True, slots=True)
 class SouthStarGrammarConformance:
@@ -55,7 +53,7 @@ def _tokenize_declared_subset(smiles: str) -> tuple[str, ...] | None:
             if end_index == -1:
                 return None
             token = smiles[index : end_index + 1]
-            if token not in _BRACKET_ATOM_TOKENS:
+            if not is_south_star_bracket_atom_text_token(token):
                 return None
             tokens.append(token)
             index = end_index + 1
@@ -151,7 +149,7 @@ def _first_structural_rejection(tokens: tuple[str, ...]) -> tuple[str, str] | No
 
 
 def _token_kind(token: str) -> str:
-    if token in _ATOM_TOKENS or token in _BRACKET_ATOM_TOKENS:
+    if token in _ATOM_TOKENS or is_south_star_bracket_atom_text_token(token):
         return "atom"
     if token in _BOND_TOKENS:
         return "bond"

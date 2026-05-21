@@ -4,10 +4,11 @@ import unittest
 
 from rdkit import Chem
 
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
+from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import SOUTH_STAR_PRIVATE_DOMAIN
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
-from grimace._south_star.support_gates import south_star_support_gate_report
 
 
 class SouthStarSupportGateTests(unittest.TestCase):
@@ -93,6 +94,39 @@ class SouthStarSupportGateTests(unittest.TestCase):
             "fused_or_polycyclic_ring",
             report.categories,
         )
+
+    def test_spiro_rings_are_fail_fast_polycyclic_guardrails(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CCC2(CC1)CCCC2"))
+
+        self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertUnsupportedCategory(
+            "fused_or_polycyclic_ring",
+            report.categories,
+        )
+
+    def test_bridged_rings_are_fail_fast_polycyclic_guardrails(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CC2CCC1C2"))
+
+        self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertUnsupportedCategory(
+            "fused_or_polycyclic_ring",
+            report.categories,
+        )
+
+    def test_polycyclic_guardrails_return_no_partial_support(self) -> None:
+        cases = (
+            "C1CC2CCCC2C1",
+            "C1CCC2(CC1)CCCC2",
+            "C1CC2CCC1C2",
+        )
+
+        for smiles in cases:
+            with self.subTest(smiles=smiles):
+                with self.assertRaisesRegex(
+                    NotImplementedError,
+                    "fused_or_polycyclic_ring",
+                ):
+                    mol_to_smiles_enum_s_graph_native(smiles)
 
     def test_modeled_ring_stereo_monocycles_are_supported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C1/C=C\\CCCCC1"))

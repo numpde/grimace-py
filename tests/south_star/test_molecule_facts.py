@@ -70,9 +70,18 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
         self.assertTrue(facts.graph_topology.connected)
         self.assertFalse(facts.graph_topology.acyclic_connected_tree)
         self.assertEqual(1, facts.graph_topology.ring_count)
+        self.assertEqual(1, facts.graph_topology.cyclomatic_number)
         self.assertTrue(facts.graph_topology.ring_system.has_rings)
         self.assertTrue(facts.graph_topology.ring_system.simple_monocycle)
         self.assertFalse(facts.graph_topology.ring_system.fused_or_polycyclic)
+        self.assertEqual(
+            (),
+            facts.graph_topology.ring_system.shared_ring_atom_indices,
+        )
+        self.assertEqual(
+            (),
+            facts.graph_topology.ring_system.shared_ring_bond_indices,
+        )
         self.assertEqual(
             ("C", "C", "C", "C", "C", "C"),
             tuple(atom.symbol for atom in facts.atom_text_facts),
@@ -92,11 +101,51 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
     def test_ring_system_facts_expose_polycyclic_witness_shape(self) -> None:
         facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CC2CCCC2C1"))
 
+        self.assertEqual(2, facts.graph_topology.cyclomatic_number)
         self.assertEqual(2, facts.graph_topology.ring_system.ring_count)
         self.assertEqual(2, len(facts.graph_topology.ring_system.atom_rings))
         self.assertEqual(2, len(facts.graph_topology.ring_system.bond_rings))
         self.assertFalse(facts.graph_topology.ring_system.simple_monocycle)
         self.assertTrue(facts.graph_topology.ring_system.fused_or_polycyclic)
+        self.assertEqual(
+            (2, 6),
+            facts.graph_topology.ring_system.shared_ring_atom_indices,
+        )
+        self.assertEqual(
+            (8,),
+            facts.graph_topology.ring_system.shared_ring_bond_indices,
+        )
+        self.assertFalse(facts.graph_topology.ring_system.spiro_like)
+
+    def test_ring_system_facts_expose_spiro_guardrail_shape(self) -> None:
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CCC2(CC1)CCCC2"))
+
+        self.assertEqual(2, facts.graph_topology.cyclomatic_number)
+        self.assertEqual(2, facts.graph_topology.ring_system.ring_count)
+        self.assertEqual(
+            (3,),
+            facts.graph_topology.ring_system.shared_ring_atom_indices,
+        )
+        self.assertEqual(
+            (),
+            facts.graph_topology.ring_system.shared_ring_bond_indices,
+        )
+        self.assertTrue(facts.graph_topology.ring_system.spiro_like)
+
+    def test_ring_system_facts_expose_bridged_guardrail_shape(self) -> None:
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CC2CCC1C2"))
+
+        self.assertEqual(2, facts.graph_topology.cyclomatic_number)
+        self.assertEqual(2, facts.graph_topology.ring_system.ring_count)
+        self.assertEqual(
+            (2, 5, 6),
+            facts.graph_topology.ring_system.shared_ring_atom_indices,
+        )
+        self.assertEqual(
+            (5, 7),
+            facts.graph_topology.ring_system.shared_ring_bond_indices,
+        )
+        self.assertFalse(facts.graph_topology.ring_system.spiro_like)
 
     def test_molecule_facts_topology_distinguishes_tree_and_fragments(self) -> None:
         tree_facts = SouthStarMoleculeFacts.from_mol(parse_smiles("CCO"))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from rdkit import Chem
@@ -43,6 +44,8 @@ class SouthStarRingSystemFacts:
     bond_rings: tuple[tuple[int, ...], ...]
     ring_atom_indices: tuple[int, ...]
     ring_bond_indices: tuple[int, ...]
+    atom_ring_membership_counts: tuple[tuple[int, int], ...]
+    bond_ring_membership_counts: tuple[tuple[int, int], ...]
 
     @property
     def ring_count(self) -> int:
@@ -62,6 +65,30 @@ class SouthStarRingSystemFacts:
     @property
     def fused_or_polycyclic(self) -> bool:
         return self.ring_count > 1
+
+    @property
+    def shared_ring_atom_indices(self) -> tuple[int, ...]:
+        return tuple(
+            atom_idx
+            for atom_idx, count in self.atom_ring_membership_counts
+            if count > 1
+        )
+
+    @property
+    def shared_ring_bond_indices(self) -> tuple[int, ...]:
+        return tuple(
+            bond_idx
+            for bond_idx, count in self.bond_ring_membership_counts
+            if count > 1
+        )
+
+    @property
+    def spiro_like(self) -> bool:
+        return (
+            self.ring_count > 1
+            and bool(self.shared_ring_atom_indices)
+            and not self.shared_ring_bond_indices
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +129,10 @@ class SouthStarGraphTopologyFacts:
     @property
     def ring_count(self) -> int:
         return self.ring_system.ring_count
+
+    @property
+    def cyclomatic_number(self) -> int:
+        return self.bond_count - self.atom_count + self.fragment_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,16 +228,27 @@ def _graph_topology_facts(mol: Chem.Mol) -> SouthStarGraphTopologyFacts:
 
 def _ring_system_facts(mol: Chem.Mol) -> SouthStarRingSystemFacts:
     ring_info = mol.GetRingInfo()
+    atom_rings = tuple(tuple(ring) for ring in ring_info.AtomRings())
+    bond_rings = tuple(tuple(ring) for ring in ring_info.BondRings())
     return SouthStarRingSystemFacts(
-        atom_rings=tuple(tuple(ring) for ring in ring_info.AtomRings()),
-        bond_rings=tuple(tuple(ring) for ring in ring_info.BondRings()),
+        atom_rings=atom_rings,
+        bond_rings=bond_rings,
         ring_atom_indices=tuple(
             atom.GetIdx() for atom in mol.GetAtoms() if atom.IsInRing()
         ),
         ring_bond_indices=tuple(
             bond.GetIdx() for bond in mol.GetBonds() if bond.IsInRing()
         ),
+        atom_ring_membership_counts=_membership_counts(atom_rings),
+        bond_ring_membership_counts=_membership_counts(bond_rings),
     )
+
+
+def _membership_counts(
+    rings: tuple[tuple[int, ...], ...],
+) -> tuple[tuple[int, int], ...]:
+    counts = Counter(member for ring in rings for member in ring)
+    return tuple(sorted(counts.items()))
 
 
 def _carrier_opportunities(

@@ -154,7 +154,9 @@ sets aromatic flags.
 The current polycyclic stance is also fail-fast. Ring-system facts are named,
 but fused/polycyclic traversal still needs graph-native choices for spanning
 trees, closure edges, label allocation, and closure-event ordering before
-support should widen. See `notes/041_south_star_ring_system_model.md`.
+support should widen. Guardrail witnesses cover fused, spiro-like, and bridged
+polycyclic shapes; they must expose ring membership facts and return no partial
+support. See `notes/041_south_star_ring_system_model.md`.
 
 ## Annotation Policy
 

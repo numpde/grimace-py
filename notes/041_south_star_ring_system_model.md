@@ -18,8 +18,13 @@ The ring-system fact model should describe graph structure, not writer policy:
 
 - atom rings and bond rings from molecule facts;
 - flat ring atom and bond membership;
+- per-atom and per-bond ring membership counts;
+- shared ring atoms and shared ring bonds;
 - ring count;
+- graph cyclomatic number, i.e. the number of non-tree closure edges that a
+  connected traversal will eventually need to choose;
 - whether the graph is a simple monocycle;
+- whether the graph is spiro-like;
 - whether the graph is fused/polycyclic and therefore outside current support.
 
 That is not yet enough to enumerate polycycles. It is enough to keep the next
@@ -61,6 +66,15 @@ repair phase.
 
 ## Guardrail Witness
 
-`C1CC2CCCC2C1` is a nontrivial fused/polycyclic witness. It should expose
-ring-system facts with two rings and remain unsupported until the graph-native
-polycycle traversal model exists.
+The guardrail witnesses are deliberately unsupported:
+
+- `C1CC2CCCC2C1` exposes a fused/polycyclic shape with shared ring atoms and a
+  shared ring bond;
+- `C1CCC2(CC1)CCCC2` exposes a spiro-like shape with a shared ring atom and no
+  shared ring bond;
+- `C1CC2CCC1C2` exposes a bridged shape with multiple shared ring atoms and
+  shared ring bonds.
+
+All three should expose ring-system facts with two rings, cyclomatic number
+two, and no partial support until the graph-native polycycle traversal model
+exists.

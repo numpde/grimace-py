@@ -121,26 +121,20 @@ class SouthStarSupportGateTests(unittest.TestCase):
         )
         self.assertNotIn("ring_stereo", report.categories)
 
-    def test_ring_tetrahedral_interactions_are_specific_unsupported_surface(
+    def test_ring_tetrahedral_monocycle_is_inside_gate_scope(
         self,
     ) -> None:
         report = south_star_support_gate_report(parse_smiles("F[C@H]1CCCC(C)C1"))
 
-        self.assertUnsupportedCategory(
-            "ring_tetrahedral_interaction",
-            report.categories,
-        )
+        self.assertTrue(report.supported, report.unsupported_features)
         self.assertNotIn("ring_molecule", report.categories)
 
-    def test_ring_adjacent_tetrahedral_center_is_specific_unsupported_surface(
+    def test_ring_adjacent_tetrahedral_monocycle_is_inside_gate_scope(
         self,
     ) -> None:
         report = south_star_support_gate_report(parse_smiles("F[C@H](Cl)C1CCCCC1"))
 
-        self.assertUnsupportedCategory(
-            "ring_tetrahedral_interaction",
-            report.categories,
-        )
+        self.assertTrue(report.supported, report.unsupported_features)
         self.assertNotIn("ring_molecule", report.categories)
 
     def test_fused_ring_tetrahedral_interaction_keeps_ring_system_blocker(

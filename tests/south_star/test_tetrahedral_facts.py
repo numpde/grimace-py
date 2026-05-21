@@ -26,6 +26,7 @@ from grimace._south_star.tetrahedral import (
     tetrahedral_traversal_observation_from_connected_graph_plan,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_semantic_oracle import south_star_conformance_report
 from tests.helpers.south_star_semantics import SouthStarAnnotationPolicyExpectation
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
 
@@ -242,12 +243,28 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             ).ring_closure_ligand_atom_indices,
         )
 
-    def test_ring_tetrahedral_support_still_fails_before_gate_widening(self) -> None:
+    def test_ring_tetrahedral_public_outputs_parse_to_source_semantics(self) -> None:
+        for source_smiles in (
+            "F[C@H]1CCCC(C)C1",
+            "F[C@H](Cl)C1CCCCC1",
+        ):
+            result = mol_to_smiles_enum_s_graph_native(source_smiles)
+
+            self.assertTrue(result.outputs)
+            for output in result.outputs:
+                with self.subTest(source_smiles=source_smiles, output=output):
+                    report = south_star_conformance_report(
+                        source_smiles=source_smiles,
+                        candidate_smiles=output,
+                    )
+                    self.assertTrue(report.accepted, report.rejection_reasons)
+
+    def test_polycyclic_ring_tetrahedral_support_still_fails(self) -> None:
         with self.assertRaisesRegex(
             NotImplementedError,
-            "ring_tetrahedral_interaction",
+            "fused_or_polycyclic_ring|ring_tetrahedral_interaction",
         ):
-            mol_to_smiles_enum_s_graph_native("F[C@H]1CCCC(C)C1")
+            mol_to_smiles_enum_s_graph_native("C1CC2CCCC2[C@H]1F")
 
 
 def _traversal_by_render(source_smiles: str, rendered: str):

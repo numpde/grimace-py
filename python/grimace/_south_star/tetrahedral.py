@@ -8,6 +8,19 @@ from rdkit import Chem
 
 TETRAHEDRAL_TOKENS: frozenset[str] = frozenset({"@", "@@"})
 IMPLICIT_HYDROGEN_LIGAND = "implicit_hydrogen"
+RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS: tuple[str, ...] = (
+    "center_atom_idx",
+    "source_ligand_order",
+    "source_token",
+    "center_in_ring",
+    "ring_ligand_atom_indices",
+    "acyclic_ligand_atom_indices",
+    "implicit_hydrogen_count",
+    "parent_atom_idx",
+    "child_atom_indices",
+    "ring_closure_events",
+    "ring_closure_labels",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +31,20 @@ class SouthStarTetrahedralCenterFact:
     explicit_neighbor_atom_indices: tuple[int, ...]
     implicit_hydrogen_count: int
     source_ligand_order: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarRingTetrahedralInteractionObligation:
+    center_atom_idx: int
+    source_token: str
+    source_ligand_order: tuple[str, ...]
+    center_in_ring: bool
+    ring_ligand_atom_indices: tuple[int, ...]
+    acyclic_ligand_atom_indices: tuple[int, ...]
+    implicit_hydrogen_count: int
+    required_fact_and_event_fields: tuple[str, ...] = (
+        RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS
+    )
 
 
 def extract_tetrahedral_center_facts(
@@ -46,6 +73,20 @@ def tetrahedral_atom_supported(atom: Chem.Atom) -> bool:
     return atom.GetDegree() + implicit_hydrogen_count == 4
 
 
+def extract_ring_tetrahedral_interaction_obligations(
+    mol: Chem.Mol,
+) -> tuple[SouthStarRingTetrahedralInteractionObligation, ...]:
+    return tuple(
+        _ring_tetrahedral_interaction_obligation(mol, fact)
+        for fact in (
+            _tetrahedral_center_fact(atom)
+            for atom in mol.GetAtoms()
+            if tetrahedral_atom_supported(atom)
+        )
+        if _tetrahedral_fact_has_ring_ligand(mol, fact)
+    )
+
+
 def preserving_tetrahedral_token(
     *,
     source_token: str,
@@ -72,6 +113,42 @@ def tetrahedral_token_preserves_orientation(
         source_token=source_token,
         source_ligand_order=source_ligand_order,
         emitted_ligand_order=emitted_ligand_order,
+    )
+
+
+def _ring_tetrahedral_interaction_obligation(
+    mol: Chem.Mol,
+    fact: SouthStarTetrahedralCenterFact,
+) -> SouthStarRingTetrahedralInteractionObligation:
+    ring_ligands = tuple(
+        atom_idx
+        for atom_idx in fact.explicit_neighbor_atom_indices
+        if mol.GetAtomWithIdx(atom_idx).IsInRing()
+    )
+    acyclic_ligands = tuple(
+        atom_idx
+        for atom_idx in fact.explicit_neighbor_atom_indices
+        if not mol.GetAtomWithIdx(atom_idx).IsInRing()
+    )
+    return SouthStarRingTetrahedralInteractionObligation(
+        center_atom_idx=fact.center_atom_idx,
+        source_token=fact.source_token,
+        source_ligand_order=fact.source_ligand_order,
+        center_in_ring=mol.GetAtomWithIdx(fact.center_atom_idx).IsInRing(),
+        ring_ligand_atom_indices=ring_ligands,
+        acyclic_ligand_atom_indices=acyclic_ligands,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+    )
+
+
+def _tetrahedral_fact_has_ring_ligand(
+    mol: Chem.Mol,
+    fact: SouthStarTetrahedralCenterFact,
+) -> bool:
+    center = mol.GetAtomWithIdx(fact.center_atom_idx)
+    return center.IsInRing() or any(
+        mol.GetAtomWithIdx(atom_idx).IsInRing()
+        for atom_idx in fact.explicit_neighbor_atom_indices
     )
 
 

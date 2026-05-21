@@ -8,7 +8,10 @@ from grimace._south_star.atom_text import (
     south_star_atom_text_fields,
     unsupported_atom_text_reasons,
 )
-from grimace._south_star.tetrahedral import tetrahedral_atom_supported
+from grimace._south_star.tetrahedral import (
+    extract_ring_tetrahedral_interaction_obligations,
+    tetrahedral_atom_supported,
+)
 
 
 SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = frozenset(
@@ -333,15 +336,17 @@ def _ring_tetrahedral_interaction_features(
     return tuple(
         SouthStarUnsupportedFeature(
             category="ring_tetrahedral_interaction",
-            atom_indices=(atom.GetIdx(),),
-            bond_indices=tuple(bond.GetIdx() for bond in atom.GetBonds()),
+            atom_indices=(obligation.center_atom_idx,),
+            bond_indices=tuple(
+                bond.GetIdx()
+                for bond in mol.GetAtomWithIdx(obligation.center_atom_idx).GetBonds()
+            ),
             reason=(
                 "ring-local tetrahedral ligand ordering requires a separate "
                 "ring/tetrahedral interaction model"
             ),
         )
-        for atom in mol.GetAtoms()
-        if _tetrahedral_atom_has_ring_ligand(atom)
+        for obligation in extract_ring_tetrahedral_interaction_obligations(mol)
     )
 
 
@@ -542,17 +547,7 @@ def _has_supported_monocycle_shape(
 
 
 def _has_ring_tetrahedral_interaction(mol: Chem.Mol) -> bool:
-    return any(_tetrahedral_atom_has_ring_ligand(atom) for atom in mol.GetAtoms())
-
-
-def _tetrahedral_atom_has_ring_ligand(atom: Chem.Atom) -> bool:
-    if atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED:
-        return False
-    if not tetrahedral_atom_supported(atom):
-        return False
-    return atom.IsInRing() or any(
-        neighbor.IsInRing() for neighbor in atom.GetNeighbors()
-    )
+    return bool(extract_ring_tetrahedral_interaction_obligations(mol))
 
 
 def disconnected_fragments_have_supported_independent_traversal(

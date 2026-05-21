@@ -57,9 +57,12 @@ is probably fixture-driven and should be deferred.
    annotation policy are named explicitly.
 
 6. **Handle ring/tetrahedral interactions after tetrahedral obligations.**
-   Ring-local tetrahedral ligand ordering should not be patched into ring
-   traversal. It should reuse the tetrahedral obligation model once that model
-   is traversal-native.
+   Completed in `South Star 102`: ring/tetrahedral interaction witnesses now
+   have explicit obligation records naming the center, source ligand order,
+   ring ligands, acyclic ligands, implicit hydrogen count, and traversal event
+   fields needed by a future implementation. The support gate still fails fast
+   with `ring_tetrahedral_interaction`; no local ring traversal repair was
+   added.
 
 7. **Handle stereo on polycyclic ring systems after ring and tetrahedral
    obligations are unified.**

@@ -12,7 +12,7 @@ from typing import Protocol, TypeAlias, cast
 from rdkit import Chem
 
 _core = importlib.import_module("grimace._core")
-from grimace._prepared_mol import PreparedMol
+from grimace._prepared_mol import PreparedMol, _prepared_mol_fragments
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
@@ -189,7 +189,7 @@ def _ensure_singly_connected_molecule(mol: Chem.Mol) -> None:
 
 def _is_disconnected_molecule(mol_or_prepared: object) -> bool:
     if isinstance(mol_or_prepared, PreparedMol):
-        return len(mol_or_prepared.fragments) > 1
+        return len(_prepared_mol_fragments(mol_or_prepared)) > 1
     return isinstance(mol_or_prepared, Chem.Mol) and len(Chem.GetMolFrags(mol_or_prepared)) > 1
 
 
@@ -223,18 +223,19 @@ def _fragment_plans_for_prepared_mol(
     *,
     rooted_at_atom: int | None,
 ) -> tuple[_FragmentPlan, ...]:
+    fragments = _prepared_mol_fragments(prepared)
     if rooted_at_atom is None:
         return tuple(
             _FragmentPlan(fragment.prepared_graph, None)
-            for fragment in prepared.fragments
+            for fragment in fragments
         )
-    if len(prepared.fragments) == 1 and len(prepared.fragments[0].atom_indices) == 0:
+    if len(fragments) == 1 and len(fragments[0].atom_indices) == 0:
         if rooted_at_atom == 0:
-            return (_FragmentPlan(prepared.fragments[0].prepared_graph, 0),)
+            return (_FragmentPlan(fragments[0].prepared_graph, 0),)
         raise IndexError("root_idx out of range")
 
     global_to_local: dict[int, tuple[int, int]] = {}
-    for fragment_idx, fragment in enumerate(prepared.fragments):
+    for fragment_idx, fragment in enumerate(fragments):
         for local_idx, global_idx in enumerate(fragment.atom_indices):
             global_to_local[global_idx] = (fragment_idx, local_idx)
 
@@ -243,7 +244,7 @@ def _fragment_plans_for_prepared_mol(
 
     rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
     plans: list[_FragmentPlan] = []
-    for fragment_idx, fragment in enumerate(prepared.fragments):
+    for fragment_idx, fragment in enumerate(fragments):
         if fragment_idx == rooted_fragment_idx:
             plans.append(_FragmentPlan(fragment.prepared_graph, rooted_local_idx))
         else:
@@ -275,7 +276,10 @@ def _atom_count(mol_or_prepared: object) -> int:
     if isinstance(mol_or_prepared, Chem.Mol):
         return mol_or_prepared.GetNumAtoms()
     if isinstance(mol_or_prepared, PreparedMol):
-        return sum(len(fragment.atom_indices) for fragment in mol_or_prepared.fragments)
+        return sum(
+            len(fragment.atom_indices)
+            for fragment in _prepared_mol_fragments(mol_or_prepared)
+        )
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
         return mol_or_prepared.atom_count
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):

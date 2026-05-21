@@ -64,6 +64,9 @@ blob = prepared.to_bytes()
 prepared = grimace.PreparedMol.from_bytes(blob)
 ```
 
+The object should stay opaque. The public contract is bytes round-trip and
+runtime acceptance, not access to fragments, writer flags, or schema fields.
+
 Docs should not present this as the normal path for casual use. The normal path
 is still passing an RDKit molecule directly.
 

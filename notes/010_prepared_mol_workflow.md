@@ -53,7 +53,8 @@ fragment
 
 The exact Python/Rust classes are implementation details. The data obligations
 are not: version, writer flags, ordered fragments, original atom indices, and
-prepared graph data.
+prepared graph data. In Python, `PreparedMol` should expose this as an opaque
+object, not as public structural fields.
 
 Inevitable work
 ---------------
@@ -79,7 +80,8 @@ Inevitable work
 
 5. Expose the minimal API.
    Once public, the surface should be small: `PreparedMol`, `PrepareMol`, and
-   serialization methods on `PreparedMol`.
+   serialization methods on `PreparedMol`. Structural fields are not public
+   API.
 
 6. Prove no RDKit after preparation.
    Tests should check that a prepared object stores only prepared graph data and

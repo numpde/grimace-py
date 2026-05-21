@@ -34,25 +34,19 @@ class _PreparedMolFragment:
         _validate_fragment_graph_shape(atom_indices, self.prepared_graph)
 
 
-@dataclass(frozen=True, slots=True)
 class PreparedMol:
-    schema_version: int
-    writer_flags: _PreparedMolWriterFlags
-    fragments: tuple[_PreparedMolFragment, ...]
+    """Opaque prepared molecule returned by PrepareMol."""
 
-    def __post_init__(self) -> None:
-        if self.schema_version != _PREPARED_MOL_SCHEMA_VERSION:
-            raise ValueError(f"Unsupported PreparedMol schema version: {self.schema_version}")
-        if not isinstance(self.writer_flags, _PreparedMolWriterFlags):
-            raise ValueError("PreparedMol writer_flags must be a prepared writer flag record")
+    __slots__ = ("_schema_version", "_writer_flags", "_fragments")
 
-        fragments = tuple(self.fragments)
-        for fragment in fragments:
-            if not isinstance(fragment, _PreparedMolFragment):
-                raise ValueError("PreparedMol fragments must be prepared fragment records")
-            _validate_fragment_writer_flags(fragment, self.writer_flags)
-        _validate_fragment_atom_indices_are_unique(fragments)
-        object.__setattr__(self, "fragments", fragments)
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError(
+            "PreparedMol cannot be constructed directly; use PrepareMol or "
+            "PreparedMol.from_bytes"
+        )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("PreparedMol is immutable")
 
     def to_bytes(self) -> bytes:
         return json.dumps(
@@ -60,8 +54,8 @@ class PreparedMol:
             separators=(",", ":"),
         ).encode("utf-8")
 
-    @classmethod
-    def from_bytes(cls, data: bytes) -> "PreparedMol":
+    @staticmethod
+    def from_bytes(data: bytes) -> "PreparedMol":
         if not isinstance(data, bytes):
             raise TypeError("PreparedMol.from_bytes requires bytes")
         try:
@@ -71,22 +65,51 @@ class PreparedMol:
         return _prepared_mol_from_payload(payload)
 
 
+def _prepared_mol_fragments(prepared: PreparedMol) -> tuple[_PreparedMolFragment, ...]:
+    return prepared._fragments
+
+
+def _make_prepared_mol(
+    *,
+    schema_version: int,
+    writer_flags: _PreparedMolWriterFlags,
+    fragments: tuple[_PreparedMolFragment, ...],
+) -> PreparedMol:
+    if schema_version != _PREPARED_MOL_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported PreparedMol schema version: {schema_version}")
+    if not isinstance(writer_flags, _PreparedMolWriterFlags):
+        raise ValueError("PreparedMol writer_flags must be a prepared writer flag record")
+
+    fragments = tuple(fragments)
+    for fragment in fragments:
+        if not isinstance(fragment, _PreparedMolFragment):
+            raise ValueError("PreparedMol fragments must be prepared fragment records")
+        _validate_fragment_writer_flags(fragment, writer_flags)
+    _validate_fragment_atom_indices_are_unique(fragments)
+
+    prepared = object.__new__(PreparedMol)
+    object.__setattr__(prepared, "_schema_version", schema_version)
+    object.__setattr__(prepared, "_writer_flags", writer_flags)
+    object.__setattr__(prepared, "_fragments", fragments)
+    return prepared
+
+
 def _prepared_mol_to_payload(prepared: PreparedMol) -> dict[str, object]:
     return {
-        "schema_version": prepared.schema_version,
+        "schema_version": prepared._schema_version,
         "writer_flags": {
-            "isomeric_smiles": prepared.writer_flags.isomeric_smiles,
-            "kekule_smiles": prepared.writer_flags.kekule_smiles,
-            "all_bonds_explicit": prepared.writer_flags.all_bonds_explicit,
-            "all_hs_explicit": prepared.writer_flags.all_hs_explicit,
-            "ignore_atom_map_numbers": prepared.writer_flags.ignore_atom_map_numbers,
+            "isomeric_smiles": prepared._writer_flags.isomeric_smiles,
+            "kekule_smiles": prepared._writer_flags.kekule_smiles,
+            "all_bonds_explicit": prepared._writer_flags.all_bonds_explicit,
+            "all_hs_explicit": prepared._writer_flags.all_hs_explicit,
+            "ignore_atom_map_numbers": prepared._writer_flags.ignore_atom_map_numbers,
         },
         "fragments": [
             {
                 "atom_indices": list(fragment.atom_indices),
                 "prepared_graph": _prepared_graph_to_dict(fragment.prepared_graph),
             }
-            for fragment in prepared.fragments
+            for fragment in prepared._fragments
         ],
     }
 
@@ -104,7 +127,7 @@ def _prepared_mol_from_payload(payload: object) -> PreparedMol:
     if not isinstance(fragments_data, list):
         raise ValueError("PreparedMol fragments must be an array")
 
-    return PreparedMol(
+    return _make_prepared_mol(
         schema_version=_require_int(schema_version, "schema_version"),
         writer_flags=_writer_flags_from_payload(writer_flags_data),
         fragments=tuple(_fragment_from_payload(fragment) for fragment in fragments_data),
@@ -189,7 +212,7 @@ def PrepareMol(
                 strict=True,
             )
         )
-    return PreparedMol(
+    return _make_prepared_mol(
         schema_version=_PREPARED_MOL_SCHEMA_VERSION,
         writer_flags=writer_flags,
         fragments=fragments,

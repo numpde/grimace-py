@@ -148,6 +148,14 @@ SOUTH_STAR_PUBLIC_API_PROMOTION_GATES: tuple[SouthStarPublicApiPromotionGate, ..
         "the exported surface.",
     ),
     SouthStarPublicApiPromotionGate(
+        gate_id="performance_evidence_boundary",
+        evidence="EnumS complexity diagnostics are guardrails, not release "
+        "performance claims; user-facing speed claims require a separate "
+        "semantic-enumerator benchmark artifact.",
+        verification="explicit review: docs/enum-s.md performance evidence "
+        "boundary and release notes avoid unsupported speed claims.",
+    ),
+    SouthStarPublicApiPromotionGate(
         gate_id="release_notes_scope",
         evidence="Release notes state the semantic contract and distinguish it "
         "from MolToSmilesEnum RDKit writer parity.",
@@ -180,6 +188,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "unsupported_category_completeness",
                 "complexity_guardrails",
                 "documentation_contract",
+                "performance_evidence_boundary",
                 "release_notes_scope",
                 "full_readiness_runner",
             ),

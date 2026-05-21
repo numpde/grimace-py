@@ -258,6 +258,27 @@ closures, tetrahedral ligand order, disconnected fragments, and unsupported
 feature triggers. These candidates are diagnostic inputs only; they do not
 define expected support sets.
 
+## Performance Evidence Boundary
+
+Current EnumS complexity diagnostics are guardrails, not user-facing
+performance evidence. They show product sizes, assignment counts, traversal
+counts, deduplication ratios, and optional per-layer timings so development can
+notice hidden generate/filter behavior or accidental combinatorial growth.
+They do not justify a release note claim that `MolToSmilesEnumS` is fast,
+faster than RDKit, or production-ready.
+
+Before any EnumS performance claim, the project needs a separate semantic
+enumerator benchmark artifact. At minimum it should name the command, machine,
+RDKit version, Python version, repeat count, fixture/case set, supported policy
+set, output counts, and whether each row is singleton atom text, acyclic
+directional stereo, ring traversal, disconnected composition, tetrahedral
+atom-stereo, or unsupported-boundary triage. Comparisons to `MolToSmilesEnum`
+or RDKit writer sampling must be labeled as comparison metadata, not semantic
+correctness evidence.
+
+Release notes for changes touching the private EnumS path should avoid speed
+claims unless that benchmark artifact is updated in the same release.
+
 ## Package-Readiness Harness
 
 The private package-readiness command is:

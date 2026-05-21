@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from tests.helpers.south_star_semantic_oracle import SouthStarConformanceReport
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import south_star_conformance_report
@@ -25,6 +26,9 @@ SOUTH_STAR_SPEC_ORACLE_BASIS = "test_only_south_star_semantic_spec_oracle"
 SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY = "not_generation_authority"
 SOUTH_STAR_SMALL_SUPPORT_ORACLE_BASIS = (
     "test_only_small_atom_bond_support_oracle"
+)
+SOUTH_STAR_SMALL_SUPPORT_SHARED_RECORD_BASIS = (
+    "south_star_molecule_facts_atom_bond_text_records"
 )
 
 
@@ -71,6 +75,10 @@ class SouthStarSmallSupportCompletenessReport:
     source_smiles: str
     expected_support: tuple[str, ...]
     observed_support: tuple[str, ...]
+    atom_text_fact_count: int
+    bond_text_fact_count: int
+    connected: bool
+    shared_record_basis: str = SOUTH_STAR_SMALL_SUPPORT_SHARED_RECORD_BASIS
     basis: str = SOUTH_STAR_SMALL_SUPPORT_ORACLE_BASIS
     generation_authority: str = SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY
 
@@ -122,15 +130,19 @@ def south_star_small_support_completeness_report(
     source_smiles: str,
     observed_support: tuple[str, ...],
 ) -> SouthStarSmallSupportCompletenessReport:
+    mol = parse_smiles(source_smiles)
+    molecule_facts = SouthStarMoleculeFacts.from_mol(mol)
     return SouthStarSmallSupportCompletenessReport(
         source_smiles=source_smiles,
-        expected_support=_small_atom_bond_support(source_smiles),
+        expected_support=_small_atom_bond_support(mol),
         observed_support=observed_support,
+        atom_text_fact_count=len(molecule_facts.atom_text_facts),
+        bond_text_fact_count=len(molecule_facts.bond_text_facts),
+        connected=molecule_facts.graph_topology.connected,
     )
 
 
-def _small_atom_bond_support(source_smiles: str) -> tuple[str, ...]:
-    mol = parse_smiles(source_smiles)
+def _small_atom_bond_support(mol: Chem.Mol) -> tuple[str, ...]:
     if mol.GetNumAtoms() == 1 and mol.GetNumBonds() == 0:
         return (_oracle_atom_text(mol.GetAtomWithIdx(0)),)
     if mol.GetNumAtoms() != 2 or mol.GetNumBonds() != 1:

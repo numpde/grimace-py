@@ -10,6 +10,7 @@ from tests.helpers.south_star_semantic_oracle import (
 from tests.helpers.south_star_spec_oracle import (
     SOUTH_STAR_SPEC_ORACLE_BASIS,
     SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+    SOUTH_STAR_SMALL_SUPPORT_SHARED_RECORD_BASIS,
     SOUTH_STAR_SMALL_SUPPORT_ORACLE_BASIS,
     south_star_spec_oracle_report,
     south_star_small_support_completeness_report,
@@ -145,9 +146,16 @@ class SouthStarConformanceOracleTests(unittest.TestCase):
             with self.subTest(smiles=smiles):
                 self.assertEqual(SOUTH_STAR_SMALL_SUPPORT_ORACLE_BASIS, report.basis)
                 self.assertEqual(
+                    SOUTH_STAR_SMALL_SUPPORT_SHARED_RECORD_BASIS,
+                    report.shared_record_basis,
+                )
+                self.assertEqual(
                     SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
                     report.generation_authority,
                 )
+                self.assertGreater(report.atom_text_fact_count, 0)
+                self.assertGreaterEqual(report.bond_text_fact_count, 0)
+                self.assertTrue(report.connected)
                 self.assertTrue(report.complete)
                 self.assertEqual((), report.missing_candidates)
                 self.assertEqual((), report.extra_candidates)

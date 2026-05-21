@@ -29,6 +29,10 @@ from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import semantic_signature
 from tests.helpers.south_star_semantic_identity import south_star_semantic_identity_report
+from tests.helpers.south_star_spec_oracle import (
+    SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+    south_star_small_support_completeness_report,
+)
 
 
 class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
@@ -262,6 +266,37 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 self.assertEqual(case.case_id, result.case_id)
                 self.assertEqual(case.expected_support, result.outputs)
+
+    def test_small_graph_native_regressions_have_completeness_evidence(self) -> None:
+        feature_areas = {
+            "charged_atom_text",
+            "explicit_bracket_hydrogen",
+            "radical_atom_text",
+        }
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority != SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY
+                or case.feature_area not in feature_areas
+            ):
+                continue
+
+            result = mol_to_smiles_enum_s_graph_native(
+                case.source_smiles,
+                case_id=case.case_id,
+            )
+            report = south_star_small_support_completeness_report(
+                source_smiles=case.source_smiles,
+                observed_support=result.outputs,
+            )
+
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertEqual(case.expected_support, report.expected_support)
+                self.assertTrue(report.complete)
+                self.assertEqual(
+                    SOUTH_STAR_SPEC_ORACLE_GENERATION_AUTHORITY,
+                    report.generation_authority,
+                )
 
     def test_expanded_domain_fixture_outputs_are_semantic_evidence(self) -> None:
         for case in load_south_star_expanded_support_cases():

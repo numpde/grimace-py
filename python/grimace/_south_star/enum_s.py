@@ -47,6 +47,7 @@ from grimace._south_star.tetrahedral import (
     SouthStarTetrahedralCenterFact,
     SouthStarTetrahedralTraversalObservation,
     tetrahedral_token_constraint_records,
+    tetrahedral_traversal_observation_from_connected_graph_plan,
 )
 
 
@@ -998,17 +999,23 @@ def _ring_system_traversals(
         mol,
         marker_by_edge=marker_by_edge,
     )
+    tetrahedral_facts_by_atom = _tetrahedral_facts_by_atom(molecule_facts)
     return tuple(
         _with_solved_marker_assignments(
             state,
             _tree_traversal(
                 root_atom_idx=root_idx,
-                events=_with_ring_closure_events(
+                events=_finalize_ring_atom_events_from_connected_plan(
                     mol,
-                    fragment.events,
-                    closure_edges=closure_edges,
-                    marker_by_edge=marker_by_edge,
-                    carrier_contexts_by_edge=carrier_contexts_by_edge,
+                    root_atom_idx=root_idx,
+                    events=_with_ring_closure_events(
+                        mol,
+                        fragment.events,
+                        closure_edges=closure_edges,
+                        marker_by_edge=marker_by_edge,
+                        carrier_contexts_by_edge=carrier_contexts_by_edge,
+                    ),
+                    tetrahedral_facts_by_atom=tetrahedral_facts_by_atom,
                 ),
                 marker_assignments=(),
                 component_marker_assignments=component_marker_assignments,
@@ -1027,6 +1034,53 @@ def _ring_system_traversals(
             tetrahedral_facts_by_atom={},
         )
     )
+
+
+def _finalize_ring_atom_events_from_connected_plan(
+    mol: Chem.Mol,
+    *,
+    root_atom_idx: int,
+    events: tuple[SouthStarTraversalEvent, ...],
+    tetrahedral_facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
+) -> tuple[SouthStarTraversalEvent, ...]:
+    if not tetrahedral_facts_by_atom:
+        return events
+
+    plan = connected_graph_plan_from_events(
+        root_atom_idx=root_atom_idx,
+        events=events,
+    )
+    finalized: list[SouthStarTraversalEvent] = []
+    finalized_center_atom_indices: set[int] = set()
+    for event in events:
+        if (
+            event.kind != "atom"
+            or event.atom_idx is None
+            or event.atom_idx not in tetrahedral_facts_by_atom
+        ):
+            finalized.append(event)
+            continue
+        payload = _atom_text_for_connected_graph_plan(
+            mol.GetAtomWithIdx(event.atom_idx),
+            fact=tetrahedral_facts_by_atom[event.atom_idx],
+            plan=plan,
+        )
+        finalized.append(
+            replace(
+                event,
+                text=payload.text,
+                renderer_input=payload.renderer_input,
+            )
+        )
+        finalized_center_atom_indices.add(event.atom_idx)
+
+    if finalized_center_atom_indices != set(tetrahedral_facts_by_atom):
+        missing = sorted(set(tetrahedral_facts_by_atom) - finalized_center_atom_indices)
+        raise ValueError(
+            "ring traversal did not finalize all tetrahedral centers: "
+            + ", ".join(str(atom_idx) for atom_idx in missing)
+        )
+    return tuple(finalized)
 
 
 def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
@@ -1301,6 +1355,30 @@ def _atom_text_for_traversal(
         center_atom_idx=fact.center_atom_idx,
         parent_idx=parent_idx,
         ordered_children=ordered_children,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+    )
+    records = tetrahedral_token_constraint_records(fact, observation)
+    return _AtomEventRenderPayload(
+        text=tetrahedral_atom_text_obligation(
+            atom,
+            stereo_token=records.renderer_input.value,
+            implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        ).emitted_text,
+        renderer_input=records.renderer_input,
+    )
+
+
+def _atom_text_for_connected_graph_plan(
+    atom: Chem.Atom,
+    *,
+    fact: SouthStarTetrahedralCenterFact,
+    plan: SouthStarConnectedGraphTraversalPlan,
+) -> _AtomEventRenderPayload:
+    if atom.GetIdx() != fact.center_atom_idx:
+        raise ValueError("tetrahedral atom text fact must match atom")
+    observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+        plan,
+        center_atom_idx=fact.center_atom_idx,
         implicit_hydrogen_count=fact.implicit_hydrogen_count,
     )
     records = tetrahedral_token_constraint_records(fact, observation)

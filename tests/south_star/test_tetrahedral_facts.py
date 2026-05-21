@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
+from grimace._south_star.annotation_policy import (
+    MaximalEligibleCarrierAnnotationPolicy,
+)
+from grimace._south_star.component_support_state import (
+    SouthStarComponentSupportState,
+)
+from grimace._south_star.enum_s import _ring_system_traversals
+from grimace._south_star.enum_s import _supported_single_ring_edges
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.support_gates import south_star_support_gate_report
 from grimace._south_star.tetrahedral import (
     IMPLICIT_HYDROGEN_LIGAND,
@@ -188,6 +198,50 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             emitted_tetrahedral_ligand_order_from_observation(observation),
         )
 
+    def test_ring_tetrahedral_internal_traversal_uses_plan_renderer_inputs(
+        self,
+    ) -> None:
+        traversals = _ring_tetrahedral_diagnostic_traversals("F[C@H]1CCCC(C)C1")
+
+        self.assertTrue(traversals)
+        for traversal in traversals:
+            with self.subTest(rendered=traversal.render()):
+                renderer_inputs = tuple(
+                    event.renderer_input
+                    for event in traversal.events
+                    if event.renderer_input is not None
+                )
+                self.assertEqual(1, len(renderer_inputs))
+
+    def test_ring_tetrahedral_plan_closure_ligands_select_token(self) -> None:
+        traversals_by_render = {
+            traversal.render(): traversal
+            for traversal in _ring_tetrahedral_diagnostic_traversals(
+                "F[C@H]1CCCC(C)C1"
+            )
+        }
+
+        self.assertEqual(
+            "@",
+            _single_renderer_input_value(traversals_by_render["F[C@H]1CCCC(C)C1"]),
+        )
+        self.assertEqual(
+            (7,),
+            _single_tetrahedral_observation(
+                traversals_by_render["F[C@H]1CCCC(C)C1"]
+            ).ring_closure_ligand_atom_indices,
+        )
+        self.assertEqual(
+            "@@",
+            _single_renderer_input_value(traversals_by_render["F[C@@H]1CC(CCC1)C"]),
+        )
+        self.assertEqual(
+            (2,),
+            _single_tetrahedral_observation(
+                traversals_by_render["F[C@@H]1CC(CCC1)C"]
+            ).ring_closure_ligand_atom_indices,
+        )
+
     def test_ring_tetrahedral_support_still_fails_before_gate_widening(self) -> None:
         with self.assertRaisesRegex(
             NotImplementedError,
@@ -217,6 +271,51 @@ def _traversal_by_render(source_smiles: str, rendered: str):
         if traversal.render() == rendered:
             return traversal
     raise AssertionError(f"missing traversal rendering {rendered!r}")
+
+
+def _ring_tetrahedral_diagnostic_traversals(source_smiles: str):
+    mol = parse_smiles(source_smiles)
+    molecule_facts = SouthStarMoleculeFacts.from_mol(mol)
+    diagnostic_facts = replace(
+        molecule_facts,
+        tetrahedral_center_facts=extract_tetrahedral_center_facts(mol),
+    )
+    state = SouthStarComponentSupportState(
+        molecule_facts=diagnostic_facts,
+        annotation_policy=MaximalEligibleCarrierAnnotationPolicy(),
+    )
+    return _ring_system_traversals(
+        mol,
+        molecule_facts=diagnostic_facts,
+        state=state,
+        closure_edge_sets=tuple(
+            (edge,) for edge in _supported_single_ring_edges(mol)
+        ),
+        marker_by_edge={},
+        component_marker_assignments=(),
+    )
+
+
+def _single_renderer_input_value(traversal) -> str:
+    renderer_inputs = tuple(
+        event.renderer_input for event in traversal.events if event.renderer_input
+    )
+    if len(renderer_inputs) != 1:
+        raise AssertionError(
+            f"expected one renderer input, got {len(renderer_inputs)}"
+        )
+    return renderer_inputs[0].value
+
+
+def _single_tetrahedral_observation(traversal):
+    plan = traversal.connected_graph_plan
+    if plan is None:
+        raise AssertionError("diagnostic traversal requires connected graph plan")
+    return tetrahedral_traversal_observation_from_connected_graph_plan(
+        plan,
+        center_atom_idx=1,
+        implicit_hydrogen_count=1,
+    )
 
 
 if __name__ == "__main__":

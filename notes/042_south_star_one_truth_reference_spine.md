@@ -183,7 +183,9 @@ composition records:
 Disconnected composition fixture evidence now projects runtime generation
 diagnostics and fragment-order policy through
 `SouthStarDisconnectedCompositionEvidence`; it no longer assembles support from
-fixture-only fragment lists.
+fixture-only fragment lists. `South Star 104` extended those diagnostics with
+per-fragment provenance records: fragment id, original source atom indices,
+source fragment SMILES, and output count.
 
 ## Target Shared Record Module
 

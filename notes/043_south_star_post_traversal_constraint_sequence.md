@@ -41,7 +41,9 @@ is probably fixture-driven and should be deferred.
 3. **Model disconnected composition as unified reference composition.**
    Completed in `South Star 99`: disconnected fixture checks now project runtime
    generation diagnostics and explicit all-fragment-orders policy instead of
-   composing fixture-only fragment supports.
+   composing fixture-only fragment supports. `South Star 104` added explicit
+   per-fragment provenance diagnostics for fragment id, source atom indices,
+   source fragment SMILES, and output count.
 
 4. **Extend atom-text facts before broad atom modifiers.**
    Completed in `South Star 100`: atom text now has a typed renderer-obligation

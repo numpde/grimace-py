@@ -17,6 +17,7 @@ from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from grimace._south_star.enum_s import (
+    SouthStarFragmentGenerationRecord,
     mol_to_smiles_enum_s_graph_native,
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
@@ -69,6 +70,7 @@ class SouthStarDisconnectedCompositionEvidence:
     outputs: tuple[str, ...]
     fragment_count: int
     fragment_output_counts: tuple[int, ...]
+    fragment_generation_records: tuple[SouthStarFragmentGenerationRecord, ...]
     fragment_order_policy: str
     fragment_order_count: int
     estimated_product_size: int
@@ -117,6 +119,7 @@ def shared_disconnected_composition_support_for_case(
         outputs=result.outputs,
         fragment_count=diagnostics.fragment_count,
         fragment_output_counts=diagnostics.fragment_output_counts,
+        fragment_generation_records=diagnostics.fragment_generation_records,
         fragment_order_policy=result.fragment_order_policy,
         fragment_order_count=diagnostics.fragment_order_count,
         estimated_product_size=diagnostics.estimated_product_size,

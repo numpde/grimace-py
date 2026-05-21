@@ -201,7 +201,8 @@ existing default support order.
 
 Graph-native EnumS results expose private generation diagnostics:
 
-- fragment count and per-fragment support counts;
+- fragment count, per-fragment support counts, and per-fragment provenance
+  records;
 - fragment-order count;
 - stereo-component count;
 - traversal skeleton count;

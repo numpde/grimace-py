@@ -138,6 +138,30 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 )
                 self.assertEqual("all_fragment_orders", result.fragment_order_policy)
                 self.assertEqual(2, result.fragment_order_count)
+                self.assertEqual(
+                    result.fragment_output_counts,
+                    tuple(
+                        record.output_count
+                        for record in result.fragment_generation_records
+                    ),
+                )
+                self.assertEqual(
+                    tuple(
+                        f"fragment:{fragment_idx}"
+                        for fragment_idx in range(result.fragment_count)
+                    ),
+                    tuple(
+                        record.fragment_id
+                        for record in result.fragment_generation_records
+                    ),
+                )
+                self.assertTrue(
+                    all(
+                        record.source_atom_indices
+                        and record.source_fragment_smiles
+                        for record in result.fragment_generation_records
+                    )
+                )
 
     def test_ring_stereo_monocycle_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

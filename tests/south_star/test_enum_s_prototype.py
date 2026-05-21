@@ -165,6 +165,34 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         diagnostics = result.generation_diagnostics
         self.assertEqual(2, diagnostics.fragment_count)
         self.assertEqual((12, 1), diagnostics.fragment_output_counts)
+        self.assertEqual(
+            ("fragment:0", "fragment:1"),
+            tuple(
+                record.fragment_id
+                for record in diagnostics.fragment_generation_records
+            ),
+        )
+        self.assertEqual(
+            ((0, 1, 2, 3), (4,)),
+            tuple(
+                record.source_atom_indices
+                for record in diagnostics.fragment_generation_records
+            ),
+        )
+        self.assertEqual(
+            ("F/C=C\\Cl", "O"),
+            tuple(
+                record.source_fragment_smiles
+                for record in diagnostics.fragment_generation_records
+            ),
+        )
+        self.assertEqual(
+            diagnostics.fragment_output_counts,
+            tuple(
+                record.output_count
+                for record in diagnostics.fragment_generation_records
+            ),
+        )
         self.assertEqual(13, diagnostics.traversal_skeleton_count)
         self.assertEqual(24, diagnostics.marker_slot_count)
         self.assertEqual(2, diagnostics.local_assignment_count)

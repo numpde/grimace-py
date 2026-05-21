@@ -65,9 +65,18 @@ _TraversalFragment = SouthStarTraversalFragment
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarFragmentGenerationRecord:
+    fragment_id: str
+    source_atom_indices: tuple[int, ...]
+    source_fragment_smiles: str
+    output_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarEnumSGenerationDiagnostics:
     fragment_count: int
     fragment_output_counts: tuple[int, ...]
+    fragment_generation_records: tuple[SouthStarFragmentGenerationRecord, ...]
     fragment_order_count: int
     stereo_component_count: int
     traversal_skeleton_count: int
@@ -80,6 +89,19 @@ class SouthStarEnumSGenerationDiagnostics:
     spanning_tree_count: int = 0
     closure_edge_count: int = 0
     closure_label_count: int = 0
+
+    def __post_init__(self) -> None:
+        if self.fragment_count != len(self.fragment_output_counts):
+            raise ValueError("fragment count must match fragment output counts")
+        if self.fragment_count != len(self.fragment_generation_records):
+            raise ValueError("fragment count must match fragment provenance records")
+        record_output_counts = tuple(
+            record.output_count for record in self.fragment_generation_records
+        )
+        if self.fragment_output_counts != record_output_counts:
+            raise ValueError(
+                "fragment output counts must match fragment provenance records"
+            )
 
     @property
     def deduplication_drop_count(self) -> int:
@@ -213,6 +235,9 @@ def _connected_generation_for_mol(
         diagnostics=SouthStarEnumSGenerationDiagnostics(
             fragment_count=1,
             fragment_output_counts=(len(outputs),),
+            fragment_generation_records=(
+                _whole_molecule_fragment_record(mol, output_count=len(outputs)),
+            ),
             fragment_order_count=1,
             stereo_component_count=complexity_snapshot.component_count,
             traversal_skeleton_count=len(traversals),
@@ -237,11 +262,17 @@ def _disconnected_generation_for_mol(
 ) -> _SupportGeneration:
     if molecule_facts.graph_topology.fragment_count <= 1:
         raise ValueError("disconnected generation requires multiple fragments")
+    source_atom_fragments = tuple(tuple(fragment) for fragment in Chem.GetMolFrags(mol))
     fragments = tuple(Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True))
     if len(fragments) != molecule_facts.graph_topology.fragment_count:
         raise AssertionError(
             "South Star disconnected generation requires fragment extraction "
             "to match molecule topology facts"
+        )
+    if len(source_atom_fragments) != len(fragments):
+        raise AssertionError(
+            "South Star disconnected generation requires source fragment "
+            "provenance to match fragment molecule extraction"
         )
     fragment_generations = tuple(
         _connected_generation_for_mol(
@@ -275,6 +306,11 @@ def _disconnected_generation_for_mol(
         diagnostics=SouthStarEnumSGenerationDiagnostics(
             fragment_count=composition.fragment_count,
             fragment_output_counts=composition.fragment_output_counts,
+            fragment_generation_records=_fragment_generation_records(
+                source_atom_fragments=source_atom_fragments,
+                fragments=fragments,
+                fragment_generations=fragment_generations,
+            ),
             fragment_order_count=composition.fragment_order_count,
             stereo_component_count=sum(
                 generation.diagnostics.stereo_component_count
@@ -317,6 +353,51 @@ def _disconnected_generation_for_mol(
             ),
         ),
     )
+
+
+def _whole_molecule_fragment_record(
+    mol: Chem.Mol,
+    *,
+    output_count: int,
+) -> SouthStarFragmentGenerationRecord:
+    return SouthStarFragmentGenerationRecord(
+        fragment_id="fragment:0",
+        source_atom_indices=tuple(atom.GetIdx() for atom in mol.GetAtoms()),
+        source_fragment_smiles=_source_fragment_smiles(mol),
+        output_count=output_count,
+    )
+
+
+def _fragment_generation_records(
+    *,
+    source_atom_fragments: tuple[tuple[int, ...], ...],
+    fragments: tuple[Chem.Mol, ...],
+    fragment_generations: tuple[_SupportGeneration, ...],
+) -> tuple[SouthStarFragmentGenerationRecord, ...]:
+    if not (
+        len(source_atom_fragments)
+        == len(fragments)
+        == len(fragment_generations)
+    ):
+        raise AssertionError(
+            "South Star fragment provenance requires source atoms, fragment "
+            "molecules, and generation records to align"
+        )
+    return tuple(
+        SouthStarFragmentGenerationRecord(
+            fragment_id=f"fragment:{fragment_idx}",
+            source_atom_indices=source_atom_indices,
+            source_fragment_smiles=_source_fragment_smiles(fragment),
+            output_count=len(generation.outputs),
+        )
+        for fragment_idx, (source_atom_indices, fragment, generation) in enumerate(
+            zip(source_atom_fragments, fragments, fragment_generations, strict=True)
+        )
+    )
+
+
+def _source_fragment_smiles(mol: Chem.Mol) -> str:
+    return Chem.MolToSmiles(mol, canonical=False, isomericSmiles=True)
 
 
 def _connected_graph_plan_diagnostics(

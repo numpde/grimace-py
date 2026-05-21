@@ -986,34 +986,21 @@ def _token_inventory_root_indices(
 def _exact_token_inventory_from_decoder(
     mol_or_prepared: object,
     *,
-    isomeric_smiles: bool,
-    kekule_smiles: bool,
-    rooted_at_atom: int,
-    canonical: bool,
-    all_bonds_explicit: bool,
-    all_hs_explicit: bool,
-    do_random: bool,
-    ignore_atom_map_numbers: bool,
+    flags: MolToSmilesFlags,
 ) -> tuple[str, ...]:
     inventory: set[str] = set()
     visited_state_keys: set[DecoderCacheKey] = set()
 
     for root_idx in _token_inventory_root_indices(
         mol_or_prepared,
-        rooted_at_atom=rooted_at_atom,
+        rooted_at_atom=flags.rooted_at_atom,
     ):
-        decoder = MolToSmilesDecoder(
-            mol_or_prepared,
-            isomeric_smiles=isomeric_smiles,
-            kekule_smiles=kekule_smiles,
-            rooted_at_atom=root_idx,
-            canonical=canonical,
-            all_bonds_explicit=all_bonds_explicit,
-            all_hs_explicit=all_hs_explicit,
-            do_random=do_random,
-            ignore_atom_map_numbers=ignore_atom_map_numbers,
-        )
-        stack = [decoder._state]
+        stack = [
+            _make_decoder_state_impl(
+                mol_or_prepared,
+                flags=flags.with_rooted_at_atom(root_idx),
+            )
+        ]
 
         while stack:
             state = stack.pop()
@@ -1276,14 +1263,7 @@ def mol_to_smiles_token_inventory(
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     return _exact_token_inventory_from_decoder(
         mol_or_prepared,
-        isomeric_smiles=isomeric_smiles,
-        kekule_smiles=kekule_smiles,
-        rooted_at_atom=rooted_at_atom,
-        canonical=canonical,
-        all_bonds_explicit=all_bonds_explicit,
-        all_hs_explicit=all_hs_explicit,
-        do_random=do_random,
-        ignore_atom_map_numbers=ignore_atom_map_numbers,
+        flags=flags,
     )
 
 

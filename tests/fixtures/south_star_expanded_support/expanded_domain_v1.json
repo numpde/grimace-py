@@ -860,8 +860,8 @@
       "case_id": "ring_tetrahedral_monocycle_center",
       "feature_area": "ring_tetrahedral_monocycle",
       "source_smiles": "F[C@H]1C(C)CC1",
-      "support_authority": "temporary_witness_ring_tetrahedral_monocycle_shared_records",
-      "evidence_notes": "Temporary witness evidence from the shared ring traversal plan: closure events are represented in the connected traversal plan, tetrahedral observations derive parent, child, and ring-closure ligand order from that plan, and @/@@ atom text is emitted through typed renderer inputs.",
+      "support_authority": "unified_reference_ring_tetrahedral_monocycle_obligations",
+      "evidence_notes": "Unified-reference ring/tetrahedral evidence: shared ring traversal plans provide closure events and labels, tetrahedral proof inputs derive parent, child, and ring-closure ligand order, @/@@ atom text is emitted through typed renderer inputs, and the fixture is retained only as a support cross-check.",
       "expected_support": [
         "F[C@H]1C(C)CC1",
         "F[C@H]1C(CC1)C",
@@ -959,8 +959,8 @@
       "case_id": "ring_adjacent_tetrahedral_monocycle",
       "feature_area": "ring_tetrahedral_monocycle",
       "source_smiles": "F[C@H](Cl)C1CC1",
-      "support_authority": "temporary_witness_ring_tetrahedral_monocycle_shared_records",
-      "evidence_notes": "Temporary witness evidence from the shared ring traversal plan: closure events are represented in the connected traversal plan, tetrahedral observations derive parent, child, and ring-closure ligand order from that plan, and @/@@ atom text is emitted through typed renderer inputs.",
+      "support_authority": "unified_reference_ring_tetrahedral_monocycle_obligations",
+      "evidence_notes": "Unified-reference ring/tetrahedral evidence: shared ring traversal plans provide closure events and labels, tetrahedral proof inputs derive parent, child, and ring-closure ligand order, @/@@ atom text is emitted through typed renderer inputs, and the fixture is retained only as a support cross-check.",
       "expected_support": [
         "F[C@H](Cl)C1CC1",
         "F[C@@H](C1CC1)Cl",

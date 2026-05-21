@@ -33,8 +33,8 @@ SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY = (
 SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_tetrahedral_atom_stereo_obligations"
 )
-SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY = (
-    "temporary_witness_ring_tetrahedral_monocycle_shared_records"
+SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_ring_tetrahedral_monocycle_obligations"
 )
 SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY = (
     "temporary_witness_polycyclic_ring_stereo_shared_records"
@@ -53,6 +53,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
@@ -62,7 +63,6 @@ SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
     {
         SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
         SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
-        SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
     }
 )
 SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
@@ -80,11 +80,6 @@ SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
         "Fold into unified-reference polycyclic stereo after closure-edge "
         "choices and marker equations solve through the shared traversal "
         "records."
-    ),
-    SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY: (
-        "Fold into unified-reference ring/tetrahedral support after emitted "
-        "ligand order is represented as an atom-stereo obligation over shared "
-        "ring traversal events."
     ),
 }
 

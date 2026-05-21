@@ -12,7 +12,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
-    SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
+    SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
 )
 from tests.helpers.south_star_exact_support import (
@@ -111,7 +111,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY
+                == SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -366,6 +366,59 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 self.assertEqual(result.expected_output_count, result.output_count)
                 self.assertTrue(result.fixture_cross_check_passed)
+
+            for output in result.outputs:
+                with self.subTest(case_id=case.case_id, output=output):
+                    parse_smiles(output)
+                    self.assertEqual(
+                        graph_signature(case.source_smiles),
+                        graph_signature(output),
+                    )
+                    self.assertEqual(
+                        semantic_signature(case.source_smiles),
+                        semantic_signature(output),
+                    )
+
+    def test_ring_tetrahedral_proof_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            result = shared_tetrahedral_atom_stereo_support_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, result.outputs)
+                self.assertEqual(len(case.expected_support), result.output_count)
+                self.assertTrue(result.fixture_cross_check_passed)
+                self.assertEqual(len(result.diagnostics), len(result.proof_inputs))
+                self.assertGreater(len(result.proof_inputs), 0)
+                if case.case_id == "ring_tetrahedral_monocycle_center":
+                    self.assertTrue(
+                        any(
+                            proof_input.ring_closure_ligand_atom_indices
+                            for proof_input in result.proof_inputs
+                        )
+                    )
+
+            for proof_input, diagnostic in zip(result.proof_inputs, result.diagnostics):
+                with self.subTest(
+                    case_id=case.case_id,
+                    slot=proof_input.renderer_input.syntax_slot_id,
+                ):
+                    self.assertEqual(
+                        proof_input.expected_token,
+                        proof_input.renderer_input.value,
+                    )
+                    self.assertEqual(
+                        proof_input.expected_token,
+                        diagnostic.expected_token,
+                    )
+                    self.assertEqual(
+                        proof_input.emitted_ligand_order,
+                        diagnostic.emitted_ligand_order,
+                    )
 
             for output in result.outputs:
                 with self.subTest(case_id=case.case_id, output=output):

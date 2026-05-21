@@ -12,18 +12,18 @@ After the 129/129a/129b/129c/129d/129e sequence, the readiness matrix is no
 longer blocked by stale shared-pipeline metadata.
 
 Current matrix after the first-domain, markerless acyclic-tree,
-disconnected-composition, nonstereo-monocycle, ring-stereo monocycle, and
-star-shaped tetrahedral atom-stereo authority promotions:
+disconnected-composition, nonstereo-monocycle, ring-stereo monocycle,
+star-shaped tetrahedral atom-stereo, and ring/tetrahedral authority promotions:
 
-- unified-reference-backed cases: `26`
+- unified-reference-backed cases: `28`
 - shared-pipeline promotion candidates: `30`
-- temporary-witness-backed cases: `3`
+- temporary-witness-backed cases: `1`
 - graph-native regression-backed cases: `1`
-- public API blocker cases: `4`
+- public API blocker cases: `2`
 
 Remaining blocker count:
 
-- `support_authority_is_not_unified_reference`: `4`
+- `support_authority_is_not_unified_reference`: `2`
 
 That is the right next frontier. The immediate post-checkpoint work should be
 authority migration under the one-truth reference model, not broad API export.
@@ -109,8 +109,8 @@ ring-stereo monocycle fixture is also
 derive support from molecule facts, shared connected-graph traversal plans,
 ring-closure labels, closure bond text, marker slots where needed, parity
 equations where needed, renderer events, and first-occurrence deduplication.
-Ring/tetrahedral interactions and polycyclic rings remain outside this promoted
-slice.
+Ring/tetrahedral interactions are now promoted separately; polycyclic rings
+remain outside this promoted slice.
 
 ### 130e: Promote Tetrahedral Atom-Stereo Authority
 
@@ -125,7 +125,10 @@ Status: complete for the current non-ring star-shaped tetrahedral cases:
 `unified_reference_tetrahedral_atom_stereo_obligations`. The proof records
 derive `@` / `@@` from source ligand order, traversal/emitted ligand order,
 implicit-H placement, renderer inputs, and semantic parse-back. Ring/tetrahedral
-interactions remain outside this promoted slice.
+interactions are now promoted as
+`unified_reference_ring_tetrahedral_monocycle_obligations`, using the same
+tetrahedral proof inputs composed with shared ring traversal closure events and
+labels.
 
 ### 130f: Define EnumS Benchmark Artifact
 

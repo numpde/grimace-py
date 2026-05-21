@@ -284,6 +284,8 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "charged_atom_text_methylammonium",
                 "implicit_h_tetrahedral_center",
                 "quaternary_tetrahedral_center",
+                "ring_tetrahedral_monocycle_center",
+                "ring_adjacent_tetrahedral_monocycle",
             ),
             matrix.unified_reference_backed_case_ids,
         )
@@ -319,6 +321,14 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertNotIn(
             "quaternary_tetrahedral_center",
+            matrix.public_api_blocker_case_ids,
+        )
+        self.assertNotIn(
+            "ring_tetrahedral_monocycle_center",
+            matrix.public_api_blocker_case_ids,
+        )
+        self.assertNotIn(
+            "ring_adjacent_tetrahedral_monocycle",
             matrix.public_api_blocker_case_ids,
         )
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)

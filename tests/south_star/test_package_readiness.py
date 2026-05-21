@@ -30,6 +30,7 @@ SOUTH_STAR_SHARED_PIPELINE_RING_FEATURE_AREAS = frozenset(
     {
         "branched_saturated_monocycle",
         "nonstereo_polycyclic_skeleton",
+        "ring_tetrahedral_monocycle",
         "simple_saturated_monocycle",
         "unsaturated_nonstereo_monocycle",
     }
@@ -224,6 +225,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertIn("isolated_alkene_z", matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
+        self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)
         self.assertIn("unsupported_atom_charge", matrix.unsupported_categories)
         self.assertEqual(
             (
@@ -293,6 +295,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
 
         alkene = checks_by_id["isolated_alkene_z"]
         tetrahedral = checks_by_id["implicit_h_tetrahedral_center"]
+        ring_tetrahedral = checks_by_id["ring_tetrahedral_monocycle_center"]
         hydrogen = checks_by_id["explicit_bracket_hydrogen_h2"]
 
         self.assertEqual(
@@ -302,6 +305,10 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertEqual(
             "covered",
             _coverage_status(tetrahedral, "constraint_family"),
+        )
+        self.assertEqual(
+            "covered",
+            _coverage_status(ring_tetrahedral, "constraint_family"),
         )
         self.assertEqual(
             "not_required",

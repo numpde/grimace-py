@@ -93,6 +93,7 @@ class SouthStarComplexityGuardrailTests(unittest.TestCase):
         self.assertIn("ring_stereo_monocycle_cyclooctene", budget_case_ids)
         self.assertIn("disconnected_stereo_fragment_and_atom", budget_case_ids)
         self.assertIn("implicit_h_tetrahedral_center", budget_case_ids)
+        self.assertIn("ring_tetrahedral_monocycle_center", budget_case_ids)
         self.assertIn("unsaturated_nonstereo_monocycle_cyclohexene", budget_case_ids)
         self.assertIn(
             "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",

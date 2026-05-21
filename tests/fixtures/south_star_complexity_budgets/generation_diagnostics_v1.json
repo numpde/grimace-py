@@ -145,6 +145,24 @@
         "output_count": 12,
         "deduplication_drop_count": 0
       }
+    },
+    {
+      "case_id": "ring_tetrahedral_monocycle_center",
+      "evidence_notes": "Temporary witness ring/tetrahedral representative with plan-derived renderer inputs.",
+      "expected_generation_diagnostics": {
+        "fragment_count": 1,
+        "fragment_output_counts": [90],
+        "fragment_order_count": 1,
+        "stereo_component_count": 0,
+        "traversal_skeleton_count": 90,
+        "marker_slot_count": 0,
+        "local_assignment_count": 1,
+        "solved_assignment_count": 90,
+        "estimated_product_size": 90,
+        "raw_output_count": 90,
+        "output_count": 90,
+        "deduplication_drop_count": 0
+      }
     }
   ]
 }

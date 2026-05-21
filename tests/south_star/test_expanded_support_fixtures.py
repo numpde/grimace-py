@@ -10,6 +10,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
+    SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY,
 )
@@ -85,6 +86,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             any(
                 case.support_authority
                 == SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY
                 for case in cases
             )
         )

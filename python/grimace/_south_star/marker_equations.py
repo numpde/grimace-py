@@ -11,9 +11,18 @@ from grimace._south_star.component_support_state import (
 )
 from grimace._south_star.components import SouthStarSemanticStereoComponent
 from grimace._south_star.components import SouthStarSourceStereoFeature
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintEquation
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintFamily
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintSyntaxSlot
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.reference_model import SouthStarMarkerSlot
 from grimace._south_star.reference_model import SouthStarTraversal
+
+
+DIRECTIONAL_MARKER_CONSTRAINT_FAMILY = SouthStarConstraintFamily(
+    family_id="directional_double_bond_marker",
+    description="Directional marker slots constrained by double-bond stereo facts.",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +125,31 @@ def expected_marker_from_equation(
     if equation.traversal_orientation_flip:
         return _flipped_marker(equation.graph_marker)
     return equation.graph_marker
+
+
+def constraint_syntax_slot_for_marker_equation(
+    equation: SouthStarMarkerSlotParityEquation,
+) -> SouthStarConstraintSyntaxSlot:
+    return SouthStarConstraintSyntaxSlot(
+        family_id=DIRECTIONAL_MARKER_CONSTRAINT_FAMILY.family_id,
+        slot_id=equation.slot_id,
+        slot_kind="directional_marker",
+        syntax_position=equation.syntax_position,
+        edge=equation.edge,
+    )
+
+
+def constraint_equation_for_marker_equation(
+    equation: SouthStarMarkerSlotParityEquation,
+) -> SouthStarConstraintEquation:
+    return SouthStarConstraintEquation(
+        family_id=DIRECTIONAL_MARKER_CONSTRAINT_FAMILY.family_id,
+        equation_id=equation.equation_id,
+        obligation_ids=tuple(
+            dict.fromkeys(term.feature_id for term in equation.feature_terms)
+        ),
+        syntax_slot_ids=(equation.slot_id,),
+    )
 
 
 def _graph_marker_by_edge(traversal: SouthStarTraversal) -> dict[Edge, str]:

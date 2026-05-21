@@ -6,10 +6,16 @@ from dataclasses import dataclass
 from rdkit import Chem
 
 from grimace._south_star.connected_traversal import connected_graph_plan_from_events
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintFamily
+from grimace._south_star.constraint_vocabulary import SouthStarConstraintObligation
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.reference_model import SouthStarTraversalEvent
 
 
+TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY = SouthStarConstraintFamily(
+    family_id="tetrahedral_traversal_token",
+    description="Tetrahedral token choice constrained by traversal ligand order.",
+)
 TETRAHEDRAL_TOKENS: frozenset[str] = frozenset({"@", "@@"})
 IMPLICIT_HYDROGEN_LIGAND = "implicit_hydrogen"
 RING_TETRAHEDRAL_REQUIRED_FACT_AND_EVENT_FIELDS: tuple[str, ...] = (
@@ -128,6 +134,17 @@ def tetrahedral_token_preserves_orientation(
         source_token=source_token,
         source_ligand_order=source_ligand_order,
         emitted_ligand_order=emitted_ligand_order,
+    )
+
+
+def constraint_obligation_for_ring_tetrahedral_interaction(
+    obligation: SouthStarRingTetrahedralInteractionObligation,
+) -> SouthStarConstraintObligation:
+    return SouthStarConstraintObligation(
+        family_id=TETRAHEDRAL_TRAVERSAL_CONSTRAINT_FAMILY.family_id,
+        obligation_id=f"ring_tetrahedral:{obligation.center_atom_idx}",
+        subject_id=f"atom:{obligation.center_atom_idx}",
+        required_fact_ids=obligation.required_fact_and_event_fields,
     )
 
 
@@ -317,4 +334,3 @@ def _flipped_tetrahedral_token(token: str) -> str:
 def _validate_tetrahedral_token(token: str) -> None:
     if token not in TETRAHEDRAL_TOKENS:
         raise ValueError(f"tetrahedral token must be one of {TETRAHEDRAL_TOKENS}")
-

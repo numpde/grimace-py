@@ -70,11 +70,23 @@ class SouthStarMoleculeFactsTests(unittest.TestCase):
         self.assertTrue(facts.graph_topology.connected)
         self.assertFalse(facts.graph_topology.acyclic_connected_tree)
         self.assertEqual(1, facts.graph_topology.ring_count)
+        self.assertTrue(facts.graph_topology.ring_system.has_rings)
+        self.assertTrue(facts.graph_topology.ring_system.simple_monocycle)
+        self.assertFalse(facts.graph_topology.ring_system.fused_or_polycyclic)
         self.assertEqual(
             ("C", "C", "C", "C", "C", "C"),
             tuple(atom.symbol for atom in facts.atom_text_facts),
         )
         self.assertIn("DOUBLE", {bond.bond_type for bond in facts.bond_text_facts})
+
+    def test_ring_system_facts_expose_polycyclic_witness_shape(self) -> None:
+        facts = SouthStarMoleculeFacts.from_mol(parse_smiles("C1CC2CCCC2C1"))
+
+        self.assertEqual(2, facts.graph_topology.ring_system.ring_count)
+        self.assertEqual(2, len(facts.graph_topology.ring_system.atom_rings))
+        self.assertEqual(2, len(facts.graph_topology.ring_system.bond_rings))
+        self.assertFalse(facts.graph_topology.ring_system.simple_monocycle)
+        self.assertTrue(facts.graph_topology.ring_system.fused_or_polycyclic)
 
     def test_molecule_facts_topology_distinguishes_tree_and_fragments(self) -> None:
         tree_facts = SouthStarMoleculeFacts.from_mol(parse_smiles("CCO"))

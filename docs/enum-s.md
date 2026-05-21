@@ -135,6 +135,11 @@ facts. See `notes/040_south_star_aromatic_boundary.md` for the alternatives and
 why kekule-looking input text is not enough when normal RDKit parsing still
 sets aromatic flags.
 
+The current polycyclic stance is also fail-fast. Ring-system facts are named,
+but fused/polycyclic traversal still needs graph-native choices for spanning
+trees, closure edges, label allocation, and closure-event ordering before
+support should widen. See `notes/041_south_star_ring_system_model.md`.
+
 ## Annotation Policy
 
 The current South Star seed targets maximal eligible-carrier annotation:

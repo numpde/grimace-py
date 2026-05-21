@@ -44,13 +44,38 @@ class SouthStarBondTextFact:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarRingSystemFacts:
+    atom_rings: tuple[tuple[int, ...], ...]
+    bond_rings: tuple[tuple[int, ...], ...]
+    ring_atom_indices: tuple[int, ...]
+    ring_bond_indices: tuple[int, ...]
+
+    @property
+    def ring_count(self) -> int:
+        return len(self.bond_rings)
+
+    @property
+    def has_rings(self) -> bool:
+        return self.ring_count > 0
+
+    @property
+    def simple_monocycle(self) -> bool:
+        return (
+            self.ring_count == 1
+            and len(self.atom_rings[0]) == len(self.bond_rings[0])
+        )
+
+    @property
+    def fused_or_polycyclic(self) -> bool:
+        return self.ring_count > 1
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarGraphTopologyFacts:
     atom_indices: tuple[int, ...]
     bond_edges: tuple[Edge, ...]
     fragment_atom_indices: tuple[tuple[int, ...], ...]
-    ring_atom_indices: tuple[int, ...]
-    ring_bond_indices: tuple[int, ...]
-    ring_count: int
+    ring_system: SouthStarRingSystemFacts
 
     @property
     def atom_count(self) -> int:
@@ -71,6 +96,18 @@ class SouthStarGraphTopologyFacts:
     @property
     def acyclic_connected_tree(self) -> bool:
         return self.connected and self.bond_count == self.atom_count - 1
+
+    @property
+    def ring_atom_indices(self) -> tuple[int, ...]:
+        return self.ring_system.ring_atom_indices
+
+    @property
+    def ring_bond_indices(self) -> tuple[int, ...]:
+        return self.ring_system.ring_bond_indices
+
+    @property
+    def ring_count(self) -> int:
+        return self.ring_system.ring_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,13 +208,21 @@ def _graph_topology_facts(mol: Chem.Mol) -> SouthStarGraphTopologyFacts:
         fragment_atom_indices=tuple(
             tuple(fragment) for fragment in Chem.GetMolFrags(mol)
         ),
+        ring_system=_ring_system_facts(mol),
+    )
+
+
+def _ring_system_facts(mol: Chem.Mol) -> SouthStarRingSystemFacts:
+    ring_info = mol.GetRingInfo()
+    return SouthStarRingSystemFacts(
+        atom_rings=tuple(tuple(ring) for ring in ring_info.AtomRings()),
+        bond_rings=tuple(tuple(ring) for ring in ring_info.BondRings()),
         ring_atom_indices=tuple(
             atom.GetIdx() for atom in mol.GetAtoms() if atom.IsInRing()
         ),
         ring_bond_indices=tuple(
             bond.GetIdx() for bond in mol.GetBonds() if bond.IsInRing()
         ),
-        ring_count=mol.GetRingInfo().NumRings() if mol.GetNumAtoms() else 0,
     )
 
 

@@ -169,6 +169,7 @@ def _prepare_runtime_input(
     *,
     flags: MolToSmilesFlags,
 ) -> object:
+    _validate_supported_flags(flags)
     if isinstance(mol_or_prepared, PreparedMol):
         _validate_prepared_mol_writer_flags(mol_or_prepared, flags)
         return mol_or_prepared
@@ -228,9 +229,11 @@ def _ensure_singly_connected_molecule(mol: object) -> None:
 
 
 def _as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
-    if isinstance(mol_or_prepared, PreparedMol):
-        if len(_prepared_mol_fragments(mol_or_prepared)) > 1:
-            return mol_or_prepared
+    if (
+        isinstance(mol_or_prepared, PreparedMol)
+        and len(_prepared_mol_fragments(mol_or_prepared)) > 1
+    ):
+        return mol_or_prepared
     return None
 
 
@@ -790,11 +793,17 @@ def _make_fragment_state_adapter(
     rooted_at_atom: int | None,
 ) -> object:
     if rooted_at_atom is not None:
-        return _make_connected_state_adapter(fragment_mol, flags.with_rooted_at_atom(rooted_at_atom))
+        return _make_connected_state_adapter(
+            fragment_mol,
+            flags.with_rooted_at_atom(rooted_at_atom),
+        )
 
     atom_count = _atom_count(fragment_mol)
     if atom_count == 0:
-        return _make_connected_state_adapter(fragment_mol, flags.with_rooted_at_atom(0))
+        return _make_connected_state_adapter(
+            fragment_mol,
+            flags.with_rooted_at_atom(0),
+        )
 
     fragment_for_preparation = fragment_mol
     if isinstance(fragment_mol, PreparedMol):
@@ -807,7 +816,10 @@ def _make_fragment_state_adapter(
         flags=flags.with_rooted_at_atom(0),
     )
     if prepared_fragment.surface_kind == CONNECTED_NONSTEREO_SURFACE:
-        return _make_connected_state_adapter(prepared_fragment, flags.with_rooted_at_atom(-1))
+        return _make_connected_state_adapter(
+            prepared_fragment,
+            flags.with_rooted_at_atom(-1),
+        )
 
     states = tuple(
         _make_decoder(prepared_fragment, flags.with_rooted_at_atom(local_root_idx))
@@ -881,7 +893,6 @@ class _PublicDecoderBase:
             do_random=do_random,
             ignore_atom_map_numbers=ignore_atom_map_numbers,
         )
-        _validate_supported_flags(flags)
         self._state = _make_decoder_state_impl(
             _prepare_runtime_input(mol_or_prepared, flags=flags),
             flags=flags,
@@ -1168,7 +1179,6 @@ def mol_to_smiles_enum(
         do_random=do_random,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
-    _validate_supported_flags(flags)
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:
@@ -1245,7 +1255,6 @@ def mol_to_smiles_token_inventory(
         do_random=do_random,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
-    _validate_supported_flags(flags)
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     return _exact_token_inventory_from_decoder(
         mol_or_prepared,
@@ -1277,7 +1286,6 @@ def mol_to_smiles_token_inventory_superset(
         do_random=do_random,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
-    _validate_supported_flags(flags)
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:

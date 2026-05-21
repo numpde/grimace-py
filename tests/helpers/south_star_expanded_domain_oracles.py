@@ -5,6 +5,10 @@ from __future__ import annotations
 The remaining `independent_*` helpers are temporary witnesses. Helpers without
 that prefix intentionally consume shared EnumS traversal/equation records so
 they do not grow into separate support universes.
+
+The `TemporarySouthStar*Witness*` records below are fixture evidence envelopes,
+not reference-model vocabulary. Shared constraint-family records live under
+`grimace._south_star`.
 """
 
 from dataclasses import dataclass
@@ -29,13 +33,13 @@ from grimace._south_star.marker_equations import (
 from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.tetrahedral import SouthStarTetrahedralCenterFact
 from grimace._south_star.tetrahedral import (
-    emitted_tetrahedral_ligand_order_from_observation,
+    SouthStarTetrahedralTraversalTokenDiagnostic,
 )
 from grimace._south_star.tetrahedral import extract_tetrahedral_center_facts
-from grimace._south_star.tetrahedral import preserving_tetrahedral_token
 from grimace._south_star.tetrahedral import (
     tetrahedral_traversal_observation_from_connected_graph_plan,
 )
+from grimace._south_star.tetrahedral import tetrahedral_traversal_token_diagnostic
 from tests.helpers.south_star_exact_support import (
     SouthStarExpandedSupportCase,
 )
@@ -43,7 +47,7 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 
 
 @dataclass(frozen=True, slots=True)
-class SouthStarRingStereoOracleResult:
+class TemporarySouthStarRingStereoWitnessResult:
     outputs: tuple[str, ...]
     equations: tuple[SouthStarMarkerSlotParityEquation, ...]
     closure_edge_count: int
@@ -51,30 +55,13 @@ class SouthStarRingStereoOracleResult:
 
 
 @dataclass(frozen=True, slots=True)
-class SouthStarTetrahedralTraversalObligation:
-    center_atom_idx: int
-    source_token: str
-    expected_token: str
-    emitted_token: str
-    emitted_ligand_order: tuple[str, ...]
-    parent_atom_idx: int | None
-    child_atom_indices: tuple[int, ...]
-    ring_closure_ligand_atom_indices: tuple[int, ...]
-    ring_closure_labels: tuple[str, ...]
-
-    @property
-    def preserves_orientation(self) -> bool:
-        return self.emitted_token == self.expected_token
-
-
-@dataclass(frozen=True, slots=True)
-class SouthStarTetrahedralTraversalResult:
+class TemporarySouthStarTetrahedralWitnessResult:
     outputs: tuple[str, ...]
-    obligations: tuple[SouthStarTetrahedralTraversalObligation, ...]
+    diagnostics: tuple[SouthStarTetrahedralTraversalTokenDiagnostic, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class SouthStarDisconnectedCompositionEvidence:
+class TemporarySouthStarDisconnectedCompositionWitnessEvidence:
     outputs: tuple[str, ...]
     fragment_count: int
     fragment_output_counts: tuple[int, ...]
@@ -115,7 +102,7 @@ def _shared_traversal_support_for_case(
 
 def shared_disconnected_composition_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> SouthStarDisconnectedCompositionEvidence:
+) -> TemporarySouthStarDisconnectedCompositionWitnessEvidence:
     result = mol_to_smiles_enum_s_graph_native(
         case.source_smiles,
         case_id=case.case_id,
@@ -123,7 +110,7 @@ def shared_disconnected_composition_support_for_case(
     diagnostics = result.generation_diagnostics
     if diagnostics is None:
         raise ValueError("disconnected composition evidence requires diagnostics")
-    return SouthStarDisconnectedCompositionEvidence(
+    return TemporarySouthStarDisconnectedCompositionWitnessEvidence(
         outputs=result.outputs,
         fragment_count=diagnostics.fragment_count,
         fragment_output_counts=diagnostics.fragment_output_counts,
@@ -136,14 +123,14 @@ def shared_disconnected_composition_support_for_case(
 
 def shared_ring_stereo_monocycle_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> SouthStarRingStereoOracleResult:
+) -> TemporarySouthStarRingStereoWitnessResult:
     """Check ring-stereo fixtures through shared traversal/equation records."""
     mol = parse_smiles(case.source_smiles)
     _assert_ring_stereo_monocycle_domain(mol)
     state = SouthStarComponentSupportState.from_mol(mol)
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
 
-    return SouthStarRingStereoOracleResult(
+    return TemporarySouthStarRingStereoWitnessResult(
         outputs=tuple(
             dict.fromkeys(
                 render_south_star_tree_traversal(traversal)
@@ -176,23 +163,23 @@ def shared_ring_stereo_monocycle_support_for_case(
 
 def shared_tetrahedral_atom_stereo_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> SouthStarTetrahedralTraversalResult:
-    """Check tetrahedral fixtures through shared traversal obligations."""
+) -> TemporarySouthStarTetrahedralWitnessResult:
+    """Check tetrahedral fixtures through shared traversal-token diagnostics."""
     mol = parse_smiles(case.source_smiles)
     facts = extract_tetrahedral_center_facts(mol)
     if not facts:
         raise NotImplementedError("tetrahedral traversal check requires centers")
     facts_by_atom = {fact.center_atom_idx: fact for fact in facts}
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
-    return SouthStarTetrahedralTraversalResult(
+    return TemporarySouthStarTetrahedralWitnessResult(
         outputs=tuple(
             dict.fromkeys(
                 render_south_star_tree_traversal(traversal)
                 for traversal in traversals
             )
         ),
-        obligations=tuple(
-            _tetrahedral_obligation_for_atom_event(
+        diagnostics=tuple(
+            _tetrahedral_token_diagnostic_for_atom_event(
                 traversal.connected_graph_plan,
                 center_atom_idx=event.atom_idx,
                 emitted_token=_tetrahedral_token_from_atom_text(event.text),
@@ -207,47 +194,32 @@ def shared_tetrahedral_atom_stereo_support_for_case(
     )
 
 
-def _tetrahedral_obligation_for_atom_event(
+def _tetrahedral_token_diagnostic_for_atom_event(
     connected_graph_plan: SouthStarConnectedGraphTraversalPlan | None,
     *,
     center_atom_idx: int,
     emitted_token: str,
     facts_by_atom: dict[int, SouthStarTetrahedralCenterFact],
-) -> SouthStarTetrahedralTraversalObligation:
+) -> SouthStarTetrahedralTraversalTokenDiagnostic:
     fact = facts_by_atom[center_atom_idx]
     if connected_graph_plan is None:
-        raise ValueError("tetrahedral obligation requires connected graph plan")
+        raise ValueError("tetrahedral diagnostic requires connected graph plan")
     observation = tetrahedral_traversal_observation_from_connected_graph_plan(
         connected_graph_plan,
         center_atom_idx=center_atom_idx,
         implicit_hydrogen_count=fact.implicit_hydrogen_count,
     )
-    emitted_ligand_order = emitted_tetrahedral_ligand_order_from_observation(
-        observation
-    )
-    expected_token = preserving_tetrahedral_token(
-        source_token=fact.source_token,
-        source_ligand_order=fact.source_ligand_order,
-        emitted_ligand_order=emitted_ligand_order,
-    )
-    if emitted_token != expected_token:
-        raise ValueError(
-            f"tetrahedral traversal emitted {emitted_token!r}, expected "
-            f"{expected_token!r} for atom {center_atom_idx}"
-        )
-    return SouthStarTetrahedralTraversalObligation(
-        center_atom_idx=center_atom_idx,
-        source_token=fact.source_token,
-        expected_token=expected_token,
+    diagnostic = tetrahedral_traversal_token_diagnostic(
+        fact,
+        observation,
         emitted_token=emitted_token,
-        emitted_ligand_order=emitted_ligand_order,
-        parent_atom_idx=observation.parent_atom_idx,
-        child_atom_indices=observation.child_atom_indices,
-        ring_closure_ligand_atom_indices=(
-            observation.ring_closure_ligand_atom_indices
-        ),
-        ring_closure_labels=observation.ring_closure_labels,
     )
+    if not diagnostic.preserves_orientation:
+        raise ValueError(
+            f"tetrahedral traversal emitted {diagnostic.emitted_token!r}, "
+            f"expected {diagnostic.expected_token!r} for atom {center_atom_idx}"
+        )
+    return diagnostic
 
 
 def _tetrahedral_token_from_atom_text(atom_text: str) -> str:

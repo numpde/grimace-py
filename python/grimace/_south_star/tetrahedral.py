@@ -73,6 +73,23 @@ class SouthStarTetrahedralTraversalObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarTetrahedralTraversalTokenDiagnostic:
+    center_atom_idx: int
+    source_token: str
+    expected_token: str
+    emitted_token: str
+    emitted_ligand_order: tuple[str, ...]
+    parent_atom_idx: int | None
+    child_atom_indices: tuple[int, ...]
+    ring_closure_ligand_atom_indices: tuple[int, ...]
+    ring_closure_labels: tuple[str, ...]
+
+    @property
+    def preserves_orientation(self) -> bool:
+        return self.emitted_token == self.expected_token
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarTetrahedralTokenConstraintRecords:
     syntax_slot: SouthStarConstraintSyntaxSlot
     obligations: tuple[SouthStarConstraintObligation, ...]
@@ -147,6 +164,37 @@ def tetrahedral_token_preserves_orientation(
         source_token=source_token,
         source_ligand_order=source_ligand_order,
         emitted_ligand_order=emitted_ligand_order,
+    )
+
+
+def tetrahedral_traversal_token_diagnostic(
+    fact: SouthStarTetrahedralCenterFact,
+    observation: SouthStarTetrahedralTraversalObservation,
+    *,
+    emitted_token: str,
+) -> SouthStarTetrahedralTraversalTokenDiagnostic:
+    if fact.center_atom_idx != observation.center_atom_idx:
+        raise ValueError("tetrahedral fact and observation center atoms differ")
+    _validate_tetrahedral_token(emitted_token)
+    emitted_ligand_order = emitted_tetrahedral_ligand_order_from_observation(
+        observation
+    )
+    return SouthStarTetrahedralTraversalTokenDiagnostic(
+        center_atom_idx=fact.center_atom_idx,
+        source_token=fact.source_token,
+        expected_token=preserving_tetrahedral_token(
+            source_token=fact.source_token,
+            source_ligand_order=fact.source_ligand_order,
+            emitted_ligand_order=emitted_ligand_order,
+        ),
+        emitted_token=emitted_token,
+        emitted_ligand_order=emitted_ligand_order,
+        parent_atom_idx=observation.parent_atom_idx,
+        child_atom_indices=observation.child_atom_indices,
+        ring_closure_ligand_atom_indices=(
+            observation.ring_closure_ligand_atom_indices
+        ),
+        ring_closure_labels=observation.ring_closure_labels,
     )
 
 

@@ -25,6 +25,7 @@ from grimace._south_star.tetrahedral import (
     preserving_tetrahedral_token,
     tetrahedral_token_preserves_orientation,
     tetrahedral_traversal_observation_from_connected_graph_plan,
+    tetrahedral_traversal_token_diagnostic,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import south_star_conformance_report
@@ -100,6 +101,36 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
                 source_ligand_order=source_order,
                 emitted_ligand_order=emitted_order,
             )
+        )
+
+    def test_traversal_token_diagnostic_names_expected_and_emitted_tokens(
+        self,
+    ) -> None:
+        fact = extract_tetrahedral_center_facts(parse_smiles("C[C@H](F)Cl"))[0]
+        traversal = _traversal_by_render("C[C@H](F)Cl", "C[C@H](F)Cl")
+        plan = traversal.connected_graph_plan
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+            plan,
+            center_atom_idx=fact.center_atom_idx,
+            implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        )
+
+        diagnostic = tetrahedral_traversal_token_diagnostic(
+            fact,
+            observation,
+            emitted_token="@",
+        )
+
+        self.assertTrue(diagnostic.preserves_orientation)
+        self.assertEqual(fact.center_atom_idx, diagnostic.center_atom_idx)
+        self.assertEqual("@", diagnostic.source_token)
+        self.assertEqual("@", diagnostic.expected_token)
+        self.assertEqual("@", diagnostic.emitted_token)
+        self.assertEqual(
+            emitted_tetrahedral_ligand_order_from_observation(observation),
+            diagnostic.emitted_ligand_order,
         )
 
     def test_tetrahedral_atom_stereo_is_inside_current_gate_scope(self) -> None:

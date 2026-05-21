@@ -219,14 +219,14 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             with self.subTest(case_id=case.case_id):
                 result = shared_tetrahedral_atom_stereo_support_for_case(case)
                 self.assertEqual(case.expected_support, result.outputs)
-                self.assertGreater(len(result.obligations), 0)
-                for obligation in result.obligations:
-                    self.assertTrue(obligation.preserves_orientation)
+                self.assertGreater(len(result.diagnostics), 0)
+                for diagnostic in result.diagnostics:
+                    self.assertTrue(diagnostic.preserves_orientation)
                     self.assertEqual(
-                        obligation.expected_token,
-                        obligation.emitted_token,
+                        diagnostic.expected_token,
+                        diagnostic.emitted_token,
                     )
-                    self.assertIn(obligation.emitted_token, {"@", "@@"})
+                    self.assertIn(diagnostic.emitted_token, {"@", "@@"})
 
     def test_tetrahedral_traversal_support_rejects_wrong_parity_tokens(self) -> None:
         cases = {

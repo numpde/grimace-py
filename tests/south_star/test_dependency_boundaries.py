@@ -25,6 +25,9 @@ SOUTH_STAR_MARKER_EQUATIONS_PATH = (
     / "_south_star"
     / "marker_equations.py"
 )
+SOUTH_STAR_EXPANDED_DOMAIN_ORACLES_PATH = (
+    SOUTH_STAR_HELPER_ROOT / "south_star_expanded_domain_oracles.py"
+)
 COMPARISON_HELPER_NAMES: frozenset[str] = frozenset(
     {
         "south_star_comparison.py",
@@ -90,6 +93,13 @@ def _imported_modules(path: Path) -> tuple[str, ...]:
     return tuple(modules)
 
 
+def _class_names(path: Path) -> tuple[str, ...]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    return tuple(
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    )
+
+
 def _imports_public_grimace_runtime(module_name: str) -> bool:
     return module_name == "grimace" or module_name.startswith("grimace.")
 
@@ -142,6 +152,19 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
         modules = _imported_modules(SOUTH_STAR_MARKER_EQUATIONS_PATH)
 
         self.assertNotIn("grimace._south_star.enum_s", modules)
+
+    def test_expanded_domain_evidence_records_are_explicitly_temporary(self) -> None:
+        class_names = frozenset(_class_names(SOUTH_STAR_EXPANDED_DOMAIN_ORACLES_PATH))
+
+        self.assertEqual(
+            {
+                "TemporarySouthStarDisconnectedCompositionWitnessEvidence",
+                "TemporarySouthStarRingStereoWitnessResult",
+                "TemporarySouthStarTetrahedralWitnessResult",
+            },
+            {name for name in class_names if name.startswith("TemporarySouthStar")},
+        )
+        self.assertNotIn("SouthStarTetrahedralTraversalObligation", class_names)
 
     def test_shared_traversal_record_does_not_render(self) -> None:
         for record_type in (

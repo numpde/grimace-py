@@ -229,35 +229,7 @@ def _ensure_singly_connected_molecule(mol: object) -> None:
 def _is_disconnected_molecule(mol_or_prepared: object) -> bool:
     if isinstance(mol_or_prepared, PreparedMol):
         return len(_prepared_mol_fragments(mol_or_prepared)) > 1
-    return (
-        _prepared_mol_module._is_rdkit_mol(mol_or_prepared)
-        and _prepared_mol_module._rdkit_mol_fragment_count(mol_or_prepared) > 1
-    )
-
-
-def _fragment_plans_for_molecule(
-    mol: object,
-    *,
-    rooted_at_atom: int,
-) -> tuple[_FragmentPlan, ...]:
-    if rooted_at_atom < 0 or rooted_at_atom >= mol.GetNumAtoms():
-        raise IndexError("root_idx out of range")
-
-    fragments = _prepared_mol_module._rdkit_mol_fragments(mol)
-    fragment_mols = _prepared_mol_module._rdkit_mol_fragment_mols(mol)
-    global_to_local: dict[int, tuple[int, int]] = {}
-    for fragment_idx, fragment_atom_indices in enumerate(fragments):
-        for local_idx, global_idx in enumerate(fragment_atom_indices):
-            global_to_local[global_idx] = (fragment_idx, local_idx)
-
-    rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
-    plans: list[_FragmentPlan] = []
-    for fragment_idx, fragment_mol in enumerate(fragment_mols):
-        if fragment_idx == rooted_fragment_idx:
-            plans.append(_FragmentPlan(fragment_mol, rooted_local_idx))
-        else:
-            plans.append(_FragmentPlan(fragment_mol, None))
-    return tuple(plans)
+    return False
 
 
 def _fragment_plans_for_prepared_mol(
@@ -413,12 +385,7 @@ def _fragment_plans_for_disconnected_input(
             rooted_at_atom=rooted_at_atom,
         )
 
-    if rooted_at_atom is None:
-        return tuple(
-            _FragmentPlan(fragment_mol, None)
-            for fragment_mol in _prepared_mol_module._rdkit_mol_fragment_mols(mol_or_prepared)
-        )
-    return _fragment_plans_for_molecule(mol_or_prepared, rooted_at_atom=rooted_at_atom)
+    raise TypeError("Disconnected runtime input must be PreparedMol")
 
 
 class MolToSmilesChoice:
@@ -1242,15 +1209,6 @@ def mol_to_smiles_enum(
     _validate_supported_flags(flags)
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     if _is_disconnected_molecule(mol_or_prepared):
-        if flags.rooted_at_atom < 0:
-            return iter(
-                sorted(
-                    _fragmented_mol_to_smiles_support(
-                        mol_or_prepared,
-                        flags=flags,
-                    )
-                )
-            )
         return iter(
             sorted(
                 _fragmented_mol_to_smiles_support(

@@ -32,6 +32,9 @@ Covered public operations:
 For `PreparedMol` inputs, runtime operations validate writer flags and consume
 stored prepared fragments. They do not call `PrepareMol`.
 
+Disconnected runtime planning now accepts only `PreparedMol` fragments. Public
+RDKit input reaches that path only after `PrepareMol`.
+
 Boundary tests
 --------------
 

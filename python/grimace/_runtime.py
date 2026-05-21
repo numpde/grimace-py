@@ -322,9 +322,7 @@ def _connected_fragment_support(
     # For all-roots support, build or unwrap the prepared graph once and reuse
     # it across roots instead of reparsing the same fragment each time.
     atom_count = _atom_count(fragment_mol)
-    if _prepared_mol_module._is_rdkit_mol(fragment_mol):
-        prepared_or_fragment = prepare_smiles_graph(fragment_mol, flags=flags)
-    elif isinstance(fragment_mol, PreparedMol):
+    if isinstance(fragment_mol, PreparedMol):
         prepared_or_fragment, _ = _connected_prepared_mol_fragment(
             fragment_mol,
             rooted_at_atom=-1,

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from functools import lru_cache
 import unittest
 
-import grimace._south_star.components as component_model
-import grimace._south_star.molecule_facts as molecule_fact_model
 from grimace._south_star.annotation_policy import (
     MaximalEligibleCarrierAnnotationPolicy,
 )
@@ -22,9 +19,12 @@ from grimace._south_star.marker_equations import (
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
 )
+from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.parity_solver import solve_marker_slot_parity_equations
 from grimace._south_star.reference_model import SouthStarTraversal
+from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_semantic_oracle import south_star_conformance_report
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
@@ -275,12 +275,28 @@ class SouthStarMarkerSlotEquationTests(unittest.TestCase):
                     solver_result.assignments[0].marker_by_slot,
                 )
 
-    def test_polycyclic_stereo_diagnostic_does_not_widen_public_support(self) -> None:
-        with self.assertRaisesRegex(
-            NotImplementedError,
-            "fused_or_polycyclic_ring|ring_stereo",
-        ):
-            mol_to_smiles_enum_s_graph_native(POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES)
+    def test_polycyclic_stereo_uses_public_support_path(self) -> None:
+        report = south_star_support_gate_report(
+            parse_smiles(POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES)
+        )
+        result = mol_to_smiles_enum_s_graph_native(POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES)
+
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertGreater(len(result.outputs), 0)
+        self.assertIsNotNone(result.generation_diagnostics)
+
+    def test_polycyclic_stereo_public_outputs_parse_to_source_semantics(self) -> None:
+        source_smiles = "C1CCC/C=C\\C2C1C2"
+        result = mol_to_smiles_enum_s_graph_native(source_smiles)
+
+        self.assertGreater(len(result.outputs), 0)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                report = south_star_conformance_report(
+                    source_smiles=source_smiles,
+                    candidate_smiles=output,
+                )
+                self.assertTrue(report.accepted, report.rejection_reasons)
 
 
 def _case(case_id: str):
@@ -299,29 +315,18 @@ def _expanded_case(case_id: str):
 
 @lru_cache(maxsize=1)
 def _polycyclic_stereo_diagnostic_state_and_traversals():
-    # This deliberately bypasses the public support gate to test the internal
-    # equation language before polycyclic stereo is promoted to supported output.
     mol = parse_smiles(POLYCYCLIC_STEREO_DIAGNOSTIC_SMILES)
-    facts = molecule_fact_model.SouthStarMoleculeFacts.from_mol(mol)
-    features = component_model._source_stereo_features(mol)
-    components = component_model._componentize_features(features)
-    if len(components) != 1:
+    facts = SouthStarMoleculeFacts.from_mol(mol)
+    if len(facts.components) != 1:
         raise AssertionError("polycyclic stereo diagnostic expects one component")
-    diagnostic_facts = replace(
+    state = SouthStarComponentSupportState.from_molecule_facts(
         facts,
-        components=components,
-        carrier_opportunities=molecule_fact_model._carrier_opportunities(
-            components
-        ),
-    )
-    state = SouthStarComponentSupportState(
-        molecule_facts=diagnostic_facts,
         annotation_policy=MaximalEligibleCarrierAnnotationPolicy(),
     )
     assignment = state.component_marker_assignments()[0][0]
     traversals = _ring_system_traversals(
         mol,
-        molecule_facts=diagnostic_facts,
+        molecule_facts=facts,
         state=state,
         closure_edge_sets=_supported_polycyclic_closure_edge_sets(mol),
         marker_by_edge=dict(assignment.marker_by_edge),

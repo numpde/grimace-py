@@ -174,7 +174,7 @@ def _empty_molecule_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature
             category="empty_molecule",
             atom_indices=(),
             bond_indices=(),
-            reason="South Star first scope requires at least one atom",
+            reason="South Star molecule facts require at least one atom",
         ),
     )
 
@@ -233,7 +233,10 @@ def _bond_type_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...
             category="unsupported_bond_type",
             atom_indices=(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()),
             bond_indices=(bond.GetIdx(),),
-            reason=f"bond type {bond.GetBondType()} is outside first South Star scope",
+            reason=(
+                f"bond type {bond.GetBondType()} is outside the current "
+                "South Star bond-text scope"
+            ),
         )
         for bond in mol.GetBonds()
         if bond.GetBondType() not in SUPPORTED_BOND_TYPES
@@ -264,7 +267,10 @@ def _disconnected_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, 
             category="disconnected_molecule",
             atom_indices=tuple(atom_idx for fragment in fragments for atom_idx in fragment),
             bond_indices=(),
-            reason="disconnected traversal interactions are not modeled yet",
+            reason=(
+                "this disconnected fragment combination is outside the current "
+                "South Star composition scope"
+            ),
         ),
     )
 
@@ -294,8 +300,8 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
             atom_indices=ring_atom_indices,
             bond_indices=ring_bond_indices,
             reason=(
-                "only simple nonstereo monocycles have South Star ring traversal "
-                "support"
+                "this ring topology is outside the current South Star ring "
+                "traversal scope"
             ),
         ),
     )
@@ -317,7 +323,10 @@ def _ring_stereo_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, .
                     category="ring_stereo",
                     atom_indices=(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()),
                     bond_indices=(bond.GetIdx(),),
-                    reason="ring-closure carrier basis is not modeled yet",
+                    reason=(
+                        "this ring-stereo carrier basis is outside the current "
+                        "South Star marker-equation scope"
+                    ),
                 )
             )
     return tuple(features)
@@ -345,8 +354,8 @@ def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeatur
             atom_indices=ring_atom_indices,
             bond_indices=ring_bond_indices,
             reason=(
-                "fused and polycyclic ring traversal requires a separate "
-                "ring-system model"
+                "this fused or polycyclic traversal is outside the current "
+                "South Star ring-system scope"
             ),
         ),
     )
@@ -366,8 +375,8 @@ def _ring_tetrahedral_interaction_features(
                 for bond in mol.GetAtomWithIdx(obligation.center_atom_idx).GetBonds()
             ),
             reason=(
-                "ring-local tetrahedral ligand ordering requires a separate "
-                "ring/tetrahedral interaction model"
+                "this ring-local tetrahedral ligand ordering is outside the "
+                "current South Star ring/tetrahedral interaction scope"
             ),
         )
         for obligation in extract_ring_tetrahedral_interaction_obligations(mol)

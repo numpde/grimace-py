@@ -12,7 +12,7 @@ from tests.helpers.south_star_semantics import load_south_star_semantic_cases
 
 class SouthStarSupportGateTests(unittest.TestCase):
     def assertUnsupportedCategory(self, category: str, categories: frozenset[str]) -> None:
-        self.assertIn(category, SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories)
+        self.assertIn(category, SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories)
         self.assertIn(category, categories)
 
     def test_current_semantic_fixtures_are_inside_first_gate_scope(self) -> None:

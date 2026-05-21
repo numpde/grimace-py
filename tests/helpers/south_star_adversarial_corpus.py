@@ -67,7 +67,7 @@ SOUTH_STAR_ADVERSARIAL_EXTRA_BOUNDARY_TARGETS: frozenset[str] = frozenset(
 SOUTH_STAR_ADVERSARIAL_BOUNDARY_TARGETS: frozenset[str] = frozenset(
     {
         *SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas,
-        *SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories,
+        *SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories,
         *SOUTH_STAR_PRIVATE_DOMAIN.annotation_policies,
         *SOUTH_STAR_PRIVATE_DOMAIN.fragment_order_policies,
         *SOUTH_STAR_PRIVATE_DOMAIN.output_order_policies,

@@ -113,7 +113,7 @@ class SouthStarDomainManifest:
     aromatic_policy_contracts: frozenset[str]
     fragment_order_policies: frozenset[str]
     output_order_policies: frozenset[str]
-    unsupported_feature_categories: frozenset[str]
+    support_gate_blocker_categories: frozenset[str]
 
 
 SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
@@ -170,7 +170,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "first_occurrence_deduplication",
         }
     ),
-    unsupported_feature_categories=frozenset(
+    support_gate_blocker_categories=frozenset(
         {
             "aromatic_directional_surface",
             "aromatic_ring_surface",

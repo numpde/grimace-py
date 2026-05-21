@@ -96,7 +96,7 @@ class SouthStarAdversarialCorpusTests(unittest.TestCase):
             target
             for report in unsupported_reports
             for target in report.candidate.boundary_targets
-            if target in SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories
+            if target in SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories
         }
 
         self.assertIn("unsupported_bond_type", observed_categories)

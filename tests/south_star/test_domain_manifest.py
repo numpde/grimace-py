@@ -77,6 +77,20 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS,
         )
 
+    def test_feature_areas_are_separate_from_support_gate_blockers(self) -> None:
+        self.assertFalse(
+            SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas
+            & SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories,
+        )
+        self.assertIn(
+            "simple_saturated_monocycle",
+            SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas,
+        )
+        self.assertIn(
+            "ring_molecule",
+            SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories,
+        )
+
     def test_manifest_classifies_support_evidence_authorities(self) -> None:
         classified_authorities = (
             SOUTH_STAR_REGRESSION_WITNESS_AUTHORITIES
@@ -184,7 +198,7 @@ class SouthStarDomainManifestTests(unittest.TestCase):
             SOUTH_STAR_PRIVATE_DOMAIN.output_order_policies,
         )
 
-    def test_manifest_covers_observed_unsupported_categories(self) -> None:
+    def test_manifest_covers_observed_support_gate_blocker_categories(self) -> None:
         reports = (
             south_star_support_gate_report(Chem.MolFromSmarts("[#6]-[#8]")),
             south_star_support_gate_report(parse_smiles("[NH3]->[Cu]")),
@@ -207,10 +221,10 @@ class SouthStarDomainManifestTests(unittest.TestCase):
 
         self.assertTrue(
             observed_categories
-            <= SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories
+            <= SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories
         )
 
-    def test_manifest_covers_support_gate_literal_categories(self) -> None:
+    def test_manifest_covers_support_gate_literal_blocker_categories(self) -> None:
         support_gate_source = (
             Path(__file__).resolve().parents[2]
             / "python"
@@ -231,7 +245,7 @@ class SouthStarDomainManifestTests(unittest.TestCase):
 
         self.assertTrue(
             literal_categories
-            <= SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories
+            <= SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories
         )
 
 

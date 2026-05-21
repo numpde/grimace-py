@@ -49,7 +49,7 @@ class SouthStarReadinessMatrix:
     regression_backed_case_ids: tuple[str, ...]
     public_api_blocker_case_ids: tuple[str, ...]
     supported_feature_areas: tuple[str, ...]
-    unsupported_categories: tuple[str, ...]
+    support_gate_blocker_categories: tuple[str, ...]
     policy_names: tuple[str, ...]
 
 
@@ -344,7 +344,12 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("radical_atom_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)
         self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)
-        self.assertNotIn("unsupported_radical_atom", matrix.unsupported_categories)
+        self.assertNotIn(
+            "unsupported_radical_atom",
+            matrix.support_gate_blocker_categories,
+        )
+        self.assertIn("ring_molecule", matrix.support_gate_blocker_categories)
+        self.assertIn("simple_saturated_monocycle", matrix.supported_feature_areas)
         self.assertEqual(
             (
                 "maximal_eligible_carrier",
@@ -646,8 +651,8 @@ def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
         supported_feature_areas=tuple(
             sorted(SOUTH_STAR_PRIVATE_DOMAIN.expanded_feature_areas)
         ),
-        unsupported_categories=tuple(
-            sorted(SOUTH_STAR_PRIVATE_DOMAIN.unsupported_feature_categories)
+        support_gate_blocker_categories=tuple(
+            sorted(SOUTH_STAR_PRIVATE_DOMAIN.support_gate_blocker_categories)
         ),
         policy_names=(
             "maximal_eligible_carrier",

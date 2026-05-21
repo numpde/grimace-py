@@ -11,7 +11,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
-    SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
+    SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY,
 )
@@ -97,7 +97,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY
+                == SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -284,7 +284,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         for case in load_south_star_expanded_support_cases():
             if (
                 case.support_authority
-                != SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY
+                != SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
             ):
                 continue
 

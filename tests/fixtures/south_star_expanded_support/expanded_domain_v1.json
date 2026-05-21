@@ -281,8 +281,8 @@
       "case_id": "ring_stereo_monocycle_cyclooctene",
       "feature_area": "ring_stereo_monocycle",
       "source_smiles": "C1/C=C\\CCCCC1",
-      "support_authority": "temporary_witness_ring_stereo_monocycle_shared_records",
-      "evidence_notes": "Temporary witness evidence from the ring-stereo monocycle helper using shared closure events, marker slots, and parity-equation projections, including the central stereo double bond as a ring-closure edge.",
+      "support_authority": "unified_reference_ring_stereo_monocycle_marker_obligations",
+      "evidence_notes": "Unified-reference ring-stereo monocycle evidence: support is derived from molecule facts, shared traversal/closure records, closure marker slots, parity equations, solver assignments, renderer output, parse-back, and deduplication.",
       "expected_support": [
         "C1/C=C\\CCCCC1",
         "C(/C=C\\CCCC1)C1",

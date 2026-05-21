@@ -18,6 +18,9 @@ SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_nonstereo_monocycle_ring_traversal"
 )
+SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_ring_stereo_monocycle_marker_obligations"
+)
 SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY = (
     "temporary_witness_disconnected_composition_shared_records"
 )
@@ -26,9 +29,6 @@ SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY = (
 )
 SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY = (
     "graph_native_regression_witness_with_semantic_parseback"
-)
-SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY = (
-    "temporary_witness_ring_stereo_monocycle_shared_records"
 )
 SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY = (
     "temporary_witness_tetrahedral_atom_stereo"
@@ -52,6 +52,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_TWO_ATOM_MARKERLESS_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     }
@@ -60,7 +61,6 @@ SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES: frozenset[str] = frozenset(
     {
         SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
         SOUTH_STAR_POLYCYCLIC_RING_STEREO_WITNESS_AUTHORITY,
-        SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY,
         SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY,
         SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_WITNESS_AUTHORITY,
     }
@@ -80,10 +80,6 @@ SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
         "Fold into unified-reference polycyclic stereo after closure-edge "
         "choices and marker equations solve through the shared traversal "
         "records."
-    ),
-    SOUTH_STAR_RING_STEREO_MONOCYCLE_WITNESS_AUTHORITY: (
-        "Fold into unified-reference ring stereo after closure marker slots "
-        "and parity equations are first-class shared constraint records."
     ),
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_WITNESS_AUTHORITY: (
         "Fold into unified-reference ring/tetrahedral support after emitted "

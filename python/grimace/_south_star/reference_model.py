@@ -36,6 +36,43 @@ class SouthStarRingClosure:
 
 
 @dataclass(frozen=True, slots=True)
+class SouthStarTraversalTreeEdge:
+    edge: Edge
+    begin_atom_idx: int
+    end_atom_idx: int
+    begin_parent_idx: int | None
+    syntax_position: str
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarTraversalClosureEdge:
+    edge: Edge
+    closure_id: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarTraversalClosureEndpoint:
+    closure_id: str
+    edge: Edge
+    atom_idx: int
+    partner_atom_idx: int
+    begin_parent_idx: int | None
+    role: str
+    label: str
+    syntax_position: str
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarConnectedGraphTraversalPlan:
+    root_atom_idx: int
+    atom_order: tuple[int, ...]
+    tree_edges: tuple[SouthStarTraversalTreeEdge, ...]
+    closure_edges: tuple[SouthStarTraversalClosureEdge, ...]
+    closure_endpoints: tuple[SouthStarTraversalClosureEndpoint, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SouthStarTraversalEvent:
     kind: str
     text: str
@@ -44,6 +81,7 @@ class SouthStarTraversalEvent:
     begin_atom_idx: int | None = None
     end_atom_idx: int | None = None
     begin_parent_idx: int | None = None
+    syntax_position: str = ""
     marker_slot: SouthStarMarkerSlot | None = None
     ring_closure: SouthStarRingClosure | None = None
 

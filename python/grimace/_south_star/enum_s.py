@@ -1014,6 +1014,7 @@ def _bond_event(
         begin_atom_idx=begin_atom_idx,
         end_atom_idx=end_atom_idx,
         begin_parent_idx=begin_parent_idx,
+        syntax_position=syntax_position,
         marker_slot=marker_slot,
     )
 

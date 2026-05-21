@@ -4,6 +4,7 @@ import ast
 from pathlib import Path
 import unittest
 
+from grimace._south_star.reference_model import SouthStarConnectedGraphTraversalPlan
 from grimace._south_star.reference_model import SouthStarTraversal
 
 
@@ -129,7 +130,9 @@ class SouthStarDependencyBoundaryTests(unittest.TestCase):
                 )
 
     def test_shared_traversal_record_does_not_render(self) -> None:
-        self.assertFalse(
-            hasattr(SouthStarTraversal, "render"),
-            "rendering belongs to enum_s/renderer code, not shared records",
-        )
+        for record_type in (SouthStarTraversal, SouthStarConnectedGraphTraversalPlan):
+            with self.subTest(record_type=record_type.__name__):
+                self.assertFalse(
+                    hasattr(record_type, "render"),
+                    "rendering belongs to enum_s/renderer code, not shared records",
+                )

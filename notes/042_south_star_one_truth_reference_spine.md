@@ -136,19 +136,8 @@ mini-worlds:
   - `SouthStarDisconnectedCompositionOracleResult`
   - `_independent_fragment_supports_for_case`
 - ring stereo:
-  - `SouthStarRingStereoOracleEquation`
   - `SouthStarRingStereoOracleResult`
-  - `_RingStereoCarrierContext`
-  - `_RingStereoMarkerSlot`
-  - `_RingStereoTraversalEvent`
-  - `_RingStereoTraversalFragment`
-  - `_ring_stereo_tree_fragments`
-  - `_ring_stereo_bond_event`
-  - `_ring_stereo_with_closure_events`
-  - `_ring_stereo_closure_marker_slot`
-  - `_ring_stereo_marker_slot`
-  - `_ring_stereo_marker_assignments_for_events`
-  - `_render_ring_stereo_events`
+  - `shared_ring_stereo_monocycle_support_for_case`
 - tetrahedral support:
   - `_single_star_tetrahedral_fact`
   - `_render_tetrahedral_center_root`
@@ -180,9 +169,11 @@ language. The dependency should be inverted: both `enum_s.py` and
 `marker_equations.py` should import shared traversal and marker-slot records
 from the spine module.
 
-`SouthStarRingStereoOracleEquation` is witness-only duplication of the same
-idea. It should be deleted or converted into an adapter/test projection once
-ring-stereo events use the shared records.
+The ring-stereo monocycle witness now renders the shared EnumS traversal records
+and projects the shared `SouthStarMarkerSlotParityEquation` records. It is no
+longer an independent support universe, but it is still temporary witness
+evidence until the broader unified-reference promotion gate decides what can be
+treated as package-ready.
 
 ### Fragment Composition Records
 
@@ -212,11 +203,9 @@ private and should not imply public API stability.
 Initial contents should be records only, not generation logic:
 
 - `SouthStarCarrierContext`
-  - replaces `_CarrierContext`, `_OracleCarrierContext`,
-    `_RingStereoCarrierContext`;
+  - replaces `_CarrierContext` and `_OracleCarrierContext`;
 - `SouthStarMarkerSlot`
-  - replaces the current runtime type plus `_OracleMarkerSlot` and
-    `_RingStereoMarkerSlot`;
+  - replaces the current runtime type plus `_OracleMarkerSlot`;
 - `SouthStarMarkerSlotAssignment`
   - keeps the distinction between slot-level assignment and component-level
     graph assignment;
@@ -341,9 +330,6 @@ Route expanded witnesses through the same records:
 Expected cleanups:
 
 - replace `_RingToken` / `_RingFragment` with traversal events/fragments;
-- replace `_RingStereoTraversalEvent` and `_RingStereoMarkerSlot`;
-- replace `SouthStarRingStereoOracleEquation` with the shared parity equation
-  or a test projection from it;
 - replace `SouthStarDisconnectedCompositionOracleResult` with
   `SouthStarDisconnectedCompositionResult`;
 - express tetrahedral output checks as facts/obligations over traversal events.
@@ -397,7 +383,7 @@ The following helpers remain useful during migration:
 - `independent_saturated_monocycle_support_for_case`
 - `independent_nonstereo_monocycle_support_for_case`
 - `independent_disconnected_composition_support_for_case`
-- `independent_ring_stereo_monocycle_support_for_case`
+- `shared_ring_stereo_monocycle_support_for_case`
 - `independent_tetrahedral_atom_stereo_support_for_case`
 
 They should be treated as witness scaffolding. Their long-term value is to

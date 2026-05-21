@@ -19,9 +19,9 @@ from tests.helpers.south_star_exact_support import (
 from tests.helpers.south_star_expanded_domain_oracles import (
     independent_disconnected_composition_support_for_case,
     independent_nonstereo_monocycle_support_for_case,
-    independent_ring_stereo_monocycle_support_for_case,
     independent_saturated_monocycle_support_for_case,
     independent_tetrahedral_atom_stereo_support_for_case,
+    shared_ring_stereo_monocycle_support_for_case,
 )
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
@@ -148,7 +148,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 continue
 
             with self.subTest(case_id=case.case_id):
-                result = independent_ring_stereo_monocycle_support_for_case(case)
+                result = shared_ring_stereo_monocycle_support_for_case(case)
                 self.assertEqual(case.expected_support, result.outputs)
                 self.assertGreater(result.closure_edge_count, 0)
                 self.assertEqual(2, result.marker_assignment_count)

@@ -340,7 +340,7 @@ def _connected_fragment_support(
     return support
 
 
-def _fragmented_prepared_mol_to_smiles_support(
+def _fragmented_prepared_support(
     prepared: PreparedMol,
     *,
     flags: MolToSmilesFlags,
@@ -1095,7 +1095,7 @@ def _prepare_reference_graph_for_static_inventory(
     )
 
 
-def _connected_mol_to_smiles_token_inventory_superset(
+def _connected_token_inventory_superset(
     mol_or_prepared: object,
     *,
     flags: MolToSmilesFlags,
@@ -1119,7 +1119,7 @@ def _connected_mol_to_smiles_token_inventory_superset(
     )
 
 
-def _fragmented_prepared_mol_to_smiles_token_inventory_superset(
+def _fragmented_prepared_token_inventory_superset(
     prepared: PreparedMol,
     *,
     flags: MolToSmilesFlags,
@@ -1134,7 +1134,7 @@ def _fragmented_prepared_mol_to_smiles_token_inventory_superset(
     for plan in fragment_plans:
         fragment_root = -1 if plan.rooted_at_atom is None else plan.rooted_at_atom
         inventory.update(
-            _connected_mol_to_smiles_token_inventory_superset(
+            _connected_token_inventory_superset(
                 plan.fragment,
                 flags=flags.with_rooted_at_atom(fragment_root),
             )
@@ -1174,7 +1174,7 @@ def mol_to_smiles_enum(
     if disconnected is not None:
         return iter(
             sorted(
-                _fragmented_prepared_mol_to_smiles_support(
+                _fragmented_prepared_support(
                     disconnected,
                     flags=flags,
                 )
@@ -1281,11 +1281,11 @@ def mol_to_smiles_token_inventory_superset(
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:
-        return _fragmented_prepared_mol_to_smiles_token_inventory_superset(
+        return _fragmented_prepared_token_inventory_superset(
             disconnected,
             flags=flags,
         )
-    return _connected_mol_to_smiles_token_inventory_superset(
+    return _connected_token_inventory_superset(
         mol_or_prepared,
         flags=flags,
     )

@@ -205,17 +205,25 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
 
-    def test_aromatic_bonds_are_outside_first_domain(self) -> None:
+    def test_markerless_aromatic_monocycle_is_inside_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("c1ccccc1"))
 
-        self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
-        self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
-        self.assertUnsupportedCategory("ring_molecule", report.categories)
+        self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_kekule_looking_aromatic_text_is_still_aromatic_after_parsing(
+    def test_kekule_looking_aromatic_monocycle_shares_supported_fact_scope(
         self,
     ) -> None:
         report = south_star_support_gate_report(parse_smiles("C1=CC=CC=C1"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_aromatic_branches_remain_outside_first_aromatic_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("c1ccccc1C"))
+
+        self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
+
+    def test_modified_aromatic_atoms_remain_outside_first_aromatic_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("c1cc[nH]c1"))
 
         self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
 

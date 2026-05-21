@@ -6,7 +6,12 @@ from rdkit import Chem
 
 
 SOUTH_STAR_SUPPORTED_BOND_TYPES: frozenset[Chem.BondType] = frozenset(
-    {Chem.BondType.SINGLE, Chem.BondType.DOUBLE, Chem.BondType.TRIPLE}
+    {
+        Chem.BondType.SINGLE,
+        Chem.BondType.DOUBLE,
+        Chem.BondType.TRIPLE,
+        Chem.BondType.AROMATIC,
+    }
 )
 
 
@@ -38,6 +43,12 @@ def bond_text_obligation_for_supported_bond(
             bond_type=bond_type,
             emitted_text="#",
             token_family="explicit_triple_bond",
+        )
+    if bond_type == Chem.BondType.AROMATIC:
+        return SouthStarBondTextObligation(
+            bond_type=bond_type,
+            emitted_text="",
+            token_family="elided_aromatic_bond",
         )
     raise NotImplementedError(
         f"South Star bond text unsupported for bond type {bond_type}"

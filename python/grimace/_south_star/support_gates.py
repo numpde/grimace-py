@@ -4,10 +4,9 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
-from grimace._south_star.aromatic_policy import (
-    DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
-)
+from grimace._south_star.aromatic_policy import SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
 from grimace._south_star.atom_text import (
+    SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS,
     south_star_atom_text_fields,
     unsupported_atom_text_reasons,
 )
@@ -391,7 +390,9 @@ def _aromatic_ring_features(
     aromatic_bonds = tuple(bond for bond in mol.GetBonds() if bond.GetIsAromatic())
     if not aromatic_bonds:
         return ()
-    contract = DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT
+    if is_supported_aromatic_monocycle(mol):
+        return ()
+    contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
     return (
         SouthStarUnsupportedFeature(
             category="aromatic_ring_surface",
@@ -405,7 +406,7 @@ def _aromatic_ring_features(
             bond_indices=tuple(bond.GetIdx() for bond in aromatic_bonds),
             reason=(
                 f"active South Star aromatic contract {contract.name!r} "
-                "requires non-aromatic molecule facts"
+                "currently supports markerless aromatic monocycles only"
             ),
         ),
     )
@@ -414,7 +415,7 @@ def _aromatic_ring_features(
 def _aromatic_directional_features(
     mol: Chem.Mol,
 ) -> tuple[SouthStarUnsupportedFeature, ...]:
-    contract = DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT
+    contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
     return tuple(
         SouthStarUnsupportedFeature(
             category="aromatic_directional_surface",
@@ -555,6 +556,8 @@ def is_supported_tetrahedral_exocyclic_directional_monocycle(
 def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     return is_nonstereo_monocycle_with_acyclic_branches(
         mol
+    ) or is_supported_aromatic_monocycle(
+        mol
     ) or is_supported_ring_stereo_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_exocyclic_directional_monocycle_with_acyclic_branches(
@@ -562,6 +565,39 @@ def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     ) or is_supported_tetrahedral_exocyclic_directional_monocycle(
         mol
     ) or is_supported_tetrahedral_monocycle_with_acyclic_branches(mol)
+
+
+def is_supported_aromatic_monocycle(mol: Chem.Mol) -> bool:
+    if not _has_supported_monocycle_shape(mol):
+        return False
+    ring_info = mol.GetRingInfo()
+    ring_atoms = set(ring_info.AtomRings()[0])
+    ring_bonds = set(ring_info.BondRings()[0])
+    return (
+        len(ring_atoms) == mol.GetNumAtoms()
+        and bool(ring_bonds)
+        and all(
+            _aromatic_atom_text_supported(mol.GetAtomWithIdx(atom_idx))
+            for atom_idx in ring_atoms
+        )
+        and all(
+            mol.GetBondWithIdx(bond_idx).GetIsAromatic()
+            for bond_idx in ring_bonds
+        )
+    )
+
+
+def _aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
+    fields = south_star_atom_text_fields(atom)
+    return (
+        fields.is_aromatic
+        and fields.symbol.lower() in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+        and fields.isotope == 0
+        and fields.formal_charge == 0
+        and fields.radical_electron_count == 0
+        and fields.atom_map_number == 0
+        and fields.explicit_hydrogen_count == 0
+    )
 
 
 def is_supported_tetrahedral_monocycle_with_acyclic_branches(

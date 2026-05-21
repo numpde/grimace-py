@@ -67,13 +67,13 @@ SOUTH_STAR_NON_AROMATIC_KEKULE_FACTS_POLICY_CONTRACT = (
 
 SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT = SouthStarAromaticPolicyContract(
     name="aromatic_text_policy",
-    status="candidate",
+    status="active",
     molecule_fact_contract="sanitized_aromatic_molecule_facts",
     atom_text_policy="lowercase_aromatic_atom_text",
     bond_text_policy="aromatic_bond_elision_or_explicit_aromatic_bond_text",
     semantic_equivalence_relation="aromatic_or_kekule_parse_back_semantic_identity",
     directional_surface_policy="undecided_aromatic_directional_overlay",
-    support_gate_categories=("aromatic_directional_surface",),
+    support_gate_categories=("aromatic_ring_surface", "aromatic_directional_surface"),
     required_fixture_fields=(
         "source_smiles",
         "aromatic_fact_signature",

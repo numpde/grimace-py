@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from grimace._south_star.atom_text import SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import atom_text_modifier_obligations
@@ -20,6 +21,9 @@ from tests.helpers.south_star_semantic_oracle import parse_smiles
 class SouthStarAtomTextPolicyTests(unittest.TestCase):
     def test_policy_tokens_are_grammar_tokens(self) -> None:
         for token in SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS:
+            with self.subTest(token=token):
+                self.assertTrue(south_star_grammar_conformance(token).passed)
+        for token in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
             with self.subTest(token=token):
                 self.assertTrue(south_star_grammar_conformance(token).passed)
         for token in SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS:
@@ -45,6 +49,15 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
 
         self.assertEqual("C", obligation.emitted_text)
         self.assertEqual("organic_subset", obligation.token_family)
+        self.assertEqual((), obligation.bracket_obligations)
+        self.assertFalse(obligation.uses_brackets)
+
+    def test_aromatic_subset_renderer_uses_lowercase_atom_text(self) -> None:
+        mol = parse_smiles("c1ccccc1")
+        obligation = atom_text_obligation_for_supported_atom(mol.GetAtomWithIdx(0))
+
+        self.assertEqual("c", obligation.emitted_text)
+        self.assertEqual("aromatic_subset", obligation.token_family)
         self.assertEqual((), obligation.bracket_obligations)
         self.assertFalse(obligation.uses_brackets)
 

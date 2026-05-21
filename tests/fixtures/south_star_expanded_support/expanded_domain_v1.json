@@ -278,6 +278,20 @@
       ]
     },
     {
+      "case_id": "aromatic_text_monocycle_benzene",
+      "feature_area": "aromatic_text_monocycle",
+      "source_smiles": "c1ccccc1",
+      "support_authority": "unified_reference_aromatic_text_monocycle_obligations",
+      "evidence_notes": "Unified-reference aromatic text monocycle evidence: support is rendered from sanitized aromatic molecule facts, lowercase aromatic atom-text obligations, elided aromatic bond-text obligations, ring traversal events, aromatic/Kekule parse-back equivalence, and first-occurrence dedup.",
+      "expected_support": [
+        "c1ccccc1",
+        "c(cccc1)c1",
+        "c(c1)cccc1",
+        "c(ccc1)cc1",
+        "c(cc1)ccc1"
+      ]
+    },
+    {
       "case_id": "ring_stereo_monocycle_cyclooctene",
       "feature_area": "ring_stereo_monocycle",
       "source_smiles": "C1/C=C\\CCCCC1",

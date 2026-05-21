@@ -8,10 +8,11 @@ Tasks: `South Star 74: Decide aromatic semantic boundary`,
 
 ## Current Decision
 
-Do not support aromatic RDKit molecules in the current South Star surface.
-Fail fast with `aromatic_ring_surface`, and report
-`aromatic_directional_surface` separately when an aromatic bond also carries a
-directional marker.
+The first aromatic RDKit molecule-fact slice is now supported only for
+markerless aromatic monocycles such as benzene. Broader aromatic rings,
+aromatic branches, fused aromatic systems, and aromatic directional overlays
+still fail fast with `aromatic_ring_surface` and/or
+`aromatic_directional_surface`.
 
 This is a boundary decision, not a claim that aromatic SMILES are outside the
 long-term South Star target. The current implementation depends on RDKit for
@@ -46,7 +47,7 @@ lowercase atom text, aromatic bond text/elision, and aromatic/Kekule semantic
 equivalence directly.
 
 `South Star 151d` makes the policy family explicit in code without changing the
-active gate. The family now has one active contract,
+active gate. At that point the family had one active contract,
 `non_aromatic_molecule_facts`, and two named candidate contracts:
 `non_aromatic_kekule_facts` for caller-prepared non-aromatic Kekule molecule
 facts, and `aromatic_text_policy` for sanitized aromatic molecule facts plus
@@ -59,11 +60,18 @@ required fixture fields, and required proof obligations. This still does not
 enable aromatic output support. It makes the next implementation slice auditable
 before any support gate is relaxed.
 
+`South Star 168` promotes `aromatic_text_policy` to an active narrow contract
+for markerless aromatic monocycles. The first fixture,
+`aromatic_text_monocycle_benzene`, is backed by sanitized aromatic molecule
+facts, lowercase aromatic atom text, elided aromatic bond text, ring traversal
+events, parse-back evidence, and first-occurrence deduplication. This is still
+not broad aromatic support.
+
 ## Alternatives Considered
 
 1. Exclude aromaticity and require non-aromatic molecule facts.
 
-   This is the current stance. It is clean because the support gate can key off
+   This was the initial stance. It is clean because the support gate can key off
    explicit RDKit aromatic flags, and it prevents accidental inheritance of
    RDKit's aromatic writer policy. A future non-aromatic kekule-like domain
    would need an explicit molecule-preparation contract that clears aromatic
@@ -111,8 +119,9 @@ of the following explicitly:
 - maximal annotation policy: whether aromatic directional surfaces are excluded,
   annotated, or represented through a separate constraint family.
 
-Until those are named, `aromatic_ring_surface` and
-`aromatic_directional_surface` are the correct behavior.
+Until those are named for a broader aromatic family, `aromatic_ring_surface`
+and `aromatic_directional_surface` remain the correct behavior outside the
+current markerless aromatic-monocycle slice.
 
 For the current contract, the named answers are:
 
@@ -128,7 +137,7 @@ This means `non_aromatic_kekule_facts` can be explored as a future input
 preparation policy without weakening the fail-fast boundary for ordinary
 sanitized aromatic RDKit molecules.
 
-For the candidate `aromatic_text_policy`, the named answers are:
+For the active narrow `aromatic_text_policy`, the named answers are:
 
 - molecule-fact contract: `sanitized_aromatic_molecule_facts`;
 - atom-text policy: lowercase aromatic atom text;
@@ -139,7 +148,7 @@ For the candidate `aromatic_text_policy`, the named answers are:
   and remain represented by `aromatic_directional_surface` until a constraint
   family is named.
 
-Any fixture admitted under that candidate must carry an aromatic fact
+Any fixture admitted under that contract must carry an aromatic fact
 signature, expected support, semantic parse-back evidence, and the equivalence
 relation it uses. Any proof must expose the sanitized aromatic fact boundary,
 lowercase atom-text obligations, aromatic bond-text obligations, and
@@ -150,9 +159,11 @@ active support gate.
 
 The support gate should keep these distinctions visible:
 
-- `c1ccccc1` is unsupported as `aromatic_ring_surface`.
-- `C1=CC=CC=C1` is also unsupported after normal RDKit sanitization because the
-  molecule facts are aromatic even though the input text is kekule-looking.
+- `c1ccccc1` is supported as a markerless aromatic monocycle.
+- `C1=CC=CC=C1` follows the same sanitized aromatic molecule-fact path, because
+  RDKit represents it as aromatic despite the kekule-looking input text.
+- `c1ccccc1C` remains unsupported as `aromatic_ring_surface` because aromatic
+  branches are not in the first active aromatic-text slice.
 - aromatic bonds with directional markers are reported as
   `aromatic_directional_surface` in addition to the aromatic ring surface.
 

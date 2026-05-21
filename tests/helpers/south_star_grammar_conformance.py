@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from grimace._south_star.atom_text import SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import is_south_star_bracket_atom_text_token
 
 
 SOUTH_STAR_GRAMMAR_CONFORMANCE_BASIS = "south_star_declared_subset_grammar_v1"
-_ATOM_TOKENS: frozenset[str] = SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
+_ATOM_TOKENS: frozenset[str] = (
+    SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS | SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+)
 _TWO_CHAR_ATOM_TOKENS: frozenset[str] = frozenset(
     token for token in _ATOM_TOKENS if len(token) == 2
 )

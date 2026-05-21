@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from grimace._south_star.aromatic_policy import (
     DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+    SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT,
 )
 
 
@@ -63,6 +64,9 @@ SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_ring_tetrahedral_exocyclic_directional_obligations"
 )
+SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_aromatic_text_monocycle_obligations"
+)
 
 SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
     {
@@ -73,6 +77,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
@@ -105,6 +110,7 @@ SOUTH_STAR_TEMPORARY_WITNESS_FOLD_IN_PLANS: dict[str, str] = {
 SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = frozenset(
     {
         "branched_saturated_monocycle",
+        "aromatic_text_monocycle",
         "charged_atom_text",
         "combined_atom_text_modifiers",
         "disconnected_markerless_fragments",
@@ -163,6 +169,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     ),
     expanded_feature_areas=frozenset(
         {
+            "aromatic_text_monocycle",
             "simple_saturated_monocycle",
             "branched_saturated_monocycle",
             "disconnected_markerless_fragments",
@@ -196,6 +203,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     aromatic_policy_contracts=frozenset(
         {
             DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT.name,
+            SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT.name,
         }
     ),
     fragment_order_policies=frozenset(

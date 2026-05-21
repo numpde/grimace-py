@@ -6,11 +6,18 @@ from rdkit import Chem
 
 from grimace._south_star.aromatic_policy import (
     DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+    SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT,
     SOUTH_STAR_AROMATIC_POLICY_FAMILY_CONTRACTS,
 )
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_exact_support import SouthStarExpandedSupportCase
+from tests.helpers.south_star_exact_support import load_south_star_expanded_support_cases
+from tests.helpers.south_star_grammar_conformance import south_star_grammar_conformance
 
 
 class SouthStarAromaticBoundaryTests(unittest.TestCase):
@@ -89,12 +96,9 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         self.assertTrue(
             contracts_by_name["aromatic_text_policy"].supports_aromatic_facts
         )
+        self.assertEqual("active", contracts_by_name["aromatic_text_policy"].status)
         self.assertEqual(
-            "candidate",
-            contracts_by_name["aromatic_text_policy"].status,
-        )
-        self.assertEqual(
-            ("aromatic_directional_surface",),
+            ("aromatic_ring_surface", "aromatic_directional_surface"),
             contracts_by_name["aromatic_text_policy"].support_gate_categories,
         )
         self.assertIn(
@@ -130,17 +134,56 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
                     len(contract.required_proof_obligations),
                 )
 
-    def test_sanitized_aromatic_and_kekule_spelling_share_aromatic_facts(
+    def test_markerless_aromatic_monocycle_is_first_supported_aromatic_scope(
         self,
     ) -> None:
+        case = _expanded_support_case("aromatic_text_monocycle_benzene")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+        report = south_star_support_gate_report(parse_smiles(case.source_smiles))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertEqual(case.expected_support, result.outputs)
+        self.assertIn("c1ccccc1", result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertTrue(south_star_grammar_conformance(output).passed)
+
+    def test_aromatic_monocycle_fixture_uses_aromatic_renderer_obligations(
+        self,
+    ) -> None:
+        case = _expanded_support_case("aromatic_text_monocycle_benzene")
+        traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+        rendered = tuple(
+            dict.fromkeys(render_south_star_tree_traversal(t) for t in traversals)
+        )
+
+        self.assertEqual(case.expected_support, rendered)
+        self.assertTrue(
+            all(
+                event.kind != "bond" or event.text == ""
+                for traversal in traversals
+                for event in traversal.events
+            )
+        )
+        self.assertTrue(
+            all(
+                event.kind != "atom" or event.text == "c"
+                for traversal in traversals
+                for event in traversal.events
+            )
+        )
+
+    def test_sanitized_aromatic_spellings_share_aromatic_facts(self) -> None:
         cases = ("c1ccccc1", "C1=CC=CC=C1")
 
         for smiles in cases:
             facts = SouthStarMoleculeFacts.from_mol(parse_smiles(smiles))
 
             with self.subTest(smiles=smiles):
-                self.assertIn("aromatic_ring_surface", facts.unsupported_categories)
-                self.assertIn("unsupported_bond_type", facts.unsupported_categories)
+                self.assertTrue(facts.supported, facts.unsupported_categories)
                 self.assertTrue(any(atom.is_aromatic for atom in facts.atom_text_facts))
                 self.assertTrue(any(bond.is_aromatic for bond in facts.bond_text_facts))
                 self.assertEqual(
@@ -171,11 +214,22 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         mol.GetBondWithIdx(0).SetBondDir(Chem.BondDir.ENDUPRIGHT)
         facts = SouthStarMoleculeFacts.from_mol(mol)
 
-        self.assertIn("aromatic_ring_surface", facts.unsupported_categories)
         self.assertIn("aromatic_directional_surface", facts.unsupported_categories)
+        self.assertNotIn("aromatic_ring_surface", facts.unsupported_categories)
 
     def test_support_gate_reasons_name_active_contract(self) -> None:
-        contract = DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT
+        contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
+        mol = parse_smiles("c1ccccc1C")
+
+        report = south_star_support_gate_report(mol)
+        reasons_by_category = {
+            feature.category: feature.reason for feature in report.unsupported_features
+        }
+
+        self.assertIn(contract.name, reasons_by_category["aromatic_ring_surface"])
+
+    def test_support_gate_directional_reason_names_active_contract(self) -> None:
+        contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
         mol = parse_smiles("c1ccccc1")
         mol.GetBondWithIdx(0).SetBondDir(Chem.BondDir.ENDUPRIGHT)
 
@@ -184,11 +238,18 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             feature.category: feature.reason for feature in report.unsupported_features
         }
 
-        self.assertIn(contract.name, reasons_by_category["aromatic_ring_surface"])
         self.assertIn(
             contract.directional_surface_policy,
             reasons_by_category["aromatic_directional_surface"],
         )
+
+
+def _expanded_support_case(case_id: str) -> SouthStarExpandedSupportCase:
+    return next(
+        case
+        for case in load_south_star_expanded_support_cases()
+        if case.case_id == case_id
+    )
 
 
 if __name__ == "__main__":

@@ -8,6 +8,9 @@ from rdkit import Chem
 SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}
 )
+SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
+    {"b", "c", "n", "o", "p", "s"}
+)
 # Representative bracket-atom examples. The accepted bracket-token language is
 # the predicate below, because isotope, charge, hydrogen, and map values are
 # field-derived rather than a finite token list.
@@ -227,9 +230,7 @@ def atom_text_obligation_for_supported_fields(
             f"{categories}"
         )
     if fields.is_aromatic:
-        raise NotImplementedError(
-            "South Star atom text rendering requires a non-aromatic atom"
-        )
+        return _aromatic_atom_text_obligation(fields)
     if _requires_bracket_atom_text(fields):
         return _bracket_atom_text_obligation(fields)
     if fields.symbol == "H":
@@ -249,6 +250,27 @@ def atom_text_obligation_for_supported_fields(
             bracket_obligations=(),
         )
     raise AssertionError(f"unhandled South Star atom text symbol {fields.symbol!r}")
+
+
+def _aromatic_atom_text_obligation(
+    fields: SouthStarAtomTextFields,
+) -> SouthStarAtomTextObligation:
+    if _requires_bracket_atom_text(fields):
+        raise NotImplementedError(
+            "South Star aromatic atom text currently requires unmodified atoms"
+        )
+    token = fields.symbol.lower()
+    if token not in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
+        raise NotImplementedError(
+            f"South Star aromatic atom text unsupported for symbol {fields.symbol!r}"
+        )
+    return SouthStarAtomTextObligation(
+        atom_idx=fields.atom_idx,
+        fields=fields,
+        emitted_text=token,
+        token_family="aromatic_subset",
+        bracket_obligations=(),
+    )
 
 
 def is_south_star_bracket_atom_text_token(token: str) -> bool:

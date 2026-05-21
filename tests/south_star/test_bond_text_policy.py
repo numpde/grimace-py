@@ -15,6 +15,7 @@ class SouthStarBondTextPolicyTests(unittest.TestCase):
             ("CC", Chem.BondType.SINGLE, "", "elided_single_bond"),
             ("C=C", Chem.BondType.DOUBLE, "=", "explicit_double_bond"),
             ("C#N", Chem.BondType.TRIPLE, "#", "explicit_triple_bond"),
+            ("c1ccccc1", Chem.BondType.AROMATIC, "", "elided_aromatic_bond"),
         )
 
         for smiles, expected_type, expected_text, expected_family in cases:

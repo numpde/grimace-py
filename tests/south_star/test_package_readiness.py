@@ -268,6 +268,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "unsaturated_nonstereo_monocycle_cyclohexene",
                 "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
                 "unsaturated_nonstereo_monocycle_cyclohexadiene",
+                "aromatic_text_monocycle_benzene",
                 "ring_stereo_monocycle_cyclooctene",
                 "markerless_disconnected_ring_and_atom",
                 "disconnected_stereo_fragment_and_atom",
@@ -350,6 +351,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertEqual((), matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
+        self.assertIn("aromatic_text_monocycle", matrix.supported_feature_areas)
         self.assertIn("atom_map_text", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)
         self.assertIn("combined_atom_text_modifiers", matrix.supported_feature_areas)

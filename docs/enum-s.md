@@ -130,6 +130,11 @@ explicit ring-closure stereo carrier bases. Aromatic surfaces, fused/polycyclic
 ring systems, and ring/tetrahedral interactions require separate semantic
 models before enumeration should widen to them.
 
+The current aromatic stance is fail-fast exclusion of aromatic RDKit molecule
+facts. See `notes/040_south_star_aromatic_boundary.md` for the alternatives and
+why kekule-looking input text is not enough when normal RDKit parsing still
+sets aromatic flags.
+
 ## Annotation Policy
 
 The current South Star seed targets maximal eligible-carrier annotation:

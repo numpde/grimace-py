@@ -173,6 +173,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
         self.assertUnsupportedCategory("ring_molecule", report.categories)
 
+    def test_kekule_looking_aromatic_text_is_still_aromatic_after_parsing(
+        self,
+    ) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1=CC=CC=C1"))
+
+        self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
+
     def test_aromatic_directional_surfaces_have_specific_reason(self) -> None:
         mol = parse_smiles("c1ccccc1")
         bond = mol.GetBondWithIdx(0)

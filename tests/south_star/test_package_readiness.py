@@ -18,6 +18,9 @@ from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
     load_south_star_expanded_support_cases,
 )
+from tests.helpers.south_star_marker_equations import (
+    marker_slot_parity_equations_for_case,
+)
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_spec_oracle import south_star_spec_oracle_report
 from tests.helpers.south_star_semantics import load_south_star_semantic_cases
@@ -93,6 +96,26 @@ class SouthStarAuthorityPromotionChecklistRecord:
     output_count: int
     estimated_product_size: int
     unresolved_blockers: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarProofCountProvenanceRecord:
+    metric: str
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarProofComplexityDiagnosticRecord:
+    case_id: str
+    feature_area: str
+    traversal_skeleton_count: int
+    marker_slot_count: int
+    component_count: int
+    equation_count: int
+    solver_assignment_count: int
+    renderer_input_count: int
+    output_count: int
+    count_provenance: tuple[SouthStarProofCountProvenanceRecord, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,6 +515,57 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 )
                 self.assertIn(record.semantic_parseback, {"covered", "missing"})
 
+    def test_proof_complexity_diagnostics_name_count_provenance(self) -> None:
+        records = south_star_proof_complexity_diagnostic_records()
+        records_by_id = {record.case_id: record for record in records}
+        inventory_by_id = {
+            item.case_id: item
+            for item in south_star_authority_promotion_candidate_inventory()
+        }
+
+        self.assertEqual(set(inventory_by_id), set(records_by_id))
+
+        alkene = records_by_id["isolated_alkene_z"]
+        self.assertEqual("first_domain_directional_bond_stereo", alkene.feature_area)
+        self.assertEqual(12, alkene.traversal_skeleton_count)
+        self.assertEqual(24, alkene.marker_slot_count)
+        self.assertEqual(1, alkene.component_count)
+        self.assertEqual(24, alkene.equation_count)
+        self.assertEqual(12, alkene.solver_assignment_count)
+        self.assertEqual(0, alkene.renderer_input_count)
+        self.assertEqual(12, alkene.output_count)
+
+        tetrahedral = records_by_id["implicit_h_tetrahedral_center"]
+        self.assertEqual("tetrahedral_atom_stereo", tetrahedral.feature_area)
+        self.assertEqual(0, tetrahedral.marker_slot_count)
+        self.assertEqual(0, tetrahedral.equation_count)
+        self.assertGreater(tetrahedral.renderer_input_count, 0)
+
+        required_metrics = {
+            "traversal_skeleton_count",
+            "marker_slot_count",
+            "component_count",
+            "equation_count",
+            "solver_assignment_count",
+            "renderer_input_count",
+            "output_count",
+        }
+        for record in records:
+            with self.subTest(case_id=record.case_id):
+                provenance_by_metric = {
+                    provenance.metric: provenance.source
+                    for provenance in record.count_provenance
+                }
+                self.assertEqual(required_metrics, set(provenance_by_metric))
+                self.assertEqual(
+                    inventory_by_id[record.case_id].output_count,
+                    record.output_count,
+                )
+                for metric in required_metrics:
+                    self.assertGreaterEqual(getattr(record, metric), 0)
+                    self.assertTrue(provenance_by_metric[metric])
+                self.assertGreater(record.output_count, 0)
+
 
 def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
     first_domain_cases = load_south_star_exact_first_domain_cases()
@@ -578,6 +652,24 @@ def south_star_authority_promotion_candidate_inventory(
         )
 
     return tuple(items)
+
+
+def south_star_proof_complexity_diagnostic_records(
+) -> tuple[SouthStarProofComplexityDiagnosticRecord, ...]:
+    cases_by_id = {
+        case.case_id: case
+        for case in (
+            *load_south_star_exact_first_domain_cases(),
+            *load_south_star_expanded_support_cases(),
+        )
+    }
+    return tuple(
+        _proof_complexity_diagnostic_record(
+            inventory_item,
+            case=cases_by_id[inventory_item.case_id],
+        )
+        for inventory_item in south_star_authority_promotion_candidate_inventory()
+    )
 
 
 def south_star_authority_promotion_checklist_records(
@@ -682,6 +774,62 @@ def _authority_inventory_item(
         output_count=diagnostics.output_count,
         estimated_product_size=diagnostics.estimated_product_size,
         blockers=check.blockers,
+    )
+
+
+def _proof_complexity_diagnostic_record(
+    inventory_item: SouthStarAuthorityPromotionCandidateInventoryItem,
+    *,
+    case: object,
+) -> SouthStarProofComplexityDiagnosticRecord:
+    result = mol_to_smiles_enum_s_graph_native(
+        case.source_smiles,
+        case_id=case.case_id,
+    )
+    diagnostics = result.generation_diagnostics
+    if diagnostics is None:
+        raise AssertionError("proof complexity records require generation diagnostics")
+    traversals = _tree_traversals_or_empty(case)
+    return SouthStarProofComplexityDiagnosticRecord(
+        case_id=inventory_item.case_id,
+        feature_area=inventory_item.feature_area,
+        traversal_skeleton_count=diagnostics.traversal_skeleton_count,
+        marker_slot_count=diagnostics.marker_slot_count,
+        component_count=diagnostics.stereo_component_count,
+        equation_count=_equation_count_for_case(case),
+        solver_assignment_count=diagnostics.solved_assignment_count,
+        renderer_input_count=_renderer_input_count(traversals),
+        output_count=diagnostics.output_count,
+        count_provenance=(
+            SouthStarProofCountProvenanceRecord(
+                "traversal_skeleton_count",
+                "generation_diagnostics.traversal_skeleton_count",
+            ),
+            SouthStarProofCountProvenanceRecord(
+                "marker_slot_count",
+                "generation_diagnostics.marker_slot_count",
+            ),
+            SouthStarProofCountProvenanceRecord(
+                "component_count",
+                "generation_diagnostics.stereo_component_count",
+            ),
+            SouthStarProofCountProvenanceRecord(
+                "equation_count",
+                "marker_slot_parity_equations_for_case",
+            ),
+            SouthStarProofCountProvenanceRecord(
+                "solver_assignment_count",
+                "generation_diagnostics.solved_assignment_count",
+            ),
+            SouthStarProofCountProvenanceRecord(
+                "renderer_input_count",
+                "tree_traversals.renderer_input",
+            ),
+            SouthStarProofCountProvenanceRecord(
+                "output_count",
+                "generation_diagnostics.output_count",
+            ),
+        ),
     )
 
 
@@ -865,6 +1013,16 @@ def _renderer_input_count(traversals: tuple[object, ...]) -> int:
         for event in traversal.events
         if event.renderer_input is not None
     )
+
+
+def _equation_count_for_case(case: object) -> int:
+    try:
+        return sum(
+            len(equations)
+            for equations in marker_slot_parity_equations_for_case(case)
+        )
+    except NotImplementedError:
+        return 0
 
 
 def _spine_bypass_count(case_id: str) -> int:

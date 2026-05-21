@@ -415,8 +415,10 @@ class _CoreStateAdapter:
     def __init__(self, decoder: object) -> None:
         self._decoder = decoder
 
-    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
-        successors = self._decoder.choice_successors()
+    @staticmethod
+    def _successor_states(
+        successors: Sequence[tuple[str, object]],
+    ) -> tuple[tuple[str, object], ...]:
         if not successors:
             return ()
         successor_states = [None] * len(successors)
@@ -424,7 +426,10 @@ class _CoreStateAdapter:
             next_state = _CoreStateAdapter.__new__(_CoreStateAdapter)
             next_state._decoder = next_decoder
             successor_states[idx] = (text, next_state)
-        return tuple(successor_states)
+        return cast(tuple[tuple[str, object], ...], tuple(successor_states))
+
+    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
+        return self._successor_states(self._decoder.choice_successors())
 
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _choices_from_successor_states(self.choice_successor_states())
@@ -442,15 +447,7 @@ class _CoreStateAdapter:
         return ("core", self._decoder.cache_key())
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
-        successors = self._decoder.grouped_successors()
-        if not successors:
-            return ()
-        successor_states = [None] * len(successors)
-        for idx, (text, next_decoder) in enumerate(successors):
-            next_state = _CoreStateAdapter.__new__(_CoreStateAdapter)
-            next_state._decoder = next_decoder
-            successor_states[idx] = (text, next_state)
-        return tuple(successor_states)
+        return self._successor_states(self._decoder.grouped_successors())
 
     def _advance_token(self, text: str) -> "_CoreStateAdapter":
         next_decoder = self._decoder.copy()

@@ -271,6 +271,9 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "aromatic_text_monocycle_benzene",
                 "aromatic_text_monocycle_pyridine",
                 "aromatic_text_monocycle_furan",
+                "aromatic_text_branch_toluene",
+                "aromatic_text_branch_methyl_pyridine",
+                "aromatic_text_branch_methyl_furan",
                 "ring_stereo_monocycle_cyclooctene",
                 "markerless_disconnected_ring_and_atom",
                 "disconnected_stereo_fragment_and_atom",
@@ -353,6 +356,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         )
         self.assertEqual((), matrix.public_api_blocker_case_ids)
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
+        self.assertIn("aromatic_text_branch", matrix.supported_feature_areas)
         self.assertIn("aromatic_text_monocycle", matrix.supported_feature_areas)
         self.assertIn("atom_map_text", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)

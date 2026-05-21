@@ -574,8 +574,7 @@ def is_supported_aromatic_monocycle(mol: Chem.Mol) -> bool:
     ring_atoms = set(ring_info.AtomRings()[0])
     ring_bonds = set(ring_info.BondRings()[0])
     return (
-        len(ring_atoms) == mol.GetNumAtoms()
-        and bool(ring_bonds)
+        bool(ring_bonds)
         and all(
             _aromatic_atom_text_supported(mol.GetAtomWithIdx(atom_idx))
             for atom_idx in ring_atoms
@@ -583,6 +582,15 @@ def is_supported_aromatic_monocycle(mol: Chem.Mol) -> bool:
         and all(
             mol.GetBondWithIdx(bond_idx).GetIsAromatic()
             for bond_idx in ring_bonds
+        )
+        and all(
+            _non_aromatic_branch_atom_text_supported(atom)
+            for atom in mol.GetAtoms()
+            if atom.GetIdx() not in ring_atoms
+        )
+        and all(
+            not mol.GetBondWithIdx(bond_idx).GetIsAromatic()
+            for bond_idx in set(range(mol.GetNumBonds())).difference(ring_bonds)
         )
     )
 
@@ -598,6 +606,11 @@ def _aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
         and fields.atom_map_number == 0
         and fields.explicit_hydrogen_count == 0
     )
+
+
+def _non_aromatic_branch_atom_text_supported(atom: Chem.Atom) -> bool:
+    fields = south_star_atom_text_fields(atom)
+    return not fields.is_aromatic and not unsupported_atom_text_reasons(fields)
 
 
 def is_supported_tetrahedral_monocycle_with_acyclic_branches(

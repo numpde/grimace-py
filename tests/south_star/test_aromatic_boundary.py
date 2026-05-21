@@ -134,13 +134,16 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
                     len(contract.required_proof_obligations),
                 )
 
-    def test_markerless_aromatic_monocycle_is_first_supported_aromatic_scope(
+    def test_markerless_aromatic_text_cases_are_supported(
         self,
     ) -> None:
         case_ids = (
             "aromatic_text_monocycle_benzene",
             "aromatic_text_monocycle_pyridine",
             "aromatic_text_monocycle_furan",
+            "aromatic_text_branch_toluene",
+            "aromatic_text_branch_methyl_pyridine",
+            "aromatic_text_branch_methyl_furan",
         )
 
         for case_id in case_ids:
@@ -217,7 +220,15 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
                 )
 
     def test_sanitized_aromatic_spellings_share_aromatic_facts(self) -> None:
-        cases = ("c1ccccc1", "C1=CC=CC=C1", "c1ccncc1", "c1ccoc1")
+        cases = (
+            "c1ccccc1",
+            "C1=CC=CC=C1",
+            "c1ccncc1",
+            "c1ccoc1",
+            "c1ccccc1C",
+            "c1ccncc1C",
+            "c1ccoc1C",
+        )
 
         for smiles in cases:
             facts = SouthStarMoleculeFacts.from_mol(parse_smiles(smiles))
@@ -228,7 +239,18 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
                 self.assertTrue(any(bond.is_aromatic for bond in facts.bond_text_facts))
                 self.assertEqual(
                     {"AROMATIC"},
-                    {bond.bond_type for bond in facts.bond_text_facts},
+                    {
+                        bond.bond_type
+                        for bond in facts.bond_text_facts
+                        if bond.is_in_ring
+                    },
+                )
+                self.assertTrue(
+                    all(
+                        bond.bond_type == "SINGLE"
+                        for bond in facts.bond_text_facts
+                        if not bond.is_in_ring
+                    )
                 )
 
     def test_deliberately_kekulized_non_aromatic_facts_are_a_different_contract(
@@ -259,7 +281,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
 
     def test_support_gate_reasons_name_active_contract(self) -> None:
         contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
-        mol = parse_smiles("c1ccccc1C")
+        mol = parse_smiles("c1cc[nH]c1")
 
         report = south_star_support_gate_report(mol)
         reasons_by_category = {

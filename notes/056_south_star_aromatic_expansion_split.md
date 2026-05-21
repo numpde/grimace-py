@@ -23,12 +23,12 @@ Examples:
 - `c1ccncc1C`
 - `c1ccoc1C`
 
-This is the best next implementation slice. The current support gate blocks
-these as `aromatic_ring_surface` because the active aromatic contract only
-admits unbranched markerless aromatic monocycles. A local probe that replaced
-only the support-gate report with an empty report showed that the existing
-graph-native traversal and renderer already produce parse-back-correct support
-for these examples:
+This was the best next implementation slice before `South Star 176`. At that
+point, the support gate blocked these as `aromatic_ring_surface` because the
+active aromatic contract only admitted unbranched markerless aromatic
+monocycles. A local probe that replaced only the support-gate report with an
+empty report showed that the existing graph-native traversal and renderer
+already produced parse-back-correct support for these examples:
 
 - `c1ccccc1C`: `60` outputs, all accepted by the current semantic oracle;
 - `c1ccncc1C`: `120` outputs, all accepted by the current semantic oracle;
@@ -73,7 +73,7 @@ This requires a named constraint family. It is not an atom/bond text tweak,
 because the current `aromatic_text_policy` deliberately records
 `undecided_aromatic_directional_overlay`.
 
-## Recommendation
+## Original Recommendation
 
 Implement markerless aromatic branches next.
 
@@ -91,7 +91,16 @@ The implementation should be narrow:
 - update the readiness matrix, benchmark artifact, docs, and package-readiness
   runner in the same slice.
 
-This should enter as its own implementation Backlog row. It is not a Decision:
-the probe and current policy split make it the least-regret next aromatic
+This entered as its own implementation Backlog row. It was not a Decision:
+the probe and current policy split made it the least-regret next aromatic
 extension.
 
+## Follow-up
+
+`South Star 176` implemented this slice narrowly:
+
+- the support gate now admits one markerless aromatic monocycle plus supported
+  acyclic non-aromatic branches;
+- toluene, methyl-pyridine, and methyl-furan fixtures pin the expanded support;
+- fused aromatic systems, modified aromatic atom text, and aromatic
+  directional overlays remain separate gated families.

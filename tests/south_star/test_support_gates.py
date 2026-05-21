@@ -206,7 +206,14 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
 
     def test_markerless_aromatic_monocycle_is_inside_gate_scope(self) -> None:
-        cases = ("c1ccccc1", "c1ccncc1", "c1ccoc1")
+        cases = (
+            "c1ccccc1",
+            "c1ccncc1",
+            "c1ccoc1",
+            "c1ccccc1C",
+            "c1ccncc1C",
+            "c1ccoc1C",
+        )
 
         for smiles in cases:
             with self.subTest(smiles=smiles):
@@ -221,8 +228,8 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_aromatic_branches_remain_outside_first_aromatic_scope(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("c1ccccc1C"))
+    def test_fused_aromatic_rings_remain_outside_first_aromatic_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("c1ccc2ccccc2c1"))
 
         self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
 

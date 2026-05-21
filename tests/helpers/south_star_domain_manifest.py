@@ -111,6 +111,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
     {
         "branched_saturated_monocycle",
         "aromatic_text_monocycle",
+        "aromatic_text_branch",
         "charged_atom_text",
         "combined_atom_text_modifiers",
         "disconnected_markerless_fragments",
@@ -170,6 +171,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     expanded_feature_areas=frozenset(
         {
             "aromatic_text_monocycle",
+            "aromatic_text_branch",
             "simple_saturated_monocycle",
             "branched_saturated_monocycle",
             "disconnected_markerless_fragments",

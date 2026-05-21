@@ -123,7 +123,8 @@ The implemented private scope is deliberately narrow:
   pinned by `[H]`, `[CH3]`, and `[O]` examples;
 - markerless aromatic monocycles whose sanitized RDKit molecule facts are
   unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
-  pinned by benzene, pyridine, and furan.
+  pinned by benzene, pyridine, furan, and corresponding one-methyl branch
+  cases.
 
 Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
 The current contract records isotope, element symbol, chirality token,
@@ -166,8 +167,8 @@ Current unsupported categories include:
   as `ring_tetrahedral_interaction`;
 - ring stereo outside the supported monocycle subset, reported as
   `ring_stereo`;
-- aromatic rings outside the active markerless aromatic-monocycle slice,
-  reported as `aromatic_ring_surface`;
+- aromatic rings outside the active markerless-aromatic-monocycle plus
+  supported-branch slice, reported as `aromatic_ring_surface`;
 - aromatic directional surfaces, including directional markers on otherwise
   supported aromatic monocycles, reported separately as
   `aromatic_directional_surface`;
@@ -175,18 +176,19 @@ Current unsupported categories include:
 
 These unsupported categories are classification boundaries, not implementation
 targets by themselves. The current near-term ring work is simple monocycles,
-non-aromatic nonstereo polycyclic skeletons, markerless aromatic monocycles,
-and explicit ring-closure stereo carrier bases. Broader aromatic surfaces,
-polycyclic stereo, and ring/tetrahedral interactions require separate semantic
-models before enumeration should widen to them.
+non-aromatic nonstereo polycyclic skeletons, markerless aromatic monocycles
+with supported acyclic branches, and explicit ring-closure stereo carrier
+bases. Broader aromatic surfaces, polycyclic stereo, and ring/tetrahedral
+interactions require separate semantic models before enumeration should widen
+to them.
 
 The current aromatic stance is a narrow active policy, not broad aromatic
-support. Sanitized markerless aromatic monocycles are supported through the
-`aromatic_text_policy` contract. Aromatic branches, fused aromatic systems,
-modified aromatic atoms, and aromatic directional overlays remain fail-fast
-boundaries. See `notes/040_south_star_aromatic_boundary.md` for the
-alternatives and why kekule-looking input text is not a separate molecule-fact
-contract when normal RDKit parsing still sets aromatic flags.
+support. Sanitized markerless aromatic monocycles with supported acyclic
+branches are supported through the `aromatic_text_policy` contract. Fused
+aromatic systems, modified aromatic atoms, and aromatic directional overlays
+remain fail-fast boundaries. See `notes/040_south_star_aromatic_boundary.md`
+for the alternatives and why kekule-looking input text is not a separate
+molecule-fact contract when normal RDKit parsing still sets aromatic flags.
 
 The current polycyclic stance supports non-aromatic nonstereo skeletons only.
 Ring-system facts are named, and graph-native traversal chooses spanning trees,
@@ -351,15 +353,16 @@ Exact support evidence is split by domain:
   helper that emits shared traversal/slot records;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated and unsaturated nonstereo-monocycle,
-  markerless aromatic-monocycle, ring-stereo monocycle, disconnected-
-  composition, atom-text, bond-text, and combined-stereo cases are checked
-  against shared unified-reference helpers where promoted and temporary
-  witness helpers where not yet promoted. The nonstereo monocycle witness
-  checks broken ring-edge choice, tree traversal order, closure digit
+  markerless aromatic-monocycle and aromatic-branch, ring-stereo monocycle,
+  disconnected-composition, atom-text, bond-text, and combined-stereo cases
+  are checked against shared unified-reference helpers where promoted and
+  temporary witness helpers where not yet promoted. The nonstereo monocycle
+  witness checks broken ring-edge choice, tree traversal order, closure digit
   placement, and closure bond text. The aromatic monocycle witness checks
   sanitized aromatic molecule facts, lowercase aromatic atom-text obligations,
-  elided aromatic bond text, parse-back evidence, and first-occurrence
-  deduplication. The ring-stereo witness checks closure-event marker slots,
+  elided aromatic bond text, supported branch atom/bond obligations, parse-back
+  evidence, and first-occurrence deduplication. The ring-stereo witness checks
+  closure-event marker slots,
   central-double-bond closure events, and parity-equation projections by slot
   id.
 
@@ -430,9 +433,9 @@ enumerator needs a broader molecule and syntax surface:
   private default;
 - bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
   charged, renderer-capable modifier, and first radical slices;
-- aromatic coverage beyond markerless monocycles, especially branches, fused
-  aromatic systems, modified aromatic atoms, and aromatic directional-surface
-  models;
+- aromatic coverage beyond markerless monocycles with acyclic supported
+  branches, especially fused aromatic systems, modified aromatic atoms, and
+  aromatic directional-surface models;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;

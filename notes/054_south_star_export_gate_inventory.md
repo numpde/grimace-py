@@ -42,15 +42,15 @@ Results:
 - South Star package readiness: `140` tests passed.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `39`.
-- Total checked semantic fixture cases: `44`.
+- Expanded-support cases: `42`.
+- Total checked semantic fixture cases: `47`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `44`;
-- shared-pipeline promotion candidates: `44`;
+- unified-reference-backed cases: `47`;
+- shared-pipeline promotion candidates: `47`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
@@ -59,8 +59,8 @@ Readiness matrix:
 
 Authority inventory:
 
-- authority classes: `44` unified-reference cases;
-- shared-spine coverage: `44` complete cases;
+- authority classes: `47` unified-reference cases;
+- shared-spine coverage: `47` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 
@@ -128,7 +128,8 @@ Keep `MolToSmilesEnumS` private for now.
 
 The next export-gate review should happen after at least one of these changes:
 
-1. broaden aromatic coverage beyond markerless monocycles;
+1. broaden aromatic coverage beyond markerless monocycles with supported
+   branches;
 2. reduce the unsupported atom/bond-text frontier;
 3. decide the public maturity label and naming contract;
 4. write release-facing docs that describe the unsupported frontier as a

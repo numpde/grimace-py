@@ -58,6 +58,9 @@ from tests.helpers.south_star_exact_support import (
     SouthStarExpandedSupportCase,
     load_south_star_exact_first_domain_cases,
 )
+from tests.helpers.south_star_first_domain_proof_inputs import (
+    first_domain_renderer_proof_from_shared_spine,
+)
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_unified_reference import (
     is_nonstereo_monocycle_ring_traversal_domain,
@@ -165,6 +168,25 @@ class SouthStarDisconnectedCompositionAlgebraProof:
     composed_outputs: tuple[str, ...]
     graph_native_outputs: tuple[str, ...]
     support_authority_promoted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarDisconnectedMixedStereoCompositionProof:
+    outputs: tuple[str, ...]
+    fragment_count: int
+    fragment_source_smiles: tuple[str, ...]
+    fragment_feature_classes: tuple[str, ...]
+    fragment_output_counts: tuple[int, ...]
+    fragment_order_policy: str
+    fragment_order_count: int
+    output_order_policy: str
+    per_fragment_support_product_size: int
+    estimated_product_size: int
+    graph_native_outputs: tuple[str, ...]
+    all_fragments_have_shared_spine_proofs: bool
+    dot_rendering_in_all_outputs: bool
+    first_occurrence_deduplication_preserved_product: bool
+    expected_support_strings_used: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,6 +357,136 @@ def disconnected_composition_algebra_proof_for_case(
         support_authority_promoted=(
             case.support_authority in SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES
         ),
+    )
+
+
+def disconnected_mixed_stereo_composition_proof_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> SouthStarDisconnectedMixedStereoCompositionProof:
+    """Prove mixed-stereo disconnected support by fragment composition."""
+
+    graph_native = shared_disconnected_composition_support_for_case(case)
+    fragment_supports = []
+    fragment_classes = []
+    fragment_shared_spine_proofs = []
+    for record in graph_native.fragment_generation_records:
+        fragment_result = mol_to_smiles_enum_s_graph_native(
+            record.source_fragment_smiles,
+            case_id=f"{case.case_id}:{record.fragment_id}",
+        )
+        fragment_supports.append(
+            SouthStarFragmentSupport(
+                fragment_id=record.fragment_id,
+                outputs=fragment_result.outputs,
+            )
+        )
+        fragment_class, proof_passed = _mixed_stereo_fragment_class_and_proof(
+            case_id=f"{case.case_id}:{record.fragment_id}",
+            source_smiles=record.source_fragment_smiles,
+            expected_outputs=fragment_result.outputs,
+        )
+        fragment_classes.append(fragment_class)
+        fragment_shared_spine_proofs.append(proof_passed)
+
+    composition = compose_disconnected_fragment_supports(tuple(fragment_supports))
+    per_fragment_support_product_size = reduce(
+        mul,
+        composition.fragment_output_counts,
+        1,
+    )
+    return SouthStarDisconnectedMixedStereoCompositionProof(
+        outputs=composition.outputs,
+        fragment_count=composition.fragment_count,
+        fragment_source_smiles=tuple(
+            record.source_fragment_smiles
+            for record in graph_native.fragment_generation_records
+        ),
+        fragment_feature_classes=tuple(fragment_classes),
+        fragment_output_counts=composition.fragment_output_counts,
+        fragment_order_policy=composition.fragment_order_policy,
+        fragment_order_count=composition.fragment_order_count,
+        output_order_policy=composition.output_order_policy,
+        per_fragment_support_product_size=per_fragment_support_product_size,
+        estimated_product_size=composition.estimated_product_size,
+        graph_native_outputs=graph_native.outputs,
+        all_fragments_have_shared_spine_proofs=all(fragment_shared_spine_proofs),
+        dot_rendering_in_all_outputs=all(
+            output.count(".") == composition.fragment_count - 1
+            for output in composition.outputs
+        ),
+        first_occurrence_deduplication_preserved_product=(
+            len(composition.outputs) == composition.estimated_product_size
+        ),
+        expected_support_strings_used=False,
+    )
+
+
+def _mixed_stereo_fragment_class_and_proof(
+    *,
+    case_id: str,
+    source_smiles: str,
+    expected_outputs: tuple[str, ...],
+) -> tuple[str, bool]:
+    mol = parse_smiles(source_smiles)
+    facts = SouthStarMoleculeFacts.from_mol(mol)
+    tetrahedral_facts = extract_tetrahedral_center_facts(mol)
+    fragment_case = SouthStarFragmentAuthorityCase(
+        case_id=case_id,
+        source_smiles=source_smiles,
+    )
+    if facts.components and not tetrahedral_facts:
+        proof = first_domain_renderer_proof_from_shared_spine(fragment_case)
+        return (
+            "directional_marker_equation_fragment",
+            proof.rendered_outputs == expected_outputs
+            and proof.all_rendered_outputs_have_marker_equation_proofs
+            and not proof.expected_support_strings_used,
+        )
+    if tetrahedral_facts and not facts.components:
+        proof = _tetrahedral_fragment_shared_spine_proof(
+            fragment_case,
+            expected_outputs=expected_outputs,
+        )
+        return ("tetrahedral_renderer_obligation_fragment", proof)
+    raise NotImplementedError(
+        "mixed-stereo disconnected composition currently expects one "
+        "directional fragment and one tetrahedral fragment"
+    )
+
+
+def _tetrahedral_fragment_shared_spine_proof(
+    case: SouthStarFragmentAuthorityCase,
+    *,
+    expected_outputs: tuple[str, ...],
+) -> bool:
+    mol = parse_smiles(case.source_smiles)
+    facts_by_atom = {
+        fact.center_atom_idx: fact for fact in extract_tetrahedral_center_facts(mol)
+    }
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    outputs = tuple(
+        dict.fromkeys(
+            render_south_star_tree_traversal(traversal)
+            for traversal in traversals
+        )
+    )
+    diagnostics = tuple(
+        _tetrahedral_token_diagnostic_for_atom_event(
+            traversal.connected_graph_plan,
+            center_atom_idx=event.atom_idx,
+            emitted_token=_tetrahedral_token_from_atom_text(event.text),
+            facts_by_atom=facts_by_atom,
+        )
+        for traversal in traversals
+        for event in traversal.events
+        if event.kind == "atom"
+        and event.atom_idx in facts_by_atom
+        and event.atom_idx is not None
+    )
+    return (
+        outputs == expected_outputs
+        and len(diagnostics) == len(traversals) * len(facts_by_atom)
+        and all(diagnostic.preserves_orientation for diagnostic in diagnostics)
     )
 
 

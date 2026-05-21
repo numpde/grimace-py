@@ -7,6 +7,7 @@ from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
@@ -24,6 +25,7 @@ from tests.helpers.south_star_exact_support import (
 from tests.helpers.south_star_expanded_domain_oracles import (
     directional_tetrahedral_composition_proof_for_case,
     disconnected_composition_algebra_proof_for_case,
+    disconnected_mixed_stereo_composition_proof_for_case,
     independent_directional_component_product_proof_for_case,
     ring_core_proof_records_for_case,
     shared_disconnected_composition_support_for_case,
@@ -319,6 +321,50 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                             for authority in proof.fragment_support_authorities
                         )
                     )
+
+    def test_disconnected_mixed_stereo_composition_proof_matches_fixtures(
+        self,
+    ) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            proof = disconnected_mixed_stereo_composition_proof_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertEqual(case.expected_support, proof.outputs)
+                self.assertEqual(proof.graph_native_outputs, proof.outputs)
+                self.assertFalse(proof.expected_support_strings_used)
+                self.assertEqual(2, proof.fragment_count)
+                self.assertEqual((12, 12), proof.fragment_output_counts)
+                self.assertEqual(
+                    (
+                        "directional_marker_equation_fragment",
+                        "tetrahedral_renderer_obligation_fragment",
+                    ),
+                    proof.fragment_feature_classes,
+                )
+                self.assertEqual("all_fragment_orders", proof.fragment_order_policy)
+                self.assertEqual(2, proof.fragment_order_count)
+                self.assertEqual(
+                    "first_occurrence_deduplication",
+                    proof.output_order_policy,
+                )
+                self.assertEqual(144, proof.per_fragment_support_product_size)
+                self.assertEqual(
+                    proof.estimated_product_size,
+                    proof.fragment_order_count
+                    * proof.per_fragment_support_product_size,
+                )
+                self.assertEqual(
+                    len(case.expected_support),
+                    proof.estimated_product_size,
+                )
+                self.assertTrue(proof.all_fragments_have_shared_spine_proofs)
+                self.assertTrue(proof.dot_rendering_in_all_outputs)
+                self.assertTrue(proof.first_occurrence_deduplication_preserved_product)
 
     def test_ring_stereo_monocycle_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

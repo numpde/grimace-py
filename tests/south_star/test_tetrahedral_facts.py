@@ -23,6 +23,7 @@ from grimace._south_star.tetrahedral import (
     extract_ring_tetrahedral_interaction_obligations,
     extract_tetrahedral_center_facts,
     preserving_tetrahedral_token,
+    tetrahedral_traversal_proof_input,
     tetrahedral_token_preserves_orientation,
     tetrahedral_traversal_observation_from_connected_graph_plan,
     tetrahedral_traversal_token_diagnostic,
@@ -132,6 +133,75 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             emitted_tetrahedral_ligand_order_from_observation(observation),
             diagnostic.emitted_ligand_order,
         )
+
+    def test_tetrahedral_proof_input_names_source_observation_and_renderer(
+        self,
+    ) -> None:
+        fact = extract_tetrahedral_center_facts(parse_smiles("C[C@H](F)Cl"))[0]
+        traversal = _traversal_by_render("C[C@H](F)Cl", "C[C@H](F)Cl")
+        plan = traversal.connected_graph_plan
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+            plan,
+            center_atom_idx=fact.center_atom_idx,
+            implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        )
+
+        proof_input = tetrahedral_traversal_proof_input(fact, observation)
+
+        self.assertEqual(1, proof_input.center_atom_idx)
+        self.assertEqual("@", proof_input.source_token)
+        self.assertEqual(
+            ("atom:0", "atom:2", "atom:3", IMPLICIT_HYDROGEN_LIGAND),
+            proof_input.source_ligand_order,
+        )
+        self.assertEqual((0, 2, 3), proof_input.explicit_neighbor_atom_indices)
+        self.assertEqual(1, proof_input.implicit_hydrogen_count)
+        self.assertEqual(0, proof_input.parent_atom_idx)
+        self.assertEqual((2, 3), proof_input.child_atom_indices)
+        self.assertEqual((), proof_input.ring_closure_ligand_atom_indices)
+        self.assertEqual((), proof_input.ring_closure_labels)
+        self.assertEqual(
+            ("atom:0", "atom:2", "atom:3", IMPLICIT_HYDROGEN_LIGAND),
+            proof_input.emitted_ligand_order,
+        )
+        self.assertEqual("@", proof_input.expected_token)
+        self.assertEqual("@", proof_input.renderer_input.value)
+        self.assertEqual(
+            "tetrahedral_stereo_token",
+            proof_input.renderer_input.token_family,
+        )
+        self.assertIn(
+            "emitted_ligand_order:atom:0,atom:2,atom:3,implicit_hydrogen",
+            proof_input.obligation_required_fact_ids,
+        )
+
+    def test_quaternary_tetrahedral_proof_input_has_no_implicit_hydrogen(
+        self,
+    ) -> None:
+        fact = extract_tetrahedral_center_facts(parse_smiles("C[C@](F)(Cl)Br"))[0]
+        traversal = _traversal_by_render("C[C@](F)(Cl)Br", "[C@](C)(F)(Cl)Br")
+        plan = traversal.connected_graph_plan
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        observation = tetrahedral_traversal_observation_from_connected_graph_plan(
+            plan,
+            center_atom_idx=fact.center_atom_idx,
+            implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        )
+
+        proof_input = tetrahedral_traversal_proof_input(fact, observation)
+
+        self.assertEqual(0, proof_input.implicit_hydrogen_count)
+        self.assertIsNone(proof_input.parent_atom_idx)
+        self.assertEqual((0, 2, 3, 4), proof_input.child_atom_indices)
+        self.assertEqual(
+            ("atom:0", "atom:2", "atom:3", "atom:4"),
+            proof_input.emitted_ligand_order,
+        )
+        self.assertEqual("@", proof_input.expected_token)
+        self.assertEqual("@", proof_input.renderer_input.value)
 
     def test_tetrahedral_atom_stereo_is_inside_current_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("C[C@H](F)Cl"))
@@ -273,6 +343,38 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
             _single_tetrahedral_observation(
                 traversals_by_render["F[C@@H]1CC(CCC1)C"]
             ).ring_closure_ligand_atom_indices,
+        )
+
+    def test_ring_tetrahedral_proof_input_names_closure_ligands(
+        self,
+    ) -> None:
+        fact = extract_tetrahedral_center_facts(parse_smiles("F[C@H]1CCCC(C)C1"))[0]
+        traversal = next(
+            traversal
+            for traversal in _ring_tetrahedral_diagnostic_traversals(
+                "F[C@H]1CCCC(C)C1"
+            )
+            if render_south_star_tree_traversal(traversal) == "F[C@H]1CCCC(C)C1"
+        )
+        observation = _single_tetrahedral_observation(traversal)
+
+        proof_input = tetrahedral_traversal_proof_input(fact, observation)
+
+        self.assertEqual((7,), proof_input.ring_closure_ligand_atom_indices)
+        self.assertEqual(("1",), proof_input.ring_closure_labels)
+        self.assertEqual(
+            ("atom:0", "atom:7", "atom:2", IMPLICIT_HYDROGEN_LIGAND),
+            proof_input.emitted_ligand_order,
+        )
+        self.assertEqual("@", proof_input.expected_token)
+        self.assertEqual("@", proof_input.renderer_input.value)
+        self.assertIn(
+            "ring_closure_ligands:7",
+            proof_input.obligation_required_fact_ids,
+        )
+        self.assertIn(
+            "ring_closure_labels:1",
+            proof_input.obligation_required_fact_ids,
         )
 
     def test_ring_tetrahedral_public_outputs_parse_to_source_semantics(self) -> None:

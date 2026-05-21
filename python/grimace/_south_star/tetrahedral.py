@@ -98,6 +98,23 @@ class SouthStarTetrahedralTokenConstraintRecords:
     renderer_input: SouthStarRendererInput
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarTetrahedralTraversalProofInput:
+    center_atom_idx: int
+    source_token: str
+    source_ligand_order: tuple[str, ...]
+    explicit_neighbor_atom_indices: tuple[int, ...]
+    implicit_hydrogen_count: int
+    parent_atom_idx: int | None
+    child_atom_indices: tuple[int, ...]
+    ring_closure_ligand_atom_indices: tuple[int, ...]
+    ring_closure_labels: tuple[str, ...]
+    emitted_ligand_order: tuple[str, ...]
+    expected_token: str
+    renderer_input: SouthStarRendererInput
+    obligation_required_fact_ids: tuple[str, ...]
+
+
 def extract_tetrahedral_center_facts(
     mol: Chem.Mol,
 ) -> tuple[SouthStarTetrahedralCenterFact, ...]:
@@ -253,6 +270,33 @@ def tetrahedral_token_constraint_records(
             token_family="tetrahedral_stereo_token",
             value=assignment.value,
         ),
+    )
+
+
+def tetrahedral_traversal_proof_input(
+    fact: SouthStarTetrahedralCenterFact,
+    observation: SouthStarTetrahedralTraversalObservation,
+) -> SouthStarTetrahedralTraversalProofInput:
+    records = tetrahedral_token_constraint_records(fact, observation)
+    emitted_ligand_order = emitted_tetrahedral_ligand_order_from_observation(
+        observation
+    )
+    return SouthStarTetrahedralTraversalProofInput(
+        center_atom_idx=fact.center_atom_idx,
+        source_token=fact.source_token,
+        source_ligand_order=fact.source_ligand_order,
+        explicit_neighbor_atom_indices=fact.explicit_neighbor_atom_indices,
+        implicit_hydrogen_count=fact.implicit_hydrogen_count,
+        parent_atom_idx=observation.parent_atom_idx,
+        child_atom_indices=observation.child_atom_indices,
+        ring_closure_ligand_atom_indices=(
+            observation.ring_closure_ligand_atom_indices
+        ),
+        ring_closure_labels=observation.ring_closure_labels,
+        emitted_ligand_order=emitted_ligand_order,
+        expected_token=records.assignment.value,
+        renderer_input=records.renderer_input,
+        obligation_required_fact_ids=records.obligations[0].required_fact_ids,
     )
 
 

@@ -113,9 +113,34 @@ class SouthStarSupportGateTests(unittest.TestCase):
     ) -> None:
         report = south_star_support_gate_report(parse_smiles("F[C@H]1CCCC(C)C1"))
 
-        self.assertUnsupportedCategory("ring_molecule", report.categories)
         self.assertUnsupportedCategory(
             "ring_tetrahedral_interaction",
+            report.categories,
+        )
+        self.assertNotIn("ring_molecule", report.categories)
+
+    def test_ring_adjacent_tetrahedral_center_is_specific_unsupported_surface(
+        self,
+    ) -> None:
+        report = south_star_support_gate_report(parse_smiles("F[C@H](Cl)C1CCCCC1"))
+
+        self.assertUnsupportedCategory(
+            "ring_tetrahedral_interaction",
+            report.categories,
+        )
+        self.assertNotIn("ring_molecule", report.categories)
+
+    def test_fused_ring_tetrahedral_interaction_keeps_ring_system_blocker(
+        self,
+    ) -> None:
+        report = south_star_support_gate_report(parse_smiles("C1CC2CCCC2[C@H]1F"))
+
+        self.assertUnsupportedCategory(
+            "ring_tetrahedral_interaction",
+            report.categories,
+        )
+        self.assertUnsupportedCategory(
+            "fused_or_polycyclic_ring",
             report.categories,
         )
 

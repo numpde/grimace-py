@@ -311,6 +311,11 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         return ()
     if disconnected_fragments_have_supported_independent_traversal(mol):
         return ()
+    if _has_ring_tetrahedral_interaction(mol) and _has_supported_monocycle_shape(
+        mol,
+        allow_tetrahedral_stereo=True,
+    ):
+        return ()
     if is_supported_monocycle_with_acyclic_branches(mol):
         return ()
     return (
@@ -385,8 +390,7 @@ def _ring_tetrahedral_interaction_features(
             ),
         )
         for atom in mol.GetAtoms()
-        if atom.IsInRing()
-        and atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        if _tetrahedral_atom_has_ring_ligand(atom)
     )
 
 
@@ -530,14 +534,18 @@ def is_supported_monocycle_with_acyclic_branches(mol: Chem.Mol) -> bool:
     ) or is_supported_ring_stereo_monocycle_with_acyclic_branches(mol)
 
 
-def _has_supported_monocycle_shape(mol: Chem.Mol) -> bool:
+def _has_supported_monocycle_shape(
+    mol: Chem.Mol,
+    *,
+    allow_tetrahedral_stereo: bool = False,
+) -> bool:
     if mol.GetNumAtoms() == 0:
         return False
     if len(Chem.GetMolFrags(mol)) != 1:
         return False
     if mol.GetNumBonds() != mol.GetNumAtoms():
         return False
-    if any(
+    if not allow_tetrahedral_stereo and any(
         atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
         for atom in mol.GetAtoms()
     ):
@@ -552,6 +560,20 @@ def _has_supported_monocycle_shape(mol: Chem.Mol) -> bool:
     return all(
         bond.GetBondType() in SUPPORTED_BOND_TYPES
         for bond in mol.GetBonds()
+    )
+
+
+def _has_ring_tetrahedral_interaction(mol: Chem.Mol) -> bool:
+    return any(_tetrahedral_atom_has_ring_ligand(atom) for atom in mol.GetAtoms())
+
+
+def _tetrahedral_atom_has_ring_ligand(atom: Chem.Atom) -> bool:
+    if atom.GetChiralTag() == Chem.ChiralType.CHI_UNSPECIFIED:
+        return False
+    if not tetrahedral_atom_supported(atom):
+        return False
+    return atom.IsInRing() or any(
+        neighbor.IsInRing() for neighbor in atom.GetNeighbors()
     )
 
 

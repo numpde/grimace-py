@@ -114,7 +114,9 @@ Current unsupported categories include:
   `unsupported_radical_atom`;
 - dative or metal-containing stereo surfaces;
 - fused/polycyclic rings, reported as `fused_or_polycyclic_ring`;
-- ring/tetrahedral interactions, reported as `ring_tetrahedral_interaction`;
+- ring/tetrahedral interactions, including ring-member chiral atoms and
+  ring-adjacent chiral atoms whose ligand order depends on a ring path, reported
+  as `ring_tetrahedral_interaction`;
 - ring stereo outside the supported monocycle subset, reported as
   `ring_stereo`;
 - aromatic rings, reported as `aromatic_ring_surface`;

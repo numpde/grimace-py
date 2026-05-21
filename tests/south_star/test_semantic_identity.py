@@ -41,6 +41,18 @@ class SouthStarSemanticIdentityTests(unittest.TestCase):
         self.assertTrue(report.graph_identity.passed)
         self.assertFalse(report.stereo_identity.passed)
 
+    def test_ring_adjacent_tetrahedral_ligand_order_affects_stereo_identity(
+        self,
+    ) -> None:
+        report = south_star_semantic_identity_report(
+            source_smiles="F[C@H](Cl)C1CCCCC1",
+            candidate_smiles="F[C@@H](Cl)C1CCCCC1",
+        )
+
+        self.assertTrue(report.parser_dependency.passed)
+        self.assertTrue(report.graph_identity.passed)
+        self.assertFalse(report.stereo_identity.passed)
+
     def test_parser_failure_is_classified_before_identity_checks(self) -> None:
         report = south_star_semantic_identity_report(
             source_smiles="CC",

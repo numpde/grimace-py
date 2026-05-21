@@ -123,7 +123,7 @@ The implemented private scope is deliberately narrow:
   pinned by `[H]`, `[CH3]`, and `[O]` examples;
 - markerless aromatic monocycles whose sanitized RDKit molecule facts are
   unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
-  pinned by benzene.
+  pinned by benzene, pyridine, and furan.
 
 Atom text is scoped by the `grimace._south_star.atom_text` policy boundary.
 The current contract records isotope, element symbol, chirality token,

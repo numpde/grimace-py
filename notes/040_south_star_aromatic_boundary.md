@@ -64,8 +64,9 @@ before any support gate is relaxed.
 for markerless aromatic monocycles. The first fixture,
 `aromatic_text_monocycle_benzene`, is backed by sanitized aromatic molecule
 facts, lowercase aromatic atom text, elided aromatic bond text, ring traversal
-events, parse-back evidence, and first-occurrence deduplication. This is still
-not broad aromatic support.
+events, parse-back evidence, and first-occurrence deduplication. `South Star
+171` adds hetero aromatic monocycle witnesses for pyridine and furan under the
+same policy. This is still not broad aromatic support.
 
 ## Alternatives Considered
 

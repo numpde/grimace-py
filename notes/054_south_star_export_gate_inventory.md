@@ -42,15 +42,15 @@ Results:
 - South Star package readiness: `140` tests passed.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `37`.
-- Total checked semantic fixture cases: `42`.
+- Expanded-support cases: `39`.
+- Total checked semantic fixture cases: `44`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `42`;
-- shared-pipeline promotion candidates: `42`;
+- unified-reference-backed cases: `44`;
+- shared-pipeline promotion candidates: `44`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
@@ -59,8 +59,8 @@ Readiness matrix:
 
 Authority inventory:
 
-- authority classes: `42` unified-reference cases;
-- shared-spine coverage: `42` complete cases;
+- authority classes: `44` unified-reference cases;
+- shared-spine coverage: `44` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 
@@ -141,4 +141,3 @@ specifically for that choice. The decision should compare:
 - explicitly experimental export;
 - narrow feature-family export;
 - waiting for broader feature-family proof.
-

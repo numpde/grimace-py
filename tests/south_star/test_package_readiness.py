@@ -269,6 +269,8 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
                 "unsaturated_nonstereo_monocycle_cyclohexadiene",
                 "aromatic_text_monocycle_benzene",
+                "aromatic_text_monocycle_pyridine",
+                "aromatic_text_monocycle_furan",
                 "ring_stereo_monocycle_cyclooctene",
                 "markerless_disconnected_ring_and_atom",
                 "disconnected_stereo_fragment_and_atom",

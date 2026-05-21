@@ -137,19 +137,26 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
     def test_markerless_aromatic_monocycle_is_first_supported_aromatic_scope(
         self,
     ) -> None:
-        case = _expanded_support_case("aromatic_text_monocycle_benzene")
-        result = mol_to_smiles_enum_s_graph_native(
-            case.source_smiles,
-            case_id=case.case_id,
+        case_ids = (
+            "aromatic_text_monocycle_benzene",
+            "aromatic_text_monocycle_pyridine",
+            "aromatic_text_monocycle_furan",
         )
-        report = south_star_support_gate_report(parse_smiles(case.source_smiles))
 
-        self.assertTrue(report.supported, report.unsupported_features)
-        self.assertEqual(case.expected_support, result.outputs)
-        self.assertIn("c1ccccc1", result.outputs)
-        for output in result.outputs:
-            with self.subTest(output=output):
-                self.assertTrue(south_star_grammar_conformance(output).passed)
+        for case_id in case_ids:
+            case = _expanded_support_case(case_id)
+            result = mol_to_smiles_enum_s_graph_native(
+                case.source_smiles,
+                case_id=case.case_id,
+            )
+            report = south_star_support_gate_report(parse_smiles(case.source_smiles))
+
+            with self.subTest(case_id=case_id):
+                self.assertTrue(report.supported, report.unsupported_features)
+                self.assertEqual(case.expected_support, result.outputs)
+            for output in result.outputs:
+                with self.subTest(case_id=case_id, output=output):
+                    self.assertTrue(south_star_grammar_conformance(output).passed)
 
     def test_aromatic_monocycle_fixture_uses_aromatic_renderer_obligations(
         self,
@@ -168,16 +175,49 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
                 for event in traversal.events
             )
         )
-        self.assertTrue(
-            all(
-                event.kind != "atom" or event.text == "c"
-                for traversal in traversals
-                for event in traversal.events
-            )
+        atom_texts = tuple(
+            event.text
+            for traversal in traversals
+            for event in traversal.events
+            if event.kind == "atom"
         )
 
+        self.assertEqual({"c"}, set(atom_texts))
+
+    def test_hetero_aromatic_monocycle_fixtures_use_lowercase_atom_text(
+        self,
+    ) -> None:
+        expected_atom_texts = {
+            "aromatic_text_monocycle_pyridine": {"c", "n"},
+            "aromatic_text_monocycle_furan": {"c", "o"},
+        }
+
+        for case_id, expected_texts in expected_atom_texts.items():
+            case = _expanded_support_case(case_id)
+            traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+            rendered = tuple(
+                dict.fromkeys(render_south_star_tree_traversal(t) for t in traversals)
+            )
+            atom_texts = {
+                event.text
+                for traversal in traversals
+                for event in traversal.events
+                if event.kind == "atom"
+            }
+
+            with self.subTest(case_id=case_id):
+                self.assertEqual(case.expected_support, rendered)
+                self.assertEqual(expected_texts, atom_texts)
+                self.assertTrue(
+                    all(
+                        event.kind != "bond" or event.text == ""
+                        for traversal in traversals
+                        for event in traversal.events
+                    )
+                )
+
     def test_sanitized_aromatic_spellings_share_aromatic_facts(self) -> None:
-        cases = ("c1ccccc1", "C1=CC=CC=C1")
+        cases = ("c1ccccc1", "C1=CC=CC=C1", "c1ccncc1", "c1ccoc1")
 
         for smiles in cases:
             facts = SouthStarMoleculeFacts.from_mol(parse_smiles(smiles))

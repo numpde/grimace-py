@@ -206,9 +206,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
 
     def test_markerless_aromatic_monocycle_is_inside_gate_scope(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("c1ccccc1"))
+        cases = ("c1ccccc1", "c1ccncc1", "c1ccoc1")
 
-        self.assertTrue(report.supported, report.unsupported_features)
+        for smiles in cases:
+            with self.subTest(smiles=smiles):
+                report = south_star_support_gate_report(parse_smiles(smiles))
+
+                self.assertTrue(report.supported, report.unsupported_features)
 
     def test_kekule_looking_aromatic_monocycle_shares_supported_fact_scope(
         self,

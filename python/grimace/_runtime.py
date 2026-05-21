@@ -112,6 +112,18 @@ def _validate_surface_kind(
         )
 
 
+def _runtime_writer_flag_values(
+    flags: MolToSmilesFlags,
+) -> tuple[bool, bool, bool, bool, bool]:
+    return (
+        bool(flags.isomeric_smiles),
+        bool(flags.kekule_smiles),
+        bool(flags.all_bonds_explicit),
+        bool(flags.all_hs_explicit),
+        bool(flags.ignore_atom_map_numbers),
+    )
+
+
 def _validate_writer_flags(
     prepared: object,
     flags: MolToSmilesFlags,
@@ -133,14 +145,7 @@ def _validate_writer_flags(
             prepared.writer_all_hs_explicit,
             prepared.writer_ignore_atom_map_numbers,
         )
-    expected = (
-        bool(flags.isomeric_smiles),
-        bool(flags.kekule_smiles),
-        bool(flags.all_bonds_explicit),
-        bool(flags.all_hs_explicit),
-        bool(flags.ignore_atom_map_numbers),
-    )
-    if actual != expected:
+    if actual != _runtime_writer_flag_values(flags):
         raise ValueError(
             "PreparedSmilesGraph writer flags do not match the requested public runtime options"
         )
@@ -150,15 +155,10 @@ def _validate_prepared_mol_writer_flags(
     prepared: PreparedMol,
     flags: MolToSmilesFlags,
 ) -> None:
-    actual = _prepared_mol_writer_flag_values(prepared)
-    expected = (
-        bool(flags.isomeric_smiles),
-        bool(flags.kekule_smiles),
-        bool(flags.all_bonds_explicit),
-        bool(flags.all_hs_explicit),
-        bool(flags.ignore_atom_map_numbers),
-    )
-    if actual != expected:
+    if (
+        _prepared_mol_writer_flag_values(prepared)
+        != _runtime_writer_flag_values(flags)
+    ):
         raise ValueError(
             "PreparedMol writer flags do not match the requested public runtime options"
         )

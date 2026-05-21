@@ -236,7 +236,7 @@ impl PreparedSmilesGraphData {
         Ok(data)
     }
 
-    fn validate(&self) -> PyResult<()> {
+    pub(crate) fn validate(&self) -> PyResult<()> {
         if self.schema_version != PREPARED_SMILES_GRAPH_SCHEMA_VERSION {
             return Err(PyValueError::new_err(format!(
                 "Unexpected PreparedSmilesGraph schema version: {}",

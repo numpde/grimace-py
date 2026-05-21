@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
-import json
 import unittest
 
 import grimace
@@ -237,18 +236,55 @@ class PreparedMolContractTests(unittest.TestCase):
         self.assertEqual((0, 1, 2), tuple(prepared._inner.fragment_atom_indices(0)))
         self.assertEqual((3,), tuple(prepared._inner.fragment_atom_indices(1)))
 
+    def test_to_bytes_uses_versioned_binary_payload(self) -> None:
+        prepared = self._prepare("CCO.N", isomericSmiles=False)
+        payload = prepared.to_bytes()
+
+        self.assertTrue(payload.startswith(b"GRIMACEPM\0"))
+        self.assertFalse(payload.startswith(b"{"))
+        self.assertIsInstance(grimace.PreparedMol.from_bytes(payload), grimace.PreparedMol)
+
     def test_from_bytes_rejects_non_bytes_and_malformed_payloads(self) -> None:
         with self.assertRaises(TypeError):
             grimace.PreparedMol.from_bytes(bytearray())
 
-        for payload in (b"", b"not a prepared molecule"):
+        valid_payload = bytearray(self._prepare("CCO", isomericSmiles=False).to_bytes())
+        bad_version = bytearray(valid_payload)
+        bad_version[len(b"GRIMACEPM\0")] = 99
+
+        for payload in (
+            b"",
+            b"not a prepared molecule",
+            bytes(valid_payload[:-1]),
+            bytes(valid_payload) + b"\0",
+            bytes(bad_version),
+        ):
             with self.subTest(payload=payload):
                 with self.assertRaises(ValueError):
                     grimace.PreparedMol.from_bytes(payload)
 
-    def test_from_bytes_rejects_malformed_structural_payloads(self) -> None:
+    def test_rust_storage_rejects_malformed_structural_payloads(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
-        base_payload = json.loads(prepared.to_bytes().decode("utf-8"))
+        base_payload = {
+            "schema_version": 1,
+            "writer_flags": {
+                "isomeric_smiles": False,
+                "kekule_smiles": False,
+                "all_bonds_explicit": False,
+                "all_hs_explicit": False,
+                "ignore_atom_map_numbers": False,
+            },
+            "fragments": [
+                {
+                    "atom_indices": list(prepared._inner.fragment_atom_indices(0)),
+                    "prepared_graph": prepared._inner.fragment_prepared_graph(0),
+                },
+                {
+                    "atom_indices": list(prepared._inner.fragment_atom_indices(1)),
+                    "prepared_graph": prepared._inner.fragment_prepared_graph(1),
+                },
+            ],
+        }
 
         malformed_payloads = {
             "missing_fragments": {
@@ -296,9 +332,8 @@ class PreparedMolContractTests(unittest.TestCase):
 
         for name, payload in malformed_payloads.items():
             with self.subTest(name=name):
-                data = json.dumps(payload).encode("utf-8")
                 with self.assertRaises(ValueError):
-                    grimace.PreparedMol.from_bytes(data)
+                    grimace._core.PreparedMol(payload)
 
 
 if __name__ == "__main__":

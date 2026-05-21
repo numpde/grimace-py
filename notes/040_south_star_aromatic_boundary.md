@@ -1,6 +1,7 @@
 # South Star Aromatic Boundary
 
-Task: `South Star 74: Decide aromatic semantic boundary`
+Tasks: `South Star 74: Decide aromatic semantic boundary`,
+`South Star 101: Decide aromatic semantic boundary`
 
 ## Current Decision
 
@@ -14,6 +15,12 @@ long-term South Star target. The current implementation depends on RDKit for
 parsing and molecule facts. With normal RDKit sanitization, even
 `C1=CC=CC=C1` is represented as an aromatic molecule, so a text rule like
 "accept kekule-looking input" is not precise enough.
+
+The `South Star 101` review keeps this decision unchanged. The important
+boundary is molecule facts, not source spelling: lowercase aromatic input and
+kekule-looking aromatic input both become aromatic RDKit molecule facts under
+the current parser boundary. South Star should not infer a semantic support
+contract from the user's original text once RDKit has canonicalized those facts.
 
 ## Alternatives Considered
 
@@ -41,6 +48,33 @@ parsing and molecule facts. With normal RDKit sanitization, even
    directional surfaces, and semantic equivalence between aromatic and
    kekulized parsebacks. That is a real grammar policy, not a small renderer
    tweak.
+
+4. Treat aromaticity as parse-back equivalence only.
+
+   This is not a support policy by itself. It may be a useful diagnostic once
+   aromatic support exists, but it cannot define enumeration because it does not
+   say which strings belong to the support, whether lowercase aromatic text or
+   explicit Kekule text is preferred, or how maximal annotation interacts with
+   aromatic bonds.
+
+## Support Entry Conditions
+
+A future aromatic slice should not remove the fail-fast gate until it names all
+of the following explicitly:
+
+- molecule-fact contract: sanitized aromatic RDKit facts, deliberately
+  kekulized non-aromatic facts, or another documented preparation boundary;
+- atom-text policy: lowercase aromatic atoms, bracket aromatic atoms, or
+  explicit non-aromatic atoms;
+- bond-text policy: aromatic bond elision, explicit aromatic bonds, or Kekule
+  single/double bonds;
+- semantic equivalence relation: whether aromatic and Kekule parsebacks count
+  as the same semantic target for South Star correctness;
+- maximal annotation policy: whether aromatic directional surfaces are excluded,
+  annotated, or represented through a separate constraint family.
+
+Until those are named, `aromatic_ring_surface` and
+`aromatic_directional_surface` are the correct behavior.
 
 ## Boundary Tests
 

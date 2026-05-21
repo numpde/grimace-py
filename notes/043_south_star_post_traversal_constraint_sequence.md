@@ -51,9 +51,10 @@ is probably fixture-driven and should be deferred.
    categories until their modifier obligations are modeled.
 
 5. **Decide aromatic semantics before aromatic support.**
-   Aromatic rings need a separate semantic model: lowercase aromatic grammar,
-   kekule/aromatic parse-back equivalence, and what "maximal annotation" means
-   on aromatic surfaces. This should stay fail-fast until that model is named.
+   Completed in `South Star 101`: `notes/040_south_star_aromatic_boundary.md`
+   keeps aromatic systems fail-fast until the molecule-fact contract, atom-text
+   policy, bond-text policy, semantic equivalence relation, and maximal
+   annotation policy are named explicitly.
 
 6. **Handle ring/tetrahedral interactions after tetrahedral obligations.**
    Ring-local tetrahedral ligand ordering should not be patched into ring

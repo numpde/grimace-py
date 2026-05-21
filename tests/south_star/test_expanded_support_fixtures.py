@@ -21,6 +21,7 @@ from tests.helpers.south_star_exact_support import (
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
     disconnected_composition_algebra_proof_for_case,
+    ring_core_proof_records_for_case,
     shared_disconnected_composition_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
@@ -42,6 +43,12 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         {
             SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
             SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
+        }
+    )
+    RING_CORE_AUTHORITIES = frozenset(
+        {
+            SOUTH_STAR_SATURATED_MONOCYCLE_WITNESS_AUTHORITY,
+            SOUTH_STAR_NONSTEREO_MONOCYCLE_WITNESS_AUTHORITY,
         }
     )
 
@@ -149,6 +156,40 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                     frozenset(case.expected_support),
                     frozenset(shared_nonstereo_monocycle_support_for_case(case)),
                 )
+
+    def test_ring_core_proof_records_expose_closure_model(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if case.support_authority not in self.RING_CORE_AUTHORITIES:
+                continue
+
+            records = ring_core_proof_records_for_case(case)
+            with self.subTest(case_id=case.case_id):
+                self.assertNotEqual((), records)
+                self.assertTrue(
+                    any(
+                        text == "="
+                        for record in records
+                        for text in record.closure_open_bond_texts
+                    )
+                    == (case.feature_area == "unsaturated_nonstereo_monocycle")
+                )
+
+            for record in records:
+                with self.subTest(
+                    case_id=case.case_id,
+                    root_atom_idx=record.root_atom_idx,
+                ):
+                    self.assertEqual(1, len(record.closure_edges))
+                    self.assertEqual(1, len(record.closure_ids))
+                    self.assertEqual(("1",), record.closure_labels)
+                    self.assertEqual(("open", "close"), record.closure_endpoint_roles)
+                    self.assertEqual(("1", "1"), record.closure_endpoint_labels)
+                    self.assertEqual(("ring_open", "ring_close"), record.closure_event_kinds)
+                    self.assertEqual(("open", "close"), record.closure_event_roles)
+                    self.assertEqual(("1", "1"), record.closure_event_labels)
+                    self.assertEqual(1, len(record.closure_open_bond_texts))
+                    self.assertEqual(0, record.marker_slot_count)
+                    self.assertEqual(0, record.renderer_input_count)
 
     def test_disconnected_composition_witness_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

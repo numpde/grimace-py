@@ -100,6 +100,23 @@ class SouthStarDisconnectedCompositionAlgebraProof:
     support_authority_promoted: bool
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarRingCoreProofRecord:
+    case_id: str
+    root_atom_idx: int
+    closure_edges: tuple[Edge, ...]
+    closure_ids: tuple[str, ...]
+    closure_labels: tuple[str, ...]
+    closure_endpoint_roles: tuple[str, ...]
+    closure_endpoint_labels: tuple[str, ...]
+    closure_event_kinds: tuple[str, ...]
+    closure_event_roles: tuple[str, ...]
+    closure_event_labels: tuple[str, ...]
+    closure_open_bond_texts: tuple[str, ...]
+    marker_slot_count: int
+    renderer_input_count: int
+
+
 def shared_saturated_monocycle_support_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> tuple[str, ...]:
@@ -116,6 +133,56 @@ def shared_nonstereo_monocycle_support_for_case(
     _assert_nonstereo_monocycle_domain(mol)
 
     return _shared_traversal_support_for_case(case)
+
+
+def ring_core_proof_records_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> tuple[SouthStarRingCoreProofRecord, ...]:
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(case)
+    records = []
+    for traversal in traversals:
+        plan = traversal.connected_graph_plan
+        if plan is None or not plan.closure_edges:
+            continue
+        closure_events = tuple(
+            event for event in traversal.events if event.ring_closure is not None
+        )
+        records.append(
+            SouthStarRingCoreProofRecord(
+                case_id=case.case_id,
+                root_atom_idx=traversal.root_atom_idx,
+                closure_edges=tuple(edge.edge for edge in plan.closure_edges),
+                closure_ids=tuple(edge.closure_id for edge in plan.closure_edges),
+                closure_labels=tuple(edge.label for edge in plan.closure_edges),
+                closure_endpoint_roles=tuple(
+                    endpoint.role for endpoint in plan.closure_endpoints
+                ),
+                closure_endpoint_labels=tuple(
+                    endpoint.label for endpoint in plan.closure_endpoints
+                ),
+                closure_event_kinds=tuple(event.kind for event in closure_events),
+                closure_event_roles=tuple(
+                    event.ring_closure.role
+                    for event in closure_events
+                    if event.ring_closure is not None
+                ),
+                closure_event_labels=tuple(
+                    event.ring_closure.label
+                    for event in closure_events
+                    if event.ring_closure is not None
+                ),
+                closure_open_bond_texts=tuple(
+                    event.text for event in closure_events if event.kind == "ring_open"
+                ),
+                marker_slot_count=sum(
+                    1 for event in traversal.events if event.marker_slot is not None
+                ),
+                renderer_input_count=sum(
+                    1 for event in traversal.events if event.renderer_input is not None
+                ),
+            )
+        )
+    return tuple(records)
 
 
 def _shared_traversal_support_for_case(

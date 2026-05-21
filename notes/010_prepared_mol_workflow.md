@@ -104,8 +104,6 @@ Choices, not inevitables
 - Whether the public constructor is `PrepareMol(...)` or
   `PreparedMol.from_mol(...)`.
 - The first byte encoding.
-- Whether `write()` / `read()` are included immediately or after `to_bytes()` /
-  `from_bytes()`.
 - Whether the first implementation stores Python dict-compatible graph payloads
   or decodes directly into Rust.
 

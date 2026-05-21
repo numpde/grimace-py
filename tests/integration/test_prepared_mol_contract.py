@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
-from pathlib import Path
-import tempfile
 import unittest
 
 import grimace
@@ -68,7 +66,6 @@ GRAPH_WRITER_FLAG_KEYS = {
 
 class PreparedMolContractTests(unittest.TestCase):
     _PREPARED_MOL_ONLY_TESTS = {
-        "test_malformed_file_payload_fails_clearly",
         "test_malformed_payloads_fail_clearly",
     }
 
@@ -196,7 +193,7 @@ class PreparedMolContractTests(unittest.TestCase):
         prepared_mol_cls = grimace.PreparedMol
         missing_methods = tuple(
             name
-            for name in ("from_bytes", "read")
+            for name in ("from_bytes",)
             if not callable(getattr(prepared_mol_cls, name, None))
         )
         self.assertEqual((), missing_methods, msg="missing PreparedMol class methods")
@@ -211,7 +208,6 @@ class PreparedMolContractTests(unittest.TestCase):
                 self.assertGreaterEqual(prepared.schema_version, 1)
                 self.assertIsInstance(prepared.fragments, tuple)
                 self.assertTrue(callable(prepared.to_bytes))
-                self.assertTrue(callable(prepared.write))
                 self._assert_writer_flags(prepared, expected_flags)
                 for fragment in prepared.fragments:
                     self._assert_fragment_graph_uses_writer_flags(fragment, expected_flags)
@@ -294,17 +290,6 @@ class PreparedMolContractTests(unittest.TestCase):
 
                 self._assert_round_trip_preserves_shape(prepared)
 
-    def test_file_round_trip_preserves_prepared_shape(self) -> None:
-        prepared = self._prepare("CCO.N", isomericSmiles=False)
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            path = Path(tmp_dir) / "prepared-mol.gpmol"
-            prepared.write(path)
-            self.assertEqual(prepared.to_bytes(), path.read_bytes())
-            restored = grimace.PreparedMol.read(path)
-
-        self._assert_prepared_shape_equal(prepared, restored)
-
     def test_malformed_payloads_fail_clearly(self) -> None:
         malformed_payloads = (
             b"",
@@ -316,14 +301,6 @@ class PreparedMolContractTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(ValueError):
                     grimace.PreparedMol.from_bytes(payload)
-
-    def test_malformed_file_payload_fails_clearly(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            path = Path(tmp_dir) / "not-a-prepared-mol.gpmol"
-            path.write_bytes(b"not a prepared molecule")
-
-            with self.assertRaises(ValueError):
-                grimace.PreparedMol.read(path)
 
 
 if __name__ == "__main__":

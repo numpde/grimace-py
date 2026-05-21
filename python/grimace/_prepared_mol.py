@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import json
-from pathlib import Path
 from typing import Any, ClassVar
 
 from rdkit import Chem
@@ -149,14 +148,6 @@ class PreparedMol:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("Malformed PreparedMol payload") from exc
         return cls.from_dict(parsed)
-
-    def write(self, path: str | Path) -> None:
-        Path(path).write_bytes(self.to_bytes())
-
-    @classmethod
-    def read(cls, path: str | Path) -> "PreparedMol":
-        return cls.from_bytes(Path(path).read_bytes())
-
 
 def PrepareMol(
     mol: Chem.Mol,

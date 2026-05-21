@@ -39,10 +39,9 @@ is probably fixture-driven and should be deferred.
    of a local tetrahedral string renderer.
 
 3. **Model disconnected composition as unified reference composition.**
-   Runtime already composes per-fragment supports under an explicit
-   all-fragment-orders policy. The remaining work is to remove witness-only
-   composition evidence, pin fragment provenance, and make the readiness matrix
-   distinguish fragment support from fragment-order policy.
+   Completed in `South Star 99`: disconnected fixture checks now project runtime
+   generation diagnostics and explicit all-fragment-orders policy instead of
+   composing fixture-only fragment supports.
 
 4. **Extend atom-text facts before broad atom modifiers.**
    Explicit bracket hydrogens have regression evidence, but charge, isotope,

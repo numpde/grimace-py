@@ -17,11 +17,9 @@ from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
 from grimace._south_star.enum_s import (
+    mol_to_smiles_enum_s_graph_native,
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
-from grimace._south_star.fragments import SouthStarDisconnectedCompositionResult
-from grimace._south_star.fragments import SouthStarFragmentSupport
-from grimace._south_star.fragments import compose_disconnected_fragment_supports
 from grimace._south_star.marker_equations import SouthStarMarkerSlotParityEquation
 from grimace._south_star.marker_equations import (
     marker_slot_parity_equations_for_traversal,
@@ -33,8 +31,6 @@ from grimace._south_star.tetrahedral import extract_tetrahedral_center_facts
 from grimace._south_star.tetrahedral import preserving_tetrahedral_token
 from tests.helpers.south_star_exact_support import (
     SouthStarExpandedSupportCase,
-    load_south_star_exact_first_domain_cases,
-    load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 
@@ -68,6 +64,16 @@ class SouthStarTetrahedralTraversalResult:
     obligations: tuple[SouthStarTetrahedralTraversalObligation, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarDisconnectedCompositionEvidence:
+    outputs: tuple[str, ...]
+    fragment_count: int
+    fragment_output_counts: tuple[int, ...]
+    fragment_order_policy: str
+    fragment_order_count: int
+    estimated_product_size: int
+
+
 def shared_saturated_monocycle_support_for_case(
     case: SouthStarExpandedSupportCase,
 ) -> tuple[str, ...]:
@@ -97,18 +103,23 @@ def _shared_traversal_support_for_case(
     )
 
 
-def independent_disconnected_composition_support_for_case(
+def shared_disconnected_composition_support_for_case(
     case: SouthStarExpandedSupportCase,
-) -> SouthStarDisconnectedCompositionResult:
-    fragment_supports = _independent_fragment_supports_for_case(case)
-    return compose_disconnected_fragment_supports(
-        tuple(
-            SouthStarFragmentSupport(
-                fragment_id=f"fragment:{fragment_idx}",
-                outputs=support,
-            )
-            for fragment_idx, support in enumerate(fragment_supports)
-        )
+) -> SouthStarDisconnectedCompositionEvidence:
+    result = mol_to_smiles_enum_s_graph_native(
+        case.source_smiles,
+        case_id=case.case_id,
+    )
+    diagnostics = result.generation_diagnostics
+    if diagnostics is None:
+        raise ValueError("disconnected composition evidence requires diagnostics")
+    return SouthStarDisconnectedCompositionEvidence(
+        outputs=result.outputs,
+        fragment_count=diagnostics.fragment_count,
+        fragment_output_counts=diagnostics.fragment_output_counts,
+        fragment_order_policy=result.fragment_order_policy,
+        fragment_order_count=diagnostics.fragment_order_count,
+        estimated_product_size=diagnostics.estimated_product_size,
     )
 
 
@@ -172,24 +183,6 @@ def shared_tetrahedral_atom_stereo_support_for_case(
             and event.atom_idx in facts_by_atom
             and event.atom_idx is not None
         ),
-    )
-
-
-def _independent_fragment_supports_for_case(
-    case: SouthStarExpandedSupportCase,
-) -> tuple[tuple[str, ...], ...]:
-    if case.case_id == "markerless_disconnected_ring_and_atom":
-        return (
-            _expanded_support("simple_saturated_monocycle_cyclohexane"),
-            ("O",),
-        )
-    if case.case_id == "disconnected_stereo_fragment_and_atom":
-        return (
-            _exact_first_domain_support("isolated_alkene_z"),
-            ("O",),
-        )
-    raise NotImplementedError(
-        f"no disconnected-composition oracle fragment supports for {case.case_id!r}"
     )
 
 
@@ -288,22 +281,6 @@ def _assert_ring_stereo_monocycle_domain(mol: Chem.Mol) -> None:
         raise NotImplementedError("ring-stereo oracle requires one component")
     if len(mol.GetRingInfo().BondRings()) != 1:
         raise NotImplementedError("ring-stereo oracle requires one ring")
-
-
-def _expanded_support(case_id: str) -> tuple[str, ...]:
-    return next(
-        case.expected_support
-        for case in load_south_star_expanded_support_cases()
-        if case.case_id == case_id
-    )
-
-
-def _exact_first_domain_support(case_id: str) -> tuple[str, ...]:
-    return next(
-        case.expected_support
-        for case in load_south_star_exact_first_domain_cases()
-        if case.case_id == case_id
-    )
 
 
 def _assert_saturated_monocycle_domain(mol: Chem.Mol) -> None:

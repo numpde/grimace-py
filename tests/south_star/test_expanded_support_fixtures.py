@@ -17,7 +17,7 @@ from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
-    independent_disconnected_composition_support_for_case,
+    shared_disconnected_composition_support_for_case,
     shared_nonstereo_monocycle_support_for_case,
     shared_ring_stereo_monocycle_support_for_case,
     shared_saturated_monocycle_support_for_case,
@@ -130,7 +130,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 continue
 
             with self.subTest(case_id=case.case_id):
-                result = independent_disconnected_composition_support_for_case(case)
+                result = shared_disconnected_composition_support_for_case(case)
                 self.assertEqual(case.expected_support, result.outputs)
                 self.assertEqual(
                     len(case.expected_support),

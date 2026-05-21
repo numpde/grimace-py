@@ -122,19 +122,19 @@ same record language as the runtime path.
 
 ### Expanded-Domain Witness Duplication
 
-`tests/helpers/south_star_expanded_domain_oracles.py` still contains several
-local mini-worlds, but saturated and nonstereo ring traversal have been folded
-into shared traversal/rendering records:
+`tests/helpers/south_star_expanded_domain_oracles.py` still contains temporary
+witness scaffolding, but most expanded-domain checks now consume shared
+traversal, equation, or composition records:
 
 - nonstereo and saturated ring checks:
   - `shared_saturated_monocycle_support_for_case`
   - `shared_nonstereo_monocycle_support_for_case`
-- disconnected composition:
-  - `SouthStarDisconnectedCompositionOracleResult`
-  - `_independent_fragment_supports_for_case`
 - ring stereo:
   - `SouthStarRingStereoOracleResult`
   - `shared_ring_stereo_monocycle_support_for_case`
+- disconnected composition:
+  - `SouthStarDisconnectedCompositionEvidence`
+  - `shared_disconnected_composition_support_for_case`
 - tetrahedral support:
   - `SouthStarTetrahedralTraversalObligation`
   - `SouthStarTetrahedralTraversalResult`
@@ -180,9 +180,10 @@ composition records:
 - `SouthStarDisconnectedCompositionResult`
 - `compose_disconnected_fragment_supports`
 
-`SouthStarDisconnectedCompositionOracleResult` should not survive as a parallel
-result type unless it carries witness-only metadata unavailable from the shared
-result. Prefer using or extending the shared result.
+Disconnected composition fixture evidence now projects runtime generation
+diagnostics and fragment-order policy through
+`SouthStarDisconnectedCompositionEvidence`; it no longer assembles support from
+fixture-only fragment lists.
 
 ## Target Shared Record Module
 
@@ -324,8 +325,9 @@ Route expanded witnesses through the same records:
 
 Expected cleanups:
 
-- replace `SouthStarDisconnectedCompositionOracleResult` with
-  `SouthStarDisconnectedCompositionResult`;
+The remaining cleanup target is first-domain witness evidence; expanded-domain
+ring, ring-stereo, disconnected-composition, and tetrahedral fixture checks now
+consume shared traversal/equation/composition records.
 
 Acceptance:
 
@@ -379,10 +381,10 @@ fold-in note should fail review/tests.
 The following helpers remain useful during migration:
 
 - `independent_first_domain_support_for_case`
-- `independent_disconnected_composition_support_for_case`
 - `shared_saturated_monocycle_support_for_case`
 - `shared_nonstereo_monocycle_support_for_case`
 - `shared_ring_stereo_monocycle_support_for_case`
+- `shared_disconnected_composition_support_for_case`
 - `shared_tetrahedral_atom_stereo_support_for_case`
 
 They should be treated as witness scaffolding. Their long-term value is to

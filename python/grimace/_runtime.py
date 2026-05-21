@@ -1072,26 +1072,20 @@ def _prepare_reference_graph_for_static_inventory(
     *,
     flags: MolToSmilesFlags,
 ) -> ReferencePreparedSmilesGraph:
-    surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
+        surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
         _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_writer_flags(mol_or_prepared, flags)
         return mol_or_prepared
 
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
+        surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
         _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_writer_flags(mol_or_prepared, flags)
         return ReferencePreparedSmilesGraph.from_dict(mol_or_prepared.to_dict())
 
-    _ensure_singly_connected_molecule(mol_or_prepared)
-    return prepare_smiles_graph_from_mol_to_smiles_kwargs(
-        mol_or_prepared,
-        surface_kind=surface_kind,
-        isomeric_smiles=flags.isomeric_smiles,
-        kekule_smiles=flags.kekule_smiles,
-        all_bonds_explicit=flags.all_bonds_explicit,
-        all_hs_explicit=flags.all_hs_explicit,
-        ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
+    raise TypeError(
+        f"Unsupported molecule/prepared type for static inventory: {type(mol_or_prepared)!r}"
     )
 
 

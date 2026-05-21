@@ -220,7 +220,7 @@ def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
 
 
 def _ensure_singly_connected_molecule(mol: object) -> None:
-    if mol.GetNumAtoms() == 0:
+    if _prepared_mol_module._rdkit_mol_atom_count(mol) == 0:
         return
     if _prepared_mol_module._rdkit_mol_fragment_count(mol) != 1:
         raise NotImplementedError(

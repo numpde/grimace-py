@@ -93,6 +93,10 @@ def _rdkit_mol_requires_stereo_surface(mol: Chem.Mol) -> bool:
     )
 
 
+def _rdkit_mol_atom_count(mol: Chem.Mol) -> int:
+    return mol.GetNumAtoms()
+
+
 def _rdkit_mol_fragment_count(mol: Chem.Mol) -> int:
     return len(Chem.GetMolFrags(mol))
 

@@ -46,7 +46,7 @@ PreparedMol
   writer_flags
   fragments[]
 
-PreparedMolFragment
+fragment
   atom_indices[]
   prepared_graph
 ```
@@ -103,7 +103,6 @@ Choices, not inevitables
 - The private module name.
 - Whether the public constructor is `PrepareMol(...)` or
   `PreparedMol.from_mol(...)`.
-- The first byte encoding.
 - Whether the first implementation stores Python dict-compatible graph payloads
   or decodes directly into Rust.
 

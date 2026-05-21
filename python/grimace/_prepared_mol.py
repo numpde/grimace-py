@@ -5,47 +5,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import json
-from typing import Any, ClassVar
+from typing import Any
 
 from rdkit import Chem
 
 
-PREPARED_MOL_SCHEMA_VERSION = 1
-_PREPARED_MOL_MAGIC = b"GRIMACE_PREPARED_MOL\x00"
+_PREPARED_MOL_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
-class PreparedMolWriterFlags:
+class _PreparedMolWriterFlags:
     isomeric_smiles: bool = True
     kekule_smiles: bool = False
     all_bonds_explicit: bool = False
     all_hs_explicit: bool = False
     ignore_atom_map_numbers: bool = False
 
-    def to_dict(self) -> dict[str, bool]:
-        return {
-            "isomeric_smiles": self.isomeric_smiles,
-            "kekule_smiles": self.kekule_smiles,
-            "all_bonds_explicit": self.all_bonds_explicit,
-            "all_hs_explicit": self.all_hs_explicit,
-            "ignore_atom_map_numbers": self.ignore_atom_map_numbers,
-        }
-
-    @classmethod
-    def from_dict(cls, data: object) -> "PreparedMolWriterFlags":
-        if not isinstance(data, dict):
-            raise ValueError("PreparedMol writer_flags must be an object")
-        return cls(
-            isomeric_smiles=_require_bool(data, "isomeric_smiles"),
-            kekule_smiles=_require_bool(data, "kekule_smiles"),
-            all_bonds_explicit=_require_bool(data, "all_bonds_explicit"),
-            all_hs_explicit=_require_bool(data, "all_hs_explicit"),
-            ignore_atom_map_numbers=_require_bool(data, "ignore_atom_map_numbers"),
-        )
-
 
 @dataclass(frozen=True, slots=True)
-class PreparedMolFragment:
+class _PreparedMolFragment:
     atom_indices: tuple[int, ...]
     prepared_graph: object
 
@@ -54,100 +32,109 @@ class PreparedMolFragment:
         object.__setattr__(self, "atom_indices", atom_indices)
         _validate_fragment_graph_shape(atom_indices, self.prepared_graph)
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "atom_indices": list(self.atom_indices),
-            "prepared_graph": _prepared_graph_to_dict(self.prepared_graph),
-        }
-
-    @classmethod
-    def from_dict(cls, data: object) -> "PreparedMolFragment":
-        if not isinstance(data, dict):
-            raise ValueError("PreparedMol fragment must be an object")
-        try:
-            atom_indices_data = data["atom_indices"]
-            prepared_graph_data = data["prepared_graph"]
-        except KeyError as exc:
-            raise ValueError("PreparedMol fragment is missing required fields") from exc
-        prepared_graph = _prepared_graph_from_dict(prepared_graph_data)
-        return cls(
-            atom_indices=_coerce_atom_indices(atom_indices_data),
-            prepared_graph=prepared_graph,
-        )
-
 
 @dataclass(frozen=True, slots=True)
 class PreparedMol:
     schema_version: int
-    writer_flags: PreparedMolWriterFlags
-    fragments: tuple[PreparedMolFragment, ...]
-
-    SCHEMA_VERSION: ClassVar[int] = PREPARED_MOL_SCHEMA_VERSION
+    writer_flags: _PreparedMolWriterFlags
+    fragments: tuple[_PreparedMolFragment, ...]
 
     def __post_init__(self) -> None:
-        if self.schema_version != PREPARED_MOL_SCHEMA_VERSION:
+        if self.schema_version != _PREPARED_MOL_SCHEMA_VERSION:
             raise ValueError(f"Unsupported PreparedMol schema version: {self.schema_version}")
-        if not isinstance(self.writer_flags, PreparedMolWriterFlags):
-            raise ValueError("PreparedMol writer_flags must be PreparedMolWriterFlags")
+        if not isinstance(self.writer_flags, _PreparedMolWriterFlags):
+            raise ValueError("PreparedMol writer_flags must be a prepared writer flag record")
 
         fragments = tuple(self.fragments)
         for fragment in fragments:
-            if not isinstance(fragment, PreparedMolFragment):
-                raise ValueError("PreparedMol fragments must be PreparedMolFragment objects")
+            if not isinstance(fragment, _PreparedMolFragment):
+                raise ValueError("PreparedMol fragments must be prepared fragment records")
             _validate_fragment_writer_flags(fragment, self.writer_flags)
         _validate_fragment_atom_indices_are_unique(fragments)
         object.__setattr__(self, "fragments", fragments)
 
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "schema_version": self.schema_version,
-            "writer_flags": self.writer_flags.to_dict(),
-            "fragments": [fragment.to_dict() for fragment in self.fragments],
-        }
-
-    @classmethod
-    def from_dict(cls, data: object) -> "PreparedMol":
-        if not isinstance(data, dict):
-            raise ValueError("PreparedMol payload must be an object")
-        try:
-            schema_version = data["schema_version"]
-            writer_flags_data = data["writer_flags"]
-            fragments_data = data["fragments"]
-        except KeyError as exc:
-            raise ValueError("PreparedMol payload is missing required fields") from exc
-
-        if not isinstance(fragments_data, list):
-            raise ValueError("PreparedMol fragments must be an array")
-
-        return cls(
-            schema_version=_require_int(schema_version, "schema_version"),
-            writer_flags=PreparedMolWriterFlags.from_dict(writer_flags_data),
-            fragments=tuple(
-                PreparedMolFragment.from_dict(fragment_data)
-                for fragment_data in fragments_data
-            ),
-        )
-
     def to_bytes(self) -> bytes:
-        payload = json.dumps(
-            self.to_dict(),
-            sort_keys=True,
+        return json.dumps(
+            _prepared_mol_to_payload(self),
             separators=(",", ":"),
         ).encode("utf-8")
-        return _PREPARED_MOL_MAGIC + payload
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview) -> "PreparedMol":
-        if not isinstance(data, (bytes, bytearray, memoryview)):
-            raise TypeError("PreparedMol.from_bytes requires a bytes-like object")
-        payload = bytes(data)
-        if not payload.startswith(_PREPARED_MOL_MAGIC):
-            raise ValueError("Not a PreparedMol payload")
+    def from_bytes(cls, data: bytes) -> "PreparedMol":
+        if not isinstance(data, bytes):
+            raise TypeError("PreparedMol.from_bytes requires bytes")
         try:
-            parsed = json.loads(payload[len(_PREPARED_MOL_MAGIC):].decode("utf-8"))
+            payload = json.loads(data.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("Malformed PreparedMol payload") from exc
-        return cls.from_dict(parsed)
+        return _prepared_mol_from_payload(payload)
+
+
+def _prepared_mol_to_payload(prepared: PreparedMol) -> dict[str, object]:
+    return {
+        "schema_version": prepared.schema_version,
+        "writer_flags": {
+            "isomeric_smiles": prepared.writer_flags.isomeric_smiles,
+            "kekule_smiles": prepared.writer_flags.kekule_smiles,
+            "all_bonds_explicit": prepared.writer_flags.all_bonds_explicit,
+            "all_hs_explicit": prepared.writer_flags.all_hs_explicit,
+            "ignore_atom_map_numbers": prepared.writer_flags.ignore_atom_map_numbers,
+        },
+        "fragments": [
+            {
+                "atom_indices": list(fragment.atom_indices),
+                "prepared_graph": _prepared_graph_to_dict(fragment.prepared_graph),
+            }
+            for fragment in prepared.fragments
+        ],
+    }
+
+
+def _prepared_mol_from_payload(payload: object) -> PreparedMol:
+    if not isinstance(payload, dict):
+        raise ValueError("PreparedMol payload must be an object")
+    try:
+        schema_version = payload["schema_version"]
+        writer_flags_data = payload["writer_flags"]
+        fragments_data = payload["fragments"]
+    except KeyError as exc:
+        raise ValueError("PreparedMol payload is missing required fields") from exc
+
+    if not isinstance(fragments_data, list):
+        raise ValueError("PreparedMol fragments must be an array")
+
+    return PreparedMol(
+        schema_version=_require_int(schema_version, "schema_version"),
+        writer_flags=_writer_flags_from_payload(writer_flags_data),
+        fragments=tuple(_fragment_from_payload(fragment) for fragment in fragments_data),
+    )
+
+
+def _writer_flags_from_payload(payload: object) -> _PreparedMolWriterFlags:
+    if not isinstance(payload, dict):
+        raise ValueError("PreparedMol writer_flags must be an object")
+    return _PreparedMolWriterFlags(
+        isomeric_smiles=_require_bool(payload, "isomeric_smiles"),
+        kekule_smiles=_require_bool(payload, "kekule_smiles"),
+        all_bonds_explicit=_require_bool(payload, "all_bonds_explicit"),
+        all_hs_explicit=_require_bool(payload, "all_hs_explicit"),
+        ignore_atom_map_numbers=_require_bool(payload, "ignore_atom_map_numbers"),
+    )
+
+
+def _fragment_from_payload(payload: object) -> _PreparedMolFragment:
+    if not isinstance(payload, dict):
+        raise ValueError("PreparedMol fragment must be an object")
+    try:
+        atom_indices = payload["atom_indices"]
+        prepared_graph = payload["prepared_graph"]
+    except KeyError as exc:
+        raise ValueError("PreparedMol fragment is missing required fields") from exc
+    return _PreparedMolFragment(
+        atom_indices=_coerce_atom_indices(atom_indices),
+        prepared_graph=_prepared_graph_from_payload(prepared_graph),
+    )
+
 
 def PrepareMol(
     mol: Chem.Mol,
@@ -161,7 +148,7 @@ def PrepareMol(
     if not isinstance(mol, Chem.Mol):
         raise TypeError("PrepareMol requires an RDKit Chem.Mol")
 
-    writer_flags = PreparedMolWriterFlags(
+    writer_flags = _PreparedMolWriterFlags(
         isomeric_smiles=bool(isomericSmiles),
         kekule_smiles=bool(kekuleSmiles),
         all_bonds_explicit=bool(allBondsExplicit),
@@ -180,7 +167,7 @@ def PrepareMol(
     atom_indices_by_fragment = Chem.GetMolFrags(mol)
     fragment_mols = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
     fragments = tuple(
-        PreparedMolFragment(
+        _PreparedMolFragment(
             atom_indices=tuple(int(atom_idx) for atom_idx in atom_indices),
             prepared_graph=runtime.prepare_smiles_graph(fragment_mol, flags=runtime_flags),
         )
@@ -191,7 +178,7 @@ def PrepareMol(
         )
     )
     return PreparedMol(
-        schema_version=PREPARED_MOL_SCHEMA_VERSION,
+        schema_version=_PREPARED_MOL_SCHEMA_VERSION,
         writer_flags=writer_flags,
         fragments=fragments,
     )
@@ -229,7 +216,7 @@ def _coerce_atom_indices(value: object) -> tuple[int, ...]:
 
 
 def _validate_fragment_atom_indices_are_unique(
-    fragments: tuple[PreparedMolFragment, ...],
+    fragments: tuple[_PreparedMolFragment, ...],
 ) -> None:
     seen: set[int] = set()
     for fragment in fragments:
@@ -249,7 +236,7 @@ def _prepared_graph_to_dict(prepared_graph: object) -> dict[str, Any]:
     return data
 
 
-def _prepared_graph_from_dict(data: object) -> object:
+def _prepared_graph_from_payload(data: object) -> object:
     if not isinstance(data, dict):
         raise ValueError("PreparedMol fragment prepared_graph must be an object")
     _validate_prepared_graph_dict_writer_flag_fields(data)
@@ -274,8 +261,8 @@ def _validate_fragment_graph_shape(
 
 
 def _validate_fragment_writer_flags(
-    fragment: PreparedMolFragment,
-    writer_flags: PreparedMolWriterFlags,
+    fragment: _PreparedMolFragment,
+    writer_flags: _PreparedMolWriterFlags,
 ) -> None:
     graph_data = _prepared_graph_to_dict(fragment.prepared_graph)
     _validate_prepared_graph_dict_writer_flag_fields(graph_data)

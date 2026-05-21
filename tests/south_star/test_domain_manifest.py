@@ -42,7 +42,14 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         )
 
     def test_manifest_covers_loaded_fixture_domains(self) -> None:
-        self.assertNotEqual((), load_south_star_exact_first_domain_cases())
+        first_domain_cases = load_south_star_exact_first_domain_cases()
+        self.assertNotEqual((), first_domain_cases)
+        for case in first_domain_cases:
+            with self.subTest(case_id=case.case_id):
+                self.assertIn(
+                    case.support_authority,
+                    SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+                )
 
         for case in load_south_star_expanded_support_cases():
             with self.subTest(case_id=case.case_id):
@@ -71,11 +78,11 @@ class SouthStarDomainManifestTests(unittest.TestCase):
                 self.assertNotIn("independent_", authority)
                 self.assertFalse(authority.endswith("_oracle"))
 
-    def test_first_domain_fixture_declares_temporary_witness_evidence(self) -> None:
+    def test_first_domain_fixture_declares_temporary_witness_authority(self) -> None:
         raw = json.loads(EXACT_FIRST_DOMAIN_FIXTURE.read_text())
 
         self.assertIn(
-            raw["support_evidence"],
+            raw["support_authority"],
             SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
         )
 

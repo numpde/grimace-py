@@ -8,7 +8,6 @@ from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_
 from grimace._south_star.molecule_facts import SouthStarMoleculeFacts
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
-    SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
@@ -342,7 +341,9 @@ def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
         if check.shared_pipeline_generated
     )
     temporary_witness_case_ids = tuple(
-        case.case_id for case in first_domain_cases
+        case.case_id
+        for case in first_domain_cases
+        if case.support_authority in SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES
     ) + tuple(
         case.case_id
         for case in expanded_cases
@@ -393,7 +394,7 @@ def south_star_unified_reference_promotion_checks(
         checks.append(
             _promotion_check(
                 case_id=exact_case.case_id,
-                current_authority=SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY,
+                current_authority=exact_case.support_authority,
                 shared_pipeline_generated=(
                     result.generation_basis == SOUTH_STAR_SHARED_PIPELINE_GENERATION_BASIS
                     and result.outputs == exact_case.expected_support

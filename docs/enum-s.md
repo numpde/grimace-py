@@ -291,8 +291,9 @@ definition of grammar membership or support completeness.
 Exact support evidence is split by domain:
 
 - `tests/fixtures/south_star_exact_first_domain/first_domain_v1.json` pins the
-  connected acyclic directional-marker first domain and is checked against a
-  temporary witness helper that emits shared traversal/slot records;
+  connected acyclic directional-marker first domain. Its top-level
+  `support_authority` is temporary witness evidence, and it is checked against a
+  helper that emits shared traversal/slot records;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
   expanded semantic support. Saturated and unsaturated nonstereo-monocycle,
   ring-stereo monocycle, and disconnected-composition cases are checked against

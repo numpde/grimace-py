@@ -30,6 +30,7 @@ EXPANDED_SUPPORT_FIXTURE_SHARD_DIR = EXPANDED_SUPPORT_FIXTURE.with_suffix("")
 class SouthStarExactSupportCase:
     case_id: str
     source_smiles: str
+    support_authority: str
     expected_support: tuple[str, ...]
 
 
@@ -51,12 +52,14 @@ def load_south_star_exact_first_domain_cases(
         raise ValueError(f"unsupported South Star exact-support schema: {raw!r}")
     if raw["policy"] != SOUTH_STAR_FIRST_DOMAIN_POLICY:
         raise ValueError(f"unsupported South Star first-domain policy: {raw!r}")
-    if raw["support_evidence"] != SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY:
-        raise ValueError(f"unsupported South Star first-domain evidence: {raw!r}")
+    support_authority = raw["support_authority"]
+    if support_authority != SOUTH_STAR_FIRST_DOMAIN_WITNESS_AUTHORITY:
+        raise ValueError(f"unsupported South Star first-domain authority: {raw!r}")
     return tuple(
         SouthStarExactSupportCase(
             case_id=case["case_id"],
             source_smiles=case["source_smiles"],
+            support_authority=support_authority,
             expected_support=tuple(case["expected_support"]),
         )
         for case in raw["cases"]

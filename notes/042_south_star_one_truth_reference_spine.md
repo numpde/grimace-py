@@ -395,6 +395,7 @@ The following helpers remain useful during migration:
 
 - `independent_first_domain_support_for_case`
 - `independent_saturated_monocycle_support_for_case`
+- `independent_nonstereo_monocycle_support_for_case`
 - `independent_disconnected_composition_support_for_case`
 - `independent_ring_stereo_monocycle_support_for_case`
 - `independent_tetrahedral_atom_stereo_support_for_case`

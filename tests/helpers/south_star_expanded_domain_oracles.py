@@ -62,6 +62,22 @@ def independent_saturated_monocycle_support_for_case(
     mol = parse_smiles(case.source_smiles)
     _assert_saturated_monocycle_domain(mol)
 
+    return _independent_nonstereo_monocycle_support_for_mol(mol)
+
+
+def independent_nonstereo_monocycle_support_for_case(
+    case: SouthStarExpandedSupportCase,
+) -> tuple[str, ...]:
+    """Enumerate nonstereo-monocycle support from shared traversal records."""
+    mol = parse_smiles(case.source_smiles)
+    _assert_nonstereo_monocycle_domain(mol)
+
+    return _independent_nonstereo_monocycle_support_for_mol(mol)
+
+
+def _independent_nonstereo_monocycle_support_for_mol(
+    mol: Chem.Mol,
+) -> tuple[str, ...]:
     outputs = []
     for root_idx in range(mol.GetNumAtoms()):
         for closure_edge in _single_ring_edges(mol):
@@ -72,7 +88,7 @@ def independent_saturated_monocycle_support_for_case(
                 visited=frozenset(),
                 blocked_edge=closure_edge,
             ):
-                outputs.append(_render_with_ring_digit(fragment, closure_edge))
+                outputs.append(_render_with_ring_digit(mol, fragment, closure_edge))
     return tuple(dict.fromkeys(outputs))
 
 
@@ -1006,6 +1022,7 @@ def _child_fragments(
 
 
 def _render_with_ring_digit(
+    mol: Chem.Mol,
     fragment: SouthStarTraversalFragment,
     closure_edge: Edge,
 ) -> str:
@@ -1015,6 +1032,8 @@ def _render_with_ring_digit(
         rendered.append(event.text)
         if event.atom_idx in closure_edge:
             endpoint_count += 1
+            if endpoint_count == 1:
+                rendered.append(_bond_text(mol, *closure_edge))
             rendered.append("1")
     if endpoint_count != 2:
         raise ValueError(
@@ -1042,7 +1061,7 @@ def _plain_ring_bond_event(
 def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
     bond_rings = mol.GetRingInfo().BondRings()
     if len(bond_rings) != 1:
-        raise ValueError("saturated-monocycle oracle expects one ring")
+        raise ValueError("nonstereo-monocycle witness expects one ring")
     return tuple(
         normalized_edge(
             (
@@ -1055,28 +1074,61 @@ def _single_ring_edges(mol: Chem.Mol) -> tuple[Edge, ...]:
 
 
 def _assert_saturated_monocycle_domain(mol: Chem.Mol) -> None:
+    _assert_nonstereo_monocycle_domain(mol)
+    for bond in mol.GetBonds():
+        if bond.GetBondType() != Chem.BondType.SINGLE:
+            raise NotImplementedError(
+                "saturated-monocycle oracle supports only single bonds"
+            )
+
+
+def _assert_nonstereo_monocycle_domain(mol: Chem.Mol) -> None:
     if len(Chem.GetMolFrags(mol)) != 1:
-        raise NotImplementedError("saturated-monocycle oracle requires one component")
+        raise NotImplementedError("nonstereo-monocycle witness requires one component")
     ring_edges = frozenset(_single_ring_edges(mol))
     if not ring_edges:
-        raise NotImplementedError("saturated-monocycle oracle requires a ring")
+        raise NotImplementedError("nonstereo-monocycle witness requires a ring")
     for atom in mol.GetAtoms():
         _atom_text(atom)
     for bond in mol.GetBonds():
         edge = normalized_edge((bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()))
-        if bond.GetBondType() != Chem.BondType.SINGLE:
+        if bond.GetBondType() not in {Chem.BondType.SINGLE, Chem.BondType.DOUBLE}:
             raise NotImplementedError(
-                "saturated-monocycle oracle supports only single bonds"
+                "nonstereo-monocycle witness supports only single and double bonds"
+            )
+        if bond.GetStereo() != Chem.BondStereo.STEREONONE:
+            raise NotImplementedError(
+                "nonstereo-monocycle witness does not support bond stereo"
+            )
+        if bond.GetBondDir() != Chem.BondDir.NONE:
+            raise NotImplementedError(
+                "nonstereo-monocycle witness does not support directional bonds"
             )
         if bond.IsInRing() != (edge in ring_edges):
             raise ValueError(f"inconsistent ring membership for bond {edge!r}")
 
 
 def _atom_text(atom: Chem.Atom) -> str:
+    if atom.GetIsAromatic():
+        raise NotImplementedError(
+            "nonstereo-monocycle witness does not support aromatic atoms"
+        )
+    if atom.GetFormalCharge() != 0:
+        raise NotImplementedError(
+            "nonstereo-monocycle witness does not support charged atoms"
+        )
+    if atom.GetIsotope() != 0:
+        raise NotImplementedError(
+            "nonstereo-monocycle witness does not support isotopic atoms"
+        )
+    if atom.GetNumRadicalElectrons() != 0:
+        raise NotImplementedError(
+            "nonstereo-monocycle witness does not support radical atoms"
+        )
     symbol = atom.GetSymbol()
     if symbol in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
         return symbol
-    raise NotImplementedError(f"unsupported saturated-monocycle atom {symbol!r}")
+    raise NotImplementedError(f"unsupported nonstereo-monocycle atom {symbol!r}")
 
 
 def _bond_text(mol: Chem.Mol, begin_atom_idx: int, end_atom_idx: int) -> str:

@@ -260,15 +260,15 @@ Exact support evidence is split by domain:
   connected acyclic directional-marker first domain and is checked against a
   temporary witness helper that emits shared traversal/slot records;
 - `tests/fixtures/south_star_expanded_support/expanded_domain_v1.json` pins
-  expanded semantic support. Saturated-monocycle, ring-stereo monocycle, and
-  disconnected-composition cases are checked against temporary witness helpers
-  that consume shared traversal, slot, and fragment-composition records;
-  current star-shaped tetrahedral-center cases are checked against a temporary
-  tetrahedral witness helper. The ring-stereo witness checks closure-event
-  marker slots, central-double-bond closure events, and parity-equation
-  projections by slot id. Unsaturated nonstereo monocycles are still
-  graph-native regression support with RDKit parse-back graph/stereo
-  equivalence as evidence.
+  expanded semantic support. Saturated and unsaturated nonstereo-monocycle,
+  ring-stereo monocycle, and disconnected-composition cases are checked against
+  temporary witness helpers that consume shared traversal, slot, and
+  fragment-composition records; current star-shaped tetrahedral-center cases
+  are checked against a temporary tetrahedral witness helper. The nonstereo
+  monocycle witness checks broken ring-edge choice, tree traversal order,
+  closure digit placement, and closure bond text. The ring-stereo witness
+  checks closure-event marker slots, central-double-bond closure events, and
+  parity-equation projections by slot id.
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.
@@ -332,7 +332,6 @@ Before `MolToSmilesEnumS` can become a documented package API, the graph-native
 enumerator needs a broader molecule and syntax surface:
 
 - polycyclic ring traversal;
-- unified-model support for unsaturated nonstereo ring traversal;
 - selectable disconnected-fragment policies beyond the current all-orders
   private default;
 - bracket atom text beyond the current neutral explicit-hydrogen and

@@ -12,10 +12,10 @@ from grimace._south_star.enum_s import (
     mol_to_smiles_enum_s_tree_traversals_for_case,
 )
 from grimace._south_star.enum_s import render_south_star_traversal
-from grimace._south_star.enum_s import SouthStarMarkerSlot
-from grimace._south_star.enum_s import SouthStarMarkerSlotAssignment
-from grimace._south_star.enum_s import SouthStarRingClosure
-from grimace._south_star.enum_s import SouthStarTraversalEvent
+from grimace._south_star.reference_model import SouthStarMarkerSlot
+from grimace._south_star.reference_model import SouthStarMarkerSlotAssignment
+from grimace._south_star.reference_model import SouthStarRingClosure
+from grimace._south_star.reference_model import SouthStarTraversalEvent
 from tests.helpers.south_star_enum_s import mol_to_smiles_enum_s_prototype_for_case
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,

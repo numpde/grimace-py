@@ -46,6 +46,7 @@ FORBIDDEN_CORE_HELPER_IMPORT_PREFIXES: tuple[str, ...] = (
 )
 FORBIDDEN_REFERENCE_MODEL_IMPORT_PREFIXES: tuple[str, ...] = (
     "rdkit",
+    "grimace._south_star.constraint_vocabulary",
     "grimace._south_star.enum_s",
     "grimace._south_star.marker_equations",
     "grimace._south_star.parity_solver",

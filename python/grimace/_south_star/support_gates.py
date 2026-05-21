@@ -4,6 +4,9 @@ from dataclasses import dataclass
 
 from rdkit import Chem
 
+from grimace._south_star.aromatic_policy import (
+    DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+)
 from grimace._south_star.atom_text import (
     south_star_atom_text_fields,
     unsupported_atom_text_reasons,
@@ -361,6 +364,7 @@ def _aromatic_ring_features(
     aromatic_bonds = tuple(bond for bond in mol.GetBonds() if bond.GetIsAromatic())
     if not aromatic_bonds:
         return ()
+    contract = DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT
     return (
         SouthStarUnsupportedFeature(
             category="aromatic_ring_surface",
@@ -373,8 +377,8 @@ def _aromatic_ring_features(
             ),
             bond_indices=tuple(bond.GetIdx() for bond in aromatic_bonds),
             reason=(
-                "aromatic ring traversal and bond rendering require a separate "
-                "aromatic grammar model"
+                f"active South Star aromatic contract {contract.name!r} "
+                "requires non-aromatic molecule facts"
             ),
         ),
     )
@@ -383,12 +387,16 @@ def _aromatic_ring_features(
 def _aromatic_directional_features(
     mol: Chem.Mol,
 ) -> tuple[SouthStarUnsupportedFeature, ...]:
+    contract = DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT
     return tuple(
         SouthStarUnsupportedFeature(
             category="aromatic_directional_surface",
             atom_indices=(bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()),
             bond_indices=(bond.GetIdx(),),
-            reason="aromatic directional surfaces are not in first South Star scope",
+            reason=(
+                f"active South Star aromatic contract {contract.name!r} uses "
+                f"{contract.directional_surface_policy}"
+            ),
         )
         for bond in mol.GetBonds()
         if bond.GetIsAromatic() and bond.GetBondDir() != Chem.BondDir.NONE

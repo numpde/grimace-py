@@ -8,6 +8,9 @@ import unittest
 from rdkit import Chem
 
 from grimace._south_star.annotation_policy import MaximalEligibleCarrierAnnotationPolicy
+from grimace._south_star.aromatic_policy import (
+    DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+)
 from grimace._south_star.fragments import AllFragmentOrderPolicy
 from grimace._south_star.output_order import FirstOccurrenceOutputOrderPolicy
 from grimace._south_star.support_gates import south_star_support_gate_report
@@ -99,6 +102,10 @@ class SouthStarDomainManifestTests(unittest.TestCase):
         self.assertIn(
             MaximalEligibleCarrierAnnotationPolicy().name,
             SOUTH_STAR_PRIVATE_DOMAIN.annotation_policies,
+        )
+        self.assertIn(
+            DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT.name,
+            SOUTH_STAR_PRIVATE_DOMAIN.aromatic_policy_contracts,
         )
         self.assertIn(
             FirstOccurrenceOutputOrderPolicy().name,

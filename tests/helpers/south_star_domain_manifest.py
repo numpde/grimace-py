@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from grimace._south_star.aromatic_policy import (
+    DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT,
+)
+
 
 SOUTH_STAR_FIRST_DOMAIN_POLICY = "south_star_first_domain_maximal_eligible_carrier"
 SOUTH_STAR_EXPANDED_SUPPORT_POLICY = "south_star_expanded_domain_regression"
@@ -61,6 +65,7 @@ class SouthStarDomainManifest:
     support_authorities: frozenset[str]
     expanded_feature_areas: frozenset[str]
     annotation_policies: frozenset[str]
+    aromatic_policy_contracts: frozenset[str]
     fragment_order_policies: frozenset[str]
     output_order_policies: frozenset[str]
     unsupported_feature_categories: frozenset[str]
@@ -100,6 +105,11 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
     annotation_policies=frozenset(
         {
             "maximal_eligible_carrier",
+        }
+    ),
+    aromatic_policy_contracts=frozenset(
+        {
+            DEFAULT_SOUTH_STAR_AROMATIC_POLICY_CONTRACT.name,
         }
     ),
     fragment_order_policies=frozenset(

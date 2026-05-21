@@ -45,6 +45,20 @@ unless a policy set is passed explicitly, and returns graph-native outputs plus
 policy names and generation diagnostics. It is deliberately not exported from
 `grimace.__init__`.
 
+The inspectable private contract is
+`grimace._south_star.api.south_star_private_api_contract()`. It names the
+provisional surface (`MolToSmilesEnumS`), the required input kind, the grammar
+basis, parser-dependent graph/stereo parse-back checks, policy names,
+diagnostic boundaries, unsupported-feature error type, and the distinction from
+the RDKit-parity `MolToSmilesEnum` surface. This object is a private boundary
+description, not a public package API.
+
+Unsupported inputs fail before enumeration with
+`SouthStarUnsupportedFeatureError`, a `NotImplementedError` subclass that keeps
+the unsupported feature records and categories available for diagnostics. That
+error is the API boundary for unsupported surfaces; callers should not infer a
+partial support set from a failure.
+
 `SouthStarMoleculeFacts` is the current semantic fact boundary. It owns the
 support-gate report, atom and bond text facts, graph topology, extracted
 semantic stereo components, carrier opportunities, and tetrahedral center

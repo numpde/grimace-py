@@ -4,6 +4,8 @@ import unittest
 
 import grimace
 from grimace._south_star.api import mol_to_smiles_enum_s_private
+from grimace._south_star.api import south_star_private_api_contract
+from grimace._south_star.support_gates import SouthStarUnsupportedFeatureError
 from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
 )
@@ -14,6 +16,45 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
     def test_private_api_is_not_exported_from_public_package(self) -> None:
         self.assertFalse(hasattr(grimace, "MolToSmilesEnumS"))
         self.assertFalse(hasattr(grimace, "mol_to_smiles_enum_s_private"))
+        self.assertFalse(hasattr(grimace, "south_star_private_api_contract"))
+
+    def test_private_api_contract_names_pre_public_boundary(self) -> None:
+        contract = south_star_private_api_contract()
+
+        self.assertEqual("MolToSmilesEnumS", contract.provisional_name)
+        self.assertFalse(contract.exported_from_public_package)
+        self.assertEqual("rdkit.Chem.Mol", contract.accepted_input)
+        self.assertEqual(
+            "south_star_declared_subset_grammar_v1",
+            contract.grammar_basis,
+        )
+        self.assertEqual(
+            (
+                "rdkit_parser_dependency",
+                "rdkit_canonical_nonisomeric_parseback",
+                "rdkit_canonical_isomeric_parseback",
+            ),
+            contract.semantic_equivalence_checks,
+        )
+        self.assertEqual("maximal_eligible_carrier", contract.annotation_policy)
+        self.assertEqual("all_fragment_orders", contract.fragment_order_policy)
+        self.assertEqual(
+            "first_occurrence_deduplication",
+            contract.output_order_policy,
+        )
+        self.assertIn(
+            "result_generation_diagnostics",
+            contract.diagnostic_boundaries,
+        )
+        self.assertIn(
+            "support_gate_error_evidence",
+            contract.diagnostic_boundaries,
+        )
+        self.assertEqual(
+            "SouthStarUnsupportedFeatureError",
+            contract.unsupported_error_type,
+        )
+        self.assertEqual("MolToSmilesEnum", contract.rdkit_parity_surface)
 
     def test_private_api_accepts_rdkit_mol_and_returns_diagnostics(self) -> None:
         case = next(
@@ -33,8 +74,17 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
         self.assertIsNotNone(result.generation_diagnostics)
 
     def test_private_api_fails_fast_for_unsupported_surfaces(self) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "unsupported_bond_type"):
+        with self.assertRaisesRegex(
+            SouthStarUnsupportedFeatureError,
+            "unsupported_bond_type",
+        ) as cm:
             mol_to_smiles_enum_s_private(parse_smiles("C$C"))
+
+        self.assertEqual(frozenset({"unsupported_bond_type"}), cm.exception.categories)
+        self.assertEqual(
+            "unsupported_bond_type",
+            cm.exception.unsupported_features[0].category,
+        )
 
     def test_private_api_requires_rdkit_mol(self) -> None:
         with self.assertRaisesRegex(TypeError, "RDKit Mol"):

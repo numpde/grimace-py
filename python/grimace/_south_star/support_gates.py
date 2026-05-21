@@ -98,10 +98,27 @@ class SouthStarSupportGateReport:
     def fail_if_unsupported(self) -> None:
         if self.supported:
             return
+        raise SouthStarUnsupportedFeatureError(self.unsupported_features)
+
+
+class SouthStarUnsupportedFeatureError(NotImplementedError):
+    """Fail-fast boundary error that preserves support-gate evidence."""
+
+    def __init__(
+        self,
+        unsupported_features: tuple[SouthStarUnsupportedFeature, ...],
+    ) -> None:
+        if not unsupported_features:
+            raise ValueError("unsupported-feature error requires feature evidence")
+        self.unsupported_features = unsupported_features
         categories = ", ".join(sorted(self.categories))
-        raise NotImplementedError(
+        super().__init__(
             f"MolToSmilesEnumS unsupported South Star features: {categories}"
         )
+
+    @property
+    def categories(self) -> frozenset[str]:
+        return frozenset(feature.category for feature in self.unsupported_features)
 
 
 def south_star_support_gate_report(mol: Chem.Mol) -> SouthStarSupportGateReport:

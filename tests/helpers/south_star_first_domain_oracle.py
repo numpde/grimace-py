@@ -2,10 +2,10 @@ from __future__ import annotations
 
 """Independent spec oracle for the first South Star domain.
 
-This module deliberately duplicates traversal, marker-slot, and rendering
-concepts from the graph-native EnumS prototype. That duplication is the point:
-these helpers are a test oracle for declared-language completeness, not a
-runtime implementation and not a reusable production backend.
+This module deliberately keeps an independent traversal search and renderer
+from the graph-native EnumS prototype. The record vocabulary is shared with the
+South Star reference spine so this helper remains a witness, not a separate
+mini-world with its own carrier/slot/event types.
 
 Do not import this module from package/runtime code. If the oracle and EnumS
 prototype disagree, investigate the semantic model or fixtures instead of
@@ -27,31 +27,12 @@ from grimace._south_star.component_support_state import (
 from grimace._south_star.component_support_state import (
     SouthStarComponentSupportState,
 )
+from grimace._south_star.reference_model import SouthStarCarrierContext
+from grimace._south_star.reference_model import SouthStarMarkerSlot
+from grimace._south_star.reference_model import SouthStarTraversalEvent
+from grimace._south_star.reference_model import SouthStarTraversalFragment
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantics import SouthStarSemanticCase
-
-
-@dataclass(frozen=True, slots=True)
-class _OracleCarrierContext:
-    center_atom_idx: int
-    double_neighbor_idx: int
-
-
-@dataclass(frozen=True, slots=True)
-class _OracleMarkerSlot:
-    slot_id: str
-    edge: Edge
-    begin_atom_idx: int
-    end_atom_idx: int
-    begin_parent_idx: int | None
-    syntax_position: str
-    adjacent_contexts: tuple[_OracleCarrierContext, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _OracleFragment:
-    tokens: tuple[str, ...]
-    marker_slots: tuple[_OracleMarkerSlot, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,8 +105,8 @@ def _oracle_atom_variants(
     parent_idx: int | None,
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_OracleCarrierContext, ...]],
-) -> tuple[_OracleFragment, ...]:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalFragment, ...]:
     visited = visited | {atom_idx}
     children = tuple(
         neighbor.GetIdx()
@@ -145,7 +126,11 @@ def _oracle_atom_variants(
 
     atom_token = _atom_token(mol.GetAtomWithIdx(atom_idx))
     if not children:
-        return (_OracleFragment(tokens=(atom_token,)),)
+        return (
+            SouthStarTraversalFragment(
+                events=(_atom_event(atom_idx, atom_token),),
+            ),
+        )
 
     fragments = []
     for ordered_children in permutations(sorted(children)):
@@ -173,17 +158,17 @@ def _oracle_atom_variants(
             carrier_contexts_by_edge=carrier_contexts_by_edge,
         )
         for branch_group in product(*branch_variants):
-            branch_tokens = tuple(
-                token for branch in branch_group for token in branch.tokens
-            )
-            branch_slots = tuple(
-                slot for branch in branch_group for slot in branch.marker_slots
+            branch_events = tuple(
+                event for branch in branch_group for event in branch.events
             )
             for main_fragment in main_variants:
                 fragments.append(
-                    _OracleFragment(
-                        tokens=(atom_token,) + branch_tokens + main_fragment.tokens,
-                        marker_slots=branch_slots + main_fragment.marker_slots,
+                    SouthStarTraversalFragment(
+                        events=(
+                            _atom_event(atom_idx, atom_token),
+                        )
+                        + branch_events
+                        + main_fragment.events,
                     )
                 )
     return tuple(dict.fromkeys(fragments))
@@ -197,9 +182,9 @@ def _oracle_branch_variants(
     begin_parent_idx: int | None,
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_OracleCarrierContext, ...]],
-) -> tuple[_OracleFragment, ...]:
-    bond_token, marker_slot = _bond_token_and_slot(
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalFragment, ...]:
+    bond_event = _bond_event(
         mol,
         begin_atom_idx,
         end_atom_idx,
@@ -209,9 +194,13 @@ def _oracle_branch_variants(
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
     return tuple(
-        _OracleFragment(
-            tokens=("(", bond_token) + child_fragment.tokens + (")",),
-            marker_slots=_slot_tuple(marker_slot) + child_fragment.marker_slots,
+        SouthStarTraversalFragment(
+            events=(
+                SouthStarTraversalEvent(kind="branch_open", text="("),
+                bond_event,
+            )
+            + child_fragment.events
+            + (SouthStarTraversalEvent(kind="branch_close", text=")"),),
         )
         for child_fragment in _oracle_atom_variants(
             mol,
@@ -232,9 +221,9 @@ def _oracle_child_variants(
     begin_parent_idx: int | None,
     visited: frozenset[int],
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_OracleCarrierContext, ...]],
-) -> tuple[_OracleFragment, ...]:
-    bond_token, marker_slot = _bond_token_and_slot(
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> tuple[SouthStarTraversalFragment, ...]:
+    bond_event = _bond_event(
         mol,
         begin_atom_idx,
         end_atom_idx,
@@ -244,9 +233,8 @@ def _oracle_child_variants(
         carrier_contexts_by_edge=carrier_contexts_by_edge,
     )
     return tuple(
-        _OracleFragment(
-            tokens=(bond_token,) + child_fragment.tokens,
-            marker_slots=_slot_tuple(marker_slot) + child_fragment.marker_slots,
+        SouthStarTraversalFragment(
+            events=(bond_event,) + child_fragment.events,
         )
         for child_fragment in _oracle_atom_variants(
             mol,
@@ -259,7 +247,7 @@ def _oracle_child_variants(
     )
 
 
-def _bond_token_and_slot(
+def _bond_event(
     mol: Chem.Mol,
     begin_atom_idx: int,
     end_atom_idx: int,
@@ -267,14 +255,14 @@ def _bond_token_and_slot(
     begin_parent_idx: int | None,
     syntax_position: str,
     marker_by_edge: dict[Edge, str],
-    carrier_contexts_by_edge: dict[Edge, tuple[_OracleCarrierContext, ...]],
-) -> tuple[str, _OracleMarkerSlot | None]:
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
+) -> SouthStarTraversalEvent:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     bond = mol.GetBondBetweenAtoms(begin_atom_idx, end_atom_idx)
     if bond is None:
         raise ValueError(f"edge {edge!r} is not a bond")
     if edge in marker_by_edge:
-        slot = _OracleMarkerSlot(
+        slot = SouthStarMarkerSlot(
             slot_id=_slot_id(
                 begin_atom_idx=begin_atom_idx,
                 end_atom_idx=end_atom_idx,
@@ -288,39 +276,56 @@ def _bond_token_and_slot(
             syntax_position=syntax_position,
             adjacent_contexts=carrier_contexts_by_edge[edge],
         )
-        return slot.slot_id, slot
+        return _bond_traversal_event(
+            text="",
+            edge=edge,
+            begin_atom_idx=begin_atom_idx,
+            end_atom_idx=end_atom_idx,
+            begin_parent_idx=begin_parent_idx,
+            marker_slot=slot,
+        )
     if bond.GetBondType() == Chem.BondType.DOUBLE:
-        return "=", None
+        return _bond_traversal_event(
+            text="=",
+            edge=edge,
+            begin_atom_idx=begin_atom_idx,
+            end_atom_idx=end_atom_idx,
+            begin_parent_idx=begin_parent_idx,
+        )
     if bond.GetBondType() == Chem.BondType.SINGLE:
-        return "", None
+        return _bond_traversal_event(
+            text="",
+            edge=edge,
+            begin_atom_idx=begin_atom_idx,
+            end_atom_idx=end_atom_idx,
+            begin_parent_idx=begin_parent_idx,
+        )
     raise NotImplementedError(f"unsupported first-domain bond {bond.GetBondType()}")
 
 
 def _render_fragment(
-    fragment: _OracleFragment,
+    fragment: SouthStarTraversalFragment,
     *,
     marker_by_edge: dict[Edge, str],
 ) -> str:
     marker_by_slot = {
-        slot.slot_id: _oriented_marker(marker_by_edge[slot.edge], slot)
-        for slot in fragment.marker_slots
+        event.marker_slot.slot_id: _oriented_marker(
+            marker_by_edge[event.marker_slot.edge],
+            event.marker_slot,
+        )
+        for event in fragment.events
+        if event.marker_slot is not None
     }
     tokens = []
-    for token in fragment.tokens:
-        if token in marker_by_slot:
-            tokens.append(marker_by_slot[token])
+    for event in fragment.events:
+        if event.marker_slot is not None:
+            tokens.append(marker_by_slot[event.marker_slot.slot_id])
         else:
-            tokens.append(token)
+            tokens.append(event.text)
     return "".join(tokens)
 
 
-def _slot_tuple(slot: _OracleMarkerSlot | None) -> tuple[_OracleMarkerSlot, ...]:
-    if slot is None:
-        return ()
-    return (slot,)
-
-
-def _oriented_marker(graph_marker: str, slot: _OracleMarkerSlot) -> str:
+def _oriented_marker(graph_marker: str, slot: SouthStarMarkerSlot) -> str:
     flip = False
     for context in slot.adjacent_contexts:
         if (
@@ -336,7 +341,7 @@ def _carrier_contexts_by_edge(
     mol: Chem.Mol,
     *,
     marker_by_edge: dict[Edge, str],
-) -> dict[Edge, tuple[_OracleCarrierContext, ...]]:
+) -> dict[Edge, tuple[SouthStarCarrierContext, ...]]:
     return {
         edge: _carrier_contexts_for_edge(mol, edge=edge)
         for edge in marker_by_edge
@@ -347,7 +352,7 @@ def _carrier_contexts_for_edge(
     mol: Chem.Mol,
     *,
     edge: Edge,
-) -> tuple[_OracleCarrierContext, ...]:
+) -> tuple[SouthStarCarrierContext, ...]:
     contexts = []
     for center_atom_idx, substituent_atom_idx in (edge, (edge[1], edge[0])):
         for neighbor in mol.GetAtomWithIdx(center_atom_idx).GetNeighbors():
@@ -357,7 +362,7 @@ def _carrier_contexts_for_edge(
             bond = mol.GetBondBetweenAtoms(center_atom_idx, neighbor_idx)
             if bond is not None and bond.GetBondType() == Chem.BondType.DOUBLE:
                 contexts.append(
-                    _OracleCarrierContext(
+                    SouthStarCarrierContext(
                         center_atom_idx=center_atom_idx,
                         double_neighbor_idx=neighbor_idx,
                     )
@@ -372,7 +377,7 @@ def _oracle_child_allowed(
     begin_atom_idx: int,
     end_atom_idx: int,
     begin_parent_idx: int | None,
-    carrier_contexts_by_edge: dict[Edge, tuple[_OracleCarrierContext, ...]],
+    carrier_contexts_by_edge: dict[Edge, tuple[SouthStarCarrierContext, ...]],
 ) -> bool:
     edge = normalized_edge((begin_atom_idx, end_atom_idx))
     contexts = carrier_contexts_by_edge.get(edge, ())
@@ -393,6 +398,30 @@ def _atom_token(atom: Chem.Atom) -> str:
     if symbol in {"B", "C", "N", "O", "P", "S", "F", "Cl", "Br", "I"}:
         return symbol
     raise NotImplementedError(f"unsupported first-domain atom {symbol!r}")
+
+
+def _atom_event(atom_idx: int, text: str) -> SouthStarTraversalEvent:
+    return SouthStarTraversalEvent(kind="atom", text=text, atom_idx=atom_idx)
+
+
+def _bond_traversal_event(
+    *,
+    text: str,
+    edge: Edge,
+    begin_atom_idx: int,
+    end_atom_idx: int,
+    begin_parent_idx: int | None,
+    marker_slot: SouthStarMarkerSlot | None = None,
+) -> SouthStarTraversalEvent:
+    return SouthStarTraversalEvent(
+        kind="bond",
+        text=text,
+        edge=edge,
+        begin_atom_idx=begin_atom_idx,
+        end_atom_idx=end_atom_idx,
+        begin_parent_idx=begin_parent_idx,
+        marker_slot=marker_slot,
+    )
 
 
 def _assert_first_domain_mol(mol: Chem.Mol) -> None:

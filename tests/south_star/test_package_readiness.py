@@ -311,6 +311,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "polycyclic_ring_tetrahedral_minimal_bridge",
                 "compositional_stereo_two_tetra_separated",
                 "compositional_stereo_two_tetra_adjacent",
+                "compositional_stereo_two_tetra_disconnected",
                 "fused_aromatic_naphthalene",
                 "fused_aromatic_quinoline",
                 "fused_aromatic_benzofuran",
@@ -1042,6 +1043,12 @@ def _pipeline_coverage_for_case(
     has_stereo = bool(
         molecule_facts.components or molecule_facts.tetrahedral_center_facts
     )
+    has_disconnected_stereo_generation = (
+        diagnostics.fragment_count > 1
+        and has_stereo
+        and diagnostics.solved_assignment_count > 0
+    )
+    has_constraints = has_constraints or has_disconnected_stereo_generation
     return (
         SouthStarPipelineCoverageRecord(
             stage_id="molecule_facts",
@@ -1064,7 +1071,8 @@ def _pipeline_coverage_for_case(
             ),
             evidence=(
                 f"marker_slot_count={diagnostics.marker_slot_count}; "
-                f"renderer_input_count={_renderer_input_count(traversals)}"
+                f"renderer_input_count={_renderer_input_count(traversals)}; "
+                f"fragment_count={diagnostics.fragment_count}"
             ),
         ),
         SouthStarPipelineCoverageRecord(
@@ -1079,7 +1087,8 @@ def _pipeline_coverage_for_case(
             evidence=(
                 f"stereo_component_count={diagnostics.stereo_component_count}; "
                 f"marker_slot_count={diagnostics.marker_slot_count}; "
-                f"renderer_input_count={_renderer_input_count(traversals)}"
+                f"renderer_input_count={_renderer_input_count(traversals)}; "
+                f"fragment_count={diagnostics.fragment_count}"
             ),
         ),
         SouthStarPipelineCoverageRecord(

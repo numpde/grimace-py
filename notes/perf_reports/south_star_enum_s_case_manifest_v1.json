@@ -380,6 +380,13 @@
       "expected_output_count": 40
     },
     {
+      "case_id": "compositional_stereo_two_tetra_disconnected",
+      "fixture_family": "expanded_support",
+      "domain_label": "compositional_stereo_independent_product",
+      "source_smiles": "F[C@H](Cl)Br.F[C@H](Cl)I",
+      "expected_output_count": 288
+    },
+    {
       "case_id": "fused_aromatic_naphthalene",
       "fixture_family": "expanded_support",
       "domain_label": "fused_aromatic_ring_system",

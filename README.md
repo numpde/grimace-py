@@ -396,7 +396,7 @@ GitHub release wheels are also available:
 
 | System | 3.12 | 3.13 |
 | --- | --- | --- |
-| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.10/grimace_py-0.1.10-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.10/grimace_py-0.1.10-cp313-cp313-manylinux_2_28_x86_64.whl) |
+| Linux x86_64 | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.11/grimace_py-0.1.11-cp312-cp312-manylinux_2_28_x86_64.whl) | [wheel](https://github.com/numpde/grimace-py/releases/download/v0.1.11/grimace_py-0.1.11-cp313-cp313-manylinux_2_28_x86_64.whl) |
 
 The built package depends on `rdkit>=2026.3`.
 

@@ -250,6 +250,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 handle,
                 fieldnames=TimingRow.tsv_fieldnames(),
                 dialect="excel-tab",
+                lineterminator="\n",
             )
             writer.writeheader()
             for row in rows:

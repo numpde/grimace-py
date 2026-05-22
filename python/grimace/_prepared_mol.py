@@ -64,19 +64,27 @@ def _prepared_mol_matches_writer_flags(
     )
 
 
+def _prepared_mol_fragments(
+    prepared: PreparedMol,
+) -> tuple[tuple[tuple[int, ...], object], ...]:
+    return tuple(
+        (
+            tuple(prepared._inner.fragment_atom_indices(fragment_idx)),
+            prepared._inner.fragment_prepared_graph(fragment_idx),
+        )
+        for fragment_idx in range(prepared._inner.fragment_count())
+    )
+
+
 def _prepared_mol_fragment_count(prepared: PreparedMol) -> int:
     return prepared._inner.fragment_count()
 
 
-def _prepared_mol_fragment_atom_indices(
-    prepared: PreparedMol,
-    fragment_idx: int,
-) -> tuple[int, ...]:
-    return tuple(prepared._inner.fragment_atom_indices(fragment_idx))
-
-
-def _prepared_mol_fragment_graph(prepared: PreparedMol, fragment_idx: int) -> object:
-    return prepared._inner.fragment_prepared_graph(fragment_idx)
+def _prepared_mol_atom_count(prepared: PreparedMol) -> int:
+    return sum(
+        len(prepared._inner.fragment_atom_indices(fragment_idx))
+        for fragment_idx in range(prepared._inner.fragment_count())
+    )
 
 
 def _is_rdkit_mol(value: object) -> bool:
@@ -135,7 +143,10 @@ def PrepareMol(
 
     if mol.GetNumAtoms() == 0:
         fragments = [
-            ([], runtime.prepare_smiles_graph(mol, flags=runtime_flags))
+            (
+                [],
+                runtime.prepare_smiles_graph(mol, flags=runtime_flags),
+            )
         ]
     else:
         fragments = [

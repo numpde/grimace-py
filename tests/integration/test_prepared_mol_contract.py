@@ -4,6 +4,7 @@ from dataclasses import fields, is_dataclass
 import unittest
 
 import grimace
+from grimace._prepared_mol import _prepared_mol_fragments
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     prepared_writer_kwargs,
@@ -233,9 +234,11 @@ class PreparedMolContractTests(unittest.TestCase):
         self.assertEqual(("_inner",), grimace.PreparedMol.__slots__)
         self.assertEqual("grimace._core", type(prepared._inner).__module__)
         self.assertEqual("PreparedMol", type(prepared._inner).__name__)
-        self.assertEqual(2, prepared._inner.fragment_count())
-        self.assertEqual((0, 1, 2), tuple(prepared._inner.fragment_atom_indices(0)))
-        self.assertEqual((3,), tuple(prepared._inner.fragment_atom_indices(1)))
+
+        fragments = _prepared_mol_fragments(prepared)
+        self.assertEqual(2, len(fragments))
+        self.assertEqual((0, 1, 2), fragments[0][0])
+        self.assertEqual((3,), fragments[1][0])
 
     def test_to_bytes_uses_versioned_binary_payload(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
@@ -273,14 +276,15 @@ class PreparedMolContractTests(unittest.TestCase):
 
     def test_rust_storage_rejects_malformed_structural_parts(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
+        prepared_fragments = _prepared_mol_fragments(prepared)
         base_fragments = [
             (
-                list(prepared._inner.fragment_atom_indices(0)),
-                prepared._inner.fragment_prepared_graph(0),
+                list(prepared_fragments[0][0]),
+                prepared_fragments[0][1],
             ),
             (
-                list(prepared._inner.fragment_atom_indices(1)),
-                prepared._inner.fragment_prepared_graph(1),
+                list(prepared_fragments[1][0]),
+                prepared_fragments[1][1],
             ),
         ]
 
@@ -291,7 +295,7 @@ class PreparedMolContractTests(unittest.TestCase):
             "empty_fragments": [],
             "fragment_not_pair": [base_fragments[0][0]],
             "fragment_wrong_pair_length": [
-                (*base_fragments[0], prepared._inner.fragment_prepared_graph(1))
+                (*base_fragments[0], prepared_fragments[1][1])
             ],
             "bad_atom_indices_type": [({}, base_fragments[0][1]), base_fragments[1]],
             "atom_index_bool": [([True, 1, 2], base_fragments[0][1]), base_fragments[1]],

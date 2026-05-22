@@ -484,17 +484,9 @@ the released mainline runtime. The goal is exact RDKit writer support for the
 documented runtime subset, without mixing RDKit-specific spelling quirks into
 the generic semantic layer.
 
-Current public runtime contract:
-
-- `canonical=False`
-- `doRandom=True`
-- omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
-- pass `rootedAtAtom >= 0` for one explicit root
-- other negative integer `rootedAtAtom` values are also accepted for RDKit
-  compatibility, but `-1` is the preferred public spelling
-- `rootedAtAtom=None` is not supported; omit the argument or use `-1`
-
-Supported writer flags today:
+The current public runtime contract is the one described in
+[Important runtime requirements today](#important-runtime-requirements-today).
+The supported writer flags are:
 
 - `isomericSmiles`
 - `kekuleSmiles`

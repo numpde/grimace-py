@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import unittest
 
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
@@ -39,6 +40,11 @@ SOUTH_STAR_PIPELINE_PROVENANCE_STAGES: tuple[str, ...] = (
     "renderer",
     "semantic_evidence",
 )
+
+
+@lru_cache(maxsize=None)
+def _cached_graph_native_result(source_smiles: str, case_id: str):
+    return mol_to_smiles_enum_s_graph_native(source_smiles, case_id=case_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -440,7 +446,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 report = south_star_support_gate_report(parse_smiles(case.source_smiles))
                 self.assertTrue(report.supported, report.unsupported_features)
 
-                result = mol_to_smiles_enum_s_graph_native(
+                result = _cached_graph_native_result(
                     case.source_smiles,
                     case_id=case.case_id,
                 )
@@ -813,7 +819,7 @@ def south_star_unified_reference_promotion_checks(
     checks: list[SouthStarUnifiedReferencePromotionCheck] = []
     for exact_case in load_south_star_exact_first_domain_cases():
         semantic_case = semantic_cases_by_id[exact_case.case_id]
-        result = mol_to_smiles_enum_s_graph_native(
+        result = _cached_graph_native_result(
             semantic_case.source_smiles,
             case_id=semantic_case.case_id,
         )
@@ -833,7 +839,7 @@ def south_star_unified_reference_promotion_checks(
         )
 
     for case in load_south_star_expanded_support_cases():
-        result = mol_to_smiles_enum_s_graph_native(
+        result = _cached_graph_native_result(
             case.source_smiles,
             case_id=case.case_id,
         )
@@ -867,7 +873,7 @@ def _authority_inventory_item(
     expected_support: tuple[str, ...],
     check: SouthStarUnifiedReferencePromotionCheck,
 ) -> SouthStarAuthorityPromotionCandidateInventoryItem:
-    result = mol_to_smiles_enum_s_graph_native(source_smiles, case_id=case_id)
+    result = _cached_graph_native_result(source_smiles, case_id)
     diagnostics = result.generation_diagnostics
     if diagnostics is None:
         raise AssertionError("authority inventory requires generation diagnostics")
@@ -901,7 +907,7 @@ def _proof_complexity_diagnostic_record(
     *,
     case: object,
 ) -> SouthStarProofComplexityDiagnosticRecord:
-    result = mol_to_smiles_enum_s_graph_native(
+    result = _cached_graph_native_result(
         case.source_smiles,
         case_id=case.case_id,
     )
@@ -1027,7 +1033,7 @@ def _pipeline_coverage_for_case(
 ) -> tuple[SouthStarPipelineCoverageRecord, ...]:
     mol = parse_smiles(case.source_smiles)
     molecule_facts = SouthStarMoleculeFacts.from_mol(mol)
-    result = mol_to_smiles_enum_s_graph_native(
+    result = _cached_graph_native_result(
         case.source_smiles,
         case_id=case.case_id,
     )

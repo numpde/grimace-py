@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 from rdkit import Chem
 from rdkit import rdBase
@@ -100,10 +101,12 @@ def parse_smiles(smiles: str) -> Chem.Mol:
     return mol
 
 
+@lru_cache(maxsize=None)
 def graph_signature(smiles: str) -> str:
     return graph_signature_for_mol(parse_smiles(smiles))
 
 
+@lru_cache(maxsize=None)
 def semantic_signature(smiles: str) -> str:
     return semantic_signature_for_mol(parse_smiles(smiles))
 

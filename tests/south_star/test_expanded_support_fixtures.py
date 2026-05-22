@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import unittest
 
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
@@ -70,6 +71,11 @@ from tests.helpers.south_star_unified_reference import (
     modified_aromatic_atom_text_support_from_shared_spine,
     nonstereo_polycyclic_support_from_shared_spine,
 )
+
+
+@lru_cache(maxsize=None)
+def _cached_graph_native_result(source_smiles: str, case_id: str):
+    return mol_to_smiles_enum_s_graph_native(source_smiles, case_id=case_id)
 
 
 class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
@@ -639,7 +645,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
 
             with self.subTest(case_id=case.case_id):
                 proof = polycyclic_ring_tetrahedral_proof_spine(case.source_smiles)
-                result = mol_to_smiles_enum_s_graph_native(
+                result = _cached_graph_native_result(
                     case.source_smiles,
                     case_id=case.case_id,
                 )
@@ -662,7 +668,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
 
             with self.subTest(case_id=case.case_id):
                 proof = mixed_polycyclic_directional_proof(case.source_smiles)
-                result = mol_to_smiles_enum_s_graph_native(
+                result = _cached_graph_native_result(
                     case.source_smiles,
                     case_id=case.case_id,
                 )
@@ -681,7 +687,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
 
             with self.subTest(case_id=case.case_id):
                 proof = compositional_stereo_proof_report(case.source_smiles)
-                result = mol_to_smiles_enum_s_graph_native(
+                result = _cached_graph_native_result(
                     case.source_smiles,
                     case_id=case.case_id,
                 )
@@ -917,7 +923,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
 
     def test_graph_native_support_matches_expanded_domain_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():
-            result = mol_to_smiles_enum_s_graph_native(
+            result = _cached_graph_native_result(
                 case.source_smiles,
                 case_id=case.case_id,
             )
@@ -939,7 +945,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             ):
                 continue
 
-            result = mol_to_smiles_enum_s_graph_native(
+            result = _cached_graph_native_result(
                 case.source_smiles,
                 case_id=case.case_id,
             )

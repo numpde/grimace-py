@@ -1009,12 +1009,19 @@ def _ring_system_traversals(
     closure_edge_sets: tuple[tuple[Edge, ...], ...],
     marker_by_edge: dict[Edge, str],
     component_marker_assignments: tuple[SouthStarComponentMarkerAssignment, ...],
+    tetrahedral_facts_by_atom_override: (
+        dict[int, SouthStarTetrahedralCenterFact] | None
+    ) = None,
 ) -> tuple[SouthStarTreeTraversal, ...]:
     carrier_contexts_by_edge = _carrier_contexts_by_edge(
         mol,
         marker_by_edge=marker_by_edge,
     )
-    tetrahedral_facts_by_atom = _tetrahedral_facts_by_atom(molecule_facts)
+    tetrahedral_facts_by_atom = (
+        tetrahedral_facts_by_atom_override
+        if tetrahedral_facts_by_atom_override is not None
+        else _tetrahedral_facts_by_atom(molecule_facts)
+    )
     return tuple(
         _with_solved_marker_assignments(
             state,

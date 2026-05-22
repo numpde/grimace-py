@@ -42,6 +42,24 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         self.assertEqual(bool(sampling["allBondsExplicit"]), prepared.writer_all_bonds_explicit)
         self.assertEqual(bool(sampling["allHsExplicit"]), prepared.writer_all_hs_explicit)
         self.assertEqual(bool(sampling["ignoreAtomMapNumbers"]), prepared.writer_ignore_atom_map_numbers)
+        self.assertTrue(
+            prepared.matches_writer_flags(
+                isomeric_smiles=bool(sampling["isomericSmiles"]),
+                kekule_smiles=bool(sampling["kekuleSmiles"]),
+                all_bonds_explicit=bool(sampling["allBondsExplicit"]),
+                all_hs_explicit=bool(sampling["allHsExplicit"]),
+                ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
+            )
+        )
+        self.assertFalse(
+            prepared.matches_writer_flags(
+                isomeric_smiles=not bool(sampling["isomericSmiles"]),
+                kekule_smiles=bool(sampling["kekuleSmiles"]),
+                all_bonds_explicit=bool(sampling["allBondsExplicit"]),
+                all_hs_explicit=bool(sampling["allHsExplicit"]),
+                ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
+            )
+        )
 
         identity = self.policy.data["identity_check"]
         self.assertEqual(bool(identity["parse_with_rdkit"]), prepared.identity_parse_with_rdkit)

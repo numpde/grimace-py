@@ -167,18 +167,7 @@ def _validate_writer_flags(
     prepared: object,
     flags: MolToSmilesFlags,
 ) -> None:
-    expected = writer_flag_kwargs(flags)
-    if isinstance(prepared, _core.PreparedSmilesGraph):
-        matches = prepared.matches_writer_flags(**expected)
-    else:
-        matches = {
-            "isomeric_smiles": bool(prepared.writer_do_isomeric_smiles),
-            "kekule_smiles": bool(prepared.writer_kekule_smiles),
-            "all_bonds_explicit": bool(prepared.writer_all_bonds_explicit),
-            "all_hs_explicit": bool(prepared.writer_all_hs_explicit),
-            "ignore_atom_map_numbers": bool(prepared.writer_ignore_atom_map_numbers),
-        } == expected
-    if not matches:
+    if not prepared.matches_writer_flags(**writer_flag_kwargs(flags)):
         raise ValueError(
             "PreparedSmilesGraph writer flags do not match the requested public runtime options"
         )

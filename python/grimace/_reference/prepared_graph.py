@@ -574,6 +574,24 @@ class PreparedSmilesGraph:
         if self.policy_name != policy.policy_name or self.policy_digest != policy.digest():
             raise ValueError("PreparedSmilesGraph does not match the provided policy")
 
+    def matches_writer_flags(
+        self,
+        *,
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+    ) -> bool:
+        return (
+            bool(self.writer_do_isomeric_smiles) == bool(isomeric_smiles)
+            and bool(self.writer_kekule_smiles) == bool(kekule_smiles)
+            and bool(self.writer_all_bonds_explicit) == bool(all_bonds_explicit)
+            and bool(self.writer_all_hs_explicit) == bool(all_hs_explicit)
+            and bool(self.writer_ignore_atom_map_numbers)
+            == bool(ignore_atom_map_numbers)
+        )
+
     def identity_smiles_for(self, mol: Chem.Mol) -> str:
         if not self.identity_parse_with_rdkit:
             raise NotImplementedError("Only parse_with_rdkit=true identity checks are supported")

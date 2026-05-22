@@ -309,6 +309,8 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "ring_tetrahedral_exocyclic_directional_branch",
                 "polycyclic_ring_tetrahedral_bridged_center",
                 "polycyclic_ring_tetrahedral_minimal_bridge",
+                "compositional_stereo_two_tetra_separated",
+                "compositional_stereo_two_tetra_adjacent",
                 "fused_aromatic_naphthalene",
                 "fused_aromatic_quinoline",
                 "fused_aromatic_benzofuran",
@@ -390,6 +392,14 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("atom_map_text", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)
         self.assertIn("combined_atom_text_modifiers", matrix.supported_feature_areas)
+        self.assertIn(
+            "compositional_stereo_coupled_component",
+            matrix.supported_feature_areas,
+        )
+        self.assertIn(
+            "compositional_stereo_independent_product",
+            matrix.supported_feature_areas,
+        )
         self.assertIn("double_bond_text", matrix.supported_feature_areas)
         self.assertIn("fused_aromatic_ring_system", matrix.supported_feature_areas)
         self.assertIn("isotope_atom_text", matrix.supported_feature_areas)

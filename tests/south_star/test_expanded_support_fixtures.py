@@ -6,6 +6,8 @@ from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_COMPOSITIONAL_STEREO_COUPLED_COMPONENT_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_COMPOSITIONAL_STEREO_INDEPENDENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
@@ -25,6 +27,9 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TETRAHEDRAL_ATOM_STEREO_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_TWO_ATOM_BOND_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+)
+from tests.helpers.south_star_compositional_stereo_proof import (
+    compositional_stereo_proof_report,
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
@@ -68,6 +73,12 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         {
             SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
             SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
+        }
+    )
+    COMPOSITIONAL_STEREO_AUTHORITIES = frozenset(
+        {
+            SOUTH_STAR_COMPOSITIONAL_STEREO_COUPLED_COMPONENT_UNIFIED_REFERENCE_AUTHORITY,
+            SOUTH_STAR_COMPOSITIONAL_STEREO_INDEPENDENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
         }
     )
     RING_CORE_AUTHORITIES = frozenset(
@@ -627,6 +638,23 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertGreater(proof.closure_event_count, 0)
                 self.assertGreater(proof.renderer_input_count, 0)
                 self.assertEqual(1, proof.obligation_count)
+
+    def test_compositional_stereo_proof_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if case.support_authority not in self.COMPOSITIONAL_STEREO_AUTHORITIES:
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                proof = compositional_stereo_proof_report(case.source_smiles)
+                result = mol_to_smiles_enum_s_graph_native(
+                    case.source_smiles,
+                    case_id=case.case_id,
+                )
+
+                self.assertEqual(case.expected_support, proof.proof_outputs)
+                self.assertEqual(proof.proof_outputs, result.outputs)
+                self.assertTrue(proof.runtime_outputs_match_proof)
+                self.assertTrue(proof.semantic_parseback_passed)
 
     def test_tetrahedral_atom_stereo_proof_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

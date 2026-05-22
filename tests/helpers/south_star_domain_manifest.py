@@ -46,6 +46,12 @@ SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_polycyclic_ring_tetrahedral_obligations"
 )
+SOUTH_STAR_COMPOSITIONAL_STEREO_INDEPENDENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_compositional_stereo_product"
+)
+SOUTH_STAR_COMPOSITIONAL_STEREO_COUPLED_COMPONENT_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_compositional_stereo_coupled_component"
+)
 SOUTH_STAR_SINGLE_ATOM_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_single_atom_atom_text"
 )
@@ -95,6 +101,8 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MODIFIED_AROMATIC_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_COMPOSITIONAL_STEREO_COUPLED_COMPONENT_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_COMPOSITIONAL_STEREO_INDEPENDENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
@@ -136,6 +144,8 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "aromatic_tellurium_text",
         "charged_atom_text",
         "combined_atom_text_modifiers",
+        "compositional_stereo_coupled_component",
+        "compositional_stereo_independent_product",
         "disconnected_markerless_fragments",
         "disconnected_stereo_fragments",
         "directional_tetrahedral_composition",
@@ -227,6 +237,8 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "non_organic_bracket_atom_text",
             "radical_atom_text",
             "charged_atom_text",
+            "compositional_stereo_coupled_component",
+            "compositional_stereo_independent_product",
             "quadruple_bond_text",
             "triple_bond_text",
         }

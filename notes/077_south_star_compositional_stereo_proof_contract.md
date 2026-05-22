@@ -33,7 +33,7 @@ Use two authority names, depending on the mathematical shape of the case.
 
 ### Independent Product Authority
 
-`unified_reference_compositional_stereo_independent_product`
+`unified_reference_compositional_stereo_product`
 
 This authority means:
 
@@ -151,4 +151,3 @@ Build a witness inventory that classifies candidate molecules by:
 - expected output count from the current runtime, if supported;
 - whether the case is suitable as the first fixture under one of the two
   authorities.
-

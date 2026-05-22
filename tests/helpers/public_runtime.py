@@ -7,12 +7,12 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 
 import grimace
+from grimace import _runtime, _runtime_states
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
-from grimace import _runtime
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from grimace._runtime_inputs import runtime_surface_kind
 
@@ -94,7 +94,7 @@ def reachable_outputs_from_decoder(
     *,
     memo: dict[object, frozenset[str]] | None = None,
 ) -> frozenset[str]:
-    return _runtime._reachable_terminal_prefixes(decoder._state, memo=memo)
+    return _runtime_states._reachable_terminal_prefixes(decoder._state, memo=memo)
 
 
 def exact_token_inventory_via_decoder(mol: object, **kwargs: object) -> tuple[str, ...]:
@@ -105,7 +105,7 @@ def exact_token_inventory_via_decoder(mol: object, **kwargs: object) -> tuple[st
 
     while stack:
         current = stack.pop()
-        state_key = _runtime._state_cache_key(current._state)
+        state_key = _runtime_states._state_cache_key(current._state)
         if state_key in seen_state_keys:
             continue
         seen_state_keys.add(state_key)

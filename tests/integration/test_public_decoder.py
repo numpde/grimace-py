@@ -6,7 +6,7 @@ import unittest
 
 import grimace
 from rdkit import Chem
-from grimace import _runtime
+from grimace import _runtime, _runtime_states
 from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
@@ -509,15 +509,15 @@ class PublicDecoderTests(unittest.TestCase):
             with self.subTest(case=case.name, smiles=case.smiles):
                 while stack:
                     state = stack.pop()
-                    state_key = _runtime._state_cache_key(state)
+                    state_key = _runtime_states._state_cache_key(state)
                     if state_key in seen_state_keys:
                         continue
                     seen_state_keys.add(state_key)
                     audited_state_count += 1
 
-                    reachable = _runtime._reachable_terminal_prefixes(state, memo=memo)
+                    reachable = _runtime_states._reachable_terminal_prefixes(state, memo=memo)
                     prefix = state.prefix()
-                    grouped_successors = _runtime._determinized_choice_successors(state)
+                    grouped_successors = _runtime_states._determinized_choice_successors(state)
                     option_texts = tuple(text for text, _ in grouped_successors)
 
                     self.assertTrue(reachable)
@@ -551,7 +551,7 @@ class PublicDecoderTests(unittest.TestCase):
 
                     union_of_branch_outputs: set[str] = set()
                     for _, successor in grouped_successors:
-                        branch_outputs = _runtime._reachable_terminal_prefixes(
+                        branch_outputs = _runtime_states._reachable_terminal_prefixes(
                             successor,
                             memo=memo,
                         )
@@ -637,15 +637,15 @@ class PublicDecoderTests(unittest.TestCase):
             with self.subTest(case=case.name, smiles=case.smiles):
                 while stack:
                     state = stack.pop()
-                    state_key = _runtime._state_cache_key(state)
+                    state_key = _runtime_states._state_cache_key(state)
                     if state_key in seen_state_keys:
                         continue
                     seen_state_keys.add(state_key)
                     audited_state_count += 1
 
-                    reachable = _runtime._reachable_terminal_prefixes(state, memo=memo)
+                    reachable = _runtime_states._reachable_terminal_prefixes(state, memo=memo)
                     prefix = state.prefix()
-                    successor_states = _runtime._choice_successor_states(state)
+                    successor_states = _runtime_states._choice_successor_states(state)
 
                     self.assertTrue(reachable)
                     self.assertTrue(reachable <= outputs)
@@ -659,7 +659,7 @@ class PublicDecoderTests(unittest.TestCase):
                     self.assertTrue(successor_states)
                     union_of_branch_outputs: set[str] = set()
                     for _, next_state in successor_states:
-                        branch_outputs = _runtime._reachable_terminal_prefixes(
+                        branch_outputs = _runtime_states._reachable_terminal_prefixes(
                             next_state,
                             memo=memo,
                         )

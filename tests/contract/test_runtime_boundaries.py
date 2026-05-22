@@ -48,6 +48,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py",
+        REPO_ROOT / "python" / "grimace" / "_runtime_states.py",
         REPO_ROOT / "python" / "grimace" / "_deviation.py",
     )
 

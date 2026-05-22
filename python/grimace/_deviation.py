@@ -8,6 +8,7 @@ from typing import Literal, TypeAlias
 
 from grimace import _runtime
 from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
+from grimace._runtime_states import DecoderCacheKey
 
 SmilesDeviationReason: TypeAlias = Literal["unexpected_text", "unexpected_token", "incomplete"]
 
@@ -38,14 +39,14 @@ def _common_prefix_len(left: str, right: str) -> int:
     return idx
 
 
-def _decoder_key(decoder: _runtime.MolToSmilesDeterminizedDecoder) -> _runtime.DecoderCacheKey:
+def _decoder_key(decoder: _runtime.MolToSmilesDeterminizedDecoder) -> DecoderCacheKey:
     return decoder._cache_key()
 
 
 def _dedupe_decoders(
     decoders: Iterable[_runtime.MolToSmilesDeterminizedDecoder],
 ) -> tuple[_runtime.MolToSmilesDeterminizedDecoder, ...]:
-    by_key: dict[_runtime.DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder] = {}
+    by_key: dict[DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder] = {}
     for decoder in decoders:
         by_key.setdefault(_decoder_key(decoder), decoder)
     return tuple(by_key.values())
@@ -67,7 +68,7 @@ def _string_deviation(
     options: DecoderOptions,
 ) -> SmilesDeviation | None:
     initial = _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options)
-    active_by_offset: dict[int, dict[_runtime.DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder]] = {
+    active_by_offset: dict[int, dict[DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder]] = {
         0: {_decoder_key(initial): initial}
     }
     pending_offsets = {0}

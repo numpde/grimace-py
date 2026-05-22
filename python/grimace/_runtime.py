@@ -17,6 +17,7 @@ from grimace._runtime_graphs import (
 )
 from grimace._runtime_inputs import (
     MolToSmilesFlags as _MolToSmilesFlags,
+    _make_flags_from_internal_options,
     make_flags as _make_flags,
     prepare_runtime_input as _prepare_runtime_input,
 )
@@ -280,16 +281,7 @@ class _PublicDecoderBase:
         do_random: bool = False,
         ignore_atom_map_numbers: bool = False,
     ) -> None:
-        flags = _make_flags(
-            isomeric_smiles=isomeric_smiles,
-            kekule_smiles=kekule_smiles,
-            rooted_at_atom=rooted_at_atom,
-            canonical=canonical,
-            all_bonds_explicit=all_bonds_explicit,
-            all_hs_explicit=all_hs_explicit,
-            do_random=do_random,
-            ignore_atom_map_numbers=ignore_atom_map_numbers,
-        )
+        flags = _make_flags_from_internal_options(locals())
         self._state = _make_decoder_state_impl(
             _prepare_runtime_input(mol_or_prepared, flags=flags),
             flags=flags,
@@ -436,16 +428,7 @@ def mol_to_smiles_enum(
     do_random: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> Iterator[str]:
-    flags = _make_flags(
-        isomeric_smiles=isomeric_smiles,
-        kekule_smiles=kekule_smiles,
-        rooted_at_atom=rooted_at_atom,
-        canonical=canonical,
-        all_bonds_explicit=all_bonds_explicit,
-        all_hs_explicit=all_hs_explicit,
-        do_random=do_random,
-        ignore_atom_map_numbers=ignore_atom_map_numbers,
-    )
+    flags = _make_flags_from_internal_options(locals())
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:
@@ -512,16 +495,7 @@ def mol_to_smiles_token_inventory(
 ) -> tuple[str, ...]:
     """Return the exact decoder token inventory under the public runtime flags."""
 
-    flags = _make_flags(
-        isomeric_smiles=isomeric_smiles,
-        kekule_smiles=kekule_smiles,
-        rooted_at_atom=rooted_at_atom,
-        canonical=canonical,
-        all_bonds_explicit=all_bonds_explicit,
-        all_hs_explicit=all_hs_explicit,
-        do_random=do_random,
-        ignore_atom_map_numbers=ignore_atom_map_numbers,
-    )
+    flags = _make_flags_from_internal_options(locals())
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     return _exact_token_inventory_from_decoder(
         mol_or_prepared,
@@ -543,16 +517,7 @@ def mol_to_smiles_token_inventory_superset(
 ) -> tuple[str, ...]:
     """Return a conservative static superset of reachable decoder tokens."""
 
-    flags = _make_flags(
-        isomeric_smiles=isomeric_smiles,
-        kekule_smiles=kekule_smiles,
-        rooted_at_atom=rooted_at_atom,
-        canonical=canonical,
-        all_bonds_explicit=all_bonds_explicit,
-        all_hs_explicit=all_hs_explicit,
-        do_random=do_random,
-        ignore_atom_map_numbers=ignore_atom_map_numbers,
-    )
+    flags = _make_flags_from_internal_options(locals())
     mol_or_prepared = _prepare_runtime_input(mol_or_prepared, flags=flags)
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:

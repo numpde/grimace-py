@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 import grimace._prepared_mol as _prepared_mol
@@ -43,10 +44,16 @@ def make_flags(
     do_random: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> MolToSmilesFlags:
+    return _make_flags_from_internal_options(locals())
+
+
+def _make_flags_from_internal_options(
+    values: Mapping[str, object],
+) -> MolToSmilesFlags:
     return MolToSmilesFlags(
         **coerce_internal_options(
             MOL_TO_SMILES_OPTIONS,
-            locals(),
+            values,
             context="MolToSmiles runtime",
         )
     )

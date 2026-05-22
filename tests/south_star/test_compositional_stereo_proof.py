@@ -19,7 +19,9 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
             _component_obligation_ids(report),
         )
         self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(48, report.proof_output_count)
         self.assertEqual(48, report.runtime_output_count)
+        self.assertTrue(report.runtime_outputs_match_proof)
         self.assertTrue(report.semantic_parseback_passed)
 
     def test_adjacent_tetrahedral_centers_are_coupled_component(self) -> None:
@@ -36,7 +38,9 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
             report.components[0].coupling_reasons,
         )
         self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(40, report.proof_output_count)
         self.assertEqual(40, report.runtime_output_count)
+        self.assertTrue(report.runtime_outputs_match_proof)
         self.assertTrue(report.semantic_parseback_passed)
 
     def test_disconnected_tetrahedral_fragments_are_independent_product(self) -> None:
@@ -49,7 +53,9 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
             _component_obligation_ids(report),
         )
         self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertIsNone(report.proof_output_count)
         self.assertEqual(288, report.runtime_output_count)
+        self.assertIsNone(report.runtime_outputs_match_proof)
         self.assertTrue(report.semantic_parseback_passed)
 
     def test_polycyclic_mixed_boundary_remains_unsupported(self) -> None:
@@ -58,7 +64,9 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
         self.assertFalse(report.supported)
         self.assertIn("fused_or_polycyclic_ring", report.unsupported_categories)
         self.assertIn("ring_tetrahedral_interaction", report.unsupported_categories)
+        self.assertIsNone(report.proof_output_count)
         self.assertIsNone(report.runtime_output_count)
+        self.assertIsNone(report.runtime_outputs_match_proof)
         self.assertIsNone(report.semantic_parseback_passed)
 
 

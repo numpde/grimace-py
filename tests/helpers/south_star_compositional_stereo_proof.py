@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from rdkit import Chem
 
 from grimace._south_star.components import extract_south_star_components
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
+from grimace._south_star.enum_s import render_south_star_tree_traversal
 from grimace._south_star.support_gates import south_star_support_gate_report
 from grimace._south_star.tetrahedral import (
     extract_ring_tetrahedral_interaction_obligations,
@@ -39,8 +41,16 @@ class SouthStarCompositionalStereoProofReport:
     obligations: tuple[SouthStarCompositionalStereoObligation, ...]
     components: tuple[SouthStarCompositionalStereoComponent, ...]
     assignment_count_before_rendering: int
+    proof_outputs: tuple[str, ...] | None
+    proof_output_count: int | None
     runtime_output_count: int | None
+    runtime_outputs_match_proof: bool | None
     semantic_parseback_passed: bool | None
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceCase:
+    source_smiles: str
 
 
 def compositional_stereo_proof_report(
@@ -53,6 +63,7 @@ def compositional_stereo_proof_report(
     gate = south_star_support_gate_report(mol)
     obligations = _obligations(mol)
     components = _components(mol, obligations)
+    proof_outputs = _proof_outputs(source_smiles, mol=mol, supported=gate.supported)
     runtime_outputs = None
     semantic_parseback_passed = None
     if gate.supported:
@@ -73,7 +84,14 @@ def compositional_stereo_proof_report(
         obligations=obligations,
         components=components,
         assignment_count_before_rendering=_assignment_count(components),
+        proof_outputs=proof_outputs,
+        proof_output_count=None if proof_outputs is None else len(proof_outputs),
         runtime_output_count=None if runtime_outputs is None else len(runtime_outputs),
+        runtime_outputs_match_proof=(
+            None
+            if proof_outputs is None or runtime_outputs is None
+            else proof_outputs == runtime_outputs
+        ),
         semantic_parseback_passed=semantic_parseback_passed,
     )
 
@@ -231,6 +249,27 @@ def _assignment_count(
     for component in components:
         count *= 2 ** len(component.obligation_ids)
     return count
+
+
+def _proof_outputs(
+    source_smiles: str,
+    *,
+    mol: Chem.Mol,
+    supported: bool,
+) -> tuple[str, ...] | None:
+    if not supported:
+        return None
+    if len(Chem.GetMolFrags(mol)) != 1:
+        return None
+    traversals = mol_to_smiles_enum_s_tree_traversals_for_case(
+        _SourceCase(source_smiles=source_smiles)
+    )
+    return tuple(
+        dict.fromkeys(
+            render_south_star_tree_traversal(traversal)
+            for traversal in traversals
+        )
+    )
 
 
 def _fragment_by_atom(mol: Chem.Mol) -> dict[int, int]:

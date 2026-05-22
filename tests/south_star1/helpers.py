@@ -36,6 +36,24 @@ def cco_facts() -> MoleculeFacts:
     )
 
 
+def cyclopropane_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
 def atom(idx: int, symbol: str) -> AtomFacts:
     return AtomFacts(
         id=AtomId(idx),

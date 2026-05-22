@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-from typing import TypeAlias
 
 from rdkit import Chem
 
@@ -11,9 +10,6 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
-
-
-_PreparedMolFragment: TypeAlias = tuple[tuple[int, ...], object]
 
 
 def _core_module() -> object:
@@ -65,18 +61,6 @@ def _matches_writer_flags(
         all_bonds_explicit=all_bonds_explicit,
         all_hs_explicit=all_hs_explicit,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
-    )
-
-
-def _fragments(
-    prepared: PreparedMol,
-) -> tuple[_PreparedMolFragment, ...]:
-    return tuple(
-        (
-            tuple(prepared._inner.fragment_atom_indices(fragment_idx)),
-            prepared._inner.fragment_prepared_graph(fragment_idx),
-        )
-        for fragment_idx in range(prepared._inner.fragment_count())
     )
 
 

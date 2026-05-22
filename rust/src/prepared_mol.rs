@@ -758,22 +758,6 @@ impl PyPreparedMol {
         self.data.rooted_fragments(rooted_at_atom)
     }
 
-    fn fragment_atom_indices(&self, fragment_idx: usize) -> PyResult<Vec<usize>> {
-        self.data
-            .fragments
-            .get(fragment_idx)
-            .map(|fragment| fragment.atom_indices.clone())
-            .ok_or_else(|| PyIndexError::new_err("PreparedMol fragment index out of range"))
-    }
-
-    fn fragment_prepared_graph(&self, fragment_idx: usize) -> PyResult<PyPreparedSmilesGraph> {
-        self.data
-            .fragments
-            .get(fragment_idx)
-            .map(|fragment| PyPreparedSmilesGraph::from_data(fragment.prepared_graph.clone()))
-            .ok_or_else(|| PyIndexError::new_err("PreparedMol fragment index out of range"))
-    }
-
     fn __repr__(&self) -> String {
         format!("PreparedMol(fragment_count={})", self.data.fragments.len())
     }

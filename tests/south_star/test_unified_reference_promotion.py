@@ -37,7 +37,9 @@ SINGLE_ATOM_ATOM_TEXT_CASE_IDS = frozenset(
         "charged_atom_text_chloride",
         "charged_atom_text_ammonium",
         "isotope_atom_text_methane",
+        "non_organic_bracket_atom_text_arsine",
         "non_organic_bracket_atom_text_selenium_hydride",
+        "non_organic_bracket_atom_text_stibine",
     }
 )
 
@@ -57,6 +59,7 @@ NONSTEREO_MONOCYCLE_CASE_IDS = frozenset(
         "unsaturated_nonstereo_monocycle_cyclohexene",
         "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
         "unsaturated_nonstereo_monocycle_cyclohexadiene",
+        "non_organic_bracket_atom_text_arsenic_kekule_ring",
     }
 )
 
@@ -130,6 +133,7 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
             "double_bond_text_formaldimine",
             "combined_atom_text_isotope_map_ethane",
             "combined_atom_text_isotope_charge_methylammonium",
+            "non_organic_bracket_atom_text_germyl_methane",
             "non_organic_bracket_atom_text_silyl_methane",
         ):
             case = cases[case_id]
@@ -277,8 +281,12 @@ class SouthStarUnifiedReferencePromotionTests(unittest.TestCase):
                 self.assertGreater(proof.closure_event_count, 0)
                 self.assertEqual(0, proof.marker_slot_count)
                 self.assertEqual(0, proof.renderer_input_count)
+                source_has_double_bond = any(
+                    bond.GetBondType().name == "DOUBLE"
+                    for bond in parse_smiles(case.source_smiles).GetBonds()
+                )
                 self.assertEqual(
-                    case.feature_area == "unsaturated_nonstereo_monocycle",
+                    source_has_double_bond,
                     any(text == "=" for text in proof.closure_open_bond_texts),
                 )
 

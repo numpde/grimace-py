@@ -3,7 +3,7 @@
   "kind": "south_star_semantic_enum_s_benchmark",
   "command": "PYTHONPATH=python:. python3 scripts/benchmark_south_star_enum_s.py --repeats 7 --warmups 1 --output /home/coder/repos/grimace-py/notes/perf_reports/south_star_enum_s_v1.json",
   "metadata": {
-    "git_commit": "1f7676dfe871ed711dbefb52d34a2a4069c71a19",
+    "git_commit": "a42783fb3a5ea010b8c9109465e41e6b68a86508",
     "python": "3.13.11 | packaged by Anaconda, Inc. | (main, Dec 10 2025, 21:28:48) [GCC 14.3.0]",
     "platform": "Linux-6.17.0-23-generic-x86_64-with-glibc2.39",
     "processor": "x86_64",
@@ -26,10 +26,10 @@
       "source_smiles": "F/C=C\\Cl",
       "expected_output_count": 12,
       "output_count": 12,
-      "time_mean_seconds": 0.0012927435704373888,
-      "time_stdev_seconds": 6.962902589326664e-05,
-      "time_min_seconds": 0.0012302249670028687,
-      "time_max_seconds": 0.0014450669987127185
+      "time_mean_seconds": 0.001259919272602669,
+      "time_stdev_seconds": 4.2607573194655945e-05,
+      "time_min_seconds": 0.0012219719355925918,
+      "time_max_seconds": 0.0013474388979375362
     },
     {
       "case_id": "hetero_imine_carrier",
@@ -38,10 +38,10 @@
       "source_smiles": "C/C=N/O",
       "expected_output_count": 12,
       "output_count": 12,
-      "time_mean_seconds": 0.0012501259999615805,
-      "time_stdev_seconds": 2.330263068897704e-05,
-      "time_min_seconds": 0.0012159079778939486,
-      "time_max_seconds": 0.0012772330082952976
+      "time_mean_seconds": 0.0012684108223766088,
+      "time_stdev_seconds": 5.680837885989231e-05,
+      "time_min_seconds": 0.0012179329060018063,
+      "time_max_seconds": 0.001364610972814262
     },
     {
       "case_id": "conjugated_triene_same_phase",
@@ -50,10 +50,10 @@
       "source_smiles": "C/C=C/C=C/C=C/C",
       "expected_output_count": 6,
       "output_count": 6,
-      "time_mean_seconds": 0.0024469399858000024,
-      "time_stdev_seconds": 3.2748605601086076e-05,
-      "time_min_seconds": 0.002413090900518,
-      "time_max_seconds": 0.0025050239637494087
+      "time_mean_seconds": 0.002431513858027756,
+      "time_stdev_seconds": 2.4831069233150527e-05,
+      "time_min_seconds": 0.002410168992355466,
+      "time_max_seconds": 0.002479761024005711
     },
     {
       "case_id": "hetero_conjugated_enimine",
@@ -62,10 +62,10 @@
       "source_smiles": "C/C=C/N=C/O",
       "expected_output_count": 12,
       "output_count": 12,
-      "time_mean_seconds": 0.0018862739837329303,
-      "time_stdev_seconds": 2.4985151721672988e-05,
-      "time_min_seconds": 0.0018531320383772254,
-      "time_max_seconds": 0.0019116810290142894
+      "time_mean_seconds": 0.0018731231435335108,
+      "time_stdev_seconds": 8.118917037458191e-05,
+      "time_min_seconds": 0.0018126079812645912,
+      "time_max_seconds": 0.002043796004727483
     },
     {
       "case_id": "mixed_coupled_and_independent_alkenes",
@@ -74,10 +74,10 @@
       "source_smiles": "F/C=C/C=C/C/C=C\\Cl",
       "expected_output_count": 48,
       "output_count": 48,
-      "time_mean_seconds": 0.009133836686877268,
-      "time_stdev_seconds": 6.279488028539697e-05,
-      "time_min_seconds": 0.009032432921230793,
-      "time_max_seconds": 0.009209363954141736
+      "time_mean_seconds": 0.00902411384907152,
+      "time_stdev_seconds": 0.00013968378049789728,
+      "time_min_seconds": 0.008810566971078515,
+      "time_max_seconds": 0.00916188198607415
     },
     {
       "case_id": "simple_saturated_monocycle_cyclohexane",
@@ -86,10 +86,10 @@
       "source_smiles": "C1CCCCC1",
       "expected_output_count": 5,
       "output_count": 5,
-      "time_mean_seconds": 0.007097265167560961,
-      "time_stdev_seconds": 7.708676530425885e-05,
-      "time_min_seconds": 0.007051210035569966,
-      "time_max_seconds": 0.0072515360079705715
+      "time_mean_seconds": 0.006964455125853419,
+      "time_stdev_seconds": 0.00011082201851285068,
+      "time_min_seconds": 0.006867310963571072,
+      "time_max_seconds": 0.007126832031644881
     },
     {
       "case_id": "branched_saturated_monocycle_methylcyclohexane",
@@ -98,10 +98,10 @@
       "source_smiles": "CC1CCCCC1",
       "expected_output_count": 60,
       "output_count": 60,
-      "time_mean_seconds": 0.014438279139410173,
-      "time_stdev_seconds": 0.0018752022740718892,
-      "time_min_seconds": 0.013575284043326974,
-      "time_max_seconds": 0.01868332305457443
+      "time_mean_seconds": 0.014750901709443756,
+      "time_stdev_seconds": 0.0022207496323737768,
+      "time_min_seconds": 0.013807500014081597,
+      "time_max_seconds": 0.019784176954999566
     },
     {
       "case_id": "unsaturated_nonstereo_monocycle_cyclohexene",
@@ -110,10 +110,10 @@
       "source_smiles": "C1=CCCCC1",
       "expected_output_count": 30,
       "output_count": 30,
-      "time_mean_seconds": 0.006929982137600226,
-      "time_stdev_seconds": 9.508637338768033e-05,
-      "time_min_seconds": 0.006821078946813941,
-      "time_max_seconds": 0.007062711985781789
+      "time_mean_seconds": 0.00697665784641036,
+      "time_stdev_seconds": 0.0001230732325341061,
+      "time_min_seconds": 0.006803961005061865,
+      "time_max_seconds": 0.007110420963726938
     },
     {
       "case_id": "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
@@ -122,10 +122,10 @@
       "source_smiles": "CC1=CCCCC1",
       "expected_output_count": 120,
       "output_count": 120,
-      "time_mean_seconds": 0.014256550148794693,
-      "time_stdev_seconds": 0.00024212761512151944,
-      "time_min_seconds": 0.014017040957696736,
-      "time_max_seconds": 0.014771835994906723
+      "time_mean_seconds": 0.013708421029150486,
+      "time_stdev_seconds": 6.902006513763687e-05,
+      "time_min_seconds": 0.013617509976029396,
+      "time_max_seconds": 0.013823901070281863
     },
     {
       "case_id": "unsaturated_nonstereo_monocycle_cyclohexadiene",
@@ -134,10 +134,10 @@
       "source_smiles": "C1=CCC=CC1",
       "expected_output_count": 15,
       "output_count": 15,
-      "time_mean_seconds": 0.007238999724255076,
-      "time_stdev_seconds": 0.0002009470348479584,
-      "time_min_seconds": 0.007087207981385291,
-      "time_max_seconds": 0.00767640199046582
+      "time_mean_seconds": 0.006878146003665668,
+      "time_stdev_seconds": 0.00010310685620620146,
+      "time_min_seconds": 0.00675664097070694,
+      "time_max_seconds": 0.00703195296227932
     },
     {
       "case_id": "aromatic_text_monocycle_benzene",
@@ -146,10 +146,10 @@
       "source_smiles": "c1ccccc1",
       "expected_output_count": 5,
       "output_count": 5,
-      "time_mean_seconds": 0.00723090984060296,
-      "time_stdev_seconds": 5.6107520453002516e-05,
-      "time_min_seconds": 0.0071854820707812905,
-      "time_max_seconds": 0.007321947952732444
+      "time_mean_seconds": 0.007086603153896119,
+      "time_stdev_seconds": 0.00010926069929172765,
+      "time_min_seconds": 0.006964195054024458,
+      "time_max_seconds": 0.0072396049508824944
     },
     {
       "case_id": "aromatic_text_monocycle_pyridine",
@@ -158,10 +158,10 @@
       "source_smiles": "c1ccncc1",
       "expected_output_count": 30,
       "output_count": 30,
-      "time_mean_seconds": 0.007342207445097821,
-      "time_stdev_seconds": 0.00010223004623271154,
-      "time_min_seconds": 0.00716784899123013,
-      "time_max_seconds": 0.007469014031812549
+      "time_mean_seconds": 0.006969608283335609,
+      "time_stdev_seconds": 0.00011553159062105681,
+      "time_min_seconds": 0.006901534972712398,
+      "time_max_seconds": 0.007227111025713384
     },
     {
       "case_id": "aromatic_text_monocycle_furan",
@@ -170,10 +170,10 @@
       "source_smiles": "c1ccoc1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.0043923189763778025,
-      "time_stdev_seconds": 5.152073792521056e-05,
-      "time_min_seconds": 0.004322267952375114,
-      "time_max_seconds": 0.004469833918847144
+      "time_mean_seconds": 0.004212129728070327,
+      "time_stdev_seconds": 0.00010705463962046985,
+      "time_min_seconds": 0.004088934976607561,
+      "time_max_seconds": 0.004395325086079538
     },
     {
       "case_id": "aromatic_text_branch_toluene",
@@ -182,10 +182,10 @@
       "source_smiles": "c1ccccc1C",
       "expected_output_count": 60,
       "output_count": 60,
-      "time_mean_seconds": 0.014456301861043488,
-      "time_stdev_seconds": 0.00012050931617780726,
-      "time_min_seconds": 0.014311002101749182,
-      "time_max_seconds": 0.014639607979916036
+      "time_mean_seconds": 0.013890334854035504,
+      "time_stdev_seconds": 0.00014580094980412662,
+      "time_min_seconds": 0.013683755998499691,
+      "time_max_seconds": 0.014123728033155203
     },
     {
       "case_id": "aromatic_text_branch_methyl_pyridine",
@@ -194,10 +194,10 @@
       "source_smiles": "c1ccncc1C",
       "expected_output_count": 120,
       "output_count": 120,
-      "time_mean_seconds": 0.01441093101831419,
-      "time_stdev_seconds": 0.0001454896592065612,
-      "time_min_seconds": 0.014237563940696418,
-      "time_max_seconds": 0.014660357031971216
+      "time_mean_seconds": 0.014095441571303777,
+      "time_stdev_seconds": 0.00022925801062244585,
+      "time_min_seconds": 0.013818420004099607,
+      "time_max_seconds": 0.014422083040699363
     },
     {
       "case_id": "aromatic_text_branch_methyl_furan",
@@ -206,10 +206,10 @@
       "source_smiles": "c1ccoc1C",
       "expected_output_count": 80,
       "output_count": 80,
-      "time_mean_seconds": 0.008702188015117176,
-      "time_stdev_seconds": 0.000124148968068664,
-      "time_min_seconds": 0.00855830404907465,
-      "time_max_seconds": 0.008868806064128876
+      "time_mean_seconds": 0.008590263297914394,
+      "time_stdev_seconds": 0.00014830888483152328,
+      "time_min_seconds": 0.0083975859452039,
+      "time_max_seconds": 0.008802332100458443
     },
     {
       "case_id": "ring_stereo_monocycle_cyclooctene",
@@ -218,10 +218,10 @@
       "source_smiles": "C1/C=C\\CCCCC1",
       "expected_output_count": 112,
       "output_count": 112,
-      "time_mean_seconds": 0.035329256140227826,
-      "time_stdev_seconds": 0.0005505930857563669,
-      "time_min_seconds": 0.034781513968482614,
-      "time_max_seconds": 0.03616631904151291
+      "time_mean_seconds": 0.03590672531364752,
+      "time_stdev_seconds": 0.0006449107151984351,
+      "time_min_seconds": 0.03489434998482466,
+      "time_max_seconds": 0.03702541207894683
     },
     {
       "case_id": "markerless_disconnected_ring_and_atom",
@@ -230,10 +230,10 @@
       "source_smiles": "C1CCCCC1.O",
       "expected_output_count": 10,
       "output_count": 10,
-      "time_mean_seconds": 0.008169835000964147,
-      "time_stdev_seconds": 0.00016352429884785034,
-      "time_min_seconds": 0.007938473019748926,
-      "time_max_seconds": 0.008323353948071599
+      "time_mean_seconds": 0.008151518713150705,
+      "time_stdev_seconds": 0.0001812596685229825,
+      "time_min_seconds": 0.008039267966523767,
+      "time_max_seconds": 0.008448070962913334
     },
     {
       "case_id": "disconnected_stereo_fragment_and_atom",
@@ -242,10 +242,10 @@
       "source_smiles": "F/C=C\\Cl.O",
       "expected_output_count": 24,
       "output_count": 24,
-      "time_mean_seconds": 0.001937859142864389,
-      "time_stdev_seconds": 8.861397457577391e-05,
-      "time_min_seconds": 0.0018410100601613522,
-      "time_max_seconds": 0.0020961969858035445
+      "time_mean_seconds": 0.0018808879956070865,
+      "time_stdev_seconds": 3.842609653807458e-05,
+      "time_min_seconds": 0.0018511019879952073,
+      "time_max_seconds": 0.001959376037120819
     },
     {
       "case_id": "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
@@ -254,10 +254,10 @@
       "source_smiles": "C1CC2CCC1C2",
       "expected_output_count": 192,
       "output_count": 192,
-      "time_mean_seconds": 0.05904673583739038,
-      "time_stdev_seconds": 0.0027704771598853796,
-      "time_min_seconds": 0.05580279801506549,
-      "time_max_seconds": 0.06349491991568357
+      "time_mean_seconds": 0.057399081864527295,
+      "time_stdev_seconds": 0.0035463672099041972,
+      "time_min_seconds": 0.055122684920206666,
+      "time_max_seconds": 0.0651274420088157
     },
     {
       "case_id": "explicit_bracket_hydrogen_h2",
@@ -266,10 +266,10 @@
       "source_smiles": "[H][H]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.0002798331469031317,
-      "time_stdev_seconds": 5.069682757693664e-05,
-      "time_min_seconds": 0.00025149097200483084,
-      "time_max_seconds": 0.0003915139241144061
+      "time_mean_seconds": 0.00026131873684270043,
+      "time_stdev_seconds": 3.7624165460447987e-05,
+      "time_min_seconds": 0.00023686804343014956,
+      "time_max_seconds": 0.00034418108407408
     },
     {
       "case_id": "isotope_atom_text_methane",
@@ -278,10 +278,10 @@
       "source_smiles": "[13CH4]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.0001385136939851301,
-      "time_stdev_seconds": 1.0883507709398205e-05,
-      "time_min_seconds": 0.00012838991824537516,
-      "time_max_seconds": 0.00016089098062366247
+      "time_mean_seconds": 0.00013161615268992527,
+      "time_stdev_seconds": 1.1324565956545873e-05,
+      "time_min_seconds": 0.0001248260959982872,
+      "time_max_seconds": 0.0001562059624120593
     },
     {
       "case_id": "atom_map_text_ethane",
@@ -290,10 +290,10 @@
       "source_smiles": "[CH3:7]C",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.0002849894475990108,
-      "time_stdev_seconds": 5.101991380519021e-05,
-      "time_min_seconds": 0.00024523900356143713,
-      "time_max_seconds": 0.0003895100671797991
+      "time_mean_seconds": 0.00024549011141061783,
+      "time_stdev_seconds": 1.254998098241837e-05,
+      "time_min_seconds": 0.0002334619639441371,
+      "time_max_seconds": 0.00026849808637052774
     },
     {
       "case_id": "non_organic_bracket_atom_text_silyl_methane",
@@ -302,10 +302,10 @@
       "source_smiles": "[SiH3]C",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.00024935583184872357,
-      "time_stdev_seconds": 1.055968397486298e-05,
-      "time_min_seconds": 0.00023645302280783653,
-      "time_max_seconds": 0.0002628929214552045
+      "time_mean_seconds": 0.00024453828310860056,
+      "time_stdev_seconds": 1.0073077765933045e-05,
+      "time_min_seconds": 0.00023332098498940468,
+      "time_max_seconds": 0.00025824899785220623
     },
     {
       "case_id": "non_organic_bracket_atom_text_selenium_hydride",
@@ -314,10 +314,10 @@
       "source_smiles": "[SeH]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.0002040710366730179,
-      "time_stdev_seconds": 4.311797118109819e-05,
-      "time_min_seconds": 0.00015369802713394165,
-      "time_max_seconds": 0.00026855303440243006
+      "time_mean_seconds": 0.00014697673863598278,
+      "time_stdev_seconds": 1.9585051059729056e-05,
+      "time_min_seconds": 0.00012196099851280451,
+      "time_max_seconds": 0.00017833802849054337
     },
     {
       "case_id": "triple_bond_text_hydrogen_cyanide",
@@ -326,10 +326,10 @@
       "source_smiles": "C#N",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.0002436205811266388,
-      "time_stdev_seconds": 1.5497466321369615e-05,
-      "time_min_seconds": 0.00022951001301407814,
-      "time_max_seconds": 0.00027000601403415203
+      "time_mean_seconds": 0.00022609771362372806,
+      "time_stdev_seconds": 1.2435040793959772e-05,
+      "time_min_seconds": 0.00021454598754644394,
+      "time_max_seconds": 0.00024984299670904875
     },
     {
       "case_id": "double_bond_text_formaldimine",
@@ -338,10 +338,10 @@
       "source_smiles": "C=N",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.0002706071162330253,
-      "time_stdev_seconds": 4.520606340456404e-05,
-      "time_min_seconds": 0.00023232505191117525,
-      "time_max_seconds": 0.00034787203185260296
+      "time_mean_seconds": 0.00022599185883466686,
+      "time_stdev_seconds": 5.686208623402481e-06,
+      "time_min_seconds": 0.00021786207798868418,
+      "time_max_seconds": 0.00023578607942909002
     },
     {
       "case_id": "combined_atom_text_isotope_map_ethane",
@@ -350,10 +350,10 @@
       "source_smiles": "[13CH3:7]C",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.00025838686685476987,
-      "time_stdev_seconds": 1.0471641334917546e-05,
-      "time_min_seconds": 0.00024867604952305555,
-      "time_max_seconds": 0.0002786220284178853
+      "time_mean_seconds": 0.0002445427401523505,
+      "time_stdev_seconds": 8.198920520080828e-06,
+      "time_min_seconds": 0.00023904198314994574,
+      "time_max_seconds": 0.0002622460015118122
     },
     {
       "case_id": "combined_atom_text_isotope_charge_methylammonium",
@@ -362,10 +362,10 @@
       "source_smiles": "[15NH3+]C",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.0002532588384513344,
-      "time_stdev_seconds": 1.2198548328046956e-05,
-      "time_min_seconds": 0.0002412119647487998,
-      "time_max_seconds": 0.0002735729794949293
+      "time_mean_seconds": 0.0002453484505947147,
+      "time_stdev_seconds": 7.793362018912877e-06,
+      "time_min_seconds": 0.00023807003162801266,
+      "time_max_seconds": 0.00026196602266281843
     },
     {
       "case_id": "markerless_acyclic_ethanol",
@@ -374,10 +374,10 @@
       "source_smiles": "CCO",
       "expected_output_count": 4,
       "output_count": 4,
-      "time_mean_seconds": 0.0004118544249130147,
-      "time_stdev_seconds": 1.872667109535375e-05,
-      "time_min_seconds": 0.00039476901292800903,
-      "time_max_seconds": 0.0004450030392035842
+      "time_mean_seconds": 0.0004029452767489212,
+      "time_stdev_seconds": 1.035409938052041e-05,
+      "time_min_seconds": 0.0003911600215360522,
+      "time_max_seconds": 0.0004192029591649771
     },
     {
       "case_id": "markerless_acyclic_isopropanol",
@@ -386,10 +386,10 @@
       "source_smiles": "CC(C)O",
       "expected_output_count": 6,
       "output_count": 6,
-      "time_mean_seconds": 0.0009415655430140239,
-      "time_stdev_seconds": 1.0930623366598687e-05,
-      "time_min_seconds": 0.0009278890211135149,
-      "time_max_seconds": 0.0009607699466869235
+      "time_mean_seconds": 0.000961317032176469,
+      "time_stdev_seconds": 3.2624006967640554e-05,
+      "time_min_seconds": 0.0009309410816058517,
+      "time_max_seconds": 0.001030198996886611
     },
     {
       "case_id": "markerless_acyclic_acetone",
@@ -398,10 +398,10 @@
       "source_smiles": "CC(=O)C",
       "expected_output_count": 6,
       "output_count": 6,
-      "time_mean_seconds": 0.0009493890018867594,
-      "time_stdev_seconds": 9.99827405675417e-06,
-      "time_min_seconds": 0.0009423160227015615,
-      "time_max_seconds": 0.0009704579133540392
+      "time_mean_seconds": 0.0009430654380204422,
+      "time_stdev_seconds": 8.781392895492898e-06,
+      "time_min_seconds": 0.0009347789455205202,
+      "time_max_seconds": 0.0009575210278853774
     },
     {
       "case_id": "markerless_acyclic_acetonitrile",
@@ -410,10 +410,10 @@
       "source_smiles": "CC#N",
       "expected_output_count": 4,
       "output_count": 4,
-      "time_mean_seconds": 0.0004046279937028885,
-      "time_stdev_seconds": 1.208961171324814e-05,
-      "time_min_seconds": 0.0003890290390700102,
-      "time_max_seconds": 0.00042671896517276764
+      "time_mean_seconds": 0.0003966231264972261,
+      "time_stdev_seconds": 1.2122220140760925e-05,
+      "time_min_seconds": 0.00038394704461097717,
+      "time_max_seconds": 0.0004219480324536562
     },
     {
       "case_id": "radical_atom_text_hydrogen",
@@ -422,10 +422,10 @@
       "source_smiles": "[H]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.0001613894377702049,
-      "time_stdev_seconds": 2.6195627020818146e-05,
-      "time_min_seconds": 0.00014183600433170795,
-      "time_max_seconds": 0.00021250802092254162
+      "time_mean_seconds": 0.00014986882784536907,
+      "time_stdev_seconds": 1.8362371716166583e-05,
+      "time_min_seconds": 0.00013069703709334135,
+      "time_max_seconds": 0.00018587196245789528
     },
     {
       "case_id": "radical_atom_text_methyl",
@@ -434,10 +434,10 @@
       "source_smiles": "[CH3]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.00013237386675817625,
-      "time_stdev_seconds": 1.1111376325806477e-05,
-      "time_min_seconds": 0.00012606603559106588,
-      "time_max_seconds": 0.00015620305202901363
+      "time_mean_seconds": 0.00012381542806646654,
+      "time_stdev_seconds": 9.117519424226815e-06,
+      "time_min_seconds": 0.00011474697384983301,
+      "time_max_seconds": 0.00013771094381809235
     },
     {
       "case_id": "radical_atom_text_oxygen",
@@ -446,10 +446,10 @@
       "source_smiles": "[O]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.00013254128862172365,
-      "time_stdev_seconds": 4.714208791672668e-06,
-      "time_min_seconds": 0.00012701796367764473,
-      "time_max_seconds": 0.00013742700684815645
+      "time_mean_seconds": 0.00012810812664351294,
+      "time_stdev_seconds": 1.0790470613763642e-05,
+      "time_min_seconds": 0.00011485698632895947,
+      "time_max_seconds": 0.00014207896310836077
     },
     {
       "case_id": "charged_atom_text_chloride",
@@ -458,10 +458,10 @@
       "source_smiles": "[Cl-]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.000128888275607356,
-      "time_stdev_seconds": 7.746501579224845e-06,
-      "time_min_seconds": 0.00012146704830229282,
-      "time_max_seconds": 0.00014140491839498281
+      "time_mean_seconds": 0.00012236858518528088,
+      "time_stdev_seconds": 6.196097454286032e-06,
+      "time_min_seconds": 0.00011700100731104612,
+      "time_max_seconds": 0.00013386295177042484
     },
     {
       "case_id": "charged_atom_text_ammonium",
@@ -470,10 +470,10 @@
       "source_smiles": "[NH4+]",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.0001294468529522419,
-      "time_stdev_seconds": 6.0179756556880535e-06,
-      "time_min_seconds": 0.0001239720731973648,
-      "time_max_seconds": 0.00014103390276432037
+      "time_mean_seconds": 0.00011943313958389419,
+      "time_stdev_seconds": 4.30543132358274e-06,
+      "time_min_seconds": 0.0001152979675680399,
+      "time_max_seconds": 0.00012705998960882425
     },
     {
       "case_id": "charged_atom_text_methylammonium",
@@ -482,10 +482,10 @@
       "source_smiles": "[NH3+]C",
       "expected_output_count": 2,
       "output_count": 2,
-      "time_mean_seconds": 0.0002499669956575547,
-      "time_stdev_seconds": 9.03284375374257e-06,
-      "time_min_seconds": 0.0002423949772492051,
-      "time_max_seconds": 0.0002686629304662347
+      "time_mean_seconds": 0.0002301840078351753,
+      "time_stdev_seconds": 9.544871233547215e-06,
+      "time_min_seconds": 0.00022190995514392853,
+      "time_max_seconds": 0.000248971045948565
     },
     {
       "case_id": "implicit_h_tetrahedral_center",
@@ -494,10 +494,10 @@
       "source_smiles": "C[C@H](F)Cl",
       "expected_output_count": 12,
       "output_count": 12,
-      "time_mean_seconds": 0.0012790420026119267,
-      "time_stdev_seconds": 6.912034030636581e-05,
-      "time_min_seconds": 0.0012065910268574953,
-      "time_max_seconds": 0.0014050519093871117
+      "time_mean_seconds": 0.0011893427332064935,
+      "time_stdev_seconds": 5.320263329906294e-05,
+      "time_min_seconds": 0.0011547249741852283,
+      "time_max_seconds": 0.0013051989953964949
     },
     {
       "case_id": "quaternary_tetrahedral_center",
@@ -506,10 +506,10 @@
       "source_smiles": "C[C@](F)(Cl)Br",
       "expected_output_count": 48,
       "output_count": 48,
-      "time_mean_seconds": 0.004484305740334094,
-      "time_stdev_seconds": 5.2685129424425354e-05,
-      "time_min_seconds": 0.004419420030899346,
-      "time_max_seconds": 0.004545627045445144
+      "time_mean_seconds": 0.004190921001801533,
+      "time_stdev_seconds": 6.778740421564643e-05,
+      "time_min_seconds": 0.0041461329674348235,
+      "time_max_seconds": 0.004339870065450668
     },
     {
       "case_id": "ring_tetrahedral_monocycle_center",
@@ -518,10 +518,10 @@
       "source_smiles": "F[C@H]1C(C)CC1",
       "expected_output_count": 90,
       "output_count": 90,
-      "time_mean_seconds": 0.013046202565809446,
-      "time_stdev_seconds": 0.00029325832589634725,
-      "time_min_seconds": 0.012700253981165588,
-      "time_max_seconds": 0.013492799014784396
+      "time_mean_seconds": 0.012372434688066798,
+      "time_stdev_seconds": 9.50029160136873e-05,
+      "time_min_seconds": 0.0122603930067271,
+      "time_max_seconds": 0.012528119026683271
     },
     {
       "case_id": "ring_adjacent_tetrahedral_monocycle",
@@ -530,10 +530,10 @@
       "source_smiles": "F[C@H](Cl)C1CC1",
       "expected_output_count": 40,
       "output_count": 40,
-      "time_mean_seconds": 0.011319662327878177,
-      "time_stdev_seconds": 0.0002307892720238567,
-      "time_min_seconds": 0.01106451009400189,
-      "time_max_seconds": 0.011714207008481026
+      "time_mean_seconds": 0.010813782440631517,
+      "time_stdev_seconds": 7.30298859667212e-05,
+      "time_min_seconds": 0.010752661037258804,
+      "time_max_seconds": 0.010958791011944413
     },
     {
       "case_id": "polycyclic_ring_stereo_bridge",
@@ -542,10 +542,10 @@
       "source_smiles": "C1CCC/C=C\\C2C1C2",
       "expected_output_count": 1120,
       "output_count": 1120,
-      "time_mean_seconds": 0.20262762558247363,
-      "time_stdev_seconds": 0.0024432684195280505,
-      "time_min_seconds": 0.19979254994541407,
-      "time_max_seconds": 0.20652992301620543
+      "time_mean_seconds": 0.19600593644593442,
+      "time_stdev_seconds": 0.006697112535220442,
+      "time_min_seconds": 0.189609952038154,
+      "time_max_seconds": 0.20895295299123973
     },
     {
       "case_id": "independent_directional_components_diene",
@@ -554,10 +554,10 @@
       "source_smiles": "F/C=C/C/C=C/Cl",
       "expected_output_count": 48,
       "output_count": 48,
-      "time_mean_seconds": 0.007001997137974415,
-      "time_stdev_seconds": 6.865726782931517e-05,
-      "time_min_seconds": 0.006904166075401008,
-      "time_max_seconds": 0.007093359949067235
+      "time_mean_seconds": 0.006776925675304872,
+      "time_stdev_seconds": 0.0001467515697845369,
+      "time_min_seconds": 0.0065634859493002295,
+      "time_max_seconds": 0.006988680921494961
     },
     {
       "case_id": "directional_tetrahedral_acyclic",
@@ -566,10 +566,10 @@
       "source_smiles": "F/C=C/[C@H](Cl)Br",
       "expected_output_count": 40,
       "output_count": 40,
-      "time_mean_seconds": 0.005340331150884075,
-      "time_stdev_seconds": 0.0006082809417583893,
-      "time_min_seconds": 0.004906152025796473,
-      "time_max_seconds": 0.006585798924788833
+      "time_mean_seconds": 0.004729760012456349,
+      "time_stdev_seconds": 4.6832609802628194e-05,
+      "time_min_seconds": 0.004681266029365361,
+      "time_max_seconds": 0.0048007110599428415
     },
     {
       "case_id": "disconnected_directional_tetrahedral_fragments",
@@ -578,10 +578,10 @@
       "source_smiles": "F/C=C\\Cl.O[C@H](F)Cl",
       "expected_output_count": 288,
       "output_count": 288,
-      "time_mean_seconds": 0.0033080936076917817,
-      "time_stdev_seconds": 4.757656732940824e-05,
-      "time_min_seconds": 0.0032483660615980625,
-      "time_max_seconds": 0.0033742320956662297
+      "time_mean_seconds": 0.0032666037025462303,
+      "time_stdev_seconds": 0.0001771363921806853,
+      "time_min_seconds": 0.003113248967565596,
+      "time_max_seconds": 0.0035200989805161953
     },
     {
       "case_id": "exocyclic_directional_monocycle_branch",
@@ -590,10 +590,10 @@
       "source_smiles": "C1CC(/C=C/Cl)CCC1",
       "expected_output_count": 160,
       "output_count": 160,
-      "time_mean_seconds": 0.0537944982726393,
-      "time_stdev_seconds": 0.002196781766019659,
-      "time_min_seconds": 0.05250890797469765,
-      "time_max_seconds": 0.05864015594124794
+      "time_mean_seconds": 0.05143983171521021,
+      "time_stdev_seconds": 0.0016002471103868442,
+      "time_min_seconds": 0.050253232941031456,
+      "time_max_seconds": 0.05465359694790095
     },
     {
       "case_id": "ring_tetrahedral_exocyclic_directional_branch",
@@ -602,10 +602,10 @@
       "source_smiles": "F[C@H]1CCCC(/C=C/Cl)C1",
       "expected_output_count": 576,
       "output_count": 576,
-      "time_mean_seconds": 0.11874596285633743,
-      "time_stdev_seconds": 0.0028915688724262287,
-      "time_min_seconds": 0.11659985699225217,
-      "time_max_seconds": 0.12485831894446164
+      "time_mean_seconds": 0.11289116843337459,
+      "time_stdev_seconds": 0.0007761623688372351,
+      "time_min_seconds": 0.11199506698176265,
+      "time_max_seconds": 0.11398949893191457
     },
     {
       "case_id": "fused_aromatic_naphthalene",
@@ -614,10 +614,10 @@
       "source_smiles": "c1ccc2ccccc2c1",
       "expected_output_count": 639,
       "output_count": 639,
-      "time_mean_seconds": 0.2334456109840955,
-      "time_stdev_seconds": 0.002980308064780173,
-      "time_min_seconds": 0.22954574797768146,
-      "time_max_seconds": 0.23807274596765637
+      "time_mean_seconds": 0.22374871640931815,
+      "time_stdev_seconds": 0.0034073349017743407,
+      "time_min_seconds": 0.21866667305584997,
+      "time_max_seconds": 0.22700827301014215
     },
     {
       "case_id": "fused_aromatic_quinoline",
@@ -626,10 +626,10 @@
       "source_smiles": "c1ccc2ncccc2c1",
       "expected_output_count": 1368,
       "output_count": 1368,
-      "time_mean_seconds": 0.23610458251953656,
-      "time_stdev_seconds": 0.004318816946776201,
-      "time_min_seconds": 0.23090681293979287,
-      "time_max_seconds": 0.24077957891859114
+      "time_mean_seconds": 0.22449006556001092,
+      "time_stdev_seconds": 0.0031954197433939372,
+      "time_min_seconds": 0.22100438899360597,
+      "time_max_seconds": 0.2294312200974673
     },
     {
       "case_id": "fused_aromatic_benzofuran",
@@ -638,10 +638,10 @@
       "source_smiles": "c1ccc2occc2c1",
       "expected_output_count": 944,
       "output_count": 944,
-      "time_mean_seconds": 0.15227161386116808,
-      "time_stdev_seconds": 0.004138334909175346,
-      "time_min_seconds": 0.1481223499868065,
-      "time_max_seconds": 0.159181711031124
+      "time_mean_seconds": 0.14736383586257165,
+      "time_stdev_seconds": 0.0048407159431176055,
+      "time_min_seconds": 0.14251879102084786,
+      "time_max_seconds": 0.1545951149892062
     },
     {
       "case_id": "aromatic_selenium_text_selenophene",
@@ -650,10 +650,10 @@
       "source_smiles": "[se]1cccc1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.004373438290453383,
-      "time_stdev_seconds": 0.00011232507260583188,
-      "time_min_seconds": 0.004253969993442297,
-      "time_max_seconds": 0.004586242022924125
+      "time_mean_seconds": 0.004412664416512209,
+      "time_stdev_seconds": 0.00012304050586012876,
+      "time_min_seconds": 0.004304933012463152,
+      "time_max_seconds": 0.004618486971594393
     },
     {
       "case_id": "aromatic_selenium_text_mapped_selenophene",
@@ -662,10 +662,10 @@
       "source_smiles": "[se:7]1cccc1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.004469680283883852,
-      "time_stdev_seconds": 4.1648465073168065e-05,
-      "time_min_seconds": 0.004419571021571755,
-      "time_max_seconds": 0.004533062921836972
+      "time_mean_seconds": 0.004411921121313104,
+      "time_stdev_seconds": 4.987407047944005e-05,
+      "time_min_seconds": 0.004351199953816831,
+      "time_max_seconds": 0.004492147010751069
     },
     {
       "case_id": "aromatic_tellurium_text_tellurophene",
@@ -674,10 +674,10 @@
       "source_smiles": "[te]1cccc1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.004514770598949066,
-      "time_stdev_seconds": 3.3344275972198705e-05,
-      "time_min_seconds": 0.004465325968340039,
-      "time_max_seconds": 0.0045748520642519
+      "time_mean_seconds": 0.004427080026029476,
+      "time_stdev_seconds": 0.00010771738330863936,
+      "time_min_seconds": 0.004328137030825019,
+      "time_max_seconds": 0.004589992109686136
     },
     {
       "case_id": "non_organic_bracket_atom_text_silicon_kekule_ring",
@@ -686,10 +686,58 @@
       "source_smiles": "[si]1ccccc1",
       "expected_output_count": 60,
       "output_count": 60,
-      "time_mean_seconds": 0.00748787058650383,
-      "time_stdev_seconds": 4.93096625258191e-05,
-      "time_min_seconds": 0.0074382469756528735,
-      "time_max_seconds": 0.007585111074149609
+      "time_mean_seconds": 0.007360156725293824,
+      "time_stdev_seconds": 0.00014316054174667647,
+      "time_min_seconds": 0.007212804048322141,
+      "time_max_seconds": 0.0076584069756790996
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_arsine",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[AsH3]",
+      "expected_output_count": 1,
+      "output_count": 1,
+      "time_mean_seconds": 0.00014327227004936764,
+      "time_stdev_seconds": 2.1832410366505138e-05,
+      "time_min_seconds": 0.0001255370443686843,
+      "time_max_seconds": 0.0001893880544230342
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_germyl_methane",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[GeH3]C",
+      "expected_output_count": 2,
+      "output_count": 2,
+      "time_mean_seconds": 0.0002630048631025212,
+      "time_stdev_seconds": 1.510497858475098e-05,
+      "time_min_seconds": 0.0002481999108567834,
+      "time_max_seconds": 0.00028753397054970264
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_stibine",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[SbH3]",
+      "expected_output_count": 1,
+      "output_count": 1,
+      "time_mean_seconds": 0.0001403883964355503,
+      "time_stdev_seconds": 1.5984388008334976e-05,
+      "time_min_seconds": 0.00012011697981506586,
+      "time_max_seconds": 0.00016281800344586372
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_arsenic_kekule_ring",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[As]1=CC=CC=C1",
+      "expected_output_count": 60,
+      "output_count": 60,
+      "time_mean_seconds": 0.00720357199731682,
+      "time_stdev_seconds": 9.919681247984747e-05,
+      "time_min_seconds": 0.007105601020157337,
+      "time_max_seconds": 0.007346305996179581
     },
     {
       "case_id": "modified_aromatic_atom_text_pyrrole_nh",
@@ -698,10 +746,10 @@
       "source_smiles": "c1cc[nH]c1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.0045445806879018035,
-      "time_stdev_seconds": 9.326402409662424e-05,
-      "time_min_seconds": 0.004456960945390165,
-      "time_max_seconds": 0.004740903037600219
+      "time_mean_seconds": 0.004366781562566757,
+      "time_stdev_seconds": 2.9643323078515818e-05,
+      "time_min_seconds": 0.004335721023380756,
+      "time_max_seconds": 0.0044187079183757305
     },
     {
       "case_id": "modified_aromatic_atom_text_isotope_pyrrole",
@@ -710,10 +758,10 @@
       "source_smiles": "c1cc[15nH]c1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.004645744155693267,
-      "time_stdev_seconds": 5.206095399278751e-05,
-      "time_min_seconds": 0.004574530990794301,
-      "time_max_seconds": 0.00472280802205205
+      "time_mean_seconds": 0.004483736984963928,
+      "time_stdev_seconds": 9.479966591459594e-05,
+      "time_min_seconds": 0.004433286027051508,
+      "time_max_seconds": 0.004691834910772741
     },
     {
       "case_id": "modified_aromatic_atom_text_mapped_pyrrole",
@@ -722,10 +770,10 @@
       "source_smiles": "[nH:7]1cccc1",
       "expected_output_count": 20,
       "output_count": 20,
-      "time_mean_seconds": 0.004572804568202368,
-      "time_stdev_seconds": 2.4163495302860574e-05,
-      "time_min_seconds": 0.004546227981336415,
-      "time_max_seconds": 0.0046106280060485005
+      "time_mean_seconds": 0.004435009705567998,
+      "time_stdev_seconds": 4.301265831397149e-05,
+      "time_min_seconds": 0.00439277000259608,
+      "time_max_seconds": 0.004513257998041809
     },
     {
       "case_id": "modified_aromatic_atom_text_mapped_pyridine",
@@ -734,10 +782,10 @@
       "source_smiles": "c1cc[n:7]cc1",
       "expected_output_count": 30,
       "output_count": 30,
-      "time_mean_seconds": 0.007745238420154367,
-      "time_stdev_seconds": 3.475391794582224e-05,
-      "time_min_seconds": 0.0076883649453520775,
-      "time_max_seconds": 0.007777982042171061
+      "time_mean_seconds": 0.007456760986575058,
+      "time_stdev_seconds": 0.00011209000814758141,
+      "time_min_seconds": 0.007334494031965733,
+      "time_max_seconds": 0.007683302974328399
     },
     {
       "case_id": "modified_aromatic_atom_text_pyridinium_h",
@@ -746,10 +794,10 @@
       "source_smiles": "c1cc[nH+]cc1",
       "expected_output_count": 30,
       "output_count": 30,
-      "time_mean_seconds": 0.007539033706832145,
-      "time_stdev_seconds": 0.00014281640176387324,
-      "time_min_seconds": 0.0073948249919340014,
-      "time_max_seconds": 0.007715987041592598
+      "time_mean_seconds": 0.0074827474475439104,
+      "time_stdev_seconds": 0.0001354886778467612,
+      "time_min_seconds": 0.007332570035941899,
+      "time_max_seconds": 0.00766528001986444
     },
     {
       "case_id": "modified_aromatic_atom_text_pyridine_n_oxide",
@@ -758,10 +806,10 @@
       "source_smiles": "c1cc[n+]([O-])cc1",
       "expected_output_count": 60,
       "output_count": 60,
-      "time_mean_seconds": 0.015933922259137034,
-      "time_stdev_seconds": 0.0002627029870294544,
-      "time_min_seconds": 0.015546547947451472,
-      "time_max_seconds": 0.016240488039329648
+      "time_mean_seconds": 0.015196628868579865,
+      "time_stdev_seconds": 0.0001756497364345525,
+      "time_min_seconds": 0.014994184020906687,
+      "time_max_seconds": 0.01549725397489965
     },
     {
       "case_id": "quadruple_bond_text_carbon_carbon",
@@ -770,10 +818,10 @@
       "source_smiles": "C$C",
       "expected_output_count": 1,
       "output_count": 1,
-      "time_mean_seconds": 0.0002465047042018601,
-      "time_stdev_seconds": 3.336752861659389e-05,
-      "time_min_seconds": 0.00022636400535702705,
-      "time_max_seconds": 0.0003200899809598923
+      "time_mean_seconds": 0.00023911514186433384,
+      "time_stdev_seconds": 2.6980314321096677e-05,
+      "time_min_seconds": 0.00022091798018664122,
+      "time_max_seconds": 0.0002978229895234108
     }
   ]
 }

@@ -923,13 +923,15 @@ def south_star_promotion_review_artifact_records(
         ),
         SouthStarPromotionReviewArtifactRecord(
             gate_id="release_notes_scope",
-            review_kind="human_release_review_required",
-            artifact_path="release notes for exporting MolToSmilesEnumS",
+            review_kind="checked_doc_artifact",
+            artifact_path="docs/release-note-checklists/enum-s-export.md",
             required_terms=(
                 "semantic contract",
-                "MolToSmilesEnum RDKit writer parity",
-                "unsupported boundaries",
-                "performance evidence boundary",
+                "`MolToSmilesEnum` RDKit writer parity",
+                "Unsupported boundaries",
+                "Performance evidence boundary",
+                "guardrail",
+                "Avoid accidental speed claims",
             ),
         ),
     )

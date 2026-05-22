@@ -484,6 +484,9 @@ The test-side gate list is
 `tests.south_star.test_package_readiness.SOUTH_STAR_PUBLIC_API_PROMOTION_GATES`.
 It records both executable commands and explicit review items so the promotion
 bar is not reduced to informal confidence.
+The release-note gate is backed by
+`docs/release-note-checklists/enum-s-export.md` until a concrete export release
+exists.
 
 ## Current Pre-Export Gap
 

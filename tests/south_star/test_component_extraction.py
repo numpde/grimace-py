@@ -59,6 +59,20 @@ class SouthStarComponentExtractionTests(unittest.TestCase):
             extraction.components[0].coupling_causes[0].feature_ids,
         )
 
+    def test_shared_carrier_is_directional_coupling_boundary(self) -> None:
+        extraction = extract_south_star_components(
+            parse_smiles("F/C=C/C=C/Cl"),
+        )
+        extraction.fail_if_unsupported()
+
+        self.assertEqual(1, len(extraction.components))
+        self.assertEqual(2, len(extraction.components[0].source_features))
+        self.assertEqual(1, len(extraction.components[0].coupling_causes))
+        self.assertEqual(
+            "shared_carrier_edge",
+            extraction.components[0].coupling_causes[0].category,
+        )
+
     def test_independent_features_are_separate_components(self) -> None:
         extraction = extract_south_star_components(
             parse_smiles("F/C=C\\CC/C=C\\Cl"),
@@ -74,6 +88,27 @@ class SouthStarComponentExtractionTests(unittest.TestCase):
             [(), ()],
             [component.coupling_causes for component in extraction.components],
         )
+
+    def test_adjacent_but_factorable_directional_features_stay_separate(
+        self,
+    ) -> None:
+        extraction = extract_south_star_components(
+            parse_smiles("F/C=C/C/C=C/Cl"),
+        )
+        extraction.fail_if_unsupported()
+
+        self.assertEqual(2, len(extraction.components))
+        self.assertEqual(
+            [1, 1],
+            [len(component.source_features) for component in extraction.components],
+        )
+        self.assertEqual(
+            [(), ()],
+            [component.coupling_causes for component in extraction.components],
+        )
+        first_carriers = set(extraction.components[0].eligible_carrier_edges)
+        second_carriers = set(extraction.components[1].eligible_carrier_edges)
+        self.assertTrue(first_carriers.isdisjoint(second_carriers))
 
     def test_unsupported_gate_prevents_component_extraction(self) -> None:
         mol = parse_smiles("CCF")

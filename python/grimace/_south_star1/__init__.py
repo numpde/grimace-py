@@ -22,6 +22,7 @@ CORE_MODULES: tuple[str, ...] = (
     "semantics",
     "skeleton",
     "slots",
+    "stereo_csp",
     "witness_search",
 )
 

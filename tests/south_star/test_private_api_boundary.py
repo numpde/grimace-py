@@ -6,6 +6,7 @@ import grimace
 from rdkit import Chem
 from grimace._south_star.api import mol_to_smiles_enum_s_private
 from grimace._south_star.api import south_star_private_api_contract
+from grimace._south_star.api import south_star_proposed_public_api_contract
 from grimace._south_star.support_gates import SouthStarUnsupportedFeatureError
 from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
@@ -63,6 +64,30 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
             contract.unsupported_error_type,
         )
         self.assertEqual("MolToSmilesEnum", contract.rdkit_parity_surface)
+
+    def test_proposed_public_api_contract_is_explicit_but_not_exported(
+        self,
+    ) -> None:
+        contract = south_star_proposed_public_api_contract()
+
+        self.assertEqual("MolToSmilesEnumS", contract.public_name)
+        self.assertFalse(contract.exported_from_public_package)
+        self.assertFalse(hasattr(grimace, contract.public_name))
+        self.assertEqual("rdkit.Chem.Mol", contract.accepted_input)
+        self.assertEqual("tuple[str, ...]", contract.return_type)
+        self.assertIn("first_occurrence_deduplication", contract.ordering_contract)
+        self.assertIn("support membership", contract.ordering_contract)
+        self.assertEqual("none_on_first_public_surface", contract.diagnostics_exposure)
+        self.assertIn("maximal_eligible_carrier", contract.policy_surface)
+        self.assertIn("all_fragment_orders", contract.policy_surface)
+        self.assertIn("first_occurrence_deduplication", contract.policy_surface)
+        self.assertEqual(
+            "SouthStarUnsupportedFeatureError",
+            contract.unsupported_error_type,
+        )
+        self.assertIn("not RDKit", contract.semantic_contract)
+        self.assertEqual("MolToSmilesEnum", contract.rdkit_parity_surface)
+        self.assertIn("promotion gates", contract.export_precondition)
 
     def test_private_api_accepts_rdkit_mol_and_returns_diagnostics(self) -> None:
         case = next(

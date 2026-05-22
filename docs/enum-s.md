@@ -53,6 +53,20 @@ diagnostic boundaries, unsupported-feature error type, and the distinction from
 the RDKit-parity `MolToSmilesEnum` surface. This object is a private boundary
 description, not a public package API.
 
+The proposed first public shape is inspectable through
+`grimace._south_star.api.south_star_proposed_public_api_contract()`. It is still
+not exported from `grimace`. The current proposal is deliberately narrow:
+
+- public name: `MolToSmilesEnumS`;
+- input: `rdkit.Chem.Mol`;
+- return type: `tuple[str, ...]`;
+- order: deterministic first-occurrence deduplication for the default South
+  Star policy, while support membership remains the primary semantic contract;
+- diagnostics: not exposed on the first public surface;
+- policy surface: fixed default South Star policy;
+- unsupported input behavior: fail fast with `SouthStarUnsupportedFeatureError`;
+- relation to `MolToSmilesEnum`: semantic support, not RDKit writer parity.
+
 Unsupported inputs fail before enumeration with
 `SouthStarUnsupportedFeatureError`, a `NotImplementedError` subclass that keeps
 the unsupported feature records and categories available for diagnostics. That

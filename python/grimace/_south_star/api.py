@@ -27,6 +27,21 @@ class SouthStarPrivateApiContract:
     rdkit_parity_surface: str
 
 
+@dataclass(frozen=True, slots=True)
+class SouthStarProposedPublicApiContract:
+    public_name: str
+    exported_from_public_package: bool
+    accepted_input: str
+    return_type: str
+    ordering_contract: str
+    diagnostics_exposure: str
+    policy_surface: str
+    unsupported_error_type: str
+    semantic_contract: str
+    rdkit_parity_surface: str
+    export_precondition: str
+
+
 def south_star_private_api_contract(
     *,
     policy_set: SouthStarPolicySet = DEFAULT_SOUTH_STAR_POLICY_SET,
@@ -55,6 +70,36 @@ def south_star_private_api_contract(
         ),
         unsupported_error_type="SouthStarUnsupportedFeatureError",
         rdkit_parity_surface="MolToSmilesEnum",
+    )
+
+
+def south_star_proposed_public_api_contract() -> SouthStarProposedPublicApiContract:
+    """Return the proposed first public shape without exporting it yet."""
+    return SouthStarProposedPublicApiContract(
+        public_name="MolToSmilesEnumS",
+        exported_from_public_package=False,
+        accepted_input="rdkit.Chem.Mol",
+        return_type="tuple[str, ...]",
+        ordering_contract=(
+            "deterministic first_occurrence_deduplication order for the "
+            "default South Star policy; support membership is the primary "
+            "semantic contract"
+        ),
+        diagnostics_exposure="none_on_first_public_surface",
+        policy_surface=(
+            "fixed default South Star policy: maximal_eligible_carrier, "
+            "all_fragment_orders, first_occurrence_deduplication"
+        ),
+        unsupported_error_type="SouthStarUnsupportedFeatureError",
+        semantic_contract=(
+            "South Star semantic support, not RDKit canonical=False doRandom=True "
+            "writer parity"
+        ),
+        rdkit_parity_surface="MolToSmilesEnum",
+        export_precondition=(
+            "only export after docs, release notes, and checkable promotion "
+            "gates agree with this contract"
+        ),
     )
 
 

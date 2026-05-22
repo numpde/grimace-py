@@ -13,10 +13,10 @@ from grimace._runtime_graphs import (
     connected_prepared_mol_fragment_or_none as _connected_prepared_mol_fragment_or_none,
     prepared_mol_fragment_plans as _prepared_mol_fragment_plans,
     prepare_core_graph_for_static_inventory as _prepare_core_graph_for_static_inventory,
-    prepare_smiles_graph,
+    prepare_smiles_graph as _prepare_smiles_graph,
 )
 from grimace._runtime_inputs import (
-    MolToSmilesFlags,
+    MolToSmilesFlags as _MolToSmilesFlags,
     make_flags as _make_flags,
     prepare_runtime_input as _prepare_runtime_input,
 )
@@ -33,16 +33,16 @@ from grimace._runtime_states import (
 
 _core = importlib.import_module("grimace._core")
 from grimace._reference.prepared_graph import (
-    CONNECTED_NONSTEREO_SURFACE,
-    CONNECTED_STEREO_SURFACE,
-    PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
+    CONNECTED_NONSTEREO_SURFACE as _CONNECTED_NONSTEREO_SURFACE,
+    CONNECTED_STEREO_SURFACE as _CONNECTED_STEREO_SURFACE,
+    PREPARED_SMILES_GRAPH_SCHEMA_VERSION as _PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
 )
 
 
 def _connected_fragment_support(
     fragment_mol: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
     rooted_at_atom: int | None,
 ) -> set[str]:
     if rooted_at_atom is not None:
@@ -77,7 +77,7 @@ def _connected_fragment_support(
 def _fragmented_prepared_support(
     prepared: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> set[str]:
     fragment_supports: list[tuple[str, ...]] = []
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
@@ -126,7 +126,7 @@ def _public_decoder_choices(
 
 def _instantiate_core_object(
     mol_or_prepared: object,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
     *,
     stereo_type: type,
     nonstereo_type: type,
@@ -140,14 +140,18 @@ def _instantiate_core_object(
         mol_or_prepared = fragment
         flags = flags.with_rooted_at_atom(rooted_at_atom)
 
-    prepared = prepare_smiles_graph(mol_or_prepared, flags=flags)
-    core_type = stereo_type if prepared.surface_kind == CONNECTED_STEREO_SURFACE else nonstereo_type
+    prepared = _prepare_smiles_graph(mol_or_prepared, flags=flags)
+    core_type = (
+        stereo_type
+        if prepared.surface_kind == _CONNECTED_STEREO_SURFACE
+        else nonstereo_type
+    )
     return core_type(prepared, flags.rooted_at_atom)
 
 
 def _make_walker(
     mol_or_prepared: object,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> object:
     return _instantiate_core_object(
         mol_or_prepared,
@@ -159,7 +163,7 @@ def _make_walker(
 
 def _make_decoder(
     mol_or_prepared: object,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> object:
     return _instantiate_core_object(
         mol_or_prepared,
@@ -171,7 +175,7 @@ def _make_decoder(
 
 def _make_connected_state_adapter(
     mol_or_prepared: object,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> _CoreStateAdapter:
     return _CoreStateAdapter(_make_decoder(mol_or_prepared, flags))
 
@@ -179,7 +183,7 @@ def _make_connected_state_adapter(
 def _make_fragment_state_adapter(
     fragment_mol: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
     rooted_at_atom: int | None,
 ) -> _BaseDecoderState:
     if rooted_at_atom is not None:
@@ -202,11 +206,11 @@ def _make_fragment_state_adapter(
     )
     if connected_fragment is not None:
         fragment_for_preparation, _ = connected_fragment
-    prepared_fragment = prepare_smiles_graph(
+    prepared_fragment = _prepare_smiles_graph(
         fragment_for_preparation,
         flags=flags.with_rooted_at_atom(0),
     )
-    if prepared_fragment.surface_kind == CONNECTED_NONSTEREO_SURFACE:
+    if prepared_fragment.surface_kind == _CONNECTED_NONSTEREO_SURFACE:
         return _make_connected_state_adapter(
             prepared_fragment,
             flags.with_rooted_at_atom(-1),
@@ -226,7 +230,7 @@ def _make_fragment_state_adapter(
 
 def _make_disconnected_decoder(
     prepared: object,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> _DisconnectedStateAdapter:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
     fragment_states = tuple(
@@ -246,7 +250,7 @@ def _make_disconnected_decoder(
 def _make_decoder_state_impl(
     mol_or_prepared: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> _BaseDecoderState:
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:
@@ -344,7 +348,7 @@ class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
 def _exact_token_inventory_from_decoder(
     mol_or_prepared: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> tuple[str, ...]:
     inventory: set[str] = set()
     visited_state_keys: set[DecoderCacheKey] = set()
@@ -374,7 +378,7 @@ def _exact_token_inventory_from_decoder(
 def _connected_token_inventory_superset(
     mol_or_prepared: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> tuple[str, ...]:
     rooted_at_atom = flags.rooted_at_atom
     connected_fragment = _connected_prepared_mol_fragment_or_none(
@@ -396,7 +400,7 @@ def _connected_token_inventory_superset(
 def _fragmented_prepared_token_inventory_superset(
     prepared: object,
     *,
-    flags: MolToSmilesFlags,
+    flags: _MolToSmilesFlags,
 ) -> tuple[str, ...]:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
     inventory: set[str] = set()
@@ -632,9 +636,9 @@ def make_stereo_walker(
 
 def prepared_smiles_graph_schema_version() -> int:
     core_version = _core.prepared_smiles_graph_schema_version()
-    if core_version != PREPARED_SMILES_GRAPH_SCHEMA_VERSION:
+    if core_version != _PREPARED_SMILES_GRAPH_SCHEMA_VERSION:
         raise RuntimeError(
             "Python RDKit bridge and Rust core disagree on prepared graph schema "
-            f"version: python={PREPARED_SMILES_GRAPH_SCHEMA_VERSION}, core={core_version}"
+            f"version: python={_PREPARED_SMILES_GRAPH_SCHEMA_VERSION}, core={core_version}"
         )
     return core_version

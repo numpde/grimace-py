@@ -40,6 +40,18 @@ def _imported_module_names(path: Path) -> set[str]:
     return imported
 
 
+def _import_aliases(path: Path) -> set[tuple[str, str, str | None]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    aliases: set[tuple[str, str, str | None]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            aliases.update(
+                (node.module, alias.name, alias.asname)
+                for alias in node.names
+            )
+    return aliases
+
+
 class RuntimeBoundaryTests(unittest.TestCase):
     deviation_module = REPO_ROOT / "python" / "grimace" / "_deviation.py"
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
@@ -97,6 +109,22 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertNotIn("grimace._prepared_mol", imported_names)
         self.assertNotIn("grimace._prepared_mol.PreparedMol", imported_names)
         self.assertNotIn("grimace._prepared_mol", _string_constants(self.runtime_module))
+
+    def test_public_runtime_module_does_not_reexport_owned_helpers(self) -> None:
+        owning_module_imports = {
+            ("grimace._runtime_graphs", "prepare_smiles_graph"),
+            ("grimace._runtime_inputs", "MolToSmilesFlags"),
+            ("grimace._reference.prepared_graph", "CONNECTED_NONSTEREO_SURFACE"),
+            ("grimace._reference.prepared_graph", "CONNECTED_STEREO_SURFACE"),
+            ("grimace._reference.prepared_graph", "PREPARED_SMILES_GRAPH_SCHEMA_VERSION"),
+        }
+
+        for module_name, imported_name, alias in _import_aliases(self.runtime_module):
+            if (module_name, imported_name) in owning_module_imports:
+                with self.subTest(module_name=module_name, imported_name=imported_name):
+                    self.assertIsNotNone(alias)
+                    assert alias is not None
+                    self.assertTrue(alias.startswith("_"), alias)
 
     def test_deviation_module_does_not_inspect_decoder_state_storage(self) -> None:
         self.assertNotIn("_state", _attribute_names(self.deviation_module))

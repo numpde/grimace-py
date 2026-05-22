@@ -5246,24 +5246,27 @@ mod tests {
             let Ok(chem) = py.import("rdkit.Chem") else {
                 return None;
             };
-            let runtime = py
-                .import("grimace._runtime")
-                .expect("grimace._runtime import should succeed");
+            let runtime_inputs = py
+                .import("grimace._runtime_inputs")
+                .expect("grimace._runtime_inputs import should succeed");
+            let runtime_graphs = py
+                .import("grimace._runtime_graphs")
+                .expect("grimace._runtime_graphs import should succeed");
             let mol = chem
                 .getattr("MolFromSmiles")
                 .expect("MolFromSmiles should exist")
                 .call1((smiles,))
                 .expect("SMILES should parse");
-            let flags = runtime
-                .getattr("_make_flags")
-                .expect("_make_flags should exist")
+            let flags = runtime_inputs
+                .getattr("make_flags")
+                .expect("make_flags should exist")
                 .call0()
-                .expect("_make_flags should build default flags");
+                .expect("make_flags should build default flags");
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs
                 .set_item("flags", flags)
                 .expect("kwargs population should succeed");
-            let prepared = runtime
+            let prepared = runtime_graphs
                 .getattr("prepare_smiles_graph")
                 .expect("prepare_smiles_graph should exist")
                 .call((mol,), Some(&kwargs))

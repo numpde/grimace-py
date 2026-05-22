@@ -17,6 +17,7 @@ CORE_MODULES: tuple[str, ...] = (
     "fact_isomorphism",
     "graph_index",
     "ids",
+    "ordinary_semantics",
     "policy",
     "render",
     "ring_labels",

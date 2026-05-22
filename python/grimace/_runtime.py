@@ -21,6 +21,7 @@ from grimace._runtime_inputs import (
     prepare_runtime_input as _prepare_runtime_input,
 )
 from grimace._runtime_states import (
+    _BaseDecoderState,
     DecoderCacheKey,
     _CoreStateAdapter,
     _DisconnectedStateAdapter,
@@ -105,7 +106,7 @@ class MolToSmilesChoice:
 
 def _public_decoder_choices(
     decoder_type: type,
-    successors: Sequence[tuple[str, object]],
+    successors: Sequence[tuple[str, _BaseDecoderState]],
 ) -> tuple[MolToSmilesChoice, ...]:
     if not successors:
         return ()
@@ -180,7 +181,7 @@ def _make_fragment_state_adapter(
     *,
     flags: MolToSmilesFlags,
     rooted_at_atom: int | None,
-) -> object:
+) -> _BaseDecoderState:
     if rooted_at_atom is not None:
         return _make_connected_state_adapter(
             fragment_mol,
@@ -246,7 +247,7 @@ def _make_decoder_state_impl(
     mol_or_prepared: object,
     *,
     flags: MolToSmilesFlags,
-) -> object:
+) -> _BaseDecoderState:
     disconnected = _as_disconnected_prepared_mol(mol_or_prepared)
     if disconnected is not None:
         return _make_disconnected_decoder(disconnected, flags)
@@ -294,7 +295,7 @@ class _PublicDecoderBase:
     @classmethod
     def _from_parts(
         cls,
-        state_impl: object,
+        state_impl: _BaseDecoderState,
     ) -> "_PublicDecoderBase":
         decoder = cls.__new__(cls)
         decoder._state = state_impl
@@ -637,21 +638,3 @@ def prepared_smiles_graph_schema_version() -> int:
             f"version: python={PREPARED_SMILES_GRAPH_SCHEMA_VERSION}, core={core_version}"
         )
     return core_version
-
-
-__all__ = [
-    "CONNECTED_NONSTEREO_SURFACE",
-    "CONNECTED_STEREO_SURFACE",
-    "MolToSmilesDecoder",
-    "MolToSmilesDeterminizedDecoder",
-    "MolToSmilesFlags",
-    "PREPARED_SMILES_GRAPH_SCHEMA_VERSION",
-    "enumerate_rooted_connected_nonstereo_smiles_support",
-    "enumerate_rooted_connected_stereo_smiles_support",
-    "make_nonstereo_walker",
-    "make_stereo_walker",
-    "mol_to_smiles_enum",
-    "mol_to_smiles_support",
-    "prepare_smiles_graph",
-    "prepared_smiles_graph_schema_version",
-]

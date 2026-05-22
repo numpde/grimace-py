@@ -14,8 +14,12 @@ class _BaseDecoderState(Protocol):
     def is_terminal(self) -> bool: ...
     def copy(self) -> "_BaseDecoderState": ...
     def cache_key(self) -> Hashable: ...
-    def choice_successor_states(self) -> tuple[tuple[str, object], ...]: ...
-    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]: ...
+    def choice_successor_states(
+        self,
+    ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
+    def grouped_successor_states(
+        self,
+    ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
 
 
 class _CoreStateAdapter:
@@ -27,17 +31,17 @@ class _CoreStateAdapter:
     @staticmethod
     def _successor_states(
         successors: Sequence[tuple[str, object]],
-    ) -> tuple[tuple[str, object], ...]:
+    ) -> tuple[tuple[str, _BaseDecoderState], ...]:
         if not successors:
             return ()
-        successor_states = [None] * len(successors)
-        for idx, (text, next_decoder) in enumerate(successors):
+        successor_states: list[tuple[str, _BaseDecoderState]] = []
+        for text, next_decoder in successors:
             next_state = _CoreStateAdapter.__new__(_CoreStateAdapter)
             next_state._decoder = next_decoder
-            successor_states[idx] = (text, next_state)
-        return cast(tuple[tuple[str, object], ...], tuple(successor_states))
+            successor_states.append((text, next_state))
+        return tuple(successor_states)
 
-    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
+    def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return self._successor_states(self._decoder.choice_successors())
 
     def prefix(self) -> str:
@@ -52,7 +56,7 @@ class _CoreStateAdapter:
     def cache_key(self) -> DecoderCacheKey:
         return ("core", self._decoder.cache_key())
 
-    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
+    def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return self._successor_states(self._decoder.grouped_successors())
 
 
@@ -64,8 +68,8 @@ class _MergedStateAdapter:
             raise ValueError("Merged decoder state requires at least one branch")
         self._states = states
 
-    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
-        successor_states: list[tuple[str, object]] = []
+    def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
+        successor_states: list[tuple[str, _BaseDecoderState]] = []
         for state in self._states:
             if state.is_terminal():
                 continue
@@ -91,7 +95,7 @@ class _MergedStateAdapter:
             tuple(sorted((_state_cache_key(state) for state in self._states), key=repr)),
         )
 
-    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
+    def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         grouped: dict[str, list[_BaseDecoderState]] = {}
         for state in self._states:
             for text, successor in _grouped_successor_states(state):
@@ -145,8 +149,8 @@ class _DisconnectedStateAdapter:
 
     def _active_successor_states(
         self,
-        successors: tuple[tuple[str, object], ...],
-    ) -> tuple[tuple[str, object], ...]:
+        successors: tuple[tuple[str, _BaseDecoderState], ...],
+    ) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return tuple(
             (text, self._with_active_state(successor))
             for text, successor in successors
@@ -155,18 +159,18 @@ class _DisconnectedStateAdapter:
     def _fragment_separator_successor(
         self,
         active: _BaseDecoderState,
-    ) -> tuple[tuple[str, object], ...]:
+    ) -> tuple[tuple[str, _BaseDecoderState], ...]:
         if self._fragment_idx + 1 == len(self._fragment_states):
             return ()
         return ((".", self._advance_fragment(active)),)
 
-    def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
+    def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         active = self._active_state()
         if not active.is_terminal():
             return self._active_successor_states(_choice_successor_states(active))
         return self._fragment_separator_successor(active)
 
-    def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
+    def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         active = self._active_state()
         if not active.is_terminal():
             return self._active_successor_states(
@@ -214,15 +218,21 @@ def _merge_choice_successor_states(
     return _MergedStateAdapter(tuple(flattened))
 
 
-def _choice_successor_states(state: _BaseDecoderState) -> tuple[tuple[str, object], ...]:
+def _choice_successor_states(
+    state: _BaseDecoderState,
+) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return state.choice_successor_states()
 
 
-def _grouped_successor_states(state: _BaseDecoderState) -> tuple[tuple[str, object], ...]:
+def _grouped_successor_states(
+    state: _BaseDecoderState,
+) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return state.grouped_successor_states()
 
 
-def _determinized_choice_successors(state: _BaseDecoderState) -> tuple[tuple[str, object], ...]:
+def _determinized_choice_successors(
+    state: _BaseDecoderState,
+) -> tuple[tuple[str, _BaseDecoderState], ...]:
     """Return one successor per token text by merging same-text branches."""
     return _grouped_successor_states(state)
 

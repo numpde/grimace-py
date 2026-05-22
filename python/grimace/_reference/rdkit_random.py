@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from rdkit import Chem, rdBase
 
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
-    MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
 )
 from grimace._reference.policy import ReferencePolicy
-
-
-SAMPLING_KEYS = {"seed", "draw_budget", *MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
-IDENTITY_KEYS = {"parse_with_rdkit", *MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
+from grimace._reference.policy_sections import identity_section, sampling_section
 
 
 @dataclass(frozen=True)
@@ -36,34 +32,23 @@ class RandomReferenceResult:
         return not self.validation_issues
 
 
-def _require_keys(section: Mapping[str, Any], expected: set[str], section_name: str) -> None:
-    actual = set(section)
-    if actual != expected:
-        missing = sorted(expected - actual)
-        extra = sorted(actual - expected)
-        raise ValueError(
-            f"{section_name} keys must match exactly; missing={missing}, extra={extra}"
-        )
-
-
 def _sampling_kwargs(policy: ReferencePolicy) -> tuple[int, int, int, dict[str, Any]]:
-    sampling = policy.data["sampling"]
-    if not isinstance(sampling, dict):
-        raise TypeError("sampling policy must be a JSON object")
-    _require_keys(sampling, SAMPLING_KEYS, "sampling")
+    sampling = sampling_section(policy)
     kwargs = {
         spec.public_name: sampling[spec.public_name]
         for spec in MOL_TO_SMILES_OPTIONS
         if spec.public_name != "rootedAtAtom"
     }
-    return int(sampling["seed"]), int(sampling["draw_budget"]), int(sampling["rootedAtAtom"]), kwargs
+    return (
+        int(sampling["seed"]),
+        int(sampling["draw_budget"]),
+        int(sampling["rootedAtAtom"]),
+        kwargs,
+    )
 
 
 def _identity_kwargs(policy: ReferencePolicy) -> dict[str, Any]:
-    identity = policy.data["identity_check"]
-    if not isinstance(identity, dict):
-        raise TypeError("identity_check policy must be a JSON object")
-    _require_keys(identity, IDENTITY_KEYS, "identity_check")
+    identity = identity_section(policy)
     if not identity["parse_with_rdkit"]:
         raise NotImplementedError("Only parse_with_rdkit=true is supported")
     return {

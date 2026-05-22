@@ -10,6 +10,7 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
     coerce_public_options,
+    coerce_required_public_options,
     public_options_from_internal_options,
 )
 from grimace._runtime_inputs import MolToSmilesFlags
@@ -134,6 +135,39 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                 context="TestContext",
             ),
         )
+
+    def test_required_public_option_parser_preserves_public_names_without_defaults(self) -> None:
+        values = {spec.public_name: spec.default for spec in MOL_TO_SMILES_OPTIONS}
+        values["isomericSmiles"] = 0
+
+        self.assertEqual(
+            {
+                "isomericSmiles": False,
+                "kekuleSmiles": False,
+                "rootedAtAtom": -1,
+                "canonical": True,
+                "allBondsExplicit": False,
+                "allHsExplicit": False,
+                "doRandom": False,
+                "ignoreAtomMapNumbers": False,
+            },
+            coerce_required_public_options(
+                MOL_TO_SMILES_OPTIONS,
+                values,
+                context="TestContext",
+            ),
+        )
+
+    def test_required_public_option_parser_rejects_missing_options(self) -> None:
+        values = {spec.public_name: spec.default for spec in MOL_TO_SMILES_OPTIONS}
+        del values["doRandom"]
+
+        with self.assertRaisesRegex(ValueError, "TestContext requires doRandom"):
+            coerce_required_public_options(
+                MOL_TO_SMILES_OPTIONS,
+                values,
+                context="TestContext",
+            )
 
     def test_internal_option_formatter_maps_to_public_names(self) -> None:
         self.assertEqual(

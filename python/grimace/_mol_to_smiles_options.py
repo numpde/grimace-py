@@ -131,6 +131,24 @@ def coerce_public_options(
     }
 
 
+def coerce_required_public_options(
+    specs: tuple[_OptionSpec, ...],
+    values: Mapping[str, object],
+    *,
+    context: str,
+) -> dict[str, object]:
+    coerced: dict[str, object] = {}
+    for spec in specs:
+        if spec.public_name not in values:
+            raise ValueError(f"{context} requires {spec.public_name}")
+        coerced[spec.public_name] = coerce_option(
+            spec,
+            values[spec.public_name],
+            context=context,
+        )
+    return coerced
+
+
 def coerce_internal_options(
     specs: tuple[_OptionSpec, ...],
     values: Mapping[str, object],

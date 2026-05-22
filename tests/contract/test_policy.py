@@ -9,6 +9,7 @@ from grimace._reference import (
     ReferencePolicy,
 )
 from grimace._mol_to_smiles_options import MOL_TO_SMILES_PUBLIC_OPTION_NAMES
+from grimace._reference.policy_sections import identity_section, sampling_section
 
 
 class ReferencePolicyTest(unittest.TestCase):
@@ -76,6 +77,30 @@ class ReferencePolicyTest(unittest.TestCase):
         )
         self.assertTrue(policy.data["sampling"]["isomericSmiles"])
         self.assertTrue(policy.data["identity_check"]["isomericSmiles"])
+
+    def test_sampling_section_rejects_string_booleans(self) -> None:
+        policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
+        data = {**policy.data, "sampling": {**policy.data["sampling"], "doRandom": "true"}}
+
+        with self.assertRaisesRegex(TypeError, "bool, int, or None"):
+            sampling_section(ReferencePolicy(data))
+
+    def test_sampling_section_rejects_string_integers(self) -> None:
+        policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
+        data = {**policy.data, "sampling": {**policy.data["sampling"], "draw_budget": "500"}}
+
+        with self.assertRaisesRegex(TypeError, "draw_budget must be a JSON integer"):
+            sampling_section(ReferencePolicy(data))
+
+    def test_identity_section_rejects_non_boolean_parse_policy(self) -> None:
+        policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
+        data = {
+            **policy.data,
+            "identity_check": {**policy.data["identity_check"], "parse_with_rdkit": 1},
+        }
+
+        with self.assertRaisesRegex(TypeError, "parse_with_rdkit must be a JSON boolean"):
+            identity_section(ReferencePolicy(data))
 
 
 if __name__ == "__main__":

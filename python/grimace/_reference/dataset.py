@@ -10,6 +10,8 @@ from rdkit import Chem
 
 from grimace._reference._paths import DEFAULT_MOLECULE_SOURCE_PATH, resolve_bundled_reference_path
 
+_INPUT_SOURCE_FILTER_KEYS = frozenset({"connected_only", "stereochemistry"})
+
 
 @dataclass(frozen=True)
 class MoleculeCase:
@@ -96,14 +98,37 @@ def load_default_molecule_cases(
 
 
 def _resolve_input_source_path(input_source: Mapping[str, Any]) -> Path:
+    if "path" not in input_source:
+        raise ValueError("input_source.path is required")
     return resolve_bundled_reference_path(str(input_source["path"]))
 
 
-def _input_source_filters(input_source: Mapping[str, Any]) -> Mapping[str, Any]:
-    filters = input_source.get("filters", {})
+def _input_source_filter_values(input_source: Mapping[str, Any]) -> tuple[bool, str]:
+    if "filters" not in input_source:
+        return False, "allow"
+
+    filters = input_source["filters"]
     if not isinstance(filters, Mapping):
         raise TypeError("input_source.filters must be a JSON object")
-    return filters
+    filter_keys = set(filters)
+    if filter_keys != _INPUT_SOURCE_FILTER_KEYS:
+        missing_keys = sorted(_INPUT_SOURCE_FILTER_KEYS - filter_keys)
+        extra_keys = sorted(filter_keys - _INPUT_SOURCE_FILTER_KEYS)
+        raise ValueError(
+            "input_source.filters must define exactly "
+            f"{sorted(_INPUT_SOURCE_FILTER_KEYS)!r}; "
+            f"missing={missing_keys!r}; extra={extra_keys!r}"
+        )
+
+    connected_only = filters["connected_only"]
+    if not isinstance(connected_only, bool):
+        raise TypeError("input_source.filters.connected_only must be a JSON boolean")
+    stereochemistry = filters["stereochemistry"]
+    if not isinstance(stereochemistry, str):
+        raise TypeError("input_source.filters.stereochemistry must be a string")
+    if stereochemistry not in {"allow", "forbid"}:
+        raise ValueError(f"Unsupported input_source stereochemistry mode: {stereochemistry!r}")
+    return connected_only, stereochemistry
 
 
 def iter_molecule_cases_from_input_source(
@@ -114,14 +139,13 @@ def iter_molecule_cases_from_input_source(
 ) -> Iterator[MoleculeCase]:
     if not isinstance(input_source, Mapping):
         raise TypeError("input_source must be a JSON object")
-    if input_source.get("kind") != "default_fixture":
-        raise ValueError(f"Unsupported input_source kind: {input_source.get('kind')!r}")
+    if "kind" not in input_source:
+        raise ValueError("input_source.kind is required")
+    kind = input_source["kind"]
+    if kind != "default_fixture":
+        raise ValueError(f"Unsupported input_source kind: {kind!r}")
 
-    filters = _input_source_filters(input_source)
-    connected_only = bool(filters.get("connected_only", False))
-    stereochemistry = filters.get("stereochemistry", "allow")
-    if stereochemistry not in {"allow", "forbid"}:
-        raise ValueError(f"Unsupported input_source stereochemistry mode: {stereochemistry!r}")
+    connected_only, stereochemistry = _input_source_filter_values(input_source)
 
     yielded = 0
     for case in iter_molecule_cases(

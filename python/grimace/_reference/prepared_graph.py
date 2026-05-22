@@ -13,6 +13,7 @@ from grimace._mol_to_smiles_options import (
     public_options_from_internal_options,
 )
 from grimace._reference.policy import ReferencePolicy
+from grimace._reference.policy_sections import identity_section, sampling_section
 from grimace._reference.rdkit_random import mol_to_identity_smiles
 
 
@@ -159,20 +160,6 @@ def coerce_molecule_to_supported_surface(
     return working_mol
 
 
-def sampling_section(policy: ReferencePolicy) -> dict[str, object]:
-    sampling = policy.data["sampling"]
-    if not isinstance(sampling, dict):
-        raise TypeError("sampling policy must be a JSON object")
-    return sampling
-
-
-def identity_section(policy: ReferencePolicy) -> dict[str, object]:
-    identity = policy.data["identity_check"]
-    if not isinstance(identity, dict):
-        raise TypeError("identity_check policy must be a JSON object")
-    return identity
-
-
 def ring_label_text(label: int) -> str:
     if label < 10:
         return str(label)
@@ -181,9 +168,29 @@ def ring_label_text(label: int) -> str:
     return f"%({label})"
 
 
+def _option_bool(options: dict[str, object], field_name: str) -> bool:
+    value = options[field_name]
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a normalized boolean option")
+    return value
+
+
+def _option_int(options: dict[str, object], field_name: str) -> int:
+    value = options[field_name]
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{field_name} must be a normalized integer option")
+    return value
+
+
+def _bool_argument(value: object, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a boolean")
+    return value
+
+
 def atom_symbol(atom: Chem.Atom, sampling: dict[str, object]) -> str:
     symbol = atom.GetSymbol()
-    if atom.GetIsAromatic() and not bool(sampling["kekuleSmiles"]):
+    if atom.GetIsAromatic() and not _option_bool(sampling, "kekuleSmiles"):
         lowered = symbol.lower()
         if lowered in AROMATIC_LOWERCASE_SUBSET:
             return lowered
@@ -211,19 +218,19 @@ def format_charge(charge: int) -> str:
 
 
 def writer_atom_map_number(atom: Chem.Atom, sampling: dict[str, object]) -> int:
-    if bool(sampling["ignoreAtomMapNumbers"]):
+    if _option_bool(sampling, "ignoreAtomMapNumbers"):
         return 0
     return atom.GetAtomMapNum()
 
 
 def writer_isotope(atom: Chem.Atom, sampling: dict[str, object]) -> int:
-    if not bool(sampling["isomericSmiles"]):
+    if not _option_bool(sampling, "isomericSmiles"):
         return 0
     return atom.GetIsotope()
 
 
 def atom_requires_brackets(atom: Chem.Atom, sampling: dict[str, object]) -> bool:
-    if bool(sampling["allHsExplicit"]):
+    if _option_bool(sampling, "allHsExplicit"):
         return True
 
     atom_map_num = writer_atom_map_number(atom, sampling)
@@ -275,7 +282,7 @@ def bond_token(
     begin = bond.GetBeginAtom()
     end = bond.GetEndAtom()
     bond_type = bond.GetBondType()
-    all_bonds_explicit = bool(sampling["allBondsExplicit"])
+    all_bonds_explicit = _option_bool(sampling, "allBondsExplicit")
 
     if bond_type == Chem.BondType.AROMATIC:
         if begin.GetIsAromatic() and end.GetIsAromatic():
@@ -334,6 +341,22 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
     return value
+
+
+def _bool_field(data: dict[str, Any], field_name: str) -> bool:
+    value = data[field_name]
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a JSON boolean")
+    return value
+
+
+def _tuple_of_bools(value: Any, field_name: str) -> tuple[bool, ...]:
+    if not isinstance(value, list):
+        raise TypeError(f"{field_name} must be a JSON array")
+    for item in value:
+        if not isinstance(item, bool):
+            raise TypeError(f"{field_name} items must be JSON booleans")
+    return tuple(value)
 
 
 def _tuple_of_int_pairs(value: Any, field_name: str) -> tuple[tuple[int, int], ...]:
@@ -602,14 +625,21 @@ class PreparedSmilesGraph:
         all_hs_explicit: bool,
         ignore_atom_map_numbers: bool,
     ) -> bool:
-        return (
-            bool(self.writer_do_isomeric_smiles) == bool(isomeric_smiles)
-            and bool(self.writer_kekule_smiles) == bool(kekule_smiles)
-            and bool(self.writer_all_bonds_explicit) == bool(all_bonds_explicit)
-            and bool(self.writer_all_hs_explicit) == bool(all_hs_explicit)
-            and bool(self.writer_ignore_atom_map_numbers)
-            == bool(ignore_atom_map_numbers)
+        requested = (
+            _bool_argument(isomeric_smiles, "isomeric_smiles"),
+            _bool_argument(kekule_smiles, "kekule_smiles"),
+            _bool_argument(all_bonds_explicit, "all_bonds_explicit"),
+            _bool_argument(all_hs_explicit, "all_hs_explicit"),
+            _bool_argument(ignore_atom_map_numbers, "ignore_atom_map_numbers"),
         )
+        stored = (
+            self.writer_do_isomeric_smiles,
+            self.writer_kekule_smiles,
+            self.writer_all_bonds_explicit,
+            self.writer_all_hs_explicit,
+            self.writer_ignore_atom_map_numbers,
+        )
+        return stored == requested
 
     def identity_smiles_for(self, mol: Chem.Mol) -> str:
         if not self.identity_parse_with_rdkit:
@@ -690,7 +720,7 @@ class PreparedSmilesGraph:
             atom_count=int(data["atom_count"]),
             bond_count=int(data["bond_count"]),
             atom_atomic_numbers=tuple(int(value) for value in data["atom_atomic_numbers"]),
-            atom_is_aromatic=tuple(bool(value) for value in data["atom_is_aromatic"]),
+            atom_is_aromatic=_tuple_of_bools(data["atom_is_aromatic"], "atom_is_aromatic"),
             atom_isotopes=tuple(int(value) for value in data["atom_isotopes"]),
             atom_formal_charges=tuple(int(value) for value in data["atom_formal_charges"]),
             atom_total_hs=tuple(int(value) for value in data["atom_total_hs"]),
@@ -705,20 +735,23 @@ class PreparedSmilesGraph:
             ),
             bond_pairs=_tuple_of_int_pairs(data["bond_pairs"], "bond_pairs"),
             bond_kinds=tuple(str(value) for value in data["bond_kinds"]),
-            writer_do_isomeric_smiles=bool(data["writer_do_isomeric_smiles"]),
-            writer_kekule_smiles=bool(data["writer_kekule_smiles"]),
-            writer_all_bonds_explicit=bool(data["writer_all_bonds_explicit"]),
-            writer_all_hs_explicit=bool(data["writer_all_hs_explicit"]),
-            writer_ignore_atom_map_numbers=bool(data["writer_ignore_atom_map_numbers"]),
-            identity_parse_with_rdkit=bool(data["identity_parse_with_rdkit"]),
-            identity_canonical=bool(data["identity_canonical"]),
-            identity_do_isomeric_smiles=bool(data["identity_do_isomeric_smiles"]),
-            identity_kekule_smiles=bool(data["identity_kekule_smiles"]),
+            writer_do_isomeric_smiles=_bool_field(data, "writer_do_isomeric_smiles"),
+            writer_kekule_smiles=_bool_field(data, "writer_kekule_smiles"),
+            writer_all_bonds_explicit=_bool_field(data, "writer_all_bonds_explicit"),
+            writer_all_hs_explicit=_bool_field(data, "writer_all_hs_explicit"),
+            writer_ignore_atom_map_numbers=_bool_field(data, "writer_ignore_atom_map_numbers"),
+            identity_parse_with_rdkit=_bool_field(data, "identity_parse_with_rdkit"),
+            identity_canonical=_bool_field(data, "identity_canonical"),
+            identity_do_isomeric_smiles=_bool_field(data, "identity_do_isomeric_smiles"),
+            identity_kekule_smiles=_bool_field(data, "identity_kekule_smiles"),
             identity_rooted_at_atom=int(data["identity_rooted_at_atom"]),
-            identity_all_bonds_explicit=bool(data["identity_all_bonds_explicit"]),
-            identity_all_hs_explicit=bool(data["identity_all_hs_explicit"]),
-            identity_do_random=bool(data["identity_do_random"]),
-            identity_ignore_atom_map_numbers=bool(data["identity_ignore_atom_map_numbers"]),
+            identity_all_bonds_explicit=_bool_field(data, "identity_all_bonds_explicit"),
+            identity_all_hs_explicit=_bool_field(data, "identity_all_hs_explicit"),
+            identity_do_random=_bool_field(data, "identity_do_random"),
+            identity_ignore_atom_map_numbers=_bool_field(
+                data,
+                "identity_ignore_atom_map_numbers",
+            ),
             atom_chiral_tags=tuple(str(value) for value in data.get("atom_chiral_tags", [])),
             atom_stereo_neighbor_orders=_tuple_of_tuples(
                 data.get("atom_stereo_neighbor_orders", []),
@@ -858,7 +891,7 @@ def _prepare_smiles_graph_with_sections(
     sampling: dict[str, object],
     identity: dict[str, object],
 ) -> PreparedSmilesGraph:
-    if bool(sampling["kekuleSmiles"]):
+    if _option_bool(sampling, "kekuleSmiles"):
         Chem.Kekulize(working_mol, clearAromaticFlags=True)
 
     neighbors: list[tuple[int, ...]] = []
@@ -951,14 +984,14 @@ def _prepare_smiles_graph_with_sections(
         rdkit_version=rdBase.rdkitVersion,
         identity_smiles=mol_to_identity_smiles(
             Chem.Mol(working_mol),
-            canonical=bool(identity["canonical"]),
-            isomericSmiles=bool(identity["isomericSmiles"]),
-            kekuleSmiles=bool(identity["kekuleSmiles"]),
-            rootedAtAtom=int(identity["rootedAtAtom"]),
-            allBondsExplicit=bool(identity["allBondsExplicit"]),
-            allHsExplicit=bool(identity["allHsExplicit"]),
-            doRandom=bool(identity["doRandom"]),
-            ignoreAtomMapNumbers=bool(identity["ignoreAtomMapNumbers"]),
+            canonical=_option_bool(identity, "canonical"),
+            isomericSmiles=_option_bool(identity, "isomericSmiles"),
+            kekuleSmiles=_option_bool(identity, "kekuleSmiles"),
+            rootedAtAtom=_option_int(identity, "rootedAtAtom"),
+            allBondsExplicit=_option_bool(identity, "allBondsExplicit"),
+            allHsExplicit=_option_bool(identity, "allHsExplicit"),
+            doRandom=_option_bool(identity, "doRandom"),
+            ignoreAtomMapNumbers=_option_bool(identity, "ignoreAtomMapNumbers"),
         ),
         atom_count=working_mol.GetNumAtoms(),
         bond_count=working_mol.GetNumBonds(),
@@ -974,20 +1007,20 @@ def _prepare_smiles_graph_with_sections(
         neighbor_bond_tokens=tuple(neighbor_bond_tokens),
         bond_pairs=bond_pairs,
         bond_kinds=bond_kinds,
-        writer_do_isomeric_smiles=bool(sampling["isomericSmiles"]),
-        writer_kekule_smiles=bool(sampling["kekuleSmiles"]),
-        writer_all_bonds_explicit=bool(sampling["allBondsExplicit"]),
-        writer_all_hs_explicit=bool(sampling["allHsExplicit"]),
-        writer_ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
-        identity_parse_with_rdkit=bool(identity["parse_with_rdkit"]),
-        identity_canonical=bool(identity["canonical"]),
-        identity_do_isomeric_smiles=bool(identity["isomericSmiles"]),
-        identity_kekule_smiles=bool(identity["kekuleSmiles"]),
-        identity_rooted_at_atom=int(identity["rootedAtAtom"]),
-        identity_all_bonds_explicit=bool(identity["allBondsExplicit"]),
-        identity_all_hs_explicit=bool(identity["allHsExplicit"]),
-        identity_do_random=bool(identity["doRandom"]),
-        identity_ignore_atom_map_numbers=bool(identity["ignoreAtomMapNumbers"]),
+        writer_do_isomeric_smiles=_option_bool(sampling, "isomericSmiles"),
+        writer_kekule_smiles=_option_bool(sampling, "kekuleSmiles"),
+        writer_all_bonds_explicit=_option_bool(sampling, "allBondsExplicit"),
+        writer_all_hs_explicit=_option_bool(sampling, "allHsExplicit"),
+        writer_ignore_atom_map_numbers=_option_bool(sampling, "ignoreAtomMapNumbers"),
+        identity_parse_with_rdkit=_option_bool(identity, "parse_with_rdkit"),
+        identity_canonical=_option_bool(identity, "canonical"),
+        identity_do_isomeric_smiles=_option_bool(identity, "isomericSmiles"),
+        identity_kekule_smiles=_option_bool(identity, "kekuleSmiles"),
+        identity_rooted_at_atom=_option_int(identity, "rootedAtAtom"),
+        identity_all_bonds_explicit=_option_bool(identity, "allBondsExplicit"),
+        identity_all_hs_explicit=_option_bool(identity, "allHsExplicit"),
+        identity_do_random=_option_bool(identity, "doRandom"),
+        identity_ignore_atom_map_numbers=_option_bool(identity, "ignoreAtomMapNumbers"),
         atom_chiral_tags=atom_chiral_tags,
         atom_stereo_neighbor_orders=atom_stereo_neighbor_orders,
         atom_explicit_h_counts=atom_explicit_h_counts,

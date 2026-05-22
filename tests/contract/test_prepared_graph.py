@@ -61,6 +61,15 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
             )
         )
 
+        with self.assertRaisesRegex(TypeError, "isomeric_smiles must be a boolean"):
+            prepared.matches_writer_flags(
+                isomeric_smiles="true",
+                kekule_smiles=bool(sampling["kekuleSmiles"]),
+                all_bonds_explicit=bool(sampling["allBondsExplicit"]),
+                all_hs_explicit=bool(sampling["allHsExplicit"]),
+                ignore_atom_map_numbers=bool(sampling["ignoreAtomMapNumbers"]),
+            )
+
         identity = self.policy.data["identity_check"]
         self.assertEqual(bool(identity["parse_with_rdkit"]), prepared.identity_parse_with_rdkit)
         self.assertEqual(bool(identity["canonical"]), prepared.identity_canonical)
@@ -131,6 +140,30 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         broken["neighbor_bond_tokens"][0] = []
 
         with self.assertRaisesRegex(ValueError, "neighbor token row length mismatch"):
+            PreparedSmilesGraph.from_dict(broken)
+
+    def test_prepared_graph_from_dict_requires_json_boolean_array_items(self) -> None:
+        mol = Chem.MolFromSmiles("CC")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy)
+        broken = deepcopy(prepared.to_dict())
+        broken["atom_is_aromatic"][0] = "false"
+
+        with self.assertRaisesRegex(TypeError, "atom_is_aromatic items must be JSON booleans"):
+            PreparedSmilesGraph.from_dict(broken)
+
+    def test_prepared_graph_from_dict_requires_json_boolean_metadata(self) -> None:
+        mol = Chem.MolFromSmiles("CC")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy)
+        broken = deepcopy(prepared.to_dict())
+        broken["writer_do_isomeric_smiles"] = "false"
+
+        with self.assertRaisesRegex(TypeError, "writer_do_isomeric_smiles must be a JSON boolean"):
             PreparedSmilesGraph.from_dict(broken)
 
     def test_stereo_prepared_graph_rejects_incomplete_stereo_atom_metadata(self) -> None:

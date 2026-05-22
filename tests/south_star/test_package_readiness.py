@@ -312,6 +312,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "compositional_stereo_two_tetra_separated",
                 "compositional_stereo_two_tetra_adjacent",
                 "compositional_stereo_two_tetra_disconnected",
+                "compositional_stereo_ring_tetra_plus_branch_tetra",
                 "fused_aromatic_naphthalene",
                 "fused_aromatic_quinoline",
                 "fused_aromatic_benzofuran",

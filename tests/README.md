@@ -7,8 +7,6 @@ The test suite is organized by intent first, then by feature.
 - `tests/contract/`: API, serialization, dataset, policy, and export invariants.
 - `tests/reference/`: internal `_reference` behavior checks, split into `prepared/`, `nonstereo/`, and `stereo/`.
 - `tests/rdkit_serialization/`: RDKit-derived writer conformance tests, organized by behavior and mapped onto Grimace's public support/decoder surface, including pinned serializer regression cases.
-- `tests/south_star/`: semantic-investigation tests that are deliberately
-  separate from RDKit exact-string writer parity.
 - `tests/parity/`: Rust kernel versus Python reference parity checks on curated and representative slices.
 - `tests/integration/`: import, end-to-end smoke coverage, and kernel dataset contract checks.
 - `tests/perf/`: opt-in timing checks that are excluded by default.
@@ -20,7 +18,6 @@ The test suite is organized by intent first, then by feature.
 
 - Default suite: `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
 - Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
-- South Star semantic investigation: `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Known stereo-gap diagnostics: `PYTHONPATH=python:. python3 -m unittest tests.run_known_stereo_gaps -q`
@@ -59,9 +56,6 @@ subset.
 - Pinned RDKit JSON fixtures should reuse `tests/helpers/pinned_rdkit_fixtures.py`
   for version, id, source, and canonical expected-set validation.
 - Exact public invariant checks should be runnable through `tests.run_exact_public_invariants`.
-- South Star semantic checks should be runnable through
-  `tests.run_south_star_semantics` and must stay separate from pinned RDKit
-  exact-string parity.
 - Exact RDKit-parity tests should be version-keyed and runnable through `tests.run_pinned_rdkit_parity`.
 - `tests.run_pinned_rdkit_parity` must fail, not silently skip, when the
   installed RDKit version has no checked-in pinned fixtures.

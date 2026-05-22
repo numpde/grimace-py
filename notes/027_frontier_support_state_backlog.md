@@ -14,9 +14,8 @@ flow through one explicit frontier support-state boundary.
 
 The immediate target is still RDKit writer-string parity for
 `canonical=False, doRandom=True`. The design should also leave a clean seam for
-the separate South Star target: mathematically clean, maximally annotated
-OpenSMILES-style stereo enumeration. Do not blur those layers while executing
-this backlog.
+a separate principled exact-support layer. Do not blur those layers while
+executing this backlog.
 
 ## Design Position
 
@@ -34,8 +33,8 @@ one source of truth:
 
 Rows remain an implementation choice, not the conceptual goal. They are useful
 as an auditable finite representation of surviving assignments. If a later
-fact/propagator representation is cleaner for the South Star semantic layer,
-it should be allowed to coexist beside the RDKit writer-policy projection.
+fact/propagator representation is cleaner for a principled semantic layer, it
+should be allowed to coexist beside the RDKit writer-policy projection.
 
 ## Backlog Sequence
 
@@ -194,8 +193,8 @@ Expected result:
 - Do not delete legacy logic until the replacement produces the same survivor
   decisions on the pinned witnesses.
 - Keep RDKit writer-policy facts named as RDKit policy, not chemistry.
-- Keep South Star semantic/full-marker exploration separate from public RDKit
-  parity runtime unless a test explicitly targets semantic equivalence.
+- Keep semantic/full-marker exploration separate from public RDKit parity
+  runtime unless a test explicitly targets semantic equivalence.
 - Treat performance wins as non-authoritative until exact public invariants and
   pinned RDKit parity pass.
 

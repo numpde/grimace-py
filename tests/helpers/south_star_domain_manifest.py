@@ -73,8 +73,8 @@ SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_MODIFIED_AROMATIC_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_modified_aromatic_atom_text_obligations"
 )
-SOUTH_STAR_AROMATIC_SELENIUM_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
-    "unified_reference_aromatic_selenium_text_obligations"
+SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_bracket_only_aromatic_element_text_obligations"
 )
 SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_fused_aromatic_closure_traversal"
@@ -89,7 +89,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
-        SOUTH_STAR_AROMATIC_SELENIUM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_AROMATIC_TEXT_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_MODIFIED_AROMATIC_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY,
@@ -129,6 +129,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "aromatic_text_monocycle",
         "aromatic_text_branch",
         "aromatic_selenium_text",
+        "aromatic_tellurium_text",
         "charged_atom_text",
         "combined_atom_text_modifiers",
         "disconnected_markerless_fragments",
@@ -194,6 +195,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "aromatic_text_monocycle",
             "aromatic_text_branch",
             "aromatic_selenium_text",
+            "aromatic_tellurium_text",
             "simple_saturated_monocycle",
             "branched_saturated_monocycle",
             "disconnected_markerless_fragments",

@@ -5,13 +5,13 @@ import unittest
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_WITNESS_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DISCONNECTED_MIXED_STEREO_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_GRAPH_NATIVE_REGRESSION_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_COMPONENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_DIRECTIONAL_TETRAHEDRAL_COMPOSITION_UNIFIED_REFERENCE_AUTHORITY,
-    SOUTH_STAR_AROMATIC_SELENIUM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_EXOCYCLIC_DIRECTIONAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_FUSED_AROMATIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_MODIFIED_AROMATIC_ATOM_TEXT_UNIFIED_REFERENCE_AUTHORITY,
@@ -52,7 +52,7 @@ from tests.helpers.south_star_spec_oracle import (
     south_star_small_support_completeness_report,
 )
 from tests.helpers.south_star_unified_reference import (
-    aromatic_selenium_text_support_from_shared_spine,
+    bracket_only_aromatic_element_text_support_from_shared_spine,
     fused_aromatic_support_from_shared_spine,
     modified_aromatic_atom_text_support_from_shared_spine,
     nonstereo_polycyclic_support_from_shared_spine,
@@ -155,7 +155,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
         self.assertTrue(
             any(
                 case.support_authority
-                == SOUTH_STAR_AROMATIC_SELENIUM_TEXT_UNIFIED_REFERENCE_AUTHORITY
+                == SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -322,16 +322,18 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertEqual(0, proof.marker_slot_count)
                 self.assertEqual(0, proof.renderer_input_count)
 
-    def test_aromatic_selenium_text_support_matches_fixtures(self) -> None:
+    def test_bracket_only_aromatic_element_text_support_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():
             if (
                 case.support_authority
-                != SOUTH_STAR_AROMATIC_SELENIUM_TEXT_UNIFIED_REFERENCE_AUTHORITY
+                != SOUTH_STAR_BRACKET_ONLY_AROMATIC_ELEMENT_TEXT_UNIFIED_REFERENCE_AUTHORITY
             ):
                 continue
 
             with self.subTest(case_id=case.case_id):
-                proof = aromatic_selenium_text_support_from_shared_spine(case)
+                proof = bracket_only_aromatic_element_text_support_from_shared_spine(
+                    case
+                )
                 self.assertEqual(case.expected_support, proof.support)
                 self.assertFalse(proof.expected_support_strings_used)
                 self.assertEqual(proof.atom_count, proof.atom_text_obligation_count)

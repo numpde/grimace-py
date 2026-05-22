@@ -129,8 +129,8 @@ The implemented private scope is deliberately narrow:
   unmodified aromatic ring atoms joined only by aromatic ring bonds, currently
   pinned by benzene, pyridine, furan, and corresponding one-methyl branch
   cases;
-- bracket-only aromatic selenium text in the first non-organic aromatic
-  element slice, currently pinned by `[se]1cccc1`;
+- bracket-only aromatic selenium and tellurium text in the first non-organic
+  aromatic element slices, currently pinned by `[se]1cccc1` and `[te]1cccc1`;
 - narrow fused aromatic ring systems with unmodified aromatic atoms, elided
   aromatic bond text, and no directional overlays, currently pinned by
   naphthalene, quinoline-like, and benzofuran-like witnesses.
@@ -459,9 +459,10 @@ enumerator needs a broader molecule and syntax surface:
   charged, renderer-capable modifier, first radical, and first non-organic
   bracket-only symbol slices;
 - aromatic coverage beyond markerless monocycles with acyclic supported
-  branches, first modified-aromatic atom-text cases, and narrow unmodified
-  fused ring systems, especially broader aromatic atom vocabularies beyond the
-  first selenium slice and aromatic directional-surface models;
+  branches, first modified-aromatic atom-text cases, bracket-only selenium and
+  tellurium aromatic text, and narrow unmodified fused ring systems, especially
+  broader aromatic atom vocabularies beyond the first Se/Te slices and aromatic
+  directional-surface models;
 - a ring/tetrahedral interaction model;
 - broader validation of local branch-orientation equations against more
   adversarial carrier topologies;

@@ -91,8 +91,18 @@ vocabulary can be handled as later, source-backed slices.
 `South Star 187` implements the recommended selenium slice:
 
 - `[se]` is admitted as bracket-only aromatic atom text, not as bare `se`;
-- `[se]1cccc1` is pinned as `aromatic_selenium_text_selenophene` under
-  `unified_reference_aromatic_selenium_text_obligations`;
+- `[se]1cccc1` is pinned as `aromatic_selenium_text_selenophene` under the
+  shared bracket-only aromatic element-text authority;
 - mapped selenium such as `[se:7]1cccc1` remains outside the first slice;
 - tellurium, arsenic, and silicon remain separate from this implementation
   boundary for the reasons identified above.
+
+## Follow-Up After South Star 191
+
+`South Star 191` promotes the narrow tellurium text slice:
+
+- `Te` is admitted as bracket-only atom text;
+- `[te]` is admitted as bracket-only aromatic atom text, not as bare `te`;
+- `[te]1cccc1` is pinned as `aromatic_tellurium_text_tellurophene` under the
+  same shared bracket-only aromatic element-text authority as selenium;
+- mapped tellurium remains outside the first tellurium slice.

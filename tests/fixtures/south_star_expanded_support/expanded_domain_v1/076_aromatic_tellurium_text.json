@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "policy": "south_star_expanded_domain_regression",
+  "cases": [
+    {
+      "case_id": "aromatic_tellurium_text_tellurophene",
+      "feature_area": "aromatic_tellurium_text",
+      "source_smiles": "[te]1cccc1",
+      "support_authority": "unified_reference_bracket_only_aromatic_element_text_obligations",
+      "evidence_notes": "Unified-reference aromatic tellurium text evidence for tellurophene: support is rendered from sanitized aromatic molecule facts, shared monocycle traversal and branch events, bracket-only aromatic tellurium atom-text obligations, elided aromatic bond text, parse-back evidence, and first-occurrence deduplication.",
+      "expected_support": [
+        "[te]1cccc1",
+        "[te](c1)ccc1",
+        "[te](ccc1)c1",
+        "[te](cc1)cc1",
+        "c1ccc[te]1",
+        "c1[te]ccc1",
+        "c([te]cc1)c1",
+        "c(c1)[te]cc1",
+        "c([te]c1)cc1",
+        "c(cc1)[te]c1",
+        "c([te]1)ccc1",
+        "c(ccc1)[te]1",
+        "c(c1)cc[te]1",
+        "c(cc[te]1)c1",
+        "c1cc[te]c1",
+        "c1c[te]cc1",
+        "c(c[te]c1)c1",
+        "c(c1)c[te]c1",
+        "c(c[te]1)cc1",
+        "c(cc1)c[te]1"
+      ]
+    }
+  ]
+}

@@ -149,5 +149,10 @@ as non-aromatic Kekule bracket atoms rather than the same aromatic text slice.
 The current counts are now:
 
 - exact first-domain directional cases: `5`;
-- expanded-support cases: `55`;
-- total benchmark/readiness rows: `60`.
+- expanded-support cases: `56`;
+- total benchmark/readiness rows: `61`.
+
+`South Star 191` promotes the narrow tellurium text case `[te]1cccc1` from
+frontier to checked private surface. Selenium and tellurium now share the
+bracket-only aromatic element-text proof path; mapped variants remain separate
+modifier-composition work.

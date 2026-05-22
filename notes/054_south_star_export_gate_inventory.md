@@ -40,30 +40,30 @@ Executed checks:
 Results:
 
 - South Star package readiness: `140` tests passed at the original inventory
-  checkpoint; `South Star 187` keeps the runner green at `148` tests after
-  adding fused aromatic, aromatic selenium, modified-aromatic atom-text, and
-  quadruple bond-text cases.
+  checkpoint; `South Star 191` keeps the runner green at `148` tests after
+  adding fused aromatic, aromatic selenium/tellurium, modified-aromatic
+  atom-text, and quadruple bond-text cases.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `55`.
-- Total checked semantic fixture cases: `60`.
+- Expanded-support cases: `56`.
+- Total checked semantic fixture cases: `61`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `60`;
-- shared-pipeline promotion candidates: `60`;
+- unified-reference-backed cases: `61`;
+- shared-pipeline promotion candidates: `61`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
-- supported feature areas: `30`;
+- supported feature areas: `31`;
 - support-gate blocker categories: `16`.
 
 Authority inventory:
 
-- authority classes: `60` unified-reference cases;
-- shared-spine coverage: `60` complete cases;
+- authority classes: `61` unified-reference cases;
+- shared-spine coverage: `61` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 
@@ -72,6 +72,7 @@ Supported feature areas currently declared:
 - `aromatic_text_branch`
 - `aromatic_text_monocycle`
 - `aromatic_selenium_text`
+- `aromatic_tellurium_text`
 - `atom_map_text`
 - `branched_saturated_monocycle`
 - `charged_atom_text`

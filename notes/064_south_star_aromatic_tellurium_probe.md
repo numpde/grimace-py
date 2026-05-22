@@ -83,3 +83,14 @@ Open an implementation row for narrow tellurium text:
    bracket-only aromatic element text, without admitting mapped/charged/explicit
    hydrogen variants;
 5. keep `[te:7]1cccc1` for the separate mapped-aromatic modifier task.
+
+## Follow-Up After South Star 191
+
+`South Star 191` implements this recommendation narrowly:
+
+- `Te` is a bracket-only non-organic atom-text symbol;
+- `te` is a bracket-only aromatic atom-text symbol;
+- `[te]1cccc1` is pinned as `aromatic_tellurium_text_tellurophene`;
+- selenium and tellurium share a generic bracket-only aromatic element-text
+  unified-reference proof path;
+- mapped tellurium remains outside this first slice.

@@ -73,6 +73,7 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                     "radical_valence_semantics",
                 ),
             ),
+            ("[TeH]", "[TeH]", ("non_organic_symbol_requires_bracket",)),
         )
 
         for smiles, expected_text, required_obligations in cases:
@@ -100,15 +101,26 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         self.assertFalse(obligation.uses_brackets)
 
     def test_bracket_aromatic_atom_text_tokens_are_named_policy(self) -> None:
-        accepted_tokens = ("[nH]", "[15nH]", "[n:7]", "[nH+]", "[n+]", "[se]")
+        accepted_tokens = (
+            "[nH]",
+            "[15nH]",
+            "[n:7]",
+            "[nH+]",
+            "[n+]",
+            "[se]",
+            "[te]",
+        )
         rejected_tokens = ("[n@H]", "[n@@H]", "[Na+]")
 
         for token in accepted_tokens:
             with self.subTest(token=token):
                 self.assertTrue(is_south_star_bracket_atom_text_token(token))
                 self.assertTrue(south_star_grammar_conformance(token).passed)
-                if token == "[se]":
-                    self.assertIn("se", SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS)
+                if token in {"[se]", "[te]"}:
+                    self.assertIn(
+                        token[1:-1],
+                        SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS,
+                    )
         for token in rejected_tokens:
             with self.subTest(token=token):
                 self.assertFalse(is_south_star_bracket_atom_text_token(token))
@@ -162,6 +174,12 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 "[se]1cccc1",
                 0,
                 "[se]",
+                ("bracket_aromatic_atom",),
+            ),
+            (
+                "[te]1cccc1",
+                0,
+                "[te]",
                 ("bracket_aromatic_atom",),
             ),
         )

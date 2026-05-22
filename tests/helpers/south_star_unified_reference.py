@@ -283,7 +283,7 @@ def is_modified_aromatic_atom_text_monocycle_domain(
     )
 
 
-def is_aromatic_selenium_text_monocycle_domain(
+def is_bracket_only_aromatic_element_text_monocycle_domain(
     facts: SouthStarMoleculeFacts,
 ) -> bool:
     topology = facts.graph_topology
@@ -294,7 +294,7 @@ def is_aromatic_selenium_text_monocycle_domain(
         and len(facts.atom_text_facts) == topology.atom_count
         and len(facts.bond_text_facts) == topology.bond_count
         and any(
-            atom.symbol == "Se"
+            atom.symbol in {"Se", "Te"}
             and atom.is_aromatic
             and atom.isotope == 0
             and atom.explicit_hydrogen_count == 0
@@ -447,13 +447,13 @@ def modified_aromatic_atom_text_support_from_shared_spine(
     )
 
 
-def aromatic_selenium_text_support_from_shared_spine(
+def bracket_only_aromatic_element_text_support_from_shared_spine(
     case: object,
 ) -> SouthStarNonstereoMonocycleSupportProof:
     return _monocycle_support_from_shared_spine(
         case,
-        domain_predicate=is_aromatic_selenium_text_monocycle_domain,
-        domain_name="aromatic-selenium-text",
+        domain_predicate=is_bracket_only_aromatic_element_text_monocycle_domain,
+        domain_name="bracket-only-aromatic-element-text",
     )
 
 

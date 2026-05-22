@@ -6,7 +6,7 @@
       "case_id": "aromatic_selenium_text_selenophene",
       "feature_area": "aromatic_selenium_text",
       "source_smiles": "[se]1cccc1",
-      "support_authority": "unified_reference_aromatic_selenium_text_obligations",
+      "support_authority": "unified_reference_bracket_only_aromatic_element_text_obligations",
       "evidence_notes": "Unified-reference aromatic selenium text evidence for selenophene: support is rendered from sanitized aromatic molecule facts, shared monocycle traversal and branch events, bracket-only aromatic selenium atom-text obligations, elided aromatic bond text, parse-back evidence, and first-occurrence deduplication.",
       "expected_support": [
         "[se]1cccc1",

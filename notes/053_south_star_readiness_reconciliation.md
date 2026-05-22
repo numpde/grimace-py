@@ -44,14 +44,14 @@ back any current fixture case.
 
 As of the current South Star checkpoint:
 
-- expanded-support cases: `55`;
+- expanded-support cases: `56`;
 - exact first-domain cases: `5`;
-- total semantic benchmark rows: `60`;
+- total semantic benchmark rows: `61`;
 - public API blocker cases in the readiness matrix: `0`;
 - temporary-witness-backed current cases: `0`;
 - regression-witness-backed current cases: `0`.
 
-The benchmark artifact is now pinned as evidence over the same 60 current
+The benchmark artifact is now pinned as evidence over the same 61 current
 semantic fixture cases. It records policy set, command, environment metadata,
 per-case output counts, and timings. It is not evidence for RDKit writer parity
 or for package-level speed claims.

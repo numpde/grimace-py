@@ -256,7 +256,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
     def test_prepared_runtime_does_not_call_late_rdkit_preparation(self) -> None:
         from rdkit import Chem
-        from grimace import _runtime
+        from grimace import _runtime_graphs
 
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
@@ -272,7 +272,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
         }
         original_get_mol_frags = Chem.GetMolFrags
         original_runtime_reference_prepare = (
-            _runtime.prepare_smiles_graph_from_mol_to_smiles_kwargs
+            _runtime_graphs.prepare_smiles_graph_from_mol_to_smiles_kwargs
         )
 
         def fail_get_mol_frags(*_args: object, **_kwargs: object) -> object:
@@ -283,7 +283,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
         try:
             Chem.GetMolFrags = fail_get_mol_frags
-            _runtime.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
+            _runtime_graphs.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
                 fail_reference_preparation
             )
             for entrypoint, call in self._public_operation_calls(
@@ -295,7 +295,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
                     self.assertEqual(expected_by_entrypoint[entrypoint], call())
         finally:
             Chem.GetMolFrags = original_get_mol_frags
-            _runtime.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
+            _runtime_graphs.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
                 original_runtime_reference_prepare
             )
 
@@ -382,7 +382,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
     def test_rdkit_input_public_operations_do_no_late_rdkit_preparation(self) -> None:
         from rdkit import Chem
-        from grimace import _prepared_mol, _runtime
+        from grimace import _prepared_mol, _runtime_graphs
 
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
@@ -409,13 +409,13 @@ class PreparedMolRuntimeTests(unittest.TestCase):
             with self.subTest(entrypoint=entrypoint):
                 original_get_mol_frags = Chem.GetMolFrags
                 original_runtime_reference_prepare = (
-                    _runtime.prepare_smiles_graph_from_mol_to_smiles_kwargs
+                    _runtime_graphs.prepare_smiles_graph_from_mol_to_smiles_kwargs
                 )
 
                 def wrapped_prepare_mol(*args: object, **kwargs: object) -> object:
                     prepared_mol = real_prepare_mol(*args, **kwargs)
                     Chem.GetMolFrags = fail_late_preparation
-                    _runtime.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
+                    _runtime_graphs.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
                         fail_late_preparation
                     )
                     return prepared_mol
@@ -430,7 +430,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
                     )
                 finally:
                     Chem.GetMolFrags = original_get_mol_frags
-                    _runtime.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
+                    _runtime_graphs.prepare_smiles_graph_from_mol_to_smiles_kwargs = (
                         original_runtime_reference_prepare
                     )
 

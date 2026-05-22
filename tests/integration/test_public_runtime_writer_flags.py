@@ -11,6 +11,7 @@ from grimace._reference.rooted_enumerator import (
     enumerate_rooted_connected_nonstereo_smiles_support,
     enumerate_rooted_connected_stereo_smiles_support,
 )
+from grimace._runtime_inputs import MolToSmilesFlags, runtime_surface_kind
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
@@ -98,11 +99,9 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
 
     @staticmethod
     def _runtime_surface_kind(case: WriterFlagCase, mol):
-        from grimace import _runtime
-
-        return _runtime._runtime_surface_kind(
+        return runtime_surface_kind(
             mol,
-            flags=_runtime.MolToSmilesFlags(
+            flags=MolToSmilesFlags(
                 isomeric_smiles=case.isomeric_smiles,
                 kekule_smiles=case.kekule_smiles,
                 rooted_at_atom=case.rooted_at_atom,

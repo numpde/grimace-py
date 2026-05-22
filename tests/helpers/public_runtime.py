@@ -14,6 +14,7 @@ from grimace._mol_to_smiles_options import (
 )
 from grimace import _runtime
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
+from grimace._runtime_inputs import runtime_surface_kind
 
 
 def supported_public_kwargs(**kwargs: object) -> dict[str, object]:
@@ -159,7 +160,7 @@ def prepared_input_variants(
     **kwargs: object,
 ) -> tuple[tuple[str, object], ...]:
     flags = runtime_flags_from_public_kwargs(**kwargs)
-    surface_kind = _runtime._runtime_surface_kind(mol, flags=flags)
+    surface_kind = runtime_surface_kind(mol, flags=flags)
     reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
         mol,
         surface_kind=surface_kind,

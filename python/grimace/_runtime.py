@@ -10,13 +10,14 @@ from typing import Protocol, TypeAlias, cast
 
 import grimace._prepared_mol as _prepared_mol
 from grimace._prepared_mol import PreparedMol
+from grimace._runtime_graphs import (
+    prepare_core_graph_for_static_inventory as _prepare_core_graph_for_static_inventory,
+    prepare_smiles_graph,
+)
 from grimace._runtime_inputs import (
     MolToSmilesFlags,
-    ensure_singly_connected_molecule,
     make_flags as _make_flags,
     prepare_runtime_input as _prepare_runtime_input,
-    runtime_surface_kind as _runtime_surface_kind,
-    writer_flag_kwargs as _runtime_writer_flag_kwargs,
 )
 
 _core = importlib.import_module("grimace._core")
@@ -25,7 +26,6 @@ from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
-    prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
@@ -52,39 +52,6 @@ class _AdapterDecoderState(_BaseDecoderState, Protocol):
 class _FragmentPlan:
     fragment: object
     rooted_at_atom: int | None
-
-
-def _validate_surface_kind(
-    prepared: object,
-    *,
-    surface_kind: str,
-) -> None:
-    if prepared.surface_kind != surface_kind:
-        raise ValueError(
-            f"PreparedSmilesGraph surface_kind={prepared.surface_kind!r} does not match "
-            f"the requested surface_kind={surface_kind!r}"
-        )
-
-
-def _validate_writer_flags(
-    prepared: object,
-    flags: MolToSmilesFlags,
-) -> None:
-    if isinstance(prepared, _core.PreparedSmilesGraph):
-        matches = prepared.matches_writer_flags(**_runtime_writer_flag_kwargs(flags))
-    else:
-        actual = {
-            "isomeric_smiles": bool(prepared.writer_do_isomeric_smiles),
-            "kekule_smiles": bool(prepared.writer_kekule_smiles),
-            "all_bonds_explicit": bool(prepared.writer_all_bonds_explicit),
-            "all_hs_explicit": bool(prepared.writer_all_hs_explicit),
-            "ignore_atom_map_numbers": bool(prepared.writer_ignore_atom_map_numbers),
-        }
-        matches = actual == _runtime_writer_flag_kwargs(flags)
-    if not matches:
-        raise ValueError(
-            "PreparedSmilesGraph writer flags do not match the requested public runtime options"
-        )
 
 
 def _as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
@@ -487,35 +454,6 @@ def _reachable_terminal_prefixes(
     return resolved
 
 
-def prepare_smiles_graph(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> _core.PreparedSmilesGraph:
-    surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
-    if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
-        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
-        _validate_writer_flags(mol_or_prepared, flags)
-        return mol_or_prepared
-
-    if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
-        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
-        _validate_writer_flags(mol_or_prepared, flags)
-        return _core.PreparedSmilesGraph(mol_or_prepared)
-
-    ensure_singly_connected_molecule(mol_or_prepared)
-    reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
-        mol_or_prepared,
-        surface_kind=surface_kind,
-        isomeric_smiles=flags.isomeric_smiles,
-        kekule_smiles=flags.kekule_smiles,
-        all_bonds_explicit=flags.all_bonds_explicit,
-        all_hs_explicit=flags.all_hs_explicit,
-        ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
-    )
-    return _core.PreparedSmilesGraph(reference_prepared)
-
-
 def _instantiate_core_object(
     mol_or_prepared: object,
     flags: MolToSmilesFlags,
@@ -753,28 +691,6 @@ def _exact_token_inventory_from_decoder(
             stack.extend(successor for _, successor in grouped_successors)
 
     return tuple(sorted(inventory))
-
-
-def _prepare_core_graph_for_static_inventory(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> _core.PreparedSmilesGraph:
-    if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
-        surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
-        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
-        _validate_writer_flags(mol_or_prepared, flags)
-        return _core.PreparedSmilesGraph(mol_or_prepared)
-
-    if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
-        surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
-        _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
-        _validate_writer_flags(mol_or_prepared, flags)
-        return mol_or_prepared
-
-    raise TypeError(
-        f"Unsupported molecule/prepared type for static inventory: {type(mol_or_prepared)!r}"
-    )
 
 
 def _connected_token_inventory_superset(

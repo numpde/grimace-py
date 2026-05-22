@@ -16,6 +16,7 @@ def _attribute_names(path: Path) -> set[str]:
 class RuntimeBoundaryTests(unittest.TestCase):
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
+        REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py",
         REPO_ROOT / "python" / "grimace" / "_deviation.py",
     )

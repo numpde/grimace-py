@@ -503,7 +503,7 @@ class PublicDecoderTests(unittest.TestCase):
             decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)
             memo: dict[object, frozenset[str]] = {}
             seen_state_keys: set[object] = set()
-            stack = [decoder._impl._state]
+            stack = [decoder._state]
             audited_state_count = 0
 
             with self.subTest(case=case.name, smiles=case.smiles):
@@ -631,7 +631,7 @@ class PublicDecoderTests(unittest.TestCase):
             decoder = grimace.MolToSmilesDecoder(mol, **kwargs)
             memo: dict[object, frozenset[str]] = {}
             seen_state_keys: set[object] = set()
-            stack = [decoder._impl._state]
+            stack = [decoder._state]
             audited_state_count = 0
 
             with self.subTest(case=case.name, smiles=case.smiles):

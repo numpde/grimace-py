@@ -172,10 +172,6 @@ if _RUNTIME is not None:
                 **_runtime_kwargs(locals()),
             )
 
-        @property
-        def _impl(self) -> "_PublicDecoderBase":
-            return self
-
 
     class MolToSmilesDecoder(_RUNTIME.MolToSmilesDecoder, _PublicDecoderBase):
         """Branch-preserving online decoder for the supported public runtime.

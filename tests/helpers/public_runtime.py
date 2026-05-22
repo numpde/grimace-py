@@ -93,7 +93,7 @@ def reachable_outputs_from_decoder(
     *,
     memo: dict[object, frozenset[str]] | None = None,
 ) -> frozenset[str]:
-    return _runtime._reachable_terminal_prefixes(decoder._impl._state, memo=memo)
+    return _runtime._reachable_terminal_prefixes(decoder._state, memo=memo)
 
 
 def exact_token_inventory_via_decoder(mol: object, **kwargs: object) -> tuple[str, ...]:
@@ -104,7 +104,7 @@ def exact_token_inventory_via_decoder(mol: object, **kwargs: object) -> tuple[st
 
     while stack:
         current = stack.pop()
-        state_key = _runtime._state_cache_key(current._impl._state)
+        state_key = _runtime._state_cache_key(current._state)
         if state_key in seen_state_keys:
             continue
         seen_state_keys.add(state_key)

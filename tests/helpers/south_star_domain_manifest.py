@@ -46,6 +46,9 @@ SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY = (
 SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_polycyclic_ring_tetrahedral_obligations"
 )
+SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY = (
+    "unified_reference_polycyclic_ring_tetrahedral_directional_composition"
+)
 SOUTH_STAR_COMPOSITIONAL_STEREO_INDEPENDENT_PRODUCT_UNIFIED_REFERENCE_AUTHORITY = (
     "unified_reference_compositional_stereo_product"
 )
@@ -107,6 +110,7 @@ SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES: frozenset[str] = frozenset(
         SOUTH_STAR_MARKERLESS_ACYCLIC_TREE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
+        SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
         SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
@@ -162,6 +166,7 @@ SOUTH_STAR_SHARED_PIPELINE_ELIGIBLE_EXPANDED_FEATURE_AREAS: frozenset[str] = fro
         "non_organic_bracket_atom_text",
         "nonstereo_polycyclic_skeleton",
         "polycyclic_ring_stereo",
+        "polycyclic_ring_tetrahedral_directional",
         "polycyclic_ring_tetrahedral",
         "quadruple_bond_text",
         "radical_atom_text",
@@ -223,6 +228,7 @@ SOUTH_STAR_PRIVATE_DOMAIN = SouthStarDomainManifest(
             "ring_stereo_monocycle",
             "nonstereo_polycyclic_skeleton",
             "polycyclic_ring_stereo",
+            "polycyclic_ring_tetrahedral_directional",
             "polycyclic_ring_tetrahedral",
             "tetrahedral_atom_stereo",
             "ring_tetrahedral_monocycle",

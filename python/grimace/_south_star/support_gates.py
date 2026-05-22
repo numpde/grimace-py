@@ -298,6 +298,8 @@ def _ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeature, ...]:
         return ()
     if is_supported_polycyclic_ring_tetrahedral_skeleton(mol):
         return ()
+    if is_supported_polycyclic_ring_tetrahedral_directional_skeleton(mol):
+        return ()
     if is_supported_fused_aromatic_ring_system(mol):
         return ()
     return (
@@ -350,6 +352,8 @@ def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeatur
         mol
     ) or is_supported_polycyclic_ring_tetrahedral_skeleton(
         mol
+    ) or is_supported_polycyclic_ring_tetrahedral_directional_skeleton(
+        mol
     ) or is_supported_fused_aromatic_ring_system(mol):
         return ()
     ring_atom_indices = tuple(
@@ -377,6 +381,8 @@ def _ring_tetrahedral_interaction_features(
     if is_supported_tetrahedral_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_tetrahedral_exocyclic_directional_monocycle(
+        mol
+    ) or is_supported_polycyclic_ring_tetrahedral_directional_skeleton(
         mol
     ) or is_supported_polycyclic_ring_tetrahedral_skeleton(mol):
         return ()
@@ -711,6 +717,21 @@ def is_supported_polycyclic_ring_tetrahedral_skeleton(mol: Chem.Mol) -> bool:
     if not extract_ring_tetrahedral_interaction_obligations(mol):
         return False
     return all(bond.GetStereo() == Chem.BondStereo.STEREONONE for bond in mol.GetBonds())
+
+
+def is_supported_polycyclic_ring_tetrahedral_directional_skeleton(
+    mol: Chem.Mol,
+) -> bool:
+    if not _has_supported_polycyclic_shape(mol, allow_tetrahedral_stereo=True):
+        return False
+    if len(extract_ring_tetrahedral_interaction_obligations(mol)) != 1:
+        return False
+    stereo_bonds = tuple(
+        bond
+        for bond in mol.GetBonds()
+        if bond.GetStereo() != Chem.BondStereo.STEREONONE
+    )
+    return len(stereo_bonds) == 1 and not stereo_bonds[0].IsInRing()
 
 
 def is_supported_fused_aromatic_ring_system(mol: Chem.Mol) -> bool:

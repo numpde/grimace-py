@@ -8,17 +8,10 @@ from tests.helpers.south_star_mixed_polycyclic_directional_proof import (
 
 
 class SouthStarMixedPolycyclicDirectionalProofTests(unittest.TestCase):
-    def test_connected_frontier_proof_generates_semantic_outputs(self) -> None:
+    def test_connected_supported_proof_generates_semantic_outputs(self) -> None:
         proof = mixed_polycyclic_directional_proof("F[C@H]1CC2CCC1C2/C=C/Cl")
 
-        self.assertEqual(
-            (
-                "fused_or_polycyclic_ring",
-                "ring_molecule",
-                "ring_tetrahedral_interaction",
-            ),
-            proof.unsupported_categories,
-        )
+        self.assertEqual((), proof.unsupported_categories)
         self.assertEqual((1,), proof.ring_tetrahedral_center_atom_indices)
         self.assertEqual(("component:0",), proof.directional_component_ids)
         self.assertEqual(("bond:8",), proof.directional_feature_ids)

@@ -122,16 +122,20 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
         self.assertEqual(576, report.runtime_output_count)
         self.assertTrue(report.runtime_outputs_match_proof)
 
-    def test_polycyclic_mixed_boundary_remains_unsupported(self) -> None:
+    def test_polycyclic_mixed_boundary_is_independent_product(self) -> None:
         report = compositional_stereo_proof_report("F[C@H]1CC2CCC1C2/C=C/Cl")
 
-        self.assertFalse(report.supported)
-        self.assertIn("fused_or_polycyclic_ring", report.unsupported_categories)
-        self.assertIn("ring_tetrahedral_interaction", report.unsupported_categories)
-        self.assertIsNone(report.proof_output_count)
-        self.assertIsNone(report.runtime_output_count)
-        self.assertIsNone(report.runtime_outputs_match_proof)
-        self.assertIsNone(report.semantic_parseback_passed)
+        self.assertTrue(report.supported)
+        self.assertEqual("independent_product", report.classification)
+        self.assertEqual(
+            (("tetrahedral:1",), ("directional:component:0",)),
+            _component_obligation_ids(report),
+        )
+        self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(3160, report.proof_output_count)
+        self.assertEqual(3160, report.runtime_output_count)
+        self.assertTrue(report.runtime_outputs_match_proof)
+        self.assertTrue(report.semantic_parseback_passed)
 
 
 def _obligation_ids(report):

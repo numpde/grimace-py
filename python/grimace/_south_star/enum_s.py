@@ -46,6 +46,7 @@ from grimace._south_star.support_gates import (
     is_supported_monocycle_with_acyclic_branches,
     is_supported_nonstereo_polycyclic_skeleton,
     is_supported_polycyclic_ring_stereo_skeleton,
+    is_supported_polycyclic_ring_tetrahedral_directional_skeleton,
     is_supported_polycyclic_ring_tetrahedral_skeleton,
 )
 from grimace._south_star.tetrahedral import (
@@ -702,6 +703,8 @@ def _tree_traversals_for_marker_assignment(
         mol
     ) or is_supported_polycyclic_ring_tetrahedral_skeleton(
         mol
+    ) or is_supported_polycyclic_ring_tetrahedral_directional_skeleton(
+        mol
     ) or is_supported_fused_aromatic_ring_system(mol):
         return _ring_system_traversals(
             mol,
@@ -809,6 +812,8 @@ def _assert_tree_traversal_supported(
     if is_supported_polycyclic_ring_stereo_skeleton(mol):
         return
     if is_supported_polycyclic_ring_tetrahedral_skeleton(mol):
+        return
+    if is_supported_polycyclic_ring_tetrahedral_directional_skeleton(mol):
         return
     if is_supported_fused_aromatic_ring_system(mol):
         return

@@ -309,6 +309,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "ring_tetrahedral_exocyclic_directional_branch",
                 "polycyclic_ring_tetrahedral_bridged_center",
                 "polycyclic_ring_tetrahedral_minimal_bridge",
+                "polycyclic_ring_tetrahedral_directional_bridge",
                 "compositional_stereo_two_tetra_separated",
                 "compositional_stereo_two_tetra_adjacent",
                 "compositional_stereo_two_tetra_disconnected",
@@ -413,6 +414,10 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("triple_bond_text", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_stereo", matrix.supported_feature_areas)
         self.assertIn("polycyclic_ring_tetrahedral", matrix.supported_feature_areas)
+        self.assertIn(
+            "polycyclic_ring_tetrahedral_directional",
+            matrix.supported_feature_areas,
+        )
         self.assertIn("ring_tetrahedral_monocycle", matrix.supported_feature_areas)
         self.assertNotIn(
             "unsupported_radical_atom",

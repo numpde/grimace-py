@@ -20,6 +20,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
@@ -33,6 +34,9 @@ from tests.helpers.south_star_compositional_stereo_proof import (
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
+)
+from tests.helpers.south_star_mixed_polycyclic_directional_proof import (
+    mixed_polycyclic_directional_proof,
 )
 from tests.helpers.south_star_ring_tetrahedral_proof_spine import (
     polycyclic_ring_tetrahedral_proof_spine,
@@ -150,6 +154,13 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
             any(
                 case.support_authority
                 == SOUTH_STAR_RING_TETRAHEDRAL_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY
+                for case in cases
+            )
+        )
+        self.assertTrue(
+            any(
+                case.support_authority
+                == SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY
                 for case in cases
             )
         )
@@ -638,6 +649,30 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 self.assertGreater(proof.closure_event_count, 0)
                 self.assertGreater(proof.renderer_input_count, 0)
                 self.assertEqual(1, proof.obligation_count)
+
+    def test_polycyclic_ring_tetrahedral_directional_proof_matches_fixtures(
+        self,
+    ) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                proof = mixed_polycyclic_directional_proof(case.source_smiles)
+                result = mol_to_smiles_enum_s_graph_native(
+                    case.source_smiles,
+                    case_id=case.case_id,
+                )
+
+                self.assertEqual(case.expected_support, proof.outputs)
+                self.assertEqual(proof.outputs, result.outputs)
+                self.assertEqual((1,), proof.ring_tetrahedral_center_atom_indices)
+                self.assertEqual(("component:0",), proof.directional_component_ids)
+                self.assertEqual(("bond:8",), proof.directional_feature_ids)
+                self.assertTrue(proof.semantic_parseback_passed)
 
     def test_compositional_stereo_proof_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

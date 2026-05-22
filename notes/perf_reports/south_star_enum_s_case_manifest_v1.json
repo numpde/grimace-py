@@ -16,6 +16,13 @@
       "expected_output_count": 12
     },
     {
+      "case_id": "isolated_alkene_e",
+      "fixture_family": "exact_first_domain",
+      "domain_label": "first_domain_directional_bond_stereo",
+      "source_smiles": "F/C=C/Cl",
+      "expected_output_count": 12
+    },
+    {
       "case_id": "hetero_imine_carrier",
       "fixture_family": "exact_first_domain",
       "domain_label": "first_domain_directional_bond_stereo",
@@ -364,6 +371,13 @@
       "domain_label": "polycyclic_ring_tetrahedral",
       "source_smiles": "F[C@H]1CC2CC1C2",
       "expected_output_count": 312
+    },
+    {
+      "case_id": "polycyclic_ring_tetrahedral_directional_bridge",
+      "fixture_family": "expanded_support",
+      "domain_label": "polycyclic_ring_tetrahedral_directional",
+      "source_smiles": "F[C@H]1CC2CCC1C2/C=C/Cl",
+      "expected_output_count": 3160
     },
     {
       "case_id": "compositional_stereo_two_tetra_separated",

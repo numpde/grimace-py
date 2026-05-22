@@ -16,6 +16,10 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_TEMPORARY_WITNESS_AUTHORITIES,
     SOUTH_STAR_UNIFIED_REFERENCE_AUTHORITIES,
 )
+from tests.helpers.south_star_derived_support import (
+    derived_support_proof_for_case,
+    load_south_star_derived_support_cases,
+)
 from tests.helpers.south_star_exact_support import (
     load_south_star_exact_first_domain_cases,
     load_south_star_expanded_support_cases,
@@ -40,6 +44,10 @@ SOUTH_STAR_PIPELINE_PROVENANCE_STAGES: tuple[str, ...] = (
     "renderer",
     "semantic_evidence",
 )
+SOUTH_STAR_DERIVED_SUPPORT_DIAGNOSTIC_RUNNER = (
+    "PYTHONPATH=python:. python3 -m unittest "
+    "tests.run_south_star_derived_support_diagnostics -q"
+)
 
 
 @lru_cache(maxsize=None)
@@ -51,6 +59,7 @@ def _cached_graph_native_result(source_smiles: str, case_id: str):
 class SouthStarReadinessMatrix:
     unified_reference_backed_case_ids: tuple[str, ...]
     unified_reference_promotion_candidate_case_ids: tuple[str, ...]
+    derived_support_case_ids: tuple[str, ...]
     temporary_witness_case_ids: tuple[str, ...]
     regression_backed_case_ids: tuple[str, ...]
     public_api_blocker_case_ids: tuple[str, ...]
@@ -123,6 +132,19 @@ class SouthStarProofComplexityDiagnosticRecord:
     renderer_input_count: int
     output_count: int
     count_provenance: tuple[SouthStarProofCountProvenanceRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarDerivedSupportReadinessRecord:
+    case_id: str
+    support_authority: str
+    fragment_case_ids: tuple[str, ...]
+    fragment_output_counts: tuple[int, ...]
+    expected_product_count: int
+    digest_sha256: str
+    sentinel_count: int
+    semantic_parseback_scope: str
+    full_semantic_diagnostic_runner: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,6 +380,10 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
             "simple_saturated_monocycle_cyclohexane",
             matrix.unified_reference_promotion_candidate_case_ids,
         )
+        self.assertEqual(
+            ("disconnected_polycyclic_tetrahedral_directional_fragments",),
+            matrix.derived_support_case_ids,
+        )
         self.assertNotIn("isolated_alkene_z", matrix.temporary_witness_case_ids)
         self.assertNotIn(
             "explicit_bracket_hydrogen_h2",
@@ -456,6 +482,51 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                     case.support_authority,
                     SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
                 )
+
+    def test_derived_support_readiness_records_are_explicit(self) -> None:
+        records = south_star_derived_support_readiness_records()
+        records_by_id = {record.case_id: record for record in records}
+
+        self.assertEqual(
+            ("disconnected_polycyclic_tetrahedral_directional_fragments",),
+            tuple(records_by_id),
+        )
+
+        record = records_by_id[
+            "disconnected_polycyclic_tetrahedral_directional_fragments"
+        ]
+        self.assertEqual(
+            "unified_reference_disconnected_composition",
+            record.support_authority,
+        )
+        self.assertEqual(
+            (
+                "polycyclic_ring_tetrahedral_bridged_center",
+                "isolated_alkene_e",
+            ),
+            record.fragment_case_ids,
+        )
+        self.assertEqual((784, 12), record.fragment_output_counts)
+        self.assertEqual(18816, record.expected_product_count)
+        self.assertEqual(3, record.sentinel_count)
+        self.assertEqual(
+            "sentinel_default_full_diagnostic",
+            record.semantic_parseback_scope,
+        )
+        self.assertEqual(
+            SOUTH_STAR_DERIVED_SUPPORT_DIAGNOSTIC_RUNNER,
+            record.full_semantic_diagnostic_runner,
+        )
+
+        for record in records:
+            with self.subTest(case_id=record.case_id):
+                self.assertIn(
+                    record.support_authority,
+                    SOUTH_STAR_PRIVATE_DOMAIN.support_authorities,
+                )
+                self.assertGreater(record.expected_product_count, 0)
+                self.assertTrue(record.digest_sha256)
+                self.assertGreater(record.sentinel_count, 0)
 
     def test_unified_reference_promotion_checks_classify_authority_blockers(
         self,
@@ -695,6 +766,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
 def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
     first_domain_cases = load_south_star_exact_first_domain_cases()
     expanded_cases = load_south_star_expanded_support_cases()
+    derived_cases = load_south_star_derived_support_cases()
     promotion_checks = south_star_unified_reference_promotion_checks()
     unified_reference_backed_case_ids = tuple(
         check.case_id for check in promotion_checks if check.promoted
@@ -726,6 +798,7 @@ def south_star_package_readiness_matrix() -> SouthStarReadinessMatrix:
         unified_reference_promotion_candidate_case_ids=(
             unified_reference_promotion_candidate_case_ids
         ),
+        derived_support_case_ids=tuple(case.case_id for case in derived_cases),
         temporary_witness_case_ids=temporary_witness_case_ids,
         regression_backed_case_ids=regression_backed_case_ids,
         public_api_blocker_case_ids=public_api_blocker_case_ids,
@@ -777,6 +850,37 @@ def south_star_authority_promotion_candidate_inventory(
         )
 
     return tuple(items)
+
+
+def south_star_derived_support_readiness_records(
+) -> tuple[SouthStarDerivedSupportReadinessRecord, ...]:
+    records: list[SouthStarDerivedSupportReadinessRecord] = []
+    for case in load_south_star_derived_support_cases():
+        proof = derived_support_proof_for_case(case)
+        if proof.digest_sha256 != case.expected_digest_sha256:
+            raise AssertionError(
+                f"derived support case {case.case_id!r} digest mismatch"
+            )
+        if proof.estimated_product_size != case.expected_product_count:
+            raise AssertionError(
+                f"derived support case {case.case_id!r} product count mismatch"
+            )
+        records.append(
+            SouthStarDerivedSupportReadinessRecord(
+                case_id=case.case_id,
+                support_authority=case.support_authority,
+                fragment_case_ids=tuple(ref.case_id for ref in case.fragment_refs),
+                fragment_output_counts=proof.fragment_output_counts,
+                expected_product_count=case.expected_product_count,
+                digest_sha256=proof.digest_sha256,
+                sentinel_count=len(case.sentinel_outputs),
+                semantic_parseback_scope="sentinel_default_full_diagnostic",
+                full_semantic_diagnostic_runner=(
+                    SOUTH_STAR_DERIVED_SUPPORT_DIAGNOSTIC_RUNNER
+                ),
+            )
+        )
+    return tuple(records)
 
 
 def south_star_proof_complexity_diagnostic_records(

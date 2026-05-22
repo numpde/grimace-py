@@ -8,6 +8,10 @@ from grimace._south_star.components import extract_south_star_components
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_tree_traversals_for_case
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
 from grimace._south_star.enum_s import render_south_star_tree_traversal
+from grimace._south_star.fragments import (
+    SouthStarFragmentSupport,
+    compose_disconnected_fragment_supports,
+)
 from grimace._south_star.support_gates import south_star_support_gate_report
 from grimace._south_star.tetrahedral import (
     extract_ring_tetrahedral_interaction_obligations,
@@ -259,8 +263,26 @@ def _proof_outputs(
 ) -> tuple[str, ...] | None:
     if not supported:
         return None
-    if len(Chem.GetMolFrags(mol)) != 1:
-        return None
+    fragments = tuple(Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True))
+    if len(fragments) > 1:
+        fragment_supports = tuple(
+            SouthStarFragmentSupport(
+                fragment_id=f"fragment:{fragment_idx}",
+                outputs=_connected_proof_outputs(
+                    Chem.MolToSmiles(
+                        fragment,
+                        canonical=False,
+                        isomericSmiles=True,
+                    )
+                ),
+            )
+            for fragment_idx, fragment in enumerate(fragments)
+        )
+        return compose_disconnected_fragment_supports(fragment_supports).outputs
+    return _connected_proof_outputs(source_smiles)
+
+
+def _connected_proof_outputs(source_smiles: str) -> tuple[str, ...]:
     traversals = mol_to_smiles_enum_s_tree_traversals_for_case(
         _SourceCase(source_smiles=source_smiles)
     )

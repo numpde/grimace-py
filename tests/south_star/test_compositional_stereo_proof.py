@@ -53,9 +53,9 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
             _component_obligation_ids(report),
         )
         self.assertEqual(4, report.assignment_count_before_rendering)
-        self.assertIsNone(report.proof_output_count)
+        self.assertEqual(288, report.proof_output_count)
         self.assertEqual(288, report.runtime_output_count)
-        self.assertIsNone(report.runtime_outputs_match_proof)
+        self.assertTrue(report.runtime_outputs_match_proof)
         self.assertTrue(report.semantic_parseback_passed)
 
     def test_polycyclic_mixed_boundary_remains_unsupported(self) -> None:

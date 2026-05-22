@@ -5,12 +5,12 @@ import inspect
 import unittest
 
 import grimace
-from grimace import _runtime
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
+from grimace._runtime_inputs import MolToSmilesFlags
 from tests.helpers.mols import parse_smiles
 
 
@@ -61,7 +61,7 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
     def test_runtime_flags_match_internal_option_inventory(self) -> None:
         self.assertEqual(
             _internal_option_defaults(MOL_TO_SMILES_OPTIONS),
-            tuple((field.name, field.default) for field in fields(_runtime.MolToSmilesFlags)),
+            tuple((field.name, field.default) for field in fields(MolToSmilesFlags)),
         )
 
     def test_prepared_and_call_options_partition_full_inventory(self) -> None:

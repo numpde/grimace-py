@@ -7,14 +7,14 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 
 import grimace
-from grimace import _runtime, _runtime_states
+from grimace import _runtime_graphs, _runtime_states
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
-from grimace._runtime_inputs import runtime_surface_kind
+from grimace._runtime_inputs import MolToSmilesFlags, make_flags, runtime_surface_kind
 
 
 def supported_public_kwargs(**kwargs: object) -> dict[str, object]:
@@ -25,8 +25,8 @@ def supported_public_kwargs(**kwargs: object) -> dict[str, object]:
     }
 
 
-def runtime_flags_from_public_kwargs(**kwargs: object) -> _runtime.MolToSmilesFlags:
-    return _runtime._make_flags(
+def runtime_flags_from_public_kwargs(**kwargs: object) -> MolToSmilesFlags:
+    return make_flags(
         **coerce_public_options(
             MOL_TO_SMILES_OPTIONS,
             kwargs,
@@ -170,7 +170,7 @@ def prepared_input_variants(
         all_hs_explicit=bool(flags.all_hs_explicit),
         ignore_atom_map_numbers=bool(flags.ignore_atom_map_numbers),
     )
-    core_prepared = _runtime.prepare_smiles_graph(reference_prepared, flags=flags)
+    core_prepared = _runtime_graphs.prepare_smiles_graph(reference_prepared, flags=flags)
     return (
         ("mol", mol),
         ("reference_prepared", reference_prepared),

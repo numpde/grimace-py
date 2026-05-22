@@ -18,6 +18,13 @@ from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
 
+def _graph_runtime_modules():
+    from grimace import _runtime_graphs
+    from grimace._runtime_inputs import MolToSmilesFlags
+
+    return _runtime_graphs, MolToSmilesFlags
+
+
 class CoreDatasetContractsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -25,16 +32,16 @@ class CoreDatasetContractsTests(unittest.TestCase):
             raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_kernel_prepared_graph_roundtrips_dataset_slice(self) -> None:
-        from grimace import _runtime
+        _runtime_graphs, MolToSmilesFlags = _graph_runtime_modules()
 
         cases = load_default_connected_nonstereo_molecule_cases(limit=25, max_smiles_length=20)
         self.assertEqual(25, len(cases))
 
         for case in cases:
             with self.subTest(cid=case.cid, smiles=case.smiles):
-                prepared = _runtime.prepare_smiles_graph(
+                prepared = _runtime_graphs.prepare_smiles_graph(
                     parse_smiles(case.smiles),
-                    flags=_runtime.MolToSmilesFlags(
+                    flags=MolToSmilesFlags(
                         isomeric_smiles=False,
                         rooted_at_atom=0,
                         canonical=False,
@@ -45,7 +52,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
                 self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
 
     def test_kernel_stereo_outputs_canonicalize_on_representative_case_set(self) -> None:
-        from grimace import _runtime
+        _runtime_graphs, MolToSmilesFlags = _graph_runtime_modules()
 
         cases: list[tuple[str, str, str]] = []
         cases.extend(
@@ -64,9 +71,9 @@ class CoreDatasetContractsTests(unittest.TestCase):
 
         total_generated = 0
         for cid, smiles, category in cases:
-            prepared = _runtime.prepare_smiles_graph(
+            prepared = _runtime_graphs.prepare_smiles_graph(
                 parse_smiles(smiles),
-                flags=_runtime.MolToSmilesFlags(
+                flags=MolToSmilesFlags(
                     isomeric_smiles=True,
                     rooted_at_atom=0,
                     canonical=False,

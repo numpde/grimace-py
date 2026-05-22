@@ -14,7 +14,10 @@ from grimace._reference import (
     build_core_exact_sets_artifact,
     write_core_exact_sets_artifact,
 )
-from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
+from grimace._reference.prepared_graph import (
+    CONNECTED_NONSTEREO_SURFACE,
+    prepare_smiles_graph_from_mol_to_smiles_kwargs,
+)
 from tests.helpers.public_runtime import (
     assert_public_entrypoints_equivalent,
     assert_public_entrypoints_raise,
@@ -364,16 +367,17 @@ class PythonApiSmokeTests(unittest.TestCase):
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
-        from grimace import _runtime
+        from grimace import _runtime_graphs
+        from grimace._runtime_inputs import MolToSmilesFlags
 
         reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
             parse_smiles("CCO"),
-            surface_kind=_runtime.CONNECTED_NONSTEREO_SURFACE,
+            surface_kind=CONNECTED_NONSTEREO_SURFACE,
             isomeric_smiles=False,
         )
-        prepared = _runtime.prepare_smiles_graph(
+        prepared = _runtime_graphs.prepare_smiles_graph(
             reference_prepared,
-            flags=_runtime.MolToSmilesFlags(
+            flags=MolToSmilesFlags(
                 isomeric_smiles=False,
                 rooted_at_atom=0,
                 canonical=False,

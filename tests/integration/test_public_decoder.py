@@ -6,7 +6,8 @@ import unittest
 
 import grimace
 from rdkit import Chem
-from grimace import _runtime, _runtime_states
+from grimace import _runtime, _runtime_graphs, _runtime_states
+from grimace._runtime_inputs import MolToSmilesFlags
 from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
@@ -155,7 +156,7 @@ class PublicDecoderTests(unittest.TestCase):
 
     def _atom_tokens(self, case: DecoderCase) -> tuple[str, ...]:
         mol = parse_smiles(case.smiles)
-        flags = _runtime.MolToSmilesFlags(
+        flags = MolToSmilesFlags(
             isomeric_smiles=case.isomeric_smiles,
             kekule_smiles=case.kekule_smiles,
             rooted_at_atom=case.rooted_at_atom,
@@ -166,12 +167,12 @@ class PublicDecoderTests(unittest.TestCase):
             ignore_atom_map_numbers=case.ignore_atom_map_numbers,
         )
         if len(Chem.GetMolFrags(mol)) == 1:
-            prepared = _runtime.prepare_smiles_graph(mol, flags=flags)
+            prepared = _runtime_graphs.prepare_smiles_graph(mol, flags=flags)
             return tuple(prepared.atom_tokens)
 
         atom_tokens: set[str] = set()
         for fragment_mol in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False):
-            prepared = _runtime.prepare_smiles_graph(
+            prepared = _runtime_graphs.prepare_smiles_graph(
                 fragment_mol,
                 flags=flags.with_rooted_at_atom(0),
             )

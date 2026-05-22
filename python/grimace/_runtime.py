@@ -200,13 +200,7 @@ def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
         )
         for spec in MOL_TO_SMILES_OPTIONS
     }
-    if bool(normalized["canonical"]):
-        raise NotImplementedError(
-            "MolToSmiles runtime currently supports only canonical=False and "
-            "doRandom=True; the public signatures keep RDKit-like defaults for "
-            "surface compatibility, so pass those two flags explicitly."
-        )
-    if not bool(normalized["do_random"]):
+    if bool(normalized["canonical"]) or not bool(normalized["do_random"]):
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only canonical=False and "
             "doRandom=True; the public signatures keep RDKit-like defaults for "

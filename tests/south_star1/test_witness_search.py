@@ -24,6 +24,7 @@ from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.ring_labels import enumerate_ring_label_assignments
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.semantics import Invalid
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
@@ -32,7 +33,6 @@ from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.witness_search import enumerate_nonstereo_assignments
 from grimace._south_star1.witness_search import enumerate_nonstereo_support
 from grimace._south_star1.witness_search import enumerate_nonstereo_witnesses
-from grimace._south_star1.witness_search import enumerate_ring_label_assignments
 
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
@@ -92,7 +92,9 @@ class WitnessSearchTest(unittest.TestCase):
         self.assertTrue(skeletons)
         for skeleton in skeletons:
             slots = allocate_traversal_slots(facts, skeleton)
-            label_assignments = tuple(enumerate_ring_label_assignments(policy, slots))
+            label_assignments = tuple(
+                enumerate_ring_label_assignments(slots=slots, policy=policy)
+            )
 
             self.assertEqual(len(skeleton.ring_bonds), 1)
             self.assertEqual(len(slots.ring_endpoints), 2)

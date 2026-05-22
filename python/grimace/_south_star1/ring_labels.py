@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .ids import BondId
@@ -19,6 +20,78 @@ class RingLabelInterval:
     endpoint_2: RingEndpointId
     start: int
     end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RingInterval:
+    bond: BondId
+    endpoint_1: RingEndpointId
+    endpoint_2: RingEndpointId
+    start: int
+    end: int
+
+
+def enumerate_ring_label_assignments(
+    *,
+    slots: SlotBundle,
+    policy: SmilesPolicy,
+) -> Iterator[dict[RingEndpointId, RingLabel]]:
+    """Enumerate bounded ring-label assignments for one slot bundle.
+
+    The validator is the source of truth for endpoint coverage, same-label
+    pairing, label-domain membership, interval non-overlap, and least-free
+    normalization. This generator mirrors that policy by construction and
+    validates each yielded complete assignment.
+    """
+
+    if not slots.ring_endpoints:
+        yield {}
+        return
+
+    intervals = _ring_intervals(slots)
+    labels = policy.ring_labels
+
+    out: dict[RingEndpointId, RingLabel] = {}
+    chosen: list[tuple[int, int, RingLabel]] = []
+
+    def active_labels_at(position: int) -> set[RingLabel]:
+        return {
+            label
+            for start, end, label in chosen
+            if start < position < end
+        }
+
+    def rec(index: int) -> Iterator[dict[RingEndpointId, RingLabel]]:
+        if index == len(intervals):
+            validate_bounded_ring_labels(policy, slots, out)
+            yield dict(out)
+            return
+
+        interval = intervals[index]
+        active = active_labels_at(interval.start)
+        candidates = tuple(
+            label
+            for label in labels
+            if label not in active
+        )
+
+        if policy.least_free_ring_labels:
+            if not candidates:
+                return
+            candidates = (min(candidates, key=lambda label: label.value),)
+
+        for label in candidates:
+            out[interval.endpoint_1] = label
+            out[interval.endpoint_2] = label
+            chosen.append((interval.start, interval.end, label))
+
+            yield from rec(index + 1)
+
+            chosen.pop()
+            del out[interval.endpoint_1]
+            del out[interval.endpoint_2]
+
+    yield from rec(0)
 
 
 def validate_bounded_ring_labels(
@@ -89,6 +162,43 @@ def _validate_label_reuse(intervals: tuple[RingLabelInterval, ...]) -> None:
                 )
 
 
+def _ring_intervals(slots: SlotBundle) -> tuple[_RingInterval, ...]:
+    by_bond: dict[BondId, list[object]] = {}
+
+    for endpoint in slots.ring_endpoints:
+        by_bond.setdefault(endpoint.bond, []).append(endpoint)
+
+    intervals: list[_RingInterval] = []
+
+    for bond, endpoints in by_bond.items():
+        if len(endpoints) != 2:
+            raise ValueError(
+                f"ring bond {bond!r} has {len(endpoints)} endpoint slots, not two"
+            )
+
+        endpoint_1, endpoint_2 = sorted(
+            endpoints,
+            key=lambda endpoint: endpoint.syntax_position,
+        )
+
+        intervals.append(
+            _RingInterval(
+                bond=bond,
+                endpoint_1=endpoint_1.id,
+                endpoint_2=endpoint_2.id,
+                start=endpoint_1.syntax_position,
+                end=endpoint_2.syntax_position,
+            )
+        )
+
+    return tuple(
+        sorted(
+            intervals,
+            key=lambda interval: (interval.start, int(interval.bond)),
+        )
+    )
+
+
 def _validate_least_free_labels(
     policy: SmilesPolicy,
     intervals: tuple[RingLabelInterval, ...],
@@ -118,6 +228,7 @@ def _validate_least_free_labels(
 
 
 __all__ = (
+    "enumerate_ring_label_assignments",
     "RingLabelInterval",
     "validate_bounded_ring_labels",
 )

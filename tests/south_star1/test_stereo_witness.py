@@ -36,6 +36,7 @@ from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.ring_labels import enumerate_ring_label_assignments
 from grimace._south_star1.ring_labels import validate_bounded_ring_labels
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.semantics import Invalid
@@ -47,7 +48,6 @@ from grimace._south_star1.slots import RingEndpointSlot
 from grimace._south_star1.slots import SlotBundle
 from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.stereo_witness import collect_stereo_witnesses_for_skeleton
-from grimace._south_star1.stereo_witness import enumerate_ring_label_assignments
 
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts

@@ -34,14 +34,13 @@ from .graph_index import build_graph_index
 from .ids import AtomId
 from .ids import BondSlotId
 from .ids import CarrierSlotId
-from .ids import RingEndpointId
 from .policy import AtomTextChoice
 from .policy import BondTextChoice
 from .policy import DirectionMark
-from .policy import RingLabel
 from .policy import SmilesPolicy
 from .policy import TetraToken
 from .render import render_nonstereo_traversal
+from .ring_labels import enumerate_ring_label_assignments
 from .semantics import ParserSemantics
 from .skeleton import TraversalSkeleton
 from .skeleton import enumerate_traversal_skeletons
@@ -190,7 +189,10 @@ def enumerate_nonstereo_assignments(
 
     for atom_text in _dict_product(atom_domains):
         for bond_text in _dict_product(bond_domains):
-            for ring_labels in enumerate_ring_label_assignments(policy, slots):
+            for ring_labels in enumerate_ring_label_assignments(
+                slots=slots,
+                policy=policy,
+            ):
                 yield TraversalAssignment(
                     atom_text=atom_text,
                     tetra_tokens=tetra_tokens,
@@ -198,106 +200,6 @@ def enumerate_nonstereo_assignments(
                     ring_labels=ring_labels,
                     direction_marks=direction_marks,
                 )
-
-
-def enumerate_ring_label_assignments(
-    policy: SmilesPolicy,
-    slots: SlotBundle,
-) -> Iterator[dict[RingEndpointId, RingLabel]]:
-    """Enumerate bounded ring-label assignments for a fixed slot bundle.
-
-    The assignment domain is endpoint-indexed because the existing
-    ``TraversalAssignment`` stores ``ring_labels`` as:
-
-        dict[RingEndpointId, RingLabel]
-
-    The generator assigns the same label to both endpoints of a ring bond and
-    enforces non-overlap for reused labels. The ring-label validator remains
-    the source of truth, including least-free normalization when requested;
-    this generator mirrors that policy by construction.
-    """
-
-    if not slots.ring_endpoints:
-        yield {}
-        return
-
-    intervals = _ring_intervals(slots)
-    labels = policy.ring_labels
-    out: dict[RingEndpointId, RingLabel] = {}
-    chosen: list[tuple[int, int, RingLabel]] = []
-
-    def active_labels_at(position: int) -> set[RingLabel]:
-        return {
-            label
-            for start, end, label in chosen
-            if start < position < end
-        }
-
-    def rec(i: int) -> Iterator[dict[RingEndpointId, RingLabel]]:
-        if i == len(intervals):
-            yield dict(out)
-            return
-
-        interval = intervals[i]
-        active = active_labels_at(interval.start)
-        candidates = tuple(label for label in labels if label not in active)
-
-        if policy.least_free_ring_labels:
-            if not candidates:
-                return
-            candidates = (min(candidates, key=lambda label: label.value),)
-
-        for label in candidates:
-            out[interval.endpoint_1] = label
-            out[interval.endpoint_2] = label
-            chosen.append((interval.start, interval.end, label))
-
-            yield from rec(i + 1)
-
-            chosen.pop()
-            del out[interval.endpoint_1]
-            del out[interval.endpoint_2]
-
-    yield from rec(0)
-
-
-@dataclass(frozen=True, slots=True)
-class _RingInterval:
-    endpoint_1: RingEndpointId
-    endpoint_2: RingEndpointId
-    start: int
-    end: int
-
-
-def _ring_intervals(slots: SlotBundle) -> tuple[_RingInterval, ...]:
-    by_bond: dict[object, list[object]] = {}
-
-    for endpoint in slots.ring_endpoints:
-        by_bond.setdefault(endpoint.bond, []).append(endpoint)
-
-    intervals: list[_RingInterval] = []
-
-    for bond, endpoints in by_bond.items():
-        if len(endpoints) != 2:
-            raise ValueError(
-                f"ring bond {bond!r} has {len(endpoints)} endpoints, not two"
-            )
-
-        left, right = sorted(
-            endpoints,
-            key=lambda endpoint: endpoint.syntax_position,
-        )
-
-        intervals.append(
-            _RingInterval(
-                endpoint_1=left.id,
-                endpoint_2=right.id,
-                start=left.syntax_position,
-                end=right.syntax_position,
-            )
-        )
-
-    return tuple(sorted(intervals, key=lambda interval: interval.start))
 
 
 def _dict_product(
@@ -363,5 +265,4 @@ __all__ = (
     "enumerate_nonstereo_assignments",
     "enumerate_nonstereo_support",
     "enumerate_nonstereo_witnesses",
-    "enumerate_ring_label_assignments",
 )

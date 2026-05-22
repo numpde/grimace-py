@@ -645,34 +645,34 @@ class PublicDecoderTests(unittest.TestCase):
 
                     reachable = _runtime._reachable_terminal_prefixes(state, memo=memo)
                     prefix = state.prefix()
-                    choices = state.choices()
+                    successor_states = _runtime._choice_successor_states(state)
 
                     self.assertTrue(reachable)
                     self.assertTrue(reachable <= outputs)
                     self.assertTrue(all(output.startswith(prefix) for output in reachable))
 
                     if state.is_terminal():
-                        self.assertEqual((), choices)
+                        self.assertEqual((), successor_states)
                         self.assertEqual(frozenset({prefix}), reachable)
                         continue
 
-                    self.assertTrue(choices)
+                    self.assertTrue(successor_states)
                     union_of_branch_outputs: set[str] = set()
-                    for choice in choices:
+                    for _, next_state in successor_states:
                         branch_outputs = _runtime._reachable_terminal_prefixes(
-                            choice.next_state,
+                            next_state,
                             memo=memo,
                         )
                         self.assertTrue(branch_outputs)
                         self.assertTrue(branch_outputs <= reachable)
                         self.assertTrue(
                             all(
-                                output.startswith(choice.next_state.prefix())
+                                output.startswith(next_state.prefix())
                                 for output in branch_outputs
                             )
                         )
                         union_of_branch_outputs.update(branch_outputs)
-                        stack.append(choice.next_state)
+                        stack.append(next_state)
 
                     self.assertEqual(reachable, frozenset(union_of_branch_outputs))
 

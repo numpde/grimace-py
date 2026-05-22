@@ -367,15 +367,6 @@ class MolToSmilesChoice:
         self.next_state = next_state
 
 
-def _choices_from_successor_states(
-    successors: Sequence[tuple[str, object]],
-) -> tuple[MolToSmilesChoice, ...]:
-    return tuple(
-        MolToSmilesChoice(text=text, next_state=next_state)
-        for text, next_state in successors
-    )
-
-
 def _public_decoder_choices(
     decoder_type: type,
     successors: Sequence[tuple[str, object]],
@@ -418,9 +409,6 @@ class _CoreStateAdapter:
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         return self._successor_states(self._decoder.choice_successors())
 
-    def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        return _choices_from_successor_states(self.choice_successor_states())
-
     def prefix(self) -> str:
         return self._decoder.prefix()
 
@@ -448,13 +436,10 @@ class _MergedStateAdapter:
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         successor_states: list[tuple[str, object]] = []
         for state in self._states:
-            if _state_is_terminal(state):
+            if state.is_terminal():
                 continue
             successor_states.extend(_choice_successor_states(state))
         return tuple(successor_states)
-
-    def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        return _choices_from_successor_states(self.choice_successor_states())
 
     def prefix(self) -> str:
         prefix = self._states[0].prefix()
@@ -464,7 +449,7 @@ class _MergedStateAdapter:
         return prefix
 
     def is_terminal(self) -> bool:
-        return all(_state_is_terminal(state) for state in self._states)
+        return all(state.is_terminal() for state in self._states)
 
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
@@ -507,7 +492,7 @@ class _DisconnectedStateAdapter:
 
     def choice_successor_states(self) -> tuple[tuple[str, object], ...]:
         active = self._active_state()
-        if not _state_is_terminal(active):
+        if not active.is_terminal():
             successor_states: list[tuple[str, object]] = []
             adapter_type = type(self)
             for text, successor in _choice_successor_states(active):
@@ -537,15 +522,15 @@ class _DisconnectedStateAdapter:
             )
         return ()
 
-    def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        return _choices_from_successor_states(self.choice_successor_states())
-
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"
 
     def is_terminal(self) -> bool:
         active = self._active_state()
-        return _state_is_terminal(active) and self._fragment_idx + 1 == len(self._fragment_states)
+        return (
+            active.is_terminal()
+            and self._fragment_idx + 1 == len(self._fragment_states)
+        )
 
     def copy(self) -> "_DisconnectedStateAdapter":
         return type(self)(
@@ -564,7 +549,7 @@ class _DisconnectedStateAdapter:
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         active = self._active_state()
-        if not _state_is_terminal(active):
+        if not active.is_terminal():
             return tuple(
                 (
                     text,
@@ -620,10 +605,6 @@ def _grouped_successor_states(state: _AdapterDecoderState | _CoreDecoderState) -
     if not successors:
         return ()
     return tuple(successors)
-
-
-def _state_is_terminal(state: _BaseDecoderState) -> bool:
-    return bool(state.is_terminal())
 
 
 def _determinized_choice_successors(

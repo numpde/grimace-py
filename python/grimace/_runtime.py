@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Hashable, Iterator, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from itertools import product
 from typing import Protocol, TypeAlias, cast
 
 import grimace._prepared_mol as _prepared_mol
-from grimace._mol_to_smiles_options import (
-    MOL_TO_SMILES_OPTIONS,
-    MOL_TO_SMILES_PREPARED_OPTIONS,
-    coerce_internal_options,
-    coerce_option,
-)
 from grimace._prepared_mol import PreparedMol
+from grimace._runtime_inputs import (
+    MolToSmilesFlags,
+    ensure_singly_connected_molecule,
+    make_flags as _make_flags,
+    prepare_runtime_input as _prepare_runtime_input,
+    runtime_surface_kind as _runtime_surface_kind,
+    writer_flag_kwargs as _runtime_writer_flag_kwargs,
+)
 
 _core = importlib.import_module("grimace._core")
 from grimace._reference.prepared_graph import (
@@ -47,52 +49,6 @@ class _AdapterDecoderState(_BaseDecoderState, Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class MolToSmilesFlags:
-    isomeric_smiles: bool = True
-    kekule_smiles: bool = False
-    rooted_at_atom: int = -1
-    canonical: bool = True
-    all_bonds_explicit: bool = False
-    all_hs_explicit: bool = False
-    do_random: bool = False
-    ignore_atom_map_numbers: bool = False
-
-    def with_rooted_at_atom(self, rooted_at_atom: int) -> "MolToSmilesFlags":
-        return replace(self, rooted_at_atom=rooted_at_atom)
-
-
-def _requires_stereo_runtime_surface(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> bool:
-    if flags.isomeric_smiles:
-        return True
-    if not flags.all_bonds_explicit:
-        return False
-    if _prepared_mol._is_rdkit_mol(mol_or_prepared):
-        return _prepared_mol._rdkit_mol_requires_stereo_surface(mol_or_prepared)
-    if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
-        return False
-    return any(
-        str(bond_dir) != "NONE"
-        for bond_dir in getattr(mol_or_prepared, "bond_dirs", ())
-    )
-
-
-def _runtime_surface_kind(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> str:
-    # The runtime is mostly keyed by isomeric_smiles, but explicit single-bond
-    # directions still require the stereo surface even when isomeric_smiles=False.
-    if _requires_stereo_runtime_surface(mol_or_prepared, flags=flags):
-        return CONNECTED_STEREO_SURFACE
-    return CONNECTED_NONSTEREO_SURFACE
-
-
-@dataclass(frozen=True, slots=True)
 class _FragmentPlan:
     fragment: object
     rooted_at_atom: int | None
@@ -108,20 +64,6 @@ def _validate_surface_kind(
             f"PreparedSmilesGraph surface_kind={prepared.surface_kind!r} does not match "
             f"the requested surface_kind={surface_kind!r}"
         )
-
-
-def _runtime_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
-    return {
-        spec.internal_name: bool(getattr(flags, spec.internal_name))
-        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-    }
-
-
-def _runtime_public_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
-    return {
-        spec.public_name: bool(getattr(flags, spec.internal_name))
-        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-    }
 
 
 def _validate_writer_flags(
@@ -142,62 +84,6 @@ def _validate_writer_flags(
     if not matches:
         raise ValueError(
             "PreparedSmilesGraph writer flags do not match the requested public runtime options"
-        )
-
-
-def _validate_prepared_mol_writer_flags(
-    prepared: PreparedMol,
-    flags: MolToSmilesFlags,
-) -> None:
-    if not _prepared_mol._matches_writer_flags(
-        prepared,
-        **_runtime_writer_flag_kwargs(flags),
-    ):
-        raise ValueError(
-            "PreparedMol writer flags do not match the requested public runtime options"
-        )
-
-
-def _prepare_runtime_input(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> object:
-    _validate_supported_flags(flags)
-    if isinstance(mol_or_prepared, PreparedMol):
-        _validate_prepared_mol_writer_flags(mol_or_prepared, flags)
-        return mol_or_prepared
-    if _prepared_mol._is_rdkit_mol(mol_or_prepared):
-        return _prepared_mol.PrepareMol(
-            mol_or_prepared,
-            **_runtime_public_writer_flag_kwargs(flags),
-        )
-    return mol_or_prepared
-
-
-def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
-    normalized = {
-        spec.internal_name: coerce_option(
-            spec,
-            getattr(flags, spec.internal_name),
-            context="MolToSmiles runtime",
-        )
-        for spec in MOL_TO_SMILES_OPTIONS
-    }
-    if bool(normalized["canonical"]) or not bool(normalized["do_random"]):
-        raise NotImplementedError(
-            "MolToSmiles runtime currently supports only canonical=False and "
-            "doRandom=True; the public signatures keep RDKit-like defaults for "
-            "surface compatibility, so pass those two flags explicitly."
-        )
-
-
-def _ensure_singly_connected_molecule(mol: object) -> None:
-    if _prepared_mol._rdkit_mol_atom_count(mol) == 0:
-        return
-    if _prepared_mol._rdkit_mol_fragment_count(mol) != 1:
-        raise NotImplementedError(
-            "MolToSmiles runtime currently supports only singly-connected molecules"
         )
 
 
@@ -617,7 +503,7 @@ def prepare_smiles_graph(
         _validate_writer_flags(mol_or_prepared, flags)
         return _core.PreparedSmilesGraph(mol_or_prepared)
 
-    _ensure_singly_connected_molecule(mol_or_prepared)
+    ensure_singly_connected_molecule(mol_or_prepared)
     reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
         mol_or_prepared,
         surface_kind=surface_kind,
@@ -628,26 +514,6 @@ def prepare_smiles_graph(
         ignore_atom_map_numbers=flags.ignore_atom_map_numbers,
     )
     return _core.PreparedSmilesGraph(reference_prepared)
-
-
-def _make_flags(
-    *,
-    isomeric_smiles: bool = True,
-    kekule_smiles: bool = False,
-    rooted_at_atom: int = -1,
-    canonical: bool = True,
-    all_bonds_explicit: bool = False,
-    all_hs_explicit: bool = False,
-    do_random: bool = False,
-    ignore_atom_map_numbers: bool = False,
-) -> MolToSmilesFlags:
-    return MolToSmilesFlags(
-        **coerce_internal_options(
-            MOL_TO_SMILES_OPTIONS,
-            locals(),
-            context="MolToSmiles runtime",
-        )
-    )
 
 
 def _instantiate_core_object(

@@ -69,10 +69,6 @@ class MolToSmilesFlags:
         return replace(self, rooted_at_atom=rooted_at_atom)
 
 
-def _prepared_bond_dirs(prepared: object) -> tuple[str, ...]:
-    return tuple(str(value) for value in getattr(prepared, "bond_dirs", ()))
-
-
 def _requires_stereo_runtime_surface(
     mol_or_prepared: object,
     *,
@@ -86,7 +82,10 @@ def _requires_stereo_runtime_surface(
         return _prepared_mol_module._rdkit_mol_requires_stereo_surface(mol_or_prepared)
     if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
         return False
-    return any(bond_dir != "NONE" for bond_dir in _prepared_bond_dirs(mol_or_prepared))
+    return any(
+        str(bond_dir) != "NONE"
+        for bond_dir in getattr(mol_or_prepared, "bond_dirs", ())
+    )
 
 
 def _runtime_surface_kind(

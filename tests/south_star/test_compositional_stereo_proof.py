@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import unittest
+
+from tests.helpers.south_star_compositional_stereo_proof import (
+    compositional_stereo_proof_report,
+)
+
+
+class SouthStarCompositionalStereoProofTests(unittest.TestCase):
+    def test_separated_tetrahedral_centers_are_independent_product(self) -> None:
+        report = compositional_stereo_proof_report("F[C@H](Cl)C[C@H](Br)I")
+
+        self.assertTrue(report.supported)
+        self.assertEqual("independent_product", report.classification)
+        self.assertEqual(("tetrahedral:1", "tetrahedral:4"), _obligation_ids(report))
+        self.assertEqual(
+            (("tetrahedral:1",), ("tetrahedral:4",)),
+            _component_obligation_ids(report),
+        )
+        self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(48, report.runtime_output_count)
+        self.assertTrue(report.semantic_parseback_passed)
+
+    def test_adjacent_tetrahedral_centers_are_coupled_component(self) -> None:
+        report = compositional_stereo_proof_report("F[C@H](Cl)[C@H](Br)I")
+
+        self.assertTrue(report.supported)
+        self.assertEqual("coupled_component", report.classification)
+        self.assertEqual(
+            (("tetrahedral:1", "tetrahedral:3"),),
+            _component_obligation_ids(report),
+        )
+        self.assertEqual(
+            ("adjacent_tetrahedral_centers",),
+            report.components[0].coupling_reasons,
+        )
+        self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(40, report.runtime_output_count)
+        self.assertTrue(report.semantic_parseback_passed)
+
+    def test_disconnected_tetrahedral_fragments_are_independent_product(self) -> None:
+        report = compositional_stereo_proof_report("F[C@H](Cl)Br.F[C@H](Cl)I")
+
+        self.assertTrue(report.supported)
+        self.assertEqual("independent_product", report.classification)
+        self.assertEqual(
+            (("tetrahedral:1",), ("tetrahedral:5",)),
+            _component_obligation_ids(report),
+        )
+        self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(288, report.runtime_output_count)
+        self.assertTrue(report.semantic_parseback_passed)
+
+    def test_polycyclic_mixed_boundary_remains_unsupported(self) -> None:
+        report = compositional_stereo_proof_report("F[C@H]1CC2CCC1C2/C=C/Cl")
+
+        self.assertFalse(report.supported)
+        self.assertIn("fused_or_polycyclic_ring", report.unsupported_categories)
+        self.assertIn("ring_tetrahedral_interaction", report.unsupported_categories)
+        self.assertIsNone(report.runtime_output_count)
+        self.assertIsNone(report.semantic_parseback_passed)
+
+
+def _obligation_ids(report):
+    return tuple(obligation.obligation_id for obligation in report.obligations)
+
+
+def _component_obligation_ids(report):
+    return tuple(component.obligation_ids for component in report.components)
+
+
+if __name__ == "__main__":
+    unittest.main()

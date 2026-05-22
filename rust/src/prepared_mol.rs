@@ -845,17 +845,21 @@ mod tests {
         }
     }
 
+    fn fragment(
+        atom_indices: Vec<usize>,
+        prepared_graph: PreparedSmilesGraphData,
+    ) -> PreparedMolFragmentData {
+        PreparedMolFragmentData {
+            atom_indices,
+            prepared_graph,
+        }
+    }
+
     #[test]
     fn validates_distinct_fragment_atom_indices() {
         let prepared = prepared_mol_with_fragments(vec![
-            PreparedMolFragmentData {
-                atom_indices: vec![0],
-                prepared_graph: single_atom_graph(),
-            },
-            PreparedMolFragmentData {
-                atom_indices: vec![1],
-                prepared_graph: single_atom_graph(),
-            },
+            fragment(vec![0], single_atom_graph()),
+            fragment(vec![1], single_atom_graph()),
         ]);
 
         prepared.validate().expect("prepared mol should validate");
@@ -870,10 +874,7 @@ mod tests {
 
     #[test]
     fn rejects_fragment_atom_count_mismatch() {
-        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
-            atom_indices: Vec::new(),
-            prepared_graph: single_atom_graph(),
-        }]);
+        let prepared = prepared_mol_with_fragments(vec![fragment(Vec::new(), single_atom_graph())]);
 
         assert!(prepared.validate().is_err());
     }
@@ -881,14 +882,8 @@ mod tests {
     #[test]
     fn rejects_empty_fragment_inside_nonempty_molecule() {
         let prepared = prepared_mol_with_fragments(vec![
-            PreparedMolFragmentData {
-                atom_indices: Vec::new(),
-                prepared_graph: empty_graph(),
-            },
-            PreparedMolFragmentData {
-                atom_indices: vec![0],
-                prepared_graph: single_atom_graph(),
-            },
+            fragment(Vec::new(), empty_graph()),
+            fragment(vec![0], single_atom_graph()),
         ]);
 
         assert!(prepared.validate().is_err());
@@ -897,14 +892,8 @@ mod tests {
     #[test]
     fn rejects_overlapping_fragment_atom_indices() {
         let prepared = prepared_mol_with_fragments(vec![
-            PreparedMolFragmentData {
-                atom_indices: vec![0],
-                prepared_graph: single_atom_graph(),
-            },
-            PreparedMolFragmentData {
-                atom_indices: vec![0],
-                prepared_graph: single_atom_graph(),
-            },
+            fragment(vec![0], single_atom_graph()),
+            fragment(vec![0], single_atom_graph()),
         ]);
 
         assert!(prepared.validate().is_err());
@@ -913,14 +902,8 @@ mod tests {
     #[test]
     fn rejects_out_of_order_fragments() {
         let prepared = prepared_mol_with_fragments(vec![
-            PreparedMolFragmentData {
-                atom_indices: vec![1],
-                prepared_graph: single_atom_graph(),
-            },
-            PreparedMolFragmentData {
-                atom_indices: vec![0],
-                prepared_graph: single_atom_graph(),
-            },
+            fragment(vec![1], single_atom_graph()),
+            fragment(vec![0], single_atom_graph()),
         ]);
 
         assert!(prepared.validate().is_err());
@@ -940,20 +923,14 @@ mod tests {
         graph.atom_tokens = vec!["C".to_owned(), "C".to_owned()];
         graph.neighbors = vec![Vec::new(), Vec::new()];
         graph.neighbor_bond_tokens = vec![Vec::new(), Vec::new()];
-        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
-            atom_indices: vec![1, 0],
-            prepared_graph: graph,
-        }]);
+        let prepared = prepared_mol_with_fragments(vec![fragment(vec![1, 0], graph)]);
 
         assert!(prepared.validate().is_err());
     }
 
     #[test]
     fn rejects_missing_global_atom_indices() {
-        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
-            atom_indices: vec![1],
-            prepared_graph: single_atom_graph(),
-        }]);
+        let prepared = prepared_mol_with_fragments(vec![fragment(vec![1], single_atom_graph())]);
 
         assert!(prepared.validate().is_err());
     }
@@ -962,10 +939,7 @@ mod tests {
     fn rejects_writer_flag_mismatch() {
         let mut graph = single_atom_graph();
         graph.writer_all_hs_explicit = true;
-        let prepared = prepared_mol_with_fragments(vec![PreparedMolFragmentData {
-            atom_indices: vec![0],
-            prepared_graph: graph,
-        }]);
+        let prepared = prepared_mol_with_fragments(vec![fragment(vec![0], graph)]);
 
         assert!(prepared.validate().is_err());
     }
@@ -973,14 +947,8 @@ mod tests {
     #[test]
     fn binary_roundtrip_preserves_prepared_mol() {
         let prepared = prepared_mol_with_fragments(vec![
-            PreparedMolFragmentData {
-                atom_indices: vec![0],
-                prepared_graph: single_atom_graph(),
-            },
-            PreparedMolFragmentData {
-                atom_indices: vec![1],
-                prepared_graph: single_atom_graph(),
-            },
+            fragment(vec![0], single_atom_graph()),
+            fragment(vec![1], single_atom_graph()),
         ]);
 
         let encoded = prepared.to_binary();

@@ -273,7 +273,6 @@ class PreparedMolContractTests(unittest.TestCase):
 
     def test_rust_storage_rejects_malformed_structural_payloads(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
-        empty_prepared = self._prepare("", isomericSmiles=False)
         base_payload = {
             "schema_version": 1,
             "writer_flags": {
@@ -324,49 +323,11 @@ class PreparedMolContractTests(unittest.TestCase):
                     base_payload["fragments"][1],
                 ],
             },
-            "atom_count_mismatch": {
-                **base_payload,
-                "fragments": [
-                    {**base_payload["fragments"][0], "atom_indices": []},
-                    base_payload["fragments"][1],
-                ],
-            },
             "overlapping_atom_indices": {
                 **base_payload,
                 "fragments": [
                     base_payload["fragments"][0],
                     {**base_payload["fragments"][1], "atom_indices": [0]},
-                ],
-            },
-            "empty_fragment_inside_nonempty_molecule": {
-                **base_payload,
-                "fragments": [
-                    {
-                        "atom_indices": [],
-                        "prepared_graph": empty_prepared._inner.fragment_prepared_graph(0),
-                    },
-                    base_payload["fragments"][0],
-                ],
-            },
-            "out_of_order_fragments": {
-                **base_payload,
-                "fragments": [
-                    base_payload["fragments"][1],
-                    base_payload["fragments"][0],
-                ],
-            },
-            "unsorted_atom_indices": {
-                **base_payload,
-                "fragments": [
-                    {**base_payload["fragments"][0], "atom_indices": [2, 1, 0]},
-                    base_payload["fragments"][1],
-                ],
-            },
-            "missing_global_atom_index": {
-                **base_payload,
-                "fragments": [
-                    {**base_payload["fragments"][0], "atom_indices": [1, 2, 4]},
-                    base_payload["fragments"][1],
                 ],
             },
         }

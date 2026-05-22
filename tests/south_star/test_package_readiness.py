@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 import unittest
 
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
@@ -44,6 +45,7 @@ SOUTH_STAR_PIPELINE_PROVENANCE_STAGES: tuple[str, ...] = (
     "renderer",
     "semantic_evidence",
 )
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SOUTH_STAR_DERIVED_SUPPORT_DIAGNOSTIC_RUNNER = (
     "PYTHONPATH=python:. python3 -m unittest "
     "tests.run_south_star_derived_support_diagnostics -q"
@@ -132,6 +134,14 @@ class SouthStarProofComplexityDiagnosticRecord:
     renderer_input_count: int
     output_count: int
     count_provenance: tuple[SouthStarProofCountProvenanceRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SouthStarPromotionReviewArtifactRecord:
+    gate_id: str
+    review_kind: str
+    artifact_path: str
+    required_terms: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +291,37 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                     gate.verification.startswith("PYTHONPATH=python:.")
                     or gate.verification.startswith("explicit review:")
                 )
+
+    def test_explicit_review_gates_have_checkable_artifacts_where_possible(
+        self,
+    ) -> None:
+        records = south_star_promotion_review_artifact_records()
+        records_by_id = {record.gate_id: record for record in records}
+
+        self.assertEqual(
+            {
+                "documentation_contract",
+                "performance_evidence_boundary",
+                "release_notes_scope",
+            },
+            set(records_by_id),
+        )
+        for record in records:
+            with self.subTest(gate_id=record.gate_id):
+                self.assertIn(
+                    record.review_kind,
+                    {"checked_doc_artifact", "human_release_review_required"},
+                )
+                if record.review_kind == "checked_doc_artifact":
+                    text = (REPO_ROOT / record.artifact_path).read_text()
+                    for term in record.required_terms:
+                        self.assertIn(term, text)
+                else:
+                    self.assertEqual(
+                        "release notes for exporting MolToSmilesEnumS",
+                        record.artifact_path,
+                    )
+                    self.assertTrue(record.required_terms)
 
     def test_readiness_matrix_reports_evidence_classes(self) -> None:
         matrix = south_star_package_readiness_matrix()
@@ -850,6 +891,48 @@ def south_star_authority_promotion_candidate_inventory(
         )
 
     return tuple(items)
+
+
+def south_star_promotion_review_artifact_records(
+) -> tuple[SouthStarPromotionReviewArtifactRecord, ...]:
+    return (
+        SouthStarPromotionReviewArtifactRecord(
+            gate_id="documentation_contract",
+            review_kind="checked_doc_artifact",
+            artifact_path="docs/enum-s.md",
+            required_terms=(
+                "proposed first public shape",
+                "not exported from `grimace`",
+                "SouthStarUnsupportedFeatureError",
+                "not RDKit writer parity",
+                "Current Pre-Export Gap",
+            ),
+        ),
+        SouthStarPromotionReviewArtifactRecord(
+            gate_id="performance_evidence_boundary",
+            review_kind="checked_doc_artifact",
+            artifact_path="docs/enum-s.md",
+            required_terms=(
+                "Performance Evidence Boundary",
+                "guardrails, not user-facing",
+                "do not justify a release note claim",
+                "faster than RDKit",
+                "release-facing",
+                "speed claim",
+            ),
+        ),
+        SouthStarPromotionReviewArtifactRecord(
+            gate_id="release_notes_scope",
+            review_kind="human_release_review_required",
+            artifact_path="release notes for exporting MolToSmilesEnumS",
+            required_terms=(
+                "semantic contract",
+                "MolToSmilesEnum RDKit writer parity",
+                "unsupported boundaries",
+                "performance evidence boundary",
+            ),
+        ),
+    )
 
 
 def south_star_derived_support_readiness_records(

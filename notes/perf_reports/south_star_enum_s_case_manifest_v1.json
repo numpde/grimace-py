@@ -1,0 +1,516 @@
+{
+  "schema_version": 1,
+  "kind": "south_star_semantic_enum_s_case_manifest",
+  "policy_set": {
+    "annotation_policy": "maximal_eligible_carrier",
+    "fragment_order_policy": "all_fragment_orders",
+    "output_order_policy": "first_occurrence_deduplication"
+  },
+  "scope_note": "Deterministic case manifest for the private South Star semantic enumerator benchmark. This records fixture coverage only; timing reports are point-in-time snapshots and may cover any subset of these cases.",
+  "rows": [
+    {
+      "case_id": "isolated_alkene_z",
+      "fixture_family": "exact_first_domain",
+      "domain_label": "first_domain_directional_bond_stereo",
+      "source_smiles": "F/C=C\\Cl",
+      "expected_output_count": 12
+    },
+    {
+      "case_id": "hetero_imine_carrier",
+      "fixture_family": "exact_first_domain",
+      "domain_label": "first_domain_directional_bond_stereo",
+      "source_smiles": "C/C=N/O",
+      "expected_output_count": 12
+    },
+    {
+      "case_id": "conjugated_triene_same_phase",
+      "fixture_family": "exact_first_domain",
+      "domain_label": "first_domain_directional_bond_stereo",
+      "source_smiles": "C/C=C/C=C/C=C/C",
+      "expected_output_count": 6
+    },
+    {
+      "case_id": "hetero_conjugated_enimine",
+      "fixture_family": "exact_first_domain",
+      "domain_label": "first_domain_directional_bond_stereo",
+      "source_smiles": "C/C=C/N=C/O",
+      "expected_output_count": 12
+    },
+    {
+      "case_id": "mixed_coupled_and_independent_alkenes",
+      "fixture_family": "exact_first_domain",
+      "domain_label": "first_domain_directional_bond_stereo",
+      "source_smiles": "F/C=C/C=C/C/C=C\\Cl",
+      "expected_output_count": 48
+    },
+    {
+      "case_id": "simple_saturated_monocycle_cyclohexane",
+      "fixture_family": "expanded_support",
+      "domain_label": "simple_saturated_monocycle",
+      "source_smiles": "C1CCCCC1",
+      "expected_output_count": 5
+    },
+    {
+      "case_id": "branched_saturated_monocycle_methylcyclohexane",
+      "fixture_family": "expanded_support",
+      "domain_label": "branched_saturated_monocycle",
+      "source_smiles": "CC1CCCCC1",
+      "expected_output_count": 60
+    },
+    {
+      "case_id": "unsaturated_nonstereo_monocycle_cyclohexene",
+      "fixture_family": "expanded_support",
+      "domain_label": "unsaturated_nonstereo_monocycle",
+      "source_smiles": "C1=CCCCC1",
+      "expected_output_count": 30
+    },
+    {
+      "case_id": "branched_unsaturated_nonstereo_monocycle_methylcyclohexene",
+      "fixture_family": "expanded_support",
+      "domain_label": "unsaturated_nonstereo_monocycle",
+      "source_smiles": "CC1=CCCCC1",
+      "expected_output_count": 120
+    },
+    {
+      "case_id": "unsaturated_nonstereo_monocycle_cyclohexadiene",
+      "fixture_family": "expanded_support",
+      "domain_label": "unsaturated_nonstereo_monocycle",
+      "source_smiles": "C1=CCC=CC1",
+      "expected_output_count": 15
+    },
+    {
+      "case_id": "aromatic_text_monocycle_benzene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_text_monocycle",
+      "source_smiles": "c1ccccc1",
+      "expected_output_count": 5
+    },
+    {
+      "case_id": "aromatic_text_monocycle_pyridine",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_text_monocycle",
+      "source_smiles": "c1ccncc1",
+      "expected_output_count": 30
+    },
+    {
+      "case_id": "aromatic_text_monocycle_furan",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_text_monocycle",
+      "source_smiles": "c1ccoc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_text_branch_toluene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_text_branch",
+      "source_smiles": "c1ccccc1C",
+      "expected_output_count": 60
+    },
+    {
+      "case_id": "aromatic_text_branch_methyl_pyridine",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_text_branch",
+      "source_smiles": "c1ccncc1C",
+      "expected_output_count": 120
+    },
+    {
+      "case_id": "aromatic_text_branch_methyl_furan",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_text_branch",
+      "source_smiles": "c1ccoc1C",
+      "expected_output_count": 80
+    },
+    {
+      "case_id": "ring_stereo_monocycle_cyclooctene",
+      "fixture_family": "expanded_support",
+      "domain_label": "ring_stereo_monocycle",
+      "source_smiles": "C1/C=C\\CCCCC1",
+      "expected_output_count": 112
+    },
+    {
+      "case_id": "markerless_disconnected_ring_and_atom",
+      "fixture_family": "expanded_support",
+      "domain_label": "disconnected_markerless_fragments",
+      "source_smiles": "C1CCCCC1.O",
+      "expected_output_count": 10
+    },
+    {
+      "case_id": "disconnected_stereo_fragment_and_atom",
+      "fixture_family": "expanded_support",
+      "domain_label": "disconnected_stereo_fragments",
+      "source_smiles": "F/C=C\\Cl.O",
+      "expected_output_count": 24
+    },
+    {
+      "case_id": "nonstereo_polycyclic_skeleton_bicyclo_2_2_1_heptane",
+      "fixture_family": "expanded_support",
+      "domain_label": "nonstereo_polycyclic_skeleton",
+      "source_smiles": "C1CC2CCC1C2",
+      "expected_output_count": 192
+    },
+    {
+      "case_id": "explicit_bracket_hydrogen_h2",
+      "fixture_family": "expanded_support",
+      "domain_label": "explicit_bracket_hydrogen",
+      "source_smiles": "[H][H]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "isotope_atom_text_methane",
+      "fixture_family": "expanded_support",
+      "domain_label": "isotope_atom_text",
+      "source_smiles": "[13CH4]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "atom_map_text_ethane",
+      "fixture_family": "expanded_support",
+      "domain_label": "atom_map_text",
+      "source_smiles": "[CH3:7]C",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_silyl_methane",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[SiH3]C",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_selenium_hydride",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[SeH]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "triple_bond_text_hydrogen_cyanide",
+      "fixture_family": "expanded_support",
+      "domain_label": "triple_bond_text",
+      "source_smiles": "C#N",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "double_bond_text_formaldimine",
+      "fixture_family": "expanded_support",
+      "domain_label": "double_bond_text",
+      "source_smiles": "C=N",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "combined_atom_text_isotope_map_ethane",
+      "fixture_family": "expanded_support",
+      "domain_label": "combined_atom_text_modifiers",
+      "source_smiles": "[13CH3:7]C",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "combined_atom_text_isotope_charge_methylammonium",
+      "fixture_family": "expanded_support",
+      "domain_label": "combined_atom_text_modifiers",
+      "source_smiles": "[15NH3+]C",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "markerless_acyclic_ethanol",
+      "fixture_family": "expanded_support",
+      "domain_label": "markerless_acyclic_tree",
+      "source_smiles": "CCO",
+      "expected_output_count": 4
+    },
+    {
+      "case_id": "markerless_acyclic_isopropanol",
+      "fixture_family": "expanded_support",
+      "domain_label": "markerless_acyclic_tree",
+      "source_smiles": "CC(C)O",
+      "expected_output_count": 6
+    },
+    {
+      "case_id": "markerless_acyclic_acetone",
+      "fixture_family": "expanded_support",
+      "domain_label": "markerless_acyclic_tree",
+      "source_smiles": "CC(=O)C",
+      "expected_output_count": 6
+    },
+    {
+      "case_id": "markerless_acyclic_acetonitrile",
+      "fixture_family": "expanded_support",
+      "domain_label": "markerless_acyclic_tree",
+      "source_smiles": "CC#N",
+      "expected_output_count": 4
+    },
+    {
+      "case_id": "radical_atom_text_hydrogen",
+      "fixture_family": "expanded_support",
+      "domain_label": "radical_atom_text",
+      "source_smiles": "[H]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "radical_atom_text_methyl",
+      "fixture_family": "expanded_support",
+      "domain_label": "radical_atom_text",
+      "source_smiles": "[CH3]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "radical_atom_text_oxygen",
+      "fixture_family": "expanded_support",
+      "domain_label": "radical_atom_text",
+      "source_smiles": "[O]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "charged_atom_text_chloride",
+      "fixture_family": "expanded_support",
+      "domain_label": "charged_atom_text",
+      "source_smiles": "[Cl-]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "charged_atom_text_ammonium",
+      "fixture_family": "expanded_support",
+      "domain_label": "charged_atom_text",
+      "source_smiles": "[NH4+]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "charged_atom_text_methylammonium",
+      "fixture_family": "expanded_support",
+      "domain_label": "charged_atom_text",
+      "source_smiles": "[NH3+]C",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "implicit_h_tetrahedral_center",
+      "fixture_family": "expanded_support",
+      "domain_label": "tetrahedral_atom_stereo",
+      "source_smiles": "C[C@H](F)Cl",
+      "expected_output_count": 12
+    },
+    {
+      "case_id": "quaternary_tetrahedral_center",
+      "fixture_family": "expanded_support",
+      "domain_label": "tetrahedral_atom_stereo",
+      "source_smiles": "C[C@](F)(Cl)Br",
+      "expected_output_count": 48
+    },
+    {
+      "case_id": "ring_tetrahedral_monocycle_center",
+      "fixture_family": "expanded_support",
+      "domain_label": "ring_tetrahedral_monocycle",
+      "source_smiles": "F[C@H]1C(C)CC1",
+      "expected_output_count": 90
+    },
+    {
+      "case_id": "ring_adjacent_tetrahedral_monocycle",
+      "fixture_family": "expanded_support",
+      "domain_label": "ring_tetrahedral_monocycle",
+      "source_smiles": "F[C@H](Cl)C1CC1",
+      "expected_output_count": 40
+    },
+    {
+      "case_id": "polycyclic_ring_stereo_bridge",
+      "fixture_family": "expanded_support",
+      "domain_label": "polycyclic_ring_stereo",
+      "source_smiles": "C1CCC/C=C\\C2C1C2",
+      "expected_output_count": 1120
+    },
+    {
+      "case_id": "independent_directional_components_diene",
+      "fixture_family": "expanded_support",
+      "domain_label": "independent_directional_stereo_components",
+      "source_smiles": "F/C=C/C/C=C/Cl",
+      "expected_output_count": 48
+    },
+    {
+      "case_id": "directional_tetrahedral_acyclic",
+      "fixture_family": "expanded_support",
+      "domain_label": "directional_tetrahedral_composition",
+      "source_smiles": "F/C=C/[C@H](Cl)Br",
+      "expected_output_count": 40
+    },
+    {
+      "case_id": "disconnected_directional_tetrahedral_fragments",
+      "fixture_family": "expanded_support",
+      "domain_label": "disconnected_stereo_fragments",
+      "source_smiles": "F/C=C\\Cl.O[C@H](F)Cl",
+      "expected_output_count": 288
+    },
+    {
+      "case_id": "exocyclic_directional_monocycle_branch",
+      "fixture_family": "expanded_support",
+      "domain_label": "exocyclic_directional_monocycle",
+      "source_smiles": "C1CC(/C=C/Cl)CCC1",
+      "expected_output_count": 160
+    },
+    {
+      "case_id": "ring_tetrahedral_exocyclic_directional_branch",
+      "fixture_family": "expanded_support",
+      "domain_label": "ring_tetrahedral_exocyclic_directional",
+      "source_smiles": "F[C@H]1CCCC(/C=C/Cl)C1",
+      "expected_output_count": 576
+    },
+    {
+      "case_id": "fused_aromatic_naphthalene",
+      "fixture_family": "expanded_support",
+      "domain_label": "fused_aromatic_ring_system",
+      "source_smiles": "c1ccc2ccccc2c1",
+      "expected_output_count": 639
+    },
+    {
+      "case_id": "fused_aromatic_quinoline",
+      "fixture_family": "expanded_support",
+      "domain_label": "fused_aromatic_ring_system",
+      "source_smiles": "c1ccc2ncccc2c1",
+      "expected_output_count": 1368
+    },
+    {
+      "case_id": "fused_aromatic_benzofuran",
+      "fixture_family": "expanded_support",
+      "domain_label": "fused_aromatic_ring_system",
+      "source_smiles": "c1ccc2occc2c1",
+      "expected_output_count": 944
+    },
+    {
+      "case_id": "aromatic_selenium_text_selenophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_selenium_text",
+      "source_smiles": "[se]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_selenium_text_mapped_selenophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_selenium_text",
+      "source_smiles": "[se:7]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_selenium_text_isotope_selenophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_selenium_text",
+      "source_smiles": "[15se]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_selenium_text_isotope_mapped_selenophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_selenium_text",
+      "source_smiles": "[15se:7]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_tellurium_text_tellurophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_tellurium_text",
+      "source_smiles": "[te]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_tellurium_text_mapped_tellurophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_tellurium_text",
+      "source_smiles": "[te:7]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_tellurium_text_isotope_tellurophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_tellurium_text",
+      "source_smiles": "[15te]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "aromatic_tellurium_text_isotope_mapped_tellurophene",
+      "fixture_family": "expanded_support",
+      "domain_label": "aromatic_tellurium_text",
+      "source_smiles": "[15te:7]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_silicon_kekule_ring",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[si]1ccccc1",
+      "expected_output_count": 60
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_arsine",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[AsH3]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_germyl_methane",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[GeH3]C",
+      "expected_output_count": 2
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_stibine",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[SbH3]",
+      "expected_output_count": 1
+    },
+    {
+      "case_id": "non_organic_bracket_atom_text_arsenic_kekule_ring",
+      "fixture_family": "expanded_support",
+      "domain_label": "non_organic_bracket_atom_text",
+      "source_smiles": "[As]1=CC=CC=C1",
+      "expected_output_count": 60
+    },
+    {
+      "case_id": "modified_aromatic_atom_text_pyrrole_nh",
+      "fixture_family": "expanded_support",
+      "domain_label": "modified_aromatic_atom_text",
+      "source_smiles": "c1cc[nH]c1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "modified_aromatic_atom_text_isotope_pyrrole",
+      "fixture_family": "expanded_support",
+      "domain_label": "modified_aromatic_atom_text",
+      "source_smiles": "c1cc[15nH]c1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "modified_aromatic_atom_text_mapped_pyrrole",
+      "fixture_family": "expanded_support",
+      "domain_label": "modified_aromatic_atom_text",
+      "source_smiles": "[nH:7]1cccc1",
+      "expected_output_count": 20
+    },
+    {
+      "case_id": "modified_aromatic_atom_text_mapped_pyridine",
+      "fixture_family": "expanded_support",
+      "domain_label": "modified_aromatic_atom_text",
+      "source_smiles": "c1cc[n:7]cc1",
+      "expected_output_count": 30
+    },
+    {
+      "case_id": "modified_aromatic_atom_text_pyridinium_h",
+      "fixture_family": "expanded_support",
+      "domain_label": "modified_aromatic_atom_text",
+      "source_smiles": "c1cc[nH+]cc1",
+      "expected_output_count": 30
+    },
+    {
+      "case_id": "modified_aromatic_atom_text_pyridine_n_oxide",
+      "fixture_family": "expanded_support",
+      "domain_label": "modified_aromatic_atom_text",
+      "source_smiles": "c1cc[n+]([O-])cc1",
+      "expected_output_count": 60
+    },
+    {
+      "case_id": "quadruple_bond_text_carbon_carbon",
+      "fixture_family": "expanded_support",
+      "domain_label": "quadruple_bond_text",
+      "source_smiles": "C$C",
+      "expected_output_count": 1
+    }
+  ]
+}

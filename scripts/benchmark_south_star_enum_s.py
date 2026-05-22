@@ -9,30 +9,22 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from rdkit import Chem
 
 from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
-from tests.helpers.south_star_exact_support import (
-    load_south_star_exact_first_domain_cases,
-    load_south_star_expanded_support_cases,
+from tests.helpers.south_star_enum_s_benchmark_cases import (
+    SOUTH_STAR_ENUM_S_BENCHMARK_POLICY_SET,
+    SOUTH_STAR_ENUM_S_BENCHMARK_SCOPE_NOTE,
+    SouthStarEnumSBenchmarkCase,
+    south_star_enum_s_benchmark_cases,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO_ROOT / "notes" / "perf_reports" / "south_star_enum_s_v1.json"
-
-
-@dataclass(frozen=True, slots=True)
-class BenchmarkCase:
-    case_id: str
-    fixture_family: str
-    domain_label: str
-    source_smiles: str
-    expected_output_count: int
 
 
 def main() -> None:
@@ -48,7 +40,7 @@ def main() -> None:
     if args.warmups < 0:
         raise ValueError("--warmups must be non-negative")
 
-    cases = _benchmark_cases()
+    cases = south_star_enum_s_benchmark_cases()
     for _ in range(args.warmups):
         for case in cases:
             _run_case(case)
@@ -61,16 +53,8 @@ def main() -> None:
         "metadata": _metadata(),
         "repeats": args.repeats,
         "warmups": args.warmups,
-        "policy_set": {
-            "annotation_policy": "maximal_eligible_carrier",
-            "fragment_order_policy": "all_fragment_orders",
-            "output_order_policy": "first_occurrence_deduplication",
-        },
-        "scope_note": (
-            "Measures the private South Star semantic enumerator "
-            "mol_to_smiles_enum_s_graph_native on pinned semantic fixtures. "
-            "This is not an RDKit writer-parity benchmark."
-        ),
+        "policy_set": SOUTH_STAR_ENUM_S_BENCHMARK_POLICY_SET,
+        "scope_note": SOUTH_STAR_ENUM_S_BENCHMARK_SCOPE_NOTE,
         "rows": rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -78,29 +62,11 @@ def main() -> None:
     print(f"Wrote {args.output}")
 
 
-def _benchmark_cases() -> tuple[BenchmarkCase, ...]:
-    return tuple(
-        BenchmarkCase(
-            case_id=case.case_id,
-            fixture_family="exact_first_domain",
-            domain_label="first_domain_directional_bond_stereo",
-            source_smiles=case.source_smiles,
-            expected_output_count=len(case.expected_support),
-        )
-        for case in load_south_star_exact_first_domain_cases()
-    ) + tuple(
-        BenchmarkCase(
-            case_id=case.case_id,
-            fixture_family="expanded_support",
-            domain_label=case.feature_area,
-            source_smiles=case.source_smiles,
-            expected_output_count=len(case.expected_support),
-        )
-        for case in load_south_star_expanded_support_cases()
-    )
-
-
-def _benchmark_case(case: BenchmarkCase, *, repeats: int) -> dict[str, Any]:
+def _benchmark_case(
+    case: SouthStarEnumSBenchmarkCase,
+    *,
+    repeats: int,
+) -> dict[str, Any]:
     timings = []
     output_count = 0
     for _ in range(repeats):
@@ -122,7 +88,7 @@ def _benchmark_case(case: BenchmarkCase, *, repeats: int) -> dict[str, Any]:
     }
 
 
-def _run_case(case: BenchmarkCase) -> int:
+def _run_case(case: SouthStarEnumSBenchmarkCase) -> int:
     result = mol_to_smiles_enum_s_graph_native(
         case.source_smiles,
         case_id=case.case_id,

@@ -19,11 +19,14 @@ from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.render import render_bond_slot
+from grimace._south_star1.render import render_stereo_traversal
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.semantics import Invalid
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import SlotBundle
 from grimace._south_star1.slots import allocate_traversal_slots
+from grimace._south_star1.slots import carrier_slot_by_bond_slot
 
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import organic_atom_choice
@@ -111,6 +114,43 @@ class StereoRelationsTest(unittest.TestCase):
             "directional_relations",
             {constraint.name for constraint in constraints},
         )
+
+    def test_stereo_renderer_uses_direction_marks_on_bond_slots(self) -> None:
+        facts = directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+        assignment = _assignment(facts, slots, mark_first_carrier=True)
+
+        rendered = render_stereo_traversal(
+            facts,
+            skeleton,
+            slots,
+            assignment,
+            organic_subset_policy(facts),
+            _StereoSemantics(),
+        )
+
+        self.assertEqual(rendered, "C(/C(Cl))(F)")
+
+    def test_render_bond_slot_rejects_disallowed_direction_mark(self) -> None:
+        facts = directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+        assignment = _assignment(facts, slots, mark_first_carrier=True)
+        carrier = slots.carrier_slots[0]
+        slot = next(
+            bond_slot
+            for bond_slot in slots.bond_slots
+            if bond_slot.id == carrier.bond_slot
+        )
+        assignment.bond_text[slot.id] = BondTextChoice(
+            name="plain",
+            base_text="",
+            permits_direction=False,
+        )
+
+        with self.assertRaisesRegex(ValueError, "direction mark not permitted"):
+            render_bond_slot(slot, assignment, carrier_slot_by_bond_slot(slots))
 
     def test_directional_relation_rejects_missing_carrier_marks(self) -> None:
         facts = directional_facts()

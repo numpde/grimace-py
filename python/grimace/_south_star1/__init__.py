@@ -14,6 +14,7 @@ CORE_MODULES: tuple[str, ...] = (
     "constraints",
     "enumerate",
     "facts",
+    "fact_isomorphism",
     "graph_index",
     "ids",
     "policy",

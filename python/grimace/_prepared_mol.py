@@ -86,15 +86,17 @@ def _rdkit_mol_fragment_count(mol: Chem.Mol) -> int:
     return len(Chem.GetMolFrags(mol))
 
 
-def _rdkit_mol_fragments(mol: Chem.Mol) -> tuple[tuple[int, ...], ...]:
-    return tuple(
-        tuple(int(atom_idx) for atom_idx in fragment)
-        for fragment in Chem.GetMolFrags(mol)
+def _rdkit_mol_fragment_mols_and_atom_indices(
+    mol: Chem.Mol,
+) -> tuple[tuple[Chem.Mol, tuple[int, ...]], ...]:
+    atom_indices_by_fragment: list[tuple[int, ...]] = []
+    fragment_mols = Chem.GetMolFrags(
+        mol,
+        asMols=True,
+        sanitizeFrags=False,
+        fragsMolAtomMapping=atom_indices_by_fragment,
     )
-
-
-def _rdkit_mol_fragment_mols(mol: Chem.Mol) -> tuple[Chem.Mol, ...]:
-    return tuple(Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False))
+    return tuple(zip(fragment_mols, atom_indices_by_fragment, strict=True))
 
 
 def PrepareMol(
@@ -138,8 +140,6 @@ def PrepareMol(
             }
         ]
     else:
-        atom_indices_by_fragment = _rdkit_mol_fragments(mol)
-        fragment_mols = _rdkit_mol_fragment_mols(mol)
         fragments = [
             {
                 "atom_indices": list(atom_indices),
@@ -148,10 +148,8 @@ def PrepareMol(
                     flags=runtime_flags,
                 ),
             }
-            for atom_indices, fragment_mol in zip(
-                atom_indices_by_fragment,
-                fragment_mols,
-                strict=True,
+            for fragment_mol, atom_indices in _rdkit_mol_fragment_mols_and_atom_indices(
+                mol
             )
         ]
 

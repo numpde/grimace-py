@@ -464,31 +464,35 @@ The test-side gate list is
 It records both executable commands and explicit review items so the promotion
 bar is not reduced to informal confidence.
 
-## Package-Readiness Gap
+## Current Pre-Export Gap
 
-Before `MolToSmilesEnumS` can become a documented package API, the graph-native
-enumerator needs a broader molecule and syntax surface:
+The current private implementation has representative support for acyclic
+directional stereo, disconnected fragment products, monocyclic and polycyclic
+ring traversal, tetrahedral atom stereo, ring/tetrahedral interactions,
+aromatic text slices, bracket atom-text slices, bond-text slices, mixed
+polycyclic/tetrahedral plus directional composition, and compact derived
+large-product fixtures.
 
-- broader polycyclic ring traversal, especially stereo and ring/tetrahedral
-  surfaces;
-- selectable disconnected-fragment policies beyond the current all-orders
-  private default;
-- bracket atom text beyond the current explicit-hydrogen, tetrahedral-center,
-  charged, renderer-capable modifier, first radical, and first non-organic
-  bracket-only symbol slices;
-- aromatic coverage beyond markerless monocycles with acyclic supported
-  branches, first modified-aromatic atom-text cases, bracket-only selenium and
-  tellurium aromatic text, and narrow unmodified fused ring systems, especially
-  broader aromatic atom vocabularies beyond the first Se/Te slices and aromatic
-  directional-surface models;
-- a ring/tetrahedral interaction model;
-- broader validation of local branch-orientation equations against more
-  adversarial carrier topologies;
-- shared-reference support evidence for each newly promoted feature area;
-- explicit fail-fast checks for every unsupported molecule class;
-- complexity diagnostics that expose component counts, local assignment counts,
-  affected component counts, and estimated product size.
+That does not by itself make `MolToSmilesEnumS` a public API. The remaining
+pre-export gap is now mostly contract hardening rather than another obvious
+single molecule family:
+
+- the public function shape is not yet specified: input type, return type,
+  ordering guarantee, diagnostics exposure, policy/flag surface, and
+  unsupported-error behavior are still private-boundary details;
+- the current policy set is intentionally narrow: maximal eligible-carrier
+  annotation, all fragment orders, and first-occurrence deduplication;
+- query atoms/bonds, dative or coordination bonds, metal-containing surfaces,
+  empty molecules, unsupported atom text, unsupported bond types, and aromatic
+  directional overlays remain explicit fail-fast boundaries;
+- derived large-product fixtures use default digest/runtime and sentinel
+  semantic checks, with full all-output semantic parse-back in a named
+  diagnostic runner;
+- performance evidence remains an engineering guardrail, not a release-facing
+  speed claim;
+- release notes and public API docs still need to state the semantic contract
+  and distinguish it from `MolToSmilesEnum` RDKit writer parity before export.
 
 The provisional name `MolToSmilesEnumS` should remain internal until that
-surface is implemented and reviewed. The current private implementation is a
-construction path for that future surface, not a public API commitment.
+surface is specified, checked, and reviewed. The current private implementation
+is a construction path for that future surface, not a public API commitment.

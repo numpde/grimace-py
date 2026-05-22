@@ -1,0 +1,698 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[margin=30mm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage[pdftex,
+            pdftitle={Exact finite enumeration of a bounded stereochemical SMILES sublanguage},
+            pdfauthor={},
+            colorlinks,
+            linkcolor=black,
+            urlcolor=black,
+            citecolor=black]{hyperref}
+
+\allowdisplaybreaks
+
+\newcommand{\calA}{\mathcal A}
+\newcommand{\calB}{\mathcal B}
+\newcommand{\calC}{\mathcal C}
+\newcommand{\calD}{\mathcal D}
+\newcommand{\calE}{\mathcal E}
+\newcommand{\calF}{\mathcal F}
+\newcommand{\calG}{\mathcal G}
+\newcommand{\calH}{\mathcal H}
+\newcommand{\calI}{\mathcal I}
+\newcommand{\calK}{\mathcal K}
+\newcommand{\calL}{\mathcal L}
+\newcommand{\calM}{\mathcal M}
+\newcommand{\calO}{\mathcal O}
+\newcommand{\calP}{\mathcal P}
+\newcommand{\calR}{\mathcal R}
+\newcommand{\calS}{\mathcal S}
+\newcommand{\calT}{\mathcal T}
+\newcommand{\calV}{\mathcal V}
+\newcommand{\calX}{\mathcal X}
+\newcommand{\calY}{\mathcal Y}
+\newcommand{\calZ}{\mathcal Z}
+\newcommand{\Nat}{\mathbb N}
+\newcommand{\Bool}{\{0,1\}}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\dom}{\operatorname{dom}}
+\newcommand{\im}{\operatorname{im}}
+\newcommand{\Aut}{\operatorname{Aut}}
+\newcommand{\Sol}{\operatorname{Sol}}
+\newcommand{\render}{\operatorname{render}}
+\newcommand{\parse}{\operatorname{parse}}
+\newcommand{\supp}{\operatorname{supp}}
+\newcommand{\sgn}{\operatorname{sgn}}
+\newcommand{\pos}{\operatorname{pos}}
+\newcommand{\None}{\bot}
+\newcommand{\Ring}{\mathrm{ring}}
+\newcommand{\Tree}{\mathrm{tree}}
+\newcommand{\br}{\mathrm{br}}
+\newcommand{\cont}{\mathrm{cont}}
+\newcommand{\dotcup}{\mathbin{\dot\cup}}
+\newcommand{\st}{\;:\;}
+
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{proposition}[lemma]{Proposition}
+\newtheorem{theorem}[lemma]{Theorem}
+\newtheorem{corollary}[lemma]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[lemma]{Definition}
+\newtheorem{assumption}[lemma]{Assumption}
+\newtheorem{example}[lemma]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[lemma]{Remark}
+
+\title{Exact finite enumeration of a bounded stereochemical SMILES sublanguage}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We give a finite mathematical formulation for exact support enumeration of a
+bounded RDKit/OpenSMILES-like stereochemical SMILES sublanguage for a fixed
+finite molecular graph.  The formulation is an attributed graph-traversal
+grammar together with a finite-domain constraint problem over syntax slots:
+atom text, bond text, branch and continuation choices, ring labels,
+tetrahedral chirality tokens, and directional bond markers.  Soundness means
+that every rendered string is syntactically valid and parses, under the declared
+semantics, to the given labelled stereochemical graph.  Completeness means that
+every string in the declared sublanguage with that parse is obtained from some
+satisfying assignment.  Thus no post-hoc parse filter, writer repair rule, or
+feature-specific oracle is forced by the bounded dialect itself.  The only
+qualification is that exactness is relative to an explicit finite parser
+semantics and to an explicit annotation policy; if those are replaced by an
+implementation-dependent black box, the black box must itself be formalized or
+called as an oracle.
+\end{abstract}
+
+\noindent {\it Keywords}: SMILES, stereochemistry, enumeration, constraint
+satisfaction, attributed grammar, finite language, tetrahedral chirality,
+directional bonds.
+
+\section{Question and answer}
+\label{s:intro}
+
+Fix a finite molecular graph whose atom and bond attributes are already fixed:
+element, isotope, formal charge, aromaticity, explicit and implicit hydrogens,
+bond orders, and the specified stereochemical annotations in the supported
+subset.  Fix also a finite SMILES sublanguage: finite atom-text and bond-text
+choices, bounded normalized ring labels, a fixed fragment order policy, and an
+explicit policy for tetrahedral and directional-bond annotation.
+
+The question is whether the exact support of that sublanguage can be enumerated
+as one finite declarative object over traversal events and syntax-slot
+assignments, with validity and stereo preservation guaranteed by construction.
+The answer is yes, provided that ``valid'' and ``parse-equivalent'' are
+interpreted relative to a declared finite parser semantics for the bounded
+fragment.  The most transparent model is not a bare context-free grammar and not
+a writer procedure, but
+\[
+        \text{finite attributed graph-traversal grammar}
+        \quad + \quad
+        \text{finite-domain CSP/SAT constraints} .
+\]
+Equivalently, after full compilation, the support is a finite language and hence
+regular.  The automaton view is formally correct but hides the structure.  The
+constraint view exposes the essential interactions: graph coverage, ring-label
+pairing, local tetrahedral neighbour order, slash/backslash parity, absence of
+unintended stereo, and the chosen maximality rule for directional carriers.
+
+This note makes the preceding statement precise.  It deliberately separates the
+mathematical semantics from implementation behaviour.  In particular, no claim
+is made that a changing implementation's writer, sanitizer, aromaticity model,
+or canonicalizer is captured unless those procedures are included as part of the
+finite policy.
+
+\section{Standing assumptions}
+\label{s:assumptions}
+
+Let
+\[
+        G=(V,E,\alpha,\beta,\chi,\omega)
+\]
+be a fixed finite labelled molecular graph.  The graph is taken to be undirected
+and simple for notational economy; allowing molecular multigraph conventions or
+pseudo-ligand occurrences only changes the finite index sets.  The maps
+\(\alpha\) and \(\beta\) contain the non-stereochemical atom and bond
+attributes.  The map \(\chi\) specifies tetrahedral stereo at a finite set
+\(T\subseteq V\), and \(\omega\) specifies ordinary directional double-bond
+stereo at a finite set \(D\subseteq E\).  Enhanced stereo groups,
+non-tetrahedral atom stereo, atropisomerism, unknown stereo, unspecified stereo,
+and unbounded ring-label syntax are outside the scope.
+
+The fixed policy \(P\) consists of the following finite data.
+\begin{enumerate}[label=\textup{(P\arabic*)},leftmargin=2.5em]
+\item A finite traversal language: roots, rooted spanning forests, branch order,
+continuation-child choice, ring-closure endpoint positions, and a fixed ordering
+of disconnected fragments.
+\item For each atom \(v\), a finite set \(A_v\) of permitted non-stereo atom
+texts.  These texts decode to the fixed attributes \(\alpha(v)\).
+\item For each emitted bond occurrence or ring endpoint slot \(s\), a finite set
+\(B_s\) of permitted non-directional bond texts.  These texts decode, possibly
+together with another endpoint in the case of a ring edge, to the fixed bond
+attributes \(\beta(e)\).
+\item A finite ring-label alphabet \(\Lambda\).
+\item A finite set \(K\) of directional carrier slots, each with values in
+\(Z:=\{0,+1,-1\}\).  The value \(0\) means no slash/backslash marker; the signs
+\(\pm1\) are a fixed encoding of the two marker orientations after the local
+text direction of the slot has been chosen.
+\item A finite tetrahedral relation for each possible tetrahedral centre and a
+finite directional relation for each possible double-bond stereo site.  These
+relations are the declared parser semantics for the bounded fragment.
+\item An annotation policy.  The policy considered below is support-wise maximal
+eligible directional carrier annotation, but the same framework accepts a
+cardinality-maximal or lexicographically normalized variant.
+\end{enumerate}
+
+The policy may be singleton-valued in many places.  For example, if atom text is
+fixed, then each \(A_v\) is a singleton.  Conversely, if syntactically distinct
+but semantically equivalent atom or bond spellings are intentionally in the
+support, they are represented by multiple values in the corresponding finite
+domain.
+
+\begin{remark}[Declared semantics]
+The phrase ``parse-equivalent to \(G\)'' will mean parse-equivalent under the
+finite parser semantics declared in \(P\).  If one instead defines equivalence by
+calling an implementation after sanitization, aromaticity perception,
+implicit-hydrogen recomputation, stereo cleanup, or writer repair, then those
+procedures are part of the semantics and must either be encoded as finite
+relations or used as external oracles.  This is a modelling boundary, not a
+mathematical obstruction inside the bounded fragment.
+\end{remark}
+
+\section{Traversal skeletons}
+\label{s:skeleton}
+
+The syntactic backbone is an ordered rooted spanning forest with cotree edges
+rendered as ring closures.
+
+Let \(V_1,\ldots,V_m\) be the connected components of \(G\), in the fragment
+order fixed by \(P\).  A traversal skeleton \(S\) consists of:
+\begin{enumerate}[label=\textup{(S\arabic*)},leftmargin=2.5em]
+\item a root \(r_i\in V_i\) for each component;
+\item a parent map
+\[
+        p:V\to V\cup\{\None\}
+\]
+with \(p(r_i)=\None\), \(p(v)\in V_i\) adjacent to \(v\) for
+\(v\in V_i\setminus\{r_i\}\), and whose directed parent relation is acyclic and
+reaches \(r_i\) in component \(V_i\);
+\item the induced partition
+\[
+        E=E_{\Tree}\dotcup E_{\Ring},
+\]
+where \(E_{\Tree}=\{\{v,p(v)\}:p(v)\ne\None\}\);
+\item for each vertex \(v\), a finite ordered list \(O_v\).  Its entries are the
+ring endpoint items \((e,v)\) for \(e\in E_{\Ring}\) incident with \(v\), and the
+child items \(u\) with \(p(u)=v\).  At most one child item is marked as the
+continuation child; all other child items are branch children.  If a
+continuation child is present, it is the last child item encountered in the
+recursive rendering.
+\end{enumerate}
+The last condition is the formal version of the usual depth-first SMILES fact
+that once the unparenthesized continuation has been emitted, the writer cannot
+return to the parent atom to emit more siblings.  Ring endpoints and branch
+children may be interleaved before that continuation, subject to the grammar
+chosen in \(P\).
+
+Given a skeleton and slot values, the recursive renderer is
+\[
+\begin{split}
+        R(v)={}& \operatorname{atom}_v\;
+        \prod_{o\in O_v}
+        \begin{cases}
+        \operatorname{bondring}_{e,v}\,\lambda_e,
+                & o=(e,v)\text{ is a ring endpoint},\\[0.3em]
+        (\operatorname{bond}_{v,u}\,R(u)),
+                & o=u\text{ is a branch child},\\[0.3em]
+        \operatorname{bond}_{v,u}\,R(u),
+                & o=u\text{ is the continuation child}.
+        \end{cases}
+\end{split}
+\]
+The whole string is
+\[
+        R(r_1).R(r_2).\cdots.R(r_m),
+\]
+where the dots are omitted when \(m=1\).  The displayed notation is schematic:
+\(\operatorname{atom}_v\), \(\operatorname{bond}_{v,u}\), and
+\(\operatorname{bondring}_{e,v}\) are themselves chosen from the finite syntax
+slot domains below.
+
+\begin{definition}[Skeleton language]
+Let \(\calS(G,P)\) be the finite set of traversal skeletons satisfying the
+preceding conditions and any additional traversal restrictions explicitly placed
+in \(P\), such as a chosen subset of roots, a normalized fragment order, or a
+normal form for branch ordering.
+\end{definition}
+
+\section{Syntax-slot variables}
+\label{s:variables}
+
+For a fixed skeleton \(S\in\calS(G,P)\), the remaining choices are finite-domain
+variables.  The following table lists the essential variable families.
+\[
+\begin{array}{>{\raggedright\arraybackslash}p{0.23\linewidth}
+                >{\raggedright\arraybackslash}p{0.25\linewidth}
+                >{\raggedright\arraybackslash}p{0.39\linewidth}}
+\text{variable} & \text{domain} & \text{meaning} \\
+\hline
+\(a_v\) & \(A_v\) & non-stereo atom text for atom \(v\) \\
+\(\tau_v\) & \(\{\varnothing,@,@@\}\), restricted by \(P\) & tetrahedral token, separated from \(a_v\) only for clarity \\
+\(b_s\) & \(B_s\) & non-directional bond text at tree or ring slot \(s\) \\
+\(\delta_s\) & \(Z=\{0,+1,-1\}\), or \(\{0\}\) if not eligible & slash/backslash direction marker at carrier slot \(s\) \\
+\(\lambda_e\) & \(\Lambda\) & normalized ring label for cotree edge \(e\in E_{\Ring}\)
+\end{array}
+\]
+The rendered text of a bond slot is obtained by a fixed finite table from
+\((b_s,\delta_s)\).  For example, a carrier slot with \(\delta_s=+1\) may render
+with `/` and one with \(\delta_s=-1\) with `\textbackslash', after applying the
+orientation convention of that slot.  The convention itself is immaterial; all
+subsequent constraints use the same convention.
+
+It is often convenient to regard \(S\) itself as a block of finite variables
+rather than as an outer index.  Then the full finite constraint instance has
+variables for the root, parent map, child order, ring endpoint order, and all
+syntax slots simultaneously.
+
+\section{Non-stereochemical graph constraints}
+\label{s:graphconstraints}
+
+The first constraint block guarantees that the parsed non-stereochemical graph is
+exactly the labelled graph \((V,E,\alpha,\beta)\).
+
+\subsection{Coverage and incidence}
+Each vertex appears exactly once as an atom event.  Each edge appears exactly
+once either as a tree bond or as a paired ring closure:
+\[
+        E=E_{\Tree}\dotcup E_{\Ring}.
+\]
+Every emitted tree bond slot and every ring endpoint slot is indexed by an edge
+of \(G\); no slot may refer to a non-edge.  The parent constraints ensure one
+rooted tree in each connected component, and the dot positions are exactly those
+between the fixed component traversals.
+
+\subsection{Atom and bond text}
+For atom text, the finite domain has already been chosen so that
+\[
+        a_v\in A_v \quad\Longrightarrow\quad
+        \operatorname{decode}_{\rm atom}(a_v)=\alpha(v).
+\]
+For tree bond slots, the analogous constraint is
+\[
+        b_s\in B_s \quad\Longrightarrow\quad
+        \operatorname{decode}_{\rm bond}(b_s,\delta_s)=\beta(e_s),
+\]
+where \(e_s\) is the graph edge represented by \(s\), ignoring the stereochemical
+interpretation of \(\delta_s\) except insofar as the character is syntactically a
+bond marker.
+
+For ring edges it is safer to use a two-endpoint finite relation, because a
+policy may allow a bond symbol at either endpoint or both endpoints.  Thus for a
+ring edge \(e=\{u,v\}\) with endpoint slots \(s=(e,u)\) and \(t=(e,v)\), impose
+\[
+        \mathsf{RingBond}_e(b_s,\delta_s,b_t,\delta_t)=\beta(e).
+\]
+If the policy fixes a unique convention, this relation is simply a singleton
+constraint.
+
+\subsection{Ring labels}
+For each cotree edge \(e\in E_{\Ring}\), the two endpoint occurrences receive
+the same label \(\lambda_e\).  Let \(q_e^-\) and \(q_e^+\) be the first and second
+of the two ring endpoint occurrences in lexical order.  If two ring edges reuse
+the same label, their live intervals may not overlap:
+\[
+\begin{split}
+        \lambda_e=\lambda_f
+        \quad\Longrightarrow\quad
+        &[q_e^-,q_e^+]\cap[q_f^-,q_f^+]=\varnothing
+        \quad\text{or}\quad e=f,
+\end{split}
+\]
+where the interval notation is understood in the finite linear order of emitted
+ring endpoint occurrences.  Equivalently, forbidden are the two interleavings
+\[
+        q_e^-<q_f^-<q_e^+<q_f^+,
+        \qquad
+        q_f^-<q_e^-<q_f^+<q_e^+ .
+\]
+This is the whole pairing condition for bounded reusable labels.  If \(P\)
+requires the least currently free ring label, add the finite minimality
+constraint
+\[
+        \lambda_e
+        =\min\{\lambda\in\Lambda:
+                \lambda\text{ is inactive immediately before }q_e^-\}.
+\]
+That optional normalization is declarative; it is not a repair rule.
+
+\section{Tetrahedral stereo constraints}
+\label{s:tetrahedral}
+
+For a tetrahedral centre \(v\in T\), let \(L_v\) be its set of four ligand
+occurrences.  A ligand occurrence may be a neighbouring graph atom or a fixed
+implicit-hydrogen occurrence; the input policy determines this finite set.  The
+skeleton and ring endpoint order induce a SMILES local order
+\[
+        \theta_v(S)\in\operatorname{Seq}(L_v),
+\]
+where \(\operatorname{Seq}(L_v)\) is the finite set of length-four orderings of
+\(L_v\).  The order includes the incoming parent atom when \(v\) is not a root,
+the ring closure positions and child positions following the atom token, and the
+policy's convention for implicit hydrogens.  No procedural computation is needed
+in the model; \(\theta_v\) is a finite derived attribute of the skeleton.
+
+For each centre \(v\in T\), define a finite relation
+\[
+        \mathsf{Tet}_v
+        \subseteq
+        \operatorname{Seq}(L_v)
+        \times \{@,@@\}
+        \times \{\chi_v\} .
+\]
+The tetrahedral constraint is
+\[
+        \bigl(\theta_v(S),\tau_v,\chi_v\bigr)
+        \in \mathsf{Tet}_v,
+        \qquad v\in T.
+\]
+Equivalently, after selecting a reference ligand order \(\rho_v\), this relation
+can be written as a parity equation
+\[
+        \operatorname{parity}\bigl(\theta_v(S),\rho_v\bigr)
+        \cdot \operatorname{sign}(\tau_v)
+        =\operatorname{sign}(\chi_v),
+\]
+with the sign convention absorbed into \(\mathsf{Tet}_v\).  For atoms not carrying
+specified tetrahedral stereo, impose
+\[
+        \tau_v=\varnothing .
+\]
+Thus changing a root, branch order, continuation child, or ring digit position
+may change the required choice between \(@\) and \(@@\), but it does so through a
+finite local parity table.
+
+\section{Directional double-bond constraints}
+\label{s:directional}
+
+Let \(K\) be the finite set of syntax slots that are eligible to carry a
+slash/backslash marker under policy \(P\).  Each \(k\in K\) has a variable
+\(\delta_k\in Z=\{0,+1,-1\}\).  A carrier may be adjacent to more than one
+potential double-bond stereo site, for instance in a conjugated system; in that
+case the same variable \(\delta_k\) occurs in several constraints.
+
+Let \(Q\) be the finite set of potential double-bond stereo sites under the
+chosen semantics.  This includes the specified set \(D\), and may include
+unspecified potential sites for which we must prevent accidental stereo.  For
+\(d\in Q\), let \(K_d\subseteq K\) be the carrier slots whose markers can affect
+the parsed stereo state of \(d\).  Declare a finite relation
+\[
+        \mathsf{Dir}_d
+        \subseteq
+        Z^{K_d}\times\{\None,+1,-1\}.
+\]
+Here \(\None\) means that no directional stereo is assigned at \(d\), while
+\(\pm1\) are the two possible directional stereo states in the fixed input
+encoding.  Assignments that would be syntactically invalid, contradictory, or
+outside the bounded semantics are simply absent from \(\mathsf{Dir}_d\).
+
+The constraints are
+\[
+        \bigl(\delta|_{K_d},\omega_d\bigr)\in\mathsf{Dir}_d,
+        \qquad d\in D,
+\]
+and
+\[
+        \bigl(\delta|_{K_d},\None\bigr)\in\mathsf{Dir}_d,
+        \qquad d\in Q\setminus D.
+\]
+The second family is essential: exact parse-equivalence requires not only that
+specified stereo be preserved, but also that unspecified potential stereo not be
+introduced by markers used elsewhere.
+
+\subsection{Parity form}
+\label{s:parity}
+
+For ordinary alkene, imine, and oxime-style directional stereo, the relation
+\(\mathsf{Dir}_d\) is usually representable as a signed parity CSP.  Suppose
+\(d=\{u,v\}\) is a double-bond site.  Its carrier slots split into endpoint sets
+\(K_{d,u}\) and \(K_{d,v}\).  For each carrier \(k\in K_d\), let
+\(\kappa_{d,k}\in\{+1,-1\}\) be the orientation factor converting the local text
+orientation of the slot into the orientation seen from the double-bond endpoint.
+For \(\delta_k\ne0\), set
+\[
+        \sigma_{d,k}:=\kappa_{d,k}\delta_k .
+\]
+Then the finite relation above can be expressed by constraints of the following
+form:
+\begin{align*}
+        &\exists k\in K_{d,u},\;\exists \ell\in K_{d,v}:
+        \delta_k\ne0,\;\delta_\ell\ne0,
+        && d\in D,\\
+        &\sigma_{d,k}\sigma_{d,\ell}=\eta_{d,k,\ell},
+        && k\in K_{d,u},\ \ell\in K_{d,v},\ \delta_k\delta_\ell\ne0,\\
+        &\sigma_{d,k}\sigma_{d,k'}=\eta^{u}_{d,k,k'},
+        && k,k'\in K_{d,u},\ \delta_k\delta_{k'}\ne0,\\
+        &\sigma_{d,\ell}\sigma_{d,\ell'}=\eta^{v}_{d,\ell,\ell'},
+        && \ell,\ell'\in K_{d,v},\ \delta_\ell\delta_{\ell'}\ne0.
+\end{align*}
+The constants \(\eta\) are determined by the input stereo descriptor and the
+chosen orientation convention.  This parity view is useful for implementation,
+but the primitive finite relation \(\mathsf{Dir}_d\) is the cleaner mathematical
+object because it also covers endpoint degeneracies and policy-specific
+eligibility rules.
+
+\section{Maximal eligible carrier annotation}
+\label{s:maximal}
+
+Let
+\[
+        M(\delta):=\{k\in K:\delta_k\ne0\}
+\]
+be the support of the directional marker assignment.  Let
+\(\mathsf{OK}_{\rm dir}(\delta)\) denote the conjunction of all directional
+constraints in Section~\ref{s:directional}, including the no-extra-stereo
+constraints for \(Q\setminus D\).
+
+The support-wise maximal carrier policy is the finite condition
+\[
+\begin{split}
+        \mathsf{Max}(\delta) :\Longleftrightarrow\;&
+        \mathsf{OK}_{\rm dir}(\delta)\quad\text{and}\quad \\
+        &\nexists \delta'\in Z^K\text{ such that }
+        \mathsf{OK}_{\rm dir}(\delta')
+        \text{ and }
+        M(\delta)\subsetneq M(\delta').
+\end{split}
+\]
+This is not a post-generation validation step.  It is a finite optimality or
+maximality constraint.  It can be represented as a QBF, as MaxSAT, or as an
+ordinary SAT instance after finite compilation, at the cost of additional
+variables or exponentially many clauses.  If the intended policy is instead
+cardinality-maximal support, lexicographically selected maximal support, or
+``mark every carrier in a predeclared set'', replace \(\mathsf{Max}\) by the
+corresponding finite condition.  Without such a definition the phrase
+``maximal eligible carrier annotation'' does not determine a unique support.
+
+\section{The finite constraint instance}
+\label{s:instance}
+
+Let \(\calC(G,P)\) be the conjunction of the following finite constraints:
+\begin{enumerate}[label=\textup{(C\arabic*)},leftmargin=2.5em]
+\item the traversal skeleton constraints of Section~\ref{s:skeleton};
+\item atom, bond, incidence, and coverage constraints of
+Section~\ref{s:graphconstraints};
+\item ring label pairing, reuse, and optional normalization constraints;
+\item tetrahedral constraints of Section~\ref{s:tetrahedral};
+\item directional constraints of Section~\ref{s:directional};
+\item the chosen annotation-policy constraint, e.g. \(\mathsf{Max}(\delta)\);
+\item optional duplicate-witness constraints, described below, if the enumerator
+is required to output each string exactly once.
+\end{enumerate}
+All variables range over finite domains.  Therefore \(\calC(G,P)\) is a finite
+CSP.  After Boolean encoding it is a SAT/MaxSAT/QBF instance, depending only on
+how the maximality policy is represented.
+
+Let \(\Sol\calC(G,P)\) be its satisfying assignments.  The renderer defined in
+Section~\ref{s:skeleton} gives a map
+\[
+        \render : \Sol\calC(G,P)\longrightarrow \Sigma_P^*,
+\]
+where \(\Sigma_P\) is the finite token alphabet of the chosen sublanguage.  The
+exact support is the image
+\[
+        L(G,P):=\render\bigl(\Sol\calC(G,P)\bigr).
+\]
+
+\begin{remark}[Duplicate witnesses]
+The map \(\render\) need not be injective.  Symmetric labelled molecules can have
+distinct root or traversal witnesses that render the same string.  This is not a
+stereochemical issue and not a parse filter.  Exact support as a set is obtained
+by taking the image of \(\render\).  If duplicate-free enumeration is required,
+one can add a finite canonical-witness constraint, for example: among all
+assignments in the orbit under \(\Aut(G,\alpha,\beta,\chi,\omega)\) that render
+the same token string, keep only the lexicographically least event-code witness.
+Because the automorphism group and event codes are finite, this is another
+finite declarative constraint.
+\end{remark}
+
+\section{Exactness theorem}
+\label{s:theorem}
+
+\begin{theorem}[Exact support]
+Let \(G\) be a fixed finite molecular graph and let \(P\) be a finite bounded
+SMILES policy satisfying the standing assumptions.  Let \(\calC(G,P)\) be the
+constraint instance defined above.  Then
+\[
+        L(G,P)=\render\bigl(\Sol\calC(G,P)\bigr)
+\]
+is exactly the set of strings in the declared sublanguage whose parse under the
+declared semantics is isomorphic to \(G\) as a labelled stereochemical graph.
+\end{theorem}
+
+\begin{proof}
+We prove soundness and completeness.
+
+For soundness, let \(x\in\Sol\calC(G,P)\).  The traversal constraints give a
+well-formed depth-first fragment rendering with balanced branches, legal dots,
+legal atom events, and paired ring closure endpoints.  The coverage and
+incidence constraints ensure that every vertex of \(G\) appears once, every edge
+of \(G\) appears once either as a tree bond or as a paired ring closure, and no
+non-edge is emitted.  The atom and bond text tables ensure that the parsed
+non-stereochemical labels are \(\alpha\) and \(\beta\).  The ring-label interval
+constraints ensure that reused labels are paired with the intended cotree edges.
+
+For each tetrahedral centre, the local SMILES ligand order induced by the
+rendered syntax is \(\theta_v(S)\), and the constraint
+\((\theta_v(S),\tau_v,\chi_v)\in\mathsf{Tet}_v\) forces the parsed tetrahedral
+state to be \(\chi_v\).  For each specified double-bond stereo site, the
+constraint \((\delta|_{K_d},\omega_d)\in\mathsf{Dir}_d\) forces the parsed
+directional state to be \(\omega_d\).  For each unspecified potential site, the
+constraint \((\delta|_{K_d},\None)\in\mathsf{Dir}_d\) prevents introduction of
+additional directional stereo.  Finally, the annotation-policy constraint keeps
+only the assignments allowed by \(P\).  Hence \(\render(x)\) is syntactically
+valid and parses to \(G\) with exactly the prescribed stereochemistry.
+
+For completeness, let \(w\) be any string in the declared sublanguage whose parse
+under \(P\) is isomorphic to \(G\).  Choose one such isomorphism from the parsed
+molecule to \(G\).  Reading \(w\) from left to right gives the roots, the parent
+map, branch and continuation choices, ring endpoint positions, ring labels, atom
+texts, bond texts, tetrahedral tokens, and directional markers.  Since \(w\)
+belongs to the declared sublanguage, these choices lie in the finite domains of
+\(P\).  Since \(w\) parses to \(G\), the graph coverage, atom/bond label,
+tetrahedral, directional, and no-extra-stereo constraints are all satisfied.
+Since \(w\) obeys the declared annotation policy, the maximality or normalization
+constraint is also satisfied.  Thus the read-off data form a satisfying
+assignment \(x\in\Sol\calC(G,P)\) with \(\render(x)=w\).
+\end{proof}
+
+\begin{corollary}[Automaton compilation]
+The language \(L(G,P)\) is finite.  Consequently it is regular and can be
+recognized by a finite automaton after full compilation.
+\end{corollary}
+
+\begin{remark}
+The corollary is not the recommended specification method.  The automaton exists
+because every bounded instance is finite.  The attributed-grammar/CSP
+formulation is cleaner because it describes the reasons for membership rather
+than listing or hiding them in automaton states.
+\end{remark}
+
+\section{Choice of formalism}
+\label{s:formalism}
+
+The same finite object can be described in several equivalent languages.
+
+A plain context-free grammar naturally expresses atoms, bonds, branches, ring
+closure tokens, and fragments, but it does not naturally express graph coverage,
+ring-pairing reuse, tetrahedral neighbour-order parity, or slash/backslash
+consistency across shared carriers.  Those are attribute or constraint
+conditions.
+
+An attributed grammar expresses the syntax and carries local data such as parent
+atoms, ring endpoint positions, and neighbour orders.  To remain mathematical
+rather than procedural, its attributes should be finite values and its semantic
+rules should be finite relations.
+
+A CSP or SAT encoding is the most direct finite enumeration object.  Its
+variables are the traversal and syntax-slot choices; its constraints are the
+finite parser relations and graph-identity requirements.  Maximal carrier
+annotation is most naturally an optimization or maximality layer, but because the
+carrier set is finite it can also be compiled into ordinary finite constraints.
+
+Monadic second-order or finite-model formulations are possible, especially for
+expressing spanning trees and orders over a fixed finite graph, but they do not
+add conceptual clarity here.  The essential model is the finite relational
+structure \(\calC(G,P)\).
+
+\section{Where obstructions would arise}
+\label{s:obstructions}
+
+There is no fundamental obstruction under the bounded assumptions.  The apparent
+hard cases are finite constraints:
+\[
+\begin{array}{>{\raggedright\arraybackslash}p{0.38\linewidth}
+                >{\raggedright\arraybackslash}p{0.49\linewidth}}
+\text{issue} & \text{finite declarative treatment} \\
+\hline
+branch order or root choice changes \(@\)/\(@@\) & local tetrahedral order table
+\(\mathsf{Tet}_v\) \\
+ring digit position changes chiral order & include ring endpoint positions in
+\(\theta_v(S)\) \\
+ring labels are reused & active-interval non-overlap plus optional least-free
+normalization \\
+slash/backslash markers interact through conjugation & shared carrier variables
+and signed parity, or the finite relation \(\mathsf{Dir}_d\) \\
+markers may accidentally assign unspecified stereo & impose
+\((\delta|_{K_d},\None)\in\mathsf{Dir}_d\) for \(d\notin D\) \\
+symmetric graphs create duplicate witnesses & enumerate the image of \(\render\),
+or add a finite canonical-witness constraint
+\end{array}
+\]
+
+Obstructions appear only when one of the finiteness or explicit-semantics
+assumptions is dropped.
+\begin{enumerate}[label=\textup{(O\arabic*)},leftmargin=2.5em]
+\item If ring-label syntax, atom-text syntax, or equivalent spelling choices are
+unbounded, the support need not be finite.
+\item If aromaticity, valence, implicit hydrogens, or stereocentre cleanup are
+computed by an external parser rather than fixed in \(G\) and \(P\), those
+computations must be encoded or called as oracles.
+\item If the desired support is ``whatever a particular writer emits after
+repair'', then the writer's repair rules are part of the mathematical object.
+They may still be finite for a fixed bounded dialect, but they are no longer
+absent.
+\item If enhanced stereo groups, non-tetrahedral stereo, atropisomerism,
+relative/unknown stereo, or other excluded features are admitted, their parser
+semantics must be added as further finite relations if they are bounded; if they
+are not bounded or not formalized, feature-specific oracles may be unavoidable.
+\item If ``maximal eligible carrier annotation'' is left informal, there is no
+well-defined target support.  The obstruction is not mathematical complexity but
+underspecification of the policy.
+\end{enumerate}
+
+\section{Conclusion}
+\label{s:conclusion}
+
+For a fixed finite stereochemical graph and a bounded RDKit/OpenSMILES-like
+SMILES dialect with explicit syntax and parser semantics, exact support
+enumeration is a single finite declarative problem.  The clean formulation is an
+attributed graph-traversal grammar coupled to finite-domain constraints over
+syntax slots.  Satisfying assignments render only valid strings, and every
+valid string in the declared support is rendered by some satisfying assignment.
+No post-hoc parse filtering is forced by tetrahedral stereo, directional
+slash/backslash stereo, branch order, ring closures, or normalized ring labels.
+Those phenomena require only finite local order, pairing, and parity relations.
+
+The model becomes non-declarative only if the target language is defined by an
+unformalized implementation behaviour or by an underspecified annotation policy.
+Once those behaviours are specified as finite relations, they are absorbed into
+the same constraint instance.
+
+\end{document}

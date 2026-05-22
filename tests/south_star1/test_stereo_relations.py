@@ -19,14 +19,12 @@ from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import TetraToken
-from grimace._south_star1.render import render_bond_slot
 from grimace._south_star1.render import render_stereo_traversal
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.semantics import Invalid
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import SlotBundle
 from grimace._south_star1.slots import allocate_traversal_slots
-from grimace._south_star1.slots import carrier_slot_by_bond_slot
 
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import organic_atom_choice
@@ -132,7 +130,7 @@ class StereoRelationsTest(unittest.TestCase):
 
         self.assertEqual(rendered, "C(/C(Cl))(F)")
 
-    def test_render_bond_slot_rejects_disallowed_direction_mark(self) -> None:
+    def test_stereo_renderer_rejects_disallowed_direction_mark(self) -> None:
         facts = directional_facts()
         skeleton = _first_skeleton(facts)
         slots = allocate_traversal_slots(facts, skeleton)
@@ -149,8 +147,16 @@ class StereoRelationsTest(unittest.TestCase):
             permits_direction=False,
         )
 
-        with self.assertRaisesRegex(ValueError, "direction mark not permitted"):
-            render_bond_slot(slot, assignment, carrier_slot_by_bond_slot(slots))
+        with self.assertRaisesRegex(ValueError, "not permitted on bond slot"):
+            render_stereo_traversal(
+                facts,
+                skeleton,
+                slots,
+                assignment,
+                organic_subset_policy(facts),
+                _StereoSemantics(),
+                validate=False,
+            )
 
     def test_directional_relation_rejects_missing_carrier_marks(self) -> None:
         facts = directional_facts()

@@ -349,6 +349,39 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         self.assertIn("aromatic_directional_surface", facts.unsupported_categories)
         self.assertNotIn("aromatic_ring_surface", facts.unsupported_categories)
 
+    def test_aromatic_directional_overlay_is_not_smiles_round_trippable(
+        self,
+    ) -> None:
+        mol = parse_smiles("c1ccccc1")
+        mol.GetBondWithIdx(0).SetBondDir(Chem.BondDir.ENDUPRIGHT)
+
+        rendered = Chem.MolToSmiles(mol, canonical=False, isomericSmiles=True)
+        reparsed = parse_smiles(rendered)
+
+        self.assertEqual("c1ccccc1", rendered)
+        self.assertFalse(
+            any(
+                bond.GetBondDir() != Chem.BondDir.NONE
+                for bond in reparsed.GetBonds()
+            )
+        )
+        self.assertIn(
+            "aromatic_directional_surface",
+            south_star_support_gate_report(mol).categories,
+        )
+
+    def test_exocyclic_directional_alkene_is_not_aromatic_overlay(self) -> None:
+        mol = parse_smiles("c1ccccc1/C=C/Cl")
+        report = south_star_support_gate_report(mol)
+        directional_bonds = tuple(
+            bond for bond in mol.GetBonds() if bond.GetBondDir() != Chem.BondDir.NONE
+        )
+
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertNotIn("aromatic_directional_surface", report.categories)
+        self.assertTrue(directional_bonds)
+        self.assertTrue(all(not bond.GetIsAromatic() for bond in directional_bonds))
+
     def test_support_gate_directional_reason_names_active_contract(self) -> None:
         contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
         mol = parse_smiles("c1ccccc1")

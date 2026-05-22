@@ -209,9 +209,11 @@ def _coupling_reason(
 ) -> str | None:
     if left.fragment_index != right.fragment_index:
         return None
+    if left.family == "directional" and right.family == "directional":
+        return None
     if left.family == "directional" or right.family == "directional":
-        if _minimum_atom_distance(mol, left.atom_indices, right.atom_indices) <= 1:
-            return "adjacent_directional_obligation"
+        if set(left.atom_indices) & set(right.atom_indices):
+            return "shared_directional_obligation_atom"
         return None
     if (
         left.atom_indices[0] in ring_tetrahedral_centers

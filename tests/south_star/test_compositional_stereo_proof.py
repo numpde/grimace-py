@@ -68,11 +68,25 @@ class SouthStarCompositionalStereoProofTests(unittest.TestCase):
             _component_obligation_ids(report),
         )
         self.assertEqual(
-            ("adjacent_directional_obligation",),
+            ("shared_directional_obligation_atom",),
             report.components[0].coupling_reasons,
         )
         self.assertEqual(40, report.proof_output_count)
         self.assertEqual(40, report.runtime_output_count)
+        self.assertTrue(report.runtime_outputs_match_proof)
+
+    def test_separated_directional_components_remain_independent_product(self) -> None:
+        report = compositional_stereo_proof_report("F/C=C/C/C=C/Cl")
+
+        self.assertTrue(report.supported)
+        self.assertEqual("independent_product", report.classification)
+        self.assertEqual(
+            (("directional:component:0",), ("directional:component:1",)),
+            _component_obligation_ids(report),
+        )
+        self.assertEqual(4, report.assignment_count_before_rendering)
+        self.assertEqual(48, report.proof_output_count)
+        self.assertEqual(48, report.runtime_output_count)
         self.assertTrue(report.runtime_outputs_match_proof)
 
     def test_mixed_ring_tetrahedral_centers_share_ring_system(self) -> None:

@@ -121,10 +121,10 @@ Do not pin the 3160-output polycyclic branch case first. It has the same proof
 shape as the smaller monocyclic witness and should follow only if the smaller
 fixture is coherent.
 
-The refreshed inventory also shows that some older directional labels are
-coarser than the new proof classification. In particular,
-`F/C=C/C/C=C/Cl` remains an existing fixture baseline, but the compositional
-proof helper currently classifies the two directional obligations as coupled by
-`adjacent_directional_obligation`. That is outside this mixed ring/tetra slice;
-it should be reconciled before using directional component labels as a general
-product/coupling authority.
+The directional label check from `South Star 225` resolved the apparent
+mismatch in this table. Separate directional components are not recoupled by
+the compositional proof helper: `F/C=C/C/C=C/Cl` remains an
+`independent_product` with `directional:component:0` and
+`directional:component:1`. Mixed directional/tetrahedral composition remains a
+`coupled_component` when the tetrahedral obligation shares an atom with the
+directional obligation, as in `F/C=C/[C@H](Cl)Br`.

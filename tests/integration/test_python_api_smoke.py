@@ -72,7 +72,7 @@ class PythonApiSmokeTests(unittest.TestCase):
                 )
             return
 
-        from grimace import _runtime
+        import grimace._runtime as _runtime
 
         self.assertEqual(
             _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
@@ -367,7 +367,7 @@ class PythonApiSmokeTests(unittest.TestCase):
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
-        from grimace import _runtime_graphs
+        import grimace._runtime_graphs as _runtime_graphs
         from grimace._runtime_inputs import MolToSmilesFlags
 
         reference_prepared = prepare_smiles_graph_from_mol_to_smiles_kwargs(
@@ -390,7 +390,7 @@ class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_runtime_nonstereo_surface_smoke(self) -> None:
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
-        from grimace import _runtime
+        import grimace._runtime as _runtime
 
         mol = parse_smiles("CCO")
         expected = _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
@@ -421,7 +421,7 @@ class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_runtime_stereo_surface_smoke(self) -> None:
         if CORE_MODULE is None:
             raise unittest.SkipTest("private Rust extension is not installed")
-        from grimace import _runtime
+        import grimace._runtime as _runtime
 
         mol = parse_smiles("F/C=C\\Cl")
         expected = _runtime.enumerate_rooted_connected_stereo_smiles_support(

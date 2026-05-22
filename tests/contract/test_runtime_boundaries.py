@@ -52,6 +52,14 @@ def _import_aliases(path: Path) -> set[tuple[str, str, str | None]]:
     return aliases
 
 
+def _private_package_imports(path: Path) -> set[str]:
+    return {
+        imported_name
+        for module_name, imported_name, _ in _import_aliases(path)
+        if module_name == "grimace" and imported_name.startswith("_")
+    }
+
+
 class RuntimeBoundaryTests(unittest.TestCase):
     deviation_module = REPO_ROOT / "python" / "grimace" / "_deviation.py"
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
@@ -86,6 +94,11 @@ class RuntimeBoundaryTests(unittest.TestCase):
         for path in self.runtime_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
                 self.assertFalse(forbidden_methods & _attribute_names(path))
+
+    def test_runtime_modules_do_not_import_private_modules_through_package(self) -> None:
+        for path in self.runtime_modules:
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                self.assertFalse(_private_package_imports(path))
 
     def test_runtime_modules_do_not_inspect_prepared_mol_fragment_storage(self) -> None:
         forbidden_methods = {"fragment_atom_indices", "fragment_prepared_graph"}

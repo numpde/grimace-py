@@ -98,7 +98,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
         replacement: Callable[..., object],
         call: Callable[[], object],
     ) -> object:
-        from grimace import _prepared_mol
+        import grimace._prepared_mol as _prepared_mol
 
         original_public_prepare_mol = grimace.PrepareMol
         original_module_prepare_mol = _prepared_mol.PrepareMol
@@ -256,7 +256,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
     def test_prepared_runtime_does_not_call_late_rdkit_preparation(self) -> None:
         from rdkit import Chem
-        from grimace import _runtime_graphs
+        import grimace._runtime_graphs as _runtime_graphs
 
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
@@ -382,7 +382,8 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
     def test_rdkit_input_public_operations_do_no_late_rdkit_preparation(self) -> None:
         from rdkit import Chem
-        from grimace import _prepared_mol, _runtime_graphs
+        import grimace._prepared_mol as _prepared_mol
+        import grimace._runtime_graphs as _runtime_graphs
 
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)

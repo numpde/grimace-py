@@ -116,7 +116,7 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
     def test_public_runtime_matches_internal_oracle_for_supported_writer_flags(self) -> None:
         for case in self.CASES:
             with self.subTest(case=case.name, smiles=case.smiles):
-                from grimace import _runtime
+                import grimace._runtime as _runtime
 
                 mol = parse_smiles(case.smiles)
                 surface_kind = self._runtime_surface_kind(case, mol)

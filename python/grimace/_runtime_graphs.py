@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import cast
 
 import grimace._prepared_mol as _prepared_mol
-from grimace._prepared_mol import PreparedMol
 from grimace._reference.prepared_graph import (
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
@@ -28,9 +27,11 @@ class _FragmentPlan:
     rooted_at_atom: int | None
 
 
-def as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
+def as_disconnected_prepared_mol(
+    mol_or_prepared: object,
+) -> _prepared_mol.PreparedMol | None:
     if (
-        isinstance(mol_or_prepared, PreparedMol)
+        isinstance(mol_or_prepared, _prepared_mol.PreparedMol)
         and _prepared_mol._fragment_count(mol_or_prepared) > 1
     ):
         return mol_or_prepared
@@ -38,7 +39,7 @@ def as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
 
 
 def atom_count(mol_or_prepared: object) -> int:
-    if isinstance(mol_or_prepared, PreparedMol):
+    if isinstance(mol_or_prepared, _prepared_mol.PreparedMol):
         return _prepared_mol._atom_count(mol_or_prepared)
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
         return mol_or_prepared.atom_count
@@ -48,7 +49,7 @@ def atom_count(mol_or_prepared: object) -> int:
 
 
 def prepared_mol_fragment_plans(
-    prepared: PreparedMol,
+    prepared: _prepared_mol.PreparedMol,
     *,
     rooted_at_atom: int | None,
 ) -> tuple[_FragmentPlan, ...]:
@@ -63,7 +64,7 @@ def prepared_mol_fragment_plans(
 
 
 def connected_prepared_mol_fragment(
-    prepared: PreparedMol,
+    prepared: _prepared_mol.PreparedMol,
     *,
     rooted_at_atom: int,
 ) -> tuple[object, int]:
@@ -87,7 +88,7 @@ def connected_prepared_mol_fragment_or_none(
     *,
     rooted_at_atom: int,
 ) -> tuple[object, int] | None:
-    if not isinstance(mol_or_prepared, PreparedMol):
+    if not isinstance(mol_or_prepared, _prepared_mol.PreparedMol):
         return None
     return connected_prepared_mol_fragment(
         mol_or_prepared,

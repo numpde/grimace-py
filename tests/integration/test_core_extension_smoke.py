@@ -7,7 +7,8 @@ from tests.helpers.mols import parse_smiles
 
 
 def _runtime_modules():
-    from grimace import _runtime, _runtime_graphs
+    import grimace._runtime as _runtime
+    import grimace._runtime_graphs as _runtime_graphs
     from grimace._runtime_inputs import MolToSmilesFlags
 
     return _runtime, _runtime_graphs, MolToSmilesFlags

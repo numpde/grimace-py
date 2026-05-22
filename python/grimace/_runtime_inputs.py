@@ -11,7 +11,6 @@ from grimace._mol_to_smiles_options import (
     coerce_internal_options,
     coerce_option,
 )
-from grimace._prepared_mol import PreparedMol
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
@@ -76,7 +75,7 @@ def prepare_runtime_input(
     flags: MolToSmilesFlags,
 ) -> object:
     _validate_supported_flags(flags)
-    if isinstance(mol_or_prepared, PreparedMol):
+    if isinstance(mol_or_prepared, _prepared_mol.PreparedMol):
         _validate_prepared_mol_writer_flags(mol_or_prepared, flags)
         return mol_or_prepared
     if _prepared_mol._is_rdkit_mol(mol_or_prepared):
@@ -123,7 +122,7 @@ def _runtime_public_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, boo
 
 
 def _validate_prepared_mol_writer_flags(
-    prepared: PreparedMol,
+    prepared: _prepared_mol.PreparedMol,
     flags: MolToSmilesFlags,
 ) -> None:
     if not _prepared_mol._matches_writer_flags(

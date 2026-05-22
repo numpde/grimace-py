@@ -7,7 +7,8 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 
 import grimace
-from grimace import _runtime_graphs, _runtime_states
+import grimace._runtime_graphs as _runtime_graphs
+import grimace._runtime_states as _runtime_states
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,

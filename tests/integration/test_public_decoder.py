@@ -5,8 +5,10 @@ import random
 import unittest
 
 import grimace
+import grimace._runtime as _runtime
+import grimace._runtime_graphs as _runtime_graphs
+import grimace._runtime_states as _runtime_states
 from rdkit import Chem
-from grimace import _runtime, _runtime_graphs, _runtime_states
 from grimace._runtime_inputs import MolToSmilesFlags
 from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.kernel import CORE_MODULE
@@ -261,7 +263,7 @@ class PublicDecoderTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(KeyError, "choice_count"):
-            walker = grimace._runtime.make_nonstereo_walker(parse_smiles("CCO"), 0)
+            walker = _runtime.make_nonstereo_walker(parse_smiles("CCO"), 0)
             walker.advance_choice(walker.initial_state(), 99)
 
     def test_decoder_rejects_unsupported_flag_combinations(self) -> None:

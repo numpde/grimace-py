@@ -6,7 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from grimace import _runtime
+import grimace._runtime as _runtime
 from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
 from grimace._runtime_states import DecoderCacheKey
 

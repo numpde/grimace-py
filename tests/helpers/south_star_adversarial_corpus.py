@@ -92,7 +92,6 @@ SOUTH_STAR_ADVERSARIAL_REQUIRED_SUPPORTED_FEATURE_TARGETS: frozenset[str] = (
 SOUTH_STAR_ADVERSARIAL_REQUIRED_UNSUPPORTED_CATEGORY_TARGETS: frozenset[str] = (
     frozenset(
         {
-            "aromatic_ring_surface",
             "dative_bond",
             "unsupported_bond_type",
         }
@@ -378,6 +377,25 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
                 boundary_targets=("aromatic_selenium_text",),
             ),
             SouthStarAdversarialVariant(
+                variant_id="isotope_aromatic_selenium",
+                source_smiles="[15se]1cccc1",
+                axes=("ring_closure_choice", "atom_modifier"),
+                mutation_path=("seed", "aromatic_selenium_text", "isotope_prefix"),
+                boundary_targets=("aromatic_selenium_text",),
+            ),
+            SouthStarAdversarialVariant(
+                variant_id="isotope_mapped_aromatic_selenium",
+                source_smiles="[15se:7]1cccc1",
+                axes=("ring_closure_choice", "atom_modifier"),
+                mutation_path=(
+                    "seed",
+                    "aromatic_selenium_text",
+                    "isotope_prefix",
+                    "atom_map_suffix",
+                ),
+                boundary_targets=("aromatic_selenium_text",),
+            ),
+            SouthStarAdversarialVariant(
                 variant_id="aromatic_tellurium",
                 source_smiles="[te]1cccc1",
                 axes=("ring_closure_choice",),
@@ -389,6 +407,25 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
                 source_smiles="[te:7]1cccc1",
                 axes=("ring_closure_choice", "atom_modifier"),
                 mutation_path=("seed", "aromatic_tellurium_text", "atom_map_suffix"),
+                boundary_targets=("aromatic_tellurium_text",),
+            ),
+            SouthStarAdversarialVariant(
+                variant_id="isotope_aromatic_tellurium",
+                source_smiles="[15te]1cccc1",
+                axes=("ring_closure_choice", "atom_modifier"),
+                mutation_path=("seed", "aromatic_tellurium_text", "isotope_prefix"),
+                boundary_targets=("aromatic_tellurium_text",),
+            ),
+            SouthStarAdversarialVariant(
+                variant_id="isotope_mapped_aromatic_tellurium",
+                source_smiles="[15te:7]1cccc1",
+                axes=("ring_closure_choice", "atom_modifier"),
+                mutation_path=(
+                    "seed",
+                    "aromatic_tellurium_text",
+                    "isotope_prefix",
+                    "atom_map_suffix",
+                ),
                 boundary_targets=("aromatic_tellurium_text",),
             ),
         ),
@@ -409,13 +446,6 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
                 axes=("unsupported_feature_trigger",),
                 mutation_path=("seed", "dative_bond"),
                 boundary_targets=("dative_bond",),
-            ),
-            SouthStarAdversarialVariant(
-                variant_id="unsupported_isotope_aromatic_element",
-                source_smiles="[15te]1cccc1",
-                axes=("unsupported_feature_trigger", "ring_closure_choice"),
-                mutation_path=("seed", "isotope_aromatic_element_breadth"),
-                boundary_targets=("aromatic_ring_surface",),
             ),
         ),
     ),

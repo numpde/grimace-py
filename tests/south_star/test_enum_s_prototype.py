@@ -875,9 +875,9 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
         self,
     ) -> None:
         case = SouthStarSemanticCase(
-            case_id="unsupported_ring",
-            semantic_feature="unsupported isotope aromatic element boundary",
-            source_smiles="[15te]1cccc1",
+            case_id="unsupported_query_bond",
+            semantic_feature="unsupported query bond boundary",
+            source_smiles="C~C",
             eligible_carrier_edges=(),
             maximal_eligible_carrier=SouthStarAnnotationPolicyExpectation(
                 required_marker_edge_count=0,
@@ -888,5 +888,5 @@ class SouthStarEnumSPrototypeTests(unittest.TestCase):
             negative_semantic_smiles=(),
         )
 
-        with self.assertRaisesRegex(NotImplementedError, "aromatic_ring_surface"):
+        with self.assertRaisesRegex(NotImplementedError, "unsupported_bond_type"):
             mol_to_smiles_enum_s_graph_native_for_case(case)

@@ -118,9 +118,13 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
             "[nH+]",
             "[n+]",
             "[se]",
+            "[15se]",
             "[se:7]",
+            "[15se:7]",
             "[te]",
+            "[15te]",
             "[te:7]",
+            "[15te:7]",
         )
         rejected_tokens = ("[n@H]", "[n@@H]", "[Na+]")
 
@@ -128,9 +132,9 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertTrue(is_south_star_bracket_atom_text_token(token))
                 self.assertTrue(south_star_grammar_conformance(token).passed)
-                if token in {"[se]", "[te]"}:
+                if "se" in token or "te" in token:
                     self.assertIn(
-                        token[1:-1],
+                        token[1:-1].removeprefix("15").split(":", maxsplit=1)[0],
                         SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS,
                     )
         for token in rejected_tokens:
@@ -195,6 +199,22 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 ("bracket_aromatic_atom", "atom_map_suffix"),
             ),
             (
+                "[15se]1cccc1",
+                0,
+                "[15se]",
+                ("bracket_aromatic_atom", "isotope_prefix"),
+            ),
+            (
+                "[15se:7]1cccc1",
+                0,
+                "[15se:7]",
+                (
+                    "bracket_aromatic_atom",
+                    "isotope_prefix",
+                    "atom_map_suffix",
+                ),
+            ),
+            (
                 "[te]1cccc1",
                 0,
                 "[te]",
@@ -205,6 +225,22 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 0,
                 "[te:7]",
                 ("bracket_aromatic_atom", "atom_map_suffix"),
+            ),
+            (
+                "[15te]1cccc1",
+                0,
+                "[15te]",
+                ("bracket_aromatic_atom", "isotope_prefix"),
+            ),
+            (
+                "[15te:7]1cccc1",
+                0,
+                "[15te:7]",
+                (
+                    "bracket_aromatic_atom",
+                    "isotope_prefix",
+                    "atom_map_suffix",
+                ),
             ),
         )
 

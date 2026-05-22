@@ -26,7 +26,7 @@ Reusable inventory script:
 The script recomputes support-gate triage for the adversarial corpus and counts
 feature areas in the expanded South Star fixture corpus.
 
-## Current Adversarial Triage
+## Adversarial Triage Before South Star 203
 
 The adversarial corpus now has:
 
@@ -66,7 +66,7 @@ This means the old frontier witness `[GeH3]C` is no longer a blocker: it is now
 covered by pinned bracket-only main-group atom text. Likewise `[te:7]1cccc1` is
 no longer an unsupported aromatic-ring-surface witness.
 
-## Current Frontier Split
+## Frontier Split Before South Star 203
 
 The current live unsupported frontier is narrower than notes/055:
 
@@ -88,7 +88,7 @@ is not represented by the current small adversarial unsupported set:
 Those should stay separate work streams. The atom-text work did not solve them;
 it only removed stale text-policy blockers.
 
-## Recommended Next Slices
+## Recommended Next Slices Before South Star 203
 
 Immediate next work should be one of these:
 
@@ -106,3 +106,18 @@ Immediate next work should be one of these:
 The no-regret order is to process `South Star 201` before more runtime
 implementation. It names the only current atom-text-like unsupported witness
 and prevents the next change from becoming a one-off isotope exception.
+
+## Update After South Star 203
+
+`[15te]1cccc1` and the analogous selenium/isotope-map forms are no longer
+unsupported frontier witnesses. They are now bracket-only aromatic element text
+cases: isotope prefixes and optional atom-map suffixes are admitted for
+aromatic selenium and tellurium while charge, explicit hydrogens, radicals, and
+chirality remain outside that policy boundary.
+
+The small unsupported adversarial surface is therefore back to query/dative
+bond semantics. `aromatic_ring_surface` remains a support-gate category for
+future aromatic policy failures, but the current corpus no longer has a small
+natural parseable witness for it. Before relying on that category in tests
+again, add a new pinned witness or deliberately remove it from the live
+frontier inventory.

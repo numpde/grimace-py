@@ -654,12 +654,11 @@ def _supported_bracket_only_aromatic_atom_text_fields(
         return True
     return (
         fields.symbol.lower() in SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
-        and fields.isotope == 0
         and fields.explicit_hydrogen_count == 0
         and fields.formal_charge == 0
         and fields.radical_electron_count == 0
-        and fields.atom_map_number != 0
         and fields.chiral_tag == "CHI_UNSPECIFIED"
+        and (fields.isotope != 0 or fields.atom_map_number != 0)
     )
 
 

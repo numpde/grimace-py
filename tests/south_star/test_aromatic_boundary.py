@@ -194,7 +194,12 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         case_ids = (
             "aromatic_selenium_text_selenophene",
             "aromatic_selenium_text_mapped_selenophene",
+            "aromatic_selenium_text_isotope_selenophene",
+            "aromatic_selenium_text_isotope_mapped_selenophene",
             "aromatic_tellurium_text_tellurophene",
+            "aromatic_tellurium_text_mapped_tellurophene",
+            "aromatic_tellurium_text_isotope_tellurophene",
+            "aromatic_tellurium_text_isotope_mapped_tellurophene",
         )
 
         for case_id in case_ids:
@@ -246,8 +251,18 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             "aromatic_text_monocycle_furan": {"c", "o"},
             "aromatic_selenium_text_selenophene": {"c", "[se]"},
             "aromatic_selenium_text_mapped_selenophene": {"c", "[se:7]"},
+            "aromatic_selenium_text_isotope_selenophene": {"c", "[15se]"},
+            "aromatic_selenium_text_isotope_mapped_selenophene": {
+                "c",
+                "[15se:7]",
+            },
             "aromatic_tellurium_text_tellurophene": {"c", "[te]"},
             "aromatic_tellurium_text_mapped_tellurophene": {"c", "[te:7]"},
+            "aromatic_tellurium_text_isotope_tellurophene": {"c", "[15te]"},
+            "aromatic_tellurium_text_isotope_mapped_tellurophene": {
+                "c",
+                "[15te:7]",
+            },
         }
 
         for case_id, expected_texts in expected_atom_texts.items():
@@ -333,17 +348,6 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
 
         self.assertIn("aromatic_directional_surface", facts.unsupported_categories)
         self.assertNotIn("aromatic_ring_surface", facts.unsupported_categories)
-
-    def test_support_gate_reasons_name_active_contract(self) -> None:
-        contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
-        mol = parse_smiles("[15te]1cccc1")
-
-        report = south_star_support_gate_report(mol)
-        reasons_by_category = {
-            feature.category: feature.reason for feature in report.unsupported_features
-        }
-
-        self.assertIn(contract.name, reasons_by_category["aromatic_ring_surface"])
 
     def test_support_gate_directional_reason_names_active_contract(self) -> None:
         contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT

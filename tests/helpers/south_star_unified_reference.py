@@ -312,14 +312,13 @@ def _bracket_only_aromatic_element_fixture_atom(
     atom: SouthStarAtomTextFields,
 ) -> bool:
     if (
-        atom.isotope != 0
-        or atom.explicit_hydrogen_count != 0
+        atom.explicit_hydrogen_count != 0
         or atom.formal_charge != 0
         or atom.radical_electron_count != 0
         or atom.chiral_tag != "CHI_UNSPECIFIED"
     ):
         return False
-    if atom.atom_map_number == 0:
+    if atom.isotope == 0 and atom.atom_map_number == 0:
         return True
     return atom.symbol.lower() in SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
 

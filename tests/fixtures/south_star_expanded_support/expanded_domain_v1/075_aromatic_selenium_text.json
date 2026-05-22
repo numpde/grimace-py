@@ -59,6 +59,64 @@
         "c(c[se:7]1)cc1",
         "c(cc1)c[se:7]1"
       ]
+    },
+    {
+      "case_id": "aromatic_selenium_text_isotope_selenophene",
+      "feature_area": "aromatic_selenium_text",
+      "source_smiles": "[15se]1cccc1",
+      "support_authority": "unified_reference_bracket_only_aromatic_element_text_obligations",
+      "evidence_notes": "Unified-reference isotope aromatic selenium text evidence for selenophene: support is rendered from sanitized aromatic molecule facts, shared monocycle traversal and branch events, bracket-only aromatic selenium atom-text obligations, isotope prefix obligations, elided aromatic bond text, parse-back evidence, and first-occurrence deduplication.",
+      "expected_support": [
+        "[15se]1cccc1",
+        "[15se](c1)ccc1",
+        "[15se](ccc1)c1",
+        "[15se](cc1)cc1",
+        "c1ccc[15se]1",
+        "c1[15se]ccc1",
+        "c([15se]cc1)c1",
+        "c(c1)[15se]cc1",
+        "c([15se]c1)cc1",
+        "c(cc1)[15se]c1",
+        "c([15se]1)ccc1",
+        "c(ccc1)[15se]1",
+        "c(c1)cc[15se]1",
+        "c(cc[15se]1)c1",
+        "c1cc[15se]c1",
+        "c1c[15se]cc1",
+        "c(c[15se]c1)c1",
+        "c(c1)c[15se]c1",
+        "c(c[15se]1)cc1",
+        "c(cc1)c[15se]1"
+      ]
+    },
+    {
+      "case_id": "aromatic_selenium_text_isotope_mapped_selenophene",
+      "feature_area": "aromatic_selenium_text",
+      "source_smiles": "[15se:7]1cccc1",
+      "support_authority": "unified_reference_bracket_only_aromatic_element_text_obligations",
+      "evidence_notes": "Unified-reference isotope-mapped aromatic selenium text evidence for selenophene: support is rendered from sanitized aromatic molecule facts, shared monocycle traversal and branch events, bracket-only aromatic selenium atom-text obligations, isotope prefix obligations, atom-map suffix obligations, elided aromatic bond text, parse-back evidence, and first-occurrence deduplication.",
+      "expected_support": [
+        "[15se:7]1cccc1",
+        "[15se:7](c1)ccc1",
+        "[15se:7](ccc1)c1",
+        "[15se:7](cc1)cc1",
+        "c1ccc[15se:7]1",
+        "c1[15se:7]ccc1",
+        "c([15se:7]cc1)c1",
+        "c(c1)[15se:7]cc1",
+        "c([15se:7]c1)cc1",
+        "c(cc1)[15se:7]c1",
+        "c([15se:7]1)ccc1",
+        "c(ccc1)[15se:7]1",
+        "c(c1)cc[15se:7]1",
+        "c(cc[15se:7]1)c1",
+        "c1cc[15se:7]c1",
+        "c1c[15se:7]cc1",
+        "c(c[15se:7]c1)c1",
+        "c(c1)c[15se:7]c1",
+        "c(c[15se:7]1)cc1",
+        "c(cc1)c[15se:7]1"
+      ]
     }
   ]
 }

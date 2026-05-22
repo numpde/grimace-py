@@ -101,7 +101,6 @@ class SouthStarAdversarialCorpusTests(unittest.TestCase):
 
         self.assertIn("unsupported_bond_type", observed_categories)
         self.assertIn("dative_bond", observed_categories)
-        self.assertIn("aromatic_ring_surface", observed_categories)
         self.assertTrue(targeted_categories <= observed_categories)
 
 

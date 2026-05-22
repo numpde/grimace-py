@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from grimace._south_star.atom_text import (
+    SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS,
+)
 from grimace._south_star.atom_text import SouthStarAtomTextFields
 from grimace._south_star.atom_text import atom_text_modifier_obligations
 from grimace._south_star.atom_text import atom_text_obligation_for_supported_fields
@@ -313,11 +316,12 @@ def _bracket_only_aromatic_element_fixture_atom(
         or atom.explicit_hydrogen_count != 0
         or atom.formal_charge != 0
         or atom.radical_electron_count != 0
+        or atom.chiral_tag != "CHI_UNSPECIFIED"
     ):
         return False
     if atom.atom_map_number == 0:
         return True
-    return atom.symbol == "Se"
+    return atom.symbol.lower() in SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
 
 
 def is_nonstereo_polycyclic_ring_traversal_domain(

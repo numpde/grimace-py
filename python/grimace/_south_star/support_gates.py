@@ -653,7 +653,7 @@ def _supported_bracket_only_aromatic_atom_text_fields(
     if _unmodified_atom_text_fields(fields):
         return True
     return (
-        fields.symbol == "Se"
+        fields.symbol.lower() in SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
         and fields.isotope == 0
         and fields.explicit_hydrogen_count == 0
         and fields.formal_charge == 0

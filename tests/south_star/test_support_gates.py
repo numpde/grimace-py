@@ -275,7 +275,7 @@ class SouthStarSupportGateTests(unittest.TestCase):
                 self.assertTrue(report.supported, report.unsupported_features)
 
     def test_modified_bracket_only_aromatic_element_stays_outside_scope(self) -> None:
-        report = south_star_support_gate_report(parse_smiles("[te:7]1cccc1"))
+        report = south_star_support_gate_report(parse_smiles("[15te]1cccc1"))
 
         self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
 
@@ -292,10 +292,10 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_mapped_aromatic_tellurium_stays_outside_first_slice(self) -> None:
+    def test_mapped_aromatic_tellurium_text_is_inside_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("[te:7]1cccc1"))
 
-        self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
+        self.assertTrue(report.supported, report.unsupported_features)
 
     def test_aromatic_directional_surfaces_have_specific_reason(self) -> None:
         mol = parse_smiles("c1ccccc1")

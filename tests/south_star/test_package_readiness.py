@@ -313,6 +313,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "aromatic_selenium_text_selenophene",
                 "aromatic_selenium_text_mapped_selenophene",
                 "aromatic_tellurium_text_tellurophene",
+                "aromatic_tellurium_text_mapped_tellurophene",
                 "non_organic_bracket_atom_text_silicon_kekule_ring",
                 "non_organic_bracket_atom_text_arsine",
                 "non_organic_bracket_atom_text_germyl_methane",

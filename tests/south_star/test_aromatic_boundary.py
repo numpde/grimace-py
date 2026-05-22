@@ -247,6 +247,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             "aromatic_selenium_text_selenophene": {"c", "[se]"},
             "aromatic_selenium_text_mapped_selenophene": {"c", "[se:7]"},
             "aromatic_tellurium_text_tellurophene": {"c", "[te]"},
+            "aromatic_tellurium_text_mapped_tellurophene": {"c", "[te:7]"},
         }
 
         for case_id, expected_texts in expected_atom_texts.items():
@@ -335,7 +336,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
 
     def test_support_gate_reasons_name_active_contract(self) -> None:
         contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
-        mol = parse_smiles("[te:7]1cccc1")
+        mol = parse_smiles("[15te]1cccc1")
 
         report = south_star_support_gate_report(mol)
         reasons_by_category = {

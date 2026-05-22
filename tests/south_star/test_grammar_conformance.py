@@ -53,6 +53,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "[se]1cccc1",
             "[se:7]1cccc1",
             "[te]1cccc1",
+            "[te:7]1cccc1",
             "C#N",
             "C$C",
             "O.F/C=C\\Cl",

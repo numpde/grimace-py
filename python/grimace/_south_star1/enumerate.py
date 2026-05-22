@@ -7,4 +7,38 @@ call RDKit or any other post-hoc parser as a validity filter.
 
 from __future__ import annotations
 
-__all__: tuple[str, ...] = ()
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from .annotation import ValidWitness
+
+
+@dataclass(frozen=True, slots=True)
+class SupportImage:
+    witness_count: int
+    distinct_count: int
+    strings: tuple[str, ...]
+
+
+def render_image_from_witnesses(
+    witnesses: Iterable[ValidWitness],
+    *,
+    deduplicate: bool,
+) -> SupportImage:
+    witness_tuple = tuple(witnesses)
+    rendered = tuple(witness.rendered for witness in witness_tuple)
+    if deduplicate:
+        strings = tuple(dict.fromkeys(rendered))
+    else:
+        strings = rendered
+    return SupportImage(
+        witness_count=len(witness_tuple),
+        distinct_count=len(set(rendered)),
+        strings=strings,
+    )
+
+
+__all__ = (
+    "SupportImage",
+    "render_image_from_witnesses",
+)

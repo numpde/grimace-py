@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import unittest
 
+from grimace._south_star.enum_s import mol_to_smiles_enum_s_graph_native
+from grimace._south_star.support_gates import south_star_support_gate_report
 from tests.helpers.south_star_mixed_polycyclic_directional_proof import (
     mixed_polycyclic_directional_proof,
 )
+from tests.helpers.south_star_semantic_oracle import graph_signature
+from tests.helpers.south_star_semantic_oracle import parse_smiles
+from tests.helpers.south_star_semantic_oracle import semantic_signature
 
 
 class SouthStarMixedPolycyclicDirectionalProofTests(unittest.TestCase):
@@ -30,6 +35,36 @@ class SouthStarMixedPolycyclicDirectionalProofTests(unittest.TestCase):
     def test_disconnected_frontier_remains_second_wave(self) -> None:
         with self.assertRaisesRegex(NotImplementedError, "one fragment"):
             mixed_polycyclic_directional_proof("F[C@H]1CC2CCC1C2.F/C=C/Cl")
+
+    def test_disconnected_runtime_composes_supported_fragments(self) -> None:
+        source_smiles = "F[C@H]1CC2CCC1C2.F/C=C/Cl"
+
+        report = south_star_support_gate_report(parse_smiles(source_smiles))
+        result = mol_to_smiles_enum_s_graph_native(
+            source_smiles,
+            case_id="disconnected_polycyclic_tetrahedral_directional_fragments",
+        )
+        diagnostics = result.generation_diagnostics
+        if diagnostics is None:
+            raise AssertionError("disconnected stress case requires diagnostics")
+
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertEqual(2, diagnostics.fragment_count)
+        self.assertEqual((784, 12), diagnostics.fragment_output_counts)
+        self.assertEqual(2, diagnostics.fragment_order_count)
+        self.assertEqual(18816, diagnostics.estimated_product_size)
+        self.assertEqual(18816, diagnostics.raw_output_count)
+        self.assertEqual(18816, diagnostics.output_count)
+
+        source_graph = graph_signature(source_smiles)
+        source_semantics = semantic_signature(source_smiles)
+        self.assertTrue(
+            all(
+                graph_signature(output) == source_graph
+                and semantic_signature(output) == source_semantics
+                for output in result.outputs
+            )
+        )
 
     def test_polycyclic_tetra_without_directional_component_is_rejected(self) -> None:
         with self.assertRaisesRegex(

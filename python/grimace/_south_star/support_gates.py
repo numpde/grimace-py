@@ -346,6 +346,8 @@ def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeatur
     ring_info = mol.GetRingInfo()
     if ring_info.NumRings() <= 1:
         return ()
+    if disconnected_fragments_have_supported_independent_traversal(mol):
+        return ()
     if is_supported_nonstereo_polycyclic_skeleton(
         mol
     ) or is_supported_polycyclic_ring_stereo_skeleton(
@@ -378,6 +380,8 @@ def _polycyclic_ring_features(mol: Chem.Mol) -> tuple[SouthStarUnsupportedFeatur
 def _ring_tetrahedral_interaction_features(
     mol: Chem.Mol,
 ) -> tuple[SouthStarUnsupportedFeature, ...]:
+    if disconnected_fragments_have_supported_independent_traversal(mol):
+        return ()
     if is_supported_tetrahedral_monocycle_with_acyclic_branches(
         mol
     ) or is_supported_tetrahedral_exocyclic_directional_monocycle(

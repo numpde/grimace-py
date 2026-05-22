@@ -81,14 +81,17 @@ jobs:
       contents: write
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+      - name: Require checked-in release notes
+        run: test -f "notes/releases/${GITHUB_REF_NAME}.md"
       - uses: softprops/action-gh-release@v3
         with:
           name: grimace-py ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: notes/releases/${{ github.ref_name }}.md
           files: dist/*
 
   publish-pypi:

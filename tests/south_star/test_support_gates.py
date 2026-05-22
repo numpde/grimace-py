@@ -238,9 +238,12 @@ class SouthStarSupportGateTests(unittest.TestCase):
     def test_kekule_looking_aromatic_monocycle_shares_supported_fact_scope(
         self,
     ) -> None:
-        report = south_star_support_gate_report(parse_smiles("C1=CC=CC=C1"))
+        cases = ("C1=CC=CC=C1", "[si]1ccccc1")
 
-        self.assertTrue(report.supported, report.unsupported_features)
+        for smiles in cases:
+            with self.subTest(smiles=smiles):
+                report = south_star_support_gate_report(parse_smiles(smiles))
+                self.assertTrue(report.supported, report.unsupported_features)
 
     def test_unmodified_fused_aromatic_rings_are_inside_gate_scope(self) -> None:
         cases = (

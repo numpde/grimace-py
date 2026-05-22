@@ -208,6 +208,10 @@ fail-fast boundaries. See
 `notes/040_south_star_aromatic_boundary.md` for the alternatives and why
 kekule-looking input text is not a separate molecule-fact contract when normal
 RDKit parsing still sets aromatic flags.
+The pinned `[si]1ccccc1` normalization fixture is the complementary boundary:
+RDKit sanitizes it to a non-aromatic silicon Kekule ring, so South Star treats
+it as ordinary nonstereo monocycle support with bracket-only silicon atom text,
+not as aromatic silicon support.
 
 The current polycyclic stance supports non-aromatic nonstereo skeletons and
 narrow unmodified fused aromatic ring systems through the same

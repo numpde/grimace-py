@@ -206,6 +206,10 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                 continue
 
             records = ring_core_proof_records_for_case(case)
+            mol = parse_smiles(case.source_smiles)
+            has_double_bond = any(
+                bond.GetBondType().name == "DOUBLE" for bond in mol.GetBonds()
+            )
             with self.subTest(case_id=case.case_id):
                 self.assertNotEqual((), records)
                 self.assertTrue(
@@ -214,7 +218,7 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         for record in records
                         for text in record.closure_open_bond_texts
                     )
-                    == (case.feature_area == "unsaturated_nonstereo_monocycle")
+                    == has_double_bond
                 )
 
             for record in records:

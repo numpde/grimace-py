@@ -40,20 +40,21 @@ Executed checks:
 Results:
 
 - South Star package readiness: `140` tests passed at the original inventory
-  checkpoint; `South Star 192` keeps the runner green at `148` tests after
+  checkpoint; `South Star 193` keeps the runner green at `149` tests after
   adding fused aromatic, aromatic selenium/tellurium, modified-aromatic
-  atom-text, mapped selenium, and quadruple bond-text cases.
+  atom-text, mapped selenium, silicon normalization, and quadruple bond-text
+  cases.
 - Promotion gates listed by the readiness suite: `13`.
 - Exact first-domain cases: `5`.
-- Expanded-support cases: `57`.
-- Total checked semantic fixture cases: `62`.
+- Expanded-support cases: `58`.
+- Total checked semantic fixture cases: `63`.
 
 ## Current Inventory
 
 Readiness matrix:
 
-- unified-reference-backed cases: `62`;
-- shared-pipeline promotion candidates: `62`;
+- unified-reference-backed cases: `63`;
+- shared-pipeline promotion candidates: `63`;
 - temporary-witness-backed current cases: `0`;
 - regression-backed current cases: `0`;
 - public API blocker case ids: `0`;
@@ -62,8 +63,8 @@ Readiness matrix:
 
 Authority inventory:
 
-- authority classes: `62` unified-reference cases;
-- shared-spine coverage: `62` complete cases;
+- authority classes: `63` unified-reference cases;
+- shared-spine coverage: `63` complete cases;
 - unresolved blocker counts: none;
 - total spine bypass count: `0`.
 

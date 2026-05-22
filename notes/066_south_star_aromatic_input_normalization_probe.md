@@ -61,3 +61,11 @@ Open one implementation row for the silicon normalized-input fixture. Open a
 separate probe or implementation row for bracket-only arsenic atom text only if
 the project wants to broaden non-organic atom text beyond `Si`, `Se`, and the
 planned `Te` slice.
+
+## Follow-Up After South Star 193
+
+`South Star 193` pins `[si]1ccccc1` as
+`non_organic_bracket_atom_text_silicon_kekule_ring`. This does not add
+aromatic silicon support: the fixture records RDKit's sanitized non-aromatic
+Kekule molecule facts and uses ordinary nonstereo monocycle traversal with
+bracket-only silicon atom text.

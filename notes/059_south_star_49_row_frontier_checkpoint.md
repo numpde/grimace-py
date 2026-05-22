@@ -149,8 +149,8 @@ as non-aromatic Kekule bracket atoms rather than the same aromatic text slice.
 The current counts are now:
 
 - exact first-domain directional cases: `5`;
-- expanded-support cases: `57`;
-- total benchmark/readiness rows: `62`.
+- expanded-support cases: `58`;
+- total benchmark/readiness rows: `63`.
 
 `South Star 191` promotes the narrow tellurium text case `[te]1cccc1` from
 frontier to checked private surface. Selenium and tellurium now share the
@@ -160,3 +160,7 @@ modifier-composition work.
 `South Star 192` promotes mapped selenium `[se:7]1cccc1` as the first
 bracket-only aromatic element modifier-composition case. Mapped tellurium and
 other selenium modifiers remain separate frontier slices.
+
+`South Star 193` pins `[si]1ccccc1` as a normalization fixture for the
+supported non-aromatic silicon Kekule ring surface, not as aromatic silicon
+support.

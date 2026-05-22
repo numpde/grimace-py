@@ -308,6 +308,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "exocyclic_directional_monocycle_branch",
                 "ring_tetrahedral_exocyclic_directional_branch",
                 "polycyclic_ring_tetrahedral_bridged_center",
+                "polycyclic_ring_tetrahedral_minimal_bridge",
                 "fused_aromatic_naphthalene",
                 "fused_aromatic_quinoline",
                 "fused_aromatic_benzofuran",

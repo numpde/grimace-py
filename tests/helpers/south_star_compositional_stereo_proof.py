@@ -228,6 +228,8 @@ def _minimum_atom_distance(
     left_atom_indices: tuple[int, ...],
     right_atom_indices: tuple[int, ...],
 ) -> int:
+    if set(left_atom_indices) & set(right_atom_indices):
+        return 0
     return min(
         len(Chem.GetShortestPath(mol, left_atom_idx, right_atom_idx)) - 1
         for left_atom_idx in left_atom_indices

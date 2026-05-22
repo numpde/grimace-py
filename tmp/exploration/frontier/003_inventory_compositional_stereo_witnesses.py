@@ -13,6 +13,11 @@ from grimace._south_star.tetrahedral import (
     extract_ring_tetrahedral_interaction_obligations,
     extract_tetrahedral_center_facts,
 )
+from tests.helpers.south_star_compositional_stereo_proof import (
+    SouthStarCompositionalStereoComponent,
+    SouthStarCompositionalStereoProofReport,
+    compositional_stereo_proof_report,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,30 +86,39 @@ def main() -> None:
     print()
     print(
         "| case | source | classification | supported | categories | "
-        "frags | tetra | ring-tetra obligations | directional components | outputs |"
+        "frags | tetra | ring-tetra obligations | directional components | "
+        "proof class | components | coupling reasons | proof/runtime | outputs |"
     )
-    print("| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |")
+    print(
+        "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | "
+        "--- | --- | --- | ---: |"
+    )
     for candidate in CANDIDATES:
         mol = Chem.MolFromSmiles(candidate.source_smiles)
         if mol is None:
             print(
                 f"| `{candidate.case_id}` | `{candidate.source_smiles}` | "
                 f"{candidate.intended_classification} | parse_fail | - | "
-                "- | - | - | - | - |"
+                "- | - | - | - | - | - | - | - | - |"
             )
             continue
 
         gate = south_star_support_gate_report(mol)
         components = extract_south_star_components(mol, support_gate_report=gate)
+        proof = compositional_stereo_proof_report(candidate.source_smiles)
         output_count = _output_count(candidate.source_smiles)
         categories = ", ".join(sorted(gate.categories)) or "-"
+        proof_runtime = _proof_runtime_status(proof)
         print(
             f"| `{candidate.case_id}` | `{candidate.source_smiles}` | "
             f"{candidate.intended_classification} | {str(gate.supported).lower()} | "
             f"{categories} | {len(Chem.GetMolFrags(mol))} | "
             f"{len(extract_tetrahedral_center_facts(mol))} | "
             f"{len(extract_ring_tetrahedral_interaction_obligations(mol))} | "
-            f"{len(components.components)} | {output_count} |"
+            f"{len(components.components)} | {proof.classification} | "
+            f"{_component_summary(proof.components)} | "
+            f"{_coupling_summary(proof.components)} | {proof_runtime} | "
+            f"{output_count} |"
         )
 
 
@@ -115,6 +129,33 @@ def _output_count(source_smiles: str) -> str:
         return f"{type(exc).__name__}"
 
 
+def _component_summary(
+    components: tuple[SouthStarCompositionalStereoComponent, ...],
+) -> str:
+    return "<br>".join(
+        "+".join(component.obligation_ids) for component in components
+    ) or "-"
+
+
+def _coupling_summary(
+    components: tuple[SouthStarCompositionalStereoComponent, ...],
+) -> str:
+    reasons = sorted(
+        {
+            reason
+            for component in components
+            for reason in component.coupling_reasons
+        }
+    )
+    return ", ".join(reasons) or "-"
+
+
+def _proof_runtime_status(proof: SouthStarCompositionalStereoProofReport) -> str:
+    if proof.proof_output_count is None or proof.runtime_output_count is None:
+        return "-"
+    match = "match" if proof.runtime_outputs_match_proof else "mismatch"
+    return f"{proof.proof_output_count}/{proof.runtime_output_count} {match}"
+
+
 if __name__ == "__main__":
     main()
-

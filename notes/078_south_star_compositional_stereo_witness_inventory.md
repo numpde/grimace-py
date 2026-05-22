@@ -94,3 +94,37 @@ Before pinning fixtures, add or extract a proof helper that can report:
 - rendered output equality with current runtime;
 - semantic parse-back evidence.
 
+## Proof-Stage Refresh After Initial Admission
+
+Task: `South Star 222: Inventory mixed ring/tetra compositional witnesses`
+
+After admitting the separated, adjacent, and disconnected two-tetra fixtures,
+the same inventory script now reports proof-stage data from
+`compositional_stereo_proof_report(...)`: proof classification, component
+partition, coupling reasons, and proof/runtime equality.
+
+The mixed ring/tetra candidates classify as follows:
+
+| Case | Source | Proof class | Components | Coupling reasons | Proof/runtime | Outputs |
+| --- | --- | --- | --- | --- | --- | ---: |
+| `monocycle_ring_tetra_directional_existing` | `F[C@H]1CCCC(/C=C/Cl)C1` | `independent_product` | `tetrahedral:1`; `directional:component:0` | - | `576/576 match` | 576 |
+| `ring_tetra_plus_branch_tetra` | `F[C@H]1CCCC([C@H](Cl)Br)C1` | `coupled_component` | `tetrahedral:1+tetrahedral:6` | `shared_ring_tetrahedral_system` | `576/576 match` | 576 |
+| `polycyclic_ring_tetra_plus_branch_tetra` | `F[C@H]1CC2CCC1C2[C@H](Cl)Br` | `coupled_component` | `tetrahedral:1+tetrahedral:8` | `shared_ring_tetrahedral_system` | `3160/3160 match` | 3160 |
+
+The smallest mixed ring/tetra next fixture candidate is therefore
+`F[C@H]1CCCC([C@H](Cl)Br)C1`: it has the same output count as the already
+admitted monocycle ring/tetra/directional baseline, but it exercises two
+tetrahedral obligations coupled by the ring/tetrahedral system rather than a
+product of one ring/tetrahedral and one directional component.
+
+Do not pin the 3160-output polycyclic branch case first. It has the same proof
+shape as the smaller monocyclic witness and should follow only if the smaller
+fixture is coherent.
+
+The refreshed inventory also shows that some older directional labels are
+coarser than the new proof classification. In particular,
+`F/C=C/C/C=C/Cl` remains an existing fixture baseline, but the compositional
+proof helper currently classifies the two directional obligations as coupled by
+`adjacent_directional_obligation`. That is outside this mixed ring/tetra slice;
+it should be reconciled before using directional component labels as a general
+product/coupling authority.

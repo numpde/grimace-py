@@ -63,6 +63,7 @@ def _private_package_imports(path: Path) -> set[str]:
 class RuntimeBoundaryTests(unittest.TestCase):
     deviation_module = REPO_ROOT / "python" / "grimace" / "_deviation.py"
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
+    runtime_input_module = REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py"
     runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
@@ -126,6 +127,16 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertNotIn(
             "grimace._runtime",
             _string_constants(self.preparation_module),
+        )
+
+    def test_runtime_input_module_does_not_import_reference_graphs(self) -> None:
+        imported_names = _imported_module_names(self.runtime_input_module)
+        self.assertFalse(
+            {
+                name
+                for name in imported_names
+                if name.startswith("grimace._reference.prepared_graph")
+            }
         )
 
     def test_public_runtime_module_does_not_import_prepared_mol_wrapper(self) -> None:

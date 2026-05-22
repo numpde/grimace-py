@@ -12,10 +12,6 @@ from grimace._mol_to_smiles_options import (
     coerce_internal_options,
     coerce_option,
 )
-from grimace._reference.prepared_graph import (
-    CONNECTED_NONSTEREO_SURFACE,
-    CONNECTED_STEREO_SURFACE,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,16 +64,6 @@ def writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
     }
 
 
-def runtime_surface_kind(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> str:
-    if _requires_stereo_runtime_surface(mol_or_prepared, flags=flags):
-        return CONNECTED_STEREO_SURFACE
-    return CONNECTED_NONSTEREO_SURFACE
-
-
 def prepare_runtime_input(
     mol_or_prepared: object,
     *,
@@ -102,25 +88,6 @@ def ensure_singly_connected_molecule(mol: object) -> None:
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only singly-connected molecules"
         )
-
-
-def _requires_stereo_runtime_surface(
-    mol_or_prepared: object,
-    *,
-    flags: MolToSmilesFlags,
-) -> bool:
-    if flags.isomeric_smiles:
-        return True
-    if not flags.all_bonds_explicit:
-        return False
-    if _prepared_mol._is_rdkit_mol(mol_or_prepared):
-        return _prepared_mol._rdkit_mol_requires_stereo_surface(mol_or_prepared)
-    if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
-        return False
-    return any(
-        str(bond_dir) != "NONE"
-        for bond_dir in getattr(mol_or_prepared, "bond_dirs", ())
-    )
 
 
 def _runtime_public_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:

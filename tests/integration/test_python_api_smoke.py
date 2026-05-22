@@ -125,6 +125,18 @@ class PythonApiSmokeTests(unittest.TestCase):
                     )
                 )
 
+    def test_public_api_rejects_unsupported_input_type(self) -> None:
+        kwargs = supported_public_kwargs(rootedAtAtom=0, isomericSmiles=False)
+        assert_public_entrypoints_raise(
+            self,
+            object(),
+            kwargs=kwargs,
+            expected_exception=TypeError,
+            expected_regex="Unsupported molecule/prepared type",
+        )
+        with self.assertRaisesRegex(TypeError, "Unsupported molecule/prepared type"):
+            grimace.MolToSmilesDeviation(object(), "C", **kwargs)
+
     def test_public_api_treats_any_negative_root_like_rdkit_unrooted_mode(self) -> None:
         mol = parse_smiles("CCO")
         for provided_root in (-1, -2, -3):

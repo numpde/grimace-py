@@ -8,13 +8,14 @@ from typing import cast
 
 import grimace._prepared_mol as _prepared_mol
 from grimace._reference.prepared_graph import (
+    CONNECTED_NONSTEREO_SURFACE,
+    CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
 from grimace._runtime_inputs import (
     MolToSmilesFlags,
     ensure_singly_connected_molecule,
-    runtime_surface_kind,
     writer_flag_kwargs,
 )
 
@@ -60,6 +61,46 @@ def prepared_mol_fragment_plans(
     return tuple(
         _FragmentPlan(fragment, fragment_rooted_at_atom)
         for fragment, fragment_rooted_at_atom in rooted_fragments
+    )
+
+
+def runtime_surface_kind(
+    mol_or_prepared: object,
+    *,
+    flags: MolToSmilesFlags,
+) -> str:
+    if _prepared_mol._is_rdkit_mol(mol_or_prepared):
+        return _surface_kind_for_flags(
+            flags,
+            requires_stereo_surface=_prepared_mol._rdkit_mol_requires_stereo_surface(
+                mol_or_prepared
+            ),
+        )
+    if isinstance(mol_or_prepared, (ReferencePreparedSmilesGraph, _core.PreparedSmilesGraph)):
+        return _surface_kind_for_flags(
+            flags,
+            requires_stereo_surface=_prepared_graph_requires_stereo_surface(
+                mol_or_prepared
+            ),
+        )
+    raise TypeError(f"Unsupported molecule/prepared type: {type(mol_or_prepared)!r}")
+
+
+def _surface_kind_for_flags(
+    flags: MolToSmilesFlags,
+    *,
+    requires_stereo_surface: bool,
+) -> str:
+    if flags.isomeric_smiles:
+        return CONNECTED_STEREO_SURFACE
+    if flags.all_bonds_explicit and requires_stereo_surface:
+        return CONNECTED_STEREO_SURFACE
+    return CONNECTED_NONSTEREO_SURFACE
+
+
+def _prepared_graph_requires_stereo_surface(prepared: object) -> bool:
+    return prepared.surface_kind == CONNECTED_STEREO_SURFACE and any(
+        str(bond_dir) != "NONE" for bond_dir in prepared.bond_dirs
     )
 
 

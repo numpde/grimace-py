@@ -24,8 +24,6 @@ from grimace._reference.prepared_graph import (
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
-    prepared_stereo_atom_token,
-    ring_label_text,
 )
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
@@ -131,16 +129,7 @@ def _validate_writer_flags(
     flags: MolToSmilesFlags,
 ) -> None:
     if isinstance(prepared, _core.PreparedSmilesGraph):
-        prepared_data = prepared.to_dict()
-        actual = {
-            "isomeric_smiles": bool(prepared_data["writer_do_isomeric_smiles"]),
-            "kekule_smiles": bool(prepared_data["writer_kekule_smiles"]),
-            "all_bonds_explicit": bool(prepared_data["writer_all_bonds_explicit"]),
-            "all_hs_explicit": bool(prepared_data["writer_all_hs_explicit"]),
-            "ignore_atom_map_numbers": bool(
-                prepared_data["writer_ignore_atom_map_numbers"]
-            ),
-        }
+        matches = prepared.matches_writer_flags(**_runtime_writer_flag_kwargs(flags))
     else:
         actual = {
             "isomeric_smiles": bool(prepared.writer_do_isomeric_smiles),
@@ -149,7 +138,8 @@ def _validate_writer_flags(
             "all_hs_explicit": bool(prepared.writer_all_hs_explicit),
             "ignore_atom_map_numbers": bool(prepared.writer_ignore_atom_map_numbers),
         }
-    if actual != _runtime_writer_flag_kwargs(flags):
+        matches = actual == _runtime_writer_flag_kwargs(flags)
+    if not matches:
         raise ValueError(
             "PreparedSmilesGraph writer flags do not match the requested public runtime options"
         )
@@ -261,7 +251,7 @@ def _atom_count(mol_or_prepared: object) -> int:
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
         return mol_or_prepared.atom_count
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
-        return cast(int, mol_or_prepared.to_dict()["atom_count"])
+        return cast(int, mol_or_prepared.atom_count)
     raise TypeError(f"Unsupported molecule/prepared type: {type(mol_or_prepared)!r}")
 
 
@@ -899,87 +889,22 @@ def _exact_token_inventory_from_decoder(
     return tuple(sorted(inventory))
 
 
-def _stereo_atom_token_superset_variants(
-    prepared: ReferencePreparedSmilesGraph,
-    atom_idx: int,
-) -> tuple[str, ...]:
-    if not prepared.writer_do_isomeric_smiles:
-        return ()
-
-    chiral_tag = prepared.atom_chiral_tags[atom_idx]
-    if chiral_tag not in {"CHI_TETRAHEDRAL_CCW", "CHI_TETRAHEDRAL_CW"}:
-        return ()
-
-    return tuple(
-        prepared_stereo_atom_token(
-            prepared,
-            atom_idx,
-            stereo_mark=stereo_mark,
-        )
-        for stereo_mark in ("@", "@@")
-    )
-
-
-def _branch_tokens_may_be_reachable(
-    prepared: ReferencePreparedSmilesGraph,
-    *,
-    rooted_at_atom: int,
-) -> bool:
-    if rooted_at_atom < 0:
-        return any(len(row) >= 2 for row in prepared.neighbors)
-    return any(
-        len(row) >= (2 if atom_idx == rooted_at_atom else 3)
-        for atom_idx, row in enumerate(prepared.neighbors)
-    )
-
-
-def _prepared_token_inventory_superset(
-    prepared: ReferencePreparedSmilesGraph,
-    *,
-    rooted_at_atom: int,
-) -> tuple[str, ...]:
-    atom_count = prepared.atom_count
-    if atom_count > 0 and rooted_at_atom >= atom_count:
-        raise IndexError("root_idx out of range")
-
-    tokens = set(prepared.atom_tokens)
-
-    for bond_token_row in prepared.neighbor_bond_tokens:
-        tokens.update(token for token in bond_token_row if token)
-
-    if any(bond_dir != "NONE" for bond_dir in prepared.bond_dirs):
-        tokens.update(("/", "\\"))
-
-    if _branch_tokens_may_be_reachable(prepared, rooted_at_atom=rooted_at_atom):
-        tokens.update(("(", ")"))
-
-    # A connected graph can need no more distinct ring labels than its cycle rank.
-    cycle_rank = max(0, prepared.bond_count - atom_count + 1) if atom_count else 0
-    tokens.update(ring_label_text(label) for label in range(1, cycle_rank + 1))
-
-    if prepared.surface_kind == CONNECTED_STEREO_SURFACE:
-        for atom_idx in range(atom_count):
-            tokens.update(_stereo_atom_token_superset_variants(prepared, atom_idx))
-
-    return tuple(sorted(tokens))
-
-
-def _prepare_reference_graph_for_static_inventory(
+def _prepare_core_graph_for_static_inventory(
     mol_or_prepared: object,
     *,
     flags: MolToSmilesFlags,
-) -> ReferencePreparedSmilesGraph:
+) -> _core.PreparedSmilesGraph:
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
         surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
         _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_writer_flags(mol_or_prepared, flags)
-        return mol_or_prepared
+        return _core.PreparedSmilesGraph(mol_or_prepared)
 
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
         surface_kind = _runtime_surface_kind(mol_or_prepared, flags=flags)
         _validate_surface_kind(mol_or_prepared, surface_kind=surface_kind)
         _validate_writer_flags(mol_or_prepared, flags)
-        return ReferencePreparedSmilesGraph.from_dict(mol_or_prepared.to_dict())
+        return mol_or_prepared
 
     raise TypeError(
         f"Unsupported molecule/prepared type for static inventory: {type(mol_or_prepared)!r}"
@@ -1000,14 +925,11 @@ def _connected_token_inventory_superset(
         mol_or_prepared = fragment
         flags = flags.with_rooted_at_atom(rooted_at_atom)
 
-    prepared = _prepare_reference_graph_for_static_inventory(
+    prepared = _prepare_core_graph_for_static_inventory(
         mol_or_prepared,
         flags=flags,
     )
-    return _prepared_token_inventory_superset(
-        prepared,
-        rooted_at_atom=rooted_at_atom,
-    )
+    return tuple(prepared.token_inventory_superset(rooted_at_atom))
 
 
 def _fragmented_prepared_token_inventory_superset(

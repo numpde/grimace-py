@@ -43,6 +43,19 @@ class RuntimeBoundaryTests(unittest.TestCase):
                 }
                 self.assertFalse(forbidden_methods & method_names)
 
+    def test_runtime_modules_do_not_use_prepared_graph_dict_transport(self) -> None:
+        forbidden_methods = {"to_dict", "from_dict"}
+
+        for path in self.runtime_modules:
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                method_names = {
+                    node.attr
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Attribute)
+                }
+                self.assertFalse(forbidden_methods & method_names)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,9 @@
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
+use std::collections::BTreeSet;
+
+use crate::smiles_shared::ring_label_text;
 
 pub const PREPARED_SMILES_GRAPH_SCHEMA_VERSION: usize = 1;
 pub const CONNECTED_NONSTEREO_SURFACE: &str = "connected_nonstereo";
@@ -568,6 +571,68 @@ impl PreparedSmilesGraphData {
         }
     }
 
+    pub(crate) fn matches_writer_flags(
+        &self,
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+    ) -> bool {
+        self.writer_do_isomeric_smiles == isomeric_smiles
+            && self.writer_kekule_smiles == kekule_smiles
+            && self.writer_all_bonds_explicit == all_bonds_explicit
+            && self.writer_all_hs_explicit == all_hs_explicit
+            && self.writer_ignore_atom_map_numbers == ignore_atom_map_numbers
+    }
+
+    pub(crate) fn token_inventory_superset(&self, root_idx: isize) -> PyResult<Vec<String>> {
+        if self.atom_count > 0 && root_idx >= self.atom_count as isize {
+            return Err(PyIndexError::new_err("root_idx out of range"));
+        }
+
+        let mut tokens: BTreeSet<String> = self.atom_tokens.iter().cloned().collect();
+
+        for bond_token_row in &self.neighbor_bond_tokens {
+            for token in bond_token_row {
+                if !token.is_empty() {
+                    tokens.insert(token.clone());
+                }
+            }
+        }
+
+        if self.bond_dirs.iter().any(|bond_dir| bond_dir != "NONE") {
+            tokens.insert("/".to_owned());
+            tokens.insert("\\".to_owned());
+        }
+
+        if branch_tokens_may_be_reachable(self, root_idx) {
+            tokens.insert("(".to_owned());
+            tokens.insert(")".to_owned());
+        }
+
+        let cycle_rank = if self.atom_count == 0 {
+            0
+        } else {
+            self.bond_count
+                .saturating_sub(self.atom_count)
+                .saturating_add(1)
+        };
+        for label in 1..=cycle_rank {
+            tokens.insert(ring_label_text(label));
+        }
+
+        if self.surface_kind == CONNECTED_STEREO_SURFACE {
+            for atom_idx in 0..self.atom_count {
+                for token in stereo_atom_token_superset_variants(self, atom_idx)? {
+                    tokens.insert(token);
+                }
+            }
+        }
+
+        Ok(tokens.into_iter().collect())
+    }
+
     pub(crate) fn to_pydict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);
         dict.set_item("schema_version", self.schema_version)?;
@@ -660,6 +725,117 @@ impl PreparedSmilesGraphData {
     }
 }
 
+fn branch_tokens_may_be_reachable(graph: &PreparedSmilesGraphData, root_idx: isize) -> bool {
+    if root_idx < 0 {
+        return graph.neighbors.iter().any(|row| row.len() >= 2);
+    }
+    let root_idx = root_idx as usize;
+    graph
+        .neighbors
+        .iter()
+        .enumerate()
+        .any(|(atom_idx, row)| row.len() >= if atom_idx == root_idx { 2 } else { 3 })
+}
+
+fn stereo_atom_token_superset_variants(
+    graph: &PreparedSmilesGraphData,
+    atom_idx: usize,
+) -> PyResult<Vec<String>> {
+    if !graph.writer_do_isomeric_smiles {
+        return Ok(Vec::new());
+    }
+
+    let chiral_tag = graph.atom_chiral_tags[atom_idx].as_str();
+    if chiral_tag != "CHI_TETRAHEDRAL_CCW" && chiral_tag != "CHI_TETRAHEDRAL_CW" {
+        return Ok(Vec::new());
+    }
+
+    Ok(vec![
+        prepared_stereo_atom_token(graph, atom_idx, "@")?,
+        prepared_stereo_atom_token(graph, atom_idx, "@@")?,
+    ])
+}
+
+fn prepared_stereo_atom_token(
+    graph: &PreparedSmilesGraphData,
+    atom_idx: usize,
+    stereo_mark: &str,
+) -> PyResult<String> {
+    let hydrogen_count =
+        graph.atom_explicit_h_counts[atom_idx] + graph.atom_implicit_h_counts[atom_idx];
+    let atom_map_number = if graph.writer_ignore_atom_map_numbers {
+        0
+    } else {
+        graph.atom_map_numbers[atom_idx]
+    };
+
+    let mut token = String::from("[");
+    let isotope = graph.atom_isotopes[atom_idx];
+    if isotope != 0 {
+        token.push_str(&isotope.to_string());
+    }
+    token.push_str(&prepared_atom_symbol(graph, atom_idx)?);
+    token.push_str(stereo_mark);
+    token.push_str(&format_hydrogen_count(hydrogen_count));
+    token.push_str(&format_charge(graph.atom_formal_charges[atom_idx]));
+    if atom_map_number != 0 {
+        token.push(':');
+        token.push_str(&atom_map_number.to_string());
+    }
+    token.push(']');
+    Ok(token)
+}
+
+fn prepared_atom_symbol(graph: &PreparedSmilesGraphData, atom_idx: usize) -> PyResult<String> {
+    let mut symbol = element_symbol(graph.atom_atomic_numbers[atom_idx])?.to_owned();
+    if graph.atom_is_aromatic[atom_idx] && !graph.writer_kekule_smiles {
+        let lowered = symbol.to_ascii_lowercase();
+        if is_aromatic_lowercase_subset(&lowered) {
+            symbol = lowered;
+        }
+    }
+    Ok(symbol)
+}
+
+fn element_symbol(atomic_num: usize) -> PyResult<&'static str> {
+    const SYMBOLS: [&str; 119] = [
+        "*", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P",
+        "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+        "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh",
+        "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+        "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re",
+        "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+        "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db",
+        "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+    ];
+    SYMBOLS
+        .get(atomic_num)
+        .copied()
+        .ok_or_else(|| PyValueError::new_err(format!("Unsupported atomic number: {atomic_num}")))
+}
+
+fn is_aromatic_lowercase_subset(symbol: &str) -> bool {
+    matches!(symbol, "b" | "c" | "n" | "o" | "p" | "s" | "se" | "as")
+}
+
+fn format_hydrogen_count(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => "H".to_owned(),
+        _ => format!("H{count}"),
+    }
+}
+
+fn format_charge(charge: i32) -> String {
+    match charge {
+        0 => String::new(),
+        1 => "+".to_owned(),
+        -1 => "-".to_owned(),
+        value if value > 0 => format!("+{value}"),
+        value => format!("-{}", value.abs()),
+    }
+}
+
 #[pyclass(name = "PreparedSmilesGraph", module = "grimace._core", frozen)]
 pub struct PyPreparedSmilesGraph {
     data: PreparedSmilesGraphData,
@@ -748,6 +924,28 @@ impl PyPreparedSmilesGraph {
             .ok_or_else(|| {
                 PyKeyError::new_err(format!("No bond between atoms {begin_idx} and {end_idx}"))
             })
+    }
+
+    #[pyo3(signature = (*, isomeric_smiles, kekule_smiles, all_bonds_explicit, all_hs_explicit, ignore_atom_map_numbers))]
+    fn matches_writer_flags(
+        &self,
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+    ) -> bool {
+        self.data.matches_writer_flags(
+            isomeric_smiles,
+            kekule_smiles,
+            all_bonds_explicit,
+            all_hs_explicit,
+            ignore_atom_map_numbers,
+        )
+    }
+
+    fn token_inventory_superset(&self, root_idx: isize) -> PyResult<Vec<String>> {
+        self.data.token_inventory_superset(root_idx)
     }
 
     fn validate_policy(&self, policy_name: &str, policy_digest: &str) -> PyResult<()> {
@@ -1062,6 +1260,54 @@ mod tests {
         let graph = sample_graph();
         assert_eq!(Some(""), graph.bond_token(0, 1));
         assert_eq!(None, graph.bond_token(0, 0));
+    }
+
+    #[test]
+    fn token_inventory_superset_uses_static_graph_fields() {
+        let mut graph = sample_graph();
+        graph.atom_count = 3;
+        graph.bond_count = 3;
+        graph.identity_smiles = "C1CC1".to_owned();
+        graph.atom_atomic_numbers = vec![6, 6, 6];
+        graph.atom_is_aromatic = vec![false, false, false];
+        graph.atom_isotopes = vec![0, 0, 0];
+        graph.atom_formal_charges = vec![0, 0, 0];
+        graph.atom_total_hs = vec![2, 2, 2];
+        graph.atom_radical_electrons = vec![0, 0, 0];
+        graph.atom_map_numbers = vec![0, 0, 0];
+        graph.atom_tokens = vec!["C".to_owned(), "C".to_owned(), "C".to_owned()];
+        graph.neighbors = vec![vec![1, 2], vec![0, 2], vec![0, 1]];
+        graph.neighbor_bond_tokens = vec![
+            vec!["".to_owned(), "".to_owned()],
+            vec!["".to_owned(), "".to_owned()],
+            vec!["".to_owned(), "".to_owned()],
+        ];
+        graph.bond_pairs = vec![(0, 1), (0, 2), (1, 2)];
+        graph.bond_kinds = vec![
+            "SINGLE".to_owned(),
+            "SINGLE".to_owned(),
+            "SINGLE".to_owned(),
+        ];
+
+        let inventory = graph
+            .token_inventory_superset(-1)
+            .expect("static inventory should succeed");
+        assert_eq!(vec!["(", ")", "1", "C"], inventory);
+    }
+
+    #[test]
+    fn token_inventory_superset_includes_stereo_variants_and_direction_tokens() {
+        let mut graph = sample_stereo_graph();
+        graph.atom_chiral_tags[1] = "CHI_TETRAHEDRAL_CCW".to_owned();
+        graph.atom_map_numbers[1] = 7;
+
+        let inventory = graph
+            .token_inventory_superset(1)
+            .expect("static stereo inventory should succeed");
+        assert!(inventory.contains(&"/".to_owned()));
+        assert!(inventory.contains(&"\\".to_owned()));
+        assert!(inventory.contains(&"[C@H:7]".to_owned()));
+        assert!(inventory.contains(&"[C@@H:7]".to_owned()));
     }
 
     #[test]

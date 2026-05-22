@@ -11,7 +11,6 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
-from grimace._prepared_mol import _matches_writer_flags
 from tests.helpers.mols import parse_smiles
 
 
@@ -138,17 +137,24 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
             spec.public_name: index % 2 == 0
             for index, spec in enumerate(MOL_TO_SMILES_PREPARED_OPTIONS)
         }
-        prepared = grimace.PrepareMol(parse_smiles("c1ccccc1"), **prepared_kwargs)
+        prepared = grimace.PrepareMol(parse_smiles("CCO"), **prepared_kwargs)
+        runtime_kwargs = {
+            "rootedAtAtom": 0,
+            "canonical": False,
+            "doRandom": True,
+            **prepared_kwargs,
+        }
 
-        self.assertTrue(
-            _matches_writer_flags(
-                prepared,
-                **{
-                    spec.internal_name: bool(prepared_kwargs[spec.public_name])
-                    for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-                }
-            )
-        )
+        self.assertGreater(len(tuple(grimace.MolToSmilesEnum(prepared, **runtime_kwargs))), 0)
+
+        for spec in MOL_TO_SMILES_PREPARED_OPTIONS:
+            mismatched_kwargs = {
+                **runtime_kwargs,
+                spec.public_name: not prepared_kwargs[spec.public_name],
+            }
+            with self.subTest(public_name=spec.public_name):
+                with self.assertRaisesRegex(ValueError, "writer flags"):
+                    tuple(grimace.MolToSmilesEnum(prepared, **mismatched_kwargs))
 
 
 if __name__ == "__main__":

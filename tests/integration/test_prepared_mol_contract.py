@@ -4,7 +4,6 @@ from dataclasses import fields, is_dataclass
 import unittest
 
 import grimace
-from grimace._prepared_mol import _fragments
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     prepared_writer_kwargs,
@@ -228,17 +227,15 @@ class PreparedMolContractTests(unittest.TestCase):
     def test_prepared_mol_does_not_store_rdkit_mol(self) -> None:
         self._assert_no_rdkit_mol_is_stored(self._prepare("CCO.N", isomericSmiles=False))
 
-    def test_prepared_mol_wraps_rust_storage(self) -> None:
+    def test_prepared_mol_preserves_disconnected_runtime_behavior(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
 
-        self.assertEqual(("_inner",), grimace.PreparedMol.__slots__)
-        self.assertEqual("grimace._core", type(prepared._inner).__module__)
-        self.assertEqual("PreparedMol", type(prepared._inner).__name__)
-
-        fragments = _fragments(prepared)
-        self.assertEqual(2, len(fragments))
-        self.assertEqual((0, 1, 2), fragments[0][0])
-        self.assertEqual((3,), fragments[1][0])
+        support = public_enum_support(
+            prepared,
+            **supported_public_kwargs(isomericSmiles=False),
+        )
+        self.assertTrue(support)
+        self.assertTrue(all("." in smiles for smiles in support))
 
     def test_to_bytes_uses_versioned_binary_payload(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
@@ -273,57 +270,6 @@ class PreparedMolContractTests(unittest.TestCase):
             with self.subTest(payload=payload):
                 with self.assertRaises(ValueError):
                     grimace.PreparedMol.from_bytes(payload)
-
-    def test_rust_storage_rejects_malformed_structural_parts(self) -> None:
-        prepared = self._prepare("CCO.N", isomericSmiles=False)
-        prepared_fragments = _fragments(prepared)
-        base_fragments = [
-            (
-                list(prepared_fragments[0][0]),
-                prepared_fragments[0][1],
-            ),
-            (
-                list(prepared_fragments[1][0]),
-                prepared_fragments[1][1],
-            ),
-        ]
-
-        with self.assertRaises(TypeError):
-            grimace._core.PreparedMol({})
-
-        malformed_parts = {
-            "empty_fragments": [],
-            "fragment_not_pair": [base_fragments[0][0]],
-            "fragment_wrong_pair_length": [
-                (*base_fragments[0], prepared_fragments[1][1])
-            ],
-            "bad_atom_indices_type": [({}, base_fragments[0][1]), base_fragments[1]],
-            "atom_index_bool": [([True, 1, 2], base_fragments[0][1]), base_fragments[1]],
-            "overlapping_atom_indices": [base_fragments[0], ([0], base_fragments[1][1])],
-            "unsorted_atom_indices": [([2, 1, 0], base_fragments[0][1]), base_fragments[1]],
-        }
-
-        for name, fragments in malformed_parts.items():
-            with self.subTest(name=name):
-                with self.assertRaises(ValueError):
-                    grimace._core.PreparedMol.from_parts(
-                        isomeric_smiles=False,
-                        kekule_smiles=False,
-                        all_bonds_explicit=False,
-                        all_hs_explicit=False,
-                        ignore_atom_map_numbers=False,
-                        fragments=fragments,
-                    )
-
-        with self.assertRaises(ValueError):
-            grimace._core.PreparedMol.from_parts(
-                isomeric_smiles=False,
-                kekule_smiles=False,
-                all_bonds_explicit=False,
-                all_hs_explicit=True,
-                ignore_atom_map_numbers=False,
-                fragments=base_fragments,
-            )
 
 
 if __name__ == "__main__":

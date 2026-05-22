@@ -582,6 +582,9 @@ class _PublicDecoderBase:
     def copy(self) -> "_PublicDecoderBase":
         return type(self)._from_parts(self._state.copy())
 
+    def _cache_key(self) -> DecoderCacheKey:
+        return _state_cache_key(self._state)
+
     @property
     def next_choices(self) -> tuple[MolToSmilesChoice, ...]:
         if self._choices_cache is None:

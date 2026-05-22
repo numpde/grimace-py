@@ -13,6 +13,11 @@ def _attribute_names(path: Path) -> set[str]:
     return {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
 
 
+def _name_ids(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+
+
 def _string_constants(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     return {
@@ -36,6 +41,7 @@ def _imported_module_names(path: Path) -> set[str]:
 
 
 class RuntimeBoundaryTests(unittest.TestCase):
+    deviation_module = REPO_ROOT / "python" / "grimace" / "_deviation.py"
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
     runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
     runtime_modules = (
@@ -90,6 +96,11 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertNotIn("grimace._prepared_mol", imported_names)
         self.assertNotIn("grimace._prepared_mol.PreparedMol", imported_names)
         self.assertNotIn("grimace._prepared_mol", _string_constants(self.runtime_module))
+
+    def test_deviation_module_does_not_inspect_decoder_state_storage(self) -> None:
+        self.assertNotIn("_state", _attribute_names(self.deviation_module))
+        self.assertNotIn("_state_cache_key", _attribute_names(self.deviation_module))
+        self.assertNotIn("_state_cache_key", _name_ids(self.deviation_module))
 
 
 if __name__ == "__main__":

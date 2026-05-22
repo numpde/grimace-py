@@ -39,7 +39,7 @@ def _common_prefix_len(left: str, right: str) -> int:
 
 
 def _decoder_key(decoder: _runtime.MolToSmilesDeterminizedDecoder) -> _runtime.DecoderCacheKey:
-    return _runtime._state_cache_key(decoder._state)
+    return decoder._cache_key()
 
 
 def _dedupe_decoders(

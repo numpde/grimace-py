@@ -123,3 +123,9 @@ def mol_to_smiles_enum_s_private(
     if result.generation_diagnostics is None:
         raise AssertionError("private EnumS API requires generation diagnostics")
     return result
+
+
+def mol_to_smiles_enum_s_public_shape_private(mol: Chem.Mol) -> tuple[str, ...]:
+    """Private dry run of the proposed first public `MolToSmilesEnumS` shape."""
+    result = mol_to_smiles_enum_s_private(mol)
+    return result.outputs

@@ -5,6 +5,7 @@ import unittest
 import grimace
 from rdkit import Chem
 from grimace._south_star.api import mol_to_smiles_enum_s_private
+from grimace._south_star.api import mol_to_smiles_enum_s_public_shape_private
 from grimace._south_star.api import south_star_private_api_contract
 from grimace._south_star.api import south_star_proposed_public_api_contract
 from grimace._south_star.support_gates import SouthStarUnsupportedFeatureError
@@ -25,6 +26,9 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
     def test_private_api_is_not_exported_from_public_package(self) -> None:
         self.assertFalse(hasattr(grimace, "MolToSmilesEnumS"))
         self.assertFalse(hasattr(grimace, "mol_to_smiles_enum_s_private"))
+        self.assertFalse(
+            hasattr(grimace, "mol_to_smiles_enum_s_public_shape_private")
+        )
         self.assertFalse(hasattr(grimace, "south_star_private_api_contract"))
 
     def test_private_api_contract_names_pre_public_boundary(self) -> None:
@@ -122,6 +126,39 @@ class SouthStarPrivateApiBoundaryTests(unittest.TestCase):
     def test_private_api_requires_rdkit_mol(self) -> None:
         with self.assertRaisesRegex(TypeError, "RDKit Mol"):
             mol_to_smiles_enum_s_private("F/C=C\\Cl")  # type: ignore[arg-type]
+
+    def test_public_shape_private_wrapper_returns_only_strings(self) -> None:
+        case = next(
+            case
+            for case in load_south_star_exact_first_domain_cases()
+            if case.case_id == "isolated_alkene_z"
+        )
+
+        outputs = mol_to_smiles_enum_s_public_shape_private(
+            parse_smiles(case.source_smiles)
+        )
+
+        self.assertEqual(case.expected_support, outputs)
+        self.assertIsInstance(outputs, tuple)
+        self.assertTrue(outputs)
+        self.assertTrue(all(isinstance(output, str) for output in outputs))
+
+    def test_public_shape_private_wrapper_preserves_fail_fast_boundary(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            SouthStarUnsupportedFeatureError,
+            "unsupported_bond_type",
+        ):
+            mol_to_smiles_enum_s_public_shape_private(
+                self.unsupported_bond_type_mol()
+            )
+
+    def test_public_shape_private_wrapper_requires_rdkit_mol(self) -> None:
+        with self.assertRaisesRegex(TypeError, "RDKit Mol"):
+            mol_to_smiles_enum_s_public_shape_private(  # type: ignore[arg-type]
+                "F/C=C\\Cl"
+            )
 
 
 if __name__ == "__main__":

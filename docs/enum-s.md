@@ -67,6 +67,13 @@ not exported from `grimace`. The current proposal is deliberately narrow:
 - unsupported input behavior: fail fast with `SouthStarUnsupportedFeatureError`;
 - relation to `MolToSmilesEnum`: semantic support, not RDKit writer parity.
 
+The private dry-run wrapper
+`grimace._south_star.api.mol_to_smiles_enum_s_public_shape_private(mol)` matches
+that proposed first public shape: it accepts only an RDKit `Mol`, returns only
+`tuple[str, ...]`, uses the default South Star policy, and preserves the same
+fail-fast unsupported-feature boundary. It exists to test the export contract
+without exporting `MolToSmilesEnumS` yet.
+
 Unsupported inputs fail before enumeration with
 `SouthStarUnsupportedFeatureError`, a `NotImplementedError` subclass that keeps
 the unsupported feature records and categories available for diagnostics. That

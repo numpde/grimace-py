@@ -34,6 +34,38 @@
       ]
     },
     {
+      "id": "isolated_alkene_e",
+      "semantic_feature": "one isolated double-bond stereo component with one eligible carrier edge on each side",
+      "source_smiles": "F/C=C/Cl",
+      "eligible_carrier_edges": [
+        [0, 1],
+        [2, 3]
+      ],
+      "annotation_policy_expectations": {
+        "maximal_eligible_carrier": {
+          "required_marker_edge_count": 2
+        }
+      },
+      "rdkit_writer_membership": {
+        "status": "not_checked",
+        "notes": "Writer emission is comparison metadata only for South Star semantic witnesses."
+      },
+      "positive_semantic_smiles": [
+        "F/C=C/Cl",
+        "F\\C=C\\Cl"
+      ],
+      "negative_semantic_smiles": [
+        {
+          "smiles": "F/C=C\\Cl",
+          "reason": "inverts_double_bond_stereo"
+        },
+        {
+          "smiles": "FC=CCl",
+          "reason": "loses_double_bond_stereo"
+        }
+      ]
+    },
+    {
       "id": "linear_diene_same_phase",
       "semantic_feature": "two coupled double-bond stereo features sharing one carrier edge with the same visible marker phase",
       "source_smiles": "C/C=C/C=C/C",

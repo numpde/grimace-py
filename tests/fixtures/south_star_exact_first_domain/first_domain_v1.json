@@ -22,6 +22,24 @@
       ]
     },
     {
+      "case_id": "isolated_alkene_e",
+      "source_smiles": "F/C=C/Cl",
+      "expected_support": [
+        "F/C=C/Cl",
+        "C(\\F)=C/Cl",
+        "C(=C/Cl)\\F",
+        "C(=C/F)\\Cl",
+        "C(\\Cl)=C/F",
+        "Cl/C=C/F",
+        "F\\C=C\\Cl",
+        "C(/F)=C\\Cl",
+        "C(=C\\Cl)/F",
+        "C(=C\\F)/Cl",
+        "C(/Cl)=C\\F",
+        "Cl\\C=C\\F"
+      ]
+    },
+    {
       "case_id": "hetero_imine_carrier",
       "source_smiles": "C/C=N/O",
       "expected_support": [

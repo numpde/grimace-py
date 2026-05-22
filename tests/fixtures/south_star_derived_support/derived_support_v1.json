@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "policy": "south_star_derived_support_v1",
+  "cases": [
+    {
+      "case_id": "disconnected_polycyclic_tetrahedral_directional_fragments",
+      "source_smiles": "F[C@H]1CC2CCC1C2.F/C=C/Cl",
+      "support_authority": "unified_reference_disconnected_composition",
+      "evidence_notes": "Derived support from fragment authorities polycyclic_ring_tetrahedral_bridged_center and isolated_alkene_e; stores digest and sentinels instead of the full 18,816-string product.",
+      "fragment_refs": [
+        {
+          "fixture_family": "south_star_expanded_support",
+          "case_id": "polycyclic_ring_tetrahedral_bridged_center",
+          "fragment_id": "fragment:0",
+          "expected_output_count": 784
+        },
+        {
+          "fixture_family": "south_star_exact_first_domain",
+          "case_id": "isolated_alkene_e",
+          "fragment_id": "fragment:1",
+          "expected_output_count": 12
+        }
+      ],
+      "fragment_order_policy": "all_fragment_orders",
+      "output_order_policy": "first_occurrence_deduplication",
+      "expected_product_count": 18816,
+      "expected_digest_sha256": "e8723c09f4d7241c059d6ca6b19aad58848afb2be624131af551a2cb536774dc",
+      "sentinel_outputs": [
+        "F[C@@H]1C(CC2)CC2C1.F/C=C/Cl",
+        "F/C=C/Cl.F[C@@H]1C(CC2)CC2C1",
+        "Cl\\C=C\\F.C2C1CCC2C[C@@H]1F"
+      ]
+    }
+  ]
+}

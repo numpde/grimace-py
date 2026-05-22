@@ -906,12 +906,6 @@ class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
         )
 
 
-def _token_inventory_root_indices(rooted_at_atom: int) -> tuple[int, ...]:
-    if rooted_at_atom < 0:
-        return (-1,)
-    return (rooted_at_atom,)
-
-
 def _exact_token_inventory_from_decoder(
     mol_or_prepared: object,
     *,
@@ -920,7 +914,8 @@ def _exact_token_inventory_from_decoder(
     inventory: set[str] = set()
     visited_state_keys: set[DecoderCacheKey] = set()
 
-    for root_idx in _token_inventory_root_indices(flags.rooted_at_atom):
+    root_indices = (-1,) if flags.rooted_at_atom < 0 else (flags.rooted_at_atom,)
+    for root_idx in root_indices:
         stack = [
             _make_decoder_state_impl(
                 mol_or_prepared,

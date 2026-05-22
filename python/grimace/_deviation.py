@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 import grimace._runtime as _runtime
-from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
+from grimace._runtime_inputs import _internal_option_kwargs
 from grimace._runtime_states import DecoderCacheKey
 
 SmilesDeviationReason: TypeAlias = Literal["unexpected_text", "unexpected_token", "incomplete"]
@@ -214,11 +214,7 @@ def mol_to_smiles_deviation(
 ) -> SmilesDeviation | None:
     """Return the first candidate location outside the molecule's SMILES language."""
 
-    option_values = locals()
-    options: DecoderOptions = {
-        spec.internal_name: option_values[spec.internal_name]
-        for spec in MOL_TO_SMILES_OPTIONS
-    }
+    options: DecoderOptions = _internal_option_kwargs(locals())
 
     if isinstance(candidate, str):
         return _string_deviation(mol_or_prepared, candidate, options)

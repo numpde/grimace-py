@@ -47,16 +47,18 @@ def make_flags(
     return _make_flags_from_internal_options(locals())
 
 
+def _internal_option_kwargs(values: Mapping[str, object]) -> dict[str, object]:
+    return coerce_internal_options(
+        MOL_TO_SMILES_OPTIONS,
+        values,
+        context="MolToSmiles runtime",
+    )
+
+
 def _make_flags_from_internal_options(
     values: Mapping[str, object],
 ) -> MolToSmilesFlags:
-    return MolToSmilesFlags(
-        **coerce_internal_options(
-            MOL_TO_SMILES_OPTIONS,
-            values,
-            context="MolToSmiles runtime",
-        )
-    )
+    return MolToSmilesFlags(**_internal_option_kwargs(values))
 
 
 def writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:

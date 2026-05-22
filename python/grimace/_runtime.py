@@ -17,8 +17,8 @@ from grimace._runtime_graphs import (
 )
 from grimace._runtime_inputs import (
     MolToSmilesFlags as _MolToSmilesFlags,
+    _internal_option_kwargs,
     _make_flags_from_internal_options,
-    make_flags as _make_flags,
     prepare_runtime_input as _prepare_runtime_input,
 )
 from grimace._runtime_states import (
@@ -469,14 +469,7 @@ def mol_to_smiles_support(
     return set(
         mol_to_smiles_enum(
             mol_or_prepared,
-            isomeric_smiles=isomeric_smiles,
-            kekule_smiles=kekule_smiles,
-            rooted_at_atom=rooted_at_atom,
-            canonical=canonical,
-            all_bonds_explicit=all_bonds_explicit,
-            all_hs_explicit=all_hs_explicit,
-            do_random=do_random,
-            ignore_atom_map_numbers=ignore_atom_map_numbers,
+            **_internal_option_kwargs(locals()),
         )
     )
 
@@ -531,16 +524,26 @@ def mol_to_smiles_token_inventory_superset(
     )
 
 
+def _rooted_connected_options(
+    root_idx: int,
+    *,
+    isomeric_smiles: bool,
+) -> dict[str, object]:
+    return {
+        "isomeric_smiles": isomeric_smiles,
+        "rooted_at_atom": root_idx,
+        "canonical": False,
+        "do_random": True,
+    }
+
+
 def enumerate_rooted_connected_nonstereo_smiles_support(
     mol_or_prepared: object,
     root_idx: int,
 ) -> set[str]:
     return mol_to_smiles_support(
         mol_or_prepared,
-        isomeric_smiles=False,
-        rooted_at_atom=root_idx,
-        canonical=False,
-        do_random=True,
+        **_rooted_connected_options(root_idx, isomeric_smiles=False),
     )
 
 
@@ -550,10 +553,7 @@ def enumerate_rooted_connected_stereo_smiles_support(
 ) -> set[str]:
     return mol_to_smiles_support(
         mol_or_prepared,
-        isomeric_smiles=True,
-        rooted_at_atom=root_idx,
-        canonical=False,
-        do_random=True,
+        **_rooted_connected_options(root_idx, isomeric_smiles=True),
     )
 
 
@@ -561,11 +561,8 @@ def make_nonstereo_walker(
     mol_or_prepared: object,
     root_idx: int,
 ) -> _core.RootedConnectedNonStereoWalker:
-    flags = _make_flags(
-        isomeric_smiles=False,
-        rooted_at_atom=root_idx,
-        canonical=False,
-        do_random=True,
+    flags = _make_flags_from_internal_options(
+        _rooted_connected_options(root_idx, isomeric_smiles=False)
     )
     return cast(
         _core.RootedConnectedNonStereoWalker,
@@ -582,11 +579,8 @@ def make_stereo_walker(
     mol_or_prepared: object,
     root_idx: int,
 ) -> _core.RootedConnectedStereoWalker:
-    flags = _make_flags(
-        isomeric_smiles=True,
-        rooted_at_atom=root_idx,
-        canonical=False,
-        do_random=True,
+    flags = _make_flags_from_internal_options(
+        _rooted_connected_options(root_idx, isomeric_smiles=True)
     )
     return cast(
         _core.RootedConnectedStereoWalker,

@@ -4,7 +4,7 @@ from dataclasses import fields, is_dataclass
 import unittest
 
 import grimace
-from grimace._prepared_mol import _prepared_mol_fragments
+from grimace._prepared_mol import _fragments
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     prepared_writer_kwargs,
@@ -235,7 +235,7 @@ class PreparedMolContractTests(unittest.TestCase):
         self.assertEqual("grimace._core", type(prepared._inner).__module__)
         self.assertEqual("PreparedMol", type(prepared._inner).__name__)
 
-        fragments = _prepared_mol_fragments(prepared)
+        fragments = _fragments(prepared)
         self.assertEqual(2, len(fragments))
         self.assertEqual((0, 1, 2), fragments[0][0])
         self.assertEqual((3,), fragments[1][0])
@@ -276,7 +276,7 @@ class PreparedMolContractTests(unittest.TestCase):
 
     def test_rust_storage_rejects_malformed_structural_parts(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
-        prepared_fragments = _prepared_mol_fragments(prepared)
+        prepared_fragments = _fragments(prepared)
         base_fragments = [
             (
                 list(prepared_fragments[0][0]),

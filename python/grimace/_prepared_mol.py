@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from typing import TypeAlias
 
 from rdkit import Chem
 
@@ -10,6 +11,10 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
+
+
+_PreparedMolFragment: TypeAlias = tuple[tuple[int, ...], object]
+_PreparedMolRootedFragment: TypeAlias = tuple[object, int | None]
 
 
 def _core_module() -> object:
@@ -46,7 +51,7 @@ def _make_prepared_mol(inner: object) -> PreparedMol:
     return prepared
 
 
-def _prepared_mol_matches_writer_flags(
+def _matches_writer_flags(
     prepared: PreparedMol,
     *,
     isomeric_smiles: bool,
@@ -64,9 +69,9 @@ def _prepared_mol_matches_writer_flags(
     )
 
 
-def _prepared_mol_fragments(
+def _fragments(
     prepared: PreparedMol,
-) -> tuple[tuple[tuple[int, ...], object], ...]:
+) -> tuple[_PreparedMolFragment, ...]:
     return tuple(
         (
             tuple(prepared._inner.fragment_atom_indices(fragment_idx)),
@@ -76,14 +81,42 @@ def _prepared_mol_fragments(
     )
 
 
-def _prepared_mol_fragment_count(prepared: PreparedMol) -> int:
+def _fragment_count(prepared: PreparedMol) -> int:
     return prepared._inner.fragment_count()
 
 
-def _prepared_mol_atom_count(prepared: PreparedMol) -> int:
+def _atom_count(prepared: PreparedMol) -> int:
     return sum(
         len(prepared._inner.fragment_atom_indices(fragment_idx))
         for fragment_idx in range(prepared._inner.fragment_count())
+    )
+
+
+def _rooted_fragments(
+    prepared: PreparedMol,
+    *,
+    rooted_at_atom: int | None,
+) -> tuple[_PreparedMolRootedFragment, ...]:
+    fragments = _fragments(prepared)
+    if rooted_at_atom is None:
+        return tuple((graph, None) for _, graph in fragments)
+    if len(fragments) == 1 and len(fragments[0][0]) == 0:
+        if rooted_at_atom == 0:
+            return ((fragments[0][1], 0),)
+        raise IndexError("root_idx out of range")
+
+    global_to_local: dict[int, tuple[int, int]] = {}
+    for fragment_idx, (atom_indices, _) in enumerate(fragments):
+        for local_idx, global_idx in enumerate(atom_indices):
+            global_to_local[global_idx] = (fragment_idx, local_idx)
+
+    if rooted_at_atom not in global_to_local:
+        raise IndexError("root_idx out of range")
+
+    rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
+    return tuple(
+        (graph, rooted_local_idx if fragment_idx == rooted_fragment_idx else None)
+        for fragment_idx, (_, graph) in enumerate(fragments)
     )
 
 

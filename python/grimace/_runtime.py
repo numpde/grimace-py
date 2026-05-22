@@ -8,22 +8,16 @@ from dataclasses import dataclass, replace
 from itertools import product
 from typing import Protocol, TypeAlias, cast
 
-import grimace._prepared_mol as _prepared_mol_module
+import grimace._prepared_mol as _prepared_mol
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_internal_options,
     coerce_option,
 )
+from grimace._prepared_mol import PreparedMol
 
 _core = importlib.import_module("grimace._core")
-from grimace._prepared_mol import (
-    PreparedMol,
-    _prepared_mol_atom_count,
-    _prepared_mol_fragment_count,
-    _prepared_mol_fragments,
-    _prepared_mol_matches_writer_flags,
-)
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
@@ -78,8 +72,8 @@ def _requires_stereo_runtime_surface(
         return True
     if not flags.all_bonds_explicit:
         return False
-    if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
-        return _prepared_mol_module._rdkit_mol_requires_stereo_surface(mol_or_prepared)
+    if _prepared_mol._is_rdkit_mol(mol_or_prepared):
+        return _prepared_mol._rdkit_mol_requires_stereo_surface(mol_or_prepared)
     if getattr(mol_or_prepared, "surface_kind", None) != CONNECTED_STEREO_SURFACE:
         return False
     return any(
@@ -165,7 +159,7 @@ def _validate_prepared_mol_writer_flags(
     prepared: PreparedMol,
     flags: MolToSmilesFlags,
 ) -> None:
-    if not _prepared_mol_matches_writer_flags(
+    if not _prepared_mol._matches_writer_flags(
         prepared,
         **_runtime_writer_flag_kwargs(flags),
     ):
@@ -183,8 +177,8 @@ def _prepare_runtime_input(
     if isinstance(mol_or_prepared, PreparedMol):
         _validate_prepared_mol_writer_flags(mol_or_prepared, flags)
         return mol_or_prepared
-    if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
-        return _prepared_mol_module.PrepareMol(
+    if _prepared_mol._is_rdkit_mol(mol_or_prepared):
+        return _prepared_mol.PrepareMol(
             mol_or_prepared,
             **_runtime_public_writer_flag_kwargs(flags),
         )
@@ -209,9 +203,9 @@ def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
 
 
 def _ensure_singly_connected_molecule(mol: object) -> None:
-    if _prepared_mol_module._rdkit_mol_atom_count(mol) == 0:
+    if _prepared_mol._rdkit_mol_atom_count(mol) == 0:
         return
-    if _prepared_mol_module._rdkit_mol_fragment_count(mol) != 1:
+    if _prepared_mol._rdkit_mol_fragment_count(mol) != 1:
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only singly-connected molecules"
         )
@@ -220,7 +214,7 @@ def _ensure_singly_connected_molecule(mol: object) -> None:
 def _as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
     if (
         isinstance(mol_or_prepared, PreparedMol)
-        and _prepared_mol_fragment_count(mol_or_prepared) > 1
+        and _prepared_mol._fragment_count(mol_or_prepared) > 1
     ):
         return mol_or_prepared
     return None
@@ -231,30 +225,14 @@ def _fragment_plans_for_prepared_mol(
     *,
     rooted_at_atom: int | None,
 ) -> tuple[_FragmentPlan, ...]:
-    fragments = _prepared_mol_fragments(prepared)
-    if rooted_at_atom is None:
-        return tuple(_FragmentPlan(graph, None) for _, graph in fragments)
-    if len(fragments) == 1 and len(fragments[0][0]) == 0:
-        if rooted_at_atom == 0:
-            return (_FragmentPlan(fragments[0][1], 0),)
-        raise IndexError("root_idx out of range")
-
-    global_to_local: dict[int, tuple[int, int]] = {}
-    for fragment_idx, (atom_indices, _) in enumerate(fragments):
-        for local_idx, global_idx in enumerate(atom_indices):
-            global_to_local[global_idx] = (fragment_idx, local_idx)
-
-    if rooted_at_atom not in global_to_local:
-        raise IndexError("root_idx out of range")
-
-    rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
-    plans: list[_FragmentPlan] = []
-    for fragment_idx, (_, graph) in enumerate(fragments):
-        if fragment_idx == rooted_fragment_idx:
-            plans.append(_FragmentPlan(graph, rooted_local_idx))
-        else:
-            plans.append(_FragmentPlan(graph, None))
-    return tuple(plans)
+    rooted_fragments = _prepared_mol._rooted_fragments(
+        prepared,
+        rooted_at_atom=rooted_at_atom,
+    )
+    return tuple(
+        _FragmentPlan(fragment, fragment_rooted_at_atom)
+        for fragment, fragment_rooted_at_atom in rooted_fragments
+    )
 
 
 def _connected_prepared_mol_fragment(
@@ -279,7 +257,7 @@ def _connected_prepared_mol_fragment(
 
 def _atom_count(mol_or_prepared: object) -> int:
     if isinstance(mol_or_prepared, PreparedMol):
-        return _prepared_mol_atom_count(mol_or_prepared)
+        return _prepared_mol._atom_count(mol_or_prepared)
     if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
         return mol_or_prepared.atom_count
     if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):

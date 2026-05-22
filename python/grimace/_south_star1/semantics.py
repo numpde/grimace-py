@@ -84,6 +84,15 @@ class ParserSemantics(Protocol):
     ) -> TetraValue | Invalid:
         ...
 
+    def directional_scope(
+        self,
+        facts: MoleculeFacts,
+        skel: object,
+        slots: object,
+        site: SiteId,
+    ) -> tuple[CarrierSlotId, ...]:
+        ...
+
     def directional_value(
         self,
         facts: MoleculeFacts,

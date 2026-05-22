@@ -315,12 +315,25 @@ def _validate_directional_relations(
     semantics: ParserSemantics,
 ) -> None:
     for site in facts.stereo.directional:
+        scope = semantics.directional_scope(facts, skeleton, slots, site.id)
+        if len(set(scope)) != len(scope):
+            raise ValueError(f"directional scope repeats carriers for site {site.id!r}")
+        unknown = set(scope) - set(assignment.direction_marks)
+        if unknown:
+            raise ValueError(
+                f"directional scope has unknown carriers for site {site.id!r}: "
+                f"{unknown!r}"
+            )
+        scoped_marks = {
+            carrier: assignment.direction_marks[carrier]
+            for carrier in scope
+        }
         value = semantics.directional_value(
             facts,
             skeleton,
             slots,
             site.id,
-            assignment.direction_marks,
+            scoped_marks,
         )
         if value != site.target:
             raise ValueError(f"directional relation rejected site {site.id!r}")

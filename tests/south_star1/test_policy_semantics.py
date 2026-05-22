@@ -166,6 +166,15 @@ class _MinimalSemantics:
     ) -> TetraValue | Invalid:
         return TetraValue.NONE if token is TetraToken.NONE else INVALID
 
+    def directional_scope(
+        self,
+        facts: MoleculeFacts,
+        skel: object,
+        slots: object,
+        site: SiteId,
+    ) -> tuple[CarrierSlotId, ...]:
+        return ()
+
     def directional_value(
         self,
         facts: MoleculeFacts,

@@ -128,6 +128,27 @@ class StereoRelationsTest(unittest.TestCase):
                 _StereoSemantics(),
             )
 
+    def test_directional_relation_uses_declared_carrier_scope(self) -> None:
+        facts = _unspecified_directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+        assignment = _assignment(facts, slots, mark_first_carrier=False)
+        assignment.direction_marks[slots.carrier_slots[-1].id] = DirectionMark.FWD
+
+        constraints = validate_stereo_traversal_witness(
+            facts,
+            skeleton,
+            slots,
+            assignment,
+            organic_subset_policy(facts),
+            _StereoSemantics(scope=(slots.carrier_slots[0].id,)),
+        )
+
+        self.assertIn(
+            "directional_relations",
+            {constraint.name for constraint in constraints},
+        )
+
     def test_unspecified_directional_site_forces_no_accidental_marks(self) -> None:
         facts = _unspecified_directional_facts()
         skeleton = _first_skeleton(facts)
@@ -230,6 +251,9 @@ def _chiral_carbon_choice() -> AtomTextChoice:
 
 
 class _StereoSemantics:
+    def __init__(self, *, scope=None) -> None:
+        self.scope = scope
+
     def atom_decode_ok(
         self,
         facts,
@@ -278,6 +302,11 @@ class _StereoSemantics:
         if token is TetraToken.NONE:
             return TetraValue.NONE
         return INVALID
+
+    def directional_scope(self, facts, skel, slots, site: SiteId):
+        if self.scope is not None:
+            return self.scope
+        return tuple(carrier.id for carrier in slots.carrier_slots)
 
     def directional_value(
         self,

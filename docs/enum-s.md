@@ -329,6 +329,9 @@ It aggregates the current pre-public `MolToSmilesEnumS` checks:
 - private boundary checks for the provisional `MolToSmilesEnumS` contract;
 - exact support equality where shared unified-reference or temporary witness
   helpers exist;
+- compact derived-support evidence for large products, with digest/runtime
+  equality in the default suite and full all-output semantic parse-back behind
+  a named diagnostic runner;
 - graph/stereo parse-back checks for semantic fixture domains;
 - unsupported-feature gate checks;
 - policy-name diagnostics;
@@ -391,6 +394,16 @@ Exact support evidence is split by domain:
   deduplication. The ring-stereo witness checks closure-event marker slots,
   central-double-bond closure events, and parity-equation projections by slot
   id.
+- `tests/fixtures/south_star_derived_support/derived_support_v1.json` pins
+  large South Star products by fragment authorities, fragment counts, product
+  count, digest, and sentinel outputs instead of storing the full output list.
+  The default suite checks digest/runtime equality and sentinel semantic
+  preservation. Full all-output semantic parse-back is intentionally separated
+  into:
+
+  ```bash
+  PYTHONPATH=python:. python3 -m unittest tests.run_south_star_derived_support_diagnostics -q
+  ```
 
 RDKit parseability is useful evidence, but it is not the definition of South
 Star validity.

@@ -94,6 +94,10 @@ Common commands:
   `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Slow stereo-constraint diagnostics:
   `PYTHONPATH=python:. python3 -m unittest tests.run_stereo_constraint_diagnostics -q`
+- South Star semantic suite:
+  `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_semantics -q`
+- South Star derived-support diagnostics:
+  `PYTHONPATH=python:. python3 -m unittest tests.run_south_star_derived_support_diagnostics -q`
 - Installed-artifact correctness:
   `python3 -m unittest tests.run_installed_package_correctness -q`
 - Rust unit tests:
@@ -106,6 +110,9 @@ Testing rules:
 - Performance assertions do not belong in correctness suites.
 - Slow diagnostic witnesses should not make default discovery impractical; keep
   them fixture-marked and behind named diagnostic runners.
+- Compact South Star derived-support fixtures should use default tests for
+  digest/runtime equality and sentinel semantic checks. Put full all-output
+  semantic parse-back behind `tests.run_south_star_derived_support_diagnostics`.
 - Pinned RDKit parity tests must be keyed to the exact RDKit version. The
   current pinned writer convention is RDKit `2026.03.1`.
 - `tests.run_pinned_rdkit_parity` should fail, not silently redefine

@@ -10,6 +10,9 @@ from grimace._south_star.atom_text import (
     SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS,
 )
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS
+from grimace._south_star.atom_text import (
+    SOUTH_STAR_BRACKET_ONLY_MAIN_GROUP_ATOM_TEXT_TOKENS,
+)
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import atom_text_modifier_obligations
@@ -74,6 +77,9 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 ),
             ),
             ("[TeH]", "[TeH]", ("non_organic_symbol_requires_bracket",)),
+            ("[AsH3]", "[AsH3]", ("non_organic_symbol_requires_bracket",)),
+            ("[GeH4]", "[GeH4]", ("non_organic_symbol_requires_bracket",)),
+            ("[SbH3]", "[SbH3]", ("non_organic_symbol_requires_bracket",)),
         )
 
         for smiles, expected_text, required_obligations in cases:
@@ -82,6 +88,10 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
 
             with self.subTest(smiles=smiles):
                 self.assertIn(atom.GetSymbol(), SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS)
+                self.assertIn(
+                    atom.GetSymbol(),
+                    SOUTH_STAR_BRACKET_ONLY_MAIN_GROUP_ATOM_TEXT_TOKENS,
+                )
                 self.assertEqual(expected_text, obligation.emitted_text)
                 self.assertEqual("bracket_atom", obligation.token_family)
                 for required_obligation in required_obligations:
@@ -389,6 +399,33 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                     "non_organic_symbol_requires_bracket",
                     "explicit_hydrogen_count",
                     "radical_valence_semantics",
+                ),
+            ),
+            (
+                "[AsH3]",
+                "[AsH3]",
+                (
+                    "bracket_atom",
+                    "non_organic_symbol_requires_bracket",
+                    "explicit_hydrogen_count",
+                ),
+            ),
+            (
+                "[GeH4]",
+                "[GeH4]",
+                (
+                    "bracket_atom",
+                    "non_organic_symbol_requires_bracket",
+                    "explicit_hydrogen_count",
+                ),
+            ),
+            (
+                "[SbH3]",
+                "[SbH3]",
+                (
+                    "bracket_atom",
+                    "non_organic_symbol_requires_bracket",
+                    "explicit_hydrogen_count",
                 ),
             ),
         )

@@ -14,8 +14,11 @@ SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
 SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"se", "te"}
 )
-SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
-    {"Se", "Si", "Te"}
+SOUTH_STAR_BRACKET_ONLY_MAIN_GROUP_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
+    {"As", "Ge", "Sb", "Se", "Si", "Te"}
+)
+SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS: frozenset[str] = (
+    SOUTH_STAR_BRACKET_ONLY_MAIN_GROUP_ATOM_TEXT_TOKENS
 )
 SOUTH_STAR_BRACKET_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {
@@ -44,8 +47,13 @@ SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
         "[CH3:1]",
         "[CH3]",
         "[O]",
+        "[AsH2]",
+        "[AsH3]",
+        "[GeH3]",
+        "[GeH4]",
         "[SeH]",
         "[SiH3]",
+        "[SbH3]",
         "[TeH]",
         *SOUTH_STAR_BRACKET_AROMATIC_ATOM_TEXT_TOKENS,
         "[se]",

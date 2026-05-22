@@ -195,8 +195,11 @@ class SouthStarSupportGateTests(unittest.TestCase):
             "[Cl-]",
             "[NH4+]",
             "[CH3:1]C",
+            "[AsH3]",
+            "[GeH4]",
             "[SeH]",
             "[SiH3]C",
+            "[SbH3]",
         )
 
         for smiles in cases:

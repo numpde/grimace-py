@@ -371,6 +371,13 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
                 boundary_targets=("aromatic_selenium_text",),
             ),
             SouthStarAdversarialVariant(
+                variant_id="mapped_aromatic_selenium",
+                source_smiles="[se:7]1cccc1",
+                axes=("ring_closure_choice", "atom_modifier"),
+                mutation_path=("seed", "aromatic_selenium_text", "atom_map_suffix"),
+                boundary_targets=("aromatic_selenium_text",),
+            ),
+            SouthStarAdversarialVariant(
                 variant_id="aromatic_tellurium",
                 source_smiles="[te]1cccc1",
                 axes=("ring_closure_choice",),

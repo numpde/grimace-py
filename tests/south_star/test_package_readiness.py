@@ -311,6 +311,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "fused_aromatic_quinoline",
                 "fused_aromatic_benzofuran",
                 "aromatic_selenium_text_selenophene",
+                "aromatic_selenium_text_mapped_selenophene",
                 "aromatic_tellurium_text_tellurophene",
                 "modified_aromatic_atom_text_pyrrole_nh",
                 "modified_aromatic_atom_text_isotope_pyrrole",

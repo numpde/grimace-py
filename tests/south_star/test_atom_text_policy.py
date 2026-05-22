@@ -108,6 +108,7 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
             "[nH+]",
             "[n+]",
             "[se]",
+            "[se:7]",
             "[te]",
         )
         rejected_tokens = ("[n@H]", "[n@@H]", "[Na+]")
@@ -175,6 +176,12 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                 0,
                 "[se]",
                 ("bracket_aromatic_atom",),
+            ),
+            (
+                "[se:7]1cccc1",
+                0,
+                "[se:7]",
+                ("bracket_aromatic_atom", "atom_map_suffix"),
             ),
             (
                 "[te]1cccc1",

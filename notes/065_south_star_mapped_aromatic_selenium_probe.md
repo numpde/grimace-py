@@ -60,3 +60,14 @@ atom fields. The implementation delta should therefore be narrow:
 Open an implementation row for mapped aromatic selenium after this probe. It
 should be a modifier-composition slice, not a general aromatic element-breadth
 slice and not a broad "all modified selenium" slice.
+
+## Follow-Up After South Star 192
+
+`South Star 192` implements the narrow modifier-composition slice:
+
+- `[se:7]1cccc1` is pinned as
+  `aromatic_selenium_text_mapped_selenophene`;
+- the support gate allows atom-map text on bracket-only aromatic selenium;
+- mapped tellurium remains outside the slice;
+- isotope, charge, radical, explicit-H, and chiral selenium remain outside
+  until separately probed.

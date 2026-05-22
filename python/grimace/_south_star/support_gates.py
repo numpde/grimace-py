@@ -615,7 +615,7 @@ def _aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
         return False
     if (
         fields.symbol.lower() in SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
-        and not _unmodified_atom_text_fields(fields)
+        and not _supported_bracket_only_aromatic_atom_text_fields(fields)
     ):
         return False
     if fields.radical_electron_count != 0:
@@ -643,6 +643,22 @@ def _unmodified_atom_text_fields(fields: SouthStarAtomTextFields) -> bool:
         and fields.formal_charge == 0
         and fields.radical_electron_count == 0
         and fields.atom_map_number == 0
+        and fields.chiral_tag == "CHI_UNSPECIFIED"
+    )
+
+
+def _supported_bracket_only_aromatic_atom_text_fields(
+    fields: SouthStarAtomTextFields,
+) -> bool:
+    if _unmodified_atom_text_fields(fields):
+        return True
+    return (
+        fields.symbol == "Se"
+        and fields.isotope == 0
+        and fields.explicit_hydrogen_count == 0
+        and fields.formal_charge == 0
+        and fields.radical_electron_count == 0
+        and fields.atom_map_number != 0
         and fields.chiral_tag == "CHI_UNSPECIFIED"
     )
 

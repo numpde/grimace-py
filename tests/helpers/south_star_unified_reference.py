@@ -296,17 +296,28 @@ def is_bracket_only_aromatic_element_text_monocycle_domain(
         and any(
             atom.symbol in {"Se", "Te"}
             and atom.is_aromatic
-            and atom.isotope == 0
-            and atom.explicit_hydrogen_count == 0
-            and atom.formal_charge == 0
-            and atom.radical_electron_count == 0
-            and atom.atom_map_number == 0
+            and _bracket_only_aromatic_element_fixture_atom(atom)
             for atom in facts.atom_text_facts
         )
         and not facts.components
         and not facts.carrier_opportunities
         and not facts.tetrahedral_center_facts
     )
+
+
+def _bracket_only_aromatic_element_fixture_atom(
+    atom: SouthStarAtomTextFields,
+) -> bool:
+    if (
+        atom.isotope != 0
+        or atom.explicit_hydrogen_count != 0
+        or atom.formal_charge != 0
+        or atom.radical_electron_count != 0
+    ):
+        return False
+    if atom.atom_map_number == 0:
+        return True
+    return atom.symbol == "Se"
 
 
 def is_nonstereo_polycyclic_ring_traversal_domain(

@@ -193,6 +193,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
     ) -> None:
         case_ids = (
             "aromatic_selenium_text_selenophene",
+            "aromatic_selenium_text_mapped_selenophene",
             "aromatic_tellurium_text_tellurophene",
         )
 
@@ -244,6 +245,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
             "aromatic_text_monocycle_pyridine": {"c", "n"},
             "aromatic_text_monocycle_furan": {"c", "o"},
             "aromatic_selenium_text_selenophene": {"c", "[se]"},
+            "aromatic_selenium_text_mapped_selenophene": {"c", "[se:7]"},
             "aromatic_tellurium_text_tellurophene": {"c", "[te]"},
         }
 

@@ -106,3 +106,9 @@ vocabulary can be handled as later, source-backed slices.
 - `[te]1cccc1` is pinned as `aromatic_tellurium_text_tellurophene` under the
   same shared bracket-only aromatic element-text authority as selenium;
 - mapped tellurium remains outside the first tellurium slice.
+
+## Follow-Up After South Star 192
+
+`South Star 192` promotes mapped selenium `[se:7]1cccc1` as a narrow
+modifier-composition slice. Mapped tellurium and broader selenium modifiers
+remain outside.

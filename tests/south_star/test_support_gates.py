@@ -281,8 +281,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
                 report = south_star_support_gate_report(parse_smiles(smiles))
                 self.assertTrue(report.supported, report.unsupported_features)
 
-    def test_modified_aromatic_selenium_stays_outside_first_slice(self) -> None:
+    def test_mapped_aromatic_selenium_text_is_inside_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("[se:7]1cccc1"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+
+    def test_mapped_aromatic_tellurium_stays_outside_first_slice(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("[te:7]1cccc1"))
 
         self.assertUnsupportedCategory("aromatic_ring_surface", report.categories)
 

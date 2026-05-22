@@ -130,7 +130,8 @@ The implemented private scope is deliberately narrow:
   pinned by benzene, pyridine, furan, and corresponding one-methyl branch
   cases;
 - bracket-only aromatic selenium and tellurium text in the first non-organic
-  aromatic element slices, currently pinned by `[se]1cccc1` and `[te]1cccc1`;
+  aromatic element slices, currently pinned by `[se]1cccc1`, `[se:7]1cccc1`,
+  and `[te]1cccc1`;
 - narrow fused aromatic ring systems with unmodified aromatic atoms, elided
   aromatic bond text, and no directional overlays, currently pinned by
   naphthalene, quinoline-like, and benzofuran-like witnesses.

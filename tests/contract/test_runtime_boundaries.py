@@ -13,7 +13,30 @@ def _attribute_names(path: Path) -> set[str]:
     return {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
 
 
+def _string_constants(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+
+
+def _imported_module_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.update(
+                f"{node.module}.{alias.name}" for alias in node.names
+            )
+    return imported
+
+
 class RuntimeBoundaryTests(unittest.TestCase):
+    preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
@@ -24,17 +47,10 @@ class RuntimeBoundaryTests(unittest.TestCase):
     def test_runtime_modules_do_not_directly_import_rdkit(self) -> None:
         for path in self.runtime_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-                imported_roots: set[str] = set()
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Import):
-                        imported_roots.update(
-                            alias.name.partition(".")[0]
-                            for alias in node.names
-                        )
-                    elif isinstance(node, ast.ImportFrom) and node.module:
-                        imported_roots.add(node.module.partition(".")[0])
-
+                imported_roots = {
+                    module_name.partition(".")[0]
+                    for module_name in _imported_module_names(path)
+                }
                 self.assertNotIn("rdkit", imported_roots)
 
     def test_runtime_modules_do_not_call_rdkit_methods_directly(self) -> None:
@@ -57,6 +73,16 @@ class RuntimeBoundaryTests(unittest.TestCase):
         for path in self.runtime_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
                 self.assertFalse(forbidden_methods & _attribute_names(path))
+
+    def test_preparation_module_does_not_import_public_runtime(self) -> None:
+        self.assertNotIn(
+            "grimace._runtime",
+            _imported_module_names(self.preparation_module),
+        )
+        self.assertNotIn(
+            "grimace._runtime",
+            _string_constants(self.preparation_module),
+        )
 
 
 if __name__ == "__main__":

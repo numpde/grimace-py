@@ -131,21 +131,22 @@ def PrepareMol(
         context="PrepareMol",
     )
 
-    runtime = importlib.import_module("grimace._runtime")
-    runtime_flags = runtime.MolToSmilesFlags(**writer_options)
+    runtime_graphs = importlib.import_module("grimace._runtime_graphs")
+    runtime_inputs = importlib.import_module("grimace._runtime_inputs")
+    runtime_flags = runtime_inputs.MolToSmilesFlags(**writer_options)
 
     if mol.GetNumAtoms() == 0:
         fragments = [
             (
                 [],
-                runtime.prepare_smiles_graph(mol, flags=runtime_flags),
+                runtime_graphs.prepare_smiles_graph(mol, flags=runtime_flags),
             )
         ]
     else:
         fragments = [
             (
                 list(atom_indices),
-                runtime.prepare_smiles_graph(
+                runtime_graphs.prepare_smiles_graph(
                     fragment_mol,
                     flags=runtime_flags,
                 ),

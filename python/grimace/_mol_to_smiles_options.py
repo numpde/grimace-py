@@ -83,6 +83,9 @@ MOL_TO_SMILES_OPTIONS = (
 MOL_TO_SMILES_PREPARED_OPTIONS = tuple(
     spec for spec in MOL_TO_SMILES_OPTIONS if spec.scope == "prepared"
 )
+MOL_TO_SMILES_PUBLIC_OPTION_NAMES = frozenset(
+    spec.public_name for spec in MOL_TO_SMILES_OPTIONS
+)
 
 
 def coerce_option(
@@ -136,6 +139,22 @@ def coerce_internal_options(
 ) -> dict[str, object]:
     return {
         spec.internal_name: coerce_option(
+            spec,
+            values.get(spec.internal_name, spec.default),
+            context=context,
+        )
+        for spec in specs
+    }
+
+
+def public_options_from_internal_options(
+    specs: tuple[_OptionSpec, ...],
+    values: Mapping[str, object],
+    *,
+    context: str,
+) -> dict[str, object]:
+    return {
+        spec.public_name: coerce_option(
             spec,
             values.get(spec.internal_name, spec.default),
             context=context,

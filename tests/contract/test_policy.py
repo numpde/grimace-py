@@ -8,12 +8,7 @@ from grimace._reference import (
     DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     ReferencePolicy,
 )
-from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
-
-
-MOL_TO_SMILES_PUBLIC_OPTION_NAMES = {
-    spec.public_name for spec in MOL_TO_SMILES_OPTIONS
-}
+from grimace._mol_to_smiles_options import MOL_TO_SMILES_PUBLIC_OPTION_NAMES
 
 
 class ReferencePolicyTest(unittest.TestCase):

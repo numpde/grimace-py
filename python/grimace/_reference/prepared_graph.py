@@ -10,6 +10,7 @@ from rdkit import Chem, rdBase
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
+    public_options_from_internal_options,
 )
 from grimace._reference.policy import ReferencePolicy
 from grimace._reference.rdkit_random import mol_to_identity_smiles
@@ -802,20 +803,18 @@ def prepare_smiles_graph_from_mol_to_smiles_kwargs(
     check_supported_smiles_graph_surface(working_mol, surface_kind=surface_kind)
 
     option_values = locals()
-    sampling = {
-        spec.public_name: bool(option_values[spec.internal_name])
-        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-    }
+    sampling = public_options_from_internal_options(
+        MOL_TO_SMILES_PREPARED_OPTIONS,
+        option_values,
+        context="MolToSmiles runtime policy",
+    )
     identity = {
         "parse_with_rdkit": True,
-        **{
-            spec.public_name: (
-                bool(option_values[spec.internal_name])
-                if spec.scope == "prepared"
-                else spec.default
-            )
-            for spec in MOL_TO_SMILES_OPTIONS
-        },
+        **public_options_from_internal_options(
+            MOL_TO_SMILES_OPTIONS,
+            option_values,
+            context="MolToSmiles identity policy",
+        ),
     }
     descriptor = {
         "surface_kind": surface_kind,

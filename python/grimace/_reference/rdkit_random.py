@@ -5,16 +5,15 @@ from typing import Any, Mapping
 
 from rdkit import Chem, rdBase
 
-from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
+from grimace._mol_to_smiles_options import (
+    MOL_TO_SMILES_OPTIONS,
+    MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
+)
 from grimace._reference.policy import ReferencePolicy
 
 
-_MOL_TO_SMILES_PUBLIC_OPTION_NAMES = {
-    spec.public_name for spec in MOL_TO_SMILES_OPTIONS
-}
-
-SAMPLING_KEYS = {"seed", "draw_budget", *_MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
-IDENTITY_KEYS = {"parse_with_rdkit", *_MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
+SAMPLING_KEYS = {"seed", "draw_budget", *MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
+IDENTITY_KEYS = {"parse_with_rdkit", *MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
 
 
 @dataclass(frozen=True)

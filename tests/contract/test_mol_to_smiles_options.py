@@ -8,7 +8,9 @@ import grimace
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
+    MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
     coerce_public_options,
+    public_options_from_internal_options,
 )
 from grimace._runtime_inputs import MolToSmilesFlags
 from tests.helpers.mols import parse_smiles
@@ -37,6 +39,7 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
 
         self.assertEqual(len(public_names), len(set(public_names)))
         self.assertEqual(len(internal_names), len(set(internal_names)))
+        self.assertEqual(set(public_names), MOL_TO_SMILES_PUBLIC_OPTION_NAMES)
 
     def test_public_runtime_signatures_match_option_inventory(self) -> None:
         expected = _public_option_defaults(MOL_TO_SMILES_OPTIONS)
@@ -128,6 +131,28 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
             coerce_public_options(
                 MOL_TO_SMILES_OPTIONS,
                 {"isomericSmiles": False},
+                context="TestContext",
+            ),
+        )
+
+    def test_internal_option_formatter_maps_to_public_names(self) -> None:
+        self.assertEqual(
+            {
+                "isomericSmiles": False,
+                "kekuleSmiles": False,
+                "rootedAtAtom": -1,
+                "canonical": True,
+                "allBondsExplicit": False,
+                "allHsExplicit": True,
+                "doRandom": False,
+                "ignoreAtomMapNumbers": False,
+            },
+            public_options_from_internal_options(
+                MOL_TO_SMILES_OPTIONS,
+                {
+                    "isomeric_smiles": None,
+                    "all_hs_explicit": 1,
+                },
                 context="TestContext",
             ),
         )

@@ -4,10 +4,10 @@ from collections.abc import Callable
 import unittest
 
 import grimace
-from grimace._mol_to_smiles_options import MOL_TO_SMILES_PREPARED_OPTIONS
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
+    prepared_writer_kwargs,
     public_enum_support,
     public_token_inventory,
     public_token_inventory_superset,
@@ -21,19 +21,12 @@ class SentinelPrepareError(Exception):
 
 
 class PreparedMolRuntimeTests(unittest.TestCase):
-    def _prepare_kwargs(self, kwargs: dict[str, object]) -> dict[str, object]:
-        return {
-            spec.public_name: kwargs[spec.public_name]
-            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-            if spec.public_name in kwargs
-        }
-
     def _prepared_variants(
         self,
         mol: object,
         kwargs: dict[str, object],
     ) -> tuple[tuple[str, object], ...]:
-        prepared = grimace.PrepareMol(mol, **self._prepare_kwargs(kwargs))
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         return (
             ("prepared", prepared),
             ("round_tripped", grimace.PreparedMol.from_bytes(prepared.to_bytes())),
@@ -267,7 +260,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
-        prepared = grimace.PrepareMol(mol, **self._prepare_kwargs(kwargs))
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         token_candidate = self._terminal_token_path(prepared, kwargs)
         expected_by_entrypoint = {
             entrypoint: call()
@@ -343,7 +336,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
     def test_rdkit_input_public_operations_require_prepare_mol(self) -> None:
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
-        prepared = grimace.PrepareMol(mol, **self._prepare_kwargs(kwargs))
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         token_candidate = self._terminal_token_path(prepared, kwargs)
 
         def fail_prepare_mol(*_args: object, **_kwargs: object) -> object:
@@ -361,7 +354,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
     def test_prepared_input_public_operations_skip_prepare_mol(self) -> None:
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
-        prepared = grimace.PrepareMol(mol, **self._prepare_kwargs(kwargs))
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         round_tripped = grimace.PreparedMol.from_bytes(prepared.to_bytes())
         token_candidate = self._terminal_token_path(prepared, kwargs)
         expected_by_entrypoint = {
@@ -393,7 +386,7 @@ class PreparedMolRuntimeTests(unittest.TestCase):
 
         mol = parse_smiles("CCO.N.Cl")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=3)
-        prepared = grimace.PrepareMol(mol, **self._prepare_kwargs(kwargs))
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         token_candidate = self._terminal_token_path(prepared, kwargs)
         expected_by_entrypoint = {
             entrypoint: call()

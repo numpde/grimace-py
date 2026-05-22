@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import grimace
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
+    MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
 from grimace import _runtime
@@ -31,6 +32,14 @@ def runtime_flags_from_public_kwargs(**kwargs: object) -> _runtime.MolToSmilesFl
             context="Test MolToSmiles",
         )
     )
+
+
+def prepared_writer_kwargs(kwargs: Mapping[str, object]) -> dict[str, object]:
+    return {
+        spec.public_name: kwargs[spec.public_name]
+        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+        if spec.public_name in kwargs
+    }
 
 
 def public_enum_support(mol: object, **kwargs: object) -> frozenset[str]:

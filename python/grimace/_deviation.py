@@ -61,19 +61,12 @@ def _next_token_texts(
     )
 
 
-def _initial_decoder(
-    mol_or_prepared: object,
-    options: DecoderOptions,
-) -> _runtime.MolToSmilesDeterminizedDecoder:
-    return _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options)
-
-
 def _string_deviation(
     mol_or_prepared: object,
     candidate: str,
     options: DecoderOptions,
 ) -> SmilesDeviation | None:
-    initial = _initial_decoder(mol_or_prepared, options)
+    initial = _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options)
     active_by_offset: dict[int, dict[_runtime.DecoderCacheKey, _runtime.MolToSmilesDeterminizedDecoder]] = {
         0: {_decoder_key(initial): initial}
     }
@@ -167,7 +160,9 @@ def _sequence_deviation(
     options: DecoderOptions,
 ) -> SmilesDeviation | None:
     candidate_text, tokens, token_starts = _candidate_token_text_and_starts(candidate)
-    active_decoders = (_initial_decoder(mol_or_prepared, options),)
+    active_decoders = (
+        _runtime.MolToSmilesDeterminizedDecoder(mol_or_prepared, **options),
+    )
 
     for token_index, token in enumerate(tokens):
         choices_by_text: dict[str, list[_runtime.MolToSmilesDeterminizedDecoder]] = {}

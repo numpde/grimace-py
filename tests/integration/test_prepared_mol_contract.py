@@ -4,9 +4,9 @@ from dataclasses import fields, is_dataclass
 import unittest
 
 import grimace
-from grimace._mol_to_smiles_options import MOL_TO_SMILES_PREPARED_OPTIONS
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
+    prepared_writer_kwargs,
     public_enum_support,
     public_token_inventory,
     supported_public_kwargs,
@@ -14,13 +14,6 @@ from tests.helpers.public_runtime import (
 
 
 class PreparedMolContractTests(unittest.TestCase):
-    def _prepare_kwargs(self, kwargs: dict[str, object]) -> dict[str, object]:
-        return {
-            spec.public_name: kwargs[spec.public_name]
-            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-            if spec.public_name in kwargs
-        }
-
     def _prepare(self, smiles: str, **kwargs: object) -> object:
         return grimace.PrepareMol(parse_smiles(smiles), **kwargs)
 
@@ -31,7 +24,7 @@ class PreparedMolContractTests(unittest.TestCase):
         kwargs: dict[str, object],
     ) -> None:
         mol = parse_smiles(smiles)
-        prepared = grimace.PrepareMol(mol, **self._prepare_kwargs(kwargs))
+        prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         payload = prepared.to_bytes()
         restored = grimace.PreparedMol.from_bytes(payload)
 
@@ -163,8 +156,14 @@ class PreparedMolContractTests(unittest.TestCase):
             rootedAtAtom=0,
         )
 
-        preserved = self._prepare("[CH3:7]C", **self._prepare_kwargs(preserved_kwargs))
-        ignored = self._prepare("[CH3:7]C", **self._prepare_kwargs(ignored_kwargs))
+        preserved = self._prepare(
+            "[CH3:7]C",
+            **prepared_writer_kwargs(preserved_kwargs),
+        )
+        ignored = self._prepare(
+            "[CH3:7]C",
+            **prepared_writer_kwargs(ignored_kwargs),
+        )
 
         self.assertIn(":7", "".join(public_token_inventory(preserved, **preserved_kwargs)))
         self.assertNotIn(":7", "".join(public_token_inventory(ignored, **ignored_kwargs)))
@@ -173,8 +172,14 @@ class PreparedMolContractTests(unittest.TestCase):
         preserved_kwargs = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=0)
         ignored_kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=0)
 
-        preserved = self._prepare("[13CH4]", **self._prepare_kwargs(preserved_kwargs))
-        ignored = self._prepare("[13CH4]", **self._prepare_kwargs(ignored_kwargs))
+        preserved = self._prepare(
+            "[13CH4]",
+            **prepared_writer_kwargs(preserved_kwargs),
+        )
+        ignored = self._prepare(
+            "[13CH4]",
+            **prepared_writer_kwargs(ignored_kwargs),
+        )
 
         self.assertIn("13", "".join(public_token_inventory(preserved, **preserved_kwargs)))
         self.assertNotIn("13", "".join(public_token_inventory(ignored, **ignored_kwargs)))

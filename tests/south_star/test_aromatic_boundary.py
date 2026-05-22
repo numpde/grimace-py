@@ -188,6 +188,22 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
                 with self.subTest(case_id=case_id, output=output):
                     self.assertTrue(south_star_grammar_conformance(output).passed)
 
+    def test_aromatic_selenium_text_cases_are_supported(
+        self,
+    ) -> None:
+        case = _expanded_support_case("aromatic_selenium_text_selenophene")
+        result = mol_to_smiles_enum_s_graph_native(
+            case.source_smiles,
+            case_id=case.case_id,
+        )
+        report = south_star_support_gate_report(parse_smiles(case.source_smiles))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertEqual(case.expected_support, result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                self.assertTrue(south_star_grammar_conformance(output).passed)
+
     def test_aromatic_monocycle_fixture_uses_aromatic_renderer_obligations(
         self,
     ) -> None:
@@ -220,6 +236,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
         expected_atom_texts = {
             "aromatic_text_monocycle_pyridine": {"c", "n"},
             "aromatic_text_monocycle_furan": {"c", "o"},
+            "aromatic_selenium_text_selenophene": {"c", "[se]"},
         }
 
         for case_id, expected_texts in expected_atom_texts.items():
@@ -308,7 +325,7 @@ class SouthStarAromaticBoundaryTests(unittest.TestCase):
 
     def test_support_gate_reasons_name_active_contract(self) -> None:
         contract = SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
-        mol = parse_smiles("[se]1cccc1")
+        mol = parse_smiles("[te]1cccc1")
 
         report = south_star_support_gate_report(mol)
         reasons_by_category = {

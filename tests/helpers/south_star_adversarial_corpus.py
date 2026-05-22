@@ -79,6 +79,7 @@ SOUTH_STAR_ADVERSARIAL_REQUIRED_SUPPORTED_FEATURE_TARGETS: frozenset[str] = (
         {
             "charged_atom_text",
             "disconnected_stereo_fragments",
+            "aromatic_selenium_text",
             "explicit_bracket_hydrogen",
             "quadruple_bond_text",
             "radical_atom_text",
@@ -359,6 +360,18 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
         ),
     ),
     SouthStarAdversarialSeed(
+        seed_id="aromatic_element_text",
+        variants=(
+            SouthStarAdversarialVariant(
+                variant_id="aromatic_selenium",
+                source_smiles="[se]1cccc1",
+                axes=("ring_closure_choice",),
+                mutation_path=("seed", "aromatic_selenium_text"),
+                boundary_targets=("aromatic_selenium_text",),
+            ),
+        ),
+    ),
+    SouthStarAdversarialSeed(
         seed_id="unsupported_feature_triggers",
         variants=(
             SouthStarAdversarialVariant(
@@ -377,7 +390,7 @@ _ADVERSARIAL_SEEDS: tuple[SouthStarAdversarialSeed, ...] = (
             ),
             SouthStarAdversarialVariant(
                 variant_id="aromatic_ring",
-                source_smiles="[se]1cccc1",
+                source_smiles="[te]1cccc1",
                 axes=("unsupported_feature_trigger", "ring_closure_choice"),
                 mutation_path=("seed", "aromatic_element_breadth"),
                 boundary_targets=("aromatic_ring_surface",),

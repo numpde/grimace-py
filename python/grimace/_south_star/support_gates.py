@@ -7,6 +7,8 @@ from rdkit import Chem
 from grimace._south_star.aromatic_policy import SOUTH_STAR_AROMATIC_TEXT_POLICY_CONTRACT
 from grimace._south_star.atom_text import (
     SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS,
+    SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS,
+    SouthStarAtomTextFields,
     atom_text_obligation_for_supported_fields,
     south_star_atom_text_fields,
     unsupported_atom_text_reasons,
@@ -606,7 +608,15 @@ def _aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
     fields = south_star_atom_text_fields(atom)
     if not fields.is_aromatic:
         return False
-    if fields.symbol.lower() not in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
+    if fields.symbol.lower() not in (
+        SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+        | SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
+    ):
+        return False
+    if (
+        fields.symbol.lower() in SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
+        and not _unmodified_atom_text_fields(fields)
+    ):
         return False
     if fields.radical_electron_count != 0:
         return False
@@ -622,7 +632,13 @@ def _unmodified_aromatic_atom_text_supported(atom: Chem.Atom) -> bool:
     return (
         fields.is_aromatic
         and fields.symbol.lower() in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
-        and fields.isotope == 0
+        and _unmodified_atom_text_fields(fields)
+    )
+
+
+def _unmodified_atom_text_fields(fields: SouthStarAtomTextFields) -> bool:
+    return (
+        fields.isotope == 0
         and fields.explicit_hydrogen_count == 0
         and fields.formal_charge == 0
         and fields.radical_electron_count == 0

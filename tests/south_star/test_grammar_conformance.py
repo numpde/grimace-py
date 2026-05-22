@@ -47,6 +47,7 @@ class SouthStarGrammarConformanceTests(unittest.TestCase):
             "c1cc[15nH]c1",
             "c1cc[n:7]cc1",
             "c1cc[nH+]cc1",
+            "[se]1cccc1",
             "C#N",
             "C$C",
             "O.F/C=C\\Cl",

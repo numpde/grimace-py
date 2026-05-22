@@ -6,6 +6,9 @@ from grimace._south_star.atom_text import SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import (
     SOUTH_STAR_BRACKET_AROMATIC_ATOM_TEXT_TOKENS,
 )
+from grimace._south_star.atom_text import (
+    SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS,
+)
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS
 from grimace._south_star.atom_text import SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS
@@ -97,13 +100,15 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
         self.assertFalse(obligation.uses_brackets)
 
     def test_bracket_aromatic_atom_text_tokens_are_named_policy(self) -> None:
-        accepted_tokens = ("[nH]", "[15nH]", "[n:7]", "[nH+]", "[n+]")
-        rejected_tokens = ("[se]", "[n@H]", "[n@@H]", "[Na+]")
+        accepted_tokens = ("[nH]", "[15nH]", "[n:7]", "[nH+]", "[n+]", "[se]")
+        rejected_tokens = ("[n@H]", "[n@@H]", "[Na+]")
 
         for token in accepted_tokens:
             with self.subTest(token=token):
                 self.assertTrue(is_south_star_bracket_atom_text_token(token))
                 self.assertTrue(south_star_grammar_conformance(token).passed)
+                if token == "[se]":
+                    self.assertIn("se", SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS)
         for token in rejected_tokens:
             with self.subTest(token=token):
                 self.assertFalse(is_south_star_bracket_atom_text_token(token))
@@ -152,6 +157,12 @@ class SouthStarAtomTextPolicyTests(unittest.TestCase):
                     "explicit_hydrogen_count",
                     "charge_suffix",
                 ),
+            ),
+            (
+                "[se]1cccc1",
+                0,
+                "[se]",
+                ("bracket_aromatic_atom",),
             ),
         )
 

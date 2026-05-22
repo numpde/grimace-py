@@ -85,3 +85,14 @@ Open a narrow implementation task for selenium aromatic atom text:
 This is an implementation row, not a Decision row. The semantic boundary is
 clear enough for a narrow first fixture, and the wider main-group aromatic
 vocabulary can be handled as later, source-backed slices.
+
+## Follow-Up After South Star 187
+
+`South Star 187` implements the recommended selenium slice:
+
+- `[se]` is admitted as bracket-only aromatic atom text, not as bare `se`;
+- `[se]1cccc1` is pinned as `aromatic_selenium_text_selenophene` under
+  `unified_reference_aromatic_selenium_text_obligations`;
+- mapped selenium such as `[se:7]1cccc1` remains outside the first slice;
+- tellurium, arsenic, and silicon remain separate from this implementation
+  boundary for the reasons identified above.

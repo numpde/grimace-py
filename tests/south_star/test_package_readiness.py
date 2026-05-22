@@ -310,6 +310,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
                 "fused_aromatic_naphthalene",
                 "fused_aromatic_quinoline",
                 "fused_aromatic_benzofuran",
+                "aromatic_selenium_text_selenophene",
                 "modified_aromatic_atom_text_pyrrole_nh",
                 "modified_aromatic_atom_text_isotope_pyrrole",
                 "modified_aromatic_atom_text_mapped_pyrrole",
@@ -370,6 +371,7 @@ class SouthStarPackageReadinessTests(unittest.TestCase):
         self.assertIn("explicit_bracket_hydrogen", matrix.supported_feature_areas)
         self.assertIn("aromatic_text_branch", matrix.supported_feature_areas)
         self.assertIn("aromatic_text_monocycle", matrix.supported_feature_areas)
+        self.assertIn("aromatic_selenium_text", matrix.supported_feature_areas)
         self.assertIn("atom_map_text", matrix.supported_feature_areas)
         self.assertIn("charged_atom_text", matrix.supported_feature_areas)
         self.assertIn("combined_atom_text_modifiers", matrix.supported_feature_areas)

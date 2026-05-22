@@ -137,3 +137,17 @@ The current counts are now:
 - exact first-domain directional cases: `5`;
 - expanded-support cases: `54`;
 - total benchmark/readiness rows: `59`.
+
+## Follow-Up After South Star 187
+
+`South Star 187` promotes the first bracket-only aromatic selenium text case
+`[se]1cccc1` from frontier to checked private surface. The remaining aromatic
+element frontier is broader than selenium: tellurium also needs atom-symbol
+admission, while the tested arsenic and silicon SMILES examples sanitize/write
+as non-aromatic Kekule bracket atoms rather than the same aromatic text slice.
+
+The current counts are now:
+
+- exact first-domain directional cases: `5`;
+- expanded-support cases: `55`;
+- total benchmark/readiness rows: `60`.

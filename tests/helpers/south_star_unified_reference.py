@@ -283,6 +283,32 @@ def is_modified_aromatic_atom_text_monocycle_domain(
     )
 
 
+def is_aromatic_selenium_text_monocycle_domain(
+    facts: SouthStarMoleculeFacts,
+) -> bool:
+    topology = facts.graph_topology
+    return (
+        facts.supported
+        and topology.connected
+        and topology.ring_system.simple_monocycle
+        and len(facts.atom_text_facts) == topology.atom_count
+        and len(facts.bond_text_facts) == topology.bond_count
+        and any(
+            atom.symbol == "Se"
+            and atom.is_aromatic
+            and atom.isotope == 0
+            and atom.explicit_hydrogen_count == 0
+            and atom.formal_charge == 0
+            and atom.radical_electron_count == 0
+            and atom.atom_map_number == 0
+            for atom in facts.atom_text_facts
+        )
+        and not facts.components
+        and not facts.carrier_opportunities
+        and not facts.tetrahedral_center_facts
+    )
+
+
 def is_nonstereo_polycyclic_ring_traversal_domain(
     facts: SouthStarMoleculeFacts,
 ) -> bool:
@@ -418,6 +444,16 @@ def modified_aromatic_atom_text_support_from_shared_spine(
         case,
         domain_predicate=is_modified_aromatic_atom_text_monocycle_domain,
         domain_name="modified-aromatic-atom-text",
+    )
+
+
+def aromatic_selenium_text_support_from_shared_spine(
+    case: object,
+) -> SouthStarNonstereoMonocycleSupportProof:
+    return _monocycle_support_from_shared_spine(
+        case,
+        domain_predicate=is_aromatic_selenium_text_monocycle_domain,
+        domain_name="aromatic-selenium-text",
     )
 
 

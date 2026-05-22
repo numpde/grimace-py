@@ -11,6 +11,9 @@ SOUTH_STAR_ORGANIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
 SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"b", "c", "n", "o", "p", "s"}
 )
+SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
+    {"se"}
+)
 SOUTH_STAR_BRACKET_ONLY_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
     {"Se", "Si"}
 )
@@ -44,6 +47,7 @@ SOUTH_STAR_BRACKET_ATOM_TEXT_TOKENS: frozenset[str] = frozenset(
         "[SeH]",
         "[SiH3]",
         *SOUTH_STAR_BRACKET_AROMATIC_ATOM_TEXT_TOKENS,
+        "[se]",
     }
 )
 SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS: frozenset[str] = frozenset(
@@ -301,7 +305,9 @@ def is_south_star_bracket_atom_text_token(token: str) -> bool:
 
     symbol = ""
     bracket_symbols = (
-        SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS | SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+        SOUTH_STAR_SUPPORTED_ATOM_SYMBOLS
+        | SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+        | SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
     )
     for candidate in sorted(bracket_symbols, key=len, reverse=True):
         if rest.startswith(candidate):
@@ -400,7 +406,10 @@ def _bracket_aromatic_atom_text_obligation(
     fields: SouthStarAtomTextFields,
 ) -> SouthStarAtomTextObligation:
     token = fields.symbol.lower()
-    if token not in SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS:
+    if token not in (
+        SOUTH_STAR_AROMATIC_ATOM_TEXT_TOKENS
+        | SOUTH_STAR_BRACKET_ONLY_AROMATIC_ATOM_TEXT_TOKENS
+    ):
         raise NotImplementedError(
             f"South Star aromatic atom text unsupported for symbol {fields.symbol!r}"
         )

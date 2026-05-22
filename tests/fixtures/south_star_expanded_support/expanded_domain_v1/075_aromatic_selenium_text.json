@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "policy": "south_star_expanded_domain_regression",
+  "cases": [
+    {
+      "case_id": "aromatic_selenium_text_selenophene",
+      "feature_area": "aromatic_selenium_text",
+      "source_smiles": "[se]1cccc1",
+      "support_authority": "unified_reference_aromatic_selenium_text_obligations",
+      "evidence_notes": "Unified-reference aromatic selenium text evidence for selenophene: support is rendered from sanitized aromatic molecule facts, shared monocycle traversal and branch events, bracket-only aromatic selenium atom-text obligations, elided aromatic bond text, parse-back evidence, and first-occurrence deduplication.",
+      "expected_support": [
+        "[se]1cccc1",
+        "[se](c1)ccc1",
+        "[se](ccc1)c1",
+        "[se](cc1)cc1",
+        "c1ccc[se]1",
+        "c1[se]ccc1",
+        "c([se]cc1)c1",
+        "c(c1)[se]cc1",
+        "c([se]c1)cc1",
+        "c(cc1)[se]c1",
+        "c([se]1)ccc1",
+        "c(ccc1)[se]1",
+        "c(c1)cc[se]1",
+        "c(cc[se]1)c1",
+        "c1cc[se]c1",
+        "c1c[se]cc1",
+        "c(c[se]c1)c1",
+        "c(c1)c[se]c1",
+        "c(c[se]1)cc1",
+        "c(cc1)c[se]1"
+      ]
+    }
+  ]
+}

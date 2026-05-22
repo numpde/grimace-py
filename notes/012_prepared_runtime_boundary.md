@@ -62,19 +62,13 @@ transitive import-graph claim, and it does not try to prove semantic correctness
 by scanning for every possible RDKit-shaped string. The behavioral poison tests
 prove the runtime contract; the import test prevents obvious boundary drift.
 
-Current caveat
---------------
+Internal surfaces
+-----------------
 
 `_runtime.py` still contains lower-level compatibility paths for connected
-prepared graph objects and reference prepared graph conversion. Those are not
-the normal public RDKit path. The important boundary is that public RDKit input
-normalizes through `PreparedMol`, and `_runtime.py` no longer imports RDKit
-directly.
+prepared graph objects and reference prepared graph conversion. Those are
+internal test/oracle surfaces, not the normal public RDKit path.
 
-Next cleanup
-------------
-
-Once legacy/internal prepared graph entrypoints are no longer needed, runtime
-helpers can be narrowed further to accept only `PreparedMol` plus connected core
-prepared fragments. That would remove remaining mixed-shape branches from
-`_runtime.py`.
+The public boundary is that public RDKit input normalizes through
+`PreparedMol`, prepared input does not reprepare, and `_runtime.py` no longer
+imports RDKit directly.

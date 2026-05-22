@@ -12,9 +12,6 @@ from grimace._mol_to_smiles_options import (
 )
 
 
-_PREPARED_MOL_SCHEMA_VERSION = 1
-
-
 def _core_module() -> object:
     return importlib.import_module("grimace._core")
 
@@ -49,10 +46,22 @@ def _make_prepared_mol(inner: object) -> PreparedMol:
     return prepared
 
 
-def _prepared_mol_writer_flag_values(
+def _prepared_mol_matches_writer_flags(
     prepared: PreparedMol,
-) -> tuple[bool, bool, bool, bool, bool]:
-    return prepared._inner.writer_flag_values()
+    *,
+    isomeric_smiles: bool,
+    kekule_smiles: bool,
+    all_bonds_explicit: bool,
+    all_hs_explicit: bool,
+    ignore_atom_map_numbers: bool,
+) -> bool:
+    return prepared._inner.matches_writer_flags(
+        isomeric_smiles=isomeric_smiles,
+        kekule_smiles=kekule_smiles,
+        all_bonds_explicit=all_bonds_explicit,
+        all_hs_explicit=all_hs_explicit,
+        ignore_atom_map_numbers=ignore_atom_map_numbers,
+    )
 
 
 def _prepared_mol_fragment_count(prepared: PreparedMol) -> int:
@@ -126,28 +135,25 @@ def PrepareMol(
 
     if mol.GetNumAtoms() == 0:
         fragments = [
-            {
-                "atom_indices": [],
-                "prepared_graph": runtime.prepare_smiles_graph(mol, flags=runtime_flags),
-            }
+            ([], runtime.prepare_smiles_graph(mol, flags=runtime_flags))
         ]
     else:
         fragments = [
-            {
-                "atom_indices": list(atom_indices),
-                "prepared_graph": runtime.prepare_smiles_graph(
+            (
+                list(atom_indices),
+                runtime.prepare_smiles_graph(
                     fragment_mol,
                     flags=runtime_flags,
                 ),
-            }
+            )
             for fragment_mol, atom_indices in _rdkit_mol_fragment_mols_and_atom_indices(
                 mol
             )
         ]
 
-    payload = {
-        "schema_version": _PREPARED_MOL_SCHEMA_VERSION,
-        "writer_flags": writer_options,
-        "fragments": fragments,
-    }
-    return _make_prepared_mol(_core_module().PreparedMol(payload))
+    return _make_prepared_mol(
+        _core_module().PreparedMol.from_parts(
+            **writer_options,
+            fragments=fragments,
+        )
+    )

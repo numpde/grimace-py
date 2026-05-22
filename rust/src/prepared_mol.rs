@@ -2,11 +2,10 @@ use std::collections::BTreeSet;
 
 use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList};
+use pyo3::types::{PyAny, PyBool, PyBytes, PyList, PyTuple};
 
 use crate::prepared_graph::{PreparedSmilesGraphData, PyPreparedSmilesGraph};
 
-const PREPARED_MOL_SCHEMA_VERSION: usize = 1;
 const PREPARED_MOL_BINARY_MAGIC: &[u8] = b"GPM\0";
 const PREPARED_MOL_BINARY_VERSION: u32 = 1;
 
@@ -27,47 +26,8 @@ struct PreparedMolFragmentData {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PreparedMolData {
-    schema_version: usize,
     writer_flags: PreparedMolWriterFlags,
     fragments: Vec<PreparedMolFragmentData>,
-}
-
-fn required_item<'py>(dict: &Bound<'py, PyDict>, key: &str) -> PyResult<Bound<'py, PyAny>> {
-    dict.get_item(key)?
-        .ok_or_else(|| PyValueError::new_err(format!("missing PreparedMol field: {key}")))
-}
-
-fn required_dict_item<'py>(
-    dict: &Bound<'py, PyDict>,
-    key: &str,
-    message: &str,
-) -> PyResult<Bound<'py, PyDict>> {
-    required_item(dict, key)?
-        .cast::<PyDict>()
-        .cloned()
-        .map_err(|_| PyValueError::new_err(message.to_owned()))
-}
-
-fn required_bool(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<bool> {
-    let value = required_item(dict, key)?;
-    if !value.is_instance_of::<PyBool>() {
-        return Err(PyValueError::new_err(format!(
-            "PreparedMol writer flag {key:?} must be a bool"
-        )));
-    }
-    value.extract()
-}
-
-fn required_usize(dict: &Bound<'_, PyDict>, key: &str) -> PyResult<usize> {
-    let value = required_item(dict, key)?;
-    if value.is_instance_of::<PyBool>() {
-        return Err(PyValueError::new_err(format!(
-            "PreparedMol field {key:?} must be an integer"
-        )));
-    }
-    value
-        .extract()
-        .map_err(|_| PyValueError::new_err(format!("PreparedMol field {key:?} must be an integer")))
 }
 
 fn extract_usize_list(value: &Bound<'_, PyAny>, message: &str) -> PyResult<Vec<usize>> {
@@ -89,16 +49,6 @@ fn extract_usize_list(value: &Bound<'_, PyAny>, message: &str) -> PyResult<Vec<u
 }
 
 impl PreparedMolWriterFlags {
-    fn from_dict(dict: &Bound<'_, PyDict>) -> PyResult<Self> {
-        Ok(Self {
-            isomeric_smiles: required_bool(dict, "isomeric_smiles")?,
-            kekule_smiles: required_bool(dict, "kekule_smiles")?,
-            all_bonds_explicit: required_bool(dict, "all_bonds_explicit")?,
-            all_hs_explicit: required_bool(dict, "all_hs_explicit")?,
-            ignore_atom_map_numbers: required_bool(dict, "ignore_atom_map_numbers")?,
-        })
-    }
-
     fn validate_graph(&self, graph: &PreparedSmilesGraphData) -> PyResult<()> {
         let actual = (
             graph.writer_do_isomeric_smiles,
@@ -124,16 +74,20 @@ impl PreparedMolWriterFlags {
 }
 
 impl PreparedMolFragmentData {
-    fn from_any(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let dict = obj
-            .cast::<PyDict>()
-            .map_err(|_| PyValueError::new_err("PreparedMol fragment must be an object"))?;
+    fn from_pair(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let pair = obj
+            .cast::<PyTuple>()
+            .map_err(|_| PyValueError::new_err("PreparedMol fragment must be a pair"))?;
+        if pair.len() != 2 {
+            return Err(PyValueError::new_err(
+                "PreparedMol fragment must contain atom indices and a prepared graph",
+            ));
+        }
         let atom_indices = extract_usize_list(
-            &required_item(dict, "atom_indices")?,
+            &pair.get_item(0)?,
             "PreparedMol fragment atom_indices must be an array",
         )?;
-        let prepared_graph =
-            PreparedSmilesGraphData::from_any(&required_item(dict, "prepared_graph")?)?;
+        let prepared_graph = PreparedSmilesGraphData::from_any(&pair.get_item(1)?)?;
         Ok(Self {
             atom_indices,
             prepared_graph,
@@ -142,27 +96,16 @@ impl PreparedMolFragmentData {
 }
 
 impl PreparedMolData {
-    fn from_any(obj: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let dict = obj
-            .cast::<PyDict>()
-            .map_err(|_| PyValueError::new_err("PreparedMol payload must be an object"))?;
-        let schema_version = required_usize(dict, "schema_version")?;
-        let writer_flags = PreparedMolWriterFlags::from_dict(&required_dict_item(
-            dict,
-            "writer_flags",
-            "PreparedMol writer_flags must be an object",
-        )?)?;
-        let raw_fragments = required_item(dict, "fragments")?;
-        let fragments_seq = raw_fragments
-            .cast::<PyList>()
-            .map_err(|_| PyValueError::new_err("PreparedMol fragments must be an array"))?;
+    fn from_parts(
+        writer_flags: PreparedMolWriterFlags,
+        fragments_seq: &Bound<'_, PyList>,
+    ) -> PyResult<Self> {
         let mut fragments = Vec::new();
         for item in fragments_seq {
-            fragments.push(PreparedMolFragmentData::from_any(&item)?);
+            fragments.push(PreparedMolFragmentData::from_pair(&item)?);
         }
 
         let data = Self {
-            schema_version,
             writer_flags,
             fragments,
         };
@@ -171,12 +114,6 @@ impl PreparedMolData {
     }
 
     fn validate(&self) -> PyResult<()> {
-        if self.schema_version != PREPARED_MOL_SCHEMA_VERSION {
-            return Err(PyValueError::new_err(format!(
-                "Unsupported PreparedMol schema version: {}",
-                self.schema_version
-            )));
-        }
         if self.fragments.is_empty() {
             return Err(PyValueError::new_err(
                 "PreparedMol must contain at least one fragment",
@@ -238,7 +175,6 @@ impl PreparedMolData {
         let mut writer = BinaryWriter::new();
         writer.write_raw(PREPARED_MOL_BINARY_MAGIC);
         writer.write_u32(PREPARED_MOL_BINARY_VERSION);
-        writer.write_usize(self.schema_version);
         writer.write_bool(self.writer_flags.isomeric_smiles);
         writer.write_bool(self.writer_flags.kekule_smiles);
         writer.write_bool(self.writer_flags.all_bonds_explicit);
@@ -261,7 +197,6 @@ impl PreparedMolData {
                 "Unsupported PreparedMol binary format version: {format_version}"
             )));
         }
-        let schema_version = reader.read_usize()?;
         let writer_flags = PreparedMolWriterFlags {
             isomeric_smiles: reader.read_bool()?,
             kekule_smiles: reader.read_bool()?,
@@ -282,7 +217,6 @@ impl PreparedMolData {
         reader.finish()?;
 
         let data = Self {
-            schema_version,
             writer_flags,
             fragments,
         };
@@ -694,10 +628,25 @@ pub struct PyPreparedMol {
 
 #[pymethods]
 impl PyPreparedMol {
-    #[new]
-    fn new(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[staticmethod]
+    #[pyo3(signature = (*, isomeric_smiles, kekule_smiles, all_bonds_explicit, all_hs_explicit, ignore_atom_map_numbers, fragments))]
+    fn from_parts(
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+        fragments: &Bound<'_, PyList>,
+    ) -> PyResult<Self> {
+        let writer_flags = PreparedMolWriterFlags {
+            isomeric_smiles,
+            kekule_smiles,
+            all_bonds_explicit,
+            all_hs_explicit,
+            ignore_atom_map_numbers,
+        };
         Ok(Self {
-            data: PreparedMolData::from_any(data)?,
+            data: PreparedMolData::from_parts(writer_flags, fragments)?,
         })
     }
 
@@ -713,14 +662,23 @@ impl PyPreparedMol {
         Ok(PyBytes::new(py, &self.data.to_binary()).unbind())
     }
 
-    fn writer_flag_values(&self) -> (bool, bool, bool, bool, bool) {
-        (
-            self.data.writer_flags.isomeric_smiles,
-            self.data.writer_flags.kekule_smiles,
-            self.data.writer_flags.all_bonds_explicit,
-            self.data.writer_flags.all_hs_explicit,
-            self.data.writer_flags.ignore_atom_map_numbers,
-        )
+    #[pyo3(signature = (*, isomeric_smiles, kekule_smiles, all_bonds_explicit, all_hs_explicit, ignore_atom_map_numbers))]
+    fn matches_writer_flags(
+        &self,
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+    ) -> bool {
+        self.data.writer_flags
+            == PreparedMolWriterFlags {
+                isomeric_smiles,
+                kekule_smiles,
+                all_bonds_explicit,
+                all_hs_explicit,
+                ignore_atom_map_numbers,
+            }
     }
 
     fn fragment_count(&self) -> usize {
@@ -744,20 +702,13 @@ impl PyPreparedMol {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "PreparedMol(schema_version={}, fragment_count={})",
-            self.data.schema_version,
-            self.data.fragments.len(),
-        )
+        format!("PreparedMol(fragment_count={})", self.data.fragments.len())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        BinaryReader, PreparedMolData, PreparedMolFragmentData, PreparedMolWriterFlags,
-        PREPARED_MOL_SCHEMA_VERSION,
-    };
+    use super::{BinaryReader, PreparedMolData, PreparedMolFragmentData, PreparedMolWriterFlags};
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
@@ -839,7 +790,6 @@ mod tests {
 
     fn prepared_mol_with_fragments(fragments: Vec<PreparedMolFragmentData>) -> PreparedMolData {
         PreparedMolData {
-            schema_version: PREPARED_MOL_SCHEMA_VERSION,
             writer_flags: writer_flags(),
             fragments,
         }

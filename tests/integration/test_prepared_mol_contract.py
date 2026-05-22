@@ -255,7 +255,6 @@ class PreparedMolContractTests(unittest.TestCase):
         oversized_fragment_count = (
             b"GPM\0"
             + (1).to_bytes(4, "little")
-            + (1).to_bytes(8, "little")
             + b"\0\0\0\0\0"
             + ((1 << 64) - 1).to_bytes(8, "little")
         )
@@ -272,71 +271,55 @@ class PreparedMolContractTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     grimace.PreparedMol.from_bytes(payload)
 
-    def test_rust_storage_rejects_malformed_structural_payloads(self) -> None:
+    def test_rust_storage_rejects_malformed_structural_parts(self) -> None:
         prepared = self._prepare("CCO.N", isomericSmiles=False)
-        base_payload = {
-            "schema_version": 1,
-            "writer_flags": {
-                "isomeric_smiles": False,
-                "kekule_smiles": False,
-                "all_bonds_explicit": False,
-                "all_hs_explicit": False,
-                "ignore_atom_map_numbers": False,
-            },
-            "fragments": [
-                {
-                    "atom_indices": list(prepared._inner.fragment_atom_indices(0)),
-                    "prepared_graph": prepared._inner.fragment_prepared_graph(0),
-                },
-                {
-                    "atom_indices": list(prepared._inner.fragment_atom_indices(1)),
-                    "prepared_graph": prepared._inner.fragment_prepared_graph(1),
-                },
+        base_fragments = [
+            (
+                list(prepared._inner.fragment_atom_indices(0)),
+                prepared._inner.fragment_prepared_graph(0),
+            ),
+            (
+                list(prepared._inner.fragment_atom_indices(1)),
+                prepared._inner.fragment_prepared_graph(1),
+            ),
+        ]
+
+        with self.assertRaises(TypeError):
+            grimace._core.PreparedMol({})
+
+        malformed_parts = {
+            "empty_fragments": [],
+            "fragment_not_pair": [base_fragments[0][0]],
+            "fragment_wrong_pair_length": [
+                (*base_fragments[0], prepared._inner.fragment_prepared_graph(1))
             ],
+            "bad_atom_indices_type": [({}, base_fragments[0][1]), base_fragments[1]],
+            "atom_index_bool": [([True, 1, 2], base_fragments[0][1]), base_fragments[1]],
+            "overlapping_atom_indices": [base_fragments[0], ([0], base_fragments[1][1])],
+            "unsorted_atom_indices": [([2, 1, 0], base_fragments[0][1]), base_fragments[1]],
         }
 
-        malformed_payloads = {
-            "missing_fragments": {
-                key: value for key, value in base_payload.items() if key != "fragments"
-            },
-            "bad_schema_version": {**base_payload, "schema_version": 999},
-            "bool_schema_version": {**base_payload, "schema_version": True},
-            "bad_writer_flag_type": {
-                **base_payload,
-                "writer_flags": {
-                    **base_payload["writer_flags"],
-                    "isomeric_smiles": 0,
-                },
-            },
-            "bad_fragments_type": {**base_payload, "fragments": {}},
-            "empty_fragments": {**base_payload, "fragments": []},
-            "bad_atom_indices_type": {
-                **base_payload,
-                "fragments": [
-                    {**base_payload["fragments"][0], "atom_indices": {}},
-                    base_payload["fragments"][1],
-                ],
-            },
-            "atom_index_bool": {
-                **base_payload,
-                "fragments": [
-                    {**base_payload["fragments"][0], "atom_indices": [True, 1, 2]},
-                    base_payload["fragments"][1],
-                ],
-            },
-            "overlapping_atom_indices": {
-                **base_payload,
-                "fragments": [
-                    base_payload["fragments"][0],
-                    {**base_payload["fragments"][1], "atom_indices": [0]},
-                ],
-            },
-        }
-
-        for name, payload in malformed_payloads.items():
+        for name, fragments in malformed_parts.items():
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
-                    grimace._core.PreparedMol(payload)
+                    grimace._core.PreparedMol.from_parts(
+                        isomeric_smiles=False,
+                        kekule_smiles=False,
+                        all_bonds_explicit=False,
+                        all_hs_explicit=False,
+                        ignore_atom_map_numbers=False,
+                        fragments=fragments,
+                    )
+
+        with self.assertRaises(ValueError):
+            grimace._core.PreparedMol.from_parts(
+                isomeric_smiles=False,
+                kekule_smiles=False,
+                all_bonds_explicit=False,
+                all_hs_explicit=True,
+                ignore_atom_map_numbers=False,
+                fragments=base_fragments,
+            )
 
 
 if __name__ == "__main__":

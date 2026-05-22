@@ -22,7 +22,7 @@ from grimace._prepared_mol import (
     _prepared_mol_fragment_atom_indices,
     _prepared_mol_fragment_count,
     _prepared_mol_fragment_graph,
-    _prepared_mol_writer_flag_values,
+    _prepared_mol_matches_writer_flags,
 )
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
@@ -118,16 +118,18 @@ def _validate_surface_kind(
         )
 
 
-def _runtime_writer_flag_values(
-    flags: MolToSmilesFlags,
-) -> tuple[bool, bool, bool, bool, bool]:
-    return cast(
-        tuple[bool, bool, bool, bool, bool],
-        tuple(
-            bool(getattr(flags, spec.internal_name))
-            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-        ),
-    )
+def _runtime_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
+    return {
+        spec.internal_name: bool(getattr(flags, spec.internal_name))
+        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+    }
+
+
+def _runtime_public_writer_flag_kwargs(flags: MolToSmilesFlags) -> dict[str, bool]:
+    return {
+        spec.public_name: bool(getattr(flags, spec.internal_name))
+        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+    }
 
 
 def _validate_writer_flags(
@@ -136,22 +138,24 @@ def _validate_writer_flags(
 ) -> None:
     if isinstance(prepared, _core.PreparedSmilesGraph):
         prepared_data = prepared.to_dict()
-        actual = (
-            bool(prepared_data["writer_do_isomeric_smiles"]),
-            bool(prepared_data["writer_kekule_smiles"]),
-            bool(prepared_data["writer_all_bonds_explicit"]),
-            bool(prepared_data["writer_all_hs_explicit"]),
-            bool(prepared_data["writer_ignore_atom_map_numbers"]),
-        )
+        actual = {
+            "isomeric_smiles": bool(prepared_data["writer_do_isomeric_smiles"]),
+            "kekule_smiles": bool(prepared_data["writer_kekule_smiles"]),
+            "all_bonds_explicit": bool(prepared_data["writer_all_bonds_explicit"]),
+            "all_hs_explicit": bool(prepared_data["writer_all_hs_explicit"]),
+            "ignore_atom_map_numbers": bool(
+                prepared_data["writer_ignore_atom_map_numbers"]
+            ),
+        }
     else:
-        actual = (
-            prepared.writer_do_isomeric_smiles,
-            prepared.writer_kekule_smiles,
-            prepared.writer_all_bonds_explicit,
-            prepared.writer_all_hs_explicit,
-            prepared.writer_ignore_atom_map_numbers,
-        )
-    if actual != _runtime_writer_flag_values(flags):
+        actual = {
+            "isomeric_smiles": bool(prepared.writer_do_isomeric_smiles),
+            "kekule_smiles": bool(prepared.writer_kekule_smiles),
+            "all_bonds_explicit": bool(prepared.writer_all_bonds_explicit),
+            "all_hs_explicit": bool(prepared.writer_all_hs_explicit),
+            "ignore_atom_map_numbers": bool(prepared.writer_ignore_atom_map_numbers),
+        }
+    if actual != _runtime_writer_flag_kwargs(flags):
         raise ValueError(
             "PreparedSmilesGraph writer flags do not match the requested public runtime options"
         )
@@ -161,9 +165,9 @@ def _validate_prepared_mol_writer_flags(
     prepared: PreparedMol,
     flags: MolToSmilesFlags,
 ) -> None:
-    if (
-        _prepared_mol_writer_flag_values(prepared)
-        != _runtime_writer_flag_values(flags)
+    if not _prepared_mol_matches_writer_flags(
+        prepared,
+        **_runtime_writer_flag_kwargs(flags),
     ):
         raise ValueError(
             "PreparedMol writer flags do not match the requested public runtime options"
@@ -182,10 +186,7 @@ def _prepare_runtime_input(
     if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
         return _prepared_mol_module.PrepareMol(
             mol_or_prepared,
-            **{
-                spec.public_name: getattr(flags, spec.internal_name)
-                for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-            },
+            **_runtime_public_writer_flag_kwargs(flags),
         )
     return mol_or_prepared
 

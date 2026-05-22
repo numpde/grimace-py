@@ -42,7 +42,6 @@ shape must contain:
 
 ```text
 PreparedMol
-  schema_version
   writer_flags
   fragments[]
 
@@ -52,9 +51,9 @@ fragment
 ```
 
 The exact Python/Rust classes are implementation details. The data obligations
-are not: version, writer flags, ordered fragments, original atom indices, and
-prepared graph data. In Python, `PreparedMol` should expose this as an opaque
-object, not as public structural fields.
+are not: writer flags, ordered fragments, original atom indices, prepared graph
+data, and versioned bytes. In Python, `PreparedMol` should expose this as an
+opaque object, not as public structural fields.
 
 Inevitable work
 ---------------
@@ -69,9 +68,9 @@ Inevitable work
    surface, preserve original atom indices, and store no RDKit molecule.
 
 3. Validate loaded objects.
-   Serialized objects need early rejection for unsupported schema versions,
-   malformed flags, malformed fragments, atom-index/graph mismatches, and graph
-   writer flags that disagree with the outer prepared molecule.
+   Serialized objects need early rejection for unsupported byte-format
+   versions, malformed flags, malformed fragments, atom-index/graph mismatches,
+   and graph writer flags that disagree with the outer prepared molecule.
 
 4. Implement serialization.
    A single-object `to_bytes()` / `from_bytes()` path is needed for caches,

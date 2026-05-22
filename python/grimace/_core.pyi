@@ -43,13 +43,30 @@ class PreparedSmilesGraph:
 
 
 class PreparedMol:
-    def __init__(self, data: object, /) -> None: ...
+    @staticmethod
+    def from_parts(
+        *,
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+        fragments: list[tuple[list[int], PreparedSmilesGraph]],
+    ) -> "PreparedMol": ...
 
     @staticmethod
     def from_bytes(data: bytes, /) -> "PreparedMol": ...
 
     def to_bytes(self) -> bytes: ...
-    def writer_flag_values(self) -> tuple[bool, bool, bool, bool, bool]: ...
+    def matches_writer_flags(
+        self,
+        *,
+        isomeric_smiles: bool,
+        kekule_smiles: bool,
+        all_bonds_explicit: bool,
+        all_hs_explicit: bool,
+        ignore_atom_map_numbers: bool,
+    ) -> bool: ...
     def fragment_count(self) -> int: ...
     def fragment_atom_indices(self, fragment_idx: int, /) -> list[int]: ...
     def fragment_prepared_graph(self, fragment_idx: int, /) -> PreparedSmilesGraph: ...

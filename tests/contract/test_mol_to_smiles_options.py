@@ -11,7 +11,6 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
-from grimace._prepared_mol import _prepared_mol_writer_flag_values
 from tests.helpers.mols import parse_smiles
 
 
@@ -133,19 +132,20 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
             ),
         )
 
-    def test_prepared_mol_writer_tuple_order_matches_prepared_options(self) -> None:
+    def test_prepared_mol_matches_named_prepared_options(self) -> None:
         prepared_kwargs = {
             spec.public_name: index % 2 == 0
             for index, spec in enumerate(MOL_TO_SMILES_PREPARED_OPTIONS)
         }
         prepared = grimace.PrepareMol(parse_smiles("c1ccccc1"), **prepared_kwargs)
 
-        self.assertEqual(
-            tuple(
-                bool(prepared_kwargs[spec.public_name])
-                for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-            ),
-            _prepared_mol_writer_flag_values(prepared),
+        self.assertTrue(
+            prepared._inner.matches_writer_flags(
+                **{
+                    spec.internal_name: bool(prepared_kwargs[spec.public_name])
+                    for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+                }
+            )
         )
 
 

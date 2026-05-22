@@ -22,6 +22,7 @@ CORE_MODULES: tuple[str, ...] = (
     "semantics",
     "skeleton",
     "slots",
+    "witness_search",
 )
 
 BOUNDARY_MODULES: tuple[str, ...] = (

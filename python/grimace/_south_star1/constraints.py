@@ -199,6 +199,16 @@ def _validate_traversal_assignment_coverage(
                 "non-stereo witness must use only empty tetra tokens: "
                 f"{non_none_tetra!r}"
             )
+        non_absent_direction = {
+            carrier
+            for carrier, mark in assignment.direction_marks.items()
+            if mark is not DirectionMark.ABSENT
+        }
+        if non_absent_direction:
+            raise ValueError(
+                "non-stereo witness must use only absent direction marks: "
+                f"{non_absent_direction!r}"
+            )
 
     slot_atom_ids = {slot.atom for slot in slots.atom_slots}
     _require_exact_keys("atom slots", slot_atom_ids, atom_ids)

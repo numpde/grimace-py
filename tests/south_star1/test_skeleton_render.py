@@ -203,6 +203,23 @@ class SkeletonRenderTest(unittest.TestCase):
                 _MinimalSemantics(reject_ring_pairs=True),
             )
 
+    def test_nonstereo_traversal_rejects_direction_marks(self) -> None:
+        facts = cco_facts()
+        skeleton = _skeleton_rendering(facts, "CCO")
+        slots = allocate_traversal_slots(facts, skeleton)
+        assignment = _assignment_for(facts, slots)
+        assignment.direction_marks[slots.carrier_slots[0].id] = DirectionMark.FWD
+
+        with self.assertRaisesRegex(ValueError, "absent direction marks"):
+            render_nonstereo_traversal(
+                facts,
+                skeleton,
+                slots,
+                assignment,
+                organic_subset_policy(facts),
+                _MinimalSemantics(),
+            )
+
     def test_render_fails_when_atom_text_is_unowned(self) -> None:
         facts = cco_facts()
         skeleton = _skeleton_rendering(facts, "CCO")

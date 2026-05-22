@@ -692,7 +692,7 @@ pub struct PyPreparedMol {
 impl PyPreparedMol {
     #[staticmethod]
     #[pyo3(signature = (*, isomeric_smiles, kekule_smiles, all_bonds_explicit, all_hs_explicit, ignore_atom_map_numbers, fragments))]
-    fn from_parts(
+    fn _from_parts(
         isomeric_smiles: bool,
         kekule_smiles: bool,
         all_bonds_explicit: bool,

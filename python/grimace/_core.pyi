@@ -54,17 +54,6 @@ class PreparedSmilesGraph:
 
 class PreparedMol:
     @staticmethod
-    def from_parts(
-        *,
-        isomeric_smiles: bool,
-        kekule_smiles: bool,
-        all_bonds_explicit: bool,
-        all_hs_explicit: bool,
-        ignore_atom_map_numbers: bool,
-        fragments: list[tuple[list[int], PreparedSmilesGraph]],
-    ) -> "PreparedMol": ...
-
-    @staticmethod
     def from_bytes(data: bytes, /) -> "PreparedMol": ...
 
     def to_bytes(self) -> bytes: ...

@@ -172,7 +172,7 @@ def PrepareMol(
         ]
 
     return _make_prepared_mol(
-        _core_module().PreparedMol.from_parts(
+        _core_module().PreparedMol._from_parts(
             **writer_options,
             fragments=fragments,
         )

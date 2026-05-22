@@ -37,6 +37,7 @@ def _imported_module_names(path: Path) -> set[str]:
 
 class RuntimeBoundaryTests(unittest.TestCase):
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
+    runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
@@ -83,6 +84,12 @@ class RuntimeBoundaryTests(unittest.TestCase):
             "grimace._runtime",
             _string_constants(self.preparation_module),
         )
+
+    def test_public_runtime_module_does_not_import_prepared_mol_wrapper(self) -> None:
+        imported_names = _imported_module_names(self.runtime_module)
+        self.assertNotIn("grimace._prepared_mol", imported_names)
+        self.assertNotIn("grimace._prepared_mol.PreparedMol", imported_names)
+        self.assertNotIn("grimace._prepared_mol", _string_constants(self.runtime_module))
 
 
 if __name__ == "__main__":

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Hashable, Iterator, Sequence
-from dataclasses import dataclass
 from itertools import product
 from typing import Protocol, TypeAlias, cast
 
-import grimace._prepared_mol as _prepared_mol
-from grimace._prepared_mol import PreparedMol
 from grimace._runtime_graphs import (
+    as_disconnected_prepared_mol as _as_disconnected_prepared_mol,
+    atom_count as _atom_count,
+    connected_prepared_mol_fragment_or_none as _connected_prepared_mol_fragment_or_none,
+    prepared_mol_fragment_plans as _prepared_mol_fragment_plans,
     prepare_core_graph_for_static_inventory as _prepare_core_graph_for_static_inventory,
     prepare_smiles_graph,
 )
@@ -25,7 +26,6 @@ from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
-    PreparedSmilesGraph as ReferencePreparedSmilesGraph,
 )
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
@@ -48,66 +48,6 @@ class _AdapterDecoderState(_BaseDecoderState, Protocol):
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]: ...
 
 
-@dataclass(frozen=True, slots=True)
-class _FragmentPlan:
-    fragment: object
-    rooted_at_atom: int | None
-
-
-def _as_disconnected_prepared_mol(mol_or_prepared: object) -> PreparedMol | None:
-    if (
-        isinstance(mol_or_prepared, PreparedMol)
-        and _prepared_mol._fragment_count(mol_or_prepared) > 1
-    ):
-        return mol_or_prepared
-    return None
-
-
-def _fragment_plans_for_prepared_mol(
-    prepared: PreparedMol,
-    *,
-    rooted_at_atom: int | None,
-) -> tuple[_FragmentPlan, ...]:
-    rooted_fragments = _prepared_mol._rooted_fragments(
-        prepared,
-        rooted_at_atom=rooted_at_atom,
-    )
-    return tuple(
-        _FragmentPlan(fragment, fragment_rooted_at_atom)
-        for fragment, fragment_rooted_at_atom in rooted_fragments
-    )
-
-
-def _connected_prepared_mol_fragment(
-    prepared: PreparedMol,
-    *,
-    rooted_at_atom: int,
-) -> tuple[object, int]:
-    rooted_at_atom_or_none = None if rooted_at_atom < 0 else rooted_at_atom
-    plans = _fragment_plans_for_prepared_mol(
-        prepared,
-        rooted_at_atom=rooted_at_atom_or_none,
-    )
-    if len(plans) != 1:
-        raise NotImplementedError(
-            "connected PreparedMol runtime requires one prepared fragment"
-        )
-    plan = plans[0]
-    if plan.rooted_at_atom is None:
-        return plan.fragment, -1
-    return plan.fragment, plan.rooted_at_atom
-
-
-def _atom_count(mol_or_prepared: object) -> int:
-    if isinstance(mol_or_prepared, PreparedMol):
-        return _prepared_mol._atom_count(mol_or_prepared)
-    if isinstance(mol_or_prepared, ReferencePreparedSmilesGraph):
-        return mol_or_prepared.atom_count
-    if isinstance(mol_or_prepared, _core.PreparedSmilesGraph):
-        return cast(int, mol_or_prepared.atom_count)
-    raise TypeError(f"Unsupported molecule/prepared type: {type(mol_or_prepared)!r}")
-
-
 def _connected_fragment_support(
     fragment_mol: object,
     *,
@@ -124,13 +64,13 @@ def _connected_fragment_support(
     # For all-roots support, build or unwrap the prepared graph once and reuse
     # it across roots instead of reparsing the same fragment each time.
     atom_count = _atom_count(fragment_mol)
-    if isinstance(fragment_mol, PreparedMol):
-        prepared_or_fragment, _ = _connected_prepared_mol_fragment(
-            fragment_mol,
-            rooted_at_atom=-1,
-        )
-    else:
-        prepared_or_fragment = fragment_mol
+    connected_fragment = _connected_prepared_mol_fragment_or_none(
+        fragment_mol,
+        rooted_at_atom=-1,
+    )
+    prepared_or_fragment = (
+        fragment_mol if connected_fragment is None else connected_fragment[0]
+    )
 
     support: set[str] = set()
     local_root_indices = (0,) if atom_count == 0 else range(atom_count)
@@ -144,14 +84,14 @@ def _connected_fragment_support(
 
 
 def _fragmented_prepared_support(
-    prepared: PreparedMol,
+    prepared: object,
     *,
     flags: MolToSmilesFlags,
 ) -> set[str]:
     fragment_supports: list[tuple[str, ...]] = []
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
 
-    for plan in _fragment_plans_for_prepared_mol(
+    for plan in _prepared_mol_fragment_plans(
         prepared,
         rooted_at_atom=rooted_at_atom,
     ):
@@ -461,11 +401,12 @@ def _instantiate_core_object(
     stereo_type: type,
     nonstereo_type: type,
 ) -> object:
-    if isinstance(mol_or_prepared, PreparedMol):
-        fragment, rooted_at_atom = _connected_prepared_mol_fragment(
-            mol_or_prepared,
-            rooted_at_atom=flags.rooted_at_atom,
-        )
+    connected_fragment = _connected_prepared_mol_fragment_or_none(
+        mol_or_prepared,
+        rooted_at_atom=flags.rooted_at_atom,
+    )
+    if connected_fragment is not None:
+        fragment, rooted_at_atom = connected_fragment
         mol_or_prepared = fragment
         flags = flags.with_rooted_at_atom(rooted_at_atom)
 
@@ -525,11 +466,12 @@ def _make_fragment_state_adapter(
         )
 
     fragment_for_preparation = fragment_mol
-    if isinstance(fragment_mol, PreparedMol):
-        fragment_for_preparation, _ = _connected_prepared_mol_fragment(
-            fragment_mol,
-            rooted_at_atom=-1,
-        )
+    connected_fragment = _connected_prepared_mol_fragment_or_none(
+        fragment_mol,
+        rooted_at_atom=-1,
+    )
+    if connected_fragment is not None:
+        fragment_for_preparation, _ = connected_fragment
     prepared_fragment = prepare_smiles_graph(
         fragment_for_preparation,
         flags=flags.with_rooted_at_atom(0),
@@ -550,7 +492,7 @@ def _make_fragment_state_adapter(
 
 
 def _make_disconnected_decoder(
-    prepared: PreparedMol,
+    prepared: object,
     flags: MolToSmilesFlags,
 ) -> _DisconnectedStateAdapter:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
@@ -560,7 +502,7 @@ def _make_disconnected_decoder(
             flags=flags,
             rooted_at_atom=plan.rooted_at_atom,
         )
-        for plan in _fragment_plans_for_prepared_mol(
+        for plan in _prepared_mol_fragment_plans(
             prepared,
             rooted_at_atom=rooted_at_atom,
         )
@@ -699,11 +641,12 @@ def _connected_token_inventory_superset(
     flags: MolToSmilesFlags,
 ) -> tuple[str, ...]:
     rooted_at_atom = flags.rooted_at_atom
-    if isinstance(mol_or_prepared, PreparedMol):
-        fragment, rooted_at_atom = _connected_prepared_mol_fragment(
-            mol_or_prepared,
-            rooted_at_atom=flags.rooted_at_atom,
-        )
+    connected_fragment = _connected_prepared_mol_fragment_or_none(
+        mol_or_prepared,
+        rooted_at_atom=flags.rooted_at_atom,
+    )
+    if connected_fragment is not None:
+        fragment, rooted_at_atom = connected_fragment
         mol_or_prepared = fragment
         flags = flags.with_rooted_at_atom(rooted_at_atom)
 
@@ -715,13 +658,13 @@ def _connected_token_inventory_superset(
 
 
 def _fragmented_prepared_token_inventory_superset(
-    prepared: PreparedMol,
+    prepared: object,
     *,
     flags: MolToSmilesFlags,
 ) -> tuple[str, ...]:
     rooted_at_atom = None if flags.rooted_at_atom < 0 else flags.rooted_at_atom
     inventory: set[str] = set()
-    fragment_plans = _fragment_plans_for_prepared_mol(
+    fragment_plans = _prepared_mol_fragment_plans(
         prepared,
         rooted_at_atom=rooted_at_atom,
     )

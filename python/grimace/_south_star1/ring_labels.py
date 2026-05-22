@@ -68,11 +68,16 @@ def validate_bounded_ring_labels(
             )
         )
 
-    _validate_label_reuse(intervals)
-    return tuple(sorted(intervals, key=lambda interval: interval.start))
+    sorted_intervals = tuple(
+        sorted(intervals, key=lambda interval: (interval.start, int(interval.bond)))
+    )
+    _validate_label_reuse(sorted_intervals)
+    if policy.least_free_ring_labels:
+        _validate_least_free_labels(policy, sorted_intervals)
+    return sorted_intervals
 
 
-def _validate_label_reuse(intervals: list[RingLabelInterval]) -> None:
+def _validate_label_reuse(intervals: tuple[RingLabelInterval, ...]) -> None:
     for i, left in enumerate(intervals):
         for right in intervals[i + 1 :]:
             if left.label != right.label:
@@ -82,6 +87,34 @@ def _validate_label_reuse(intervals: list[RingLabelInterval]) -> None:
                     f"ring label {left.label!r} has overlapping intervals "
                     f"for bonds {left.bond!r} and {right.bond!r}"
                 )
+
+
+def _validate_least_free_labels(
+    policy: SmilesPolicy,
+    intervals: tuple[RingLabelInterval, ...],
+) -> None:
+    for interval in intervals:
+        active = {
+            other.label
+            for other in intervals
+            if other.start < interval.start < other.end
+        }
+        candidates = tuple(
+            label
+            for label in policy.ring_labels
+            if label not in active
+        )
+        if not candidates:
+            raise ValueError(
+                f"no free ring label for interval on bond {interval.bond!r}"
+            )
+
+        expected = min(candidates, key=lambda label: label.value)
+        if interval.label != expected:
+            raise ValueError(
+                f"ring bond {interval.bond!r} violates least-free label policy: "
+                f"expected {expected!r}, got {interval.label!r}"
+            )
 
 
 __all__ = (

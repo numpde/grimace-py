@@ -215,9 +215,9 @@ def enumerate_ring_label_assignments(
         dict[RingEndpointId, RingLabel]
 
     The generator assigns the same label to both endpoints of a ring bond and
-    enforces non-overlap for reused labels.  The existing ring-label validator
-    remains the source of truth; this generator merely avoids producing most
-    impossible candidates.
+    enforces non-overlap for reused labels. The ring-label validator remains
+    the source of truth, including least-free normalization when requested;
+    this generator mirrors that policy by construction.
     """
 
     if not slots.ring_endpoints:

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 from grimace._south_star1.constraints import TraversalAssignment
 from grimace._south_star1.constraints import validate_stereo_traversal_witness
 from grimace._south_star1.facts import DirectionalValue
+from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import StereoFacts
 from grimace._south_star1.facts import TetraValue
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
@@ -65,6 +68,30 @@ class StereoRelationsTest(unittest.TestCase):
                 _StereoSemantics(),
             )
 
+    def test_unspecified_tetrahedral_site_forces_no_accidental_token(self) -> None:
+        facts = _unspecified_tetrahedral_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+
+        validate_stereo_traversal_witness(
+            facts,
+            skeleton,
+            slots,
+            _assignment(facts, slots, tetra_center_token=TetraToken.NONE),
+            organic_subset_policy(facts),
+            _StereoSemantics(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "tetrahedral relation"):
+            validate_stereo_traversal_witness(
+                facts,
+                skeleton,
+                slots,
+                _assignment(facts, slots, tetra_center_token=TetraToken.AT),
+                organic_subset_policy(facts),
+                _StereoSemantics(),
+            )
+
     def test_directional_relation_accepts_carrier_marks(self) -> None:
         facts = directional_facts()
         skeleton = _first_skeleton(facts)
@@ -101,6 +128,30 @@ class StereoRelationsTest(unittest.TestCase):
                 _StereoSemantics(),
             )
 
+    def test_unspecified_directional_site_forces_no_accidental_marks(self) -> None:
+        facts = _unspecified_directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+
+        validate_stereo_traversal_witness(
+            facts,
+            skeleton,
+            slots,
+            _assignment(facts, slots, mark_first_carrier=False),
+            organic_subset_policy(facts),
+            _StereoSemantics(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "directional relation"):
+            validate_stereo_traversal_witness(
+                facts,
+                skeleton,
+                slots,
+                _assignment(facts, slots, mark_first_carrier=True),
+                organic_subset_policy(facts),
+                _StereoSemantics(),
+            )
+
 
 def _first_skeleton(facts):
     return enumerate_traversal_skeletons(
@@ -108,6 +159,26 @@ def _first_skeleton(facts):
         build_graph_index(facts),
         organic_subset_policy(facts),
     )[0]
+
+
+def _unspecified_tetrahedral_facts():
+    facts = tetrahedral_facts()
+    site = replace(
+        facts.stereo.tetrahedral[0],
+        status=SiteStatus.UNSPECIFIED,
+        target=TetraValue.NONE,
+    )
+    return replace(facts, stereo=StereoFacts(tetrahedral=(site,)))
+
+
+def _unspecified_directional_facts():
+    facts = directional_facts()
+    site = replace(
+        facts.stereo.directional[0],
+        status=SiteStatus.UNSPECIFIED,
+        target=DirectionalValue.NONE,
+    )
+    return replace(facts, stereo=StereoFacts(directional=(site,)))
 
 
 def _assignment(

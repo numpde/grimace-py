@@ -113,7 +113,8 @@ class StereoRelationsTest(unittest.TestCase):
             {constraint.name for constraint in constraints},
         )
 
-    def test_stereo_renderer_uses_direction_marks_on_bond_slots(self) -> None:
+    def test_toy_stereo_renderer_uses_direction_marks_on_bond_slots(self) -> None:
+        """Toy fixture: all bond choices are empty/directional test choices."""
         facts = directional_facts()
         skeleton = _first_skeleton(facts)
         slots = allocate_traversal_slots(facts, skeleton)

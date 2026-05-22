@@ -137,7 +137,8 @@ class StereoWitnessTest(unittest.TestCase):
             all("[C@@H]" not in witness.rendered for witness in witnesses)
         )
 
-    def test_directional_site_can_have_exactly_one_valid_carrier_pair(self) -> None:
+    def test_toy_directional_site_can_have_exactly_one_valid_carrier_pair(self) -> None:
+        """Toy fixture: exercises carrier relations, not alkene SMILES spelling."""
         facts = directional_facts()
         skeleton = _first_skeleton(facts)
         slots = allocate_traversal_slots(facts, skeleton)
@@ -167,28 +168,20 @@ class StereoWitnessTest(unittest.TestCase):
         slots = allocate_traversal_slots(facts, skeleton)
         carrier_by_bond = _carrier_by_bond(slots)
         center_bond = facts.stereo.directional[0].center_bond
-        scope = (
-            carrier_by_bond[BondId(1)].id,
-            carrier_by_bond[BondId(2)].id,
-        )
-        semantics = _DirectionalPairSemantics(
-            scope_by_site={SiteId(0): scope},
-            required_by_site={
-                SiteId(0): (DirectionMark.FWD, DirectionMark.REV),
-            },
-        )
+        policy = _alkene_policy_for_slots(facts, slots)
+        semantics = _alkene_directional_semantics(slots)
         witnesses, stats = collect_stereo_witnesses_for_skeleton(
             facts=facts,
             skeleton=skeleton,
             slots=slots,
-            policy=_alkene_policy_for_slots(facts, slots),
+            policy=policy,
             semantics=semantics,
         )
         prefix = next(
             enumerate_presentation_prefixes(
                 facts=facts,
                 slots=slots,
-                policy=_alkene_policy_for_slots(facts, slots),
+                policy=policy,
             )
         )
         csp = build_stereo_csp(
@@ -196,7 +189,7 @@ class StereoWitnessTest(unittest.TestCase):
             skeleton=skeleton,
             slots=slots,
             prefix=prefix,
-            policy=_alkene_policy_for_slots(facts, slots),
+            policy=policy,
             semantics=semantics,
         )
 
@@ -210,6 +203,35 @@ class StereoWitnessTest(unittest.TestCase):
         self.assertIn("=", witnesses[0].rendered)
         self.assertIn("/", witnesses[0].rendered)
         self.assertIn("\\", witnesses[0].rendered)
+
+    def test_alkene_style_directional_examples_preserve_center_double_bond(self) -> None:
+        facts = directional_facts()
+        rendered: list[str] = []
+
+        for skeleton in enumerate_traversal_skeletons(
+            facts,
+            build_graph_index(facts),
+            _policy_for_facts_only(facts),
+        ):
+            if skeleton.roots != (AtomId(0),):
+                continue
+
+            slots = allocate_traversal_slots(facts, skeleton)
+            witnesses, _ = collect_stereo_witnesses_for_skeleton(
+                facts=facts,
+                skeleton=skeleton,
+                slots=slots,
+                policy=_alkene_policy_for_slots(facts, slots),
+                semantics=_alkene_directional_semantics(slots),
+            )
+            rendered.extend(witness.rendered for witness in witnesses)
+            if len(rendered) >= 8:
+                break
+
+        self.assertEqual(len(rendered), 8)
+        self.assertTrue(all("=" in value for value in rendered))
+        self.assertTrue(all("/" in value and "\\" in value for value in rendered))
+        self.assertIn("C(/F)=C(\\Cl)", rendered)
 
     def test_shared_carrier_directional_constraints_are_global(self) -> None:
         facts = _two_site_directional_facts()
@@ -410,6 +432,20 @@ def _carrier_by_bond(slots: SlotBundle):
     }
 
 
+def _alkene_directional_semantics(slots: SlotBundle) -> "_DirectionalPairSemantics":
+    carrier_by_bond = _carrier_by_bond(slots)
+    scope = (
+        carrier_by_bond[BondId(1)].id,
+        carrier_by_bond[BondId(2)].id,
+    )
+    return _DirectionalPairSemantics(
+        scope_by_site={SiteId(0): scope},
+        required_by_site={
+            SiteId(0): (DirectionMark.FWD, DirectionMark.REV),
+        },
+    )
+
+
 def _independent_directional_rows(
     facts: MoleculeFacts,
     slots: SlotBundle,
@@ -545,6 +581,9 @@ def _chiral_carbon_choice() -> AtomTextChoice:
 
 
 def _directional_bond_choice() -> BondTextChoice:
+    # Toy witness policy: useful for isolating carrier constraints before
+    # SMILES-like bond spelling is introduced.  Alkene-style tests use
+    # _alkene_policy_for_slots so the center double bond renders as "=".
     return BondTextChoice(
         name="single_or_directional",
         base_text="",

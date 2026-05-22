@@ -171,6 +171,68 @@ impl PreparedMolData {
         Ok(())
     }
 
+    fn atom_count(&self) -> usize {
+        self.fragments
+            .iter()
+            .map(|fragment| fragment.atom_indices.len())
+            .sum()
+    }
+
+    fn local_root_for_global_atom(&self, rooted_at_atom: usize) -> Option<(usize, usize)> {
+        for (fragment_idx, fragment) in self.fragments.iter().enumerate() {
+            if let Some(local_idx) = fragment
+                .atom_indices
+                .iter()
+                .position(|atom_idx| *atom_idx == rooted_at_atom)
+            {
+                return Some((fragment_idx, local_idx));
+            }
+        }
+        None
+    }
+
+    fn rooted_fragments(
+        &self,
+        rooted_at_atom: Option<isize>,
+    ) -> PyResult<Vec<(PyPreparedSmilesGraph, Option<usize>)>> {
+        let rooted_local_atom = match rooted_at_atom {
+            None => None,
+            Some(rooted_at_atom) => {
+                if rooted_at_atom < 0 {
+                    return Err(PyIndexError::new_err("root_idx out of range"));
+                }
+                let rooted_at_atom = rooted_at_atom as usize;
+                if self.fragments.len() == 1 && self.fragments[0].atom_indices.is_empty() {
+                    if rooted_at_atom == 0 {
+                        Some((0, 0))
+                    } else {
+                        return Err(PyIndexError::new_err("root_idx out of range"));
+                    }
+                } else {
+                    Some(
+                        self.local_root_for_global_atom(rooted_at_atom)
+                            .ok_or_else(|| PyIndexError::new_err("root_idx out of range"))?,
+                    )
+                }
+            }
+        };
+
+        Ok(self
+            .fragments
+            .iter()
+            .enumerate()
+            .map(|(fragment_idx, fragment)| {
+                let local_root = rooted_local_atom.and_then(|(rooted_fragment_idx, local_idx)| {
+                    (fragment_idx == rooted_fragment_idx).then_some(local_idx)
+                });
+                (
+                    PyPreparedSmilesGraph::from_data(fragment.prepared_graph.clone()),
+                    local_root,
+                )
+            })
+            .collect())
+    }
+
     fn to_binary(&self) -> Vec<u8> {
         let mut writer = BinaryWriter::new();
         writer.write_raw(PREPARED_MOL_BINARY_MAGIC);
@@ -685,6 +747,17 @@ impl PyPreparedMol {
         self.data.fragments.len()
     }
 
+    fn atom_count(&self) -> usize {
+        self.data.atom_count()
+    }
+
+    fn rooted_fragments(
+        &self,
+        rooted_at_atom: Option<isize>,
+    ) -> PyResult<Vec<(PyPreparedSmilesGraph, Option<usize>)>> {
+        self.data.rooted_fragments(rooted_at_atom)
+    }
+
     fn fragment_atom_indices(&self, fragment_idx: usize) -> PyResult<Vec<usize>> {
         self.data
             .fragments
@@ -712,6 +785,7 @@ mod tests {
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     };
+    use pyo3::PyResult;
 
     fn writer_flags() -> PreparedMolWriterFlags {
         PreparedMolWriterFlags {
@@ -772,19 +846,27 @@ mod tests {
     }
 
     fn empty_graph() -> PreparedSmilesGraphData {
+        carbon_graph_with_atom_count(0)
+    }
+
+    fn carbon_graph_with_atom_count(atom_count: usize) -> PreparedSmilesGraphData {
         let mut graph = single_atom_graph();
-        graph.identity_smiles = String::new();
-        graph.atom_count = 0;
-        graph.atom_atomic_numbers = Vec::new();
-        graph.atom_is_aromatic = Vec::new();
-        graph.atom_isotopes = Vec::new();
-        graph.atom_formal_charges = Vec::new();
-        graph.atom_total_hs = Vec::new();
-        graph.atom_radical_electrons = Vec::new();
-        graph.atom_map_numbers = Vec::new();
-        graph.atom_tokens = Vec::new();
-        graph.neighbors = Vec::new();
-        graph.neighbor_bond_tokens = Vec::new();
+        graph.identity_smiles = if atom_count == 0 {
+            String::new()
+        } else {
+            vec!["C"; atom_count].join(".")
+        };
+        graph.atom_count = atom_count;
+        graph.atom_atomic_numbers = vec![6; atom_count];
+        graph.atom_is_aromatic = vec![false; atom_count];
+        graph.atom_isotopes = vec![0; atom_count];
+        graph.atom_formal_charges = vec![0; atom_count];
+        graph.atom_total_hs = vec![4; atom_count];
+        graph.atom_radical_electrons = vec![0; atom_count];
+        graph.atom_map_numbers = vec![0; atom_count];
+        graph.atom_tokens = vec!["C".to_owned(); atom_count];
+        graph.neighbors = vec![Vec::new(); atom_count];
+        graph.neighbor_bond_tokens = vec![Vec::new(); atom_count];
         graph
     }
 
@@ -803,6 +885,15 @@ mod tests {
             atom_indices,
             prepared_graph,
         }
+    }
+
+    fn rooted_fragment_roots(
+        prepared: &PreparedMolData,
+        rooted_at_atom: Option<isize>,
+    ) -> PyResult<Vec<Option<usize>>> {
+        prepared
+            .rooted_fragments(rooted_at_atom)
+            .map(|fragments| fragments.into_iter().map(|(_, root)| root).collect())
     }
 
     #[test]
@@ -861,19 +952,10 @@ mod tests {
 
     #[test]
     fn rejects_unsorted_fragment_atom_indices() {
-        let mut graph = single_atom_graph();
-        graph.atom_count = 2;
-        graph.atom_atomic_numbers = vec![6, 6];
-        graph.atom_is_aromatic = vec![false, false];
-        graph.atom_isotopes = vec![0, 0];
-        graph.atom_formal_charges = vec![0, 0];
-        graph.atom_total_hs = vec![4, 4];
-        graph.atom_radical_electrons = vec![0, 0];
-        graph.atom_map_numbers = vec![0, 0];
-        graph.atom_tokens = vec!["C".to_owned(), "C".to_owned()];
-        graph.neighbors = vec![Vec::new(), Vec::new()];
-        graph.neighbor_bond_tokens = vec![Vec::new(), Vec::new()];
-        let prepared = prepared_mol_with_fragments(vec![fragment(vec![1, 0], graph)]);
+        let prepared = prepared_mol_with_fragments(vec![fragment(
+            vec![1, 0],
+            carbon_graph_with_atom_count(2),
+        )]);
 
         assert!(prepared.validate().is_err());
     }
@@ -892,6 +974,63 @@ mod tests {
         let prepared = prepared_mol_with_fragments(vec![fragment(vec![0], graph)]);
 
         assert!(prepared.validate().is_err());
+    }
+
+    #[test]
+    fn atom_count_sums_fragment_atom_indices() {
+        let prepared = prepared_mol_with_fragments(vec![
+            fragment(vec![0], single_atom_graph()),
+            fragment(vec![1], single_atom_graph()),
+        ]);
+
+        assert_eq!(prepared.atom_count(), 2);
+    }
+
+    #[test]
+    fn rooted_fragments_without_root_leaves_all_fragments_unrooted() {
+        let prepared = prepared_mol_with_fragments(vec![
+            fragment(vec![0], single_atom_graph()),
+            fragment(vec![1], single_atom_graph()),
+        ]);
+
+        assert_eq!(
+            rooted_fragment_roots(&prepared, None).expect("rooted fragments should be available"),
+            vec![None, None],
+        );
+    }
+
+    #[test]
+    fn rooted_fragments_maps_global_root_to_fragment_local_root() {
+        let prepared = prepared_mol_with_fragments(vec![
+            fragment(vec![0], single_atom_graph()),
+            fragment(vec![1, 2], carbon_graph_with_atom_count(2)),
+        ]);
+
+        assert_eq!(
+            rooted_fragment_roots(&prepared, Some(2))
+                .expect("global root should be mapped to a fragment-local root"),
+            vec![None, Some(1)],
+        );
+    }
+
+    #[test]
+    fn rooted_fragments_rejects_missing_root() {
+        let prepared = prepared_mol_with_fragments(vec![fragment(vec![0], single_atom_graph())]);
+
+        assert!(prepared.rooted_fragments(Some(1)).is_err());
+        assert!(prepared.rooted_fragments(Some(-1)).is_err());
+    }
+
+    #[test]
+    fn rooted_fragments_maps_empty_molecule_root_zero() {
+        let prepared = prepared_mol_with_fragments(vec![fragment(Vec::new(), empty_graph())]);
+
+        assert_eq!(
+            rooted_fragment_roots(&prepared, Some(0))
+                .expect("empty molecule root zero should be accepted"),
+            vec![Some(0)],
+        );
+        assert!(prepared.rooted_fragments(Some(1)).is_err());
     }
 
     #[test]

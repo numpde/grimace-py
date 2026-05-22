@@ -8,6 +8,11 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _attribute_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+
+
 class RuntimeBoundaryTests(unittest.TestCase):
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
@@ -35,26 +40,21 @@ class RuntimeBoundaryTests(unittest.TestCase):
 
         for path in self.runtime_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-                method_names = {
-                    node.attr
-                    for node in ast.walk(tree)
-                    if isinstance(node, ast.Attribute)
-                }
-                self.assertFalse(forbidden_methods & method_names)
+                self.assertFalse(forbidden_methods & _attribute_names(path))
 
     def test_runtime_modules_do_not_use_prepared_graph_dict_transport(self) -> None:
         forbidden_methods = {"to_dict", "from_dict"}
 
         for path in self.runtime_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
-                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-                method_names = {
-                    node.attr
-                    for node in ast.walk(tree)
-                    if isinstance(node, ast.Attribute)
-                }
-                self.assertFalse(forbidden_methods & method_names)
+                self.assertFalse(forbidden_methods & _attribute_names(path))
+
+    def test_runtime_modules_do_not_inspect_prepared_mol_fragment_storage(self) -> None:
+        forbidden_methods = {"fragment_atom_indices", "fragment_prepared_graph"}
+
+        for path in self.runtime_modules:
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                self.assertFalse(forbidden_methods & _attribute_names(path))
 
 
 if __name__ == "__main__":

@@ -14,7 +14,6 @@ from grimace._mol_to_smiles_options import (
 
 
 _PreparedMolFragment: TypeAlias = tuple[tuple[int, ...], object]
-_PreparedMolRootedFragment: TypeAlias = tuple[object, int | None]
 
 
 def _core_module() -> object:
@@ -86,38 +85,15 @@ def _fragment_count(prepared: PreparedMol) -> int:
 
 
 def _atom_count(prepared: PreparedMol) -> int:
-    return sum(
-        len(prepared._inner.fragment_atom_indices(fragment_idx))
-        for fragment_idx in range(prepared._inner.fragment_count())
-    )
+    return prepared._inner.atom_count()
 
 
 def _rooted_fragments(
     prepared: PreparedMol,
     *,
     rooted_at_atom: int | None,
-) -> tuple[_PreparedMolRootedFragment, ...]:
-    fragments = _fragments(prepared)
-    if rooted_at_atom is None:
-        return tuple((graph, None) for _, graph in fragments)
-    if len(fragments) == 1 and len(fragments[0][0]) == 0:
-        if rooted_at_atom == 0:
-            return ((fragments[0][1], 0),)
-        raise IndexError("root_idx out of range")
-
-    global_to_local: dict[int, tuple[int, int]] = {}
-    for fragment_idx, (atom_indices, _) in enumerate(fragments):
-        for local_idx, global_idx in enumerate(atom_indices):
-            global_to_local[global_idx] = (fragment_idx, local_idx)
-
-    if rooted_at_atom not in global_to_local:
-        raise IndexError("root_idx out of range")
-
-    rooted_fragment_idx, rooted_local_idx = global_to_local[rooted_at_atom]
-    return tuple(
-        (graph, rooted_local_idx if fragment_idx == rooted_fragment_idx else None)
-        for fragment_idx, (_, graph) in enumerate(fragments)
-    )
+) -> tuple[tuple[object, int | None], ...]:
+    return tuple(prepared._inner.rooted_fragments(rooted_at_atom))
 
 
 def _is_rdkit_mol(value: object) -> bool:

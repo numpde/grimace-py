@@ -54,6 +54,13 @@ class SouthStarSupportGateTests(unittest.TestCase):
         self.assertUnsupportedCategory("dative_bond", report.categories)
         self.assertUnsupportedCategory("metal_atom", report.categories)
 
+    def test_nonmetal_dative_surface_is_fail_fast_unsupported(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("N->[O]"))
+
+        self.assertUnsupportedCategory("dative_bond", report.categories)
+        self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
+        self.assertNotIn("metal_atom", report.categories)
+
     def test_query_surfaces_are_fail_fast_unsupported(self) -> None:
         query = Chem.MolFromSmarts("[#6]-[#8]")
         self.assertIsNotNone(query)
@@ -61,6 +68,12 @@ class SouthStarSupportGateTests(unittest.TestCase):
 
         self.assertUnsupportedCategory("query_atom", report.categories)
         self.assertUnsupportedCategory("query_bond", report.categories)
+
+    def test_unspecified_smiles_bond_is_query_boundary(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("C~C"))
+
+        self.assertUnsupportedCategory("query_bond", report.categories)
+        self.assertUnsupportedCategory("unsupported_bond_type", report.categories)
 
     def test_supported_disconnected_stereo_fragments_are_inside_gate_scope(self) -> None:
         report = south_star_support_gate_report(parse_smiles("F/C=C\\Cl.O"))

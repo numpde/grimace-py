@@ -8,6 +8,12 @@ from grimace._reference import (
     DEFAULT_RDKIT_RANDOM_POLICY_PATH,
     ReferencePolicy,
 )
+from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
+
+
+MOL_TO_SMILES_PUBLIC_OPTION_NAMES = {
+    spec.public_name for spec in MOL_TO_SMILES_OPTIONS
+}
 
 
 class ReferencePolicyTest(unittest.TestCase):
@@ -25,32 +31,11 @@ class ReferencePolicyTest(unittest.TestCase):
         policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
 
         self.assertEqual(
-            {
-                "seed",
-                "draw_budget",
-                "isomericSmiles",
-                "kekuleSmiles",
-                "rootedAtAtom",
-                "canonical",
-                "allBondsExplicit",
-                "allHsExplicit",
-                "doRandom",
-                "ignoreAtomMapNumbers",
-            },
+            {"seed", "draw_budget", *MOL_TO_SMILES_PUBLIC_OPTION_NAMES},
             set(policy.data["sampling"]),
         )
         self.assertEqual(
-            {
-                "parse_with_rdkit",
-                "canonical",
-                "isomericSmiles",
-                "kekuleSmiles",
-                "rootedAtAtom",
-                "allBondsExplicit",
-                "allHsExplicit",
-                "doRandom",
-                "ignoreAtomMapNumbers",
-            },
+            {"parse_with_rdkit", *MOL_TO_SMILES_PUBLIC_OPTION_NAMES},
             set(policy.data["identity_check"]),
         )
 

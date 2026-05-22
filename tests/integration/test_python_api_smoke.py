@@ -35,6 +35,10 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertTrue(callable(grimace.MolToSmilesTokenInventorySuperset))
         self.assertFalse(hasattr(grimace, "MolToSmilesSupport"))
         self.assertFalse(hasattr(grimace, "ReferencePolicy"))
+        self.assertFalse(hasattr(grimace, "MOL_TO_SMILES_OPTIONS"))
+        self.assertFalse(
+            hasattr(grimace, "mol_to_smiles_internal_kwargs_from_public_values")
+        )
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_stereo_smiles_support"))
         decoder = grimace.MolToSmilesDecoder(
@@ -166,7 +170,7 @@ class PythonApiSmokeTests(unittest.TestCase):
                     self,
                     mol,
                     kwargs=supported_public_kwargs(rootedAtAtom=rooted_at_atom),
-                    expected_exception=NotImplementedError,
+                    expected_exception=TypeError,
                     expected_regex=(
                         "rootedAtAtom to follow RDKit's Python binding and be an integer"
                     ),
@@ -178,7 +182,7 @@ class PythonApiSmokeTests(unittest.TestCase):
             self,
             mol,
             kwargs=supported_public_kwargs(rootedAtAtom=None),
-            expected_exception=NotImplementedError,
+            expected_exception=TypeError,
             expected_regex="rootedAtAtom to follow RDKit's Python binding and be an integer",
         )
 
@@ -280,11 +284,10 @@ class PythonApiSmokeTests(unittest.TestCase):
                     self,
                     mol,
                     kwargs=supported_public_kwargs(rootedAtAtom=0, **{flag_name: invalid_value}),
-                    expected_exception=NotImplementedError,
+                    expected_exception=TypeError,
                     expected_regex=(
                         f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None"
                     ),
-                    included_entrypoints=("enum",),
                 )
 
     def test_public_api_reports_out_of_range_root_consistently_for_connected_molecules(self) -> None:

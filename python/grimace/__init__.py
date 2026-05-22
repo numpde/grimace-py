@@ -11,6 +11,7 @@ import importlib
 from collections.abc import Iterator, Sequence
 from typing import Any
 
+import grimace._mol_to_smiles_options as _options
 from grimace._prepared_mol import PreparedMol, PrepareMol
 
 try:
@@ -53,16 +54,13 @@ def MolToSmilesEnum(
     """
 
     runtime = _require_runtime()
+    option_values = locals()
     return runtime.mol_to_smiles_enum(
         mol,
-        isomeric_smiles=isomericSmiles,
-        kekule_smiles=kekuleSmiles,
-        rooted_at_atom=rootedAtAtom,
-        canonical=canonical,
-        all_bonds_explicit=allBondsExplicit,
-        all_hs_explicit=allHsExplicit,
-        do_random=doRandom,
-        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+        **_options.mol_to_smiles_internal_kwargs_from_public_values(
+            _options.MOL_TO_SMILES_OPTIONS,
+            option_values,
+        ),
     )
 
 
@@ -86,16 +84,13 @@ def MolToSmilesTokenInventory(
     """
 
     runtime = _require_runtime()
+    option_values = locals()
     return runtime.mol_to_smiles_token_inventory(
         mol,
-        isomeric_smiles=isomericSmiles,
-        kekule_smiles=kekuleSmiles,
-        rooted_at_atom=rootedAtAtom,
-        canonical=canonical,
-        all_bonds_explicit=allBondsExplicit,
-        all_hs_explicit=allHsExplicit,
-        do_random=doRandom,
-        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+        **_options.mol_to_smiles_internal_kwargs_from_public_values(
+            _options.MOL_TO_SMILES_OPTIONS,
+            option_values,
+        ),
     )
 
 
@@ -119,16 +114,13 @@ def MolToSmilesTokenInventorySuperset(
     """
 
     runtime = _require_runtime()
+    option_values = locals()
     return runtime.mol_to_smiles_token_inventory_superset(
         mol,
-        isomeric_smiles=isomericSmiles,
-        kekule_smiles=kekuleSmiles,
-        rooted_at_atom=rootedAtAtom,
-        canonical=canonical,
-        all_bonds_explicit=allBondsExplicit,
-        all_hs_explicit=allHsExplicit,
-        do_random=doRandom,
-        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+        **_options.mol_to_smiles_internal_kwargs_from_public_values(
+            _options.MOL_TO_SMILES_OPTIONS,
+            option_values,
+        ),
     )
 
 
@@ -152,17 +144,14 @@ def MolToSmilesDeviation(
     """
 
     _require_runtime()
+    option_values = locals()
     return _DEVIATION.mol_to_smiles_deviation(
         mol,
         candidate,
-        isomeric_smiles=isomericSmiles,
-        kekule_smiles=kekuleSmiles,
-        rooted_at_atom=rootedAtAtom,
-        canonical=canonical,
-        all_bonds_explicit=allBondsExplicit,
-        all_hs_explicit=allHsExplicit,
-        do_random=doRandom,
-        ignore_atom_map_numbers=ignoreAtomMapNumbers,
+        **_options.mol_to_smiles_internal_kwargs_from_public_values(
+            _options.MOL_TO_SMILES_OPTIONS,
+            option_values,
+        ),
     )
 
 
@@ -186,16 +175,13 @@ if _RUNTIME is not None:
             doRandom: bool = False,
             ignoreAtomMapNumbers: bool = False,
         ) -> None:
+            option_values = locals()
             super().__init__(
                 mol,
-                isomeric_smiles=isomericSmiles,
-                kekule_smiles=kekuleSmiles,
-                rooted_at_atom=rootedAtAtom,
-                canonical=canonical,
-                all_bonds_explicit=allBondsExplicit,
-                all_hs_explicit=allHsExplicit,
-                do_random=doRandom,
-                ignore_atom_map_numbers=ignoreAtomMapNumbers,
+                **_options.mol_to_smiles_internal_kwargs_from_public_values(
+                    _options.MOL_TO_SMILES_OPTIONS,
+                    option_values,
+                ),
             )
 
         @property

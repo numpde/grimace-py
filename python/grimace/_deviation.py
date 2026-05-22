@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
 from grimace import _runtime
+from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
 
 SmilesDeviationReason: TypeAlias = Literal["unexpected_text", "unexpected_token", "incomplete"]
 
@@ -217,15 +218,10 @@ def mol_to_smiles_deviation(
 ) -> SmilesDeviation | None:
     """Return the first candidate location outside the molecule's SMILES language."""
 
+    option_values = locals()
     options: DecoderOptions = {
-        "isomeric_smiles": isomeric_smiles,
-        "kekule_smiles": kekule_smiles,
-        "rooted_at_atom": rooted_at_atom,
-        "canonical": canonical,
-        "all_bonds_explicit": all_bonds_explicit,
-        "all_hs_explicit": all_hs_explicit,
-        "do_random": do_random,
-        "ignore_atom_map_numbers": ignore_atom_map_numbers,
+        spec.internal_name: option_values[spec.internal_name]
+        for spec in MOL_TO_SMILES_OPTIONS
     }
 
     if isinstance(candidate, str):

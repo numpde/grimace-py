@@ -4,6 +4,7 @@ from dataclasses import fields, is_dataclass
 import unittest
 
 import grimace
+from grimace._mol_to_smiles_options import MOL_TO_SMILES_PREPARED_OPTIONS
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     public_enum_support,
@@ -12,18 +13,13 @@ from tests.helpers.public_runtime import (
 )
 
 
-WRITER_KWARG_NAMES = (
-    "isomericSmiles",
-    "kekuleSmiles",
-    "allBondsExplicit",
-    "allHsExplicit",
-    "ignoreAtomMapNumbers",
-)
-
-
 class PreparedMolContractTests(unittest.TestCase):
     def _prepare_kwargs(self, kwargs: dict[str, object]) -> dict[str, object]:
-        return {name: kwargs[name] for name in WRITER_KWARG_NAMES if name in kwargs}
+        return {
+            spec.public_name: kwargs[spec.public_name]
+            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+            if spec.public_name in kwargs
+        }
 
     def _prepare(self, smiles: str, **kwargs: object) -> object:
         return grimace.PrepareMol(parse_smiles(smiles), **kwargs)

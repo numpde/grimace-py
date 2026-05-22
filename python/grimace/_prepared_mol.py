@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import importlib
-from numbers import Integral
 
 from rdkit import Chem
+
+from grimace._mol_to_smiles_options import (
+    MOL_TO_SMILES_PREPARED_OPTIONS,
+    coerce_mol_to_smiles_public_options,
+)
 
 
 _PREPARED_MOL_SCHEMA_VERSION = 1
@@ -111,26 +115,14 @@ def PrepareMol(
     if not isinstance(mol, Chem.Mol):
         raise TypeError("PrepareMol requires an RDKit Chem.Mol")
 
-    writer_isomeric_smiles = _coerce_bool_flag("isomericSmiles", isomericSmiles)
-    writer_kekule_smiles = _coerce_bool_flag("kekuleSmiles", kekuleSmiles)
-    writer_all_bonds_explicit = _coerce_bool_flag(
-        "allBondsExplicit",
-        allBondsExplicit,
-    )
-    writer_all_hs_explicit = _coerce_bool_flag("allHsExplicit", allHsExplicit)
-    writer_ignore_atom_map_numbers = _coerce_bool_flag(
-        "ignoreAtomMapNumbers",
-        ignoreAtomMapNumbers,
+    writer_options = coerce_mol_to_smiles_public_options(
+        MOL_TO_SMILES_PREPARED_OPTIONS,
+        locals(),
+        context="PrepareMol",
     )
 
     runtime = importlib.import_module("grimace._runtime")
-    runtime_flags = runtime.MolToSmilesFlags(
-        isomeric_smiles=writer_isomeric_smiles,
-        kekule_smiles=writer_kekule_smiles,
-        all_bonds_explicit=writer_all_bonds_explicit,
-        all_hs_explicit=writer_all_hs_explicit,
-        ignore_atom_map_numbers=writer_ignore_atom_map_numbers,
-    )
+    runtime_flags = runtime.MolToSmilesFlags(**writer_options)
 
     if mol.GetNumAtoms() == 0:
         fragments = [
@@ -155,24 +147,7 @@ def PrepareMol(
 
     payload = {
         "schema_version": _PREPARED_MOL_SCHEMA_VERSION,
-        "writer_flags": {
-            "isomeric_smiles": writer_isomeric_smiles,
-            "kekule_smiles": writer_kekule_smiles,
-            "all_bonds_explicit": writer_all_bonds_explicit,
-            "all_hs_explicit": writer_all_hs_explicit,
-            "ignore_atom_map_numbers": writer_ignore_atom_map_numbers,
-        },
+        "writer_flags": writer_options,
         "fragments": fragments,
     }
     return _make_prepared_mol(_core_module().PreparedMol(payload))
-
-
-def _coerce_bool_flag(name: str, value: object) -> bool:
-    if value is None:
-        return False
-    if not isinstance(value, Integral):
-        raise TypeError(
-            f"PrepareMol requires {name} to follow RDKit's Python binding "
-            "and be a bool, int, or None"
-        )
-    return bool(value)

@@ -6,10 +6,15 @@ import importlib
 from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from itertools import product
-from numbers import Integral
 from typing import Protocol, TypeAlias, cast
 
 import grimace._prepared_mol as _prepared_mol_module
+from grimace._mol_to_smiles_options import (
+    MOL_TO_SMILES_OPTIONS,
+    MOL_TO_SMILES_PREPARED_OPTIONS,
+    coerce_mol_to_smiles_internal_options,
+    coerce_mol_to_smiles_option,
+)
 
 _core = importlib.import_module("grimace._core")
 from grimace._prepared_mol import (
@@ -117,12 +122,12 @@ def _validate_surface_kind(
 def _runtime_writer_flag_values(
     flags: MolToSmilesFlags,
 ) -> tuple[bool, bool, bool, bool, bool]:
-    return (
-        bool(flags.isomeric_smiles),
-        bool(flags.kekule_smiles),
-        bool(flags.all_bonds_explicit),
-        bool(flags.all_hs_explicit),
-        bool(flags.ignore_atom_map_numbers),
+    return cast(
+        tuple[bool, bool, bool, bool, bool],
+        tuple(
+            bool(getattr(flags, spec.internal_name))
+            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+        ),
     )
 
 
@@ -178,42 +183,30 @@ def _prepare_runtime_input(
     if _prepared_mol_module._is_rdkit_mol(mol_or_prepared):
         return _prepared_mol_module.PrepareMol(
             mol_or_prepared,
-            isomericSmiles=flags.isomeric_smiles,
-            kekuleSmiles=flags.kekule_smiles,
-            allBondsExplicit=flags.all_bonds_explicit,
-            allHsExplicit=flags.all_hs_explicit,
-            ignoreAtomMapNumbers=flags.ignore_atom_map_numbers,
+            **{
+                spec.public_name: getattr(flags, spec.internal_name)
+                for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+            },
         )
     return mol_or_prepared
 
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
-    for name, value in (
-        ("isomericSmiles", flags.isomeric_smiles),
-        ("kekuleSmiles", flags.kekule_smiles),
-        ("canonical", flags.canonical),
-        ("allBondsExplicit", flags.all_bonds_explicit),
-        ("allHsExplicit", flags.all_hs_explicit),
-        ("doRandom", flags.do_random),
-        ("ignoreAtomMapNumbers", flags.ignore_atom_map_numbers),
-    ):
-        if value is not None and not isinstance(value, Integral):
-            raise NotImplementedError(
-                f"MolToSmiles runtime requires {name} to follow RDKit's Python binding "
-                "and be a bool, int, or None"
-            )
-    if not isinstance(flags.rooted_at_atom, Integral):
-        raise NotImplementedError(
-            "MolToSmiles runtime requires rootedAtAtom to follow RDKit's Python binding "
-            "and be an integer"
+    normalized = {
+        spec.internal_name: coerce_mol_to_smiles_option(
+            spec,
+            getattr(flags, spec.internal_name),
+            context="MolToSmiles runtime",
         )
-    if bool(flags.canonical):
+        for spec in MOL_TO_SMILES_OPTIONS
+    }
+    if bool(normalized["canonical"]):
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only canonical=False and "
             "doRandom=True; the public signatures keep RDKit-like defaults for "
             "surface compatibility, so pass those two flags explicitly."
         )
-    if not bool(flags.do_random):
+    if not bool(normalized["do_random"]):
         raise NotImplementedError(
             "MolToSmiles runtime currently supports only canonical=False and "
             "doRandom=True; the public signatures keep RDKit-like defaults for "
@@ -729,27 +722,12 @@ def _make_flags(
     do_random: bool = False,
     ignore_atom_map_numbers: bool = False,
 ) -> MolToSmilesFlags:
-    def _normalize_bool_like(value: object) -> object:
-        if value is None:
-            return False
-        if isinstance(value, Integral):
-            return bool(value)
-        return value
-
-    def _normalize_root(value: object) -> object:
-        if isinstance(value, Integral):
-            return int(value)
-        return value
-
     return MolToSmilesFlags(
-        isomeric_smiles=_normalize_bool_like(isomeric_smiles),
-        kekule_smiles=_normalize_bool_like(kekule_smiles),
-        rooted_at_atom=_normalize_root(rooted_at_atom),
-        canonical=_normalize_bool_like(canonical),
-        all_bonds_explicit=_normalize_bool_like(all_bonds_explicit),
-        all_hs_explicit=_normalize_bool_like(all_hs_explicit),
-        do_random=_normalize_bool_like(do_random),
-        ignore_atom_map_numbers=_normalize_bool_like(ignore_atom_map_numbers),
+        **coerce_mol_to_smiles_internal_options(
+            MOL_TO_SMILES_OPTIONS,
+            locals(),
+            context="MolToSmiles runtime",
+        )
     )
 
 

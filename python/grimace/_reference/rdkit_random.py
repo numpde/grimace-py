@@ -5,33 +5,16 @@ from typing import Any, Mapping
 
 from rdkit import Chem, rdBase
 
+from grimace._mol_to_smiles_options import MOL_TO_SMILES_OPTIONS
 from grimace._reference.policy import ReferencePolicy
 
 
-SAMPLING_KEYS = {
-    "seed",
-    "draw_budget",
-    "isomericSmiles",
-    "kekuleSmiles",
-    "rootedAtAtom",
-    "canonical",
-    "allBondsExplicit",
-    "allHsExplicit",
-    "doRandom",
-    "ignoreAtomMapNumbers",
+_MOL_TO_SMILES_PUBLIC_OPTION_NAMES = {
+    spec.public_name for spec in MOL_TO_SMILES_OPTIONS
 }
 
-IDENTITY_KEYS = {
-    "parse_with_rdkit",
-    "canonical",
-    "isomericSmiles",
-    "kekuleSmiles",
-    "rootedAtAtom",
-    "allBondsExplicit",
-    "allHsExplicit",
-    "doRandom",
-    "ignoreAtomMapNumbers",
-}
+SAMPLING_KEYS = {"seed", "draw_budget", *_MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
+IDENTITY_KEYS = {"parse_with_rdkit", *_MOL_TO_SMILES_PUBLIC_OPTION_NAMES}
 
 
 @dataclass(frozen=True)
@@ -70,13 +53,9 @@ def _sampling_kwargs(policy: ReferencePolicy) -> tuple[int, int, int, dict[str, 
         raise TypeError("sampling policy must be a JSON object")
     _require_keys(sampling, SAMPLING_KEYS, "sampling")
     kwargs = {
-        "isomericSmiles": sampling["isomericSmiles"],
-        "kekuleSmiles": sampling["kekuleSmiles"],
-        "canonical": sampling["canonical"],
-        "allBondsExplicit": sampling["allBondsExplicit"],
-        "allHsExplicit": sampling["allHsExplicit"],
-        "doRandom": sampling["doRandom"],
-        "ignoreAtomMapNumbers": sampling["ignoreAtomMapNumbers"],
+        spec.public_name: sampling[spec.public_name]
+        for spec in MOL_TO_SMILES_OPTIONS
+        if spec.public_name != "rootedAtAtom"
     }
     return int(sampling["seed"]), int(sampling["draw_budget"]), int(sampling["rootedAtAtom"]), kwargs
 
@@ -89,14 +68,8 @@ def _identity_kwargs(policy: ReferencePolicy) -> dict[str, Any]:
     if not identity["parse_with_rdkit"]:
         raise NotImplementedError("Only parse_with_rdkit=true is supported")
     return {
-        "isomericSmiles": identity["isomericSmiles"],
-        "kekuleSmiles": identity["kekuleSmiles"],
-        "rootedAtAtom": identity["rootedAtAtom"],
-        "canonical": identity["canonical"],
-        "allBondsExplicit": identity["allBondsExplicit"],
-        "allHsExplicit": identity["allHsExplicit"],
-        "doRandom": identity["doRandom"],
-        "ignoreAtomMapNumbers": identity["ignoreAtomMapNumbers"],
+        spec.public_name: identity[spec.public_name]
+        for spec in MOL_TO_SMILES_OPTIONS
     }
 
 

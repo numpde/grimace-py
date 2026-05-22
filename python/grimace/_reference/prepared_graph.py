@@ -7,6 +7,10 @@ from typing import Any
 
 from rdkit import Chem, rdBase
 
+from grimace._mol_to_smiles_options import (
+    MOL_TO_SMILES_OPTIONS,
+    MOL_TO_SMILES_PREPARED_OPTIONS,
+)
 from grimace._reference.policy import ReferencePolicy
 from grimace._reference.rdkit_random import mol_to_identity_smiles
 
@@ -779,23 +783,21 @@ def prepare_smiles_graph_from_mol_to_smiles_kwargs(
     working_mol = coerce_molecule_to_supported_surface(mol, surface_kind=surface_kind)
     check_supported_smiles_graph_surface(working_mol, surface_kind=surface_kind)
 
+    option_values = locals()
     sampling = {
-        "isomericSmiles": bool(isomeric_smiles),
-        "kekuleSmiles": bool(kekule_smiles),
-        "allBondsExplicit": bool(all_bonds_explicit),
-        "allHsExplicit": bool(all_hs_explicit),
-        "ignoreAtomMapNumbers": bool(ignore_atom_map_numbers),
+        spec.public_name: bool(option_values[spec.internal_name])
+        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
     }
     identity = {
         "parse_with_rdkit": True,
-        "canonical": True,
-        "isomericSmiles": bool(isomeric_smiles),
-        "kekuleSmiles": bool(kekule_smiles),
-        "rootedAtAtom": -1,
-        "allBondsExplicit": bool(all_bonds_explicit),
-        "allHsExplicit": bool(all_hs_explicit),
-        "doRandom": False,
-        "ignoreAtomMapNumbers": bool(ignore_atom_map_numbers),
+        **{
+            spec.public_name: (
+                bool(option_values[spec.internal_name])
+                if spec.scope == "prepared"
+                else spec.default
+            )
+            for spec in MOL_TO_SMILES_OPTIONS
+        },
     }
     descriptor = {
         "surface_kind": surface_kind,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from itertools import permutations
 import unittest
 
 from grimace._south_star1.annotation import ValidWitness
@@ -47,7 +48,10 @@ from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import RingEndpointSlot
 from grimace._south_star1.slots import SlotBundle
 from grimace._south_star1.slots import allocate_traversal_slots
+from grimace._south_star1.slots import carrier_slot_by_bond_slot
+from grimace._south_star1.stereo_csp import build_stereo_csp
 from grimace._south_star1.stereo_witness import collect_stereo_witnesses_for_skeleton
+from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
 
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
@@ -57,13 +61,61 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 
 class StereoWitnessTest(unittest.TestCase):
+    def test_tetrahedral_required_tokens_follow_ligand_order_parity(self) -> None:
+        facts = tetrahedral_facts()
+        semantics = _TetraOrderSemantics()
+        reference = facts.stereo.tetrahedral[0].reference_order
+        neighbor_ligands = reference[:3]
+        implicit_h = reference[3]
+        required_tokens: dict[tuple[OccurrenceId, ...], TetraToken] = {}
+
+        for local_order in permutations(reference):
+            token = _required_tetra_token(facts, semantics, local_order)
+            required_tokens[local_order] = token
+
+            for left in range(len(local_order)):
+                for right in range(left + 1, len(local_order)):
+                    swapped = list(local_order)
+                    swapped[left], swapped[right] = swapped[right], swapped[left]
+                    self.assertIsNot(
+                        token,
+                        _required_tetra_token(facts, semantics, tuple(swapped)),
+                    )
+
+        self.assertEqual(
+            sum(token is TetraToken.AT for token in required_tokens.values()),
+            12,
+        )
+        self.assertEqual(
+            sum(token is TetraToken.ATAT for token in required_tokens.values()),
+            12,
+        )
+
+        required_tokens = {}
+        for order_3 in permutations(neighbor_ligands):
+            local_order = order_3 + (implicit_h,)
+            token = _required_tetra_token(facts, semantics, local_order)
+            required_tokens[local_order] = token
+
+            swapped = (order_3[1], order_3[0], order_3[2], implicit_h)
+            self.assertIsNot(token, _required_tetra_token(facts, semantics, swapped))
+
+        self.assertEqual(
+            sum(token is TetraToken.AT for token in required_tokens.values()),
+            3,
+        )
+        self.assertEqual(
+            sum(token is TetraToken.ATAT for token in required_tokens.values()),
+            3,
+        )
+
     def test_tetrahedral_skeleton_orders_can_require_opposite_tokens(self) -> None:
         facts = tetrahedral_facts()
         semantics = _TetraOrderSemantics()
         rendered = _rendered_for_matching_skeletons(facts, semantics)
 
-        self.assertTrue(any("[C@H]" in value for value in rendered))
-        self.assertTrue(any("[C@@H]" in value for value in rendered))
+        self.assertEqual(sum("[C@H]" in value for value in rendered), 6)
+        self.assertEqual(sum("[C@@H]" in value for value in rendered), 6)
 
     def test_unspecified_tetrahedral_site_rejects_accidental_tokens(self) -> None:
         facts = _unspecified_tetrahedral_facts()
@@ -109,6 +161,56 @@ class StereoWitnessTest(unittest.TestCase):
         self.assertIn("/", witnesses[0].rendered)
         self.assertIn("\\", witnesses[0].rendered)
 
+    def test_directional_carriers_are_adjacent_to_center_bond(self) -> None:
+        facts = directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+        carrier_by_bond = _carrier_by_bond(slots)
+        center_bond = facts.stereo.directional[0].center_bond
+        scope = (
+            carrier_by_bond[BondId(1)].id,
+            carrier_by_bond[BondId(2)].id,
+        )
+        semantics = _DirectionalPairSemantics(
+            scope_by_site={SiteId(0): scope},
+            required_by_site={
+                SiteId(0): (DirectionMark.FWD, DirectionMark.REV),
+            },
+        )
+        witnesses, stats = collect_stereo_witnesses_for_skeleton(
+            facts=facts,
+            skeleton=skeleton,
+            slots=slots,
+            policy=_alkene_policy_for_slots(facts, slots),
+            semantics=semantics,
+        )
+        prefix = next(
+            enumerate_presentation_prefixes(
+                facts=facts,
+                slots=slots,
+                policy=_alkene_policy_for_slots(facts, slots),
+            )
+        )
+        csp = build_stereo_csp(
+            facts=facts,
+            skeleton=skeleton,
+            slots=slots,
+            prefix=prefix,
+            policy=_alkene_policy_for_slots(facts, slots),
+            semantics=semantics,
+        )
+
+        scoped_carriers = (carrier_by_bond[BondId(1)], carrier_by_bond[BondId(2)])
+        self.assertTrue(all(carrier.bond != center_bond for carrier in scoped_carriers))
+        self.assertEqual(
+            csp.direction_domains[carrier_by_bond[center_bond].id],
+            (DirectionMark.ABSENT,),
+        )
+        self.assertEqual(stats.witness_count, 1)
+        self.assertIn("=", witnesses[0].rendered)
+        self.assertIn("/", witnesses[0].rendered)
+        self.assertIn("\\", witnesses[0].rendered)
+
     def test_shared_carrier_directional_constraints_are_global(self) -> None:
         facts = _two_site_directional_facts()
         skeleton = _first_skeleton(facts)
@@ -134,6 +236,39 @@ class StereoWitnessTest(unittest.TestCase):
 
         self.assertEqual(stats.witness_count, 0)
         self.assertEqual(witnesses, ())
+        self.assertEqual(
+            _independent_directional_rows(facts, slots, semantics),
+            {
+                SiteId(0): ((slots.carrier_slots[0].id, DirectionMark.FWD),),
+                SiteId(1): ((slots.carrier_slots[0].id, DirectionMark.REV),),
+            },
+        )
+
+    def test_unspecified_directional_site_rejects_accidental_stereo(self) -> None:
+        facts = _specified_and_unspecified_directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+        scope = (slots.carrier_slots[0].id, slots.carrier_slots[1].id)
+        semantics = _DirectionalPairSemantics(
+            scope_by_site={
+                SiteId(0): scope,
+                SiteId(1): scope,
+            },
+            required_by_site={
+                SiteId(0): (DirectionMark.FWD, DirectionMark.REV),
+                SiteId(1): (DirectionMark.FWD, DirectionMark.REV),
+            },
+        )
+        witnesses, stats = collect_stereo_witnesses_for_skeleton(
+            facts=facts,
+            skeleton=skeleton,
+            slots=slots,
+            policy=_policy_for_slots(facts, slots),
+            semantics=semantics,
+        )
+
+        self.assertEqual(stats.witness_count, 0)
+        self.assertEqual(witnesses, ())
 
     def test_ring_endpoint_order_can_change_required_tetra_token(self) -> None:
         facts = _ring_tetrahedral_facts()
@@ -143,6 +278,42 @@ class StereoWitnessTest(unittest.TestCase):
         self.assertTrue(any("[C@H]" in value for value in rendered))
         self.assertTrue(any("[C@@H]" in value for value in rendered))
         self.assertTrue(any("1" in value for value in rendered))
+
+    def test_ring_tetra_local_order_uses_lexical_ring_event_position(self) -> None:
+        facts = _ring_tetrahedral_facts()
+        semantics = _TetraOrderSemantics()
+        by_order: dict[tuple[OccurrenceId, ...], TetraToken] = {}
+
+        for skeleton in enumerate_traversal_skeletons(
+            facts,
+            build_graph_index(facts),
+            _policy_for_facts_only(facts),
+        ):
+            if skeleton.roots != (AtomId(0),):
+                continue
+            local_order = semantics.local_tetra_order(
+                facts,
+                skeleton,
+                allocate_traversal_slots(facts, skeleton),
+                SiteId(0),
+            )
+            by_order[local_order] = _required_tetra_token(
+                facts,
+                semantics,
+                local_order,
+            )
+
+        for left, left_token in by_order.items():
+            for right, right_token in by_order.items():
+                if left[:1] == right[:1]:
+                    continue
+                if left[2:] != right[2:]:
+                    continue
+                if set(left[:2]) == set(right[:2]):
+                    self.assertIsNot(left_token, right_token)
+                    return
+
+        raise AssertionError("no ring/local-order swap witness found")
 
     def test_least_free_ring_labels_are_generator_and_validator_policy(self) -> None:
         slots = _two_nonoverlapping_ring_slot_bundle()
@@ -208,6 +379,55 @@ def _rendered_for_matching_skeletons(
     return tuple(rendered)
 
 
+def _required_tetra_token(
+    facts: MoleculeFacts,
+    semantics,
+    local_order: tuple[OccurrenceId, ...],
+) -> TetraToken:
+    target = facts.stereo.tetrahedral[0].target
+    matching = tuple(
+        token
+        for token in (TetraToken.AT, TetraToken.ATAT)
+        if semantics.tetra_value(
+            facts,
+            SiteId(0),
+            local_order,
+            token,
+        ) == target
+    )
+    if len(matching) != 1:
+        raise AssertionError(
+            f"expected exactly one tetra token for {local_order!r}, got {matching!r}"
+        )
+    return matching[0]
+
+
+def _carrier_by_bond(slots: SlotBundle):
+    by_slot = carrier_slot_by_bond_slot(slots)
+    return {
+        carrier.bond: carrier
+        for carrier in by_slot.values()
+    }
+
+
+def _independent_directional_rows(
+    facts: MoleculeFacts,
+    slots: SlotBundle,
+    semantics,
+) -> dict[SiteId, tuple[tuple[CarrierSlotId, DirectionMark], ...]]:
+    rows = {}
+    for site in facts.stereo.directional:
+        scope = semantics.directional_scope(facts, object(), slots, site.id)
+        row = semantics.required_by_site[site.id]
+        marks = dict(zip(scope, row, strict=True))
+        if semantics.directional_value(facts, object(), slots, site.id, marks) != (
+            site.target
+        ):
+            continue
+        rows[site.id] = tuple(zip(scope, row, strict=True))
+    return rows
+
+
 def _first_skeleton(facts: MoleculeFacts) -> TraversalSkeleton:
     return enumerate_traversal_skeletons(
         facts,
@@ -260,6 +480,44 @@ def _policy_for_slots(
             for bond_id, kind in bond_domain_keys
         ),
     )
+
+
+def _alkene_policy_for_slots(
+    facts: MoleculeFacts,
+    slots: SlotBundle,
+) -> SmilesPolicy:
+    atom_text = _atom_text_for_facts(facts)
+    center_bond = facts.stereo.directional[0].center_bond
+    bond_domain_keys = sorted(
+        {(slot.bond, slot.kind.value) for slot in slots.bond_slots},
+        key=lambda key: (int(key[0]), key[1]),
+    )
+    return SmilesPolicy(
+        ring_labels=(RingLabel(1), RingLabel(2)),
+        annotation_mode=AnnotationMode.HARD,
+        atom_text_domains=tuple(
+            AtomTextDomain(atom=atom.id, choices=(atom_text[atom.id],))
+            for atom in facts.atoms
+        ),
+        bond_text_domains=tuple(
+            BondTextDomain(
+                bond=bond_id,
+                slot_kind=kind,
+                choices=(_alkene_bond_choice(bond_id == center_bond),),
+            )
+            for bond_id, kind in bond_domain_keys
+        ),
+    )
+
+
+def _alkene_bond_choice(is_center_bond: bool) -> BondTextChoice:
+    if is_center_bond:
+        return BondTextChoice(
+            name="double",
+            base_text="=",
+            permits_direction=False,
+        )
+    return _directional_bond_choice()
 
 
 def _atom_text_for_facts(
@@ -342,6 +600,24 @@ def _two_site_directional_facts() -> MoleculeFacts:
         facts,
         stereo=StereoFacts(directional=(site_0, site_1)),
         ligand_occurrences=facts.ligand_occurrences + (occurrence_2, occurrence_3),
+    )
+
+
+def _specified_and_unspecified_directional_facts() -> MoleculeFacts:
+    facts = _two_site_directional_facts()
+    site_0, site_1 = facts.stereo.directional
+    return replace(
+        facts,
+        stereo=StereoFacts(
+            directional=(
+                site_0,
+                replace(
+                    site_1,
+                    status=SiteStatus.UNSPECIFIED,
+                    target=DirectionalValue.NONE,
+                ),
+            )
+        ),
     )
 
 
@@ -528,10 +804,15 @@ class _TetraOrderSemantics:
         if token is TetraToken.NONE:
             return TetraValue.NONE
         reference = facts.stereo.tetrahedral[0].reference_order
+        if set(local_order) != set(reference) or len(local_order) != len(reference):
+            return INVALID
+        is_even = _is_even_permutation(
+            tuple(reference.index(occurrence) for occurrence in local_order)
+        )
         if token is TetraToken.AT:
-            return TetraValue.PLUS if local_order == reference else TetraValue.MINUS
+            return TetraValue.PLUS if is_even else TetraValue.MINUS
         if token is TetraToken.ATAT:
-            return TetraValue.MINUS if local_order == reference else TetraValue.PLUS
+            return TetraValue.MINUS if is_even else TetraValue.PLUS
         return INVALID
 
     def directional_scope(
@@ -588,6 +869,15 @@ class _DirectionalPairSemantics(_TetraOrderSemantics):
         if row == self.required_by_site[site]:
             return DirectionalValue.OPPOSITE
         return DirectionalValue.NONE
+
+
+def _is_even_permutation(indices: tuple[int, ...]) -> bool:
+    inversions = 0
+    for left, value in enumerate(indices):
+        for other in indices[left + 1 :]:
+            if value > other:
+                inversions += 1
+    return inversions % 2 == 0
 
 
 if __name__ == "__main__":

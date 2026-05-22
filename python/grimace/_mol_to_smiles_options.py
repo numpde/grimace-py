@@ -8,70 +8,70 @@ from numbers import Integral
 from typing import Literal
 
 
-_MolToSmilesValueRule = Literal["bool_like", "root_atom"]
-_MolToSmilesOptionScope = Literal["prepared", "call"]
+_ValueRule = Literal["bool_like", "root_atom"]
+_Scope = Literal["prepared", "call"]
 
 
 @dataclass(frozen=True, slots=True)
-class _MolToSmilesOptionSpec:
+class _OptionSpec:
     public_name: str
     internal_name: str
     default: object
-    value_rule: _MolToSmilesValueRule
-    scope: _MolToSmilesOptionScope
+    value_rule: _ValueRule
+    scope: _Scope
 
 
 MOL_TO_SMILES_OPTIONS = (
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="isomericSmiles",
         internal_name="isomeric_smiles",
         default=True,
         value_rule="bool_like",
         scope="prepared",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="kekuleSmiles",
         internal_name="kekule_smiles",
         default=False,
         value_rule="bool_like",
         scope="prepared",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="rootedAtAtom",
         internal_name="rooted_at_atom",
         default=-1,
         value_rule="root_atom",
         scope="call",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="canonical",
         internal_name="canonical",
         default=True,
         value_rule="bool_like",
         scope="call",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="allBondsExplicit",
         internal_name="all_bonds_explicit",
         default=False,
         value_rule="bool_like",
         scope="prepared",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="allHsExplicit",
         internal_name="all_hs_explicit",
         default=False,
         value_rule="bool_like",
         scope="prepared",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="doRandom",
         internal_name="do_random",
         default=False,
         value_rule="bool_like",
         scope="call",
     ),
-    _MolToSmilesOptionSpec(
+    _OptionSpec(
         public_name="ignoreAtomMapNumbers",
         internal_name="ignore_atom_map_numbers",
         default=False,
@@ -88,8 +88,8 @@ MOL_TO_SMILES_CALL_OPTIONS = tuple(
 )
 
 
-def coerce_mol_to_smiles_option(
-    spec: _MolToSmilesOptionSpec,
+def coerce_option(
+    spec: _OptionSpec,
     value: object,
     *,
     context: str,
@@ -115,14 +115,14 @@ def coerce_mol_to_smiles_option(
     )
 
 
-def coerce_mol_to_smiles_public_options(
-    specs: tuple[_MolToSmilesOptionSpec, ...],
+def coerce_public_options(
+    specs: tuple[_OptionSpec, ...],
     values: Mapping[str, object],
     *,
     context: str,
 ) -> dict[str, object]:
     return {
-        spec.internal_name: coerce_mol_to_smiles_option(
+        spec.internal_name: coerce_option(
             spec,
             values.get(spec.public_name, spec.default),
             context=context,
@@ -131,27 +131,17 @@ def coerce_mol_to_smiles_public_options(
     }
 
 
-def coerce_mol_to_smiles_internal_options(
-    specs: tuple[_MolToSmilesOptionSpec, ...],
+def coerce_internal_options(
+    specs: tuple[_OptionSpec, ...],
     values: Mapping[str, object],
     *,
     context: str,
 ) -> dict[str, object]:
     return {
-        spec.internal_name: coerce_mol_to_smiles_option(
+        spec.internal_name: coerce_option(
             spec,
             values.get(spec.internal_name, spec.default),
             context=context,
         )
-        for spec in specs
-    }
-
-
-def mol_to_smiles_internal_kwargs_from_public_values(
-    specs: tuple[_MolToSmilesOptionSpec, ...],
-    values: Mapping[str, object],
-) -> dict[str, object]:
-    return {
-        spec.internal_name: values.get(spec.public_name, spec.default)
         for spec in specs
     }

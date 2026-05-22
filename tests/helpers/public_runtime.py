@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import grimace
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
-    mol_to_smiles_internal_kwargs_from_public_values,
+    coerce_public_options,
 )
 from grimace import _runtime
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
@@ -25,9 +25,10 @@ def supported_public_kwargs(**kwargs: object) -> dict[str, object]:
 
 def runtime_flags_from_public_kwargs(**kwargs: object) -> _runtime.MolToSmilesFlags:
     return _runtime._make_flags(
-        **mol_to_smiles_internal_kwargs_from_public_values(
+        **coerce_public_options(
             MOL_TO_SMILES_OPTIONS,
             kwargs,
+            context="Test MolToSmiles",
         )
     )
 

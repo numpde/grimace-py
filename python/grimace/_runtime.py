@@ -12,8 +12,8 @@ import grimace._prepared_mol as _prepared_mol_module
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
-    coerce_mol_to_smiles_internal_options,
-    coerce_mol_to_smiles_option,
+    coerce_internal_options,
+    coerce_option,
 )
 
 _core = importlib.import_module("grimace._core")
@@ -193,7 +193,7 @@ def _prepare_runtime_input(
 
 def _validate_supported_flags(flags: MolToSmilesFlags) -> None:
     normalized = {
-        spec.internal_name: coerce_mol_to_smiles_option(
+        spec.internal_name: coerce_option(
             spec,
             getattr(flags, spec.internal_name),
             context="MolToSmiles runtime",
@@ -723,7 +723,7 @@ def _make_flags(
     ignore_atom_map_numbers: bool = False,
 ) -> MolToSmilesFlags:
     return MolToSmilesFlags(
-        **coerce_mol_to_smiles_internal_options(
+        **coerce_internal_options(
             MOL_TO_SMILES_OPTIONS,
             locals(),
             context="MolToSmiles runtime",

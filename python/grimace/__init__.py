@@ -8,7 +8,7 @@ and `doRandom=True` explicitly.
 from __future__ import annotations
 
 import importlib
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
 import grimace._mol_to_smiles_options as _options
@@ -34,6 +34,14 @@ def _require_runtime() -> Any:
     return _RUNTIME
 
 
+def _runtime_kwargs(option_values: Mapping[str, object]) -> dict[str, object]:
+    return _options.coerce_public_options(
+        _options.MOL_TO_SMILES_OPTIONS,
+        option_values,
+        context="MolToSmiles",
+    )
+
+
 def MolToSmilesEnum(
     mol: object,
     *,
@@ -54,13 +62,9 @@ def MolToSmilesEnum(
     """
 
     runtime = _require_runtime()
-    option_values = locals()
     return runtime.mol_to_smiles_enum(
         mol,
-        **_options.mol_to_smiles_internal_kwargs_from_public_values(
-            _options.MOL_TO_SMILES_OPTIONS,
-            option_values,
-        ),
+        **_runtime_kwargs(locals()),
     )
 
 
@@ -84,13 +88,9 @@ def MolToSmilesTokenInventory(
     """
 
     runtime = _require_runtime()
-    option_values = locals()
     return runtime.mol_to_smiles_token_inventory(
         mol,
-        **_options.mol_to_smiles_internal_kwargs_from_public_values(
-            _options.MOL_TO_SMILES_OPTIONS,
-            option_values,
-        ),
+        **_runtime_kwargs(locals()),
     )
 
 
@@ -114,13 +114,9 @@ def MolToSmilesTokenInventorySuperset(
     """
 
     runtime = _require_runtime()
-    option_values = locals()
     return runtime.mol_to_smiles_token_inventory_superset(
         mol,
-        **_options.mol_to_smiles_internal_kwargs_from_public_values(
-            _options.MOL_TO_SMILES_OPTIONS,
-            option_values,
-        ),
+        **_runtime_kwargs(locals()),
     )
 
 
@@ -144,14 +140,10 @@ def MolToSmilesDeviation(
     """
 
     _require_runtime()
-    option_values = locals()
     return _DEVIATION.mol_to_smiles_deviation(
         mol,
         candidate,
-        **_options.mol_to_smiles_internal_kwargs_from_public_values(
-            _options.MOL_TO_SMILES_OPTIONS,
-            option_values,
-        ),
+        **_runtime_kwargs(locals()),
     )
 
 
@@ -175,13 +167,9 @@ if _RUNTIME is not None:
             doRandom: bool = False,
             ignoreAtomMapNumbers: bool = False,
         ) -> None:
-            option_values = locals()
             super().__init__(
                 mol,
-                **_options.mol_to_smiles_internal_kwargs_from_public_values(
-                    _options.MOL_TO_SMILES_OPTIONS,
-                    option_values,
-                ),
+                **_runtime_kwargs(locals()),
             )
 
         @property

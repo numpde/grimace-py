@@ -8,7 +8,7 @@ from rdkit import Chem
 
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
-    coerce_mol_to_smiles_public_options,
+    coerce_public_options,
 )
 
 
@@ -115,7 +115,7 @@ def PrepareMol(
     if not isinstance(mol, Chem.Mol):
         raise TypeError("PrepareMol requires an RDKit Chem.Mol")
 
-    writer_options = coerce_mol_to_smiles_public_options(
+    writer_options = coerce_public_options(
         MOL_TO_SMILES_PREPARED_OPTIONS,
         locals(),
         context="PrepareMol",

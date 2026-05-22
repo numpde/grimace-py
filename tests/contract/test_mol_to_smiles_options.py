@@ -10,8 +10,7 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_CALL_OPTIONS,
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
-    coerce_mol_to_smiles_public_options,
-    mol_to_smiles_internal_kwargs_from_public_values,
+    coerce_public_options,
 )
 from grimace._prepared_mol import _prepared_mol_writer_flag_values
 from tests.helpers.mols import parse_smiles
@@ -69,20 +68,20 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
 
     def test_prepared_and_call_options_partition_full_inventory(self) -> None:
         self.assertEqual(
-            MOL_TO_SMILES_OPTIONS,
-            tuple(
-                spec
-                for spec in MOL_TO_SMILES_OPTIONS
-                if spec in MOL_TO_SMILES_PREPARED_OPTIONS or spec in MOL_TO_SMILES_CALL_OPTIONS
-            ),
+            tuple(spec for spec in MOL_TO_SMILES_OPTIONS if spec.scope == "prepared"),
+            MOL_TO_SMILES_PREPARED_OPTIONS,
         )
         self.assertEqual(
-            (),
-            tuple(
-                spec
-                for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-                if spec in MOL_TO_SMILES_CALL_OPTIONS
-            ),
+            tuple(spec for spec in MOL_TO_SMILES_OPTIONS if spec.scope == "call"),
+            MOL_TO_SMILES_CALL_OPTIONS,
+        )
+        self.assertEqual(
+            set(MOL_TO_SMILES_OPTIONS),
+            set(MOL_TO_SMILES_PREPARED_OPTIONS) | set(MOL_TO_SMILES_CALL_OPTIONS),
+        )
+        self.assertEqual(
+            set(),
+            set(MOL_TO_SMILES_PREPARED_OPTIONS) & set(MOL_TO_SMILES_CALL_OPTIONS),
         )
 
     def test_public_option_parser_uses_spec_names_defaults_and_value_rules(self) -> None:
@@ -97,7 +96,7 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                 "do_random": True,
                 "ignore_atom_map_numbers": False,
             },
-            coerce_mol_to_smiles_public_options(
+            coerce_public_options(
                 MOL_TO_SMILES_OPTIONS,
                 {
                     "isomericSmiles": None,
@@ -118,13 +117,13 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
         for public_name, value, expected_regex in bad_cases:
             with self.subTest(public_name=public_name):
                 with self.assertRaisesRegex(TypeError, expected_regex):
-                    coerce_mol_to_smiles_public_options(
+                    coerce_public_options(
                         MOL_TO_SMILES_OPTIONS,
                         {public_name: value},
                         context="TestContext",
                     )
 
-    def test_public_to_internal_kwargs_mapping_uses_spec_defaults(self) -> None:
+    def test_public_option_parser_maps_to_internal_names(self) -> None:
         self.assertEqual(
             {
                 "isomeric_smiles": False,
@@ -136,9 +135,10 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                 "do_random": False,
                 "ignore_atom_map_numbers": False,
             },
-            mol_to_smiles_internal_kwargs_from_public_values(
+            coerce_public_options(
                 MOL_TO_SMILES_OPTIONS,
                 {"isomericSmiles": False},
+                context="TestContext",
             ),
         )
 

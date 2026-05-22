@@ -36,9 +36,7 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertFalse(hasattr(grimace, "MolToSmilesSupport"))
         self.assertFalse(hasattr(grimace, "ReferencePolicy"))
         self.assertFalse(hasattr(grimace, "MOL_TO_SMILES_OPTIONS"))
-        self.assertFalse(
-            hasattr(grimace, "mol_to_smiles_internal_kwargs_from_public_values")
-        )
+        self.assertFalse(hasattr(grimace, "coerce_public_options"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))
         self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_stereo_smiles_support"))
         decoder = grimace.MolToSmilesDecoder(

@@ -83,8 +83,8 @@ object. Runtime calls with conflicting writer flags raise `ValueError`.
 `rootedAtAtom`, `canonical`, and `doRandom` remain runtime options.
 
 `PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
-core. The object is opaque: fragment data, writer flags, and schema fields are
-not public Python attributes.
+core. `PreparedMol.from_bytes(...)` accepts that payload and reconstructs an
+opaque object ready for the runtime.
 
 ## MolToSmilesEnum
 

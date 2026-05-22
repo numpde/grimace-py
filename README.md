@@ -75,16 +75,19 @@ Main entrypoints:
   Returns the exact set of tokens that can appear in one decoder step.
 - `MolToSmilesTokenInventorySuperset(...)`
   Returns a static conservative token inventory for vocabulary coverage.
+- `PrepareMol(...)`
+  Prepares an RDKit molecule once under fixed writer flags.
 
-Supporting public type:
+Supporting public types:
 
 - `MolToSmilesChoice`
   Each choice has `.text` for the emitted token and `.next_state` for the
   decoder state after taking that token.
+- `PreparedMol`
+  Opaque prepared molecule accepted by the runtime, with `to_bytes()` and
+  `PreparedMol.from_bytes(...)` for byte round trips.
 - `SmilesDeviation`
   Diagnostic result returned by `MolToSmilesDeviation(...)`.
-
-The public API uses the compiled Rust extension end to end.
 
 ## Important runtime requirements today
 
@@ -319,6 +322,29 @@ for mol in mols:
 For the same molecule and flags, the exact inventory is contained in the
 superset inventory.
 
+### 6. Prepare once, reuse, or serialize
+
+`PrepareMol(...)` pays the RDKit preparation cost once and returns an opaque
+`PreparedMol`.
+
+```python
+prepared = grimace.PrepareMol(mol)
+payload = prepared.to_bytes()
+restored = grimace.PreparedMol.from_bytes(payload)
+
+all_smiles = tuple(
+    grimace.MolToSmilesEnum(
+        restored,
+        rootedAtAtom=-1,
+        **FLAGS,
+    )
+)
+```
+
+The writer flags passed to runtime calls must match the writer flags baked into
+the prepared object. `rootedAtAtom`, `canonical`, and `doRandom` remain runtime
+options.
+
 ### What counts as a token?
 
 A token is one string emitted by one decoder transition. Tokens are defined by
@@ -414,9 +440,6 @@ Current takeaway from the generated table:
 - the table is still a small curated benchmark: 9 molecules, 2 writer modes,
   7 timing repeats, and one development machine
 - this is not a workload study and not an exact-versus-exact comparison
-- the `Grimace enum` row times explicit union over per-root
-  `MolToSmilesEnum(..., rootedAtAtom=root_idx)` calls, not the direct public
-  `MolToSmilesEnum(..., rootedAtAtom=-1)` path
 - the RDKit columns are not exact enumeration; they are random sampling until
   RDKit happens to reach `1/2` or full support
 - because of that, RDKit can be cheaper when you only want a few random

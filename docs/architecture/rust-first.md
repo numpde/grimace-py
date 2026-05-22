@@ -9,13 +9,15 @@ RDKit-based bridge and oracle code.
 ## Ownership
 
 - Rust owns:
+  - prepared molecule storage after RDKit preparation
   - prepared-graph runtime shape
+  - prepared molecule byte encoding
   - exact-support algorithms
   - next-token walkers
   - runtime invariants and schema evolution
 - Python owns:
   - the thin public wrapper over `_core`
-  - RDKit interop and transport construction
+  - RDKit interop at the `PrepareMol` boundary
   - policy loading
   - dataset and artifact tooling
   - oracle/reference checks
@@ -34,6 +36,7 @@ RDKit-based bridge and oracle code.
 - `grimace._core` is required and remains hidden implementation detail.
 - `grimace._runtime` is internal bridge code.
 - `grimace._reference` is internal oracle/reference code.
+- `PrepareMol` may use RDKit; runtime consumption of `PreparedMol` should not.
 
 ## Test authority
 

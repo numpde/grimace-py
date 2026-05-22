@@ -126,7 +126,6 @@ Tests should cover:
 Release posture
 ---------------
 
-`PreparedMol` should not become public API until it can be read back and used
-through the normal Grimace runtime without RDKit. Before that point, it can be
-developed as an internal or experimental shape, with tests defining the intended
-contract.
+`PreparedMol` becomes public API only when it can be read back and used through
+the normal Grimace runtime without RDKit. That gate is now satisfied by the
+Rust-backed prepared object and boundary tests.

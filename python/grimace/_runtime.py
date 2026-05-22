@@ -367,13 +367,6 @@ class MolToSmilesChoice:
         self.next_state = next_state
 
 
-def _new_public_decoder(decoder_type: type, state_impl: object) -> object:
-    decoder = decoder_type.__new__(decoder_type)
-    decoder._state = state_impl
-    decoder._choices_cache = None
-    return decoder
-
-
 def _choices_from_successor_states(
     successors: Sequence[tuple[str, object]],
 ) -> tuple[MolToSmilesChoice, ...]:
@@ -442,11 +435,6 @@ class _CoreStateAdapter:
 
     def grouped_successor_states(self) -> tuple[tuple[str, object], ...]:
         return self._successor_states(self._decoder.grouped_successors())
-
-    def _advance_token(self, text: str) -> "_CoreStateAdapter":
-        next_decoder = self._decoder.copy()
-        next_decoder.advance_token(text)
-        return type(self)(next_decoder)
 
 
 class _MergedStateAdapter:
@@ -708,9 +696,6 @@ def prepare_smiles_graph(
     return _core.PreparedSmilesGraph(reference_prepared)
 
 
-make_prepared_graph = prepare_smiles_graph
-
-
 def _make_flags(
     *,
     isomeric_smiles: bool = True,
@@ -864,7 +849,6 @@ def _make_decoder_state_impl(
 
 class _PublicDecoderBase:
     __slots__ = ("_state", "_choices_cache")
-    _prefer_choice_cache_for_terminal = True
 
     def __init__(
         self,
@@ -900,7 +884,10 @@ class _PublicDecoderBase:
         cls,
         state_impl: object,
     ) -> "_PublicDecoderBase":
-        return _new_public_decoder(cls, state_impl)
+        decoder = cls.__new__(cls)
+        decoder._state = state_impl
+        decoder._choices_cache = None
+        return decoder
 
     @property
     def prefix(self) -> str:
@@ -910,9 +897,7 @@ class _PublicDecoderBase:
     def is_terminal(self) -> bool:
         if self._choices_cache is not None:
             return not self._choices_cache
-        if type(self)._prefer_choice_cache_for_terminal:
-            return not self.next_choices
-        return self._state.is_terminal()
+        return not self.next_choices
 
     def copy(self) -> "_PublicDecoderBase":
         return type(self)._from_parts(self._state.copy())
@@ -1343,7 +1328,6 @@ __all__ = [
     "enumerate_rooted_connected_nonstereo_smiles_support",
     "enumerate_rooted_connected_stereo_smiles_support",
     "make_nonstereo_walker",
-    "make_prepared_graph",
     "make_stereo_walker",
     "mol_to_smiles_enum",
     "mol_to_smiles_support",

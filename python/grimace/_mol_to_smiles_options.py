@@ -83,9 +83,6 @@ MOL_TO_SMILES_OPTIONS = (
 MOL_TO_SMILES_PREPARED_OPTIONS = tuple(
     spec for spec in MOL_TO_SMILES_OPTIONS if spec.scope == "prepared"
 )
-MOL_TO_SMILES_CALL_OPTIONS = tuple(
-    spec for spec in MOL_TO_SMILES_OPTIONS if spec.scope == "call"
-)
 
 
 def coerce_option(

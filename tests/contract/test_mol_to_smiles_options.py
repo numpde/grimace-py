@@ -7,7 +7,6 @@ import unittest
 import grimace
 from grimace import _runtime
 from grimace._mol_to_smiles_options import (
-    MOL_TO_SMILES_CALL_OPTIONS,
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
@@ -72,16 +71,8 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
             MOL_TO_SMILES_PREPARED_OPTIONS,
         )
         self.assertEqual(
-            tuple(spec for spec in MOL_TO_SMILES_OPTIONS if spec.scope == "call"),
-            MOL_TO_SMILES_CALL_OPTIONS,
-        )
-        self.assertEqual(
-            set(MOL_TO_SMILES_OPTIONS),
-            set(MOL_TO_SMILES_PREPARED_OPTIONS) | set(MOL_TO_SMILES_CALL_OPTIONS),
-        )
-        self.assertEqual(
-            set(),
-            set(MOL_TO_SMILES_PREPARED_OPTIONS) & set(MOL_TO_SMILES_CALL_OPTIONS),
+            {"prepared", "call"},
+            {spec.scope for spec in MOL_TO_SMILES_OPTIONS},
         )
 
     def test_public_option_parser_uses_spec_names_defaults_and_value_rules(self) -> None:

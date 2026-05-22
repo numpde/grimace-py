@@ -14,29 +14,29 @@ from grimace._south_star1.policy import AnnotationMode
 
 
 class AnnotationImageTest(unittest.TestCase):
-    def test_support_image_tracks_witness_count_before_deduplication(self) -> None:
+    def test_support_image_preserves_rendered_witness_multiplicity(self) -> None:
         witnesses = (
             _witness("w1", "CCO", 0),
             _witness("w2", "CCO", 1),
             _witness("w3", "OCC", 0),
         )
 
-        image = render_image_from_witnesses(witnesses, deduplicate=True)
+        image = render_image_from_witnesses(witnesses)
 
         self.assertEqual(image.witness_count, 3)
         self.assertEqual(image.distinct_count, 2)
-        self.assertEqual(image.strings, ("CCO", "OCC"))
+        self.assertEqual(image.strings, ("CCO", "CCO", "OCC"))
 
-    def test_without_deduplication_the_image_preserves_rendered_witnesses(self) -> None:
+    def test_distinct_count_is_only_instrumentation(self) -> None:
         witnesses = (_witness("w1", "CCO", 0), _witness("w2", "CCO", 1))
 
-        image = render_image_from_witnesses(witnesses, deduplicate=False)
+        image = render_image_from_witnesses(witnesses)
 
         self.assertEqual(image.witness_count, 2)
         self.assertEqual(image.distinct_count, 1)
         self.assertEqual(image.strings, ("CCO", "CCO"))
 
-    def test_cardinality_maximal_selects_before_render_image_dedup(self) -> None:
+    def test_cardinality_maximal_selects_before_render_image(self) -> None:
         witnesses = (
             _witness("w1", "CCO", 0),
             _witness("w2", "CCO", 2),
@@ -50,7 +50,7 @@ class AnnotationImageTest(unittest.TestCase):
 
         self.assertEqual(tuple(witness.id for witness in selected), ("w2", "w3"))
 
-    def test_support_maximal_does_not_deduplicate_witnesses(self) -> None:
+    def test_support_maximal_preserves_witnesses(self) -> None:
         witnesses = (_witness("w1", "CCO", 0), _witness("w2", "CCO", 1))
 
         selected = select_annotation_witnesses(

@@ -168,20 +168,18 @@ class StereoWitnessTest(unittest.TestCase):
             non_normalized,
         )
 
-    def test_rendered_image_deduplication_is_support_image_only(self) -> None:
+    def test_rendered_image_preserves_witness_multiplicity(self) -> None:
         constraints = (NamedConstraint("semantic_validity", "assignment"),)
         witnesses = (
             ValidWitness("witness:a", "CC", 0, constraints),
             ValidWitness("witness:b", "CC", 0, constraints),
         )
 
-        raw = render_image_from_witnesses(witnesses, deduplicate=False)
-        deduped = render_image_from_witnesses(witnesses, deduplicate=True)
+        image = render_image_from_witnesses(witnesses)
 
-        self.assertEqual(raw.witness_count, 2)
-        self.assertEqual(raw.strings, ("CC", "CC"))
-        self.assertEqual(deduped.witness_count, 2)
-        self.assertEqual(deduped.strings, ("CC",))
+        self.assertEqual(image.witness_count, 2)
+        self.assertEqual(image.distinct_count, 1)
+        self.assertEqual(image.strings, ("CC", "CC"))
 
 
 def _rendered_for_matching_skeletons(

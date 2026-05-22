@@ -26,8 +26,8 @@ and constrains them by:
     - directional site relations, including potential-but-unspecified sites;
     - annotation-policy selection, including support-wise maximality.
 
-The output of this module is still assignment-level, not string-level.  Rendering
-and rendered-support deduplication remain separate layers.
+The output of this module is still assignment-level, not string-level. Rendering
+remains a separate layer.
 """
 
 from __future__ import annotations

@@ -99,7 +99,6 @@ class SmilesPolicy:
     annotation_mode: AnnotationMode
     atom_text_domains: tuple[AtomTextDomain, ...]
     bond_text_domains: tuple[BondTextDomain, ...]
-    deduplicate_rendered_strings: bool = True
     least_free_ring_labels: bool = True
 
     def validate_for_facts(self, facts: MoleculeFacts) -> None:

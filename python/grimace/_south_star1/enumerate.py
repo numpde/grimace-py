@@ -22,19 +22,13 @@ class SupportImage:
 
 def render_image_from_witnesses(
     witnesses: Iterable[ValidWitness],
-    *,
-    deduplicate: bool,
 ) -> SupportImage:
     witness_tuple = tuple(witnesses)
     rendered = tuple(witness.rendered for witness in witness_tuple)
-    if deduplicate:
-        strings = tuple(dict.fromkeys(rendered))
-    else:
-        strings = rendered
     return SupportImage(
         witness_count=len(witness_tuple),
         distinct_count=len(set(rendered)),
-        strings=strings,
+        strings=rendered,
     )
 
 

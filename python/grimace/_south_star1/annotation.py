@@ -11,7 +11,7 @@ from .policy import AnnotationMode
 
 @dataclass(frozen=True, slots=True)
 class ValidWitness:
-    """A satisfying assignment after semantic constraints, before image dedup."""
+    """A satisfying assignment after semantic constraints."""
 
     id: str
     rendered: str
@@ -36,8 +36,8 @@ def select_annotation_witnesses(
     """Select from already-valid witnesses according to annotation policy.
 
     This selector is deliberately downstream of semantic validity. It never
-    repairs, parses, or filters by rendered string. Deduplication happens only
-    when taking the support image.
+    repairs, parses, or filters by rendered string. Rendered witness strings are
+    preserved with multiplicity in the support image.
     """
 
     witness_tuple = tuple(witnesses)

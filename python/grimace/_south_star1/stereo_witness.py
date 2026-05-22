@@ -75,7 +75,6 @@ def enumerate_stereo_support_for_skeleton(
     skeleton: TraversalSkeleton,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
-    deduplicate: bool | None = None,
     eligible_marker_carriers: frozenset[CarrierSlotId] | None = None,
     allow_global_directional_scope: bool = False,
 ) -> SupportImage:
@@ -90,13 +89,7 @@ def enumerate_stereo_support_for_skeleton(
         allow_global_directional_scope=allow_global_directional_scope,
     )
 
-    if deduplicate is None:
-        deduplicate = policy.deduplicate_rendered_strings
-
-    return render_image_from_witnesses(
-        witnesses,
-        deduplicate=deduplicate,
-    )
+    return render_image_from_witnesses(witnesses)
 
 
 def enumerate_stereo_witnesses_for_skeleton(
@@ -448,8 +441,7 @@ def _witness_id(
     """Stable debugging id for a witness.
 
     This is not a chemical canonical identifier and is not the support quotient.
-    Rendered-string deduplication remains the responsibility of
-    ``render_image_from_witnesses``.
+    The rendered support image preserves witness multiplicity.
     """
 
     payload = repr(

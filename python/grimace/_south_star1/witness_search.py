@@ -74,10 +74,7 @@ def enumerate_nonstereo_support(
     """
 
     witnesses = enumerate_nonstereo_witnesses(facts, policy, semantics)
-    return render_image_from_witnesses(
-        witnesses,
-        deduplicate=policy.deduplicate_rendered_strings,
-    )
+    return render_image_from_witnesses(witnesses)
 
 
 def enumerate_nonstereo_witnesses(
@@ -342,8 +339,7 @@ def _witness_id(
     """Stable-ish witness id for debugging.
 
     This is not a canonical chemical identifier and should not be used as a
-    support quotient.  The rendered-support quotient is still handled by
-    ``render_image_from_witnesses``.
+    support quotient. The rendered support image preserves witness multiplicity.
     """
 
     payload = repr(

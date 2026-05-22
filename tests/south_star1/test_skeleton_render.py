@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from grimace._south_star1.constraints import NonStereoTreeAssignment
+from grimace._south_star1.constraints import TraversalAssignment
 from grimace._south_star1.constraints import validate_nonstereo_tree_witness
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import ComponentFacts
@@ -276,8 +276,8 @@ def _assignment_for(
     slots,
     *,
     ring_label: RingLabel | None = None,
-) -> NonStereoTreeAssignment:
-    return NonStereoTreeAssignment(
+) -> TraversalAssignment:
+    return TraversalAssignment(
         atom_text={
             atom.id: organic_atom_choice(atom.symbol)
             for atom in facts.atoms
@@ -294,7 +294,7 @@ def _assignment_for(
         },
         direction_marks={
             slot.id: DirectionMark.ABSENT
-            for slot in slots.bond_slots
+            for slot in slots.carrier_slots
         },
     )
 

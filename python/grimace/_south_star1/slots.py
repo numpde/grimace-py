@@ -87,6 +87,7 @@ def allocate_traversal_slots(
     )
 
     bond_slots: list[BondSlot] = []
+    carrier_slots: list[CarrierSlot] = []
     seen_tree_bonds: set[BondId] = set()
     ring_endpoint_slots: list[RingEndpointSlot] = []
 
@@ -95,14 +96,24 @@ def allocate_traversal_slots(
             if event.bond in seen_tree_bonds:
                 raise ValueError(f"tree bond has multiple syntax slots: {event.bond!r}")
             seen_tree_bonds.add(event.bond)
+            bond_slot_id = BondSlotId(len(bond_slots))
             bond_slots.append(
                 BondSlot(
-                    id=BondSlotId(len(bond_slots)),
+                    id=bond_slot_id,
                     bond=event.bond,
                     kind=BondSlotKind.TREE,
                     written_from=event.parent,
                     written_to=event.child,
                     syntax_position=syntax_position,
+                )
+            )
+            carrier_slots.append(
+                CarrierSlot(
+                    id=CarrierSlotId(len(carrier_slots)),
+                    bond_slot=bond_slot_id,
+                    bond=event.bond,
+                    written_from=event.parent,
+                    written_to=event.child,
                 )
             )
             continue
@@ -129,6 +140,15 @@ def allocate_traversal_slots(
                     other_atom=event.other_atom,
                     bond_slot=bond_slot_id,
                     syntax_position=syntax_position,
+                )
+            )
+            carrier_slots.append(
+                CarrierSlot(
+                    id=CarrierSlotId(len(carrier_slots)),
+                    bond_slot=bond_slot_id,
+                    bond=event.bond,
+                    written_from=event.atom,
+                    written_to=event.other_atom,
                 )
             )
             continue
@@ -159,6 +179,7 @@ def allocate_traversal_slots(
     return SlotBundle(
         atom_slots=atom_slots,
         bond_slots=tuple(bond_slots),
+        carrier_slots=tuple(carrier_slots),
         ring_endpoints=tuple(ring_endpoint_slots),
     )
 
@@ -203,6 +224,10 @@ def ring_endpoint_by_id(slots: SlotBundle) -> dict[RingEndpointId, RingEndpointS
     return {endpoint.id: endpoint for endpoint in slots.ring_endpoints}
 
 
+def carrier_slot_by_bond_slot(slots: SlotBundle) -> dict[BondSlotId, CarrierSlot]:
+    return {slot.bond_slot: slot for slot in slots.carrier_slots}
+
+
 def _iter_syntax_events(skeleton: TraversalSkeleton):
     def walk(atom: AtomId):
         for event in skeleton.events_at[atom]:
@@ -224,6 +249,7 @@ __all__ = (
     "allocate_tree_slots",
     "allocate_traversal_slots",
     "atom_slot_by_atom",
+    "carrier_slot_by_bond_slot",
     "ring_bond_slot_by_endpoint",
     "ring_bond_slots_by_bond",
     "ring_endpoint_by_id",

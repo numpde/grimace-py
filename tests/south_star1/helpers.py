@@ -6,10 +6,20 @@ from grimace._south_star1.facts import AtomFacts
 from grimace._south_star1.facts import BondFacts
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalSiteFacts
+from grimace._south_star1.facts import DirectionalValue
+from grimace._south_star1.facts import LigandKind
+from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
+from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import StereoFacts
+from grimace._south_star1.facts import TetraValue
+from grimace._south_star1.facts import TetrahedralSiteFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import AnnotationMode
 from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
@@ -49,6 +59,118 @@ def cyclopropane_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def tetrahedral_facts() -> MoleculeFacts:
+    site_id = SiteId(0)
+    occurrence_ids = tuple(OccurrenceId(i) for i in range(4))
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "F"), atom(2, "Cl"), atom(3, "Br")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                TetrahedralSiteFacts(
+                    id=site_id,
+                    center=AtomId(0),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=occurrence_ids,
+                    reference_order=occurrence_ids,
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(1),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site_id,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(0),
+                bond=None,
+            ),
+        ),
+    )
+
+
+def directional_facts() -> MoleculeFacts:
+    site_id = SiteId(0)
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "F"), atom(3, "Cl")),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 0, 2),
+            single_bond(2, 1, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=site_id,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0),),
+                    right_ligands=(OccurrenceId(1),),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(1)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
             ),
         ),
     )

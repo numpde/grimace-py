@@ -8,6 +8,7 @@ from dataclasses import field
 from .facts import MoleculeFacts
 from .ids import AtomId
 from .ids import BondSlotId
+from .ids import CarrierSlotId
 from .ids import RingEndpointId
 from .policy import AtomTextChoice
 from .policy import BondTextChoice
@@ -20,18 +21,19 @@ from .semantics import ParserSemantics
 from .skeleton import TraversalSkeleton
 from .slots import BondSlotKind
 from .slots import SlotBundle
+from .slots import carrier_slot_by_bond_slot
 from .slots import ring_bond_slots_by_bond
 
 
 @dataclass(frozen=True, slots=True)
-class NonStereoTreeAssignment:
-    """Finite choices for the first RDKit-free, non-stereo traversal fragment."""
+class TraversalAssignment:
+    """Finite syntax choices for one RDKit-free traversal witness."""
 
     atom_text: dict[AtomId, AtomTextChoice]
     tetra_tokens: dict[AtomId, TetraToken]
     bond_text: dict[BondSlotId, BondTextChoice]
     ring_labels: dict[RingEndpointId, RingLabel]
-    direction_marks: dict[BondSlotId, DirectionMark] = field(default_factory=dict)
+    direction_marks: dict[CarrierSlotId, DirectionMark] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +46,7 @@ def validate_nonstereo_tree_witness(
     facts: MoleculeFacts,
     skeleton: TraversalSkeleton,
     slots: SlotBundle,
-    assignment: NonStereoTreeAssignment,
+    assignment: TraversalAssignment,
 ) -> tuple[NamedConstraint, ...]:
     """Validate the currently supported proof-kernel witness fragment.
 
@@ -101,7 +103,7 @@ def validate_nonstereo_traversal_witness(
     facts: MoleculeFacts,
     skeleton: TraversalSkeleton,
     slots: SlotBundle,
-    assignment: NonStereoTreeAssignment,
+    assignment: TraversalAssignment,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
 ) -> tuple[NamedConstraint, ...]:
@@ -110,6 +112,68 @@ def validate_nonstereo_traversal_witness(
     if facts.stereo.tetrahedral or facts.stereo.directional:
         raise NotImplementedError("non-stereo traversal witnesses reject stereo facts")
 
+    _validate_traversal_assignment_coverage(
+        facts,
+        skeleton,
+        slots,
+        assignment,
+        require_empty_tetra=True,
+    )
+
+    validate_bounded_ring_labels(policy, slots, assignment.ring_labels)
+    _validate_atom_decode_relations(facts, slots, assignment, semantics)
+    _validate_bond_decode_relations(facts, slots, assignment, semantics)
+
+    return (
+        NamedConstraint("nonstereo_only", "molecule"),
+        NamedConstraint("bounded_ring_labels", "ring_endpoints"),
+        NamedConstraint("atom_decode_relations", "atom_slots"),
+        NamedConstraint("bond_decode_relations", "bond_slots"),
+        NamedConstraint("ring_pair_decode_relations", "ring_bonds"),
+    )
+
+
+def validate_stereo_traversal_witness(
+    facts: MoleculeFacts,
+    skeleton: TraversalSkeleton,
+    slots: SlotBundle,
+    assignment: TraversalAssignment,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+) -> tuple[NamedConstraint, ...]:
+    facts.validate()
+    policy.validate_for_facts(facts)
+    _validate_traversal_assignment_coverage(
+        facts,
+        skeleton,
+        slots,
+        assignment,
+        require_empty_tetra=False,
+    )
+    validate_bounded_ring_labels(policy, slots, assignment.ring_labels)
+    _validate_atom_decode_relations(facts, slots, assignment, semantics)
+    _validate_bond_decode_relations(facts, slots, assignment, semantics)
+    _validate_tetrahedral_relations(facts, skeleton, slots, assignment, semantics)
+    _validate_directional_relations(facts, skeleton, slots, assignment, semantics)
+
+    return (
+        NamedConstraint("bounded_ring_labels", "ring_endpoints"),
+        NamedConstraint("atom_decode_relations", "atom_slots"),
+        NamedConstraint("bond_decode_relations", "bond_slots"),
+        NamedConstraint("ring_pair_decode_relations", "ring_bonds"),
+        NamedConstraint("tetrahedral_relations", "tetrahedral_sites"),
+        NamedConstraint("directional_relations", "directional_sites"),
+    )
+
+
+def _validate_traversal_assignment_coverage(
+    facts: MoleculeFacts,
+    skeleton: TraversalSkeleton,
+    slots: SlotBundle,
+    assignment: TraversalAssignment,
+    *,
+    require_empty_tetra: bool,
+) -> None:
     atom_ids = {atom.id for atom in facts.atoms}
     _require_exact_keys("atom text", set(assignment.atom_text), atom_ids)
     _require_exact_keys("tetra tokens", set(assignment.tetra_tokens), atom_ids)
@@ -121,19 +185,20 @@ def validate_nonstereo_traversal_witness(
     _require_exact_keys(
         "direction marks",
         set(assignment.direction_marks),
-        {slot.id for slot in slots.bond_slots},
+        {slot.id for slot in slots.carrier_slots},
     )
 
-    non_none_tetra = {
-        atom
-        for atom, token in assignment.tetra_tokens.items()
-        if token is not TetraToken.NONE
-    }
-    if non_none_tetra:
-        raise ValueError(
-            "non-stereo witness must use only empty tetra tokens: "
-            f"{non_none_tetra!r}"
-        )
+    if require_empty_tetra:
+        non_none_tetra = {
+            atom
+            for atom, token in assignment.tetra_tokens.items()
+            if token is not TetraToken.NONE
+        }
+        if non_none_tetra:
+            raise ValueError(
+                "non-stereo witness must use only empty tetra tokens: "
+                f"{non_none_tetra!r}"
+            )
 
     slot_atom_ids = {slot.atom for slot in slots.atom_slots}
     _require_exact_keys("atom slots", slot_atom_ids, atom_ids)
@@ -152,23 +217,11 @@ def validate_nonstereo_traversal_witness(
         set(skeleton.ring_bonds),
     )
 
-    validate_bounded_ring_labels(policy, slots, assignment.ring_labels)
-    _validate_atom_decode_relations(facts, slots, assignment, semantics)
-    _validate_bond_decode_relations(facts, slots, assignment, semantics)
-
-    return (
-        NamedConstraint("nonstereo_only", "molecule"),
-        NamedConstraint("bounded_ring_labels", "ring_endpoints"),
-        NamedConstraint("atom_decode_relations", "atom_slots"),
-        NamedConstraint("bond_decode_relations", "bond_slots"),
-        NamedConstraint("ring_pair_decode_relations", "ring_bonds"),
-    )
-
 
 def _validate_atom_decode_relations(
     facts: MoleculeFacts,
     slots: SlotBundle,
-    assignment: NonStereoTreeAssignment,
+    assignment: TraversalAssignment,
     semantics: ParserSemantics,
 ) -> None:
     incident_texts: dict[AtomId, list[BondTextChoice]] = {
@@ -193,12 +246,14 @@ def _validate_atom_decode_relations(
 def _validate_bond_decode_relations(
     facts: MoleculeFacts,
     slots: SlotBundle,
-    assignment: NonStereoTreeAssignment,
+    assignment: TraversalAssignment,
     semantics: ParserSemantics,
 ) -> None:
     ring_slots_by_bond = ring_bond_slots_by_bond(slots)
+    carrier_by_bond_slot = carrier_slot_by_bond_slot(slots)
     for slot in slots.bond_slots:
-        mark = assignment.direction_marks[slot.id]
+        carrier = carrier_by_bond_slot[slot.id]
+        mark = assignment.direction_marks[carrier.id]
         if slot.kind is BondSlotKind.TREE:
             if not semantics.bond_decode_ok(
                 facts,
@@ -216,11 +271,49 @@ def _validate_bond_decode_relations(
             facts,
             bond,
             assignment.bond_text[endpoint_1.id],
-            assignment.direction_marks[endpoint_1.id],
+            assignment.direction_marks[carrier_by_bond_slot[endpoint_1.id].id],
             assignment.bond_text[endpoint_2.id],
-            assignment.direction_marks[endpoint_2.id],
+            assignment.direction_marks[carrier_by_bond_slot[endpoint_2.id].id],
         ):
             raise ValueError(f"ring-pair decode relation rejected bond {bond!r}")
+
+
+def _validate_tetrahedral_relations(
+    facts: MoleculeFacts,
+    skeleton: TraversalSkeleton,
+    slots: SlotBundle,
+    assignment: TraversalAssignment,
+    semantics: ParserSemantics,
+) -> None:
+    for site in facts.stereo.tetrahedral:
+        local_order = semantics.local_tetra_order(facts, skeleton, slots, site.id)
+        value = semantics.tetra_value(
+            facts,
+            site.id,
+            local_order,
+            assignment.tetra_tokens[site.center],
+        )
+        if value != site.target:
+            raise ValueError(f"tetrahedral relation rejected site {site.id!r}")
+
+
+def _validate_directional_relations(
+    facts: MoleculeFacts,
+    skeleton: TraversalSkeleton,
+    slots: SlotBundle,
+    assignment: TraversalAssignment,
+    semantics: ParserSemantics,
+) -> None:
+    for site in facts.stereo.directional:
+        value = semantics.directional_value(
+            facts,
+            skeleton,
+            slots,
+            site.id,
+            assignment.direction_marks,
+        )
+        if value != site.target:
+            raise ValueError(f"directional relation rejected site {site.id!r}")
 
 
 def _require_exact_keys(label: str, actual: set[object], expected: set[object]) -> None:
@@ -234,7 +327,8 @@ def _require_exact_keys(label: str, actual: set[object], expected: set[object]) 
 
 __all__ = (
     "NamedConstraint",
-    "NonStereoTreeAssignment",
+    "TraversalAssignment",
     "validate_nonstereo_tree_witness",
     "validate_nonstereo_traversal_witness",
+    "validate_stereo_traversal_witness",
 )

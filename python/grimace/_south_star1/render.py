@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .constraints import NonStereoTreeAssignment
+from .constraints import TraversalAssignment
 from .constraints import validate_nonstereo_tree_witness
 from .constraints import validate_nonstereo_traversal_witness
 from .facts import MoleculeFacts
@@ -22,7 +22,7 @@ def render_nonstereo_tree(
     facts: MoleculeFacts,
     skeleton: TraversalSkeleton,
     slots: SlotBundle,
-    assignment: NonStereoTreeAssignment,
+    assignment: TraversalAssignment,
 ) -> str:
     validate_nonstereo_tree_witness(facts, skeleton, slots, assignment)
     tree_slot_by_bond = tree_bond_slot_by_bond(slots)
@@ -46,7 +46,7 @@ def render_nonstereo_traversal(
     facts: MoleculeFacts,
     skeleton: TraversalSkeleton,
     slots: SlotBundle,
-    assignment: NonStereoTreeAssignment,
+    assignment: TraversalAssignment,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
 ) -> str:

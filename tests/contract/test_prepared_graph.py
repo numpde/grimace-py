@@ -133,6 +133,42 @@ class PreparedSmilesGraphContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "neighbor token row length mismatch"):
             PreparedSmilesGraph.from_dict(broken)
 
+    def test_stereo_prepared_graph_rejects_incomplete_stereo_atom_metadata(self) -> None:
+        mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_STEREO_SURFACE)
+        broken = deepcopy(prepared.to_dict())
+        del broken["atom_stereo_neighbor_orders"]
+
+        with self.assertRaisesRegex(ValueError, "stereo atom metadata is incomplete"):
+            PreparedSmilesGraph.from_dict(broken)
+
+    def test_stereo_prepared_graph_rejects_incomplete_stereo_bond_metadata(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C\\Cl")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_STEREO_SURFACE)
+        broken = deepcopy(prepared.to_dict())
+        del broken["bond_dirs"]
+
+        with self.assertRaisesRegex(ValueError, "stereo bond metadata is incomplete"):
+            PreparedSmilesGraph.from_dict(broken)
+
+    def test_nonstereo_prepared_graph_rejects_extra_stereo_metadata(self) -> None:
+        mol = Chem.MolFromSmiles("CC")
+        self.assertIsNotNone(mol)
+        assert mol is not None
+
+        prepared = prepare_smiles_graph(mol, self.policy, surface_kind=CONNECTED_NONSTEREO_SURFACE)
+        broken = deepcopy(prepared.to_dict())
+        broken["atom_chiral_tags"] = ["CHI_UNSPECIFIED", "CHI_UNSPECIFIED"]
+
+        with self.assertRaisesRegex(ValueError, "nonstereo surface cannot carry stereo atom metadata"):
+            PreparedSmilesGraph.from_dict(broken)
+
     def test_connected_stereo_prepared_graph_carries_atom_stereo_metadata(self) -> None:
         mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
         self.assertIsNotNone(mol)

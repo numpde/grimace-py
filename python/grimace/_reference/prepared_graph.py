@@ -439,6 +439,15 @@ class PreparedSmilesGraph:
             self.atom_explicit_h_counts,
             self.atom_implicit_h_counts,
         )
+        stereo_atom_fields_present = tuple(bool(field) for field in stereo_atom_fields)
+        if self.surface_kind == CONNECTED_NONSTEREO_SURFACE and any(stereo_atom_fields_present):
+            raise ValueError("PreparedSmilesGraph nonstereo surface cannot carry stereo atom metadata")
+        if (
+            self.surface_kind == CONNECTED_STEREO_SURFACE
+            and self.atom_count
+            and not all(stereo_atom_fields_present)
+        ):
+            raise ValueError("PreparedSmilesGraph stereo atom metadata is incomplete")
         for field in stereo_atom_fields:
             if field and len(field) != self.atom_count:
                 raise ValueError("PreparedSmilesGraph stereo atom field length mismatch")
@@ -452,6 +461,15 @@ class PreparedSmilesGraph:
             self.bond_begin_atom_indices,
             self.bond_end_atom_indices,
         )
+        stereo_bond_fields_present = tuple(bool(field) for field in stereo_bond_fields)
+        if self.surface_kind == CONNECTED_NONSTEREO_SURFACE and any(stereo_bond_fields_present):
+            raise ValueError("PreparedSmilesGraph nonstereo surface cannot carry stereo bond metadata")
+        if (
+            self.surface_kind == CONNECTED_STEREO_SURFACE
+            and self.bond_count
+            and not all(stereo_bond_fields_present)
+        ):
+            raise ValueError("PreparedSmilesGraph stereo bond metadata is incomplete")
         for field in stereo_bond_fields:
             if field and len(field) != self.bond_count:
                 raise ValueError("PreparedSmilesGraph stereo bond field length mismatch")

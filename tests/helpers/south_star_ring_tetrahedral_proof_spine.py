@@ -15,13 +15,16 @@ from grimace._south_star.tetrahedral import (
     SouthStarTetrahedralCenterFact,
     extract_ring_tetrahedral_interaction_obligations,
 )
+from tests.helpers.south_star_domain_manifest import (
+    SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY,
+)
 from tests.helpers.south_star_semantic_oracle import graph_signature
 from tests.helpers.south_star_semantic_oracle import parse_smiles
 from tests.helpers.south_star_semantic_oracle import semantic_signature
 
 
 POLYCYCLIC_RING_TETRAHEDRAL_PROOF_AUTHORITY = (
-    "unified_reference_polycyclic_ring_tetrahedral_obligations"
+    SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY
 )
 _EXPECTED_PROOF_GATE_CATEGORIES = frozenset(
     {
@@ -49,7 +52,7 @@ def polycyclic_ring_tetrahedral_proof_spine(
 ) -> SouthStarPolycyclicRingTetrahedralProofSpine:
     mol = parse_smiles(source_smiles)
     molecule_facts = SouthStarMoleculeFacts.from_mol(mol)
-    _assert_polycyclic_ring_tetrahedral_proof_domain(molecule_facts)
+    _assert_polycyclic_ring_tetrahedral_proof_domain(mol, molecule_facts)
     state = SouthStarComponentSupportState(
         molecule_facts=molecule_facts,
         annotation_policy=DEFAULT_SOUTH_STAR_POLICY_SET.annotation_policy,
@@ -101,6 +104,7 @@ def polycyclic_ring_tetrahedral_proof_spine(
 
 
 def _assert_polycyclic_ring_tetrahedral_proof_domain(
+    mol: Chem.Mol,
     molecule_facts: SouthStarMoleculeFacts,
 ) -> None:
     unexpected = (
@@ -112,17 +116,15 @@ def _assert_polycyclic_ring_tetrahedral_proof_domain(
             "polycyclic ring/tetrahedral proof spine only accepts the named "
             f"frontier categories; found {sorted(unexpected)!r}"
         )
-    if not _EXPECTED_PROOF_GATE_CATEGORIES <= set(
-        molecule_facts.unsupported_categories
-    ):
-        raise NotImplementedError(
-            "polycyclic ring/tetrahedral proof spine requires the current "
-            "fused/polycyclic ring-tetrahedral frontier"
-        )
     if not molecule_facts.graph_topology.ring_system.fused_or_polycyclic:
         raise NotImplementedError(
             "polycyclic ring/tetrahedral proof spine requires a fused or "
             "polycyclic ring system"
+        )
+    if not _tetrahedral_facts_from_ring_obligations(mol):
+        raise NotImplementedError(
+            "polycyclic ring/tetrahedral proof spine requires a ring-local "
+            "tetrahedral obligation"
         )
 
 

@@ -393,12 +393,19 @@ class SouthStarTetrahedralFactTests(unittest.TestCase):
                     )
                     self.assertTrue(report.accepted, report.rejection_reasons)
 
-    def test_polycyclic_ring_tetrahedral_support_still_fails(self) -> None:
-        with self.assertRaisesRegex(
-            NotImplementedError,
-            "fused_or_polycyclic_ring|ring_tetrahedral_interaction",
-        ):
-            mol_to_smiles_enum_s_graph_native("C1CC2CCCC2[C@H]1F")
+    def test_polycyclic_ring_tetrahedral_outputs_parse_to_source_semantics(
+        self,
+    ) -> None:
+        result = mol_to_smiles_enum_s_graph_native("C1CC2CCCC2[C@H]1F")
+
+        self.assertTrue(result.outputs)
+        for output in result.outputs:
+            with self.subTest(output=output):
+                report = south_star_conformance_report(
+                    source_smiles="C1CC2CCCC2[C@H]1F",
+                    candidate_smiles=output,
+                )
+                self.assertTrue(report.accepted, report.rejection_reasons)
 
 
 def _traversal_by_render(source_smiles: str, rendered: str):

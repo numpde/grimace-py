@@ -18,6 +18,7 @@ from tests.helpers.south_star_domain_manifest import (
     SOUTH_STAR_NONSTEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_NONSTEREO_POLYCYCLIC_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_POLYCYCLIC_RING_STEREO_UNIFIED_REFERENCE_AUTHORITY,
+    SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_PRIVATE_DOMAIN,
     SOUTH_STAR_RING_TETRAHEDRAL_EXOCYCLIC_DIRECTIONAL_UNIFIED_REFERENCE_AUTHORITY,
     SOUTH_STAR_RING_STEREO_MONOCYCLE_UNIFIED_REFERENCE_AUTHORITY,
@@ -27,6 +28,9 @@ from tests.helpers.south_star_domain_manifest import (
 )
 from tests.helpers.south_star_exact_support import (
     load_south_star_expanded_support_cases,
+)
+from tests.helpers.south_star_ring_tetrahedral_proof_spine import (
+    polycyclic_ring_tetrahedral_proof_spine,
 )
 from tests.helpers.south_star_expanded_domain_oracles import (
     directional_tetrahedral_composition_proof_for_case,
@@ -602,6 +606,27 @@ class SouthStarExpandedSupportFixtureTests(unittest.TestCase):
                         equation.traversal_orientation_flip,
                         equation.graph_marker != equation.emitted_marker,
                     )
+
+    def test_polycyclic_ring_tetrahedral_proof_matches_fixtures(self) -> None:
+        for case in load_south_star_expanded_support_cases():
+            if (
+                case.support_authority
+                != SOUTH_STAR_POLYCYCLIC_RING_TETRAHEDRAL_UNIFIED_REFERENCE_AUTHORITY
+            ):
+                continue
+
+            with self.subTest(case_id=case.case_id):
+                proof = polycyclic_ring_tetrahedral_proof_spine(case.source_smiles)
+                result = mol_to_smiles_enum_s_graph_native(
+                    case.source_smiles,
+                    case_id=case.case_id,
+                )
+
+                self.assertEqual(case.expected_support, proof.outputs)
+                self.assertEqual(proof.outputs, result.outputs)
+                self.assertGreater(proof.closure_event_count, 0)
+                self.assertGreater(proof.renderer_input_count, 0)
+                self.assertEqual(1, proof.obligation_count)
 
     def test_tetrahedral_atom_stereo_proof_matches_fixtures(self) -> None:
         for case in load_south_star_expanded_support_cases():

@@ -35,15 +35,14 @@ class SouthStarRingTetrahedralProofSpineTests(unittest.TestCase):
     def test_polycyclic_ring_tetrahedral_spine_rejects_supported_monocycle(
         self,
     ) -> None:
-        with self.assertRaisesRegex(NotImplementedError, "frontier"):
+        with self.assertRaisesRegex(NotImplementedError, "fused or polycyclic"):
             polycyclic_ring_tetrahedral_proof_spine("F[C@H]1CCCC(C)C1")
 
-    def test_proof_spine_does_not_open_runtime_support(self) -> None:
-        with self.assertRaisesRegex(
-            NotImplementedError,
-            "fused_or_polycyclic_ring|ring_tetrahedral_interaction",
-        ):
-            mol_to_smiles_enum_s_graph_native("F[C@H]1CC2CCC1C2")
+    def test_runtime_support_matches_proof_spine_for_clean_witness(self) -> None:
+        proof = polycyclic_ring_tetrahedral_proof_spine("F[C@H]1CC2CCC1C2")
+        result = mol_to_smiles_enum_s_graph_native("F[C@H]1CC2CCC1C2")
+
+        self.assertEqual(proof.outputs, result.outputs)
 
 
 if __name__ == "__main__":

@@ -172,14 +172,16 @@ class SouthStarSupportGateTests(unittest.TestCase):
     ) -> None:
         report = south_star_support_gate_report(parse_smiles("C1CC2CCCC2[C@H]1F"))
 
-        self.assertUnsupportedCategory(
-            "ring_tetrahedral_interaction",
-            report.categories,
-        )
-        self.assertUnsupportedCategory(
-            "fused_or_polycyclic_ring",
-            report.categories,
-        )
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertNotIn("ring_tetrahedral_interaction", report.categories)
+        self.assertNotIn("fused_or_polycyclic_ring", report.categories)
+
+    def test_polycyclic_ring_tetrahedral_is_inside_gate_scope(self) -> None:
+        report = south_star_support_gate_report(parse_smiles("F[C@H]1CC2CCC1C2"))
+
+        self.assertTrue(report.supported, report.unsupported_features)
+        self.assertNotIn("ring_tetrahedral_interaction", report.categories)
+        self.assertNotIn("fused_or_polycyclic_ring", report.categories)
 
     def test_unsupported_atom_text_is_fail_fast_unsupported(self) -> None:
         report = south_star_support_gate_report(parse_smiles("[Na+]"))

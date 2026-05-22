@@ -7,7 +7,7 @@ use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList};
 use crate::prepared_graph::{PreparedSmilesGraphData, PyPreparedSmilesGraph};
 
 const PREPARED_MOL_SCHEMA_VERSION: usize = 1;
-const PREPARED_MOL_BINARY_MAGIC: &[u8] = b"GRIMACEPM\0";
+const PREPARED_MOL_BINARY_MAGIC: &[u8] = b"GPM\0";
 const PREPARED_MOL_BINARY_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

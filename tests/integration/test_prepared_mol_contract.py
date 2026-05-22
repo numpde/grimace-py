@@ -240,7 +240,7 @@ class PreparedMolContractTests(unittest.TestCase):
         prepared = self._prepare("CCO.N", isomericSmiles=False)
         payload = prepared.to_bytes()
 
-        self.assertTrue(payload.startswith(b"GRIMACEPM\0"))
+        self.assertTrue(payload.startswith(b"GPM\0"))
         self.assertFalse(payload.startswith(b"{"))
         self.assertIsInstance(grimace.PreparedMol.from_bytes(payload), grimace.PreparedMol)
 
@@ -250,9 +250,9 @@ class PreparedMolContractTests(unittest.TestCase):
 
         valid_payload = bytearray(self._prepare("CCO", isomericSmiles=False).to_bytes())
         bad_version = bytearray(valid_payload)
-        bad_version[len(b"GRIMACEPM\0")] = 99
+        bad_version[len(b"GPM\0")] = 99
         oversized_fragment_count = (
-            b"GRIMACEPM\0"
+            b"GPM\0"
             + (1).to_bytes(4, "little")
             + (1).to_bytes(8, "little")
             + b"\0\0\0\0\0"

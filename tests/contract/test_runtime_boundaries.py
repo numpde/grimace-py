@@ -71,6 +71,10 @@ class RuntimeBoundaryTests(unittest.TestCase):
         REPO_ROOT / "python" / "grimace" / "_runtime_states.py",
         REPO_ROOT / "python" / "grimace" / "_deviation.py",
     )
+    reference_rooted_modules = (
+        REPO_ROOT / "python" / "grimace" / "_reference" / "rooted" / "connected_nonstereo.py",
+        REPO_ROOT / "python" / "grimace" / "_reference" / "rooted" / "connected_stereo.py",
+    )
 
     def test_runtime_modules_do_not_directly_import_rdkit(self) -> None:
         for path in self.runtime_modules:
@@ -92,6 +96,13 @@ class RuntimeBoundaryTests(unittest.TestCase):
         forbidden_methods = {"to_dict", "from_dict"}
 
         for path in self.runtime_modules:
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                self.assertFalse(forbidden_methods & _attribute_names(path))
+
+    def test_reference_rooted_modules_do_not_use_prepared_graph_dict_transport(self) -> None:
+        forbidden_methods = {"to_dict", "from_dict"}
+
+        for path in self.reference_rooted_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
                 self.assertFalse(forbidden_methods & _attribute_names(path))
 

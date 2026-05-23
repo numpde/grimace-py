@@ -40,6 +40,25 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
+    def test_test_compose_has_strict_copied_context_posture(self) -> None:
+        compose = read_text("compose/test.yml")
+        for service in ("rust", "test", "parity", "exact-public-invariants"):
+            with self.subTest(service=service):
+                self.assertRegex(compose, rf"(?m)^  {service}:$")
+        self.assertIn("dockerfile: containers/test/Dockerfile", compose)
+        self.assertRegex(compose, r'(?m)^  user:\s+"65532:65532"\s*$')
+        self.assertRegex(compose, r'(?m)^  network_mode:\s+"none"\s*$')
+        self.assertRegex(compose, r"(?m)^  read_only:\s+true\s*$")
+        self.assertRegex(compose, r"(?ms)^  cap_drop:\n    - ALL\s*$")
+        self.assertRegex(
+            compose,
+            r"(?ms)^  security_opt:\n    - no-new-privileges:true\s*$",
+        )
+        self.assertNotIn("volumes:", compose)
+        self.assertNotIn(".venv", compose)
+        self.assertNotIn("docker.sock", compose)
+        self.assertNotIn("privileged: true", compose)
+
     def test_checks_dockerfile_is_pinned_and_does_not_embed_repo(self) -> None:
         dockerfile = read_text("containers/checks/Dockerfile")
         self.assertNotRegex(dockerfile, r"(?m)^(COPY|ADD|RUN)\b")

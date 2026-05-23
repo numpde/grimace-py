@@ -1,0 +1,49 @@
+x-test-runtime: &test-runtime
+  build:
+    context: ..
+    dockerfile: containers/test/Dockerfile
+  image: grimace-py-test:local
+  working_dir: /src
+  user: "65532:65532"
+  network_mode: "none"
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 1024
+  mem_limit: 2g
+  tmpfs:
+    - /cargo-target:size=1024m,mode=1777,exec
+    - /tmp:size=512m,mode=1777
+
+services:
+  rust:
+    <<: *test-runtime
+    entrypoint:
+      - cargo
+    command:
+      - test
+      - --lib
+      - --offline
+    environment:
+      CARGO_TARGET_DIR: /cargo-target
+
+  test:
+    <<: *test-runtime
+
+  parity:
+    <<: *test-runtime
+    command:
+      - -m
+      - unittest
+      - tests.run_pinned_rdkit_parity
+      - -q
+
+  exact-public-invariants:
+    <<: *test-runtime
+    command:
+      - -m
+      - unittest
+      - tests.run_exact_public_invariants
+      - -q

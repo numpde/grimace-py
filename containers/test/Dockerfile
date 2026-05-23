@@ -2,6 +2,7 @@ FROM python:3.12.13-slim-bookworm@sha256:93ab4b7fa528b25124c97bcc755415e60eb671a
 FROM rust:1.83.0-slim-bookworm@sha256:540c902e99c384163b688bbd8b5b8520e94e7731b27f7bd0eaa56ae1960627ab
 
 ENV CARGO_HOME=/usr/local/cargo \
+    LD_LIBRARY_PATH=/usr/local/lib \
     PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,6 +17,9 @@ RUN python --version \
 
 WORKDIR /src
 COPY . /src
+
+RUN mkdir -p .venv/lib/python3.12 \
+    && ln -s /usr/local/lib/python3.12/site-packages .venv/lib/python3.12/site-packages
 
 RUN python -m maturin build --release --out /tmp/grimace-dist -i python3.12 \
     && python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl \

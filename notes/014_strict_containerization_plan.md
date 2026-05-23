@@ -178,7 +178,7 @@ until the dependency surface is large enough to justify the extra object.
   `docker build --file containers/test/Dockerfile --tag grimace-py-test:local
   .`, strict `docker run` runtime flags, and `make checks`.
 
-- [ ] Add the correctness Compose lane.
+- [x] Add the correctness Compose lane.
   - Create `compose/test.yml`.
   - Provide services or commands for `rust`, `test`, `parity`, and
     `exact-public-invariants`.
@@ -187,6 +187,12 @@ until the dependency surface is large enough to justify the extra object.
   - Do not mount the host repository read-write.
   - Do not depend on host-generated `target`, `dist`, `.venv`, or extension
     artifacts.
+
+  Added `compose/test.yml` with copied-context services for Rust tests,
+  installed-package correctness, pinned RDKit parity, and exact public
+  invariants. Runtime services use no network, read-only root filesystems,
+  non-root UID/GID, no capabilities, no host repository mount, and tmpfs build
+  output. Validated all four services plus `make checks`.
 
 - [ ] Add Make targets for correctness.
   - `make rust`.

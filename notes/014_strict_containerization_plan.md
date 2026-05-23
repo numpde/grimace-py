@@ -38,11 +38,37 @@ until the dependency surface is large enough to justify the extra object.
 
 ## Strategic Checklist
 
-- [ ] Freeze the current baseline.
+- [x] Freeze the current baseline.
   - Confirm `main` is clean and pushed.
   - Record current host-successful commands: `cargo test`, full Python suite,
     package build, and `twine check`.
   - Leave GitHub CI unchanged until local container lanes are proven.
+
+  Baseline recorded on 2026-05-23 from commit `107529d` before containerization
+  implementation:
+
+  - `cargo test --lib`: 57 passed.
+  - `maturin develop --release`: installed editable `grimace-py 0.1.11` in
+    the active Python 3.12 environment.
+  - `python -m unittest discover -s tests -t . -q`: 316 passed, 6 skipped.
+  - `python -m unittest tests.run_pinned_rdkit_parity -q`: 11 passed.
+  - `python -m unittest tests.run_exact_public_invariants -q`: 43 passed.
+  - `maturin build --release --out /tmp/grimace-py-baseline-dist -i
+    python3.12`: wheel built.
+  - `maturin build --release --sdist --out /tmp/grimace-py-baseline-dist -i
+    python3.12`: sdist built.
+  - `python -m twine check /tmp/grimace-py-baseline-dist/*`: wheel and sdist
+    passed.
+  - Wheel installed-package correctness in a temporary venv: 70 passed.
+  - Sdist installed-package correctness in a temporary venv: 70 passed.
+
+  Local baseline environment:
+
+  - Python `3.12.13` from `grimace-py-dev`.
+  - Rust `1.83.0`.
+  - RDKit `2026.3.1`.
+  - Maturin `1.13.1`.
+  - Twine `6.2.0`.
 
 - [ ] Define the strict container contract.
   - No host Python/conda dependency for normal checks.

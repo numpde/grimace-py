@@ -386,7 +386,7 @@ def _ligand_color(
             atom.explicit_h_count,
             atom.implicit_h_count,
             atom.no_implicit,
-            bond.order,
+            bond.order.value,
             bond.is_aromatic,
             bond.is_conjugated,
         )

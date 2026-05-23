@@ -49,6 +49,30 @@ class RdkitAuditTest(unittest.TestCase):
         self.assertTrue(results)
         self.assertTrue(all(result.ok for result in results))
 
+    def test_audit_reports_ring_tetra_support_as_isomorphic(self) -> None:
+        results = audit_generated_support_with_rdkit(
+            Chem.MolFromSmiles("[C@H]1(F)CO1")
+        )
+
+        self.assertTrue(results)
+        self.assertTrue(all(result.ok for result in results))
+
+    def test_audit_reports_disconnected_stereo_support_as_isomorphic(self) -> None:
+        results = audit_generated_support_with_rdkit(
+            Chem.MolFromSmiles("CCO.[C@H](F)(Cl)Br")
+        )
+
+        self.assertTrue(results)
+        self.assertTrue(all(result.ok for result in results))
+
+    def test_audit_reports_mixed_tetra_directional_support_as_isomorphic(self) -> None:
+        results = audit_generated_support_with_rdkit(
+            Chem.MolFromSmiles("[C@H](F)(Cl)C(/F)=C(\\Cl)")
+        )
+
+        self.assertTrue(results)
+        self.assertTrue(all(result.ok for result in results))
+
     def test_witness_audit_preserves_witness_context(self) -> None:
         mol = Chem.MolFromSmiles("CCO")
         facts = ordinary_molecule_facts_from_rdkit(mol)

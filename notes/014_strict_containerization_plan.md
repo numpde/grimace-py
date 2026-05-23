@@ -125,13 +125,16 @@ until the dependency surface is large enough to justify the extra object.
   `docker compose -f compose/checks.yml config` and
   `docker compose -f compose/checks.yml run --rm --build checks`.
 
-- [ ] Add the Makefile shell contract.
+- [x] Add the Makefile shell contract.
   - `SHELL := bash`.
   - `.SHELLFLAGS := -eu -o pipefail -c`.
   - `make help`.
   - `make checks`.
   - Root guard in the `dapp32` style.
   - `DOCKER_COMPOSE ?= docker compose`.
+
+  Added the minimal Makefile contract for `help` and `checks`. Validated with
+  `make help`, `make -n checks`, and `make checks`.
 
 - [ ] Add posture tests.
   - `tests/checks/test_container_posture.py`.

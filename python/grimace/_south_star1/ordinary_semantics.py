@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Literal
 
 from .facts import BondFacts
 from .facts import BondOrder
@@ -11,6 +13,7 @@ from .facts import DirectionalValue
 from .facts import LigandKind
 from .facts import LigandOccurrence
 from .facts import MoleculeFacts
+from .facts import SiteStatus
 from .facts import TetraValue
 from .facts import TetrahedralSiteFacts
 from .ids import AtomId
@@ -59,11 +62,11 @@ class OrdinarySmilesSemantics(ParserSemantics):
         direction_mark: DirectionMark,
     ) -> bool:
         bond_facts = _bond_by_id(facts)[bond]
-        if (
-            direction_mark is not DirectionMark.ABSENT
-            and not bond_text.permits_direction
-        ):
-            return False
+        if direction_mark is not DirectionMark.ABSENT:
+            if not bond_text.permits_direction:
+                return False
+            if bond_facts.order is not BondOrder.SINGLE:
+                return False
         return _bond_text_matches_order(bond_text, bond_facts)
 
     def ring_pair_decode_ok(
@@ -169,10 +172,13 @@ class OrdinarySmilesSemantics(ParserSemantics):
         slot_bundle = _require_slots(slots)
         site_facts = _directional_site_by_id(facts)[site]
         carrier_by_id = {carrier.id: carrier for carrier in slot_bundle.carrier_slots}
-        left_bonds = _ligand_bonds(facts, site_facts.left_ligands)
-        right_bonds = _ligand_bonds(facts, site_facts.right_ligands)
-        left_signed: list[int] = []
-        right_signed: list[int] = []
+        model_by_carrier = _directional_carrier_models(
+            facts=facts,
+            site=site_facts,
+            slots=slot_bundle,
+        )
+        left_values: list[int] = []
+        right_values: list[int] = []
 
         for carrier_id, mark in marks.items():
             carrier = carrier_by_id[carrier_id]
@@ -180,34 +186,38 @@ class OrdinarySmilesSemantics(ParserSemantics):
                 continue
             if carrier.bond == site_facts.center_bond:
                 return INVALID
-            if carrier.bond in left_bonds:
-                left_signed.append(
-                    _signed_direction(mark, carrier, endpoint=site_facts.left_endpoint)
-                )
-                continue
-            if carrier.bond in right_bonds:
-                right_signed.append(
-                    _signed_direction(mark, carrier, endpoint=site_facts.right_endpoint)
-                )
-                continue
+            model = model_by_carrier.get(carrier_id)
+            if model is None:
+                return INVALID
+
+            raw = _signed_direction(mark, carrier, endpoint=model.endpoint)
+            normalized = raw * model.ligand_factor
+
+            if model.side == "left":
+                left_values.append(normalized)
+            else:
+                right_values.append(normalized)
+
+        if not left_values and not right_values:
+            return DirectionalValue.NONE
+        if not left_values or not right_values:
+            return DirectionalValue.NONE
+        if len(set(left_values)) != 1:
+            return INVALID
+        if len(set(right_values)) != 1:
             return INVALID
 
-        if not left_signed and not right_signed:
-            return DirectionalValue.NONE
-        if not left_signed or not right_signed:
-            return DirectionalValue.NONE
+        if left_values[0] == right_values[0]:
+            return DirectionalValue.TOGETHER
+        return DirectionalValue.OPPOSITE
 
-        pair_values = {
-            DirectionalValue.TOGETHER
-            if left == right
-            else DirectionalValue.OPPOSITE
-            for left in left_signed
-            for right in right_signed
-        }
-        if len(pair_values) != 1:
-            return INVALID
 
-        return next(iter(pair_values))
+@dataclass(frozen=True, slots=True)
+class _DirectionalCarrierModel:
+    side: Literal["left", "right"]
+    endpoint: AtomId
+    occurrence: OccurrenceId
+    ligand_factor: int
 
 
 def _bond_text_matches_order(choice: BondTextChoice, bond: BondFacts) -> bool:
@@ -257,6 +267,116 @@ def _directional_substituent_bonds(
         _ligand_bonds(facts, site.left_ligands)
         | _ligand_bonds(facts, site.right_ligands)
     )
+
+
+def _directional_carrier_models(
+    *,
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+    slots: SlotBundle,
+) -> dict[CarrierSlotId, _DirectionalCarrierModel]:
+    occurrences = _occurrences_by_id(facts)
+    left_reference, right_reference = _directional_reference_pair(site)
+    left_by_bond = _neighbor_ligands_by_bond(
+        occurrences,
+        site.left_ligands,
+        side="left",
+    )
+    right_by_bond = _neighbor_ligands_by_bond(
+        occurrences,
+        site.right_ligands,
+        side="right",
+    )
+    out: dict[CarrierSlotId, _DirectionalCarrierModel] = {}
+
+    for carrier in slots.carrier_slots:
+        if carrier.bond == site.center_bond:
+            continue
+        if carrier.bond in left_by_bond:
+            occurrence = left_by_bond[carrier.bond]
+            out[carrier.id] = _DirectionalCarrierModel(
+                side="left",
+                endpoint=site.left_endpoint,
+                occurrence=occurrence,
+                ligand_factor=_ligand_factor(
+                    occurrence,
+                    reference=left_reference,
+                    side_ligands=site.left_ligands,
+                ),
+            )
+            continue
+        if carrier.bond in right_by_bond:
+            occurrence = right_by_bond[carrier.bond]
+            out[carrier.id] = _DirectionalCarrierModel(
+                side="right",
+                endpoint=site.right_endpoint,
+                occurrence=occurrence,
+                ligand_factor=_ligand_factor(
+                    occurrence,
+                    reference=right_reference,
+                    side_ligands=site.right_ligands,
+                ),
+            )
+
+    return out
+
+
+def _directional_reference_pair(
+    site: DirectionalSiteFacts,
+) -> tuple[OccurrenceId, OccurrenceId]:
+    if site.reference_pair is not None:
+        return site.reference_pair
+    if site.status is SiteStatus.SPECIFIED:
+        raise ValueError(
+            f"specified directional site lacks reference pair: {site.id!r}"
+        )
+
+    # Potential-but-unspecified sites only need a stable NONE/non-NONE
+    # distinction.  The arbitrary local reference fixes names for non-NONE
+    # values without changing whether accidental stereo exists.
+    return (
+        min(site.left_ligands, key=int),
+        min(site.right_ligands, key=int),
+    )
+
+
+def _neighbor_ligands_by_bond(
+    occurrences: Mapping[OccurrenceId, LigandOccurrence],
+    ligand_ids: tuple[OccurrenceId, ...],
+    *,
+    side: str,
+) -> dict[BondId, OccurrenceId]:
+    out: dict[BondId, OccurrenceId] = {}
+    for ligand_id in ligand_ids:
+        occurrence = occurrences[ligand_id]
+        if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            continue
+        if occurrence.bond is None:
+            raise ValueError(f"neighbor occurrence lacks bond: {occurrence.id!r}")
+        if occurrence.bond in out:
+            raise ValueError(
+                f"directional {side} side has multiple ligands on bond "
+                f"{occurrence.bond!r}"
+            )
+        out[occurrence.bond] = ligand_id
+    return out
+
+
+def _ligand_factor(
+    occurrence: OccurrenceId,
+    *,
+    reference: OccurrenceId,
+    side_ligands: tuple[OccurrenceId, ...],
+) -> int:
+    if len(side_ligands) > 2:
+        raise ValueError(
+            "ordinary directional endpoint has more than two ligand occurrences"
+        )
+    if occurrence == reference:
+        return 1
+    if occurrence not in side_ligands:
+        raise ValueError(f"occurrence {occurrence!r} is not on directional side")
+    return -1
 
 
 def _ligand_bonds(

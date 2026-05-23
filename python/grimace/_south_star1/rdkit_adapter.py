@@ -166,7 +166,7 @@ def _overlay_rdkit_tetrahedral_stereo(
             id=site.id,
             center=site.center,
             status=SiteStatus.SPECIFIED,
-            target=_tetra_target_from_rdkit_atom(atom),
+            target=_rdkit_tetra_target_for_south_star_reference_order(atom),
             ligand_occurrences=site.ligand_occurrences,
             reference_order=_rdkit_tetra_reference_order(atom, facts, site),
         )
@@ -179,19 +179,21 @@ def _overlay_rdkit_tetrahedral_stereo(
     return out
 
 
-def _tetra_target_from_rdkit_atom(atom: Chem.Atom) -> TetraValue:
-    target = _tetra_target_from_rdkit_tag(atom.GetChiralTag())
+def _rdkit_tetra_target_for_south_star_reference_order(atom: Chem.Atom) -> TetraValue:
+    tag = atom.GetChiralTag()
+    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
+        target = TetraValue.PLUS
+    elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
+        target = TetraValue.MINUS
+    else:
+        raise NotImplementedError(f"unsupported RDKit tetrahedral tag: {tag!r}")
+
     if _rdkit_tetra_atom_has_predecessor(atom):
+        # RDKit's parsed non-root chiral tag is interpreted from the
+        # predecessor-atom viewpoint.  South Star stores a reference-order
+        # target, so this aligns the adapter target with local SMILES order.
         return _flip_tetra_target(target)
     return target
-
-
-def _tetra_target_from_rdkit_tag(tag) -> TetraValue:
-    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
-        return TetraValue.PLUS
-    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
-        return TetraValue.MINUS
-    raise NotImplementedError(f"unsupported RDKit tetrahedral tag: {tag!r}")
 
 
 def _rdkit_tetra_atom_has_predecessor(atom: Chem.Atom) -> bool:

@@ -1,0 +1,113 @@
+from pathlib import Path
+import re
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def read_text(relative_path: str) -> str:
+    return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+class ContainerPostureTests(unittest.TestCase):
+    def test_compose_files_do_not_set_project_name(self) -> None:
+        compose_files = sorted((ROOT / "compose").glob("*.yml"))
+        self.assertTrue(compose_files)
+        for compose_file in compose_files:
+            with self.subTest(compose_file=compose_file.name):
+                self.assertNotRegex(
+                    compose_file.read_text(encoding="utf-8"),
+                    r"(?m)^name\s*:",
+                )
+
+    def test_checks_compose_has_strict_runtime_posture(self) -> None:
+        compose = read_text("compose/checks.yml")
+        self.assertRegex(compose, r'(?m)^\s+user:\s+"65532:65532"\s*$')
+        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
+        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
+        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
+        self.assertRegex(
+            compose,
+            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
+        )
+        self.assertRegex(compose, r"(?m)^\s+pids_limit:\s+64\s*$")
+        self.assertRegex(compose, r"(?m)^\s+mem_limit:\s+128m\s*$")
+        self.assertRegex(compose, r"(?ms)^\s+tmpfs:\n\s+- /tmp:")
+        self.assertRegex(compose, r"(?ms)^\s+volumes:\n\s+- type: bind")
+        self.assertRegex(compose, r"(?m)^\s+target:\s+/work\s*$")
+        self.assertGreaterEqual(compose.count("read_only: true"), 2)
+        self.assertNotIn("docker.sock", compose)
+        self.assertNotIn("privileged: true", compose)
+
+    def test_checks_dockerfile_is_pinned_and_does_not_embed_repo(self) -> None:
+        dockerfile = read_text("containers/checks/Dockerfile")
+        self.assertRegex(
+            dockerfile,
+            r"(?m)^FROM python:3\.12\.13-alpine3\.22@sha256:[0-9a-f]{64}$",
+        )
+        self.assertNotRegex(dockerfile, r"(?m)^(COPY|ADD|RUN)\b")
+        self.assertIn("USER 65532:65532", dockerfile)
+        self.assertIn('ENTRYPOINT ["python"]', dockerfile)
+
+    def test_makefile_exposes_guarded_checks_lane(self) -> None:
+        makefile = read_text("Makefile")
+        self.assertIn("SHELL := bash", makefile)
+        self.assertIn(".SHELLFLAGS := -eu -o pipefail -c", makefile)
+        self.assertIn("DOCKER_COMPOSE ?= docker compose", makefile)
+        self.assertIn("ACTUAL_UID := $(shell id -u)", makefile)
+        self.assertIn("Refusing to run Docker lanes as root", makefile)
+        self.assertRegex(
+            makefile,
+            r"(?m)^checks:\n\t\$\(call compose_run,checks\.yml,checks\)",
+        )
+
+    def test_dockerignore_excludes_local_and_generated_paths(self) -> None:
+        patterns = {
+            line.strip()
+            for line in read_text(".dockerignore").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+        required_patterns = {
+            ".git",
+            ".codex",
+            ".agents",
+            ".idea",
+            ".vscode",
+            ".venv",
+            ".env",
+            ".env.*",
+            "dist",
+            "build",
+            "target",
+            "pip-wheel-metadata",
+            "*.egg-info",
+            "**/*.egg-info",
+            "__pycache__",
+            "**/__pycache__",
+            "*.py[cod]",
+            "**/*.py[cod]",
+            ".pytest_cache",
+            "**/.pytest_cache",
+            ".ruff_cache",
+            "**/.ruff_cache",
+            ".mypy_cache",
+            "**/.mypy_cache",
+            ".coverage",
+            ".coverage.*",
+            "htmlcov",
+            "**/htmlcov",
+            "python/grimace/_core*.so",
+            "python/grimace/_core*.dylib",
+            "python/grimace/_core*.dll",
+            "python/grimace/_core*.pyd",
+        }
+        self.assertFalse(required_patterns - patterns)
+        self.assertNotIn("Cargo.lock", patterns)
+        self.assertNotIn("pyproject.toml", patterns)
+        self.assertNotIn("Cargo.toml", patterns)
+        self.assertNotIn("rust-toolchain.toml", patterns)
+
+
+if __name__ == "__main__":
+    unittest.main()

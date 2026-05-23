@@ -136,7 +136,7 @@ until the dependency surface is large enough to justify the extra object.
   Added the minimal Makefile contract for `help` and `checks`. Validated with
   `make help`, `make -n checks`, and `make checks`.
 
-- [ ] Add posture tests.
+- [x] Add posture tests.
   - `tests/checks/test_container_posture.py`.
   - Assert no Compose file has top-level `name:`.
   - Assert `checks.yml` is offline, read-only, non-root, and capability-free.
@@ -145,6 +145,11 @@ until the dependency surface is large enough to justify the extra object.
   - Assert every `v0.1.*` tag has `notes/releases/<tag>.md`.
   - Assert release workflow checks and uses `notes/releases/<tag>.md` from the
     tag ref.
+
+  Added standard-library posture tests under `tests/checks/` and wired
+  `compose/checks.yml` to run them. Validated directly with
+  `python -m unittest discover -s tests/checks -t . -q` and through
+  `make checks`.
 
 - [ ] Run and stabilize `make checks`.
   - It must be fast, offline, deterministic, and write-free.

@@ -22,11 +22,13 @@ services:
         target: /work
         read_only: true
     command:
-      - -c
-      - |
-        import os
-
-        assert os.getuid() == 65532
-        assert os.getgid() == 65532
-        assert os.getcwd() == "/work"
-        assert os.path.isfile("pyproject.toml")
+      - -I
+      - -B
+      - -m
+      - unittest
+      - discover
+      - -s
+      - tests/checks
+      - -t
+      - .
+      - -q

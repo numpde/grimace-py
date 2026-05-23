@@ -7,7 +7,6 @@ from dataclasses import replace
 from pathlib import Path
 import unittest
 
-from grimace._south_star1.facts import BondFacts
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalSiteFacts
@@ -24,19 +23,14 @@ from grimace._south_star1.ids import CarrierSlotId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.policy import AnnotationMode
-from grimace._south_star1.policy import AtomTextChoice
-from grimace._south_star1.policy import AtomTextDomain
-from grimace._south_star1.policy import BondTextChoice
-from grimace._south_star1.policy import BondTextDomain
 from grimace._south_star1.policy import DirectionMark
-from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
-from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
-from grimace._south_star1.slots import BondSlotKind
 from grimace._south_star1.slots import CarrierSlot
 from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.slots import carrier_slot_by_bond_slot
@@ -49,7 +43,6 @@ from grimace._south_star1.support_enumeration import enumerate_stereo_support
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import directional_facts
-from tests.south_star1.helpers import organic_atom_choice
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
 
@@ -361,57 +354,19 @@ def _ordinary_policy(
     chiral_center: AtomId | None = None,
     annotation_mode: AnnotationMode = AnnotationMode.HARD,
 ) -> SmilesPolicy:
-    return SmilesPolicy(
-        ring_labels=(RingLabel(1), RingLabel(2)),
-        annotation_mode=annotation_mode,
-        atom_text_domains=tuple(
-            AtomTextDomain(
-                atom=atom.id,
-                choices=(
-                    _chiral_carbon_choice()
-                    if atom.id == chiral_center
-                    else organic_atom_choice(atom.symbol),
-                ),
-            )
-            for atom in facts.atoms
-        ),
-        bond_text_domains=tuple(
-            BondTextDomain(
-                bond=bond.id,
-                slot_kind=BondSlotKind.TREE.value,
-                choices=(_ordinary_bond_choice(bond),),
-            )
-            for bond in facts.bonds
+    if chiral_center is not None:
+        self_declared_tetra_centers = {
+            site.center for site in facts.stereo.tetrahedral
+        }
+        if chiral_center not in self_declared_tetra_centers:
+            raise ValueError(f"not a declared tetrahedral center: {chiral_center!r}")
+    return ordinary_policy_for_facts(
+        facts,
+        OrdinaryPolicyOptions(
+            ring_label_values=(1, 2),
+            annotation_mode=annotation_mode,
         ),
     )
-
-
-def _ordinary_bond_choice(bond: BondFacts) -> BondTextChoice:
-    if bond.order is BondOrder.SINGLE:
-        return BondTextChoice(
-            name="single_or_directional",
-            base_text="",
-            permits_direction=True,
-        )
-    if bond.order is BondOrder.DOUBLE:
-        return BondTextChoice(
-            name="double",
-            base_text="=",
-            permits_direction=False,
-        )
-    if bond.order is BondOrder.TRIPLE:
-        return BondTextChoice(
-            name="triple",
-            base_text="#",
-            permits_direction=False,
-        )
-    if bond.order is BondOrder.AROMATIC:
-        return BondTextChoice(
-            name="aromatic",
-            base_text="",
-            permits_direction=False,
-        )
-    raise ValueError(bond.order)
 
 
 def four_substituent_directional_facts(
@@ -645,18 +600,6 @@ def _mark_for_raw_value(
         )
     mark_sign = raw * orientation
     return DirectionMark.FWD if mark_sign == 1 else DirectionMark.REV
-
-
-def _chiral_carbon_choice() -> AtomTextChoice:
-    return AtomTextChoice(
-        name="chiral_c",
-        text_by_tetra=(
-            (TetraToken.NONE, "C"),
-            (TetraToken.AT, "[C@H]"),
-            (TetraToken.ATAT, "[C@@H]"),
-        ),
-    )
-
 
 def _imports_rdkit(tree: ast.AST) -> bool:
     for node in ast.walk(tree):

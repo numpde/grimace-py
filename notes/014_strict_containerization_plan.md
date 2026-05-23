@@ -253,7 +253,7 @@ until the dependency surface is large enough to justify the extra object.
   jobs. Left the tag-triggered release workflow unchanged and kept perf out of
   default CI. Added an offline posture check for the CI workflow shape.
 
-- [ ] Final validation before committing implementation.
+- [x] Final validation before committing implementation.
   - `make checks`.
   - `make rust`.
   - `make test`.
@@ -262,6 +262,10 @@ until the dependency surface is large enough to justify the extra object.
   - `make package`.
   - `git diff --check`.
   - Confirm no generated/cache artifacts are tracked.
+
+  Final validation passed on 2026-05-23. `make package` regenerated ignored
+  artifacts under `dist/`; no generated or cache artifacts were untracked or
+  staged for commit.
 
 ## Lane Notes
 

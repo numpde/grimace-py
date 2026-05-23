@@ -7,6 +7,8 @@ called by core enumeration for candidate validation.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from rdkit import Chem
 
 from .facts import AtomFacts
@@ -17,13 +19,29 @@ from .facts import MoleculeFacts
 from .ids import AtomId
 from .ids import BondId
 from .ids import ComponentId
+from .ordinary_stereo_sites import add_ordinary_potential_sites
+
+
+@dataclass(frozen=True, slots=True)
+class RdkitOrdinaryExtractionOptions:
+    include_potential_sites: bool = True
+    extract_specified_tetrahedral: bool = True
+    extract_specified_directional: bool = True
+    normalize_non_graph_hydrogens: bool = True
+    reject_unsupported_stereo: bool = True
 
 
 def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
     """Snapshot a supported non-stereo RDKit molecule into South Star facts."""
 
     _reject_rdkit_stereo(mol)
-    atoms = tuple(_atom_facts(atom) for atom in mol.GetAtoms())
+    atoms = tuple(
+        _atom_facts(
+            atom,
+            normalize_non_graph_hydrogens=True,
+        )
+        for atom in mol.GetAtoms()
+    )
     bonds = tuple(_bond_facts(bond) for bond in mol.GetBonds())
     facts = MoleculeFacts(
         atoms=atoms,
@@ -32,6 +50,66 @@ def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
     )
     facts.validate()
     return facts
+
+
+def ordinary_molecule_facts_from_rdkit(
+    mol: Chem.Mol,
+    options: RdkitOrdinaryExtractionOptions = RdkitOrdinaryExtractionOptions(),
+) -> MoleculeFacts:
+    """Snapshot RDKit molecules into the ordinary South Star fact convention."""
+
+    _validate_stereo_extraction_scope(mol, options)
+    facts = _base_molecule_facts_from_rdkit(
+        mol,
+        normalize_non_graph_hydrogens=options.normalize_non_graph_hydrogens,
+    )
+    if options.include_potential_sites:
+        facts = add_ordinary_potential_sites(facts)
+    facts.validate()
+    return facts
+
+
+def _base_molecule_facts_from_rdkit(
+    mol: Chem.Mol,
+    *,
+    normalize_non_graph_hydrogens: bool,
+) -> MoleculeFacts:
+    atoms = tuple(
+        _atom_facts(
+            atom,
+            normalize_non_graph_hydrogens=normalize_non_graph_hydrogens,
+        )
+        for atom in mol.GetAtoms()
+    )
+    bonds = tuple(_bond_facts(bond) for bond in mol.GetBonds())
+    facts = MoleculeFacts(
+        atoms=atoms,
+        bonds=bonds,
+        components=_component_facts(mol),
+    )
+    facts.validate()
+    return facts
+
+
+def _validate_stereo_extraction_scope(
+    mol: Chem.Mol,
+    options: RdkitOrdinaryExtractionOptions,
+) -> None:
+    has_atom_stereo = any(
+        atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
+        for atom in mol.GetAtoms()
+    )
+    has_bond_stereo = any(
+        bond.GetStereo() != Chem.BondStereo.STEREONONE
+        for bond in mol.GetBonds()
+    )
+
+    if has_atom_stereo and options.extract_specified_tetrahedral:
+        raise NotImplementedError("RDKit tetrahedral extraction is not implemented yet")
+    if has_bond_stereo and options.extract_specified_directional:
+        raise NotImplementedError("RDKit directional extraction is not implemented yet")
+    if options.reject_unsupported_stereo and (has_atom_stereo or has_bond_stereo):
+        _reject_rdkit_stereo(mol)
 
 
 def _reject_rdkit_stereo(mol: Chem.Mol) -> None:
@@ -43,7 +121,19 @@ def _reject_rdkit_stereo(mol: Chem.Mol) -> None:
             raise NotImplementedError("South Star 1 RDKit adapter rejects bond stereo")
 
 
-def _atom_facts(atom: Chem.Atom) -> AtomFacts:
+def _atom_facts(
+    atom: Chem.Atom,
+    *,
+    normalize_non_graph_hydrogens: bool,
+) -> AtomFacts:
+    explicit_h_count = atom.GetNumExplicitHs()
+    implicit_h_count = atom.GetNumImplicitHs()
+    no_implicit = atom.GetNoImplicit()
+    if normalize_non_graph_hydrogens:
+        implicit_h_count += explicit_h_count
+        explicit_h_count = 0
+        no_implicit = False
+
     return AtomFacts(
         id=AtomId(atom.GetIdx()),
         atomic_num=atom.GetAtomicNum(),
@@ -51,9 +141,9 @@ def _atom_facts(atom: Chem.Atom) -> AtomFacts:
         isotope=atom.GetIsotope() or None,
         formal_charge=atom.GetFormalCharge(),
         is_aromatic=atom.GetIsAromatic(),
-        explicit_h_count=atom.GetNumExplicitHs(),
-        implicit_h_count=atom.GetNumImplicitHs(),
-        no_implicit=atom.GetNoImplicit(),
+        explicit_h_count=explicit_h_count,
+        implicit_h_count=implicit_h_count,
+        no_implicit=no_implicit,
     )
 
 
@@ -136,4 +226,8 @@ def _reachable_atom_indices(
     return tuple(sorted(component))
 
 
-__all__ = ("molecule_facts_from_rdkit",)
+__all__ = (
+    "RdkitOrdinaryExtractionOptions",
+    "molecule_facts_from_rdkit",
+    "ordinary_molecule_facts_from_rdkit",
+)

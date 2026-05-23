@@ -7,9 +7,13 @@ import unittest
 from rdkit import Chem
 
 from grimace._south_star1.facts import BondOrder
+from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import molecule_facts_from_rdkit
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 
 
 class RdkitAdapterTest(unittest.TestCase):
@@ -47,6 +51,42 @@ class RdkitAdapterTest(unittest.TestCase):
 
         with self.assertRaisesRegex(NotImplementedError, "bond stereo"):
             molecule_facts_from_rdkit(mol)
+
+    def test_ordinary_adapter_normalizes_non_graph_hydrogens(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+
+        facts = ordinary_molecule_facts_from_rdkit(
+            mol,
+            RdkitOrdinaryExtractionOptions(
+                extract_specified_tetrahedral=False,
+                reject_unsupported_stereo=False,
+            ),
+        )
+
+        center = facts.atoms[0]
+        self.assertEqual(center.explicit_h_count, 0)
+        self.assertEqual(center.implicit_h_count, 1)
+        self.assertFalse(center.no_implicit)
+        self.assertEqual(len(facts.stereo.tetrahedral), 1)
+        occurrence_by_id = {
+            occurrence.id: occurrence
+            for occurrence in facts.ligand_occurrences
+        }
+        tetra = facts.stereo.tetrahedral[0]
+        self.assertEqual(
+            sum(
+                occurrence_by_id[occurrence_id].kind is LigandKind.IMPLICIT_H
+                for occurrence_id in tetra.ligand_occurrences
+            ),
+            1,
+        )
+        ordinary_policy_for_facts(facts)
+
+    def test_ordinary_adapter_still_rejects_unimplemented_stereo_by_default(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+
+        with self.assertRaisesRegex(NotImplementedError, "tetrahedral extraction"):
+            ordinary_molecule_facts_from_rdkit(mol)
 
 
 if __name__ == "__main__":

@@ -205,7 +205,7 @@ until the dependency surface is large enough to justify the extra object.
   Added all correctness Make targets and `ci` dependency expansion. Validated
   with `make help`, posture tests, and `make ci`.
 
-- [ ] Add the package lane.
+- [x] Add the package lane.
   - Create `containers/package/Dockerfile` only if the test image becomes too
     broad.
   - Copy the repository into the image as the build context.
@@ -213,6 +213,11 @@ until the dependency surface is large enough to justify the extra object.
   - Run `twine check`.
   - Install built wheel/sdist and run installed-package correctness.
   - Write artifacts only to `dist/` or a named output path.
+
+  Added a separate package image because package validation needs `twine` and
+  writes artifacts. The package lane uses copied source context, writes only to
+  host `dist/`, builds wheel and sdist, runs `twine check`, and validates both
+  installed artifacts. Validated with `make package` and `make checks`.
 
 - [ ] Add the perf lane last.
   - `make perf`.

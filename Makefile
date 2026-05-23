@@ -5,15 +5,18 @@ SHELL := bash
 COMPOSE_DIR ?= compose
 DOCKER_COMPOSE ?= docker compose
 ACTUAL_UID := $(shell id -u)
+LOCAL_UID ?= $(shell id -u)
+LOCAL_GID ?= $(shell id -g)
 
 NON_ROOT_GUARD := if [[ "$(ACTUAL_UID)" == "0" ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user.' >&2; exit 2; fi
+COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run
 @$(NON_ROOT_GUARD); \
-$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
+$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test parity exact-public-invariants ci
+.PHONY: help checks rust test parity exact-public-invariants package ci
 
 help:
 	@printf '%s\n' \
@@ -23,6 +26,7 @@ help:
 	  '  make test    Run installed-package correctness in the test image' \
 	  '  make parity  Run pinned RDKit parity in the test image' \
 	  '  make exact-public-invariants  Run exact public invariant tests' \
+	  '  make package  Build and validate wheel/sdist artifacts under dist/' \
 	  '  make ci      Run checks, rust, test, parity, and exact invariants' \
 	  '' \
 	  'Docker-backed lanes refuse root execution and use strict Compose posture.'
@@ -41,5 +45,10 @@ parity:
 
 exact-public-invariants:
 	$(call compose_run,test.yml,exact-public-invariants)
+
+package:
+	@mkdir -p dist
+	@find dist -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+	$(call compose_run,package.yml,package)
 
 ci: checks rust test parity exact-public-invariants

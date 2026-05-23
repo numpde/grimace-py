@@ -1,0 +1,39 @@
+services:
+  package:
+    build:
+      context: ..
+      dockerfile: containers/package/Dockerfile
+    image: grimace-py-package:local
+    working_dir: /src
+    user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 2g
+    tmpfs:
+      - /cargo-target:size=1024m,mode=1777,exec
+      - /tmp:size=1024m,mode=1777
+      - /venv:size=1024m,mode=1777,exec
+    environment:
+      CARGO_TARGET_DIR: /cargo-target
+    volumes:
+      - type: bind
+        source: ../dist
+        target: /dist
+    entrypoint:
+      - /bin/sh
+      - -euxc
+      - |
+        python -m maturin build --release --out /dist -i python3.12
+        python -m maturin build --release --sdist --out /dist -i python3.12
+        python -m twine check /dist/*
+        python -m venv --system-site-packages /venv/wheel
+        /venv/wheel/bin/python -m pip install --no-deps /dist/*.whl
+        /venv/wheel/bin/python -m unittest tests.run_installed_package_correctness -q
+        python -m venv --system-site-packages /venv/sdist
+        /venv/sdist/bin/python -m pip install --no-deps --no-build-isolation /dist/*.tar.gz
+        /venv/sdist/bin/python -m unittest tests.run_installed_package_correctness -q

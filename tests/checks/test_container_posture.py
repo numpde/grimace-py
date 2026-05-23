@@ -59,6 +59,25 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
+    def test_package_compose_writes_only_dist(self) -> None:
+        compose = read_text("compose/package.yml")
+        self.assertRegex(compose, r"(?m)^  package:$")
+        self.assertIn("dockerfile: containers/package/Dockerfile", compose)
+        self.assertIn('user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"', compose)
+        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
+        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
+        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
+        self.assertRegex(
+            compose,
+            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
+        )
+        self.assertIn("source: ../dist", compose)
+        self.assertIn("target: /dist", compose)
+        self.assertNotIn("source: ..\n", compose)
+        self.assertNotIn(".venv", compose)
+        self.assertNotIn("docker.sock", compose)
+        self.assertNotIn("privileged: true", compose)
+
     def test_checks_dockerfile_is_pinned_and_does_not_embed_repo(self) -> None:
         dockerfile = read_text("containers/checks/Dockerfile")
         self.assertNotRegex(dockerfile, r"(?m)^(COPY|ADD|RUN)\b")
@@ -93,12 +112,26 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("tests.run_installed_package_correctness", dockerfile)
         self.assertIn("USER 65532:65532", dockerfile)
 
+    def test_package_dockerfile_builds_release_artifact_image(self) -> None:
+        dockerfile = read_text("containers/package/Dockerfile")
+        self.assertIn("rust:1.83.0-slim-bookworm@", dockerfile)
+        self.assertIn("python:3.12.13-slim-bookworm@", dockerfile)
+        self.assertIn("maturin==1.13.1", dockerfile)
+        self.assertIn("rdkit==2026.3.1", dockerfile)
+        self.assertIn("twine==6.2.0", dockerfile)
+        self.assertIn("COPY . /src", dockerfile)
+        self.assertIn("cargo fetch --locked", dockerfile)
+        self.assertNotIn("apt-get", dockerfile)
+
     def test_makefile_exposes_guarded_checks_lane(self) -> None:
         makefile = read_text("Makefile")
         self.assertIn("SHELL := bash", makefile)
         self.assertIn(".SHELLFLAGS := -eu -o pipefail -c", makefile)
         self.assertIn("DOCKER_COMPOSE ?= docker compose", makefile)
         self.assertIn("ACTUAL_UID := $(shell id -u)", makefile)
+        self.assertIn("LOCAL_UID ?= $(shell id -u)", makefile)
+        self.assertIn("LOCAL_GID ?= $(shell id -g)", makefile)
+        self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
         self.assertIn("Refusing to run Docker lanes as root", makefile)
         expected_targets = {
             "checks": "checks.yml,checks",
@@ -106,13 +139,12 @@ class ContainerPostureTests(unittest.TestCase):
             "test": "test.yml,test",
             "parity": "test.yml,parity",
             "exact-public-invariants": "test.yml,exact-public-invariants",
+            "package": "package.yml,package",
         }
         for target, compose_call in expected_targets.items():
             with self.subTest(target=target):
-                self.assertRegex(
-                    makefile,
-                    rf"(?m)^{target}:\n\t\$\(call compose_run,{compose_call}\)",
-                )
+                self.assertRegex(makefile, rf"(?m)^{target}:")
+                self.assertIn(f"$(call compose_run,{compose_call})", makefile)
         self.assertRegex(
             makefile,
             r"(?m)^ci: checks rust test parity exact-public-invariants$",

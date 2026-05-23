@@ -244,10 +244,14 @@ until the dependency surface is large enough to justify the extra object.
   timing-regeneration command to `make perf`. Added matching command pointers
   to `tests/README.md`. Validated with `make checks` and `git diff --check`.
 
-- [ ] Only then revise GitHub CI.
+- [x] Only then revise GitHub CI.
   - Switch CI to Make targets after local container lanes are stable.
   - Keep release workflow separate.
   - Do not make perf part of default CI.
+
+  Replaced host-venv CI jobs with Docker-backed `make ci` and `make package`
+  jobs. Left the tag-triggered release workflow unchanged and kept perf out of
+  default CI. Added an offline posture check for the CI workflow shape.
 
 - [ ] Final validation before committing implementation.
   - `make checks`.

@@ -192,6 +192,16 @@ class ContainerPostureTests(unittest.TestCase):
             r"(?m)^ci: checks rust test parity exact-public-invariants$",
         )
 
+    def test_ci_workflow_uses_container_make_lanes(self) -> None:
+        workflow = read_text(".github/workflows/ci.yml")
+        self.assertIn("run: make ci", workflow)
+        self.assertIn("run: make package", workflow)
+        self.assertNotIn("actions/setup-python", workflow)
+        self.assertNotIn("dtolnay/rust-toolchain", workflow)
+        self.assertNotIn("maturin", workflow)
+        self.assertNotIn("RUN_PERF_TESTS", workflow)
+        self.assertNotIn("make perf", workflow)
+
     def test_dockerignore_excludes_local_and_generated_paths(self) -> None:
         patterns = {
             line.strip()

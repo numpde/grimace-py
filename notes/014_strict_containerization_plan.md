@@ -235,10 +235,14 @@ until the dependency surface is large enough to justify the extra object.
   mount with runtime network disabled. Validated with
   `docker compose -f compose/perf.yml config`, `make checks`, and `make perf`.
 
-- [ ] Document minimally.
+- [x] Document minimally.
   - Add a short README section for containerized development.
   - Mention `make checks`, `make test`, `make package`, and `make perf`.
   - State that default lanes avoid host Python and host build artifacts.
+
+  Added a short README section for Docker-backed local lanes and updated the
+  timing-regeneration command to `make perf`. Added matching command pointers
+  to `tests/README.md`. Validated with `make checks` and `git diff --check`.
 
 - [ ] Only then revise GitHub CI.
   - Switch CI to Make targets after local container lanes are stable.

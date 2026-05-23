@@ -16,6 +16,10 @@ The test suite is organized by intent first, then by feature.
 
 ## Commands
 
+- Container checks: `make checks`
+- Container installed-artifact correctness: `make test`
+- Container package validation: `make package`
+- Container perf artifacts: `make perf`
 - Default suite: `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
 - Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`

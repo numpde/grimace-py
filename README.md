@@ -414,6 +414,27 @@ python -m pip install maturin
 maturin develop --release
 ```
 
+## Containerized development
+
+The Docker-backed Make lanes use pinned images and avoid the host Python
+environment for routine checks:
+
+```bash
+make checks
+make test
+make package
+```
+
+- `make checks` runs offline source and container-posture checks against a
+  read-only checkout.
+- `make test` runs installed-package correctness from a container-built wheel.
+- `make package` builds and validates wheel/sdist artifacts under `dist/`.
+- `make perf` is opt-in and write-enabled; it refreshes `docs/timings.*` and
+  `notes/004_perf_history.jsonl`.
+
+Routine check/test lanes do not use host `.venv`, `target`, or `dist`
+artifacts.
+
 ## Timings
 
 The opt-in timing benchmark generates two artifacts:
@@ -451,7 +472,7 @@ Current takeaway from the generated table:
 Regenerate it with:
 
 ```bash
-RUN_PERF_TESTS=1 PYTHONPATH=python:. .venv/bin/python -m unittest tests.perf.test_readme_timings -q
+make perf
 ```
 
 ## Current limits

@@ -42,13 +42,37 @@ class ContainerPostureTests(unittest.TestCase):
 
     def test_checks_dockerfile_is_pinned_and_does_not_embed_repo(self) -> None:
         dockerfile = read_text("containers/checks/Dockerfile")
-        self.assertRegex(
-            dockerfile,
-            r"(?m)^FROM python:3\.12\.13-alpine3\.22@sha256:[0-9a-f]{64}$",
-        )
         self.assertNotRegex(dockerfile, r"(?m)^(COPY|ADD|RUN)\b")
         self.assertIn("USER 65532:65532", dockerfile)
         self.assertIn('ENTRYPOINT ["python"]', dockerfile)
+
+    def test_all_container_base_images_are_digest_pinned(self) -> None:
+        dockerfiles = sorted((ROOT / "containers").glob("*/Dockerfile"))
+        self.assertTrue(dockerfiles)
+        for dockerfile_path in dockerfiles:
+            with self.subTest(dockerfile=dockerfile_path):
+                dockerfile = dockerfile_path.read_text(encoding="utf-8")
+                from_lines = re.findall(r"(?m)^FROM\s+(.+)$", dockerfile)
+                self.assertTrue(from_lines)
+                for from_line in from_lines:
+                    image = from_line.split(" AS ", 1)[0]
+                    self.assertRegex(image, r"@sha256:[0-9a-f]{64}$")
+
+    def test_test_dockerfile_builds_installed_package_image(self) -> None:
+        dockerfile = read_text("containers/test/Dockerfile")
+        self.assertIn("rust:1.83.0-slim-bookworm@", dockerfile)
+        self.assertIn("python:3.12.13-slim-bookworm@", dockerfile)
+        self.assertIn("maturin==1.13.1", dockerfile)
+        self.assertIn("rdkit==2026.3.1", dockerfile)
+        self.assertIn("COPY . /src", dockerfile)
+        self.assertNotIn("apt-get", dockerfile)
+        self.assertIn("python -m maturin build --release", dockerfile)
+        self.assertIn(
+            "python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl",
+            dockerfile,
+        )
+        self.assertIn("tests.run_installed_package_correctness", dockerfile)
+        self.assertIn("USER 65532:65532", dockerfile)
 
     def test_makefile_exposes_guarded_checks_lane(self) -> None:
         makefile = read_text("Makefile")

@@ -159,7 +159,7 @@ until the dependency surface is large enough to justify the extra object.
   tests, left no working-tree changes, and left no stopped `compose-checks`
   containers behind.
 
-- [ ] Add the test/build image.
+- [x] Add the test/build image.
   - Create `containers/test/Dockerfile`.
   - Use pinned glibc Python 3.12, not Alpine, because RDKit wheels are
     manylinux/glibc-oriented.
@@ -169,6 +169,14 @@ until the dependency surface is large enough to justify the extra object.
   - Prefer building a wheel and installing it over `maturin develop`, so the
     test lane exercises package installation behavior.
   - Run as non-root.
+
+  Added `containers/test/Dockerfile` using pinned Python slim and Rust slim
+  base images, with no `apt-get` layer. The image copies the Python runtime
+  into the Rust image, copies the repository into `/src`, builds a wheel with
+  pinned `maturin`, installs it beside pinned `rdkit==2026.3.1`, and runs
+  installed-package correctness as UID/GID `65532:65532`. Validated with
+  `docker build --file containers/test/Dockerfile --tag grimace-py-test:local
+  .`, strict `docker run` runtime flags, and `make checks`.
 
 - [ ] Add the correctness Compose lane.
   - Create `compose/test.yml`.

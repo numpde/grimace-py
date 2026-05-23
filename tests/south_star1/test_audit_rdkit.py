@@ -7,6 +7,7 @@ import unittest
 from rdkit import Chem
 
 from grimace._south_star1.audit_rdkit import audit_generated_support_with_rdkit
+from grimace._south_star1.audit_rdkit import audit_generated_witnesses_with_rdkit
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -39,6 +40,31 @@ class RdkitAuditTest(unittest.TestCase):
 
         self.assertTrue(results)
         self.assertTrue(all(result.ok for result in results))
+
+    def test_audit_reports_directional_support_as_isomorphic(self) -> None:
+        results = audit_generated_support_with_rdkit(
+            Chem.MolFromSmiles("C(/F)=C(\\Cl)")
+        )
+
+        self.assertTrue(results)
+        self.assertTrue(all(result.ok for result in results))
+
+    def test_witness_audit_preserves_witness_context(self) -> None:
+        mol = Chem.MolFromSmiles("CCO")
+        facts = ordinary_molecule_facts_from_rdkit(mol)
+        policy = ordinary_policy_for_facts(facts)
+        skeletons = enumerate_traversal_skeletons(
+            facts,
+            build_graph_index(facts),
+            policy,
+        )[:1]
+
+        results = audit_generated_witnesses_with_rdkit(mol, skeletons=skeletons)
+
+        self.assertTrue(results)
+        self.assertTrue(all(result.ok for result in results))
+        self.assertTrue(all(result.witness_id for result in results))
+        self.assertTrue(all(result.constraints for result in results))
 
 
 if __name__ == "__main__":

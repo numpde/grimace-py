@@ -20,6 +20,7 @@ from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import molecule_facts_from_rdkit
@@ -215,6 +216,60 @@ class RdkitAdapterTest(unittest.TestCase):
             DirectionalValue.TOGETHER,
         )
 
+    def test_rdkit_directional_adapter_contract_for_literal_slashes(self) -> None:
+        semantics = OrdinarySmilesSemantics()
+        cases = {
+            "C(/F)=C(\\Cl)": DirectionalValue.OPPOSITE,
+            "C(/F)=C(/Cl)": DirectionalValue.TOGETHER,
+            "F/C=C/Cl": DirectionalValue.OPPOSITE,
+            "F/C=C\\Cl": DirectionalValue.TOGETHER,
+        }
+
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+                site = _only_directional_site(facts)
+
+                self.assertEqual(site.status, SiteStatus.SPECIFIED)
+                self.assertEqual(site.target, expected)
+                self.assertEqual(
+                    _bond_by_id(facts)[site.center_bond].order,
+                    BondOrder.DOUBLE,
+                )
+                self.assertIsNotNone(site.reference_pair)
+                left_reference, right_reference = site.reference_pair
+                self.assertIn(left_reference, site.left_ligands)
+                self.assertIn(right_reference, site.right_ligands)
+                self.assertEqual(
+                    _literal_directional_value(facts, Chem.MolFromSmiles(text), site),
+                    expected,
+                )
+
+                policy = ordinary_policy_for_facts(facts)
+                for skeleton in enumerate_traversal_skeletons(
+                    facts,
+                    build_graph_index(facts),
+                    policy,
+                ):
+                    slots = allocate_traversal_slots(facts, skeleton)
+                    carrier_by_id = {
+                        carrier.id: carrier
+                        for carrier in slots.carrier_slots
+                    }
+                    scoped = semantics.directional_scope(
+                        facts,
+                        skeleton,
+                        slots,
+                        site.id,
+                    )
+                    self.assertTrue(scoped)
+                    self.assertTrue(
+                        all(
+                            carrier_by_id[carrier].bond != site.center_bond
+                            for carrier in scoped
+                        )
+                    )
+
 @dataclass(frozen=True, slots=True)
 class TetraRoundTripTrace:
     text: str
@@ -307,6 +362,81 @@ def _only_tetra_site(facts):
     if len(self_declared) != 1:
         raise AssertionError(f"expected one tetra site, got {self_declared!r}")
     return self_declared[0]
+
+
+def _only_directional_site(facts):
+    self_declared = facts.stereo.directional
+    if len(self_declared) != 1:
+        raise AssertionError(f"expected one directional site, got {self_declared!r}")
+    return self_declared[0]
+
+
+def _bond_by_id(facts):
+    return {bond.id: bond for bond in facts.bonds}
+
+
+def _literal_directional_value(facts, mol, site):
+    semantics = OrdinarySmilesSemantics()
+    policy = ordinary_policy_for_facts(facts)
+    marked_bonds = _literal_direction_marks_by_bond(mol)
+
+    for skeleton in enumerate_traversal_skeletons(
+        facts,
+        build_graph_index(facts),
+        policy,
+    ):
+        slots = allocate_traversal_slots(facts, skeleton)
+        carrier_by_bond = {
+            carrier.bond: carrier
+            for carrier in slots.carrier_slots
+        }
+        if not _carrier_orientations_match_rdkit(
+            mol,
+            carrier_by_bond,
+            marked_bonds,
+        ):
+            continue
+
+        marks = {
+            carrier.id: DirectionMark.ABSENT
+            for carrier in slots.carrier_slots
+        }
+        for bond, mark in marked_bonds.items():
+            marks[carrier_by_bond[bond].id] = mark
+
+        return semantics.directional_value(
+            facts,
+            skeleton,
+            slots,
+            site.id,
+            marks,
+        )
+
+    raise AssertionError("no skeleton matched RDKit literal bond orientations")
+
+
+def _literal_direction_marks_by_bond(mol) -> dict[BondId, DirectionMark]:
+    out: dict[BondId, DirectionMark] = {}
+    for bond in mol.GetBonds():
+        direction = bond.GetBondDir()
+        if direction == Chem.BondDir.ENDUPRIGHT:
+            out[BondId(bond.GetIdx())] = DirectionMark.FWD
+        elif direction == Chem.BondDir.ENDDOWNRIGHT:
+            out[BondId(bond.GetIdx())] = DirectionMark.REV
+    return out
+
+
+def _carrier_orientations_match_rdkit(mol, carrier_by_bond, marked_bonds) -> bool:
+    for bond_id in marked_bonds:
+        carrier = carrier_by_bond.get(bond_id)
+        if carrier is None:
+            return False
+        rdkit_bond = mol.GetBondWithIdx(int(bond_id))
+        if carrier.written_from != AtomId(rdkit_bond.GetBeginAtomIdx()):
+            return False
+        if carrier.written_to != AtomId(rdkit_bond.GetEndAtomIdx()):
+            return False
+    return True
 
 
 def _map_occurrences_by_signature(left, right, occurrence_order):

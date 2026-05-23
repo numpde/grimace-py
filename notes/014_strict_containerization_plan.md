@@ -97,13 +97,19 @@ until the dependency surface is large enough to justify the extra object.
   present, and `.git`, `.venv`, `target`, `dist`, and nested `__pycache__`
   directories were absent.
 
-- [ ] Add the offline repository check lane.
+- [x] Add the offline repository check lane.
   - Create `containers/checks/Dockerfile`.
   - Use a small pinned Python Alpine image.
   - Do not copy the repository into the image.
   - Mount the repository read-only at runtime.
   - Add non-root user `65532:65532`.
   - Keep checks dependency-free; use the Python standard library.
+
+  Added `containers/checks/Dockerfile` from pinned
+  `python:3.12.13-alpine3.22`. The image has no `COPY`, `ADD`, or `RUN`
+  instructions. It was built locally and validated with `--network none`,
+  `--read-only`, `--cap-drop ALL`, `no-new-privileges:true`, bounded pids and
+  memory, and UID/GID `65532:65532`.
 
 - [ ] Add `compose/checks.yml`.
   - Mount the repository read-only.

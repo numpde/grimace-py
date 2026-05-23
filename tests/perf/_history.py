@@ -37,9 +37,22 @@ def git_output(*args: str) -> str:
 
 
 def current_run_metadata(*, change_label: str | None = None) -> dict[str, Any]:
-    commit = git_output("rev-parse", "--short=12", "HEAD")
-    change = change_label or git_output("log", "-1", "--format=%s", "HEAD")
-    dirty = bool(git_output("status", "--short"))
+    commit = os.environ.get("GRIMACE_PERF_GIT_COMMIT") or git_output(
+        "rev-parse",
+        "--short=12",
+        "HEAD",
+    )
+    change = (
+        change_label
+        or os.environ.get("GRIMACE_PERF_GIT_CHANGE")
+        or git_output("log", "-1", "--format=%s", "HEAD")
+    )
+    dirty_env = os.environ.get("GRIMACE_PERF_GIT_DIRTY")
+    dirty = (
+        dirty_env.strip().lower() in {"1", "true", "yes"}
+        if dirty_env is not None and dirty_env != ""
+        else bool(git_output("status", "--short"))
+    )
     return {
         "recorded_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "git_commit": commit,

@@ -1,0 +1,27 @@
+services:
+  perf:
+    build:
+      context: ..
+      dockerfile: containers/perf/Dockerfile
+    image: grimace-py-perf:local
+    working_dir: /src
+    user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 2g
+    tmpfs:
+      - /tmp:size=1024m,mode=1777
+    environment:
+      RUN_PERF_TESTS: "1"
+      GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"
+      GRIMACE_PERF_GIT_CHANGE: "${GRIMACE_PERF_GIT_CHANGE:-}"
+      GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"
+    volumes:
+      - type: bind
+        source: ..
+        target: /src

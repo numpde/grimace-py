@@ -16,7 +16,7 @@ define compose_run
 $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test parity exact-public-invariants package ci
+.PHONY: help checks rust test parity exact-public-invariants package perf ci
 
 help:
 	@printf '%s\n' \
@@ -27,6 +27,7 @@ help:
 	  '  make parity  Run pinned RDKit parity in the test image' \
 	  '  make exact-public-invariants  Run exact public invariant tests' \
 	  '  make package  Build and validate wheel/sdist artifacts under dist/' \
+	  '  make perf     Update opt-in timing docs and timing history' \
 	  '  make ci      Run checks, rust, test, parity, and exact invariants' \
 	  '' \
 	  'Docker-backed lanes refuse root execution and use strict Compose posture.'
@@ -50,5 +51,17 @@ package:
 	@mkdir -p dist
 	@find dist -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 	$(call compose_run,package.yml,package)
+
+perf:
+	@$(NON_ROOT_GUARD); \
+	GRIMACE_PERF_GIT_COMMIT="$$(git rev-parse --short=12 HEAD)"; \
+	GRIMACE_PERF_GIT_CHANGE="$$(git log -1 --format=%s HEAD)"; \
+	if [[ -n "$$(git status --short)" ]]; then \
+	  GRIMACE_PERF_GIT_DIRTY=1; \
+	else \
+	  GRIMACE_PERF_GIT_DIRTY=0; \
+	fi; \
+	export GRIMACE_PERF_GIT_COMMIT GRIMACE_PERF_GIT_CHANGE GRIMACE_PERF_GIT_DIRTY; \
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/perf.yml run --build --rm perf
 
 ci: checks rust test parity exact-public-invariants

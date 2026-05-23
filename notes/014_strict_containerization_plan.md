@@ -27,6 +27,7 @@ containers/
   checks/Dockerfile
   test/Dockerfile
   package/Dockerfile
+  perf/Dockerfile
 tests/checks/
   test_container_posture.py
   test_release_notes.py
@@ -219,13 +220,20 @@ until the dependency surface is large enough to justify the extra object.
   host `dist/`, builds wheel and sdist, runs `twine check`, and validates both
   installed artifacts. Validated with `make package` and `make checks`.
 
-- [ ] Add the perf lane last.
+- [x] Add the perf lane last.
   - `make perf`.
   - Keep it clearly opt-in.
   - Mount the repository read-write because it updates `docs/timings.*` and
     `notes/004_perf_history.jsonl`.
   - Keep every other routine lane write-free with respect to the source tree.
   - Keep it out of default `make ci`.
+
+  Added a separate perf image so the normal test image remains correctness-only.
+  The Make target captures Git metadata before the benchmark writes timing
+  artifacts, then the perf image builds and installs the package from copied
+  context and runs the opt-in performance suite against a read-write repository
+  mount with runtime network disabled. Validated with
+  `docker compose -f compose/perf.yml config`, `make checks`, and `make perf`.
 
 - [ ] Document minimally.
   - Add a short README section for containerized development.

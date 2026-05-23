@@ -151,9 +151,13 @@ until the dependency surface is large enough to justify the extra object.
   `python -m unittest discover -s tests/checks -t . -q` and through
   `make checks`.
 
-- [ ] Run and stabilize `make checks`.
+- [x] Run and stabilize `make checks`.
   - It must be fast, offline, deterministic, and write-free.
   - Treat it as the guardrail before adding heavier lanes.
+
+  Validated `make checks` from a clean working tree. It ran 7 offline posture
+  tests, left no working-tree changes, and left no stopped `compose-checks`
+  containers behind.
 
 - [ ] Add the test/build image.
   - Create `containers/test/Dockerfile`.

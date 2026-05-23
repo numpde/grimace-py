@@ -21,6 +21,25 @@ class ContainerPostureTests(unittest.TestCase):
                     r"(?m)^name\s*:",
                 )
 
+    def test_compose_files_avoid_host_escape_hatches(self) -> None:
+        compose_files = sorted((ROOT / "compose").glob("*.yml"))
+        self.assertTrue(compose_files)
+        forbidden_patterns = {
+            "privileged mode": r"(?m)^\s*privileged:\s*true\s*$",
+            "docker socket": r"docker\.sock",
+            "host network": r"(?m)^\s*network_mode:\s*[\"']?host[\"']?\s*$",
+            "host pid namespace": r"(?m)^\s*pid:\s*[\"']?host[\"']?\s*$",
+            "host ipc namespace": r"(?m)^\s*ipc:\s*[\"']?host[\"']?\s*$",
+            "device mounts": r"(?m)^\s*devices:\s*$",
+            "added capabilities": r"(?m)^\s*cap_add:\s*$",
+            "extra groups": r"(?m)^\s*group_add:\s*$",
+        }
+        for compose_file in compose_files:
+            compose = compose_file.read_text(encoding="utf-8")
+            for label, pattern in forbidden_patterns.items():
+                with self.subTest(compose_file=compose_file.name, forbidden=label):
+                    self.assertNotRegex(compose, pattern)
+
     def test_checks_compose_has_strict_runtime_posture(self) -> None:
         compose = read_text("compose/checks.yml")
         self.assertRegex(compose, r'(?m)^\s+user:\s+"65532:65532"\s*$')
@@ -91,8 +110,14 @@ class ContainerPostureTests(unittest.TestCase):
             r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
         )
         self.assertIn('RUN_PERF_TESTS: "1"', compose)
-        self.assertIn("source: ..", compose)
-        self.assertIn("target: /src", compose)
+        self.assertIn("source: ../docs/timings.tsv", compose)
+        self.assertIn("target: /build-src/docs/timings.tsv", compose)
+        self.assertIn("source: ../docs/timings.md", compose)
+        self.assertIn("target: /build-src/docs/timings.md", compose)
+        self.assertIn("source: ../notes/004_perf_history.jsonl", compose)
+        self.assertIn("target: /build-src/notes/004_perf_history.jsonl", compose)
+        self.assertNotIn("source: ..\n", compose)
+        self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
@@ -168,7 +193,13 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("LOCAL_UID ?= $(shell id -u)", makefile)
         self.assertIn("LOCAL_GID ?= $(shell id -g)", makefile)
         self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
-        self.assertIn("Refusing to run Docker lanes as root", makefile)
+        self.assertIn('"$(ACTUAL_UID)" == "0"', makefile)
+        self.assertIn('"$(LOCAL_UID)" == "0"', makefile)
+        self.assertIn("do not set LOCAL_UID=0", makefile)
+        self.assertLess(
+            makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
+            makefile.index("\t@find dist"),
+        )
         self.assertIn("GRIMACE_PERF_GIT_COMMIT", makefile)
         self.assertIn("GRIMACE_PERF_GIT_CHANGE", makefile)
         self.assertIn("GRIMACE_PERF_GIT_DIRTY", makefile)

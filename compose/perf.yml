@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: containers/perf/Dockerfile
     image: grimace-py-perf:local
-    working_dir: /src
+    working_dir: /build-src
     user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"
     network_mode: "none"
     read_only: true
@@ -23,5 +23,11 @@ services:
       GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"
     volumes:
       - type: bind
-        source: ..
-        target: /src
+        source: ../docs/timings.tsv
+        target: /build-src/docs/timings.tsv
+      - type: bind
+        source: ../docs/timings.md
+        target: /build-src/docs/timings.md
+      - type: bind
+        source: ../notes/004_perf_history.jsonl
+        target: /build-src/notes/004_perf_history.jsonl

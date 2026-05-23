@@ -8,7 +8,7 @@ ACTUAL_UID := $(shell id -u)
 LOCAL_UID ?= $(shell id -u)
 LOCAL_GID ?= $(shell id -g)
 
-NON_ROOT_GUARD := if [[ "$(ACTUAL_UID)" == "0" ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user.' >&2; exit 2; fi
+NON_ROOT_GUARD := if [[ "$(ACTUAL_UID)" == "0" || "$(LOCAL_UID)" == "0" ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user and do not set LOCAL_UID=0.' >&2; exit 2; fi
 COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run
@@ -48,6 +48,7 @@ exact-public-invariants:
 	$(call compose_run,test.yml,exact-public-invariants)
 
 package:
+	@$(NON_ROOT_GUARD)
 	@mkdir -p dist
 	@find dist -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 	$(call compose_run,package.yml,package)

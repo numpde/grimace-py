@@ -223,17 +223,18 @@ until the dependency surface is large enough to justify the extra object.
 - [x] Add the perf lane last.
   - `make perf`.
   - Keep it clearly opt-in.
-  - Mount the repository read-write because it updates `docs/timings.*` and
-    `notes/004_perf_history.jsonl`.
+  - Mount only the timing artifacts read-write because it updates
+    `docs/timings.*` and `notes/004_perf_history.jsonl`.
   - Keep every other routine lane write-free with respect to the source tree.
   - Keep it out of default `make ci`.
 
   Added a separate perf image so the normal test image remains correctness-only.
   The Make target captures Git metadata before the benchmark writes timing
   artifacts, then the perf image builds and installs the package from copied
-  context and runs the opt-in performance suite against a read-write repository
-  mount with runtime network disabled. Validated with
-  `docker compose -f compose/perf.yml config`, `make checks`, and `make perf`.
+  context and runs the opt-in performance suite with only the timing outputs
+  mounted read-write. Runtime network is disabled. Validated with
+  `docker compose -f compose/perf.yml config`, `make checks`, and a targeted
+  perf-container writable-artifact check.
 
 - [x] Document minimally.
   - Add a short README section for containerized development.
@@ -290,8 +291,8 @@ should not publish. Publishing remains the tag-triggered GitHub workflow.
 ### Perf
 
 `make perf` is intentionally not strict in the same way as default checks: it is
-write-enabled and long-running. Its strictness comes from being explicit and
-opt-in.
+write-enabled and long-running. Its strictness comes from being explicit,
+opt-in, and limited to the timing output files it owns.
 
 ## Repository Boundary Decision
 
@@ -301,8 +302,8 @@ Use three explicit repository boundary modes:
   posture checks.
 - Copied build context: Rust tests, Python correctness tests, package builds,
   installed-package checks.
-- Explicit read-write mount: opt-in lanes whose purpose is to update checked-in
-  generated artifacts, currently timing docs and timing history.
+- Explicit read-write artifact mounts: opt-in lanes whose purpose is to update
+  checked-in generated artifacts, currently timing docs and timing history.
 
 The long-term default for `test` and `package` is copied build context. It is
 stricter than a bind mount because `.dockerignore` controls the source snapshot,
@@ -312,4 +313,5 @@ makes local and CI behavior converge around the same release-like package shape.
 
 Use read-only runtime mounts only where the lane intentionally inspects the
 operator's current working tree without building it. Use read-write mounts only
-when the lane is explicitly an artifact update lane.
+when the lane is explicitly an artifact update lane, and mount the narrowest
+file or directory set that lane needs.

@@ -1,4 +1,4 @@
-"""Presentation annotation-policy selectors for the private proof kernel."""
+"""Rendered witness records and count-only witness diagnostics."""
 
 from __future__ import annotations
 
@@ -29,21 +29,25 @@ class ValidWitness:
             raise ValueError("valid witness must cite named constraints")
 
 
-def select_annotation_witnesses(
+def select_witnesses_by_annotation_count(
     mode: AnnotationMode,
     witnesses: Iterable[ValidWitness],
 ) -> tuple[ValidWitness, ...]:
-    """Select from already-valid witnesses according to annotation policy.
+    """Select from already-valid witnesses using only annotation counts.
 
-    This selector is deliberately downstream of semantic validity. It never
-    repairs, parses, or filters by rendered string. Rendered witness
-    multiplicity is available through ``WitnessImage`` diagnostics, not through
-    the deduplicated support image.
+    Support-wise maximality is intentionally not implemented here: at the
+    witness layer, carrier-support identities are already gone.  Real
+    support-maximal selection belongs in ``stereo_csp.select_stereo_solutions``,
+    where ``StereoSolution.marker_support`` is still available.
     """
 
     witness_tuple = tuple(witnesses)
     if mode is AnnotationMode.CANONICAL:
         raise NotImplementedError("canonical annotation policy is not defined yet")
+    if mode is AnnotationMode.SUPPORT_MAXIMAL:
+        raise NotImplementedError(
+            "support-maximal selection requires StereoSolution.marker_support"
+        )
     if mode is AnnotationMode.CARDINALITY_MAXIMAL:
         if not witness_tuple:
             return ()
@@ -53,12 +57,12 @@ def select_annotation_witnesses(
             for witness in witness_tuple
             if witness.annotation_count == max_count
         )
-    if mode in (AnnotationMode.HARD, AnnotationMode.SUPPORT_MAXIMAL):
+    if mode is AnnotationMode.HARD:
         return witness_tuple
     raise ValueError(f"unknown annotation mode: {mode!r}")
 
 
 __all__ = (
     "ValidWitness",
-    "select_annotation_witnesses",
+    "select_witnesses_by_annotation_count",
 )

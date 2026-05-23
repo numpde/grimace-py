@@ -17,6 +17,7 @@ CORE_MODULES: tuple[str, ...] = (
     "fact_isomorphism",
     "graph_index",
     "ids",
+    "nonstereo_witness_search",
     "ordinary_policy",
     "ordinary_semantics",
     "ordinary_stereo_sites",
@@ -29,7 +30,6 @@ CORE_MODULES: tuple[str, ...] = (
     "stereo_csp",
     "support_enumeration",
     "stereo_witness",
-    "witness_search",
 )
 
 BOUNDARY_MODULES: tuple[str, ...] = (

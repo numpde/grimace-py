@@ -30,9 +30,11 @@ from grimace._south_star1.semantics import Invalid
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import BondSlotKind
 from grimace._south_star1.slots import allocate_traversal_slots
-from grimace._south_star1.witness_search import enumerate_nonstereo_assignments
-from grimace._south_star1.witness_search import enumerate_nonstereo_support
-from grimace._south_star1.witness_search import enumerate_nonstereo_witnesses
+from grimace._south_star1.nonstereo_witness_search import (
+    enumerate_nonstereo_assignments,
+)
+from grimace._south_star1.nonstereo_witness_search import enumerate_nonstereo_support
+from grimace._south_star1.nonstereo_witness_search import enumerate_nonstereo_witnesses
 
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
@@ -148,8 +150,8 @@ class WitnessSearchTest(unittest.TestCase):
                 )
             )
 
-    def test_witness_search_module_has_no_rdkit_import(self) -> None:
-        path = Path("python/grimace/_south_star1/witness_search.py")
+    def test_nonstereo_witness_search_module_has_no_rdkit_import(self) -> None:
+        path = Path("python/grimace/_south_star1/nonstereo_witness_search.py")
         tree = ast.parse(path.read_text(encoding="utf-8"))
 
         self.assertFalse(_imports_rdkit(tree))

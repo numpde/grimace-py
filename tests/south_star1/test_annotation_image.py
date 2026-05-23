@@ -7,7 +7,7 @@ import inspect
 import unittest
 
 from grimace._south_star1.annotation import ValidWitness
-from grimace._south_star1.annotation import select_annotation_witnesses
+from grimace._south_star1.annotation import select_witnesses_by_annotation_count
 from grimace._south_star1.constraints import NamedConstraint
 from grimace._south_star1.enumerate import render_image_from_witnesses
 from grimace._south_star1.enumerate import render_witness_image_from_witnesses
@@ -44,26 +44,25 @@ class AnnotationImageTest(unittest.TestCase):
             _witness("w3", "OCC", 2),
         )
 
-        selected = select_annotation_witnesses(
+        selected = select_witnesses_by_annotation_count(
             AnnotationMode.CARDINALITY_MAXIMAL,
             witnesses,
         )
 
         self.assertEqual(tuple(witness.id for witness in selected), ("w2", "w3"))
 
-    def test_support_maximal_preserves_witnesses(self) -> None:
+    def test_support_maximal_is_not_count_only_witness_selection(self) -> None:
         witnesses = (_witness("w1", "CCO", 0), _witness("w2", "CCO", 1))
 
-        selected = select_annotation_witnesses(
-            AnnotationMode.SUPPORT_MAXIMAL,
-            witnesses,
-        )
-
-        self.assertEqual(selected, witnesses)
+        with self.assertRaisesRegex(NotImplementedError, "marker_support"):
+            select_witnesses_by_annotation_count(
+                AnnotationMode.SUPPORT_MAXIMAL,
+                witnesses,
+            )
 
     def test_canonical_policy_is_explicitly_unimplemented(self) -> None:
         with self.assertRaises(NotImplementedError):
-            select_annotation_witnesses(
+            select_witnesses_by_annotation_count(
                 AnnotationMode.CANONICAL,
                 (_witness("w1", "CCO", 0),),
             )

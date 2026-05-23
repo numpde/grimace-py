@@ -1,9 +1,9 @@
-"""Finite witness search for the South Star 1 proof kernel.
+"""Finite non-stereo witness search for the South Star 1 proof kernel.
 
 This module is RDKit-free.
 
 It turns the existing proof-kernel pieces into an executable non-stereo
-enumerator:
+diagnostic enumerator:
 
     MoleculeFacts + SmilesPolicy + ParserSemantics
         -> TraversalSkeleton
@@ -14,6 +14,9 @@ enumerator:
 It deliberately does not parse, sanitize, canonicalize, or repair rendered
 strings.  Candidate rejection happens only through the declared finite
 constraints and parser-semantics relations.
+
+The primary stereo support path is ``support_enumeration`` plus
+``stereo_witness``.  This module remains as the narrower non-stereo slice.
 """
 
 from __future__ import annotations

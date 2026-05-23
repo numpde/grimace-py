@@ -166,7 +166,7 @@ def _overlay_rdkit_tetrahedral_stereo(
             id=site.id,
             center=site.center,
             status=SiteStatus.SPECIFIED,
-            target=_tetra_target_from_rdkit_tag(tag),
+            target=_tetra_target_from_rdkit_atom(atom),
             ligand_occurrences=site.ligand_occurrences,
             reference_order=_rdkit_tetra_reference_order(atom, facts, site),
         )
@@ -179,12 +179,39 @@ def _overlay_rdkit_tetrahedral_stereo(
     return out
 
 
+def _tetra_target_from_rdkit_atom(atom: Chem.Atom) -> TetraValue:
+    target = _tetra_target_from_rdkit_tag(atom.GetChiralTag())
+    if _rdkit_tetra_atom_has_predecessor(atom):
+        return _flip_tetra_target(target)
+    return target
+
+
 def _tetra_target_from_rdkit_tag(tag) -> TetraValue:
     if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
         return TetraValue.PLUS
     if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
         return TetraValue.MINUS
     raise NotImplementedError(f"unsupported RDKit tetrahedral tag: {tag!r}")
+
+
+def _rdkit_tetra_atom_has_predecessor(atom: Chem.Atom) -> bool:
+    """Whether RDKit parsed the tetra atom as a non-root SMILES atom.
+
+    RDKit atom indices follow lexical parse order at this boundary.  For
+    non-root tetra atoms, RDKit's stored chiral tag is interpreted from the
+    predecessor bond's viewpoint, which is a one-bit parity difference from the
+    South Star occurrence reference order used below.
+    """
+
+    return any(neighbor.GetIdx() < atom.GetIdx() for neighbor in atom.GetNeighbors())
+
+
+def _flip_tetra_target(value: TetraValue) -> TetraValue:
+    if value is TetraValue.PLUS:
+        return TetraValue.MINUS
+    if value is TetraValue.MINUS:
+        return TetraValue.PLUS
+    return value
 
 
 def _rdkit_tetra_reference_order(

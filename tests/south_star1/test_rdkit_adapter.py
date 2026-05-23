@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import unittest
 
 from rdkit import Chem
@@ -15,12 +16,19 @@ from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
+from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import molecule_facts_from_rdkit
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
+from grimace._south_star1.render import render_stereo_traversal
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
+from grimace._south_star1.slots import allocate_traversal_slots
+from grimace._south_star1.stereo_csp import enumerate_stereo_assignments_for_prefix
+from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
 from grimace._south_star1.support_enumeration import enumerate_stereo_support
 
 
@@ -102,6 +110,32 @@ class RdkitAdapterTest(unittest.TestCase):
         self.assertEqual(set(site.reference_order), set(site.ligand_occurrences))
         ordinary_policy_for_facts(facts)
 
+    def test_rdkit_tetra_adapter_tag_matches_semantics_for_root_and_nonroot(self) -> None:
+        semantics = OrdinarySmilesSemantics()
+        cases = {
+            "[C@H](F)(Cl)Br": TetraToken.AT,
+            "[C@@H](F)(Cl)Br": TetraToken.ATAT,
+            "F[C@H](Cl)Br": TetraToken.AT,
+            "F[C@@H](Cl)Br": TetraToken.ATAT,
+            "C[C@H](F)Cl": TetraToken.AT,
+            "C[C@@H](F)Cl": TetraToken.ATAT,
+        }
+
+        for text, token in cases.items():
+            with self.subTest(text=text):
+                facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+                site = _only_tetra_site(facts)
+
+                self.assertEqual(
+                    semantics.tetra_value(
+                        facts,
+                        site.id,
+                        site.reference_order,
+                        token,
+                    ),
+                    site.target,
+                )
+
     def test_ordinary_adapter_distinguishes_tetrahedral_enantiomer_tags(self) -> None:
         clockwise = ordinary_molecule_facts_from_rdkit(
             Chem.MolFromSmiles("[C@H](F)(Cl)Br")
@@ -119,25 +153,15 @@ class RdkitAdapterTest(unittest.TestCase):
             counterclockwise.stereo.tetrahedral[0].target,
         )
 
-    def test_tetrahedral_center_root_support_roundtrips_to_isomorphic_facts(self) -> None:
+    def test_tetrahedral_all_root_support_roundtrips_to_isomorphic_facts(self) -> None:
         facts = ordinary_molecule_facts_from_rdkit(
             Chem.MolFromSmiles("[C@H](F)(Cl)Br")
         )
         policy = ordinary_policy_for_facts(facts)
-        skeletons = tuple(
-            skeleton
-            for skeleton in enumerate_traversal_skeletons(
-                facts,
-                build_graph_index(facts),
-                policy,
-            )
-            if skeleton.roots == (AtomId(0),)
-        )
         image = enumerate_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
-            skeletons=skeletons,
         )
 
         self.assertGreater(image.distinct_count, 0)
@@ -147,6 +171,21 @@ class RdkitAdapterTest(unittest.TestCase):
             reparsed = ordinary_molecule_facts_from_rdkit(parsed)
             compare = facts_are_isomorphic(facts, reparsed)
             self.assertTrue(compare.isomorphic, (text, compare.reason))
+
+    def test_tetrahedral_witness_trace_matches_reparsed_rdkit_target(self) -> None:
+        facts = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        )
+        traces = _tetra_round_trip_traces(facts)
+
+        self.assertTrue(traces)
+        for trace in traces:
+            with self.subTest(text=trace.text):
+                self.assertEqual(
+                    trace.expected_reparsed_target,
+                    trace.actual_reparsed_target,
+                    trace,
+                )
 
     def test_ordinary_adapter_promotes_rdkit_directional_stereo(self) -> None:
         facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C/Cl"))
@@ -175,6 +214,134 @@ class RdkitAdapterTest(unittest.TestCase):
             together.stereo.directional[0].target,
             DirectionalValue.TOGETHER,
         )
+
+@dataclass(frozen=True, slots=True)
+class TetraRoundTripTrace:
+    text: str
+    original_center: AtomId
+    original_site: SiteId
+    rendered_token: TetraToken
+    rendered_local_order: tuple[OccurrenceId, ...]
+    original_reference_order: tuple[OccurrenceId, ...]
+    original_target: TetraValue
+    reparsed_reference_order: tuple[OccurrenceId, ...]
+    reparsed_target: TetraValue
+    mapped_rendered_order_in_reparsed_occurrences: tuple[OccurrenceId, ...]
+    expected_reparsed_target: TetraValue
+    actual_reparsed_target: TetraValue
+
+
+def _tetra_round_trip_traces(facts) -> tuple[TetraRoundTripTrace, ...]:
+    semantics = OrdinarySmilesSemantics()
+    policy = ordinary_policy_for_facts(facts)
+    site = _only_tetra_site(facts)
+    traces: list[TetraRoundTripTrace] = []
+
+    for skeleton in enumerate_traversal_skeletons(
+        facts,
+        build_graph_index(facts),
+        policy,
+    ):
+        slots = allocate_traversal_slots(facts, skeleton)
+        local_order = semantics.local_tetra_order(facts, skeleton, slots, site.id)
+        for prefix in enumerate_presentation_prefixes(
+            facts=facts,
+            slots=slots,
+            policy=policy,
+        ):
+            for assignment in enumerate_stereo_assignments_for_prefix(
+                facts=facts,
+                skeleton=skeleton,
+                slots=slots,
+                prefix=prefix,
+                policy=policy,
+                semantics=semantics,
+            ):
+                token = assignment.tetra_tokens[site.center]
+                if token is TetraToken.NONE:
+                    continue
+                text = render_stereo_traversal(
+                    facts=facts,
+                    skeleton=skeleton,
+                    slots=slots,
+                    assignment=assignment,
+                    policy=policy,
+                    semantics=semantics,
+                    validate=True,
+                )
+                reparsed = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+                reparsed_site = _only_tetra_site(reparsed)
+                mapped_order = _map_occurrences_by_signature(
+                    facts,
+                    reparsed,
+                    local_order,
+                )
+                expected = semantics.tetra_value(
+                    reparsed,
+                    reparsed_site.id,
+                    mapped_order,
+                    token,
+                )
+                traces.append(
+                    TetraRoundTripTrace(
+                        text=text,
+                        original_center=site.center,
+                        original_site=site.id,
+                        rendered_token=token,
+                        rendered_local_order=local_order,
+                        original_reference_order=site.reference_order,
+                        original_target=site.target,
+                        reparsed_reference_order=reparsed_site.reference_order,
+                        reparsed_target=reparsed_site.target,
+                        mapped_rendered_order_in_reparsed_occurrences=mapped_order,
+                        expected_reparsed_target=expected,
+                        actual_reparsed_target=reparsed_site.target,
+                    )
+                )
+
+    return tuple(traces)
+
+
+def _only_tetra_site(facts):
+    self_declared = facts.stereo.tetrahedral
+    if len(self_declared) != 1:
+        raise AssertionError(f"expected one tetra site, got {self_declared!r}")
+    return self_declared[0]
+
+
+def _map_occurrences_by_signature(left, right, occurrence_order):
+    left_by_id = {occurrence.id: occurrence for occurrence in left.ligand_occurrences}
+    right_by_signature = {
+        _occurrence_signature(right, occurrence): occurrence.id
+        for occurrence in right.ligand_occurrences
+    }
+    return tuple(
+        right_by_signature[_occurrence_signature(left, left_by_id[occurrence_id])]
+        for occurrence_id in occurrence_order
+    )
+
+
+def _occurrence_signature(facts, occurrence):
+    atom_by_id = {atom.id: atom for atom in facts.atoms}
+    if occurrence.kind is LigandKind.IMPLICIT_H:
+        atom = atom_by_id[occurrence.atom]
+        return ("implicit_h", atom.atomic_num, atom.symbol)
+    if occurrence.atom is None:
+        raise AssertionError(f"neighbor occurrence lacks atom: {occurrence!r}")
+    if occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+        atom = atom_by_id[occurrence.atom]
+        return (
+            "neighbor",
+            atom.atomic_num,
+            atom.symbol,
+            atom.isotope,
+            atom.formal_charge,
+            atom.is_aromatic,
+            atom.explicit_h_count,
+            atom.implicit_h_count,
+            atom.no_implicit,
+        )
+    raise AssertionError(f"unsupported occurrence kind: {occurrence.kind!r}")
 
 
 if __name__ == "__main__":

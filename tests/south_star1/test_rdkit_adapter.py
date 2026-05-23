@@ -7,6 +7,7 @@ import unittest
 from rdkit import Chem
 
 from grimace._south_star1.facts import BondOrder
+from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import SiteStatus
 from grimace._south_star1.facts import TetraValue
@@ -146,6 +147,34 @@ class RdkitAdapterTest(unittest.TestCase):
             reparsed = ordinary_molecule_facts_from_rdkit(parsed)
             compare = facts_are_isomorphic(facts, reparsed)
             self.assertTrue(compare.isomorphic, (text, compare.reason))
+
+    def test_ordinary_adapter_promotes_rdkit_directional_stereo(self) -> None:
+        facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C/Cl"))
+
+        self.assertEqual(len(facts.stereo.directional), 1)
+        site = facts.stereo.directional[0]
+        self.assertEqual(site.status, SiteStatus.SPECIFIED)
+        self.assertEqual(site.target, DirectionalValue.OPPOSITE)
+        self.assertIsNotNone(site.reference_pair)
+        self.assertNotEqual(site.reference_pair[0], site.reference_pair[1])
+        ordinary_policy_for_facts(facts)
+
+    def test_ordinary_adapter_distinguishes_directional_e_z_tags(self) -> None:
+        opposite = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C/Cl"))
+        together = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles("F/C=C\\Cl"))
+
+        self.assertEqual(
+            opposite.stereo.directional[0].reference_pair,
+            together.stereo.directional[0].reference_pair,
+        )
+        self.assertEqual(
+            opposite.stereo.directional[0].target,
+            DirectionalValue.OPPOSITE,
+        )
+        self.assertEqual(
+            together.stereo.directional[0].target,
+            DirectionalValue.TOGETHER,
+        )
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
 from .facts import ComponentFacts
+from .facts import DirectionalSiteFacts
+from .facts import DirectionalValue
 from .facts import LigandKind
 from .facts import MoleculeFacts
 from .facts import SiteStatus
@@ -73,8 +75,8 @@ def ordinary_molecule_facts_from_rdkit(
         facts = add_ordinary_potential_sites(facts)
     if options.extract_specified_tetrahedral:
         facts = _overlay_rdkit_tetrahedral_stereo(mol, facts)
-    if options.extract_specified_directional and _has_rdkit_bond_stereo(mol):
-        raise NotImplementedError("RDKit directional extraction is not implemented yet")
+    if options.extract_specified_directional:
+        facts = _overlay_rdkit_directional_stereo(mol, facts)
     facts.validate()
     return facts
 
@@ -111,10 +113,11 @@ def _validate_stereo_extraction_scope(
     if has_atom_stereo and not options.extract_specified_tetrahedral:
         if options.reject_unsupported_stereo:
             _reject_rdkit_stereo(mol)
-    if has_bond_stereo and options.extract_specified_directional:
-        raise NotImplementedError("RDKit directional extraction is not implemented yet")
+    if has_bond_stereo and not options.extract_specified_directional:
+        if options.reject_unsupported_stereo:
+            _reject_rdkit_stereo(mol)
     if options.reject_unsupported_stereo and (has_atom_stereo or has_bond_stereo):
-        if has_bond_stereo:
+        if has_bond_stereo and not options.extract_specified_directional:
             _reject_rdkit_stereo(mol)
 
 
@@ -240,6 +243,128 @@ def _replace_tetrahedral_sites(
                 for site in facts.stereo.tetrahedral
             ),
             directional=facts.stereo.directional,
+        ),
+        ligand_occurrences=facts.ligand_occurrences,
+    )
+
+
+def _overlay_rdkit_directional_stereo(
+    mol: Chem.Mol,
+    facts: MoleculeFacts,
+) -> MoleculeFacts:
+    sites_by_center_bond = {
+        site.center_bond: site
+        for site in facts.stereo.directional
+    }
+    replacement_by_id: dict[object, DirectionalSiteFacts] = {}
+
+    for bond in mol.GetBonds():
+        stereo = bond.GetStereo()
+        if stereo == Chem.BondStereo.STEREONONE:
+            continue
+        if stereo not in {Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOZ}:
+            raise NotImplementedError(f"unsupported RDKit bond stereo: {stereo!r}")
+
+        center_bond = BondId(bond.GetIdx())
+        site = sites_by_center_bond.get(center_bond)
+        if site is None:
+            raise NotImplementedError(
+                f"RDKit stereo bond has no ordinary potential site: {center_bond!r}"
+            )
+        stereo_atoms = tuple(AtomId(atom_idx) for atom_idx in bond.GetStereoAtoms())
+        if len(stereo_atoms) != 2:
+            raise NotImplementedError(
+                f"RDKit stereo bond {center_bond!r} lacks two stereo atoms"
+            )
+        reference_pair = _directional_reference_pair_from_stereo_atoms(
+            facts,
+            site,
+            stereo_atoms,
+        )
+        replacement_by_id[site.id] = DirectionalSiteFacts(
+            id=site.id,
+            center_bond=site.center_bond,
+            left_endpoint=site.left_endpoint,
+            right_endpoint=site.right_endpoint,
+            status=SiteStatus.SPECIFIED,
+            target=_directional_target_from_rdkit_stereo(stereo),
+            left_ligands=site.left_ligands,
+            right_ligands=site.right_ligands,
+            reference_pair=reference_pair,
+        )
+
+    if not replacement_by_id:
+        return facts
+
+    out = _replace_directional_sites(facts, replacement_by_id)
+    out.validate()
+    return out
+
+
+def _directional_reference_pair_from_stereo_atoms(
+    facts: MoleculeFacts,
+    site: DirectionalSiteFacts,
+    stereo_atoms: tuple[AtomId, AtomId],
+) -> tuple[OccurrenceId, OccurrenceId]:
+    left_by_atom = _neighbor_directional_occurrences_by_atom(
+        facts,
+        site.left_ligands,
+    )
+    right_by_atom = _neighbor_directional_occurrences_by_atom(
+        facts,
+        site.right_ligands,
+    )
+    first, second = stereo_atoms
+    if first in left_by_atom and second in right_by_atom:
+        return (left_by_atom[first], right_by_atom[second])
+    if second in left_by_atom and first in right_by_atom:
+        return (left_by_atom[second], right_by_atom[first])
+    raise NotImplementedError(
+        f"RDKit stereo atoms do not match ordinary directional site {site.id!r}"
+    )
+
+
+def _neighbor_directional_occurrences_by_atom(
+    facts: MoleculeFacts,
+    occurrence_ids: tuple[OccurrenceId, ...],
+) -> dict[AtomId, OccurrenceId]:
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in facts.ligand_occurrences
+    }
+    out: dict[AtomId, OccurrenceId] = {}
+    for occurrence_id in occurrence_ids:
+        occurrence = occurrence_by_id[occurrence_id]
+        if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            continue
+        if occurrence.atom is None:
+            raise ValueError(f"neighbor occurrence lacks atom: {occurrence.id!r}")
+        out[occurrence.atom] = occurrence.id
+    return out
+
+
+def _directional_target_from_rdkit_stereo(stereo) -> DirectionalValue:
+    if stereo == Chem.BondStereo.STEREOZ:
+        return DirectionalValue.TOGETHER
+    if stereo == Chem.BondStereo.STEREOE:
+        return DirectionalValue.OPPOSITE
+    raise NotImplementedError(f"unsupported RDKit bond stereo: {stereo!r}")
+
+
+def _replace_directional_sites(
+    facts: MoleculeFacts,
+    replacement_by_id: dict[object, DirectionalSiteFacts],
+) -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=facts.atoms,
+        bonds=facts.bonds,
+        components=facts.components,
+        stereo=StereoFacts(
+            tetrahedral=facts.stereo.tetrahedral,
+            directional=tuple(
+                replacement_by_id.get(site.id, site)
+                for site in facts.stereo.directional
+            ),
         ),
         ligand_occurrences=facts.ligand_occurrences,
     )

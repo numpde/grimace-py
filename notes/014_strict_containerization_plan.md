@@ -70,7 +70,7 @@ until the dependency surface is large enough to justify the extra object.
   - Maturin `1.13.1`.
   - Twine `6.2.0`.
 
-- [ ] Define the strict container contract.
+- [x] Define the strict container contract.
   - No host Python/conda dependency for normal checks.
   - No Docker socket mounts.
   - No root execution for Docker Make lanes.

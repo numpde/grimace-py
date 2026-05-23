@@ -377,20 +377,21 @@ Plain `pip install grimace` installs an unrelated older project with the same
 name, not this library.
 
 PyPI and GitHub release assets currently publish Linux `x86_64` wheels for
-CPython `3.12` and `3.13`. Other environments may require a source build and
-are not covered by the release wheels.
+CPython `3.12` and `3.13`. Other environments may require a source build.
 
-Current continuously exercised matrix:
+Current automated coverage:
 
-- Linux source-tree tests on CPython `3.12`
-- Linux wheel build and smoke tests on CPython `3.12` and `3.13`
-- source distribution build, metadata validation, and installed-artifact smoke
-  tests
+- local Make targets and GitHub CI run the Docker-backed `make ci` and
+  `make package` lanes
+- the package lane builds wheel and sdist artifacts, checks metadata, and runs
+  installed-artifact correctness tests
+- the release workflow builds Linux `x86_64` wheels for CPython `3.12` and
+  `3.13`, plus an sdist
 
 Other Python versions and non-Linux platforms are expected source-build paths,
-not part of the current release asset or CI matrix.
+not part of the current release asset matrix.
 Python `3.11` is in that source-build category today: declared, but not part of
-the current CI matrix.
+the current release workflow matrix.
 
 GitHub release wheels are also available:
 
@@ -400,7 +401,7 @@ GitHub release wheels are also available:
 
 The built package depends on `rdkit>=2026.3`.
 
-For local development or a source build, you need:
+For a host source build, you need:
 
 - a Rust toolchain with `rustc >= 1.83`
 - `maturin`
@@ -417,10 +418,13 @@ maturin develop --release
 ## Containerized development
 
 The Docker-backed Make lanes use pinned images and avoid the host Python
-environment for routine checks:
+environment for routine checks. `make ci` expands to checks, Rust tests,
+installed-package correctness, pinned RDKit parity, and exact public
+invariants:
 
 ```bash
 make checks
+make ci
 make test
 make package
 ```
@@ -500,10 +504,8 @@ Known stereo writer-parity work in progress:
   `dative_carbonyl_stereo_annotation_drops_on_smiles_roundtrip`, is tracked as
   observed RDKit behavior rather than a generic SMILES semantics rule.
 
-This work is active on the `stereo-constraint-model` branch and is not yet in
-the released mainline runtime. The goal is exact RDKit writer support for the
-documented runtime subset, without mixing RDKit-specific spelling quirks into
-the generic semantic layer.
+The goal is exact RDKit writer support for the documented runtime subset,
+without mixing RDKit-specific spelling quirks into the generic semantic layer.
 
 The current public runtime contract is the one described in
 [Important runtime requirements today](#important-runtime-requirements-today).

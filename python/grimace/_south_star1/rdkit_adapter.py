@@ -15,10 +15,16 @@ from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
 from .facts import ComponentFacts
+from .facts import LigandKind
 from .facts import MoleculeFacts
+from .facts import SiteStatus
+from .facts import StereoFacts
+from .facts import TetraValue
+from .facts import TetrahedralSiteFacts
 from .ids import AtomId
 from .ids import BondId
 from .ids import ComponentId
+from .ids import OccurrenceId
 from .ordinary_stereo_sites import add_ordinary_potential_sites
 
 
@@ -65,6 +71,10 @@ def ordinary_molecule_facts_from_rdkit(
     )
     if options.include_potential_sites:
         facts = add_ordinary_potential_sites(facts)
+    if options.extract_specified_tetrahedral:
+        facts = _overlay_rdkit_tetrahedral_stereo(mol, facts)
+    if options.extract_specified_directional and _has_rdkit_bond_stereo(mol):
+        raise NotImplementedError("RDKit directional extraction is not implemented yet")
     facts.validate()
     return facts
 
@@ -95,21 +105,144 @@ def _validate_stereo_extraction_scope(
     mol: Chem.Mol,
     options: RdkitOrdinaryExtractionOptions,
 ) -> None:
-    has_atom_stereo = any(
+    has_atom_stereo = _has_rdkit_atom_stereo(mol)
+    has_bond_stereo = _has_rdkit_bond_stereo(mol)
+
+    if has_atom_stereo and not options.extract_specified_tetrahedral:
+        if options.reject_unsupported_stereo:
+            _reject_rdkit_stereo(mol)
+    if has_bond_stereo and options.extract_specified_directional:
+        raise NotImplementedError("RDKit directional extraction is not implemented yet")
+    if options.reject_unsupported_stereo and (has_atom_stereo or has_bond_stereo):
+        if has_bond_stereo:
+            _reject_rdkit_stereo(mol)
+
+
+def _has_rdkit_atom_stereo(mol: Chem.Mol) -> bool:
+    return any(
         atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED
         for atom in mol.GetAtoms()
     )
-    has_bond_stereo = any(
+
+
+def _has_rdkit_bond_stereo(mol: Chem.Mol) -> bool:
+    return any(
         bond.GetStereo() != Chem.BondStereo.STEREONONE
         for bond in mol.GetBonds()
     )
 
-    if has_atom_stereo and options.extract_specified_tetrahedral:
-        raise NotImplementedError("RDKit tetrahedral extraction is not implemented yet")
-    if has_bond_stereo and options.extract_specified_directional:
-        raise NotImplementedError("RDKit directional extraction is not implemented yet")
-    if options.reject_unsupported_stereo and (has_atom_stereo or has_bond_stereo):
-        _reject_rdkit_stereo(mol)
+
+def _overlay_rdkit_tetrahedral_stereo(
+    mol: Chem.Mol,
+    facts: MoleculeFacts,
+) -> MoleculeFacts:
+    sites_by_center = {
+        site.center: site
+        for site in facts.stereo.tetrahedral
+    }
+    replacement_by_id: dict[object, TetrahedralSiteFacts] = {}
+
+    for atom in mol.GetAtoms():
+        tag = atom.GetChiralTag()
+        if tag == Chem.ChiralType.CHI_UNSPECIFIED:
+            continue
+        if tag not in {
+            Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+            Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+        }:
+            raise NotImplementedError(f"unsupported RDKit atom stereo: {tag!r}")
+
+        center = AtomId(atom.GetIdx())
+        site = sites_by_center.get(center)
+        if site is None:
+            raise NotImplementedError(
+                f"RDKit tetrahedral atom has no ordinary potential site: {center!r}"
+            )
+
+        replacement_by_id[site.id] = TetrahedralSiteFacts(
+            id=site.id,
+            center=site.center,
+            status=SiteStatus.SPECIFIED,
+            target=_tetra_target_from_rdkit_tag(tag),
+            ligand_occurrences=site.ligand_occurrences,
+            reference_order=_rdkit_tetra_reference_order(atom, facts, site),
+        )
+
+    if not replacement_by_id:
+        return facts
+
+    out = _replace_tetrahedral_sites(facts, replacement_by_id)
+    out.validate()
+    return out
+
+
+def _tetra_target_from_rdkit_tag(tag) -> TetraValue:
+    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CW:
+        return TetraValue.PLUS
+    if tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
+        return TetraValue.MINUS
+    raise NotImplementedError(f"unsupported RDKit tetrahedral tag: {tag!r}")
+
+
+def _rdkit_tetra_reference_order(
+    atom: Chem.Atom,
+    facts: MoleculeFacts,
+    site: TetrahedralSiteFacts,
+) -> tuple[OccurrenceId, ...]:
+    occurrence_by_neighbor = _neighbor_tetra_occurrences_by_atom(facts, site)
+    implicit_h = tuple(
+        occurrence.id
+        for occurrence in facts.ligand_occurrences
+        if occurrence.site == site.id and occurrence.kind is LigandKind.IMPLICIT_H
+    )
+    reference_order = tuple(
+        occurrence_by_neighbor[AtomId(neighbor.GetIdx())]
+        for neighbor in atom.GetNeighbors()
+        if AtomId(neighbor.GetIdx()) in occurrence_by_neighbor
+    ) + implicit_h
+    if set(reference_order) != set(site.ligand_occurrences):
+        raise ValueError(
+            f"RDKit tetrahedral reference order does not cover site {site.id!r}"
+        )
+    return reference_order
+
+
+def _neighbor_tetra_occurrences_by_atom(
+    facts: MoleculeFacts,
+    site: TetrahedralSiteFacts,
+) -> dict[AtomId, OccurrenceId]:
+    occurrence_by_id = {
+        occurrence.id: occurrence
+        for occurrence in facts.ligand_occurrences
+    }
+    out: dict[AtomId, OccurrenceId] = {}
+    for occurrence_id in site.ligand_occurrences:
+        occurrence = occurrence_by_id[occurrence_id]
+        if occurrence.kind is not LigandKind.NEIGHBOR_ATOM:
+            continue
+        if occurrence.atom is None:
+            raise ValueError(f"neighbor occurrence lacks atom: {occurrence.id!r}")
+        out[occurrence.atom] = occurrence.id
+    return out
+
+
+def _replace_tetrahedral_sites(
+    facts: MoleculeFacts,
+    replacement_by_id: dict[object, TetrahedralSiteFacts],
+) -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=facts.atoms,
+        bonds=facts.bonds,
+        components=facts.components,
+        stereo=StereoFacts(
+            tetrahedral=tuple(
+                replacement_by_id.get(site.id, site)
+                for site in facts.stereo.tetrahedral
+            ),
+            directional=facts.stereo.directional,
+        ),
+        ligand_occurrences=facts.ligand_occurrences,
+    )
 
 
 def _reject_rdkit_stereo(mol: Chem.Mol) -> None:

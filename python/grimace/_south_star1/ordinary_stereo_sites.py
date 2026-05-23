@@ -214,7 +214,11 @@ class _SiteBuilder:
                     bond=None,
                 )
             )
-        return tuple(occurrences)
+        return _sort_ligand_occurrences(
+            self.facts,
+            center=atom.id,
+            occurrences=tuple(occurrences),
+        )
 
     def _endpoint_ligands(
         self,
@@ -255,7 +259,11 @@ class _SiteBuilder:
                     bond=None,
                 )
             )
-        return tuple(occurrences)
+        return _sort_ligand_occurrences(
+            self.facts,
+            center=endpoint,
+            occurrences=tuple(occurrences),
+        )
 
     def _new_site_id(self) -> SiteId:
         site_id = SiteId(self.next_site)
@@ -330,6 +338,24 @@ def _ligand_colors_are_unique(
         for occurrence in occurrences
     )
     return len(set(colors)) == len(colors)
+
+
+def _sort_ligand_occurrences(
+    facts: MoleculeFacts,
+    *,
+    center: AtomId,
+    occurrences: tuple[LigandOccurrence, ...],
+) -> tuple[LigandOccurrence, ...]:
+    return tuple(
+        sorted(
+            occurrences,
+            key=lambda occurrence: _ligand_color(
+                facts,
+                center=center,
+                occurrence=occurrence,
+            ),
+        )
+    )
 
 
 def _ligand_color(

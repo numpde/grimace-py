@@ -270,6 +270,33 @@ class RdkitAdapterTest(unittest.TestCase):
                         )
                     )
 
+    def test_ordinary_adapter_rejects_enhanced_stereo_groups(self) -> None:
+        mol = Chem.MolFromSmiles("F[C@H](Cl)Br |&1:1|")
+
+        with self.assertRaisesRegex(NotImplementedError, "enhanced stereo"):
+            ordinary_molecule_facts_from_rdkit(mol)
+
+    def test_ordinary_adapter_rejects_non_tetrahedral_atom_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("C(F)(Cl)(Br)I")
+        mol.GetAtomWithIdx(0).SetChiralTag(Chem.ChiralType.CHI_SQUAREPLANAR)
+
+        with self.assertRaisesRegex(NotImplementedError, "unsupported RDKit atom"):
+            ordinary_molecule_facts_from_rdkit(mol)
+
+    def test_ordinary_adapter_rejects_unknown_bond_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C/Cl")
+        mol.GetBondWithIdx(1).SetStereo(Chem.BondStereo.STEREOANY)
+
+        with self.assertRaisesRegex(NotImplementedError, "unsupported RDKit bond"):
+            ordinary_molecule_facts_from_rdkit(mol)
+
+    def test_ordinary_adapter_rejects_atropisomeric_bond_stereo(self) -> None:
+        mol = Chem.MolFromSmiles("F/C=C/Cl")
+        mol.GetBondWithIdx(1).SetStereo(Chem.BondStereo.STEREOATROPCW)
+
+        with self.assertRaisesRegex(NotImplementedError, "unsupported RDKit bond"):
+            ordinary_molecule_facts_from_rdkit(mol)
+
 @dataclass(frozen=True, slots=True)
 class TetraRoundTripTrace:
     text: str

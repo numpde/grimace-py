@@ -107,6 +107,9 @@ def _validate_stereo_extraction_scope(
     mol: Chem.Mol,
     options: RdkitOrdinaryExtractionOptions,
 ) -> None:
+    if options.reject_unsupported_stereo and mol.GetStereoGroups():
+        raise NotImplementedError("South Star 1 RDKit adapter rejects enhanced stereo")
+
     has_atom_stereo = _has_rdkit_atom_stereo(mol)
     has_bond_stereo = _has_rdkit_bond_stereo(mol)
 

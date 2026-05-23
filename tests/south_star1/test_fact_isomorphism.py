@@ -11,7 +11,9 @@ from grimace._south_star1.fact_isomorphism import facts_are_isomorphic
 from grimace._south_star1.facts import BondFacts
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalSiteFacts
 from grimace._south_star1.facts import DirectionalValue
+from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.facts import SiteStatus
@@ -121,6 +123,46 @@ class FactIsomorphismTest(unittest.TestCase):
         self.assertFalse(facts_are_isomorphic(facts, changed))
         self.assertTrue(facts_are_isomorphic(facts, changed, compare_stereo=False))
 
+    def test_accepts_tetrahedral_reference_order_parity_flip(self) -> None:
+        facts = tetrahedral_facts()
+        site = facts.stereo.tetrahedral[0]
+        changed_site = replace(
+            site,
+            target=TetraValue.MINUS,
+            reference_order=(
+                site.reference_order[1],
+                site.reference_order[0],
+                site.reference_order[2],
+                site.reference_order[3],
+            ),
+        )
+        changed = replace(facts, stereo=StereoFacts(tetrahedral=(changed_site,)))
+
+        result = facts_are_isomorphic(facts, changed)
+
+        self.assertTrue(result)
+        self.assertTrue(result.isomorphic)
+        self.assertIsNotNone(result.isomorphism)
+
+    def test_rejects_tetrahedral_reference_order_parity_mismatch(self) -> None:
+        facts = tetrahedral_facts()
+        site = facts.stereo.tetrahedral[0]
+        changed_site = replace(
+            site,
+            reference_order=(
+                site.reference_order[1],
+                site.reference_order[0],
+                site.reference_order[2],
+                site.reference_order[3],
+            ),
+        )
+        changed = replace(facts, stereo=StereoFacts(tetrahedral=(changed_site,)))
+
+        result = facts_are_isomorphic(facts, changed)
+
+        self.assertFalse(result)
+        self.assertEqual(result.reason, "tetrahedral stereo mismatch")
+
     def test_rejects_directional_target_mismatch_when_comparing_stereo(self) -> None:
         facts = directional_facts()
         site = replace(
@@ -149,6 +191,40 @@ class FactIsomorphismTest(unittest.TestCase):
 
         self.assertTrue(facts_are_isomorphic(facts, swapped))
 
+    def test_accepts_directional_reference_pair_single_side_flip(self) -> None:
+        facts = _two_substituent_directional_facts()
+        site = facts.stereo.directional[0]
+        changed_site = replace(
+            site,
+            target=DirectionalValue.TOGETHER,
+            reference_pair=(OccurrenceId(1), OccurrenceId(2)),
+        )
+        changed = replace(facts, stereo=StereoFacts(directional=(changed_site,)))
+
+        self.assertTrue(facts_are_isomorphic(facts, changed))
+
+    def test_rejects_directional_reference_pair_single_side_mismatch(self) -> None:
+        facts = _two_substituent_directional_facts()
+        site = facts.stereo.directional[0]
+        changed_site = replace(
+            site,
+            reference_pair=(OccurrenceId(1), OccurrenceId(2)),
+        )
+        changed = replace(facts, stereo=StereoFacts(directional=(changed_site,)))
+
+        self.assertFalse(facts_are_isomorphic(facts, changed))
+
+    def test_accepts_directional_reference_pair_two_side_flip(self) -> None:
+        facts = _two_substituent_directional_facts()
+        site = facts.stereo.directional[0]
+        changed_site = replace(
+            site,
+            reference_pair=(OccurrenceId(1), OccurrenceId(3)),
+        )
+        changed = replace(facts, stereo=StereoFacts(directional=(changed_site,)))
+
+        self.assertTrue(facts_are_isomorphic(facts, changed))
+
     def test_rejects_missing_unspecified_stereo_site(self) -> None:
         facts = tetrahedral_facts()
         site = replace(
@@ -164,6 +240,13 @@ class FactIsomorphismTest(unittest.TestCase):
         )
 
         self.assertFalse(facts_are_isomorphic(with_unspecified, without_stereo))
+        self.assertTrue(
+            facts_are_isomorphic(
+                with_unspecified,
+                without_stereo,
+                compare_potential_sites=False,
+            )
+        )
 
     def test_module_has_no_rdkit_import(self) -> None:
         path = Path("python/grimace/_south_star1/fact_isomorphism.py")
@@ -262,6 +345,99 @@ def _renumber_facts(
                 ordinal=occurrence.ordinal,
             )
             for occurrence in facts.ligand_occurrences
+        ),
+    )
+
+
+def _two_substituent_directional_facts() -> MoleculeFacts:
+    site = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+            atom(4, "Br"),
+            atom(5, "O"),
+        ),
+        bonds=(
+            BondFacts(
+                id=BondId(0),
+                a=AtomId(0),
+                b=AtomId(1),
+                order=BondOrder.DOUBLE,
+                is_aromatic=False,
+                is_conjugated=False,
+            ),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+            single_bond(3, 1, 4),
+            single_bond(4, 1, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(
+                    AtomId(0),
+                    AtomId(1),
+                    AtomId(2),
+                    AtomId(3),
+                    AtomId(4),
+                    AtomId(5),
+                ),
+                bonds=(
+                    BondId(0),
+                    BondId(1),
+                    BondId(2),
+                    BondId(3),
+                    BondId(4),
+                ),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=site,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(4),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(4),
+            ),
         ),
     )
 

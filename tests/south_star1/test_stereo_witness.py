@@ -10,6 +10,7 @@ import unittest
 from grimace._south_star1.annotation import ValidWitness
 from grimace._south_star1.constraints import NamedConstraint
 from grimace._south_star1.enumerate import render_image_from_witnesses
+from grimace._south_star1.enumerate import render_witness_image_from_witnesses
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalSiteFacts
 from grimace._south_star1.facts import DirectionalValue
@@ -361,7 +362,7 @@ class StereoWitnessTest(unittest.TestCase):
             non_normalized,
         )
 
-    def test_rendered_image_preserves_witness_multiplicity(self) -> None:
+    def test_support_image_deduplicates_stereo_witnesses(self) -> None:
         constraints = (NamedConstraint("semantic_validity", "assignment"),)
         witnesses = (
             ValidWitness("witness:a", "CC", 0, constraints),
@@ -369,6 +370,19 @@ class StereoWitnessTest(unittest.TestCase):
         )
 
         image = render_image_from_witnesses(witnesses)
+
+        self.assertEqual(image.witness_count, 2)
+        self.assertEqual(image.distinct_count, 1)
+        self.assertEqual(image.strings, ("CC",))
+
+    def test_witness_image_preserves_stereo_witness_multiplicity(self) -> None:
+        constraints = (NamedConstraint("semantic_validity", "assignment"),)
+        witnesses = (
+            ValidWitness("witness:a", "CC", 0, constraints),
+            ValidWitness("witness:b", "CC", 0, constraints),
+        )
+
+        image = render_witness_image_from_witnesses(witnesses)
 
         self.assertEqual(image.witness_count, 2)
         self.assertEqual(image.distinct_count, 1)

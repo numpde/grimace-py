@@ -10,11 +10,12 @@ from grimace._south_star1.annotation import ValidWitness
 from grimace._south_star1.annotation import select_annotation_witnesses
 from grimace._south_star1.constraints import NamedConstraint
 from grimace._south_star1.enumerate import render_image_from_witnesses
+from grimace._south_star1.enumerate import render_witness_image_from_witnesses
 from grimace._south_star1.policy import AnnotationMode
 
 
 class AnnotationImageTest(unittest.TestCase):
-    def test_support_image_preserves_rendered_witness_multiplicity(self) -> None:
+    def test_support_image_deduplicates_rendered_strings(self) -> None:
         witnesses = (
             _witness("w1", "CCO", 0),
             _witness("w2", "CCO", 1),
@@ -25,12 +26,12 @@ class AnnotationImageTest(unittest.TestCase):
 
         self.assertEqual(image.witness_count, 3)
         self.assertEqual(image.distinct_count, 2)
-        self.assertEqual(image.strings, ("CCO", "CCO", "OCC"))
+        self.assertEqual(image.strings, ("CCO", "OCC"))
 
-    def test_distinct_count_is_only_instrumentation(self) -> None:
+    def test_witness_image_preserves_rendered_witness_multiplicity(self) -> None:
         witnesses = (_witness("w1", "CCO", 0), _witness("w2", "CCO", 1))
 
-        image = render_image_from_witnesses(witnesses)
+        image = render_witness_image_from_witnesses(witnesses)
 
         self.assertEqual(image.witness_count, 2)
         self.assertEqual(image.distinct_count, 1)

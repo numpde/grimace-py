@@ -36,8 +36,9 @@ def select_annotation_witnesses(
     """Select from already-valid witnesses according to annotation policy.
 
     This selector is deliberately downstream of semantic validity. It never
-    repairs, parses, or filters by rendered string. Rendered witness strings are
-    preserved with multiplicity in the support image.
+    repairs, parses, or filters by rendered string. Rendered witness
+    multiplicity is available through ``WitnessImage`` diagnostics, not through
+    the deduplicated support image.
     """
 
     witness_tuple = tuple(witnesses)

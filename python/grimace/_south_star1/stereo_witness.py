@@ -329,7 +329,7 @@ def _witness_id(
     """Stable debugging id for a witness.
 
     This is not a chemical canonical identifier and is not the support quotient.
-    The rendered support image preserves witness multiplicity.
+    Witness multiplicity is diagnostic; the support image is deduplicated.
     """
 
     payload = repr(

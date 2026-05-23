@@ -154,10 +154,10 @@ def enumerate_stereo_support(
     This is the convenient end-to-end API:
 
         facts -> skeletons -> slots -> prefixes -> CSP -> assignments
-              -> render -> witness image
+        -> render -> support image
 
-    The returned ``SupportImage`` preserves rendered witness-string
-    multiplicity. ``distinct_count`` is instrumentation only.
+    The returned ``SupportImage`` stores unique rendered strings. Use
+    ``enumerate_stereo_witnesses`` if witness multiplicity is needed.
     """
 
     witnesses = enumerate_stereo_witnesses(

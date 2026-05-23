@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 import unittest
 
+from grimace._south_star1.enumerate import render_witness_image_from_witnesses
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
@@ -54,7 +55,7 @@ class SupportEnumerationTest(unittest.TestCase):
             all("[C@H]" in rendered for rendered in result.image.strings)
         )
 
-    def test_stereo_support_preserves_rendered_witness_multiplicity(self) -> None:
+    def test_stereo_support_deduplicates_rendered_strings(self) -> None:
         facts = tetrahedral_facts()
         base_policy = _policy_for_facts_only(facts)
         skeleton = next(
@@ -82,7 +83,38 @@ class SupportEnumerationTest(unittest.TestCase):
 
         self.assertEqual(image.witness_count, 2)
         self.assertEqual(image.distinct_count, 1)
-        self.assertEqual(image.strings[0], image.strings[1])
+        self.assertEqual(image.strings, ("[C@H](F)(Cl)(Br)",))
+
+    def test_stereo_witness_image_preserves_rendered_multiplicity(self) -> None:
+        facts = tetrahedral_facts()
+        base_policy = _policy_for_facts_only(facts)
+        skeleton = next(
+            skeleton
+            for skeleton in enumerate_traversal_skeletons(
+                facts,
+                build_graph_index(facts),
+                base_policy,
+            )
+            if skeleton.roots == (AtomId(0),)
+        )
+        policy = _policy_for_slots(
+            facts,
+            allocate_traversal_slots(facts, skeleton),
+            chiral_center=AtomId(0),
+        )
+
+        witness_image = render_witness_image_from_witnesses(
+            enumerate_stereo_witnesses(
+                facts=facts,
+                policy=policy,
+                semantics=_TetraOrderSemantics(),
+                skeletons=(skeleton, skeleton),
+            )
+        )
+
+        self.assertEqual(witness_image.witness_count, 2)
+        self.assertEqual(witness_image.distinct_count, 1)
+        self.assertEqual(witness_image.strings[0], witness_image.strings[1])
 
     def test_stereo_witnesses_are_streaming(self) -> None:
         facts = tetrahedral_facts()

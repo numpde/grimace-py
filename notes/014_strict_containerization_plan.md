@@ -83,7 +83,7 @@ until the dependency surface is large enough to justify the extra object.
   - Pinned base images by digest.
   - Pinned Rust `1.83.0`, RDKit `2026.3.1`, `maturin`, and `twine`.
 
-- [ ] Add `.dockerignore` first.
+- [x] Add `.dockerignore` first.
   - Exclude `.git`, `.codex`, `.agents`, `.idea`, `.vscode`, `.venv`.
   - Exclude `target`, `dist`, `build`, `*.egg-info`.
   - Exclude Python caches and coverage output.
@@ -91,6 +91,11 @@ until the dependency surface is large enough to justify the extra object.
   - Exclude local secrets and env files.
   - Keep source, tests, docs, fixtures, `Cargo.lock`, `pyproject.toml`,
     `Cargo.toml`, and `rust-toolchain.toml`.
+
+  Validated by exporting a scratch Docker build context to
+  `/tmp/grimace-dockerignore-context`: required source/build inputs were
+  present, and `.git`, `.venv`, `target`, `dist`, and nested `__pycache__`
+  directories were absent.
 
 - [ ] Add the offline repository check lane.
   - Create `containers/checks/Dockerfile`.

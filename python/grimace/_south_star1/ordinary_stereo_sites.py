@@ -1,0 +1,317 @@
+"""RDKit-free ordinary stereo-site construction for South Star facts."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from .facts import AtomFacts
+from .facts import BondFacts
+from .facts import BondOrder
+from .facts import DirectionalSiteFacts
+from .facts import DirectionalValue
+from .facts import LigandKind
+from .facts import LigandOccurrence
+from .facts import MoleculeFacts
+from .facts import SiteStatus
+from .facts import StereoFacts
+from .facts import TetraValue
+from .facts import TetrahedralSiteFacts
+from .ids import AtomId
+from .ids import BondId
+from .ids import OccurrenceId
+from .ids import SiteId
+
+
+def ordinary_tetrahedral_candidates(
+    facts: MoleculeFacts,
+) -> tuple[tuple[TetrahedralSiteFacts, ...], tuple[LigandOccurrence, ...]]:
+    """Return ordinary potential tetrahedral sites implied by graph facts."""
+
+    builder = _SiteBuilder(facts)
+    builder.add_tetrahedral_candidates(skip_centers=frozenset())
+    return tuple(builder.tetrahedral), tuple(builder.occurrences)
+
+
+def ordinary_directional_candidates(
+    facts: MoleculeFacts,
+) -> tuple[tuple[DirectionalSiteFacts, ...], tuple[LigandOccurrence, ...]]:
+    """Return ordinary potential directional sites implied by graph facts."""
+
+    builder = _SiteBuilder(facts)
+    builder.add_directional_candidates(skip_center_bonds=frozenset())
+    return tuple(builder.directional), tuple(builder.occurrences)
+
+
+def add_ordinary_potential_sites(
+    facts: MoleculeFacts,
+    *,
+    preserve_specified: bool = True,
+) -> MoleculeFacts:
+    """Add ordinary potential stereo sites without using RDKit perception."""
+
+    facts.validate()
+    if preserve_specified:
+        skip_tetra_centers = frozenset(site.center for site in facts.stereo.tetrahedral)
+        skip_directional_bonds = frozenset(
+            site.center_bond for site in facts.stereo.directional
+        )
+    else:
+        skip_tetra_centers = frozenset()
+        skip_directional_bonds = frozenset()
+
+    builder = _SiteBuilder(facts)
+    builder.add_tetrahedral_candidates(skip_centers=skip_tetra_centers)
+    builder.add_directional_candidates(skip_center_bonds=skip_directional_bonds)
+
+    out = replace(
+        facts,
+        stereo=StereoFacts(
+            tetrahedral=facts.stereo.tetrahedral + tuple(builder.tetrahedral),
+            directional=facts.stereo.directional + tuple(builder.directional),
+        ),
+        ligand_occurrences=facts.ligand_occurrences + tuple(builder.occurrences),
+    )
+    out.validate()
+    return out
+
+
+class _SiteBuilder:
+    def __init__(self, facts: MoleculeFacts) -> None:
+        facts.validate()
+        self.facts = facts
+        self.bonds_by_atom = _bonds_by_atom(facts)
+        self.tetrahedral: list[TetrahedralSiteFacts] = []
+        self.directional: list[DirectionalSiteFacts] = []
+        self.occurrences: list[LigandOccurrence] = []
+        self.next_site = _next_site_id(facts)
+        self.next_occurrence = _next_occurrence_id(facts)
+
+    def add_tetrahedral_candidates(
+        self,
+        *,
+        skip_centers: frozenset[AtomId],
+    ) -> None:
+        for atom in self.facts.atoms:
+            if atom.id in skip_centers:
+                continue
+            if not _is_supported_tetrahedral_center(atom):
+                continue
+
+            occurrences = self._atom_ligands(atom)
+            if len(occurrences) != 4:
+                continue
+
+            site_id = self._new_site_id()
+            occurrence_ids = tuple(
+                self._new_ligand_occurrence(
+                    replace(occurrence, site=site_id, ordinal=index)
+                )
+                for index, occurrence in enumerate(occurrences)
+            )
+            self.tetrahedral.append(
+                TetrahedralSiteFacts(
+                    id=site_id,
+                    center=atom.id,
+                    status=SiteStatus.UNSPECIFIED,
+                    target=TetraValue.NONE,
+                    ligand_occurrences=occurrence_ids,
+                    reference_order=occurrence_ids,
+                )
+            )
+
+    def add_directional_candidates(
+        self,
+        *,
+        skip_center_bonds: frozenset[BondId],
+    ) -> None:
+        for bond in self.facts.bonds:
+            if bond.id in skip_center_bonds:
+                continue
+            if not _is_supported_directional_center_bond(bond):
+                continue
+
+            left_ligands = self._endpoint_ligands(
+                endpoint=bond.a,
+                center_bond=bond.id,
+            )
+            right_ligands = self._endpoint_ligands(
+                endpoint=bond.b,
+                center_bond=bond.id,
+            )
+            if not left_ligands or not right_ligands:
+                continue
+            if len(left_ligands) > 2 or len(right_ligands) > 2:
+                continue
+
+            site_id = self._new_site_id()
+            left_ids = tuple(
+                self._new_ligand_occurrence(
+                    replace(occurrence, site=site_id, ordinal=index)
+                )
+                for index, occurrence in enumerate(left_ligands)
+            )
+            right_ids = tuple(
+                self._new_ligand_occurrence(
+                    replace(occurrence, site=site_id, ordinal=index)
+                )
+                for index, occurrence in enumerate(right_ligands)
+            )
+            self.directional.append(
+                DirectionalSiteFacts(
+                    id=site_id,
+                    center_bond=bond.id,
+                    left_endpoint=bond.a,
+                    right_endpoint=bond.b,
+                    status=SiteStatus.UNSPECIFIED,
+                    target=DirectionalValue.NONE,
+                    left_ligands=left_ids,
+                    right_ligands=right_ids,
+                    reference_pair=None,
+                )
+            )
+
+    def _atom_ligands(self, atom: AtomFacts) -> tuple[LigandOccurrence, ...]:
+        occurrences: list[LigandOccurrence] = []
+        for bond in sorted(
+            self.bonds_by_atom.get(atom.id, ()),
+            key=lambda candidate: (
+                int(_other_atom(candidate, atom.id)),
+                int(candidate.id),
+            ),
+        ):
+            occurrences.append(
+                LigandOccurrence(
+                    id=OccurrenceId(-1),
+                    site=SiteId(-1),
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=_other_atom(bond, atom.id),
+                    bond=bond.id,
+                )
+            )
+        for _ in range(atom.implicit_h_count):
+            occurrences.append(
+                LigandOccurrence(
+                    id=OccurrenceId(-1),
+                    site=SiteId(-1),
+                    kind=LigandKind.IMPLICIT_H,
+                    atom=atom.id,
+                    bond=None,
+                )
+            )
+        return tuple(occurrences)
+
+    def _endpoint_ligands(
+        self,
+        *,
+        endpoint: AtomId,
+        center_bond: BondId,
+    ) -> tuple[LigandOccurrence, ...]:
+        occurrences: list[LigandOccurrence] = []
+        for bond in sorted(
+            (
+                bond
+                for bond in self.bonds_by_atom.get(endpoint, ())
+                if bond.id != center_bond
+            ),
+            key=lambda candidate: (
+                int(_other_atom(candidate, endpoint)),
+                int(candidate.id),
+            ),
+        ):
+            occurrences.append(
+                LigandOccurrence(
+                    id=OccurrenceId(-1),
+                    site=SiteId(-1),
+                    kind=LigandKind.NEIGHBOR_ATOM,
+                    atom=_other_atom(bond, endpoint),
+                    bond=bond.id,
+                )
+            )
+
+        atom = _atom_by_id(self.facts)[endpoint]
+        for _ in range(atom.implicit_h_count):
+            occurrences.append(
+                LigandOccurrence(
+                    id=OccurrenceId(-1),
+                    site=SiteId(-1),
+                    kind=LigandKind.IMPLICIT_H,
+                    atom=endpoint,
+                    bond=None,
+                )
+            )
+        return tuple(occurrences)
+
+    def _new_site_id(self) -> SiteId:
+        site_id = SiteId(self.next_site)
+        self.next_site += 1
+        return site_id
+
+    def _new_ligand_occurrence(self, occurrence: LigandOccurrence) -> OccurrenceId:
+        occurrence_id = OccurrenceId(self.next_occurrence)
+        self.next_occurrence += 1
+        self.occurrences.append(replace(occurrence, id=occurrence_id))
+        return occurrence_id
+
+
+def _is_supported_tetrahedral_center(atom: AtomFacts) -> bool:
+    return (
+        _is_plain_neutral_atom(atom)
+        and atom.atomic_num == 6
+        and not atom.is_aromatic
+    )
+
+
+def _is_supported_directional_center_bond(bond: BondFacts) -> bool:
+    return bond.order is BondOrder.DOUBLE and not bond.is_aromatic
+
+
+def _is_plain_neutral_atom(atom: AtomFacts) -> bool:
+    return (
+        atom.isotope is None
+        and atom.formal_charge == 0
+        and atom.explicit_h_count == 0
+        and not atom.no_implicit
+    )
+
+
+def _bonds_by_atom(facts: MoleculeFacts) -> dict[AtomId, tuple[BondFacts, ...]]:
+    out: dict[AtomId, list[BondFacts]] = {atom.id: [] for atom in facts.atoms}
+    for bond in facts.bonds:
+        out[bond.a].append(bond)
+        out[bond.b].append(bond)
+    return {atom: tuple(bonds) for atom, bonds in out.items()}
+
+
+def _other_atom(bond: BondFacts, atom: AtomId) -> AtomId:
+    if bond.a == atom:
+        return bond.b
+    if bond.b == atom:
+        return bond.a
+    raise ValueError(f"bond {bond.id!r} is not incident to atom {atom!r}")
+
+
+def _atom_by_id(facts: MoleculeFacts) -> dict[AtomId, AtomFacts]:
+    return {atom.id: atom for atom in facts.atoms}
+
+
+def _next_site_id(facts: MoleculeFacts) -> int:
+    ids = [int(site.id) for site in facts.stereo.tetrahedral]
+    ids.extend(int(site.id) for site in facts.stereo.directional)
+    return max(ids, default=-1) + 1
+
+
+def _next_occurrence_id(facts: MoleculeFacts) -> int:
+    return (
+        max(
+            (int(occurrence.id) for occurrence in facts.ligand_occurrences),
+            default=-1,
+        )
+        + 1
+    )
+
+
+__all__ = (
+    "add_ordinary_potential_sites",
+    "ordinary_directional_candidates",
+    "ordinary_tetrahedral_candidates",
+)

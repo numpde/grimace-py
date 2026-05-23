@@ -102,6 +102,27 @@ class OrdinaryStereoSitesTest(unittest.TestCase):
             )
         )
 
+    def test_nonstereogenic_tetrahedral_shapes_are_not_candidates(self) -> None:
+        for facts in (
+            _ch3cl_facts(),
+            _ch2cl2_facts(),
+            _duplicate_f_tetrahedral_facts(),
+        ):
+            sites, occurrences = ordinary_tetrahedral_candidates(facts)
+
+            self.assertEqual(sites, ())
+            self.assertEqual(occurrences, ())
+
+    def test_nonstereogenic_directional_shapes_are_not_candidates(self) -> None:
+        for facts in (
+            _ethene_facts(),
+            _duplicate_f_alkene_facts(),
+        ):
+            sites, occurrences = ordinary_directional_candidates(facts)
+
+            self.assertEqual(sites, ())
+            self.assertEqual(occurrences, ())
+
 
 def _tetrahedral_carbon_without_stereo() -> MoleculeFacts:
     base = tetrahedral_facts()
@@ -172,6 +193,120 @@ def _implicit_h_alkene_without_stereo() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def _ch3cl_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(replace(atom(0, "C"), implicit_h_count=3), atom(1, "Cl")),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
+def _ch2cl2_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=2),
+            atom(1, "Cl"),
+            atom(2, "Cl"),
+        ),
+        bonds=(single_bond(0, 0, 1), single_bond(1, 0, 2)),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1)),
+            ),
+        ),
+    )
+
+
+def _duplicate_f_tetrahedral_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "F"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+            atom(4, "Br"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+            single_bond(3, 0, 4),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3), AtomId(4)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
+            ),
+        ),
+    )
+
+
+def _ethene_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=2),
+            replace(atom(1, "C"), implicit_h_count=2),
+        ),
+        bonds=(bond(0, 0, 1, BondOrder.DOUBLE),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
+def _duplicate_f_alkene_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "F"),
+            atom(4, "Cl"),
+            atom(5, "Br"),
+        ),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+            single_bond(3, 1, 4),
+            single_bond(4, 1, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(
+                    AtomId(0),
+                    AtomId(1),
+                    AtomId(2),
+                    AtomId(3),
+                    AtomId(4),
+                    AtomId(5),
+                ),
+                bonds=(
+                    BondId(0),
+                    BondId(1),
+                    BondId(2),
+                    BondId(3),
+                    BondId(4),
+                ),
             ),
         ),
     )

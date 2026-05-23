@@ -98,7 +98,11 @@ class _SiteBuilder:
                 continue
 
             occurrences = self._atom_ligands(atom)
-            if len(occurrences) != 4:
+            if not _eligible_tetrahedral_ligands(
+                self.facts,
+                center=atom.id,
+                occurrences=occurrences,
+            ):
                 continue
 
             site_id = self._new_site_id()
@@ -141,6 +145,18 @@ class _SiteBuilder:
             if not left_ligands or not right_ligands:
                 continue
             if len(left_ligands) > 2 or len(right_ligands) > 2:
+                continue
+            if not _eligible_directional_ligands(
+                self.facts,
+                endpoint=bond.a,
+                occurrences=left_ligands,
+            ):
+                continue
+            if not _eligible_directional_ligands(
+                self.facts,
+                endpoint=bond.b,
+                occurrences=right_ligands,
+            ):
                 continue
 
             site_id = self._new_site_id()
@@ -265,6 +281,94 @@ def _is_supported_directional_center_bond(bond: BondFacts) -> bool:
     return bond.order is BondOrder.DOUBLE and not bond.is_aromatic
 
 
+def _eligible_tetrahedral_ligands(
+    facts: MoleculeFacts,
+    *,
+    center: AtomId,
+    occurrences: tuple[LigandOccurrence, ...],
+) -> bool:
+    if len(occurrences) != 4:
+        return False
+    if _implicit_h_count(occurrences) > 1:
+        return False
+    return _ligand_colors_are_unique(facts, center=center, occurrences=occurrences)
+
+
+def _eligible_directional_ligands(
+    facts: MoleculeFacts,
+    *,
+    endpoint: AtomId,
+    occurrences: tuple[LigandOccurrence, ...],
+) -> bool:
+    if len(occurrences) not in {1, 2}:
+        return False
+    if not any(
+        occurrence.kind is LigandKind.NEIGHBOR_ATOM
+        for occurrence in occurrences
+    ):
+        return False
+    if _implicit_h_count(occurrences) > 1:
+        return False
+    return _ligand_colors_are_unique(facts, center=endpoint, occurrences=occurrences)
+
+
+def _implicit_h_count(occurrences: tuple[LigandOccurrence, ...]) -> int:
+    return sum(
+        occurrence.kind is LigandKind.IMPLICIT_H
+        for occurrence in occurrences
+    )
+
+
+def _ligand_colors_are_unique(
+    facts: MoleculeFacts,
+    *,
+    center: AtomId,
+    occurrences: tuple[LigandOccurrence, ...],
+) -> bool:
+    colors = tuple(
+        _ligand_color(facts, center=center, occurrence=occurrence)
+        for occurrence in occurrences
+    )
+    return len(set(colors)) == len(colors)
+
+
+def _ligand_color(
+    facts: MoleculeFacts,
+    *,
+    center: AtomId,
+    occurrence: LigandOccurrence,
+) -> tuple[object, ...]:
+    if occurrence.kind is LigandKind.IMPLICIT_H:
+        return ("implicit_h",)
+    if occurrence.kind is LigandKind.NEIGHBOR_ATOM:
+        if occurrence.atom is None or occurrence.bond is None:
+            raise ValueError(f"neighbor occurrence is incomplete: {occurrence!r}")
+        atom = _atom_by_id(facts)[occurrence.atom]
+        bond = _bond_by_id(facts)[occurrence.bond]
+        if center not in {bond.a, bond.b}:
+            raise ValueError(
+                f"neighbor occurrence bond {bond.id!r} is not incident to "
+                f"center {center!r}"
+            )
+        return (
+            "neighbor",
+            atom.atomic_num,
+            atom.symbol,
+            atom.isotope,
+            atom.formal_charge,
+            atom.is_aromatic,
+            atom.explicit_h_count,
+            atom.implicit_h_count,
+            atom.no_implicit,
+            bond.order,
+            bond.is_aromatic,
+            bond.is_conjugated,
+        )
+    raise NotImplementedError(
+        f"ordinary stereo-site ligand color does not support {occurrence.kind!r}"
+    )
+
+
 def _is_plain_neutral_atom(atom: AtomFacts) -> bool:
     return (
         atom.isotope is None
@@ -292,6 +396,10 @@ def _other_atom(bond: BondFacts, atom: AtomId) -> AtomId:
 
 def _atom_by_id(facts: MoleculeFacts) -> dict[AtomId, AtomFacts]:
     return {atom.id: atom for atom in facts.atoms}
+
+
+def _bond_by_id(facts: MoleculeFacts) -> dict[BondId, BondFacts]:
+    return {bond.id: bond for bond in facts.bonds}
 
 
 def _next_site_id(facts: MoleculeFacts) -> int:

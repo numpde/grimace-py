@@ -195,9 +195,15 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
         self.assertIn('"$(ACTUAL_UID)" == "0"', makefile)
         self.assertIn('"$(LOCAL_UID)" == "0"', makefile)
-        self.assertIn("do not set LOCAL_UID=0", makefile)
+        self.assertIn('"$(LOCAL_GID)" == "0"', makefile)
+        self.assertIn("do not set LOCAL_UID=0 or LOCAL_GID=0", makefile)
+        self.assertIn("DIST_GUARD := if [[ -L dist ]]", makefile)
         self.assertLess(
             makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
+            makefile.index("\t@find dist"),
+        )
+        self.assertLess(
+            makefile.index("\t@$(DIST_GUARD)"),
             makefile.index("\t@find dist"),
         )
         self.assertIn("GRIMACE_PERF_GIT_COMMIT", makefile)

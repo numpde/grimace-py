@@ -1,0 +1,32 @@
+services:
+  checks:
+    build:
+      context: ..
+      dockerfile: containers/checks/Dockerfile
+    image: grimace-py-checks:local
+    working_dir: /work
+    user: "65532:65532"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - type: bind
+        source: ..
+        target: /work
+        read_only: true
+    command:
+      - -c
+      - |
+        import os
+
+        assert os.getuid() == 65532
+        assert os.getgid() == 65532
+        assert os.getcwd() == "/work"
+        assert os.path.isfile("pyproject.toml")

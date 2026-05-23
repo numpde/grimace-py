@@ -111,7 +111,7 @@ until the dependency surface is large enough to justify the extra object.
   `--read-only`, `--cap-drop ALL`, `no-new-privileges:true`, bounded pids and
   memory, and UID/GID `65532:65532`.
 
-- [ ] Add `compose/checks.yml`.
+- [x] Add `compose/checks.yml`.
   - Mount the repository read-only.
   - Set `network_mode: "none"`.
   - Set `read_only: true`.
@@ -120,6 +120,10 @@ until the dependency surface is large enough to justify the extra object.
   - Add bounded `pids_limit` and `mem_limit`.
   - Use tmpfs for `/tmp`.
   - Do not mount the Docker socket.
+
+  Added `compose/checks.yml` with a single `checks` service. Validated with
+  `docker compose -f compose/checks.yml config` and
+  `docker compose -f compose/checks.yml run --rm --build checks`.
 
 - [ ] Add the Makefile shell contract.
   - `SHELL := bash`.

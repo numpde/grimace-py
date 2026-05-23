@@ -194,13 +194,16 @@ until the dependency surface is large enough to justify the extra object.
   non-root UID/GID, no capabilities, no host repository mount, and tmpfs build
   output. Validated all four services plus `make checks`.
 
-- [ ] Add Make targets for correctness.
+- [x] Add Make targets for correctness.
   - `make rust`.
   - `make test`.
   - `make parity`.
   - `make exact-public-invariants`.
   - `make ci` initially expands to `checks rust test parity
     exact-public-invariants`.
+
+  Added all correctness Make targets and `ci` dependency expansion. Validated
+  with `make help`, posture tests, and `make ci`.
 
 - [ ] Add the package lane.
   - Create `containers/package/Dockerfile` only if the test image becomes too

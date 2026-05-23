@@ -100,9 +100,22 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("DOCKER_COMPOSE ?= docker compose", makefile)
         self.assertIn("ACTUAL_UID := $(shell id -u)", makefile)
         self.assertIn("Refusing to run Docker lanes as root", makefile)
+        expected_targets = {
+            "checks": "checks.yml,checks",
+            "rust": "test.yml,rust",
+            "test": "test.yml,test",
+            "parity": "test.yml,parity",
+            "exact-public-invariants": "test.yml,exact-public-invariants",
+        }
+        for target, compose_call in expected_targets.items():
+            with self.subTest(target=target):
+                self.assertRegex(
+                    makefile,
+                    rf"(?m)^{target}:\n\t\$\(call compose_run,{compose_call}\)",
+                )
         self.assertRegex(
             makefile,
-            r"(?m)^checks:\n\t\$\(call compose_run,checks\.yml,checks\)",
+            r"(?m)^ci: checks rust test parity exact-public-invariants$",
         )
 
     def test_dockerignore_excludes_local_and_generated_paths(self) -> None:

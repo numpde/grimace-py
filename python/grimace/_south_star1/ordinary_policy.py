@@ -83,11 +83,20 @@ def ordinary_policy_for_facts(
 
 def _validate_options(options: OrdinaryPolicyOptions) -> None:
     if not options.ring_label_values:
-        raise ValueError("ordinary policy requires at least one ring label")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "ordinary policy requires at least one ring label",
+        )
     if len(set(options.ring_label_values)) != len(options.ring_label_values):
-        raise ValueError("ordinary policy ring labels contain duplicates")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "ordinary policy ring labels contain duplicates",
+        )
     if any(value < 1 for value in options.ring_label_values):
-        raise ValueError("ordinary policy ring labels must be positive")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "ordinary policy ring labels must be positive",
+        )
     if options.bracket_all_atoms:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,

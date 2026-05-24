@@ -1,0 +1,8 @@
+title: grimace-py
+description: Exact rooted SMILES support enumeration and next-token decoding.
+theme: minima
+markdown: kramdown
+header_pages:
+  - getting-started.md
+  - runtime.md
+  - api/python.md

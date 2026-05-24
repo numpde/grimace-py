@@ -8,6 +8,9 @@ from dataclasses import replace
 from grimace._south_star1.completeness_checker import (
     replay_support_completeness_certificate,
 )
+from grimace._south_star1.enumeration_trace import EnumerationNodeId
+from grimace._south_star1.enumeration_trace import RejectionCertificate
+from grimace._south_star1.enumeration_trace import build_trace_index
 from grimace._south_star1.enumeration_trace import enumeration_trace_from_jsonable
 from grimace._south_star1.enumeration_trace import enumeration_trace_to_jsonable
 from grimace._south_star1.facts import ComponentFacts
@@ -19,6 +22,9 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from grimace._south_star1.policy import AnnotationMode
+from grimace._south_star1.policy import AtomTextChoice
+from grimace._south_star1.policy import AtomTextDomain
+from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.support_enumeration import TracedCertifiedSupportImage
@@ -134,7 +140,7 @@ class CompletenessCertificateTest(unittest.TestCase):
             trace=replace(result.trace, rejected=result.trace.rejected[:-1]),
         )
 
-        with self.assertRaisesRegex(ValueError, "trace mismatch"):
+        with self.assertRaisesRegex(ValueError, "missing annotation rejection"):
             replay_support_completeness_certificate(
                 facts=facts,
                 policy=policy,
@@ -150,7 +156,7 @@ class CompletenessCertificateTest(unittest.TestCase):
             trace=replace(result.trace, accepted=result.trace.accepted[:-1]),
         )
 
-        with self.assertRaisesRegex(ValueError, "trace mismatch"):
+        with self.assertRaisesRegex(ValueError, "accepted witness count"):
             replay_support_completeness_certificate(
                 facts=facts,
                 policy=ordinary_policy_for_facts(facts),
@@ -169,7 +175,7 @@ class CompletenessCertificateTest(unittest.TestCase):
             ),
         )
 
-        with self.assertRaisesRegex(ValueError, "manifest mismatch"):
+        with self.assertRaisesRegex(ValueError, "manifest witness count mismatch"):
             replay_support_completeness_certificate(
                 facts=facts,
                 policy=ordinary_policy_for_facts(facts),
@@ -215,6 +221,197 @@ class CompletenessCertificateTest(unittest.TestCase):
         self.assertEqual(result.trace.support_count, 1216)
         self.assertEqual(result.trace.witness_count, result.manifest.witness_count)
 
+    def test_trace_index_rejects_node_with_acceptance_and_rejection(self) -> None:
+        facts = tetrahedral_facts()
+        result = _traced_result(facts)
+        node = result.trace.accepted[0].node
+        mutated = replace(
+            result.trace,
+            rejected=result.trace.rejected
+            + (
+                RejectionCertificate(
+                    node=node,
+                    reason="internal_invariant",
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "both accepted and rejected"):
+            build_trace_index(mutated)
+
+    def test_completeness_checker_rejects_missing_csp_unsatisfied_rejection(
+        self,
+    ) -> None:
+        facts = tetrahedral_facts()
+        policy = _tetra_rejecting_policy(facts)
+        result = enumerate_traced_certified_stereo_support(
+            facts=facts,
+            policy=policy,
+            semantics=OrdinarySmilesSemantics(),
+        )
+        self.assertTrue(result.trace.rejected)
+        mutated = replace(
+            result,
+            trace=replace(result.trace, rejected=result.trace.rejected[:-1]),
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing CSP rejection"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=policy,
+                semantics=OrdinarySmilesSemantics(),
+                result=mutated,
+            )
+
+    def test_completeness_checker_rejects_false_empty_mark_relation_rejection(
+        self,
+    ) -> None:
+        facts = tetrahedral_facts()
+        policy = _tetra_rejecting_policy(facts)
+        result = enumerate_traced_certified_stereo_support(
+            facts=facts,
+            policy=policy,
+            semantics=OrdinarySmilesSemantics(),
+        )
+        rejection = result.trace.rejected[0]
+        mutated_rejection = replace(rejection, reason="empty_mark_relation")
+        mutated = replace(
+            result,
+            trace=replace(
+                result.trace,
+                rejected=(mutated_rejection,) + result.trace.rejected[1:],
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "false empty_mark_relation"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=policy,
+                semantics=OrdinarySmilesSemantics(),
+                result=mutated,
+            )
+
+    def test_completeness_checker_rejects_false_annotation_not_selected_rejection(
+        self,
+    ) -> None:
+        facts = directional_facts()
+        policy = replace(
+            ordinary_policy_for_facts(facts),
+            annotation_mode=AnnotationMode.CANONICAL,
+        )
+        result = enumerate_traced_certified_stereo_support(
+            facts=facts,
+            policy=policy,
+            semantics=OrdinarySmilesSemantics(),
+        )
+        rejection = next(
+            item
+            for item in result.trace.rejected
+            if item.reason == "annotation_not_selected"
+        )
+        mutated_rejection = replace(
+            rejection,
+            detail=rejection.detail[:-1] + (AnnotationMode.HARD.value,),
+        )
+        rejected = tuple(
+            mutated_rejection if item == rejection else item
+            for item in result.trace.rejected
+        )
+        mutated = replace(result, trace=replace(result.trace, rejected=rejected))
+
+        with self.assertRaisesRegex(ValueError, "mode detail mismatch"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=policy,
+                semantics=OrdinarySmilesSemantics(),
+                result=mutated,
+            )
+
+    def test_completeness_checker_rejects_missing_render_duplicate_rejection(
+        self,
+    ) -> None:
+        facts = _ethane_facts()
+        result = _traced_result(facts)
+        rejected = tuple(
+            item
+            for item in result.trace.rejected
+            if item.reason != "render_duplicate"
+        )
+        mutated = replace(result, trace=replace(result.trace, rejected=rejected))
+
+        with self.assertRaisesRegex(ValueError, "missing render_duplicate"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=ordinary_policy_for_facts(facts),
+                semantics=OrdinarySmilesSemantics(),
+                result=mutated,
+            )
+
+    def test_completeness_checker_rejects_trace_with_extra_unreachable_node(
+        self,
+    ) -> None:
+        facts = tetrahedral_facts()
+        result = _traced_result(facts)
+        mutated = replace(
+            result,
+            trace=replace(
+                result.trace,
+                rejected=result.trace.rejected
+                + (
+                    RejectionCertificate(
+                        node=EnumerationNodeId(kind="csp", key=("unknown",)),
+                        reason="csp_unsatisfied",
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "unreachable rejection node"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=ordinary_policy_for_facts(facts),
+                semantics=OrdinarySmilesSemantics(),
+                result=mutated,
+            )
+
+    def test_completeness_checker_rejects_accepted_witness_not_selected_solution_set(
+        self,
+    ) -> None:
+        facts = tetrahedral_facts()
+        result = _traced_result(facts)
+        first = result.trace.accepted[0]
+        mutated_acceptance = replace(
+            first,
+            node=EnumerationNodeId(kind="witness", key=("not-selected",)),
+        )
+        mutated = replace(
+            result,
+            trace=replace(
+                result.trace,
+                accepted=(mutated_acceptance,) + result.trace.accepted[1:],
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing witness acceptance"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=ordinary_policy_for_facts(facts),
+                semantics=OrdinarySmilesSemantics(),
+                result=mutated,
+            )
+
+    def test_completeness_checker_can_compare_against_regeneration(self) -> None:
+        facts = tetrahedral_facts()
+        result = _traced_result(facts)
+
+        replay_support_completeness_certificate(
+            facts=facts,
+            policy=ordinary_policy_for_facts(facts),
+            semantics=OrdinarySmilesSemantics(),
+            result=result,
+            compare_against_regeneration=True,
+        )
+
 
 def _traced_result(facts: MoleculeFacts) -> TracedCertifiedSupportImage:
     return enumerate_traced_certified_stereo_support(
@@ -234,6 +431,27 @@ def _ethane_facts() -> MoleculeFacts:
                 atoms=(AtomId(0), AtomId(1)),
                 bonds=(BondId(0),),
             ),
+        ),
+    )
+
+
+def _tetra_rejecting_policy(facts: MoleculeFacts):
+    policy = ordinary_policy_for_facts(facts)
+    center = facts.stereo.tetrahedral[0].center
+    replacement = AtomTextDomain(
+        atom=center,
+        choices=(
+            AtomTextChoice(
+                name="nonchiral_C",
+                text_by_tetra=((TetraToken.NONE, "C"),),
+            ),
+        ),
+    )
+    return replace(
+        policy,
+        atom_text_domains=tuple(
+            replacement if domain.atom == center else domain
+            for domain in policy.atom_text_domains
         ),
     )
 

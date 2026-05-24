@@ -121,11 +121,21 @@ ledger: each skeleton, prefix, CSP, and solution branch is either accepted as a
 certified witness, rejected by a named finite constraint, rejected by annotation
 selection, or collapsed by rendered-support quotienting.
 
-The replay checker reconstructs the enumeration domains from `MoleculeFacts`,
+Structural replay reconstructs the enumeration domains from `MoleculeFacts`,
 policy, and semantics, then verifies that the trace covers the finite search
-space and that the manifest counts and hashes match. The completeness trace is
-still RDKit-free; RDKit source audits remain external falsifiers rather than
-support-definition machinery.
+space and that the manifest counts and hashes match. A valid
+support-completeness certificate must not merely have the right counts: every
+rejected branch must carry a named rejection reason that is replayed against the
+corresponding finite domain object.
+
+Regeneration comparison is available as an optional diagnostic: it compares a
+submitted result with a freshly generated traced result. That is useful for
+tests and debugging, but it is not the definition of certificate validity.
+
+South Star support-completeness certificates are currently full traces.
+Compressed traces may be added later, but they must preserve replayability. The
+completeness trace is still RDKit-free; RDKit source audits remain external
+falsifiers rather than support-definition machinery.
 
 ## Experimental Options
 

@@ -410,6 +410,13 @@ def enumerate_traced_certified_stereo_support(
                         detail=(
                             "support",
                             tuple(sorted(int(c) for c in solution.marker_support)),
+                            "selected_supports",
+                            tuple(
+                                sorted(
+                                    tuple(sorted(int(c) for c in selected.solution.marker_support))
+                                    for selected in selected_solutions
+                                )
+                            ),
                             "mode",
                             policy.annotation_mode.value,
                         ),
@@ -432,7 +439,7 @@ def enumerate_traced_certified_stereo_support(
                     AcceptanceCertificate(
                         node=EnumerationNodeId(
                             kind="witness",
-                            key=certified.certificate.assignment_key,
+                            key=(certified.witness.id,),
                         ),
                         witness_id=certified.witness.id,
                         rendered=certified.witness.rendered,
@@ -492,43 +499,76 @@ def traced_certified_support_to_jsonable(
 
 
 def _empty_csp_rejection(csp, csp_key: tuple[object, ...]) -> RejectionCertificate:
-    if any(not domain for domain in csp.tetra_domains.values()):
+    detail: tuple[object, ...] = ()
+    empty_tetra = tuple(
+        sorted(int(atom) for atom, domain in csp.tetra_domains.items() if not domain)
+    )
+    empty_direction = tuple(
+        sorted(
+            int(carrier)
+            for carrier, domain in csp.direction_domains.items()
+            if not domain
+        )
+    )
+    empty_tetra_relations = tuple(
+        int(relation.site)
+        for relation in csp.tetra_relations
+        if not relation.allowed_tokens
+    )
+    empty_mark_relations = tuple(
+        (relation.name, relation.subject)
+        for relation in csp.mark_relations()
+        if not relation.allowed_rows
+    )
+
+    if empty_tetra:
         reason = "empty_tetra_domain"
-    elif any(not domain for domain in csp.direction_domains.values()):
+        detail = ("atoms", empty_tetra)
+    elif empty_direction:
         reason = "empty_direction_domain"
-    elif any(not relation.allowed_tokens for relation in csp.tetra_relations):
+        detail = ("carriers", empty_direction)
+    elif empty_tetra_relations:
         reason = "empty_tetra_relation"
-    elif any(not relation.allowed_rows for relation in csp.mark_relations()):
+        detail = ("sites", empty_tetra_relations)
+    elif empty_mark_relations:
         reason = "empty_mark_relation"
+        detail = ("relations", empty_mark_relations)
     else:
         reason = "csp_unsatisfied"
 
     return RejectionCertificate(
         node=EnumerationNodeId(kind="csp", key=csp_key),
         reason=reason,
+        detail=detail,
     )
 
 
 def _render_duplicate_rejections(
     certified_witnesses: tuple[CertifiedWitness, ...],
 ) -> tuple[RejectionCertificate, ...]:
-    seen: set[str] = set()
+    first_witness_id_by_rendered: dict[str, str] = {}
     out: list[RejectionCertificate] = []
     for certified in certified_witnesses:
         rendered = certified.witness.rendered
-        if rendered in seen:
+        first_witness_id = first_witness_id_by_rendered.get(rendered)
+        if first_witness_id is not None:
             out.append(
                 RejectionCertificate(
                     node=EnumerationNodeId(
                         kind="witness",
-                        key=certified.certificate.assignment_key,
+                        key=("render_duplicate", certified.witness.id),
                     ),
                     reason="render_duplicate",
-                    detail=("rendered", rendered),
+                    detail=(
+                        "rendered",
+                        rendered,
+                        "first_witness_id",
+                        first_witness_id,
+                    ),
                 )
             )
         else:
-            seen.add(rendered)
+            first_witness_id_by_rendered[rendered] = certified.witness.id
     return tuple(out)
 
 

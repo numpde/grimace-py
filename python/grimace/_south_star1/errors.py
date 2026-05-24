@@ -10,6 +10,7 @@ class SouthStarErrorKind(Enum):
     UNSUPPORTED_BOND = "unsupported_bond"
     UNSUPPORTED_STEREO = "unsupported_stereo"
     UNSUPPORTED_POLICY = "unsupported_policy"
+    INVALID_RAW_STEREO = "invalid_raw_stereo"
     INVALID_FACTS = "invalid_facts"
     SEMANTIC_MISMATCH = "semantic_mismatch"
     INTERNAL_INVARIANT = "internal_invariant"

@@ -50,6 +50,7 @@ def ordinary_tetrahedral_candidates(
 
     builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
     builder.add_tetrahedral_candidates(skip_centers=frozenset())
+    _assert_unique_tetrahedral_centers(builder.tetrahedral)
     return tuple(builder.tetrahedral), tuple(builder.occurrences)
 
 
@@ -62,6 +63,7 @@ def ordinary_directional_candidates(
 
     builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
     builder.add_directional_candidates(skip_center_bonds=frozenset())
+    _assert_unique_directional_center_bonds(builder.directional)
     return tuple(builder.directional), tuple(builder.occurrences)
 
 
@@ -88,6 +90,8 @@ def add_ordinary_potential_sites(
     builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
     builder.add_tetrahedral_candidates(skip_centers=skip_tetra_centers)
     builder.add_directional_candidates(skip_center_bonds=skip_directional_bonds)
+    _assert_unique_tetrahedral_centers(builder.tetrahedral)
+    _assert_unique_directional_center_bonds(builder.directional)
 
     out = replace(
         facts,
@@ -602,6 +606,24 @@ def _validate_options(options: OrdinaryStereoSiteOptions) -> None:
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "unsupported ordinary stereo-site ligand equivalence mode: "
             f"{options.ligand_equivalence!r}",
+        )
+
+
+def _assert_unique_tetrahedral_centers(
+    sites: list[TetrahedralSiteFacts],
+) -> None:
+    centers = tuple(site.center for site in sites)
+    if len(set(centers)) != len(centers):
+        raise AssertionError("ordinary potential tetra sites repeat a center atom")
+
+
+def _assert_unique_directional_center_bonds(
+    sites: list[DirectionalSiteFacts],
+) -> None:
+    center_bonds = tuple(site.center_bond for site in sites)
+    if len(set(center_bonds)) != len(center_bonds):
+        raise AssertionError(
+            "ordinary potential directional sites repeat a center bond"
         )
 
 

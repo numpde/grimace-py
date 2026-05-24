@@ -34,6 +34,7 @@ from .ordinary_stereo_closure import RawDirectionalStereoRecord
 from .ordinary_stereo_closure import RawSpecifiedStereo
 from .ordinary_stereo_closure import RawTetraStereoRecord
 from .ordinary_stereo_closure import build_ordinary_stereo_specified_closure
+from .ordinary_stereo_closure import promote_raw_specified_stereo
 from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from .ordinary_stereo_sites import add_ordinary_potential_sites
 
@@ -137,19 +138,28 @@ def _overlay_rdkit_specified_stereo(
     *,
     require_all: bool,
 ) -> MoleculeFacts:
-    if options.extract_specified_tetrahedral:
-        facts = _overlay_rdkit_tetrahedral_stereo(
-            mol,
-            facts,
-            require_all=require_all,
-        )
-    if options.extract_specified_directional:
-        facts = _overlay_rdkit_directional_stereo(
-            mol,
-            facts,
-            require_all=require_all,
-        )
-    return facts
+    raw = _extract_raw_rdkit_specified_stereo(mol, facts, options)
+    if not require_all:
+        raw = _filter_raw_records_to_existing_sites(facts, raw)
+    return promote_raw_specified_stereo(facts, raw)
+
+
+def _filter_raw_records_to_existing_sites(
+    facts: MoleculeFacts,
+    raw: RawSpecifiedStereo,
+) -> RawSpecifiedStereo:
+    tetra_centers = {site.center for site in facts.stereo.tetrahedral}
+    directional_bonds = {site.center_bond for site in facts.stereo.directional}
+    return RawSpecifiedStereo(
+        tetrahedral=tuple(
+            record for record in raw.tetrahedral if record.center in tetra_centers
+        ),
+        directional=tuple(
+            record
+            for record in raw.directional
+            if record.center_bond in directional_bonds
+        ),
+    )
 
 
 def _validate_extraction_options(options: RdkitOrdinaryExtractionOptions) -> None:

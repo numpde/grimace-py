@@ -117,3 +117,11 @@ adapter extracts raw specified stereo records first, materializes them as a
 temporary specified context, checks every raw site for ordinary eligibility with
 its own site id ignored, and then rebuilds the full potential-site universe
 under the accepted specified context.
+
+### Specified Stereo Closure Certificate
+
+The `specified_closure` mode accepts a raw specified stereo graph iff each raw
+record is eligible under the context of all other raw specified records, with
+its own candidate site ignored. The implementation exposes a certificate per
+raw record recording the matched site, context records, ignored self-site ids,
+and accept/reject reason.

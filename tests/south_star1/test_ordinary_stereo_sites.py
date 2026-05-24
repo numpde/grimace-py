@@ -95,6 +95,22 @@ class OrdinaryStereoSitesTest(unittest.TestCase):
         )
         augmented.validate()
 
+    def test_ordinary_potential_tetra_sites_unique_by_center(self) -> None:
+        facts = _combined_nonstereo_facts()
+
+        sites, _ = ordinary_tetrahedral_candidates(facts)
+
+        centers = tuple(site.center for site in sites)
+        self.assertEqual(len(set(centers)), len(centers))
+
+    def test_ordinary_potential_directional_sites_unique_by_center_bond(self) -> None:
+        facts = _combined_nonstereo_facts()
+
+        sites, _ = ordinary_directional_candidates(facts)
+
+        center_bonds = tuple(site.center_bond for site in sites)
+        self.assertEqual(len(set(center_bonds)), len(center_bonds))
+
     def test_implicit_h_ligands_are_included_for_directional_sites(self) -> None:
         facts = _implicit_h_alkene_without_stereo()
 

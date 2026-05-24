@@ -1,4 +1,6 @@
-# Containerized Development
+---
+title: Containerized development
+---
 
 The Docker-backed Make lanes use pinned images and avoid the host Python
 environment for routine checks.

@@ -1,9 +1,11 @@
-# Correctness Contracts
+---
+title: Correctness contracts
+---
 
 `grimace` needs two correctness vocabularies. They are related, but they are
 not the same contract.
 
-## Principled Layer
+## Principled layer
 
 The principled layer is the chemistry and language-semantics layer:
 
@@ -26,7 +28,7 @@ contract, because `grimace` also exposes token-level decoding. A terminal
 string that parses correctly does not prove that all intermediate prefixes,
 token choices, or branch structure match a documented language.
 
-## RDKit Writer-Parity Layer
+## RDKit writer-parity layer
 
 The RDKit writer-parity layer is narrower and deliberately implementation
 specific:
@@ -42,7 +44,7 @@ it is necessary when the public promise is exact support for RDKit's
 `canonical=False, doRandom=True` writer convention. But those rules should stay
 visibly separated from general SMILES validity or chemical equivalence.
 
-## Current Public Contract
+## Current public contract
 
 The current public runtime contract is RDKit writer parity for the supported
 subset:
@@ -57,7 +59,7 @@ Therefore, RDKit string support remains the oracle for current public parity
 tests. Parsed-object equivalence may be added as a separate evidence layer, but
 it should not silently replace string equality in RDKit-parity tests.
 
-## Classification Policy
+## Classification policy
 
 When a case differs from RDKit, classify it explicitly:
 
@@ -75,7 +77,7 @@ Tests and fixtures should use these labels instead of implying that every
 RDKit mismatch is chemically wrong or that every semantically valid alternative
 is part of RDKit writer support.
 
-## Implementation Rule
+## Implementation rule
 
 Keep the code paths and tests separable:
 

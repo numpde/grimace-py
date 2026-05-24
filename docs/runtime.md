@@ -1,4 +1,6 @@
-# Runtime Requirements
+---
+title: Runtime requirements
+---
 
 The public signatures mirror RDKit flag names and defaults, but the current
 runtime intentionally supports only a strict subset.
@@ -18,7 +20,7 @@ Unsupported flag combinations fail fast with `NotImplementedError`. Other
 invalid public inputs can still raise more specific exceptions such as
 `IndexError` or `ValueError`.
 
-## Writer Flags
+## Writer flags
 
 The supported writer flags are:
 
@@ -46,7 +48,7 @@ For disconnected molecules, fragment order is preserved. A nonnegative
 `rootedAtAtom` selects the rooted fragment and its local root atom within that
 fixed fragment order, but non-rooted fragments can still vary internally.
 
-## Install Matrix
+## Install matrix
 
 Package metadata declares Python `>=3.11` and `rdkit>=2026.3`.
 

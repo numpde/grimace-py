@@ -1,4 +1,6 @@
-# Python API
+---
+title: Python API
+---
 
 ## Public surface
 

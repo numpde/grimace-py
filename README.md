@@ -1,4 +1,4 @@
-# GRIMACE
+# grimace-py
 
 SMILES enumeration with exact next-token decoding.
 
@@ -26,7 +26,7 @@ Plain `pip install grimace` installs an unrelated older package.
 `grimace-py` is distributed under `PolyForm-Noncommercial-1.0.0`. Commercial
 use is not permitted under the current license.
 
-## Quick Example
+## Quick example
 
 The current public runtime targets RDKit writer parity for
 `canonical=False, doRandom=True`.
@@ -70,7 +70,7 @@ Start with the [documentation index](docs/index.md), then see:
 - [Deviation diagnostics](docs/guides/deviation.md)
 - [Token inventories](docs/guides/token-inventory.md)
 
-## Install Matrix
+## Install matrix
 
 Package metadata declares Python `>=3.11` and `rdkit>=2026.3`.
 

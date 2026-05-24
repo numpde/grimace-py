@@ -45,6 +45,25 @@ class DocsPagesTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("[documentation index](docs/index.md)", readme)
 
+    def test_pages_use_front_matter_title_without_body_h1(self) -> None:
+        offenders: list[str] = []
+        for markdown in sorted((ROOT / "docs").rglob("*.md")):
+            relative = markdown.relative_to(ROOT)
+            text = markdown.read_text(encoding="utf-8")
+            if not text.startswith("---\n"):
+                offenders.append(f"{relative}: missing front matter")
+                continue
+
+            in_fence = False
+            for line in text.splitlines():
+                if line.startswith("```"):
+                    in_fence = not in_fence
+                elif not in_fence and line.startswith("# "):
+                    offenders.append(f"{relative}: body h1")
+                    break
+
+        self.assertEqual([], offenders)
+
     def test_markdown_local_links_resolve(self) -> None:
         missing: list[str] = []
         for markdown in markdown_files():

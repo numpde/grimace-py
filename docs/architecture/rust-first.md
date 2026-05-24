@@ -1,4 +1,6 @@
-# Rust-first layout
+---
+title: Rust-first layout
+---
 
 ## Goal
 

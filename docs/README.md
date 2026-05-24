@@ -1,4 +1,6 @@
-# Docs
+---
+title: Docs
+---
 
 This directory is the GitHub Pages source for `grimace-py`.
 

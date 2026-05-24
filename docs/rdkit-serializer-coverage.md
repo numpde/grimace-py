@@ -1,4 +1,6 @@
-# RDKit Serializer Coverage
+---
+title: RDKit serializer coverage
+---
 
 This project keeps a version-pinned ledger of upstream RDKit serializer tests
 that were reviewed for relevance to Grimace's current public surface.
@@ -15,7 +17,7 @@ The ledger is keyed to RDKit `2026.03.1`.  Its claims should not be read as
 evidence for a different RDKit serializer version unless a new versioned ledger
 is generated and reviewed.
 
-## Current Status
+## Current status
 
 Current reviewed counts:
 
@@ -30,7 +32,7 @@ The contract test
 schema, checks source snippet hashes and line spans, validates fixture links,
 and now fails if any entry remains `unreviewed` or `needs-fixture`.
 
-## Status Meanings
+## Status meanings
 
 `covered` means the upstream serializer claim has corresponding Grimace
 correctness evidence.  That evidence may be exact support equality, token
@@ -59,7 +61,7 @@ as unfinished work.
 output introduces a new upstream block whose reviewed fields have not been
 assigned yet.
 
-## Known Gaps
+## Known gaps
 
 The current `known-gap` entries are concentrated in RDKit's #4582 and manual
 bond-stereo regressions.  They pin RDKit outputs that Grimace should eventually
@@ -73,7 +75,7 @@ accept but currently does not:
 These point at the same implementation family: RDKit-equivalent traversal-order
 state for coupled directional stereo tokens.
 
-## Maintenance Workflow
+## Maintenance workflow
 
 When the local RDKit serializer source fixture changes, regenerate the parser
 owned fields:

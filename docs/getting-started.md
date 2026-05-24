@@ -1,4 +1,6 @@
-# Getting Started
+---
+title: Getting started
+---
 
 `grimace-py` installs as the PyPI distribution `grimace-py` and imports as
 `grimace`:
@@ -18,7 +20,7 @@ All examples below use the currently supported runtime subset:
 FLAGS = dict(canonical=False, doRandom=True)
 ```
 
-## Enumerate Exact Support
+## Enumerate exact support
 
 ```python
 mol = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
@@ -38,7 +40,7 @@ assert len(all_smiles) == 304
 Use `rootedAtAtom=-1` for the all-roots support, or pass a nonnegative atom
 index for one explicit root.
 
-## Decode One Token At A Time
+## Decode one token at a time
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
@@ -71,7 +73,7 @@ different branch choices with the same emitted text. Use
 `MolToSmilesDeterminizedDecoder(...)` when you want at most one choice per
 token text.
 
-## What Counts As A Token?
+## What counts as a token?
 
 A Grimace token is one string emitted by one decoder transition. Tokens are
 defined by the walker, not by splitting a finished SMILES into characters and
@@ -80,7 +82,7 @@ not by integer token IDs.
 Examples include `C`, `c`, `Cl`, `[C@H]`, `=`, `/`, `\\`, `(`, `)`, `1`, and
 `%10`.
 
-## Next Pages
+## Next pages
 
 - [Runtime requirements](runtime.md)
 - [Python API](api/python.md)

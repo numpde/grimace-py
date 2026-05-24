@@ -1,4 +1,6 @@
-# Prepared Molecules
+---
+title: Prepared molecules
+---
 
 `PrepareMol(...)` pays the RDKit preparation cost once and returns an opaque
 `PreparedMol`.

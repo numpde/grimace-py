@@ -1,4 +1,6 @@
-# grimace-py
+---
+title: grimace-py
+---
 
 `grimace-py` is a Rust-first RDKit add-on for exact rooted SMILES support
 enumeration and online next-token decoding.
@@ -18,7 +20,7 @@ Plain `pip install grimace` installs an unrelated older package.
 The current public runtime targets RDKit writer parity for
 `canonical=False, doRandom=True` under the documented writer flags.
 
-## Start Here
+## Start here
 
 - [Getting started](getting-started.md)
 - [Runtime requirements](runtime.md)
@@ -30,7 +32,7 @@ The current public runtime targets RDKit writer parity for
 - [Deviation diagnostics](guides/deviation.md)
 - [Token inventories](guides/token-inventory.md)
 
-## Correctness And Evidence
+## Correctness and evidence
 
 - [Correctness contracts](correctness-contracts.md)
 - [Testing fixtures](testing-fixtures.md)

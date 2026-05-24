@@ -1,4 +1,6 @@
-# Deviation Diagnostics
+---
+title: Deviation diagnostics
+---
 
 `MolToSmilesDeviation(...)` reports the first place where a candidate leaves
 the molecule's supported SMILES language under the requested writer flags.

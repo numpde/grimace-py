@@ -1,4 +1,6 @@
-# Testing Fixtures
+---
+title: Testing fixtures
+---
 
 Grimace keeps RDKit-derived test data in JSON fixtures instead of inline
 Python constants when the data is part of the correctness evidence.
@@ -13,7 +15,7 @@ enforced by typed loader helpers under `tests/helpers/` and their contract
 tests under `tests/contract/`.  This page only explains why the fixture
 families exist and what claim each family supports.
 
-## RDKit-Pinned Parity Fixtures
+## RDKit-pinned parity fixtures
 
 These fixtures are keyed by exact `rdBase.rdkitVersion`.  They are correctness
 evidence only for that RDKit build.
@@ -38,7 +40,7 @@ Large pinned corpora may use `VERSION/*.json` shards under their fixture root.
 Shard names should keep review order stable by source area or serializer
 feature.
 
-## RDKit Compatibility Fixtures
+## RDKit compatibility fixtures
 
 These fixtures are not exact-version parity corpora.  They support broader
 behavioral checks against the installed RDKit build.
@@ -49,7 +51,7 @@ behavioral checks against the installed RDKit build.
   members and rejected members shared across reference and public-surface
   tests.
 
-## RDKit Upstream Source Fixtures
+## RDKit upstream source fixtures
 
 - `tests/fixtures/rdkit_upstream_serializer_sources/`: local copies of the
   RDKit serializer source and test files used to audit serializer coverage.
@@ -64,14 +66,14 @@ behavioral checks against the installed RDKit build.
   See [rdkit-serializer-coverage.md](rdkit-serializer-coverage.md) for the
   current reviewed counts and status policy.
 
-## Reference Dataset Fixtures
+## Reference dataset fixtures
 
 - `tests/fixtures/reference/`: reference-policy fixtures and generated
   artifacts for the Python reference layer.
 - `tests/fixtures/top_100000_CIDs.tsv.gz`: source molecule list used by
   reference dataset loaders.
 
-## Maintenance Rule
+## Maintenance rule
 
 Do not use a documentation index as the machine source of truth.  If a fixture
 family needs enforcement, put that enforcement in one of these places:

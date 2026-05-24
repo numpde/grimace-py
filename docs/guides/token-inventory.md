@@ -1,4 +1,6 @@
-# Token Inventories
+---
+title: Token inventories
+---
 
 `MolToSmilesTokenInventory(...)` returns the exact sorted tuple of reachable
 decoder tokens for one molecule under the public writer flags.

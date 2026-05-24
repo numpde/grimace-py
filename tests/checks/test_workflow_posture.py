@@ -56,6 +56,13 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("id-token: write", workflow)
 
+    def test_ci_checks_job_fetches_tags_for_release_note_checks(self) -> None:
+        workflow = read_text(".github/workflows/ci.yml")
+        checks_job = job_section(workflow, "container-ci")
+        package_job = job_section(workflow, "package")
+        self.assertIn("fetch-depth: 0", checks_job)
+        self.assertNotIn("fetch-depth: 0", package_job)
+
     def test_release_workflow_scopes_token_permissions_by_job(self) -> None:
         workflow = read_text(".github/workflows/release.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")

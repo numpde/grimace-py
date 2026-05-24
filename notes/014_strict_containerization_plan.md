@@ -253,6 +253,8 @@ until the dependency surface is large enough to justify the extra object.
   Replaced host-venv CI jobs with Docker-backed `make ci` and `make package`
   jobs. Kept perf out of default CI. Added offline posture checks for CI and
   release workflow token permissions and non-persistent checkout credentials.
+  The `make ci` checkout fetches tag metadata because release-note checks need
+  local `v0.1.*` tags.
   Added release artifact allowlist validation before GitHub release and PyPI
   publish. Pinned workflow action refs to commit SHAs and GitHub-hosted runner
   labels to `ubuntu-24.04`. Tag-triggered release builds now require `vX.Y.Z`

@@ -30,8 +30,15 @@ from hashlib import blake2b
 
 from .annotation import ValidWitness
 from .certificates import SupportEnumerationManifest
+from .certificates import manifest_to_jsonable
+from .certificates import witness_certificate_to_jsonable
 from .enumerate import SupportImage
 from .enumerate import render_image_from_witnesses
+from .enumeration_trace import AcceptanceCertificate
+from .enumeration_trace import EnumerationNodeId
+from .enumeration_trace import EnumerationTrace
+from .enumeration_trace import RejectionCertificate
+from .enumeration_trace import enumeration_trace_to_jsonable
 from .facts import MoleculeFacts
 from .graph_index import build_graph_index
 from .ids import CarrierSlotId
@@ -44,7 +51,15 @@ from .slots import allocate_traversal_slots
 from .stereo_witness import CertifiedWitness
 from .stereo_witness import collect_certified_stereo_witnesses_for_skeleton
 from .stereo_witness import enumerate_certified_stereo_witnesses_for_skeleton
+from .stereo_witness import enumerate_presentation_prefixes
 from .stereo_witness import enumerate_stereo_witnesses_for_skeleton
+from .stereo_witness import _certified_witness_from_selected_solution
+from .stereo_witness import _prefix_key
+from .stereo_witness import _skeleton_key
+from .stereo_csp import build_stereo_csp
+from .stereo_csp import select_stereo_solutions_with_certificates
+from .stereo_csp import solve_stereo_csp
+from .stereo_csp import stereo_solution_canonical_key
 
 
 EligibleMarkerCarrierSelector = Callable[
@@ -75,6 +90,14 @@ class CertifiedSupportImage:
     support: SupportImage
     certified_witnesses: tuple[CertifiedWitness, ...]
     manifest: SupportEnumerationManifest
+
+
+@dataclass(frozen=True, slots=True)
+class TracedCertifiedSupportImage:
+    support: SupportImage
+    certified_witnesses: tuple[CertifiedWitness, ...]
+    manifest: SupportEnumerationManifest
+    trace: EnumerationTrace
 
 
 def enumerate_stereo_witnesses(
@@ -297,6 +320,218 @@ def enumerate_certified_stereo_support(
     )
 
 
+def enumerate_traced_certified_stereo_support(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    skeletons: Iterable[TraversalSkeleton] | None = None,
+    eligible_marker_carriers: EligibleMarkerCarrierSelector | None = None,
+    allow_global_directional_scope: bool = False,
+) -> TracedCertifiedSupportImage:
+    """Enumerate support with an explicit finite accept/reject ledger."""
+
+    facts.validate()
+    policy.validate_for_facts(facts)
+
+    if skeletons is None:
+        index = build_graph_index(facts)
+        skeleton_tuple = enumerate_traversal_skeletons(
+            facts=facts,
+            index=index,
+            policy=policy,
+        )
+    else:
+        skeleton_tuple = tuple(skeletons)
+
+    certified_list: list[CertifiedWitness] = []
+    accepted: list[AcceptanceCertificate] = []
+    rejected: list[RejectionCertificate] = []
+    prefix_count = 0
+    csp_count = 0
+    feasible_solution_count = 0
+    selected_solution_count = 0
+
+    for skeleton in skeleton_tuple:
+        skeleton_key = _skeleton_key(skeleton)
+        slots = allocate_traversal_slots(facts, skeleton)
+        if eligible_marker_carriers is None:
+            eligible = None
+        else:
+            eligible = eligible_marker_carriers(facts, skeleton, slots)
+
+        for prefix in enumerate_presentation_prefixes(
+            facts=facts,
+            slots=slots,
+            policy=policy,
+        ):
+            prefix_count += 1
+            csp_count += 1
+            prefix_key = _prefix_key(prefix)
+            csp_key = (skeleton_key, prefix_key)
+            csp = build_stereo_csp(
+                facts=facts,
+                skeleton=skeleton,
+                slots=slots,
+                prefix=prefix,
+                policy=policy,
+                semantics=semantics,
+                eligible_marker_carriers=eligible,
+                allow_global_directional_scope=allow_global_directional_scope,
+            )
+            raw_solutions = tuple(solve_stereo_csp(csp))
+            feasible_solution_count += len(raw_solutions)
+            selected_solutions = select_stereo_solutions_with_certificates(
+                csp=csp,
+                solutions=raw_solutions,
+                mode=policy.annotation_mode,
+            )
+            selected_solution_count += len(selected_solutions)
+
+            if not raw_solutions:
+                rejected.append(_empty_csp_rejection(csp, csp_key))
+                continue
+
+            selected_keys = {
+                stereo_solution_canonical_key(selected.solution)
+                for selected in selected_solutions
+            }
+            for solution in raw_solutions:
+                solution_key = stereo_solution_canonical_key(solution)
+                if solution_key in selected_keys:
+                    continue
+                rejected.append(
+                    RejectionCertificate(
+                        node=EnumerationNodeId(
+                            kind="stereo_solution",
+                            key=(csp_key, solution_key),
+                        ),
+                        reason="annotation_not_selected",
+                        detail=(
+                            "support",
+                            tuple(sorted(int(c) for c in solution.marker_support)),
+                            "mode",
+                            policy.annotation_mode.value,
+                        ),
+                    )
+                )
+
+            for selected in selected_solutions:
+                certified = _certified_witness_from_selected_solution(
+                    facts=facts,
+                    skeleton=skeleton,
+                    slots=slots,
+                    prefix=prefix,
+                    policy=policy,
+                    semantics=semantics,
+                    selected=selected,
+                    csp=csp,
+                )
+                certified_list.append(certified)
+                accepted.append(
+                    AcceptanceCertificate(
+                        node=EnumerationNodeId(
+                            kind="witness",
+                            key=certified.certificate.assignment_key,
+                        ),
+                        witness_id=certified.witness.id,
+                        rendered=certified.witness.rendered,
+                    )
+                )
+
+    certified = tuple(certified_list)
+    support = render_image_from_witnesses(
+        certified_witness.witness
+        for certified_witness in certified
+    )
+    rejected.extend(_render_duplicate_rejections(certified))
+    manifest = _support_manifest(
+        skeleton_count=len(skeleton_tuple),
+        prefix_count=prefix_count,
+        csp_count=csp_count,
+        feasible_solution_count=feasible_solution_count,
+        selected_solution_count=selected_solution_count,
+        support=support,
+        certified_witnesses=certified,
+    )
+    trace = EnumerationTrace(
+        accepted=tuple(accepted),
+        rejected=tuple(rejected),
+        skeleton_count=len(skeleton_tuple),
+        prefix_count=prefix_count,
+        csp_count=csp_count,
+        feasible_solution_count=feasible_solution_count,
+        selected_solution_count=selected_solution_count,
+        witness_count=len(certified),
+        support_count=len(support.strings),
+    )
+    return TracedCertifiedSupportImage(
+        support=support,
+        certified_witnesses=certified,
+        manifest=manifest,
+        trace=trace,
+    )
+
+
+def traced_certified_support_to_jsonable(
+    result: TracedCertifiedSupportImage,
+) -> dict[str, object]:
+    return {
+        "support": {
+            "witness_count": result.support.witness_count,
+            "distinct_count": result.support.distinct_count,
+            "strings": list(result.support.strings),
+        },
+        "manifest": manifest_to_jsonable(result.manifest),
+        "trace": enumeration_trace_to_jsonable(result.trace),
+        "witness_certificates": [
+            witness_certificate_to_jsonable(certified.certificate)
+            for certified in result.certified_witnesses
+        ],
+    }
+
+
+def _empty_csp_rejection(csp, csp_key: tuple[object, ...]) -> RejectionCertificate:
+    if any(not domain for domain in csp.tetra_domains.values()):
+        reason = "empty_tetra_domain"
+    elif any(not domain for domain in csp.direction_domains.values()):
+        reason = "empty_direction_domain"
+    elif any(not relation.allowed_tokens for relation in csp.tetra_relations):
+        reason = "empty_tetra_relation"
+    elif any(not relation.allowed_rows for relation in csp.mark_relations()):
+        reason = "empty_mark_relation"
+    else:
+        reason = "csp_unsatisfied"
+
+    return RejectionCertificate(
+        node=EnumerationNodeId(kind="csp", key=csp_key),
+        reason=reason,
+    )
+
+
+def _render_duplicate_rejections(
+    certified_witnesses: tuple[CertifiedWitness, ...],
+) -> tuple[RejectionCertificate, ...]:
+    seen: set[str] = set()
+    out: list[RejectionCertificate] = []
+    for certified in certified_witnesses:
+        rendered = certified.witness.rendered
+        if rendered in seen:
+            out.append(
+                RejectionCertificate(
+                    node=EnumerationNodeId(
+                        kind="witness",
+                        key=certified.certificate.assignment_key,
+                    ),
+                    reason="render_duplicate",
+                    detail=("rendered", rendered),
+                )
+            )
+        else:
+            seen.add(rendered)
+    return tuple(out)
+
+
 def _support_manifest(
     *,
     skeleton_count: int,
@@ -382,9 +617,12 @@ __all__ = (
     "EligibleMarkerCarrierSelector",
     "StereoSupportResult",
     "StereoSupportStats",
+    "TracedCertifiedSupportImage",
     "enumerate_certified_stereo_support",
     "enumerate_certified_stereo_witnesses",
     "enumerate_stereo_support",
     "enumerate_stereo_support_with_stats",
     "enumerate_stereo_witnesses",
+    "enumerate_traced_certified_stereo_support",
+    "traced_certified_support_to_jsonable",
 )

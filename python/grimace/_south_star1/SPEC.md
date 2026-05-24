@@ -113,6 +113,20 @@ witness, and support counts plus deterministic support and witness hashes. The
 manifest is an audit ledger for a finite enumeration run; individual witness
 certificates remain the proof objects for emitted strings.
 
+### Support Completeness Certificates
+
+A witness certificate proves that one emitted witness satisfies the finite
+relations. A support-completeness certificate records the finite enumeration
+ledger: each skeleton, prefix, CSP, and solution branch is either accepted as a
+certified witness, rejected by a named finite constraint, rejected by annotation
+selection, or collapsed by rendered-support quotienting.
+
+The replay checker reconstructs the enumeration domains from `MoleculeFacts`,
+policy, and semantics, then verifies that the trace covers the finite search
+space and that the manifest counts and hashes match. The completeness trace is
+still RDKit-free; RDKit source audits remain external falsifiers rather than
+support-definition machinery.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

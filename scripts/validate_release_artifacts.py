@@ -142,6 +142,8 @@ def validate_sdist(sdist_path: Path) -> None:
                     raise ValueError(f"unsafe sdist path: {name!r}")
                 if member.issym() or member.islnk():
                     raise ValueError(f"unexpected link in sdist: {name!r}")
+                if not member.isfile() and not member.isdir():
+                    raise ValueError(f"unexpected special file in sdist: {name!r}")
                 if not name.startswith(root):
                     raise ValueError(f"sdist member is outside archive root: {name!r}")
 
@@ -169,6 +171,8 @@ def validate_wheel(wheel_path: Path) -> None:
                 mode = (member.external_attr >> 16) & 0o170000
                 if mode == 0o120000:
                     raise ValueError(f"unexpected link in wheel: {name!r}")
+                if mode not in (0, 0o040000, 0o100000):
+                    raise ValueError(f"unexpected special file in wheel: {name!r}")
                 if is_forbidden_archive_member(name):
                     raise ValueError(f"forbidden file in wheel: {name!r}")
     except (OSError, zipfile.BadZipFile) as exc:

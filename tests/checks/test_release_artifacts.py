@@ -138,6 +138,17 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "could not read source distribution"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_special_file(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            with tarfile.open(sdist, "w:gz") as archive:
+                info = tarfile.TarInfo("grimace_py-0.1.12/fifo")
+                info.type = tarfile.FIFOTYPE
+                archive.addfile(info)
+            with self.assertRaisesRegex(ValueError, "unexpected special file in sdist"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_unsafe_wheel_path(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -167,6 +178,18 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 info.external_attr = 0o120777 << 16
                 archive.writestr(info, "target")
             with self.assertRaisesRegex(ValueError, "unexpected link in wheel"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_special_file(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                info = zipfile.ZipInfo("grimace/fifo")
+                info.create_system = 3
+                info.external_attr = 0o010644 << 16
+                archive.writestr(info, "")
+            with self.assertRaisesRegex(ValueError, "unexpected special file in wheel"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_secret_shaped_wheel_content(self) -> None:

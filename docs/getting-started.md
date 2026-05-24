@@ -62,7 +62,8 @@ target_tokens = [
     "c", "1", "(", "c", "c", "c", "c", "c", "1", "O", "C", "(",
     "=", "O", ")", "C", ")", "C", "(", "O", ")", "=", "O",
 ]
-# Grimace tokens can be multi-character, so keep this as a token list.
+# This fixed target path is only for the example. Grimace tokens can be
+# multi-character, so keep it as a token list rather than slicing a string.
 
 for token in target_tokens:
     prefix = decoder.prefix if decoder.prefix else '""'

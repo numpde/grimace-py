@@ -94,9 +94,106 @@ def ordinary_molecule_facts_from_rdkit(
         mol,
         normalize_non_graph_hydrogens=options.normalize_non_graph_hydrogens,
     )
+    return _ordinary_molecule_facts_from_graph_and_raw_stereo(
+        facts,
+        raw_mol=mol,
+        options=options,
+    )
+
+
+def ordinary_molecule_facts_from_smiles(
+    smiles: str,
+    options: RdkitOrdinaryExtractionOptions = RdkitOrdinaryExtractionOptions(),
+) -> MoleculeFacts:
+    """Parse a SMILES source string into ordinary South Star facts.
+
+    This is a source-text ingestion contract.  The graph facts come from the
+    sanitized RDKit parse, but tetrahedral source tags come from the
+    unsanitized parse so they remain visible before RDKit cleanup can remove
+    them from the Mol state.  Ordinary double-bond stereo is read from the
+    sanitized parse because RDKit exposes that relation after SMILES cleanup.
+    """
+
+    _validate_extraction_options(options)
+    sanitized = Chem.MolFromSmiles(smiles)
+    if sanitized is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            f"RDKit could not parse SMILES source: {smiles!r}",
+        )
+    unsanitized = Chem.MolFromSmiles(smiles, sanitize=False)
+    if unsanitized is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            f"RDKit could not parse unsanitized SMILES source: {smiles!r}",
+        )
+    _validate_smiles_source_parse_alignment(
+        sanitized=sanitized,
+        unsanitized=unsanitized,
+    )
+    _validate_stereo_extraction_scope(sanitized, options)
+    _validate_stereo_extraction_scope(unsanitized, options)
+
+    facts = _base_molecule_facts_from_rdkit(
+        sanitized,
+        normalize_non_graph_hydrogens=options.normalize_non_graph_hydrogens,
+    )
+    raw = _extract_raw_smiles_source_specified_stereo(
+        unsanitized=unsanitized,
+        sanitized=sanitized,
+        facts=facts,
+        options=options,
+    )
+    return _ordinary_molecule_facts_from_graph_and_raw_records(
+        facts,
+        raw=raw,
+        options=options,
+    )
+
+
+def _effective_stereo_site_discovery_mode(
+    options: RdkitOrdinaryExtractionOptions,
+) -> str:
+    if options.stereo_site_discovery_mode != "one_pass":
+        return options.stereo_site_discovery_mode
+    if options.stereo_site_discovery_passes == 2:
+        return "two_pass"
+    return "one_pass"
+
+
+def _overlay_raw_specified_stereo(
+    raw: RawSpecifiedStereo,
+    facts: MoleculeFacts,
+    *,
+    require_all: bool,
+) -> MoleculeFacts:
+    if not require_all:
+        raw = _filter_raw_records_to_existing_sites(facts, raw)
+    return promote_raw_specified_stereo(facts, raw)
+
+
+def _ordinary_molecule_facts_from_graph_and_raw_stereo(
+    facts: MoleculeFacts,
+    *,
+    raw_mol: Chem.Mol,
+    options: RdkitOrdinaryExtractionOptions,
+) -> MoleculeFacts:
+    raw = _extract_raw_rdkit_specified_stereo(raw_mol, facts, options)
+    return _ordinary_molecule_facts_from_graph_and_raw_records(
+        facts,
+        raw=raw,
+        options=options,
+    )
+
+
+def _ordinary_molecule_facts_from_graph_and_raw_records(
+    facts: MoleculeFacts,
+    *,
+    raw: RawSpecifiedStereo,
+    options: RdkitOrdinaryExtractionOptions,
+) -> MoleculeFacts:
     discovery_mode = _effective_stereo_site_discovery_mode(options)
     if discovery_mode == "specified_closure":
-        raw = _extract_raw_rdkit_specified_stereo(mol, facts, options)
         result = build_ordinary_stereo_specified_closure(
             facts,
             raw_specified=raw,
@@ -111,37 +208,22 @@ def ordinary_molecule_facts_from_rdkit(
             options=options.stereo_site_options,
         )
     if discovery_mode == "two_pass":
-        facts = _overlay_rdkit_specified_stereo(mol, facts, options, require_all=False)
+        facts = _overlay_raw_specified_stereo(
+            raw,
+            facts,
+            require_all=False,
+        )
         facts = add_ordinary_potential_sites(
             facts,
             options=options.stereo_site_options,
         )
-    facts = _overlay_rdkit_specified_stereo(mol, facts, options, require_all=True)
+    facts = _overlay_raw_specified_stereo(
+        raw,
+        facts,
+        require_all=True,
+    )
     facts.validate()
     return facts
-
-
-def _effective_stereo_site_discovery_mode(
-    options: RdkitOrdinaryExtractionOptions,
-) -> str:
-    if options.stereo_site_discovery_mode != "one_pass":
-        return options.stereo_site_discovery_mode
-    if options.stereo_site_discovery_passes == 2:
-        return "two_pass"
-    return "one_pass"
-
-
-def _overlay_rdkit_specified_stereo(
-    mol: Chem.Mol,
-    facts: MoleculeFacts,
-    options: RdkitOrdinaryExtractionOptions,
-    *,
-    require_all: bool,
-) -> MoleculeFacts:
-    raw = _extract_raw_rdkit_specified_stereo(mol, facts, options)
-    if not require_all:
-        raw = _filter_raw_records_to_existing_sites(facts, raw)
-    return promote_raw_specified_stereo(facts, raw)
 
 
 def _filter_raw_records_to_existing_sites(
@@ -227,6 +309,53 @@ def _base_molecule_facts_from_rdkit(
     return facts
 
 
+def _validate_smiles_source_parse_alignment(
+    *,
+    sanitized: Chem.Mol,
+    unsanitized: Chem.Mol,
+) -> None:
+    if sanitized.GetNumAtoms() != unsanitized.GetNumAtoms():
+        raise SouthStarError(
+            SouthStarErrorKind.SEMANTIC_MISMATCH,
+            "sanitized and unsanitized SMILES parses have different atom counts",
+        )
+    if sanitized.GetNumBonds() != unsanitized.GetNumBonds():
+        raise SouthStarError(
+            SouthStarErrorKind.SEMANTIC_MISMATCH,
+            "sanitized and unsanitized SMILES parses have different bond counts",
+        )
+    for sanitized_atom, unsanitized_atom in zip(
+        sanitized.GetAtoms(),
+        unsanitized.GetAtoms(),
+        strict=True,
+    ):
+        if sanitized_atom.GetAtomicNum() != unsanitized_atom.GetAtomicNum():
+            raise SouthStarError(
+                SouthStarErrorKind.SEMANTIC_MISMATCH,
+                "sanitized and unsanitized SMILES parses have different atom "
+                f"identity at index {sanitized_atom.GetIdx()}",
+            )
+    for sanitized_bond, unsanitized_bond in zip(
+        sanitized.GetBonds(),
+        unsanitized.GetBonds(),
+        strict=True,
+    ):
+        sanitized_pair = (
+            sanitized_bond.GetBeginAtomIdx(),
+            sanitized_bond.GetEndAtomIdx(),
+        )
+        unsanitized_pair = (
+            unsanitized_bond.GetBeginAtomIdx(),
+            unsanitized_bond.GetEndAtomIdx(),
+        )
+        if sanitized_pair != unsanitized_pair:
+            raise SouthStarError(
+                SouthStarErrorKind.SEMANTIC_MISMATCH,
+                "sanitized and unsanitized SMILES parses have different bond "
+                f"endpoints at index {sanitized_bond.GetIdx()}",
+            )
+
+
 def _validate_stereo_extraction_scope(
     mol: Chem.Mol,
     options: RdkitOrdinaryExtractionOptions,
@@ -276,6 +405,27 @@ def _extract_raw_rdkit_specified_stereo(
         tetrahedral.extend(_raw_rdkit_tetrahedral_records(mol, facts))
     if options.extract_specified_directional:
         directional.extend(_raw_rdkit_directional_records(mol))
+    return RawSpecifiedStereo(
+        tetrahedral=tuple(tetrahedral),
+        directional=tuple(directional),
+    )
+
+
+def _extract_raw_smiles_source_specified_stereo(
+    *,
+    unsanitized: Chem.Mol,
+    sanitized: Chem.Mol,
+    facts: MoleculeFacts,
+    options: RdkitOrdinaryExtractionOptions,
+) -> RawSpecifiedStereo:
+    tetrahedral: list[RawTetraStereoRecord] = []
+    directional: list[RawDirectionalStereoRecord] = []
+    if options.extract_specified_tetrahedral:
+        tetrahedral.extend(_raw_rdkit_tetrahedral_records(unsanitized, facts))
+    if options.extract_specified_directional:
+        # RDKit exposes ordinary double-bond stereo after SMILES cleanup.  The
+        # source path is primarily needed for tetra tags that cleanup removes.
+        directional.extend(_raw_rdkit_directional_records(sanitized))
     return RawSpecifiedStereo(
         tetrahedral=tuple(tetrahedral),
         directional=tuple(directional),
@@ -762,4 +912,5 @@ __all__ = (
     "RdkitOrdinaryExtractionOptions",
     "molecule_facts_from_rdkit",
     "ordinary_molecule_facts_from_rdkit",
+    "ordinary_molecule_facts_from_smiles",
 )

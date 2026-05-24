@@ -27,10 +27,18 @@ The core input is a fixed finite `MoleculeFacts` graph:
 - policy choices are finite;
 - ring-label domains are finite and least-free normalized.
 
-RDKit ingestion is available only through `ordinary_molecule_facts_from_rdkit`.
-For tetrahedral stereo, that adapter currently assumes RDKit atom ids preserve
-the lexical order produced by `Chem.MolFromSmiles`. Arbitrarily renumbered RDKit
-`Mol` objects are not supported stereo-ingestion provenance in v0.
+RDKit Mol-state ingestion is available through
+`ordinary_molecule_facts_from_rdkit`. For tetrahedral stereo, that adapter
+currently assumes RDKit atom ids preserve the lexical order produced by
+`Chem.MolFromSmiles`. Arbitrarily renumbered RDKit `Mol` objects are not
+supported stereo-ingestion provenance in v0.
+
+SMILES-source ingestion is available through
+`ordinary_molecule_facts_from_smiles`. It uses RDKit's sanitized parse for
+graph facts, but extracts raw tetrahedral source tags from the unsanitized
+source parse before RDKit cleanup can remove them. Ordinary double-bond stereo
+is read from the sanitized parse because RDKit exposes that relation after
+SMILES cleanup.
 
 ## Supported v0 Surface
 
@@ -126,17 +134,21 @@ its own candidate site ignored. The implementation exposes a certificate per
 raw record recording the matched site, context records, ignored self-site ids,
 and accept/reject reason.
 
-### Known Specified-Closure RDKit Audit Boundary
+### RDKit Mol-State vs SMILES-Source Ingestion
 
-The specified-closure audit has a known RDKit boundary mismatch for generated
-strings whose unsanitized parse retains a raw tetrahedral tag that sanitized
-`Chem.MolFromSmiles(...)` removes during RDKit cleanup. The diagnostic trace
-classifies this as `SPECIFIED_TETRA_RECORD_LOSS`: South Star's source facts
-and the unsanitized RDKit parse contain the raw tetrahedral record, while the
-sanitized RDKit `Mol` used by ordinary adapter ingestion no longer exposes it.
+`ordinary_molecule_facts_from_rdkit(mol, ...)` snapshots the RDKit `Mol` state
+provided by the caller. If RDKit sanitization or cleanup has removed a stereo
+tag, that tag is not part of the Mol-state facts.
 
-This is not hidden by the conformance suite. The representative failure is
-pinned by `trace_specified_closure_round_trip(...)`; the full specified-closure
-RDKit audit remains a skipped diagnostic until the project chooses whether the
-fix belongs in a SMILES-source raw-stereo ingestion path, a stricter closure
-policy, or a different external audit contract.
+`ordinary_molecule_facts_from_smiles(smiles, ...)` is the source-text contract.
+It uses RDKit for graph parsing, extracts tetrahedral source tags from the
+unsanitized parse before cleanup, and reads ordinary double-bond stereo from
+the sanitized parse. This is the appropriate external audit path for generated
+South Star SMILES support strings under `specified_closure`.
+
+The Mol-state specified-closure audit remains a useful diagnostic. Some
+generated strings have raw tetrahedral tags that are retained by unsanitized
+RDKit parse but removed from the sanitized `Mol` state; the diagnostic trace
+classifies those cases as `SPECIFIED_TETRA_RECORD_LOSS`. The source-ingestion
+audit is expected to preserve those raw records and round-trip them through
+South Star facts.

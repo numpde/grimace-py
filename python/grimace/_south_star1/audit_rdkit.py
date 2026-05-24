@@ -15,6 +15,7 @@ from typing import Literal
 
 from rdkit import Chem
 
+from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .fact_isomorphism import FactIsomorphismResult
 from .fact_isomorphism import facts_are_isomorphic
@@ -37,6 +38,7 @@ from .ordinary_semantics import OrdinarySmilesSemantics
 from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from .rdkit_adapter import RdkitOrdinaryExtractionOptions
 from .rdkit_adapter import ordinary_molecule_facts_from_rdkit
+from .rdkit_adapter import ordinary_molecule_facts_from_smiles
 from .semantics import ParserSemantics
 from .skeleton import TraversalSkeleton
 from .support_enumeration import enumerate_stereo_support
@@ -284,6 +286,53 @@ def audit_generated_support_with_rdkit(
             continue
 
         reparsed = ordinary_molecule_facts_from_rdkit(parsed, adapter_options)
+        results.append(
+            RdkitAuditResult(
+                text=text,
+                parsed=True,
+                comparison=facts_are_isomorphic(original, reparsed),
+            )
+        )
+
+    return tuple(results)
+
+
+def audit_generated_support_with_rdkit_smiles_source(
+    smiles: str,
+    *,
+    policy_options: OrdinaryPolicyOptions = OrdinaryPolicyOptions(),
+    adapter_options: RdkitOrdinaryExtractionOptions = (
+        RdkitOrdinaryExtractionOptions()
+    ),
+    semantics: ParserSemantics | None = None,
+    skeletons: Iterable[TraversalSkeleton] | None = None,
+) -> tuple[RdkitAuditResult, ...]:
+    """Audit generated support under the SMILES-source ingestion contract."""
+
+    original = ordinary_molecule_facts_from_smiles(smiles, adapter_options)
+    policy = ordinary_policy_for_facts(original, policy_options)
+    image = enumerate_stereo_support(
+        facts=original,
+        policy=policy,
+        semantics=semantics or OrdinarySmilesSemantics(),
+        skeletons=None if skeletons is None else tuple(skeletons),
+    )
+
+    results: list[RdkitAuditResult] = []
+    for text in image.strings:
+        try:
+            reparsed = ordinary_molecule_facts_from_smiles(text, adapter_options)
+        except SouthStarError as error:
+            results.append(
+                RdkitAuditResult(
+                    text=text,
+                    parsed=False,
+                    comparison=None,
+                    parse_error=str(error),
+                )
+            )
+            continue
+
         results.append(
             RdkitAuditResult(
                 text=text,
@@ -679,6 +728,7 @@ __all__ = (
     "SpecifiedClosureRoundTripTrace",
     "TetraStatusSummary",
     "audit_generated_support_with_rdkit",
+    "audit_generated_support_with_rdkit_smiles_source",
     "audit_generated_witnesses_with_rdkit",
     "classify_specified_closure_round_trips",
     "summarize_rdkit_audit",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
 from grimace._south_star1.facts import BondOrder
@@ -20,6 +21,7 @@ from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_ligand_equivalence import AutomorphismAnchor
 from grimace._south_star1.ordinary_ligand_equivalence import LigandEquivalenceCache
+from grimace._south_star1.ordinary_ligand_equivalence import LigandEquivalenceStats
 from grimace._south_star1.ordinary_ligand_equivalence import (
     ligand_occurrences_equivalent,
 )
@@ -102,6 +104,31 @@ class OrdinaryLigandEquivalenceTest(unittest.TestCase):
         self.assertGreater(size_after_first, 0)
         self.assertEqual(len(cache.by_key), size_after_first)
 
+    def test_exact_equivalence_stats_observe_cache_and_search_work(self) -> None:
+        facts = deep_tetra_ligand_facts(right_terminal="Br")
+        cache = LigandEquivalenceCache()
+        first = LigandEquivalenceStats()
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=2, bond_id=1),
+            "right": _neighbor_occurrence(atom=5, bond_id=3),
+            "cache": cache,
+        }
+
+        self.assertTrue(ligand_occurrences_equivalent(**kwargs, stats=first))
+        second = LigandEquivalenceStats()
+        self.assertTrue(ligand_occurrences_equivalent(**kwargs, stats=second))
+
+        self.assertEqual(first.cache_hits, 0)
+        self.assertEqual(first.cache_misses, 1)
+        self.assertGreater(first.atom_maps_considered, 0)
+        self.assertGreater(first.complete_automorphisms_considered, 0)
+        self.assertEqual(second.cache_hits, 1)
+        self.assertEqual(second.cache_misses, 0)
+        self.assertEqual(second.atom_maps_considered, 0)
+        self.assertEqual(second.complete_automorphisms_considered, 0)
+
     def test_stereochemical_mode_distinguishes_remote_directional_stereo(self) -> None:
         facts = _remote_directional_ligand_facts(
             right_target=DirectionalValue.TOGETHER
@@ -117,6 +144,70 @@ class OrdinaryLigandEquivalenceTest(unittest.TestCase):
         self.assertFalse(
             ligand_occurrences_equivalent(
                 **kwargs,
+                stereo_mode="stereochemical",
+            )
+        )
+
+    def test_cache_separates_graph_and_stereochemical_modes(self) -> None:
+        facts = _remote_directional_ligand_facts(
+            right_target=DirectionalValue.TOGETHER
+        )
+        cache = LigandEquivalenceCache()
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=1, bond_id=0),
+            "right": _neighbor_occurrence(atom=5, bond_id=4),
+            "cache": cache,
+        }
+
+        self.assertTrue(ligand_occurrences_equivalent(**kwargs))
+        self.assertFalse(
+            ligand_occurrences_equivalent(
+                **kwargs,
+                stereo_mode="stereochemical",
+            )
+        )
+
+        self.assertEqual(len(cache.by_key), 2)
+
+    def test_cache_separates_stereo_ignore_site_sets(self) -> None:
+        facts = _remote_directional_ligand_facts(
+            right_target=DirectionalValue.TOGETHER
+        )
+        cache = LigandEquivalenceCache()
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=1, bond_id=0),
+            "right": _neighbor_occurrence(atom=5, bond_id=4),
+            "stereo_mode": "stereochemical",
+            "cache": cache,
+        }
+
+        self.assertFalse(ligand_occurrences_equivalent(**kwargs))
+        self.assertTrue(
+            ligand_occurrences_equivalent(
+                **kwargs,
+                ignore_site_ids=frozenset({SiteId(0), SiteId(1)}),
+            )
+        )
+
+        self.assertEqual(len(cache.by_key), 2)
+
+    def test_potential_unspecified_sites_do_not_distinguish_ligands(self) -> None:
+        facts = _with_unspecified_directional_sites(
+            _remote_directional_ligand_facts(
+                right_target=DirectionalValue.TOGETHER
+            )
+        )
+
+        self.assertTrue(
+            ligand_occurrences_equivalent(
+                facts=facts,
+                anchor=AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+                left=_neighbor_occurrence(atom=1, bond_id=0),
+                right=_neighbor_occurrence(atom=5, bond_id=4),
                 stereo_mode="stereochemical",
             )
         )
@@ -238,6 +329,24 @@ def _remote_directional_ligand_facts(
                 kind=LigandKind.NEIGHBOR_ATOM,
                 atom=AtomId(7),
                 bond=BondId(6),
+            ),
+        ),
+    )
+
+
+def _with_unspecified_directional_sites(facts: MoleculeFacts) -> MoleculeFacts:
+    return replace(
+        facts,
+        stereo=replace(
+            facts.stereo,
+            directional=tuple(
+                replace(
+                    site,
+                    status=SiteStatus.UNSPECIFIED,
+                    target=DirectionalValue.NONE,
+                    reference_pair=None,
+                )
+                for site in facts.stereo.directional
             ),
         ),
     )

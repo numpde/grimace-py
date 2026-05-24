@@ -33,6 +33,16 @@ class LigandEquivalenceCache:
     by_key: dict[tuple[object, ...], bool] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class LigandEquivalenceStats:
+    """Optional search counters for exact ligand-equivalence diagnostics."""
+
+    cache_hits: int = 0
+    cache_misses: int = 0
+    atom_maps_considered: int = 0
+    complete_automorphisms_considered: int = 0
+
+
 def ligand_occurrences_equivalent(
     facts: MoleculeFacts,
     *,
@@ -42,6 +52,7 @@ def ligand_occurrences_equivalent(
     stereo_mode: Literal["graph", "stereochemical"] = "graph",
     ignore_site_ids: frozenset[SiteId] = frozenset(),
     cache: LigandEquivalenceCache | None = None,
+    stats: LigandEquivalenceStats | None = None,
 ) -> bool:
     """Return whether an anchored graph automorphism maps ``left`` to ``right``.
 
@@ -62,7 +73,11 @@ def ligand_occurrences_equivalent(
         ignore_site_ids=ignore_site_ids,
     )
     if cache is not None and key in cache.by_key:
+        if stats is not None:
+            stats.cache_hits += 1
         return cache.by_key[key]
+    if cache is not None and stats is not None:
+        stats.cache_misses += 1
 
     if left.kind is not right.kind:
         return _cache_result(cache, key, False)
@@ -81,7 +96,7 @@ def ligand_occurrences_equivalent(
             return _cache_result(cache, key, False)
 
     _validate_anchor(facts, anchor)
-    for atom_map in _anchored_atom_automorphisms(facts, anchor):
+    for atom_map in _anchored_atom_automorphisms(facts, anchor, stats):
         bond_map = _bond_map_for_atom_map(facts, atom_map)
         if bond_map is None:
             continue
@@ -160,6 +175,7 @@ def _validate_stereo_mode(stereo_mode: str) -> None:
 def _anchored_atom_automorphisms(
     facts: MoleculeFacts,
     anchor: AutomorphismAnchor,
+    stats: LigandEquivalenceStats | None = None,
 ) -> tuple[dict[AtomId, AtomId], ...]:
     candidates_by_atom: dict[AtomId, tuple[AtomId, ...]] = {}
     atoms_by_signature: dict[tuple[object, ...], list[AtomId]] = {}
@@ -197,6 +213,8 @@ def _anchored_atom_automorphisms(
 
     def search(index: int, atom_map: dict[AtomId, AtomId], used: set[AtomId]) -> None:
         if index == len(order):
+            if stats is not None:
+                stats.complete_automorphisms_considered += 1
             mappings.append(dict(atom_map))
             return
 
@@ -204,6 +222,8 @@ def _anchored_atom_automorphisms(
         for candidate in candidates_by_atom[atom.id]:
             if candidate in used:
                 continue
+            if stats is not None:
+                stats.atom_maps_considered += 1
             if not _mapped_bonds_match(
                 atom.id,
                 candidate,
@@ -313,5 +333,6 @@ def _bond_signature(bond: BondFacts) -> tuple[object, ...]:
 __all__ = (
     "AutomorphismAnchor",
     "LigandEquivalenceCache",
+    "LigandEquivalenceStats",
     "ligand_occurrences_equivalent",
 )

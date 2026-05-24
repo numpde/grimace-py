@@ -181,6 +181,17 @@ class RdkitAdapterTest(unittest.TestCase):
         self.assertEqual(len(facts.stereo.directional), 1)
         self.assertEqual(facts.stereo.directional[0].status, SiteStatus.SPECIFIED)
 
+    def test_ordinary_adapter_does_not_yet_two_pass_stereo_exact_sites(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
     def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
         self,
     ) -> None:

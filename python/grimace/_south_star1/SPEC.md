@@ -88,10 +88,8 @@ whether two ligand occurrences are equivalent.
 This option is opt-in and is not part of the v0 conformance corpus. The v0
 default remains `ligand_equivalence="immediate_color"`.
 
-The current exact mode is atom/bond graph exact. It does not yet make
-pre-existing stereo labels part of the automorphism relation; that future
-extension should be named separately, for example as stereochemical-graph
-automorphism.
+The graph exact mode is atom/bond graph exact. It does not make pre-existing
+stereo labels part of the automorphism relation.
 
 `OrdinaryStereoSiteOptions(
 ligand_equivalence="exact_stereochemical_graph_automorphism"
@@ -101,3 +99,9 @@ compatible under the shared `stereo_mapping.py` parity/reference-pair relation.
 The candidate site's own existing site id is ignored during site construction
 to avoid circularly using a site's stereo label as evidence for its own ligand
 distinctness.
+
+RDKit ingestion remains one-way and non-definitional for these experimental
+options. In particular, the adapter builds ordinary potential sites before it
+overlays RDKit specified stereo; therefore a remote-stereo-dependent candidate
+that requires `exact_stereochemical_graph_automorphism` is not yet discoverable
+from a single RDKit `Mol` ingestion pass.

@@ -299,6 +299,7 @@ checked-in fixtures.
 should not publish. Publishing remains the tag-triggered GitHub workflow.
 It derives the container write UID/GID from the current host user, refuses root
 execution, and refuses to clean or bind-mount `dist/` when `dist/` is a symlink.
+The Compose bind mount also disables implicit host-path creation.
 
 ### Perf
 
@@ -307,7 +308,8 @@ write-enabled and long-running. Its strictness comes from being explicit,
 opt-in, and limited to the timing output files it owns.
 It refuses to bind perf output files that are missing, symlinks, or resolved
 outside the physical repository path. The physical repository path and artifact
-list are Makefile facts, not command-line overrides.
+list are Makefile facts, not command-line overrides. Perf bind mounts also
+disable implicit host-path creation.
 
 ### Rust Dependency Lock
 

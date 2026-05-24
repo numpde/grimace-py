@@ -24,6 +24,8 @@ services:
       - type: bind
         source: ../dist
         target: /dist
+        bind:
+          create_host_path: false
     entrypoint:
       - /bin/sh
       - -euxc

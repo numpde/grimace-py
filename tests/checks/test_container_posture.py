@@ -55,6 +55,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(compose, r"(?ms)^\s+tmpfs:\n\s+- /tmp:")
         self.assertRegex(compose, r"(?ms)^\s+volumes:\n\s+- type: bind")
         self.assertRegex(compose, r"(?m)^\s+target:\s+/work\s*$")
+        self.assertIn("create_host_path: false", compose)
         self.assertGreaterEqual(compose.count("read_only: true"), 2)
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
@@ -93,6 +94,7 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("source: ../dist", compose)
         self.assertIn("target: /dist", compose)
+        self.assertIn("create_host_path: false", compose)
         self.assertIn("python -m maturin build --release --out /dist", compose)
         self.assertIn(
             "python -m maturin build --release --sdist --out /dist",
@@ -126,6 +128,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("target: /build-src/docs/timings.md", compose)
         self.assertIn("source: ../notes/004_perf_history.jsonl", compose)
         self.assertIn("target: /build-src/notes/004_perf_history.jsonl", compose)
+        self.assertEqual(3, compose.count("create_host_path: false"))
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)

@@ -25,9 +25,15 @@ services:
       - type: bind
         source: ../docs/timings.tsv
         target: /build-src/docs/timings.tsv
+        bind:
+          create_host_path: false
       - type: bind
         source: ../docs/timings.md
         target: /build-src/docs/timings.md
+        bind:
+          create_host_path: false
       - type: bind
         source: ../notes/004_perf_history.jsonl
         target: /build-src/notes/004_perf_history.jsonl
+        bind:
+          create_host_path: false

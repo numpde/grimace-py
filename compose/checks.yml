@@ -21,6 +21,8 @@ services:
         source: ..
         target: /work
         read_only: true
+        bind:
+          create_host_path: false
     command:
       - -I
       - -B

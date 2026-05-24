@@ -76,6 +76,25 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "forbidden file in sdist"):
                 validator.validate_artifacts(dist, "v0.1.12")
 
+    def test_rejects_secret_shaped_sdist_content(self) -> None:
+        validator = load_validator()
+        secret_paths = (
+            ".env.local",
+            ".npmrc",
+            ".docker/config.json",
+            ".config/gh/hosts.yml",
+            "nested/.ssh/config",
+            "nested/id_ed25519",
+            "nested/private.pem",
+        )
+        for secret_path in secret_paths:
+            with self.subTest(secret_path=secret_path):
+                with tempfile.TemporaryDirectory() as tmp:
+                    sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+                    write_sdist(sdist, ("pyproject.toml", secret_path))
+                    with self.assertRaisesRegex(ValueError, "forbidden file in sdist"):
+                        validator.validate_sdist(sdist)
+
     def test_rejects_unsafe_sdist_path(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

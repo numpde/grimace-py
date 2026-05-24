@@ -27,8 +27,38 @@ FORBIDDEN_SDIST_NAMES = {
     ".env",
     ".envrc",
     ".netrc",
+    ".npmrc",
     ".pypirc",
+    "id_ed25519",
+    "id_rsa",
+    "pip.conf",
+    "pip.ini",
 }
+FORBIDDEN_SDIST_SUFFIXES = (
+    ".crt",
+    ".key",
+    ".p12",
+    ".pem",
+    ".pfx",
+    ".secret",
+    ".token",
+)
+FORBIDDEN_SDIST_COMPONENTS = {
+    ".aws",
+    ".azure",
+    ".docker",
+    ".gcloud",
+    ".gnupg",
+    ".kube",
+    ".ssh",
+}
+FORBIDDEN_SDIST_PATH_FRAGMENTS = (
+    (".cargo", "credentials"),
+    (".cargo", "credentials.toml"),
+    (".config", "gcloud"),
+    (".config", "gh"),
+    (".config", "pip"),
+)
 
 
 def expected_artifact_names(version: str) -> tuple[str, ...]:
@@ -64,6 +94,25 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
     validate_sdist(dist_dir / f"{PACKAGE_STEM}-{tag_match.group('version')}.tar.gz")
 
 
+def is_forbidden_sdist_member(relative: str) -> bool:
+    path = Path(relative)
+    parts = path.parts
+    name = path.name
+    if name in FORBIDDEN_SDIST_NAMES or name.startswith(".env."):
+        return True
+    if name.lower().endswith(FORBIDDEN_SDIST_SUFFIXES):
+        return True
+    if any(part in FORBIDDEN_SDIST_COMPONENTS for part in parts):
+        return True
+    if any(relative.startswith(prefix) for prefix in FORBIDDEN_SDIST_PREFIXES):
+        return True
+    return any(
+        parts[index : index + 2] == fragment
+        for index in range(len(parts) - 1)
+        for fragment in FORBIDDEN_SDIST_PATH_FRAGMENTS
+    )
+
+
 def validate_sdist(sdist_path: Path) -> None:
     if sdist_path.is_symlink() or not sdist_path.is_file():
         raise ValueError(f"source distribution does not exist or is not a file: {sdist_path}")
@@ -85,9 +134,7 @@ def validate_sdist(sdist_path: Path) -> None:
                 relative = name[len(root) :]
                 if not relative:
                     continue
-                if relative in FORBIDDEN_SDIST_NAMES or any(
-                    relative.startswith(prefix) for prefix in FORBIDDEN_SDIST_PREFIXES
-                ):
+                if is_forbidden_sdist_member(relative):
                     raise ValueError(f"forbidden file in sdist: {relative!r}")
     except (OSError, tarfile.TarError) as exc:
         raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc

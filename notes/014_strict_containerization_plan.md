@@ -323,7 +323,8 @@ maturin version used by the Docker and release lanes.
 The sdist is a release artifact, not an archive of every checked-in diagnostic.
 Package and release validation reject unsafe archive paths, links, local
 credential filenames, build outputs, `tmp/`, and raw `notes/perf_reports/`
-captures.
+captures. The validator also rejects common local secret locations and
+key-like filenames if they ever reach the checked-in source tree.
 
 ### Docker Build Context Secrets
 

@@ -137,6 +137,15 @@ Compressed traces may be added later, but they must preserve replayability. The
 completeness trace is still RDKit-free; RDKit source audits remain external
 falsifiers rather than support-definition machinery.
 
+### Proof-Term Stability
+
+South Star proof objects use public proof-term constructors for skeleton,
+prefix, CSP, stereo-solution, witness, and duplicate nodes. The generator and
+checker share this vocabulary through `proof_terms.py`; the checker does not
+depend on private enumeration-helper names for proof keys. Trace JSON has an
+explicit schema version, and unknown schema versions are rejected rather than
+silently interpreted.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

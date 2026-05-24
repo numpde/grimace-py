@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from hashlib import blake2b
 from itertools import product
 from typing import TypeVar
 
@@ -40,11 +39,13 @@ from .policy import AtomTextChoice
 from .policy import BondTextChoice
 from .policy import DirectionMark
 from .policy import SmilesPolicy
+from .proof_terms import assignment_key
+from .proof_terms import prefix_key
+from .proof_terms import skeleton_key
+from .proof_terms import witness_id
 from .render import render_stereo_traversal
 from .ring_labels import enumerate_ring_label_assignments
 from .semantics import ParserSemantics
-from .skeleton import ChildEvent
-from .skeleton import RingEvent
 from .skeleton import TraversalSkeleton
 from .slots import SlotBundle
 from .slots import allocate_traversal_slots
@@ -174,7 +175,7 @@ def enumerate_stereo_witnesses_for_skeleton(
             )
 
             yield ValidWitness(
-                id=_witness_id(
+                id=witness_id(
                     skeleton=skeleton,
                     slots=slots,
                     assignment=assignment,
@@ -227,7 +228,7 @@ def enumerate_certified_stereo_witnesses_for_skeleton(
         )
 
         for selected in selected_solutions:
-            yield _certified_witness_from_selected_solution(
+            yield build_certified_witness_from_selected_solution(
                 facts=facts,
                 skeleton=skeleton,
                 slots=slots,
@@ -291,7 +292,7 @@ def collect_certified_stereo_witnesses_for_skeleton(
 
         for selected in selected_solutions:
             witnesses.append(
-                _certified_witness_from_selected_solution(
+                build_certified_witness_from_selected_solution(
                     facts=facts,
                     skeleton=skeleton,
                     slots=slots,
@@ -374,7 +375,7 @@ def collect_stereo_witnesses_for_skeleton(
 
             witnesses.append(
                 ValidWitness(
-                    id=_witness_id(
+                    id=witness_id(
                         skeleton=skeleton,
                         slots=slots,
                         assignment=assignment,
@@ -464,7 +465,7 @@ def _dict_product(
             yield dict(zip(keys, values, strict=True))
 
 
-def _certified_witness_from_selected_solution(
+def build_certified_witness_from_selected_solution(
     *,
     facts: MoleculeFacts,
     skeleton: TraversalSkeleton,
@@ -494,7 +495,7 @@ def _certified_witness_from_selected_solution(
         validate=False,
     )
     witness = ValidWitness(
-        id=_witness_id(
+        id=witness_id(
             skeleton=skeleton,
             slots=slots,
             assignment=assignment,
@@ -523,9 +524,9 @@ def _certified_witness_from_selected_solution(
         certificate=WitnessCertificate(
             witness_id=witness.id,
             rendered=rendered,
-            skeleton_key=_skeleton_key(skeleton),
-            prefix_key=_prefix_key(prefix),
-            assignment_key=_assignment_key(assignment),
+            skeleton_key=skeleton_key(skeleton),
+            prefix_key=prefix_key(prefix),
+            assignment_key=assignment_key(assignment),
             traversal_relation_certificates=traversal_certificate,
             stereo_solution=stereo_certificate,
         ),
@@ -539,182 +540,11 @@ def _annotation_count(assignment: TraversalAssignment) -> int:
     )
 
 
-def _witness_id(
-    *,
-    skeleton: TraversalSkeleton,
-    slots: SlotBundle,
-    assignment: TraversalAssignment,
-    rendered: str,
-) -> str:
-    """Stable debugging id for a witness.
-
-    This is not a chemical canonical identifier and is not the support quotient.
-    Witness multiplicity is diagnostic; the support image is deduplicated.
-    """
-
-    payload = repr(
-        (
-            _skeleton_key(skeleton),
-            _slot_key(slots),
-            _assignment_key(assignment),
-            rendered,
-        )
-    ).encode("utf8")
-
-    return "witness:" + blake2b(payload, digest_size=12).hexdigest()
-
-
-def _skeleton_key(skeleton: TraversalSkeleton) -> tuple[object, ...]:
-    return (
-        tuple(int(root) for root in skeleton.roots),
-        tuple(
-            sorted(
-                (
-                    int(atom),
-                    None if parent is None else int(parent),
-                )
-                for atom, parent in skeleton.parent.items()
-            )
-        ),
-        tuple(sorted(int(bond) for bond in skeleton.tree_bonds)),
-        tuple(sorted(int(bond) for bond in skeleton.ring_bonds)),
-        tuple(
-            sorted(
-                (
-                    int(atom),
-                    tuple(_event_key(event) for event in events),
-                )
-                for atom, events in skeleton.events_at.items()
-            )
-        ),
-    )
-
-
-def _event_key(event: object) -> tuple[object, ...]:
-    if isinstance(event, ChildEvent):
-        return (
-            "child",
-            int(event.bond),
-            int(event.parent),
-            int(event.child),
-            event.role.value,
-        )
-
-    if isinstance(event, RingEvent):
-        return (
-            "ring",
-            int(event.bond),
-            int(event.atom),
-            int(event.other_atom),
-        )
-
-    raise TypeError(event)
-
-
-def _slot_key(slots: SlotBundle) -> tuple[object, ...]:
-    return (
-        tuple(
-            (int(slot.id), int(slot.atom))
-            for slot in slots.atom_slots
-        ),
-        tuple(
-            (
-                int(slot.id),
-                int(slot.bond),
-                slot.kind.value,
-                int(slot.written_from),
-                None if slot.written_to is None else int(slot.written_to),
-                slot.syntax_position,
-                None if slot.ring_endpoint is None else int(slot.ring_endpoint),
-            )
-            for slot in slots.bond_slots
-        ),
-        tuple(
-            (
-                int(endpoint.id),
-                int(endpoint.bond),
-                int(endpoint.atom),
-                int(endpoint.other_atom),
-                int(endpoint.bond_slot),
-                endpoint.syntax_position,
-            )
-            for endpoint in slots.ring_endpoints
-        ),
-        tuple(
-            (
-                int(carrier.id),
-                int(carrier.bond_slot),
-                int(carrier.bond),
-                int(carrier.written_from),
-                None if carrier.written_to is None else int(carrier.written_to),
-            )
-            for carrier in slots.carrier_slots
-        ),
-    )
-
-
-def _assignment_key(assignment: TraversalAssignment) -> tuple[object, ...]:
-    return (
-        tuple(
-            sorted(
-                (int(atom), choice.name)
-                for atom, choice in assignment.atom_text.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(atom), token.value)
-                for atom, token in assignment.tetra_tokens.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(slot), choice.name)
-                for slot, choice in assignment.bond_text.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(endpoint), label.value)
-                for endpoint, label in assignment.ring_labels.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(carrier), mark.value)
-                for carrier, mark in assignment.direction_marks.items()
-            )
-        ),
-    )
-
-
-def _prefix_key(prefix: PresentationPrefix) -> tuple[object, ...]:
-    return (
-        tuple(
-            sorted(
-                (int(atom), choice.name)
-                for atom, choice in prefix.atom_text.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(slot), choice.name)
-                for slot, choice in prefix.bond_text.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(endpoint), label.value)
-                for endpoint, label in prefix.ring_labels.items()
-            )
-        ),
-    )
-
-
 __all__ = (
     "CertifiedStereoWitnessSearchStats",
     "CertifiedWitness",
     "StereoWitnessSearchStats",
+    "build_certified_witness_from_selected_solution",
     "collect_certified_stereo_witnesses_for_skeleton",
     "collect_stereo_witnesses_for_skeleton",
     "enumerate_certified_stereo_witnesses_for_skeleton",

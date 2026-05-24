@@ -29,6 +29,7 @@ CORE_MODULES: tuple[str, ...] = (
     "ordinary_stereo_closure",
     "ordinary_stereo_sites",
     "policy",
+    "proof_terms",
     "render",
     "ring_labels",
     "semantics",

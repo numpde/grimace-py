@@ -32,6 +32,9 @@ from grimace._south_star1.support_enumeration import (
     enumerate_traced_certified_stereo_support,
 )
 from grimace._south_star1.support_enumeration import (
+    traced_certified_support_from_jsonable,
+)
+from grimace._south_star1.support_enumeration import (
     traced_certified_support_to_jsonable,
 )
 from tests.south_star1.helpers import atom
@@ -200,7 +203,75 @@ class CompletenessCertificateTest(unittest.TestCase):
 
         self.assertIn("manifest", encoded)
         self.assertIn("trace", encoded)
-        self.assertIn("witness_certificates", encoded)
+        self.assertIn("certified_witnesses", encoded)
+
+    def test_traced_support_json_roundtrip_replays(self) -> None:
+        facts = tetrahedral_facts()
+        policy = ordinary_policy_for_facts(facts)
+        semantics = OrdinarySmilesSemantics()
+        result = enumerate_traced_certified_stereo_support(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+        )
+
+        encoded = traced_certified_support_to_jsonable(result)
+        decoded = traced_certified_support_from_jsonable(encoded)
+
+        replay_support_completeness_certificate(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            result=decoded,
+        )
+
+    def test_trace_json_rejects_unknown_schema_version(self) -> None:
+        facts = tetrahedral_facts()
+        result = _traced_result(facts)
+        encoded = enumeration_trace_to_jsonable(result.trace)
+        encoded["schema_version"] = 999
+
+        with self.assertRaisesRegex(ValueError, "schema version"):
+            enumeration_trace_from_jsonable(encoded)
+
+    def test_trace_json_rejects_unknown_rejection_reason(self) -> None:
+        facts = _ethane_facts()
+        result = _traced_result(facts)
+        encoded = enumeration_trace_to_jsonable(result.trace)
+        encoded["rejected"][0]["reason"] = "unknown"
+
+        with self.assertRaisesRegex(ValueError, "rejection reason"):
+            enumeration_trace_from_jsonable(encoded)
+
+    def test_trace_json_rejects_missing_detail_field(self) -> None:
+        facts = _ethane_facts()
+        result = _traced_result(facts)
+        encoded = enumeration_trace_to_jsonable(result.trace)
+        del encoded["rejected"][0]["detail"]
+
+        with self.assertRaises(KeyError):
+            enumeration_trace_from_jsonable(encoded)
+
+    def test_replay_rejects_json_roundtrip_with_changed_node_key(self) -> None:
+        facts = tetrahedral_facts()
+        policy = ordinary_policy_for_facts(facts)
+        semantics = OrdinarySmilesSemantics()
+        result = enumerate_traced_certified_stereo_support(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+        )
+        encoded = traced_certified_support_to_jsonable(result)
+        encoded["trace"]["accepted"][0]["node"]["key"] = ["not-a-witness"]
+        decoded = traced_certified_support_from_jsonable(encoded)
+
+        with self.assertRaisesRegex(ValueError, "missing witness acceptance"):
+            replay_support_completeness_certificate(
+                facts=facts,
+                policy=policy,
+                semantics=semantics,
+                result=decoded,
+            )
 
     def test_source_ingestion_specified_closure_traced_support_records_manifest(
         self,

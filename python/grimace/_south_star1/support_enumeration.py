@@ -26,40 +26,62 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
 from dataclasses import dataclass
-from hashlib import blake2b
 
 from .annotation import ValidWitness
 from .certificates import SupportEnumerationManifest
+from .certificates import manifest_from_jsonable
 from .certificates import manifest_to_jsonable
+from .certificates import witness_certificate_from_jsonable
 from .certificates import witness_certificate_to_jsonable
+from .constraints import NamedConstraint
+from .constraints import TraversalAssignment
 from .enumerate import SupportImage
 from .enumerate import render_image_from_witnesses
 from .enumeration_trace import AcceptanceCertificate
 from .enumeration_trace import EnumerationNodeId
 from .enumeration_trace import EnumerationTrace
 from .enumeration_trace import RejectionCertificate
+from .enumeration_trace import enumeration_trace_from_jsonable
 from .enumeration_trace import enumeration_trace_to_jsonable
+from .enumeration_trace import rejection_annotation_not_selected
+from .enumeration_trace import rejection_csp_unsatisfied
+from .enumeration_trace import rejection_empty_direction_domain
+from .enumeration_trace import rejection_empty_mark_relation
+from .enumeration_trace import rejection_empty_tetra_domain
+from .enumeration_trace import rejection_empty_tetra_relation
+from .enumeration_trace import rejection_render_duplicate
 from .facts import MoleculeFacts
 from .graph_index import build_graph_index
 from .ids import CarrierSlotId
+from .ids import AtomId
+from .ids import BondSlotId
+from .ids import RingEndpointId
 from .policy import SmilesPolicy
+from .policy import AtomTextChoice
+from .policy import BondTextChoice
+from .policy import DirectionMark
+from .policy import RingLabel
+from .policy import TetraToken
+from .proof_terms import csp_key
+from .proof_terms import render_duplicate_node_id
+from .proof_terms import sequence_hash
+from .proof_terms import skeleton_key
+from .proof_terms import stereo_solution_key
+from .proof_terms import witness_node_id
 from .semantics import ParserSemantics
 from .skeleton import TraversalSkeleton
 from .skeleton import enumerate_traversal_skeletons
 from .slots import SlotBundle
 from .slots import allocate_traversal_slots
 from .stereo_witness import CertifiedWitness
+from .stereo_witness import build_certified_witness_from_selected_solution
 from .stereo_witness import collect_certified_stereo_witnesses_for_skeleton
 from .stereo_witness import enumerate_certified_stereo_witnesses_for_skeleton
 from .stereo_witness import enumerate_presentation_prefixes
 from .stereo_witness import enumerate_stereo_witnesses_for_skeleton
-from .stereo_witness import _certified_witness_from_selected_solution
-from .stereo_witness import _prefix_key
-from .stereo_witness import _skeleton_key
 from .stereo_csp import build_stereo_csp
 from .stereo_csp import select_stereo_solutions_with_certificates
 from .stereo_csp import solve_stereo_csp
-from .stereo_csp import stereo_solution_canonical_key
 
 
 EligibleMarkerCarrierSelector = Callable[
@@ -353,7 +375,6 @@ def enumerate_traced_certified_stereo_support(
     selected_solution_count = 0
 
     for skeleton in skeleton_tuple:
-        skeleton_key = _skeleton_key(skeleton)
         slots = allocate_traversal_slots(facts, skeleton)
         if eligible_marker_carriers is None:
             eligible = None
@@ -367,8 +388,7 @@ def enumerate_traced_certified_stereo_support(
         ):
             prefix_count += 1
             csp_count += 1
-            prefix_key = _prefix_key(prefix)
-            csp_key = (skeleton_key, prefix_key)
+            node_key = csp_key(skeleton, prefix)
             csp = build_stereo_csp(
                 facts=facts,
                 skeleton=skeleton,
@@ -389,42 +409,34 @@ def enumerate_traced_certified_stereo_support(
             selected_solution_count += len(selected_solutions)
 
             if not raw_solutions:
-                rejected.append(_empty_csp_rejection(csp, csp_key))
+                rejected.append(_empty_csp_rejection(csp, node_key))
                 continue
 
             selected_keys = {
-                stereo_solution_canonical_key(selected.solution)
+                stereo_solution_key(selected.solution)
                 for selected in selected_solutions
             }
             for solution in raw_solutions:
-                solution_key = stereo_solution_canonical_key(solution)
-                if solution_key in selected_keys:
+                solution_node_key = stereo_solution_key(solution)
+                if solution_node_key in selected_keys:
                     continue
                 rejected.append(
-                    RejectionCertificate(
+                    rejection_annotation_not_selected(
                         node=EnumerationNodeId(
                             kind="stereo_solution",
-                            key=(csp_key, solution_key),
+                            key=(node_key, solution_node_key),
                         ),
-                        reason="annotation_not_selected",
-                        detail=(
-                            "support",
-                            tuple(sorted(int(c) for c in solution.marker_support)),
-                            "selected_supports",
-                            tuple(
-                                sorted(
-                                    tuple(sorted(int(c) for c in selected.solution.marker_support))
-                                    for selected in selected_solutions
-                                )
-                            ),
-                            "mode",
-                            policy.annotation_mode.value,
+                        support=solution.marker_support,
+                        selected_supports=frozenset(
+                            selected.solution.marker_support
+                            for selected in selected_solutions
                         ),
+                        mode=policy.annotation_mode,
                     )
                 )
 
             for selected in selected_solutions:
-                certified = _certified_witness_from_selected_solution(
+                certified = build_certified_witness_from_selected_solution(
                     facts=facts,
                     skeleton=skeleton,
                     slots=slots,
@@ -437,10 +449,7 @@ def enumerate_traced_certified_stereo_support(
                 certified_list.append(certified)
                 accepted.append(
                     AcceptanceCertificate(
-                        node=EnumerationNodeId(
-                            kind="witness",
-                            key=(certified.witness.id,),
-                        ),
+                        node=witness_node_id(certified.witness.id),
                         witness_id=certified.witness.id,
                         rendered=certified.witness.rendered,
                     )
@@ -491,27 +500,197 @@ def traced_certified_support_to_jsonable(
         },
         "manifest": manifest_to_jsonable(result.manifest),
         "trace": enumeration_trace_to_jsonable(result.trace),
-        "witness_certificates": [
-            witness_certificate_to_jsonable(certified.certificate)
+        "certified_witnesses": [
+            _certified_witness_to_jsonable(certified)
             for certified in result.certified_witnesses
         ],
     }
 
 
+def traced_certified_support_from_jsonable(
+    data: dict[str, object],
+) -> TracedCertifiedSupportImage:
+    support_data = _require_mapping(data["support"])
+    return TracedCertifiedSupportImage(
+        support=SupportImage(
+            witness_count=int(support_data["witness_count"]),
+            distinct_count=int(support_data["distinct_count"]),
+            strings=tuple(str(item) for item in _require_list(support_data["strings"])),
+        ),
+        certified_witnesses=tuple(
+            _certified_witness_from_jsonable(item)
+            for item in _require_list(data["certified_witnesses"])
+        ),
+        manifest=manifest_from_jsonable(_require_mapping(data["manifest"])),
+        trace=enumeration_trace_from_jsonable(_require_mapping(data["trace"])),
+    )
+
+
+def _certified_witness_to_jsonable(
+    certified: CertifiedWitness,
+) -> dict[str, object]:
+    return {
+        "witness": {
+            "id": certified.witness.id,
+            "rendered": certified.witness.rendered,
+            "annotation_count": certified.witness.annotation_count,
+            "constraints": [
+                [constraint.name, constraint.subject]
+                for constraint in certified.witness.constraints
+            ],
+        },
+        "assignment": _assignment_to_jsonable(certified.assignment),
+        "certificate": witness_certificate_to_jsonable(certified.certificate),
+    }
+
+
+def _certified_witness_from_jsonable(data: object) -> CertifiedWitness:
+    mapping = _require_mapping(data)
+    witness_data = _require_mapping(mapping["witness"])
+    return CertifiedWitness(
+        witness=ValidWitness(
+            id=str(witness_data["id"]),
+            rendered=str(witness_data["rendered"]),
+            annotation_count=int(witness_data["annotation_count"]),
+            constraints=tuple(
+                NamedConstraint(str(item[0]), str(item[1]))
+                for item in _require_list(witness_data["constraints"])
+            ),
+        ),
+        assignment=_assignment_from_jsonable(mapping["assignment"]),
+        certificate=witness_certificate_from_jsonable(
+            _require_mapping(mapping["certificate"])
+        ),
+    )
+
+
+def _assignment_to_jsonable(assignment: TraversalAssignment) -> dict[str, object]:
+    return {
+        "atom_text": [
+            [int(atom), _atom_text_choice_to_jsonable(choice)]
+            for atom, choice in sorted(
+                assignment.atom_text.items(),
+                key=lambda item: int(item[0]),
+            )
+        ],
+        "tetra_tokens": [
+            [int(atom), token.value]
+            for atom, token in sorted(
+                assignment.tetra_tokens.items(),
+                key=lambda item: int(item[0]),
+            )
+        ],
+        "bond_text": [
+            [int(slot), _bond_text_choice_to_jsonable(choice)]
+            for slot, choice in sorted(
+                assignment.bond_text.items(),
+                key=lambda item: int(item[0]),
+            )
+        ],
+        "ring_labels": [
+            [int(endpoint), label.value]
+            for endpoint, label in sorted(
+                assignment.ring_labels.items(),
+                key=lambda item: int(item[0]),
+            )
+        ],
+        "direction_marks": [
+            [int(carrier), mark.value]
+            for carrier, mark in sorted(
+                assignment.direction_marks.items(),
+                key=lambda item: int(item[0]),
+            )
+        ],
+    }
+
+
+def _assignment_from_jsonable(data: object) -> TraversalAssignment:
+    mapping = _require_mapping(data)
+    return TraversalAssignment(
+        atom_text={
+            AtomId(int(item[0])): _atom_text_choice_from_jsonable(item[1])
+            for item in _require_list(mapping["atom_text"])
+        },
+        tetra_tokens={
+            AtomId(int(item[0])): TetraToken(str(item[1]))
+            for item in _require_list(mapping["tetra_tokens"])
+        },
+        bond_text={
+            BondSlotId(int(item[0])): _bond_text_choice_from_jsonable(item[1])
+            for item in _require_list(mapping["bond_text"])
+        },
+        ring_labels={
+            RingEndpointId(int(item[0])): RingLabel(int(item[1]))
+            for item in _require_list(mapping["ring_labels"])
+        },
+        direction_marks={
+            CarrierSlotId(int(item[0])): DirectionMark(int(item[1]))
+            for item in _require_list(mapping["direction_marks"])
+        },
+    )
+
+
+def _atom_text_choice_to_jsonable(choice: AtomTextChoice) -> dict[str, object]:
+    return {
+        "name": choice.name,
+        "text_by_tetra": [
+            [token.value, text]
+            for token, text in choice.text_by_tetra
+        ],
+    }
+
+
+def _atom_text_choice_from_jsonable(data: object) -> AtomTextChoice:
+    mapping = _require_mapping(data)
+    return AtomTextChoice(
+        name=str(mapping["name"]),
+        text_by_tetra=tuple(
+            (TetraToken(str(item[0])), str(item[1]))
+            for item in _require_list(mapping["text_by_tetra"])
+        ),
+    )
+
+
+def _bond_text_choice_to_jsonable(choice: BondTextChoice) -> dict[str, object]:
+    return {
+        "name": choice.name,
+        "base_text": choice.base_text,
+        "permits_direction": choice.permits_direction,
+    }
+
+
+def _bond_text_choice_from_jsonable(data: object) -> BondTextChoice:
+    mapping = _require_mapping(data)
+    return BondTextChoice(
+        name=str(mapping["name"]),
+        base_text=str(mapping["base_text"]),
+        permits_direction=bool(mapping["permits_direction"]),
+    )
+
+
+def _require_list(value: object) -> list:
+    if not isinstance(value, list):
+        raise TypeError(f"expected list: {value!r}")
+    return value
+
+
+def _require_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise TypeError(f"expected mapping: {value!r}")
+    return value
+
+
 def _empty_csp_rejection(csp, csp_key: tuple[object, ...]) -> RejectionCertificate:
-    detail: tuple[object, ...] = ()
     empty_tetra = tuple(
-        sorted(int(atom) for atom, domain in csp.tetra_domains.items() if not domain)
+        atom for atom, domain in csp.tetra_domains.items() if not domain
     )
     empty_direction = tuple(
-        sorted(
-            int(carrier)
-            for carrier, domain in csp.direction_domains.items()
-            if not domain
-        )
+        carrier
+        for carrier, domain in csp.direction_domains.items()
+        if not domain
     )
     empty_tetra_relations = tuple(
-        int(relation.site)
+        relation.site
         for relation in csp.tetra_relations
         if not relation.allowed_tokens
     )
@@ -522,25 +701,26 @@ def _empty_csp_rejection(csp, csp_key: tuple[object, ...]) -> RejectionCertifica
     )
 
     if empty_tetra:
-        reason = "empty_tetra_domain"
-        detail = ("atoms", empty_tetra)
+        return rejection_empty_tetra_domain(
+            EnumerationNodeId(kind="csp", key=csp_key),
+            empty_tetra,
+        )
     elif empty_direction:
-        reason = "empty_direction_domain"
-        detail = ("carriers", empty_direction)
+        return rejection_empty_direction_domain(
+            EnumerationNodeId(kind="csp", key=csp_key),
+            empty_direction,
+        )
     elif empty_tetra_relations:
-        reason = "empty_tetra_relation"
-        detail = ("sites", empty_tetra_relations)
+        return rejection_empty_tetra_relation(
+            EnumerationNodeId(kind="csp", key=csp_key),
+            empty_tetra_relations,
+        )
     elif empty_mark_relations:
-        reason = "empty_mark_relation"
-        detail = ("relations", empty_mark_relations)
-    else:
-        reason = "csp_unsatisfied"
-
-    return RejectionCertificate(
-        node=EnumerationNodeId(kind="csp", key=csp_key),
-        reason=reason,
-        detail=detail,
-    )
+        return rejection_empty_mark_relation(
+            EnumerationNodeId(kind="csp", key=csp_key),
+            empty_mark_relations,
+        )
+    return rejection_csp_unsatisfied(EnumerationNodeId(kind="csp", key=csp_key))
 
 
 def _render_duplicate_rejections(
@@ -553,18 +733,10 @@ def _render_duplicate_rejections(
         first_witness_id = first_witness_id_by_rendered.get(rendered)
         if first_witness_id is not None:
             out.append(
-                RejectionCertificate(
-                    node=EnumerationNodeId(
-                        kind="witness",
-                        key=("render_duplicate", certified.witness.id),
-                    ),
-                    reason="render_duplicate",
-                    detail=(
-                        "rendered",
-                        rendered,
-                        "first_witness_id",
-                        first_witness_id,
-                    ),
+                rejection_render_duplicate(
+                    render_duplicate_node_id(certified.witness.id),
+                    rendered=rendered,
+                    first_witness_id=first_witness_id,
                 )
             )
         else:
@@ -598,11 +770,7 @@ def _support_manifest(
 
 
 def _hash_sequence(values: Iterable[str]) -> str:
-    digest = blake2b(digest_size=16)
-    for value in values:
-        digest.update(value.encode("utf8"))
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return sequence_hash(values)
 
 
 def enumerate_stereo_support_with_stats(
@@ -664,5 +832,6 @@ __all__ = (
     "enumerate_stereo_support_with_stats",
     "enumerate_stereo_witnesses",
     "enumerate_traced_certified_stereo_support",
+    "traced_certified_support_from_jsonable",
     "traced_certified_support_to_jsonable",
 )

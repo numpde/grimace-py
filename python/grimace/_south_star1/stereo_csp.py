@@ -1077,22 +1077,9 @@ def _support_maximal_solutions(
 def stereo_solution_canonical_key(
     solution: StereoSolution,
 ) -> tuple[object, ...]:
-    return (
-        -len(solution.marker_support),
-        tuple(sorted(int(carrier) for carrier in solution.marker_support)),
-        tuple(
-            sorted(
-                (int(atom), token.value)
-                for atom, token in solution.tetra_tokens.items()
-            )
-        ),
-        tuple(
-            sorted(
-                (int(carrier), mark.value)
-                for carrier, mark in solution.direction_marks.items()
-            )
-        ),
-    )
+    from .proof_terms import stereo_solution_key
+
+    return stereo_solution_key(solution)
 
 
 def _is_invalid(value: object) -> bool:

@@ -7,6 +7,13 @@ from enum import Enum
 from typing import Literal
 from typing import Mapping
 
+from .ids import AtomId
+from .ids import CarrierSlotId
+from .policy import AnnotationMode
+
+
+TRACE_SCHEMA_VERSION = 1
+
 
 EnumerationNodeKind = Literal[
     "skeleton",
@@ -64,6 +71,7 @@ class EnumerationTrace:
     selected_solution_count: int
     witness_count: int
     support_count: int
+    schema_version: int = TRACE_SCHEMA_VERSION
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +97,9 @@ class CompletenessTraceMode(Enum):
 
 
 def build_trace_index(trace: EnumerationTrace) -> TraceIndex:
+    if trace.schema_version != TRACE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported trace schema version: {trace.schema_version}")
+
     accepted_by_node: dict[EnumerationNodeId, AcceptanceCertificate] = {}
     rejected_by_node: dict[EnumerationNodeId, RejectionCertificate] = {}
 
@@ -118,8 +129,101 @@ def build_trace_index(trace: EnumerationTrace) -> TraceIndex:
     )
 
 
+def rejection_csp_unsatisfied(node: EnumerationNodeId) -> RejectionCertificate:
+    return RejectionCertificate(node=node, reason="csp_unsatisfied")
+
+
+def rejection_empty_tetra_domain(
+    node: EnumerationNodeId,
+    atoms: tuple[AtomId, ...],
+) -> RejectionCertificate:
+    return RejectionCertificate(
+        node=node,
+        reason="empty_tetra_domain",
+        detail=("atoms", tuple(int(atom) for atom in atoms)),
+    )
+
+
+def rejection_empty_direction_domain(
+    node: EnumerationNodeId,
+    carriers: tuple[CarrierSlotId, ...],
+) -> RejectionCertificate:
+    return RejectionCertificate(
+        node=node,
+        reason="empty_direction_domain",
+        detail=("carriers", tuple(int(carrier) for carrier in carriers)),
+    )
+
+
+def rejection_empty_tetra_relation(
+    node: EnumerationNodeId,
+    sites: tuple[object, ...],
+) -> RejectionCertificate:
+    return RejectionCertificate(
+        node=node,
+        reason="empty_tetra_relation",
+        detail=("sites", tuple(int(site) for site in sites)),
+    )
+
+
+def rejection_empty_mark_relation(
+    node: EnumerationNodeId,
+    relations: tuple[tuple[str, str], ...],
+) -> RejectionCertificate:
+    return RejectionCertificate(
+        node=node,
+        reason="empty_mark_relation",
+        detail=("relations", relations),
+    )
+
+
+def rejection_annotation_not_selected(
+    node: EnumerationNodeId,
+    *,
+    support: frozenset[CarrierSlotId],
+    selected_supports: frozenset[frozenset[CarrierSlotId]],
+    mode: AnnotationMode,
+) -> RejectionCertificate:
+    return RejectionCertificate(
+        node=node,
+        reason="annotation_not_selected",
+        detail=(
+            "support",
+            tuple(sorted(int(carrier) for carrier in support)),
+            "selected_supports",
+            tuple(
+                sorted(
+                    tuple(sorted(int(carrier) for carrier in selected_support))
+                    for selected_support in selected_supports
+                )
+            ),
+            "mode",
+            mode.value,
+        ),
+    )
+
+
+def rejection_render_duplicate(
+    node: EnumerationNodeId,
+    *,
+    rendered: str,
+    first_witness_id: str,
+) -> RejectionCertificate:
+    return RejectionCertificate(
+        node=node,
+        reason="render_duplicate",
+        detail=(
+            "rendered",
+            rendered,
+            "first_witness_id",
+            first_witness_id,
+        ),
+    )
+
+
 def enumeration_trace_to_jsonable(trace: EnumerationTrace) -> dict[str, object]:
     return {
+        "schema_version": trace.schema_version,
         "accepted": [
             _acceptance_to_jsonable(certificate)
             for certificate in trace.accepted
@@ -139,6 +243,9 @@ def enumeration_trace_to_jsonable(trace: EnumerationTrace) -> dict[str, object]:
 
 
 def enumeration_trace_from_jsonable(data: Mapping[str, object]) -> EnumerationTrace:
+    schema_version = int(data["schema_version"])
+    if schema_version != TRACE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported trace schema version: {schema_version}")
     return EnumerationTrace(
         accepted=tuple(
             _acceptance_from_jsonable(item)
@@ -155,6 +262,7 @@ def enumeration_trace_from_jsonable(data: Mapping[str, object]) -> EnumerationTr
         selected_solution_count=int(data["selected_solution_count"]),
         witness_count=int(data["witness_count"]),
         support_count=int(data["support_count"]),
+        schema_version=schema_version,
     )
 
 
@@ -275,8 +383,16 @@ __all__ = (
     "EnumerationNodeId",
     "EnumerationTrace",
     "RejectionCertificate",
+    "TRACE_SCHEMA_VERSION",
     "TraceIndex",
     "build_trace_index",
     "enumeration_trace_from_jsonable",
     "enumeration_trace_to_jsonable",
+    "rejection_annotation_not_selected",
+    "rejection_csp_unsatisfied",
+    "rejection_empty_direction_domain",
+    "rejection_empty_mark_relation",
+    "rejection_empty_tetra_domain",
+    "rejection_empty_tetra_relation",
+    "rejection_render_duplicate",
 )

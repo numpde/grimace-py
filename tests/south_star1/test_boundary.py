@@ -57,6 +57,26 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         with self.assertRaises(ModuleNotFoundError):
             importlib.import_module("grimace._south_star")
 
+    def test_completeness_checker_does_not_import_private_generator_helpers(
+        self,
+    ) -> None:
+        path = SOUTH_STAR1_ROOT / "completeness_checker.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        private_imports: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "stereo_witness":
+                continue
+            private_imports.extend(
+                alias.name
+                for alias in node.names
+                if alias.name.startswith("_")
+            )
+
+        self.assertEqual(private_imports, [])
+
 
 def _imports_rdkit(tree: ast.AST) -> bool:
     for node in ast.walk(tree):

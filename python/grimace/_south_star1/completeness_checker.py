@@ -10,6 +10,12 @@ from .enumeration_trace import RejectionCertificate
 from .enumeration_trace import TraceIndex
 from .enumeration_trace import build_trace_index
 from .graph_index import build_graph_index
+from .proof_terms import csp_key
+from .proof_terms import render_duplicate_node_id
+from .proof_terms import sequence_hash
+from .proof_terms import skeleton_key
+from .proof_terms import stereo_solution_key
+from .proof_terms import witness_node_id
 from .skeleton import TraversalSkeleton
 from .skeleton import enumerate_traversal_skeletons
 from .slots import SlotBundle
@@ -19,14 +25,10 @@ from .stereo_csp import StereoCSP
 from .stereo_csp import build_stereo_csp
 from .stereo_csp import select_stereo_solutions_with_certificates
 from .stereo_csp import solve_stereo_csp
-from .stereo_csp import stereo_solution_canonical_key
 from .stereo_witness import CertifiedWitness
-from .stereo_witness import _certified_witness_from_selected_solution
-from .stereo_witness import _prefix_key
-from .stereo_witness import _skeleton_key
+from .stereo_witness import build_certified_witness_from_selected_solution
 from .stereo_witness import enumerate_presentation_prefixes
 from .support_enumeration import TracedCertifiedSupportImage
-from .support_enumeration import _hash_sequence
 from .support_enumeration import enumerate_traced_certified_stereo_support
 
 
@@ -92,10 +94,7 @@ def replay_support_completeness_certificate(
         csp_by_key={},
     )
     certified_by_node = {
-        EnumerationNodeId(
-            kind="witness",
-            key=(certified.witness.id,),
-        ): certified
+        witness_node_id(certified.witness.id): certified
         for certified in result.certified_witnesses
     }
     _replay_domains(
@@ -131,7 +130,7 @@ def validate_rejection_certificate(
         csp, solution_key = _csp_and_solution_key(node_context, rejection.node)
         solutions = tuple(solve_stereo_csp(csp))
         feasible_by_key = {
-            stereo_solution_canonical_key(solution): solution
+            stereo_solution_key(solution): solution
             for solution in solutions
         }
         solution = feasible_by_key.get(solution_key)
@@ -143,7 +142,7 @@ def validate_rejection_certificate(
             mode=policy.annotation_mode,
         )
         selected_keys = {
-            stereo_solution_canonical_key(item.solution)
+            stereo_solution_key(item.solution)
             for item in selected
         }
         if solution_key in selected_keys:
@@ -245,10 +244,10 @@ def _replay_domains(
     seen_rendered: dict[str, str] = {}
     support_order: list[str] = []
     for skeleton in skeletons:
-        skeleton_key = _skeleton_key(skeleton)
-        context.skeleton_by_key[skeleton_key] = skeleton
+        skeleton_node_key = skeleton_key(skeleton)
+        context.skeleton_by_key[skeleton_node_key] = skeleton
         slots = allocate_traversal_slots(facts, skeleton)
-        context.slots_by_skeleton_key[skeleton_key] = slots
+        context.slots_by_skeleton_key[skeleton_node_key] = slots
 
         for prefix in enumerate_presentation_prefixes(
             facts=facts,
@@ -257,9 +256,8 @@ def _replay_domains(
         ):
             observed.prefix_count += 1
             observed.csp_count += 1
-            prefix_key = _prefix_key(prefix)
-            csp_key = (skeleton_key, prefix_key)
-            context.prefixes_by_key[csp_key] = prefix
+            node_key = csp_key(skeleton, prefix)
+            context.prefixes_by_key[node_key] = prefix
             csp = build_stereo_csp(
                 facts=facts,
                 skeleton=skeleton,
@@ -268,7 +266,7 @@ def _replay_domains(
                 policy=policy,
                 semantics=semantics,
             )
-            context.csp_by_key[csp_key] = csp
+            context.csp_by_key[node_key] = csp
             raw_solutions = tuple(solve_stereo_csp(csp))
             observed.feasible_solution_count += len(raw_solutions)
             selected = select_stereo_solutions_with_certificates(
@@ -279,7 +277,7 @@ def _replay_domains(
             observed.selected_solution_count += len(selected)
 
             if not raw_solutions:
-                node = EnumerationNodeId(kind="csp", key=csp_key)
+                node = EnumerationNodeId(kind="csp", key=node_key)
                 rejection = trace_index.rejected_by_node.get(node)
                 if rejection is None:
                     raise ValueError("missing CSP rejection certificate")
@@ -294,15 +292,15 @@ def _replay_domains(
                 continue
 
             selected_by_key = {
-                stereo_solution_canonical_key(item.solution): item
+                stereo_solution_key(item.solution): item
                 for item in selected
             }
             for solution in raw_solutions:
-                solution_key = stereo_solution_canonical_key(solution)
-                if solution_key not in selected_by_key:
+                solution_node_key = stereo_solution_key(solution)
+                if solution_node_key not in selected_by_key:
                     node = EnumerationNodeId(
                         kind="stereo_solution",
-                        key=(csp_key, solution_key),
+                        key=(node_key, solution_node_key),
                     )
                     rejection = trace_index.rejected_by_node.get(node)
                     if rejection is None:
@@ -317,7 +315,7 @@ def _replay_domains(
                     observed.rejected_nodes.add(node)  # type: ignore[union-attr]
 
             for selected_solution in selected:
-                certified = _certified_witness_from_selected_solution(
+                certified = build_certified_witness_from_selected_solution(
                     facts=facts,
                     skeleton=skeleton,
                     slots=slots,
@@ -327,10 +325,7 @@ def _replay_domains(
                     selected=selected_solution,
                     csp=csp,
                 )
-                node = EnumerationNodeId(
-                    kind="witness",
-                    key=(certified.witness.id,),
-                )
+                node = witness_node_id(certified.witness.id)
                 acceptance = trace_index.accepted_by_node.get(node)
                 if acceptance is None:
                     raise ValueError("missing witness acceptance certificate")
@@ -364,7 +359,7 @@ def _replay_domains(
                 else:
                     duplicate_node = EnumerationNodeId(
                         kind="witness",
-                        key=("render_duplicate", certified.witness.id),
+                        key=render_duplicate_node_id(certified.witness.id).key,
                     )
                     rejection = trace_index.rejected_by_node.get(duplicate_node)
                     if rejection is None:
@@ -467,10 +462,10 @@ def _validate_counts_and_hashes(
         raise ValueError("manifest support count mismatch")
     if result.support.strings != observed.support_strings:
         raise ValueError("support strings do not match accepted witness quotient")
-    if result.manifest.support_hash != _hash_sequence(observed.support_strings):
+    if result.manifest.support_hash != sequence_hash(observed.support_strings):
         raise ValueError("manifest support hash mismatch")
     witness_ids = tuple(certificate.witness_id for certificate in result.trace.accepted)
-    if result.manifest.witness_hash != _hash_sequence(witness_ids):
+    if result.manifest.witness_hash != sequence_hash(witness_ids):
         raise ValueError("manifest witness hash mismatch")
 
 

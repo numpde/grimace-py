@@ -1,5 +1,5 @@
 ---
-title: Runtime requirements
+title: Runtime
 ---
 
 Use this page to choose supported public runtime options.
@@ -39,8 +39,7 @@ The supported writer flags are:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-For current runtime scope and known gaps, see
-[Current limitations](current-limitations.md).
+For current runtime scope and known gaps, see [Limitations](current-limitations.md).
 
 For the difference between writer parity and chemical equivalence, see
 [Correctness contracts](correctness-contracts.md).

@@ -45,8 +45,8 @@ support for the `canonical=False, doRandom=True` writer convention.
 ## Current public contract
 
 The current public runtime scope is documented in
-[Runtime requirements](runtime.md), and active limitations are documented in
-[Current limitations](current-limitations.md).
+[Runtime](runtime.md), and active limitations are documented in
+[Limitations](current-limitations.md).
 
 Therefore, RDKit string support remains the oracle for current public parity
 tests. Parsed-object equivalence may be added as a separate evidence layer, but

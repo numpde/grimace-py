@@ -1,5 +1,5 @@
 ---
-title: Getting started
+title: Intro
 ---
 
 `grimace-py` installs as the PyPI distribution `grimace-py` and imports as
@@ -42,8 +42,8 @@ assert len(all_smiles) == 304
 ```
 
 Use `rootedAtAtom=-1` for the all-roots support, or pass a nonnegative atom
-index for one explicit root. See [Runtime requirements](runtime.md) for the
-full rooting rules.
+index for one explicit root. See [Runtime](runtime.md) for the full rooting
+rules.
 
 ## Decode one token at a time
 
@@ -110,8 +110,8 @@ The determinized decoder merges same-text continuations. Use
 ## Next pages
 
 - [Concepts](concepts.md)
-- [Runtime requirements](runtime.md)
-- [Python API](api/python.md)
+- [Runtime](runtime.md)
+- [API](api/python.md)
 - [Prepared molecules](guides/prepared-mol.md)
 - [Deviation diagnostics](guides/deviation.md)
 - [Token inventories](guides/token-inventory.md)

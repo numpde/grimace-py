@@ -35,7 +35,7 @@ use is not permitted under the current license.
 ## Quick example
 
 This example uses the currently supported runtime mode. See
-[Current limitations](docs/current-limitations.md) for scope and known gaps.
+[Limitations](docs/current-limitations.md) for scope and known gaps.
 
 ```python
 from rdkit import Chem
@@ -68,11 +68,11 @@ assert len(all_smiles) == 304
 Start with the [documentation site](https://numpde.github.io/grimace-py/), or
 read the checked-in [documentation index](docs/index.md):
 
-- [Getting started](docs/getting-started.md)
+- [Intro](docs/getting-started.md)
 - [Concepts](docs/concepts.md)
-- [Runtime requirements](docs/runtime.md)
-- [Current limitations](docs/current-limitations.md)
-- [Python API](docs/api/python.md)
+- [Runtime](docs/runtime.md)
+- [Limitations](docs/current-limitations.md)
+- [API](docs/api/python.md)
 - [Prepared molecules](docs/guides/prepared-mol.md)
 - [Deviation diagnostics](docs/guides/deviation.md)
 - [Token inventories](docs/guides/token-inventory.md)

@@ -1,5 +1,5 @@
 ---
-title: Current limitations
+title: Limitations
 ---
 
 Grimace's current public runtime is exact for its supported writer language,
@@ -13,8 +13,7 @@ The supported runtime mode is:
 - `doRandom=True`
 - `rootedAtAtom=-1` for all roots, or `rootedAtAtom >= 0` for one explicit root
 
-Supported writer-surface flags are listed in
-[Runtime requirements](runtime.md).
+Supported writer-surface flags are listed in [Runtime](runtime.md).
 
 ## RDKit serializer parity
 

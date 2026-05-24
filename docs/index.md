@@ -27,19 +27,16 @@ Plain `pip install grimace` installs an unrelated older package.
 
 Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
 
-See [Current limitations](current-limitations.md) for supported runtime scope
+See [Limitations](current-limitations.md) for supported runtime scope
 and known gaps.
 
 ## Start here
 
-- [Getting started](getting-started.md): install, enumerate support, and step a
-  decoder.
-- [Concepts](concepts.md): support, roots, decoder tokens, and writer parity.
-- [Runtime requirements](runtime.md): supported flags, root behavior, and
-  release matrix.
-- [Current limitations](current-limitations.md): runtime scope, known gaps,
-  and release surface.
-- [Python API](api/python.md): concise reference for public objects.
+- [Intro](getting-started.md)
+- [Concepts](concepts.md)
+- [Runtime](runtime.md)
+- [Limitations](current-limitations.md)
+- [API](api/python.md)
 
 ## Guides
 

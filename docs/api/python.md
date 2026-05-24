@@ -1,5 +1,5 @@
 ---
-title: Python API
+title: API
 ---
 
 ## Public surface
@@ -7,8 +7,8 @@ title: Python API
 The only supported public Python import name is `grimace`.
 
 This page is a reference. For the supported flag combinations and root
-semantics, start with [Runtime requirements](../runtime.md). For terminology,
-see [Concepts](../concepts.md).
+semantics, start with [Runtime](../runtime.md). For terminology, see
+[Concepts](../concepts.md).
 
 Current top-level exports:
 
@@ -58,8 +58,7 @@ This yields the complete exact support of Grimace's supported writer language as
 whole SMILES strings.
 
 Although the signature mirrors RDKit defaults, the current runtime does not
-support those defaults. Use the supported options from
-[Runtime requirements](../runtime.md).
+support those defaults. Use the supported options from [Runtime](../runtime.md).
 
 When `rootedAtAtom < 0`, the result is the exact union across all valid roots
 for the requested writer flags. `rootedAtAtom=-1` is the preferred public

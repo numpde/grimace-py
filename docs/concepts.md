@@ -61,7 +61,7 @@ still being outside that writer language.
 
 Use [Correctness contracts](correctness-contracts.md) for the detailed
 boundary between chemical semantics and writer parity. Use
-[Current limitations](current-limitations.md) for the current supported scope.
+[Limitations](current-limitations.md) for the current supported scope.
 
 ## What to use when
 

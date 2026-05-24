@@ -339,7 +339,7 @@ def select_stereo_solutions(
         maximal = _support_maximal_solutions(solutions)
         if not maximal:
             return ()
-        return (min(maximal, key=_canonical_stereo_solution_key),)
+        return (min(maximal, key=stereo_solution_canonical_key),)
 
     raise ValueError(f"unknown annotation mode: {mode!r}")
 
@@ -351,6 +351,20 @@ def select_stereo_solutions_with_certificates(
     mode: AnnotationMode,
 ) -> tuple[SelectedStereoSolution, ...]:
     selected = select_stereo_solutions(csp=csp, solutions=solutions, mode=mode)
+    canonical_candidates = (
+        _support_maximal_solutions(solutions)
+        if mode is AnnotationMode.CANONICAL
+        else selected
+    )
+    selected_key_by_id = {
+        id(solution): stereo_solution_canonical_key(solution)
+        for solution in selected
+    }
+    candidate_keys = frozenset(
+        stereo_solution_canonical_key(solution)
+        for solution in canonical_candidates
+    )
+    canonical_key = min(candidate_keys) if candidate_keys else None
     feasible_supports = frozenset(solution.marker_support for solution in solutions)
     selected_supports = frozenset(solution.marker_support for solution in selected)
     out: list[SelectedStereoSolution] = []
@@ -360,6 +374,11 @@ def select_stereo_solutions_with_certificates(
             selected_support=solution.marker_support,
             feasible_supports=feasible_supports,
             selected_supports=selected_supports,
+            canonical_key=canonical_key,
+            selected_solution_key=selected_key_by_id[id(solution)],
+            selected_solution_keys=candidate_keys,
+            feasible_solution_count=len(solutions),
+            selected_solution_count=len(selected),
         )
         certificate.validate()
         out.append(
@@ -1055,7 +1074,7 @@ def _support_maximal_solutions(
     )
 
 
-def _canonical_stereo_solution_key(
+def stereo_solution_canonical_key(
     solution: StereoSolution,
 ) -> tuple[object, ...]:
     return (
@@ -1107,4 +1126,5 @@ __all__ = (
     "select_stereo_solutions",
     "select_stereo_solutions_with_certificates",
     "solve_stereo_csp",
+    "stereo_solution_canonical_key",
 )

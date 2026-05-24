@@ -27,6 +27,7 @@ from typing import TypeVar
 
 from .annotation import ValidWitness
 from .certificates import WitnessCertificate
+from .certificates import certify_traversal_assignment
 from .constraints import TraversalAssignment
 from .constraints import validate_stereo_traversal_witness
 from .enumerate import SupportImage
@@ -73,8 +74,18 @@ class StereoWitnessSearchStats:
 
 
 @dataclass(frozen=True, slots=True)
+class CertifiedStereoWitnessSearchStats:
+    prefix_count: int
+    csp_count: int
+    feasible_solution_count: int
+    selected_solution_count: int
+    witness_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class CertifiedWitness:
     witness: ValidWitness
+    assignment: TraversalAssignment
     certificate: WitnessCertificate
 
 
@@ -216,52 +227,92 @@ def enumerate_certified_stereo_witnesses_for_skeleton(
         )
 
         for selected in selected_solutions:
-            assignment = assignment_from_prefix_solution(prefix, selected.solution)
-            constraints = validate_stereo_traversal_witness(
+            yield _certified_witness_from_selected_solution(
                 facts=facts,
                 skeleton=skeleton,
                 slots=slots,
-                assignment=assignment,
+                prefix=prefix,
                 policy=policy,
                 semantics=semantics,
+                csp=csp,
+                selected=selected,
             )
 
-            rendered = render_stereo_traversal(
-                facts=facts,
-                skeleton=skeleton,
-                slots=slots,
-                assignment=assignment,
-                policy=policy,
-                semantics=semantics,
-                validate=False,
-            )
-            witness = ValidWitness(
-                id=_witness_id(
+
+def collect_certified_stereo_witnesses_for_skeleton(
+    *,
+    facts: MoleculeFacts,
+    skeleton: TraversalSkeleton,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    slots: SlotBundle | None = None,
+    eligible_marker_carriers: frozenset[CarrierSlotId] | None = None,
+    allow_global_directional_scope: bool = False,
+) -> tuple[tuple[CertifiedWitness, ...], CertifiedStereoWitnessSearchStats]:
+    """Materialize certified witnesses and exact per-skeleton solver counts."""
+
+    facts.validate()
+    policy.validate_for_facts(facts)
+
+    if slots is None:
+        slots = allocate_traversal_slots(facts, skeleton)
+
+    prefix_count = 0
+    csp_count = 0
+    feasible_solution_count = 0
+    selected_solution_count = 0
+    witnesses: list[CertifiedWitness] = []
+
+    for prefix in enumerate_presentation_prefixes(
+        facts=facts,
+        slots=slots,
+        policy=policy,
+    ):
+        prefix_count += 1
+        csp_count += 1
+        csp = build_stereo_csp(
+            facts=facts,
+            skeleton=skeleton,
+            slots=slots,
+            prefix=prefix,
+            policy=policy,
+            semantics=semantics,
+            eligible_marker_carriers=eligible_marker_carriers,
+            allow_global_directional_scope=allow_global_directional_scope,
+        )
+        raw_solutions = tuple(solve_stereo_csp(csp))
+        feasible_solution_count += len(raw_solutions)
+        selected_solutions = select_stereo_solutions_with_certificates(
+            csp=csp,
+            solutions=raw_solutions,
+            mode=policy.annotation_mode,
+        )
+        selected_solution_count += len(selected_solutions)
+
+        for selected in selected_solutions:
+            witnesses.append(
+                _certified_witness_from_selected_solution(
+                    facts=facts,
                     skeleton=skeleton,
                     slots=slots,
-                    assignment=assignment,
-                    rendered=rendered,
-                ),
-                rendered=rendered,
-                annotation_count=_annotation_count(assignment),
-                constraints=constraints,
+                    prefix=prefix,
+                    policy=policy,
+                    semantics=semantics,
+                    selected=selected,
+                    csp=csp,
+                )
             )
-            stereo_certificate = certify_stereo_solution(
-                csp=csp,
-                solution=selected.solution,
-                annotation_certificate=selected.certificate,
-            )
-            yield CertifiedWitness(
-                witness=witness,
-                certificate=WitnessCertificate(
-                    witness_id=witness.id,
-                    rendered=rendered,
-                    skeleton_key=_skeleton_key(skeleton),
-                    prefix_key=_prefix_key(prefix),
-                    assignment_key=_assignment_key(assignment),
-                    stereo_solution=stereo_certificate,
-                ),
-            )
+
+    return (
+        tuple(witnesses),
+        CertifiedStereoWitnessSearchStats(
+            prefix_count=prefix_count,
+            csp_count=csp_count,
+            feasible_solution_count=feasible_solution_count,
+            selected_solution_count=selected_solution_count,
+            witness_count=len(witnesses),
+        ),
+    )
 
 
 def collect_stereo_witnesses_for_skeleton(
@@ -410,7 +461,75 @@ def _dict_product(
         return
 
     for values in product(*value_domains):
-        yield dict(zip(keys, values, strict=True))
+            yield dict(zip(keys, values, strict=True))
+
+
+def _certified_witness_from_selected_solution(
+    *,
+    facts: MoleculeFacts,
+    skeleton: TraversalSkeleton,
+    slots: SlotBundle,
+    prefix: PresentationPrefix,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    csp,
+    selected,
+) -> CertifiedWitness:
+    assignment = assignment_from_prefix_solution(prefix, selected.solution)
+    constraints = validate_stereo_traversal_witness(
+        facts=facts,
+        skeleton=skeleton,
+        slots=slots,
+        assignment=assignment,
+        policy=policy,
+        semantics=semantics,
+    )
+    rendered = render_stereo_traversal(
+        facts=facts,
+        skeleton=skeleton,
+        slots=slots,
+        assignment=assignment,
+        policy=policy,
+        semantics=semantics,
+        validate=False,
+    )
+    witness = ValidWitness(
+        id=_witness_id(
+            skeleton=skeleton,
+            slots=slots,
+            assignment=assignment,
+            rendered=rendered,
+        ),
+        rendered=rendered,
+        annotation_count=_annotation_count(assignment),
+        constraints=constraints,
+    )
+    stereo_certificate = certify_stereo_solution(
+        csp=csp,
+        solution=selected.solution,
+        annotation_certificate=selected.certificate,
+    )
+    traversal_certificate = certify_traversal_assignment(
+        facts=facts,
+        skeleton=skeleton,
+        slots=slots,
+        assignment=assignment,
+        policy=policy,
+        semantics=semantics,
+    )
+    return CertifiedWitness(
+        witness=witness,
+        assignment=assignment,
+        certificate=WitnessCertificate(
+            witness_id=witness.id,
+            rendered=rendered,
+            skeleton_key=_skeleton_key(skeleton),
+            prefix_key=_prefix_key(prefix),
+            assignment_key=_assignment_key(assignment),
+            traversal_relation_certificates=traversal_certificate,
+            stereo_solution=stereo_certificate,
+        ),
+    )
 
 
 def _annotation_count(assignment: TraversalAssignment) -> int:
@@ -593,8 +712,10 @@ def _prefix_key(prefix: PresentationPrefix) -> tuple[object, ...]:
 
 
 __all__ = (
+    "CertifiedStereoWitnessSearchStats",
     "CertifiedWitness",
     "StereoWitnessSearchStats",
+    "collect_certified_stereo_witnesses_for_skeleton",
     "collect_stereo_witnesses_for_skeleton",
     "enumerate_certified_stereo_witnesses_for_skeleton",
     "enumerate_presentation_prefixes",

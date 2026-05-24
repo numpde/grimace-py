@@ -100,6 +100,19 @@ and they do not repair or filter generated support.
 witness multiplicity because distinct traversal, prefix, or CSP witnesses may
 render to the same support string.
 
+### Certificate Replay
+
+Witness certificates are replayable by an RDKit-free checker. The checker
+reconstructs the traversal, presentation, and CSP relations from
+`MoleculeFacts`, policy, semantics, skeleton, slots, and assignment, then
+verifies that the certificate covers all required relations and that every
+certified row is valid.
+
+A support enumeration manifest records skeleton, prefix, CSP, solution,
+witness, and support counts plus deterministic support and witness hashes. The
+manifest is an audit ledger for a finite enumeration run; individual witness
+certificates remain the proof objects for emitted strings.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

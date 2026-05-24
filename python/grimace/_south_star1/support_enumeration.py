@@ -26,8 +26,10 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
 from dataclasses import dataclass
+from hashlib import blake2b
 
 from .annotation import ValidWitness
+from .certificates import SupportEnumerationManifest
 from .enumerate import SupportImage
 from .enumerate import render_image_from_witnesses
 from .facts import MoleculeFacts
@@ -40,6 +42,7 @@ from .skeleton import enumerate_traversal_skeletons
 from .slots import SlotBundle
 from .slots import allocate_traversal_slots
 from .stereo_witness import CertifiedWitness
+from .stereo_witness import collect_certified_stereo_witnesses_for_skeleton
 from .stereo_witness import enumerate_certified_stereo_witnesses_for_skeleton
 from .stereo_witness import enumerate_stereo_witnesses_for_skeleton
 
@@ -71,6 +74,7 @@ class StereoSupportResult:
 class CertifiedSupportImage:
     support: SupportImage
     certified_witnesses: tuple[CertifiedWitness, ...]
+    manifest: SupportEnumerationManifest
 
 
 def enumerate_stereo_witnesses(
@@ -234,16 +238,46 @@ def enumerate_certified_stereo_support(
 ) -> CertifiedSupportImage:
     """Enumerate certified witnesses and their unique rendered support image."""
 
-    certified = tuple(
-        enumerate_certified_stereo_witnesses(
+    facts.validate()
+    policy.validate_for_facts(facts)
+
+    if skeletons is None:
+        index = build_graph_index(facts)
+        skeleton_tuple = enumerate_traversal_skeletons(
             facts=facts,
+            index=index,
+            policy=policy,
+        )
+    else:
+        skeleton_tuple = tuple(skeletons)
+
+    certified_list: list[CertifiedWitness] = []
+    prefix_count = 0
+    csp_count = 0
+    feasible_solution_count = 0
+    selected_solution_count = 0
+    for skeleton in skeleton_tuple:
+        slots = allocate_traversal_slots(facts, skeleton)
+        if eligible_marker_carriers is None:
+            eligible = None
+        else:
+            eligible = eligible_marker_carriers(facts, skeleton, slots)
+        witnesses, stats = collect_certified_stereo_witnesses_for_skeleton(
+            facts=facts,
+            skeleton=skeleton,
+            slots=slots,
             policy=policy,
             semantics=semantics,
-            skeletons=skeletons,
-            eligible_marker_carriers=eligible_marker_carriers,
+            eligible_marker_carriers=eligible,
             allow_global_directional_scope=allow_global_directional_scope,
         )
-    )
+        certified_list.extend(witnesses)
+        prefix_count += stats.prefix_count
+        csp_count += stats.csp_count
+        feasible_solution_count += stats.feasible_solution_count
+        selected_solution_count += stats.selected_solution_count
+
+    certified = tuple(certified_list)
     support = render_image_from_witnesses(
         certified_witness.witness
         for certified_witness in certified
@@ -251,7 +285,49 @@ def enumerate_certified_stereo_support(
     return CertifiedSupportImage(
         support=support,
         certified_witnesses=certified,
+        manifest=_support_manifest(
+            skeleton_count=len(skeleton_tuple),
+            prefix_count=prefix_count,
+            csp_count=csp_count,
+            feasible_solution_count=feasible_solution_count,
+            selected_solution_count=selected_solution_count,
+            support=support,
+            certified_witnesses=certified,
+        ),
     )
+
+
+def _support_manifest(
+    *,
+    skeleton_count: int,
+    prefix_count: int,
+    csp_count: int,
+    feasible_solution_count: int,
+    selected_solution_count: int,
+    support: SupportImage,
+    certified_witnesses: tuple[CertifiedWitness, ...],
+) -> SupportEnumerationManifest:
+    return SupportEnumerationManifest(
+        skeleton_count=skeleton_count,
+        prefix_count=prefix_count,
+        csp_count=csp_count,
+        feasible_solution_count=feasible_solution_count,
+        selected_solution_count=selected_solution_count,
+        witness_count=len(certified_witnesses),
+        support_count=len(support.strings),
+        support_hash=_hash_sequence(support.strings),
+        witness_hash=_hash_sequence(
+            witness.witness.id for witness in certified_witnesses
+        ),
+    )
+
+
+def _hash_sequence(values: Iterable[str]) -> str:
+    digest = blake2b(digest_size=16)
+    for value in values:
+        digest.update(value.encode("utf8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def enumerate_stereo_support_with_stats(

@@ -85,10 +85,15 @@ class WorkflowPostureTests(unittest.TestCase):
 
     def test_release_workflow_allowlists_uploaded_and_published_artifacts(self) -> None:
         workflow = read_text(".github/workflows/release.yml")
+        self.assertIn('MATURIN_PIP_VERSION: "1.13.1"', workflow)
+        self.assertIn('MATURIN_ACTION_VERSION: "v1.13.1"', workflow)
+        self.assertEqual(workflow.count("maturin-version: ${{ env.MATURIN_ACTION_VERSION }}"), 2)
         self.assertIn(
-            "args: --release --locked --out dist -i python${{ matrix.python-version }}",
+            "args: --release --locked --compatibility pypi --out dist -i python${{ matrix.python-version }}",
             workflow,
         )
+        self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
+        self.assertIn("python -m pip install --no-build-isolation dist/*.tar.gz", workflow)
         self.assertIn("path: dist/*.whl", workflow)
         self.assertIn("path: dist/*.tar.gz", workflow)
         self.assertEqual(workflow.count("if-no-files-found: error"), 2)

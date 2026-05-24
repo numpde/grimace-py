@@ -256,7 +256,9 @@ until the dependency surface is large enough to justify the extra object.
   Added release artifact allowlist validation before GitHub release and PyPI
   publish. Pinned workflow action refs to commit SHAs and GitHub-hosted runner
   labels to `ubuntu-24.04`. Tag-triggered release builds now require `vX.Y.Z`
-  tag shape before building artifacts.
+  tag shape before building artifacts. The release workflow pins the maturin
+  version used by `PyO3/maturin-action` and uses no-build-isolation sdist
+  install checks with the same pinned maturin version.
 
 - [x] Final validation before committing implementation.
   - `make checks`.

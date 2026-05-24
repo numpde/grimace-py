@@ -6,6 +6,9 @@ import unittest
 
 from rdkit import Chem
 
+from grimace._south_star1.audit_rdkit import (
+    SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES,
+)
 from grimace._south_star1.audit_rdkit import SOUTH_STAR1_SUPPORTED_V0_AUDIT_CASES
 from grimace._south_star1.audit_rdkit import SOUTH_STAR1_UNSUPPORTED_V0_AUDIT_CASES
 from grimace._south_star1.audit_rdkit import audit_generated_support_with_rdkit
@@ -54,6 +57,25 @@ class RdkitAuditTest(unittest.TestCase):
 
                 self.assertIs(raised.exception.kind, case.expected_error_kind)
 
+    def test_experimental_exact_equivalence_audit_matrix_roundtrips(self) -> None:
+        for case in SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES:
+            with self.subTest(case=case.name):
+                results = audit_generated_support_with_rdkit(
+                    Chem.MolFromSmiles(case.smiles),
+                    policy_options=case.policy_options,
+                    adapter_options=case.adapter_options,
+                )
+                summary = summarize_rdkit_audit(
+                    case_name=case.name,
+                    input_smiles=case.smiles,
+                    results=results,
+                )
+
+                self.assertTrue(results)
+                self.assertTrue(summary.ok, summary)
+                if case.max_support_size is not None:
+                    self.assertLessEqual(summary.support_count, case.max_support_size)
+
     def test_audit_accepts_explicit_skeleton_slice(self) -> None:
         mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
         facts = ordinary_molecule_facts_from_rdkit(mol)
@@ -85,6 +107,42 @@ class RdkitAuditTest(unittest.TestCase):
                     reparsed_support = _support_for_smiles(generated)
                     self.assertEqual(reparsed_support, original_support, generated)
 
+    def test_exact_tetra_support_is_stable_under_rdkit_reparse(self) -> None:
+        case = SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES[0]
+        original_support = _support_for_smiles(
+            case.smiles,
+            adapter_options=case.adapter_options,
+        )
+        self.assertTrue(original_support)
+
+        for generated in original_support:
+            reparsed_support = _support_for_smiles(
+                generated,
+                adapter_options=case.adapter_options,
+            )
+            self.assertEqual(reparsed_support, original_support, generated)
+
+    def test_exact_directional_representatives_are_stable_under_rdkit_reparse(
+        self,
+    ) -> None:
+        case = SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES[1]
+        original_support = tuple(
+            sorted(
+                _support_for_smiles(
+                    case.smiles,
+                    adapter_options=case.adapter_options,
+                )
+            )
+        )
+        self.assertTrue(original_support)
+
+        for generated in original_support[:8]:
+            reparsed_support = _support_for_smiles(
+                generated,
+                adapter_options=case.adapter_options,
+            )
+            self.assertEqual(frozenset(reparsed_support), frozenset(original_support))
+
     def test_witness_audit_preserves_witness_context(self) -> None:
         mol = Chem.MolFromSmiles("CCO")
         facts = ordinary_molecule_facts_from_rdkit(mol)
@@ -103,8 +161,12 @@ class RdkitAuditTest(unittest.TestCase):
         self.assertTrue(all(result.constraints for result in results))
 
 
-def _support_for_smiles(text: str) -> frozenset[str]:
-    facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+def _support_for_smiles(text: str, *, adapter_options=None) -> frozenset[str]:
+    mol = Chem.MolFromSmiles(text)
+    if adapter_options is None:
+        facts = ordinary_molecule_facts_from_rdkit(mol)
+    else:
+        facts = ordinary_molecule_facts_from_rdkit(mol, adapter_options)
     image = enumerate_stereo_support(
         facts=facts,
         policy=ordinary_policy_for_facts(facts),

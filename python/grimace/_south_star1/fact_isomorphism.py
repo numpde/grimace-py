@@ -592,7 +592,6 @@ def _occurrence_key(
         occurrence.kind.value,
         None if occurrence.atom is None else int(atom_map[occurrence.atom]),
         None if occurrence.bond is None else int(bond_map[occurrence.bond]),
-        occurrence.ordinal,
     )
 
 
@@ -603,7 +602,6 @@ def _identity_occurrence_key(
         occurrence.kind.value,
         None if occurrence.atom is None else int(occurrence.atom),
         None if occurrence.bond is None else int(occurrence.bond),
-        occurrence.ordinal,
     )
 
 

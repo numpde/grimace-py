@@ -19,6 +19,7 @@ from .fact_isomorphism import facts_are_isomorphic
 from .ordinary_policy import OrdinaryPolicyOptions
 from .ordinary_policy import ordinary_policy_for_facts
 from .ordinary_semantics import OrdinarySmilesSemantics
+from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from .rdkit_adapter import RdkitOrdinaryExtractionOptions
 from .rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from .semantics import ParserSemantics
@@ -104,6 +105,33 @@ SOUTH_STAR1_UNSUPPORTED_V0_AUDIT_CASES = (
         kind="unsupported",
         tags=("enhanced", "tetra"),
         expected_error_kind=SouthStarErrorKind.UNSUPPORTED_STEREO,
+    ),
+)
+
+
+_EXACT_EQUIVALENCE_ADAPTER_OPTIONS = RdkitOrdinaryExtractionOptions(
+    stereo_site_options=OrdinaryStereoSiteOptions(
+        ligand_equivalence="exact_graph_automorphism",
+    ),
+)
+
+
+SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES = (
+    RdkitAuditCase(
+        name="exact_deep_distinct_tetra",
+        smiles="[C@H](F)(CBr)CCl",
+        kind="supported",
+        tags=("experimental", "exact_ligand_equivalence", "tetra"),
+        adapter_options=_EXACT_EQUIVALENCE_ADAPTER_OPTIONS,
+        max_support_size=256,
+    ),
+    RdkitAuditCase(
+        name="exact_deep_distinct_directional",
+        smiles="BrC/C(CCl)=C/F",
+        kind="supported",
+        tags=("experimental", "exact_ligand_equivalence", "directional"),
+        adapter_options=_EXACT_EQUIVALENCE_ADAPTER_OPTIONS,
+        max_support_size=1024,
     ),
 )
 
@@ -306,6 +334,7 @@ __all__ = (
     "RdkitAuditResult",
     "RdkitAuditSummary",
     "RdkitWitnessAuditResult",
+    "SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES",
     "SOUTH_STAR1_SUPPORTED_V0_AUDIT_CASES",
     "SOUTH_STAR1_UNSUPPORTED_V0_AUDIT_CASES",
     "audit_generated_support_with_rdkit",

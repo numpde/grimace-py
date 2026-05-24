@@ -87,3 +87,8 @@ whether two ligand occurrences are equivalent.
 
 This option is opt-in and is not part of the v0 conformance corpus. The v0
 default remains `ligand_equivalence="immediate_color"`.
+
+The current exact mode is atom/bond graph exact. It does not yet make
+pre-existing stereo labels part of the automorphism relation; that future
+extension should be named separately, for example as stereochemical-graph
+automorphism.

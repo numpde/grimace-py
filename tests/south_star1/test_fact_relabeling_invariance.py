@@ -21,8 +21,12 @@ from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
+from grimace._south_star1.ordinary_stereo_sites import add_ordinary_potential_sites
+from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from grimace._south_star1.support_enumeration import enumerate_stereo_support
 
+from tests.south_star1.helpers import deep_directional_endpoint_facts
+from tests.south_star1.helpers import deep_tetra_ligand_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
@@ -41,6 +45,25 @@ class FactRelabelingInvarianceTest(unittest.TestCase):
                 relabeled = relabel_molecule_facts(facts, _reverse_relabeling(facts))
 
                 self.assertEqual(_support_set(facts), _support_set(relabeled))
+
+    def test_exact_equivalence_support_is_invariant_under_fact_relabeling(self) -> None:
+        exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_graph_automorphism"
+        )
+        cases = (
+            _exact_tetra_candidate_facts(),
+            deep_directional_endpoint_facts(right_terminal="Cl"),
+        )
+
+        for facts in cases:
+            with self.subTest(atom_count=len(facts.atoms), bond_count=len(facts.bonds)):
+                original = add_ordinary_potential_sites(facts, options=exact)
+                relabeled = add_ordinary_potential_sites(
+                    relabel_molecule_facts(facts, _reverse_relabeling(facts)),
+                    options=exact,
+                )
+
+                self.assertEqual(_support_set(original), _support_set(relabeled))
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +179,14 @@ def _reverse_map(values, constructor):
         value: constructor(int(reversed_value))
         for value, reversed_value in zip(sorted_values, reversed_values)
     }
+
+
+def _exact_tetra_candidate_facts() -> MoleculeFacts:
+    base = deep_tetra_ligand_facts(right_terminal="Cl")
+    return replace(
+        base,
+        atoms=(replace(base.atoms[0], implicit_h_count=1),) + base.atoms[1:],
+    )
 
 
 def _relabel_bond(bond: BondFacts, relabeling: FactRelabeling) -> BondFacts:

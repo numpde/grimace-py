@@ -6,8 +6,10 @@ import unittest
 
 from rdkit import Chem
 
+from grimace._south_star1.audit_rdkit import RdkitAuditCase
 from grimace._south_star1.audit_rdkit import audit_generated_support_with_rdkit
 from grimace._south_star1.audit_rdkit import audit_generated_witnesses_with_rdkit
+from grimace._south_star1.audit_rdkit import summarize_rdkit_audit
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -15,12 +17,66 @@ from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdki
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 
 
-class RdkitAuditTest(unittest.TestCase):
-    def test_audit_reports_nonstereo_support_as_isomorphic(self) -> None:
-        results = audit_generated_support_with_rdkit(Chem.MolFromSmiles("CCO"))
+SUPPORTED_AUDIT_CASES = (
+    RdkitAuditCase(
+        name="nonstereo_tree",
+        smiles="CCO",
+        kind="supported",
+        tags=("nonstereo",),
+        max_support_size=12,
+    ),
+    RdkitAuditCase(
+        name="simple_directional",
+        smiles="C(/F)=C(\\Cl)",
+        kind="supported",
+        tags=("directional",),
+        max_support_size=64,
+    ),
+    RdkitAuditCase(
+        name="ring_tetra",
+        smiles="[C@H]1(F)CO1",
+        kind="supported",
+        tags=("ring", "tetra"),
+        max_support_size=168,
+    ),
+    RdkitAuditCase(
+        name="disconnected_stereo",
+        smiles="CCO.[C@H](F)(Cl)Br",
+        kind="supported",
+        tags=("disconnected", "tetra"),
+        max_support_size=432,
+    ),
+    RdkitAuditCase(
+        name="mixed_tetra_directional",
+        smiles="[C@H](F)(Cl)C(/F)=C(\\Cl)",
+        kind="supported",
+        tags=("mixed", "tetra", "directional"),
+        max_support_size=1024,
+    ),
+)
 
-        self.assertTrue(results)
-        self.assertTrue(all(result.ok for result in results))
+
+class RdkitAuditTest(unittest.TestCase):
+    def test_supported_audit_matrix_roundtrips_to_isomorphic_facts(self) -> None:
+        for case in SUPPORTED_AUDIT_CASES:
+            with self.subTest(case=case.name):
+                results = audit_generated_support_with_rdkit(
+                    Chem.MolFromSmiles(case.smiles),
+                    policy_options=case.policy_options,
+                    adapter_options=case.adapter_options,
+                )
+                summary = summarize_rdkit_audit(
+                    case_name=case.name,
+                    input_smiles=case.smiles,
+                    results=results,
+                )
+
+                self.assertTrue(results)
+                self.assertTrue(summary.ok, summary)
+                self.assertEqual(summary.parsed_count, summary.support_count)
+                self.assertIsNone(summary.first_failure)
+                if case.max_support_size is not None:
+                    self.assertLessEqual(summary.support_count, case.max_support_size)
 
     def test_audit_accepts_explicit_skeleton_slice(self) -> None:
         mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
@@ -37,38 +93,6 @@ class RdkitAuditTest(unittest.TestCase):
         )
 
         results = audit_generated_support_with_rdkit(mol, skeletons=skeletons)
-
-        self.assertTrue(results)
-        self.assertTrue(all(result.ok for result in results))
-
-    def test_audit_reports_directional_support_as_isomorphic(self) -> None:
-        results = audit_generated_support_with_rdkit(
-            Chem.MolFromSmiles("C(/F)=C(\\Cl)")
-        )
-
-        self.assertTrue(results)
-        self.assertTrue(all(result.ok for result in results))
-
-    def test_audit_reports_ring_tetra_support_as_isomorphic(self) -> None:
-        results = audit_generated_support_with_rdkit(
-            Chem.MolFromSmiles("[C@H]1(F)CO1")
-        )
-
-        self.assertTrue(results)
-        self.assertTrue(all(result.ok for result in results))
-
-    def test_audit_reports_disconnected_stereo_support_as_isomorphic(self) -> None:
-        results = audit_generated_support_with_rdkit(
-            Chem.MolFromSmiles("CCO.[C@H](F)(Cl)Br")
-        )
-
-        self.assertTrue(results)
-        self.assertTrue(all(result.ok for result in results))
-
-    def test_audit_reports_mixed_tetra_directional_support_as_isomorphic(self) -> None:
-        results = audit_generated_support_with_rdkit(
-            Chem.MolFromSmiles("[C@H](F)(Cl)C(/F)=C(\\Cl)")
-        )
 
         self.assertTrue(results)
         self.assertTrue(all(result.ok for result in results))

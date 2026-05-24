@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 import html
 import math
 import os
@@ -9,11 +10,17 @@ import statistics
 import time
 import unittest
 from dataclasses import asdict, dataclass
+from typing import Any
 
 from rdkit import Chem, rdBase
 
 import grimace
-from tests.perf._history import append_history_record, current_run_metadata
+from tests.perf._history import (
+    append_history_record,
+    current_machine_metadata,
+    current_run_metadata,
+    latest_history_record,
+)
 from tests.helpers.mols import parse_smiles
 
 
@@ -72,6 +79,54 @@ def _format_bold_duration(mean: float, stdev: float) -> str:
     return f"**{mean * 1_000:.1f}** ± {stdev * 1_000:.1f} ms"
 
 
+def _format_recorded_at(value: Any) -> str:
+    if not value:
+        return "not recorded"
+    try:
+        recorded_at = datetime.fromisoformat(str(value)).astimezone(timezone.utc)
+    except ValueError:
+        return str(value)
+    return recorded_at.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _format_bytes(value: Any) -> str:
+    if value is None:
+        return "not recorded"
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    scaled = float(size)
+    unit = units[0]
+    for unit in units:
+        if scaled < 1024 or unit == units[-1]:
+            break
+        scaled /= 1024
+    if scaled.is_integer():
+        return f"{int(scaled)} {unit}"
+    return f"{scaled:.1f} {unit}"
+
+
+def _format_markdown_table_value(value: Any) -> str:
+    return str(value).replace("|", r"\|")
+
+
+def _format_cpu(machine: dict[str, Any]) -> str:
+    model = machine.get("cpu_model") or "not recorded"
+    visible_cpus = machine.get("visible_cpus")
+    if visible_cpus is None:
+        return str(model)
+    return f"{model}; {visible_cpus} logical CPUs visible"
+
+
+def _metadata_with_machine(metadata: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(metadata.get("machine"), dict):
+        return metadata
+    return {**metadata, "machine": current_machine_metadata()}
+
+
 PLOT_SERIES = (
     ("Grimace enum", "enum_mean_s", "enum_std_s", "#2563eb"),
     (
@@ -127,12 +182,13 @@ class ReadmeTimingPerfTests(unittest.TestCase):
     )
 
     def test_generate_readme_timing_table(self) -> None:
+        metadata = current_run_metadata()
         rows = self._measure_rows()
         self._write_tsv(rows)
         self._write_plots_from_tsv()
-        document = self._render_document_from_tsv()
+        document = self._render_document_from_tsv(metadata)
         self.OUTPUT_MD_PATH.write_text(document, encoding="utf-8")
-        self._append_history_snapshot(rows)
+        self._append_history_snapshot(rows, metadata)
 
         print()
         print(f"Wrote timing data: {self.OUTPUT_TSV_PATH}")
@@ -421,11 +477,15 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 score += overlap.width * overlap.height
         return score
 
-    def _append_history_snapshot(self, rows: list[TimingRow]) -> None:
+    def _append_history_snapshot(
+        self,
+        rows: list[TimingRow],
+        metadata: dict[str, Any],
+    ) -> None:
         append_history_record(
             {
                 "kind": self.HISTORY_KIND,
-                **current_run_metadata(),
+                **metadata,
                 "benchmark": "tests.perf.test_readme_timings",
                 "timings_tsv": str(self.OUTPUT_TSV_PATH.relative_to(self.OUTPUT_TSV_PATH.parents[1])),
                 "timings_md": str(self.OUTPUT_MD_PATH.relative_to(self.OUTPUT_MD_PATH.parents[1])),
@@ -434,7 +494,13 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             }
         )
 
-    def _render_document_from_tsv(self) -> str:
+    def _render_document_from_tsv(
+        self,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        if metadata is None:
+            metadata = latest_history_record(self.HISTORY_KIND) or current_run_metadata()
+        metadata = _metadata_with_machine(metadata)
         header = (
             "| Molecule | Atoms | Support | Grimace enum (per-root union) | "
             "Decoder enum (branch-preserving, per-root) | "
@@ -520,6 +586,8 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "on one development machine. Treat them as indicative, not as a portability,",
             "stability, or universality guarantee.",
             "",
+            *self._render_benchmark_environment(metadata),
+            "",
             "- This is a small curated benchmark: 9 molecules, 2 writer modes, and",
             "  7 timing repeats per row.",
             "- This is not a workload study and not an exact-versus-exact comparison.",
@@ -580,6 +648,36 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             *rendered_figures["stereo"],
         ]
         return "\n".join(lines)
+
+    @staticmethod
+    def _render_benchmark_environment(metadata: dict[str, Any]) -> tuple[str, ...]:
+        machine = metadata["machine"]
+        rows = (
+            ("Recorded", _format_recorded_at(metadata.get("recorded_at_utc"))),
+            (
+                "Runtime",
+                f"Python {metadata.get('python', 'not recorded')}, "
+                f"RDKit {metadata.get('rdkit', 'not recorded')}",
+            ),
+            ("Platform", metadata.get("platform", "not recorded")),
+            ("CPU", _format_cpu(machine)),
+            (
+                "Memory limit",
+                _format_bytes(machine.get("cgroup_memory_limit_bytes")),
+            ),
+            ("Container", "`compose/perf.yml` perf service, network disabled"),
+        )
+        lines = [
+            "## Benchmark environment",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+        ]
+        lines.extend(
+            f"| {field} | {_format_markdown_table_value(value)} |"
+            for field, value in rows
+        )
+        return tuple(lines)
 
     def _sampling_trials(
         self,

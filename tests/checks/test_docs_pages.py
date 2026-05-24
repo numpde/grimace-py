@@ -87,6 +87,20 @@ class DocsPagesTests(unittest.TestCase):
         self.assertIn("white-space: nowrap;", timings)
         self.assertEqual(2, timings.count("{: .timings-table}"))
 
+    def test_timings_environment_is_present_and_public(self) -> None:
+        timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
+        self.assertIn("## Benchmark environment", timings)
+        for field in (
+            "| Recorded |",
+            "| Runtime |",
+            "| Platform |",
+            "| CPU |",
+            "| Memory limit |",
+            "| Container |",
+        ):
+            self.assertIn(field, timings)
+        self.assertNotIn("hostname", timings.lower())
+
     def test_timings_plots_are_captioned_and_present(self) -> None:
         timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
         self.assertEqual(18, timings.count('<figure class="timing-plot">'))

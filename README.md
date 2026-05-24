@@ -26,7 +26,6 @@ import grimace
 
 Plain `pip install grimace` installs an unrelated older package.
 
-Documentation: [numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/).
 Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
 
 `grimace-py` is distributed under `PolyForm-Noncommercial-1.0.0`. Commercial
@@ -65,16 +64,11 @@ assert len(all_smiles) == 304
 - Build dataset token coverage with `MolToSmilesTokenInventorySuperset(...)`.
 - Reuse prepared molecules with `PrepareMol(...)` and `PreparedMol`.
 
-Start with the [documentation site](https://numpde.github.io/grimace-py/), or
-read the checked-in [documentation index](docs/index.md):
+## Documentation
 
-- [Intro](docs/getting-started.md)
-- [Concepts](docs/concepts.md)
-- [Runtime](docs/runtime.md)
-- [Limitations](docs/current-limitations.md)
-- [Guides](docs/guides.md)
-- [Timings](docs/timings.md)
-- [API](docs/api/python.md)
+Please find the main documentation at
+[numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/), or read
+the checked-in [documentation index](docs/index.md).
 
 ## Install matrix
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import math
 import os
 from pathlib import Path
@@ -71,6 +72,32 @@ def _format_bold_duration(mean: float, stdev: float) -> str:
     return f"**{mean * 1_000:.1f}** ± {stdev * 1_000:.1f} ms"
 
 
+PLOT_SERIES = (
+    ("Grimace enum", "enum_mean_s", "enum_std_s", "#2563eb"),
+    (
+        "Decoder per-root",
+        "decoder_per_root_mean_s",
+        "decoder_per_root_std_s",
+        "#74c476",
+    ),
+    (
+        "Determinized per-root",
+        "determinized_decoder_per_root_mean_s",
+        "determinized_decoder_per_root_std_s",
+        "#238b45",
+    ),
+    ("Decoder merged", "decoder_merged_mean_s", "decoder_merged_std_s", "#7bccc4"),
+    (
+        "Determinized merged",
+        "determinized_decoder_merged_mean_s",
+        "determinized_decoder_merged_std_s",
+        "#0868ac",
+    ),
+    ("RDKit to 1/2 support", "rdkit_half_mean_s", "rdkit_half_std_s", "#fdb863"),
+    ("RDKit to full support", "rdkit_full_mean_s", "rdkit_full_std_s", "#e66101"),
+)
+
+
 TIMING_MOLECULES = (
     "CC(=O)Oc1ccccc1C(=O)O",
     "C1COCCC12CO2",
@@ -91,6 +118,7 @@ TIMING_MOLECULES = (
 class ReadmeTimingPerfTests(unittest.TestCase):
     OUTPUT_TSV_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.tsv"
     OUTPUT_MD_PATH = Path(__file__).resolve().parents[2] / "docs" / "timings.md"
+    OUTPUT_PLOT_DIR = Path(__file__).resolve().parents[2] / "docs" / "timing-plots"
     HISTORY_KIND = "timings_snapshot"
     CASES = tuple(
         TimingCase(smiles=smiles, rooted_at_atom=0, isomeric_smiles=isomeric_smiles)
@@ -101,12 +129,14 @@ class ReadmeTimingPerfTests(unittest.TestCase):
     def test_generate_readme_timing_table(self) -> None:
         rows = self._measure_rows()
         self._write_tsv(rows)
+        self._write_plots_from_tsv()
         document = self._render_document_from_tsv()
         self.OUTPUT_MD_PATH.write_text(document, encoding="utf-8")
         self._append_history_snapshot(rows)
 
         print()
         print(f"Wrote timing data: {self.OUTPUT_TSV_PATH}")
+        print(f"Wrote timing plots: {self.OUTPUT_PLOT_DIR}")
         print(f"Wrote timing document: {self.OUTPUT_MD_PATH}")
         for row in document.splitlines():
             print(row)
@@ -256,6 +286,141 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             for row in rows:
                 writer.writerow(asdict(row))
 
+    def _timing_rows_from_tsv(self) -> tuple[dict[str, str], ...]:
+        with self.OUTPUT_TSV_PATH.open("r", encoding="utf-8", newline="") as handle:
+            return tuple(csv.DictReader(handle, dialect="excel-tab"))
+
+    def _write_plots_from_tsv(self) -> None:
+        from plox import Plox
+
+        self.OUTPUT_PLOT_DIR.mkdir(parents=True, exist_ok=True)
+        for path in self.OUTPUT_PLOT_DIR.glob("*.png"):
+            path.unlink()
+
+        surface_counts: dict[str, int] = {"non-stereo": 0, "stereo": 0}
+        for row in self._timing_rows_from_tsv():
+            surface = row["surface"]
+            surface_counts[surface] += 1
+            output = self.OUTPUT_PLOT_DIR / self._plot_filename(
+                surface,
+                surface_counts[surface],
+            )
+            with Plox(
+                {
+                    "figure.figsize": (8.8, 5.2),
+                    "figure.constrained_layout.use": True,
+                }
+            ) as px:
+                self._draw_timing_plot(px.a, row)
+                px.f.savefig(output)
+
+    @staticmethod
+    def _plot_filename(surface: str, index: int) -> str:
+        return f"{surface}-{index:02d}.png"
+
+    @staticmethod
+    def _draw_timing_plot(ax, row: dict[str, str]) -> None:
+        labels = [label for label, _, _, _ in PLOT_SERIES]
+        raw_means_s = [float(row[mean]) for _, mean, _, _ in PLOT_SERIES]
+        raw_stds_s = [float(row[std]) for _, _, std, _ in PLOT_SERIES]
+        raw_max_s = max(
+            mean + std for mean, std in zip(raw_means_s, raw_stds_s)
+        )
+        if raw_max_s >= 1.0:
+            means = raw_means_s
+            stds = raw_stds_s
+            unit = "s"
+        else:
+            means = [value * 1_000 for value in raw_means_s]
+            stds = [value * 1_000 for value in raw_stds_s]
+            unit = "ms"
+        colors = [color for _, _, _, color in PLOT_SERIES]
+
+        bars = ax.barh(
+            range(len(PLOT_SERIES)),
+            means,
+            xerr=stds,
+            capsize=4,
+            color=colors,
+            edgecolor="#333333",
+            linewidth=0.6,
+        )
+
+        ax.set_xlabel(f"Time, {unit}", fontsize="x-large")
+        ax.set_yticks([])
+        ax.set_ylabel("Support enumeration method", fontsize="x-large")
+        ax.tick_params(axis="x", labelsize="x-large")
+        ax.set_xlim(0, max(mean + std for mean, std in zip(means, stds)) * 1.12)
+        visible_xticks = [
+            tick
+            for tick in ax.get_xticks()
+            if ax.get_xlim()[0] <= tick <= ax.get_xlim()[1]
+        ]
+        if len(visible_xticks) >= 2:
+            tick_span = visible_xticks[-1] - visible_xticks[0]
+            tick_padding = 0.03 * tick_span
+            ax.set_xticks(visible_xticks)
+            ax.set_xlim(
+                visible_xticks[0] - tick_padding,
+                visible_xticks[-1] + tick_padding,
+            )
+        ax.invert_yaxis()
+        ax.grid(axis="x", color="#dddddd", linewidth=0.8)
+        ax.set_axisbelow(True)
+
+        legend = ReadmeTimingPerfTests._add_timing_plot_legend(
+            ax,
+            bars,
+            labels,
+            means,
+            stds,
+        )
+        legend.set_in_layout(False)
+
+    @staticmethod
+    def _add_timing_plot_legend(ax, bars, labels, means, stds):
+        legend_kwargs = {
+            "frameon": True,
+            "framealpha": 0.95,
+            "edgecolor": "#dddddd",
+            "fontsize": "large",
+        }
+        scores = []
+        for preference, location in enumerate(("upper right", "lower right")):
+            legend = ax.legend(bars, labels, loc=location, **legend_kwargs)
+            legend.set_in_layout(False)
+            ax.figure.canvas.draw()
+            renderer = ax.figure.canvas.get_renderer()
+            score = ReadmeTimingPerfTests._legend_bar_overlap(
+                ax,
+                legend.get_window_extent(renderer=renderer),
+                bars,
+                means,
+                stds,
+            )
+            legend.remove()
+            scores.append((score, preference, location))
+
+        _, _, location = min(scores)
+        return ax.legend(bars, labels, loc=location, **legend_kwargs)
+
+    @staticmethod
+    def _legend_bar_overlap(ax, legend_bbox, bars, means, stds) -> float:
+        from matplotlib.transforms import Bbox
+
+        score = 0.0
+        for bar, mean, std in zip(bars, means, stds):
+            bar_bbox = Bbox.from_extents(
+                0.0,
+                bar.get_y(),
+                mean + std,
+                bar.get_y() + bar.get_height(),
+            ).transformed(ax.transData)
+            overlap = Bbox.intersection(legend_bbox, bar_bbox)
+            if overlap is not None:
+                score += overlap.width * overlap.height
+        return score
+
     def _append_history_snapshot(self, rows: list[TimingRow]) -> None:
         append_history_record(
             {
@@ -264,6 +429,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
                 "benchmark": "tests.perf.test_readme_timings",
                 "timings_tsv": str(self.OUTPUT_TSV_PATH.relative_to(self.OUTPUT_TSV_PATH.parents[1])),
                 "timings_md": str(self.OUTPUT_MD_PATH.relative_to(self.OUTPUT_MD_PATH.parents[1])),
+                "timing_plots": str(self.OUTPUT_PLOT_DIR.relative_to(self.OUTPUT_PLOT_DIR.parents[1])),
                 "rows": [asdict(row) for row in rows],
             }
         )
@@ -280,23 +446,37 @@ class ReadmeTimingPerfTests(unittest.TestCase):
         separator = "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |"
 
         rendered_rows = {"non-stereo": [], "stereo": []}
+        rendered_figures = {"non-stereo": [], "stereo": []}
+        surface_counts = {"non-stereo": 0, "stereo": 0}
 
-        with self.OUTPUT_TSV_PATH.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle, dialect="excel-tab")
-            for row in reader:
-                rendered_rows[row["surface"]].append(
-                    "| "
-                    f"`{row['molecule']}` | {row['atoms']} | {row['support']} | "
-                    f"{_format_bold_duration(float(row['enum_mean_s']), float(row['enum_std_s']))} | "
-                    f"{_format_bold_duration(float(row['decoder_per_root_mean_s']), float(row['decoder_per_root_std_s']))} | "
-                    f"{_format_bold_duration(float(row['determinized_decoder_per_root_mean_s']), float(row['determinized_decoder_per_root_std_s']))} | "
-                    f"{_format_bold_duration(float(row['decoder_merged_mean_s']), float(row['decoder_merged_std_s']))} | "
-                    f"{_format_bold_duration(float(row['determinized_decoder_merged_mean_s']), float(row['determinized_decoder_merged_std_s']))} | "
-                    f"{_format_bold_duration(float(row['rdkit_half_mean_s']), float(row['rdkit_half_std_s']))} "
-                    f"({_format_draws(float(row['rdkit_half_draw_mean']), float(row['rdkit_half_draw_std']))} draws) | "
-                    f"{_format_bold_duration(float(row['rdkit_full_mean_s']), float(row['rdkit_full_std_s']))} "
-                    f"({_format_draws(float(row['rdkit_full_draw_mean']), float(row['rdkit_full_draw_std']))} draws) |"
+        for row in self._timing_rows_from_tsv():
+            surface = row["surface"]
+            surface_counts[surface] += 1
+            molecule = row["molecule"]
+            image_path = f"timing-plots/{self._plot_filename(surface, surface_counts[surface])}"
+            escaped_molecule = html.escape(molecule, quote=True)
+            rendered_rows[surface].append(
+                "| "
+                f"`{molecule}` | {row['atoms']} | {row['support']} | "
+                f"{_format_bold_duration(float(row['enum_mean_s']), float(row['enum_std_s']))} | "
+                f"{_format_bold_duration(float(row['decoder_per_root_mean_s']), float(row['decoder_per_root_std_s']))} | "
+                f"{_format_bold_duration(float(row['determinized_decoder_per_root_mean_s']), float(row['determinized_decoder_per_root_std_s']))} | "
+                f"{_format_bold_duration(float(row['decoder_merged_mean_s']), float(row['decoder_merged_std_s']))} | "
+                f"{_format_bold_duration(float(row['determinized_decoder_merged_mean_s']), float(row['determinized_decoder_merged_std_s']))} | "
+                f"{_format_bold_duration(float(row['rdkit_half_mean_s']), float(row['rdkit_half_std_s']))} "
+                f"({_format_draws(float(row['rdkit_half_draw_mean']), float(row['rdkit_half_draw_std']))} draws) | "
+                f"{_format_bold_duration(float(row['rdkit_full_mean_s']), float(row['rdkit_full_std_s']))} "
+                f"({_format_draws(float(row['rdkit_full_draw_mean']), float(row['rdkit_full_draw_std']))} draws) |"
+            )
+            rendered_figures[surface].extend(
+                (
+                    '<figure class="timing-plot">',
+                    f'  <img src="{image_path}" alt="Timing bar chart for {escaped_molecule}">',
+                    f"  <figcaption><code>{escaped_molecule}</code></figcaption>",
+                    "</figure>",
+                    "",
                 )
+            )
 
         lines = [
             "---",
@@ -305,7 +485,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "",
             "This file is generated by `tests/perf/test_readme_timings.py`.",
             "The benchmark first writes `docs/timings.tsv`, then renders this",
-            "Markdown table from that TSV.",
+            "Markdown page and timing plots from that TSV.",
             "",
             "<style>",
             "table.timings-table {",
@@ -321,6 +501,18 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "table.timings-table th,",
             "table.timings-table td {",
             "  vertical-align: middle;",
+            "}",
+            "figure.timing-plot {",
+            "  margin: 1.5rem 0;",
+            "}",
+            "figure.timing-plot img {",
+            "  max-width: 100%;",
+            "  height: auto;",
+            "}",
+            "figure.timing-plot figcaption {",
+            "  margin-top: 0.25rem;",
+            "  overflow-x: auto;",
+            "  font-size: 0.9rem;",
             "}",
             "</style>",
             "",
@@ -377,6 +569,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             separator,
             *rendered_rows["non-stereo"],
             "",
+            *rendered_figures["non-stereo"],
             "## Stereo (`isomericSmiles=True`)",
             "",
             "{: .timings-table}",
@@ -384,6 +577,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             separator,
             *rendered_rows["stereo"],
             "",
+            *rendered_figures["stereo"],
         ]
         return "\n".join(lines)
 

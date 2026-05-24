@@ -232,9 +232,9 @@ until the dependency surface is large enough to justify the extra object.
   The Make target captures Git metadata before the benchmark writes timing
   artifacts, then the perf image builds and installs the package from copied
   context and runs the opt-in performance suite with only the timing outputs
-  mounted read-write. Runtime network is disabled. Validated with
-  `docker compose -f compose/perf.yml config`, `make checks`, and a targeted
-  perf-container writable-artifact check.
+  and timing plot directory mounted read-write. Runtime network is disabled.
+  Validated with `docker compose -f compose/perf.yml config`, `make checks`,
+  and a targeted perf-container writable-artifact check.
 
 - [x] Document minimally.
   - Add a short README section for containerized development.

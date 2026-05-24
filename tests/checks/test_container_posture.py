@@ -130,13 +130,16 @@ class ContainerPostureTests(unittest.TestCase):
             r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
         )
         self.assertIn('RUN_PERF_TESTS: "1"', compose)
+        self.assertIn("MPLCONFIGDIR: /tmp/matplotlib", compose)
         self.assertIn("source: ../docs/timings.tsv", compose)
         self.assertIn("target: /build-src/docs/timings.tsv", compose)
         self.assertIn("source: ../docs/timings.md", compose)
         self.assertIn("target: /build-src/docs/timings.md", compose)
+        self.assertIn("source: ../docs/timing-plots", compose)
+        self.assertIn("target: /build-src/docs/timing-plots", compose)
         self.assertIn("source: ../notes/004_perf_history.jsonl", compose)
         self.assertIn("target: /build-src/notes/004_perf_history.jsonl", compose)
-        self.assertEqual(3, compose.count("create_host_path: false"))
+        self.assertEqual(4, compose.count("create_host_path: false"))
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
@@ -248,7 +251,12 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("override LOCAL_GID := $(ACTUAL_GID)", makefile)
         self.assertIn("override REPO_ROOT := $(shell pwd -P)", makefile)
         self.assertIn(
-            "override PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl",
+            "override PERF_ARTIFACT_FILES := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl",
+            makefile,
+        )
+        self.assertIn("override PERF_ARTIFACT_DIRS := docs/timing-plots", makefile)
+        self.assertIn(
+            "override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)",
             makefile,
         )
         self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
@@ -260,6 +268,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn('resolved="$$(realpath -e -- "$$path"', makefile)
         self.assertIn('expected="$$repo_root/$$path"', makefile)
         self.assertIn("missing, a symlink, or outside the repository", makefile)
+        self.assertIn("perf artifact directory", makefile)
         self.assertLess(
             makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
             makefile.index("\t@find dist"),

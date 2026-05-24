@@ -21,6 +21,7 @@ services:
       GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"
       GRIMACE_PERF_GIT_CHANGE: "${GRIMACE_PERF_GIT_CHANGE:-}"
       GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"
+      MPLCONFIGDIR: /tmp/matplotlib
     volumes:
       - type: bind
         source: ../docs/timings.tsv
@@ -30,6 +31,11 @@ services:
       - type: bind
         source: ../docs/timings.md
         target: /build-src/docs/timings.md
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../docs/timing-plots
+        target: /build-src/docs/timing-plots
         bind:
           create_host_path: false
       - type: bind

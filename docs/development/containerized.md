@@ -18,8 +18,8 @@ make package
   pinned RDKit parity, and exact public invariants.
 - `make test` runs installed-package correctness from a container-built wheel.
 - `make package` builds and validates wheel/sdist artifacts under `dist/`.
-- `make perf` is opt-in and write-enabled; it refreshes `docs/timings.*` and
-  `notes/004_perf_history.jsonl`.
+- `make perf` is opt-in and write-enabled; it refreshes `docs/timings.*`,
+  `docs/timing-plots/`, and `notes/004_perf_history.jsonl`.
 
 Routine check/test lanes do not use host `.venv`, `target`, or `dist`
 artifacts.

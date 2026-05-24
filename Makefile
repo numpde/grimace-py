@@ -9,11 +9,13 @@ override ACTUAL_GID := $(shell id -g)
 override LOCAL_UID := $(ACTUAL_UID)
 override LOCAL_GID := $(ACTUAL_GID)
 override REPO_ROOT := $(shell pwd -P)
-override PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl
+override PERF_ARTIFACT_FILES := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl
+override PERF_ARTIFACT_DIRS := docs/timing-plots
+override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)
 
 NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$ ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user with positive numeric UID and GID.' >&2; exit 2; fi
 DIST_GUARD := if [[ -L dist ]]; then printf '%s\n' 'Refusing to use dist because it is a symlink.' >&2; exit 2; fi
-PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PERF_ARTIFACTS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
+PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PERF_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(PERF_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run

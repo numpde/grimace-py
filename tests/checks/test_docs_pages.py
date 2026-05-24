@@ -7,6 +7,7 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 HEADING = re.compile(r"^(#{1,6}) ")
+HTML_IMAGE_SRC = re.compile(r'<img\s+[^>]*src="([^"]+)"')
 
 
 def markdown_files() -> tuple[Path, ...]:
@@ -85,6 +86,16 @@ class DocsPagesTests(unittest.TestCase):
         self.assertIn("overflow-x: auto;", timings)
         self.assertIn("white-space: nowrap;", timings)
         self.assertEqual(2, timings.count("{: .timings-table}"))
+
+    def test_timings_plots_are_captioned_and_present(self) -> None:
+        timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
+        self.assertEqual(18, timings.count('<figure class="timing-plot">'))
+        self.assertEqual(18, timings.count("<figcaption><code>"))
+
+        image_paths = HTML_IMAGE_SRC.findall(timings)
+        self.assertEqual(18, len(image_paths))
+        for image_path in image_paths:
+            self.assertTrue((ROOT / "docs" / image_path).is_file(), image_path)
 
     def test_pages_use_front_matter_title_without_body_h1(self) -> None:
         offenders: list[str] = []

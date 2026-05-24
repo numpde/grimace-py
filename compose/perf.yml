@@ -5,7 +5,7 @@ services:
       dockerfile: containers/perf/Dockerfile
     image: grimace-py-perf:local
     working_dir: /build-src
-    user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"
+    user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
     network_mode: "none"
     read_only: true
     cap_drop:

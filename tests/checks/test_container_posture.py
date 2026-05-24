@@ -4,6 +4,10 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_WRITE_USER = (
+    'user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:'
+    '${LOCAL_GID:?Set LOCAL_GID through Makefile}"'
+)
 
 
 def read_text(relative_path: str) -> str:
@@ -84,7 +88,7 @@ class ContainerPostureTests(unittest.TestCase):
         compose = read_text("compose/package.yml")
         self.assertRegex(compose, r"(?m)^  package:$")
         self.assertIn("dockerfile: containers/package/Dockerfile", compose)
-        self.assertIn('user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"', compose)
+        self.assertIn(REQUIRED_WRITE_USER, compose)
         self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
         self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
         self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
@@ -117,7 +121,7 @@ class ContainerPostureTests(unittest.TestCase):
         compose = read_text("compose/perf.yml")
         self.assertRegex(compose, r"(?m)^  perf:$")
         self.assertIn("dockerfile: containers/perf/Dockerfile", compose)
-        self.assertIn('user: "${LOCAL_UID:-65532}:${LOCAL_GID:-65532}"', compose)
+        self.assertIn(REQUIRED_WRITE_USER, compose)
         self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
         self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
         self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
@@ -267,6 +271,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("GRIMACE_PERF_GIT_COMMIT", makefile)
         self.assertIn("GRIMACE_PERF_GIT_CHANGE", makefile)
         self.assertIn("GRIMACE_PERF_GIT_DIRTY", makefile)
+        self.assertNotIn("LOCAL_UID:-", read_text("compose/package.yml"))
+        self.assertNotIn("LOCAL_GID:-", read_text("compose/package.yml"))
+        self.assertNotIn("LOCAL_UID:-", read_text("compose/perf.yml"))
+        self.assertNotIn("LOCAL_GID:-", read_text("compose/perf.yml"))
         expected_targets = {
             "checks": "checks.yml,checks",
             "rust": "test.yml,rust",

@@ -97,6 +97,10 @@ class ContainerPostureTests(unittest.TestCase):
             "python -m maturin build --release --locked --sdist --out /dist",
             compose,
         )
+        self.assertIn(
+            "python scripts/validate_release_artifacts.py /dist/*.tar.gz --sdist-only",
+            compose,
+        )
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)

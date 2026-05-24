@@ -31,6 +31,7 @@ services:
         python -m maturin build --release --locked --out /dist -i python3.12
         python -m maturin build --release --locked --sdist --out /dist -i python3.12
         python -m twine check /dist/*
+        python scripts/validate_release_artifacts.py /dist/*.tar.gz --sdist-only
         python -m venv --system-site-packages /venv/wheel
         /venv/wheel/bin/python -m pip install --no-deps /dist/*.whl
         /venv/wheel/bin/python -m unittest tests.run_installed_package_correctness -q

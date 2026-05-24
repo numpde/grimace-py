@@ -5,12 +5,30 @@ import argparse
 from pathlib import Path
 import re
 import sys
+import tarfile
 
 
 PACKAGE_STEM = "grimace_py"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
+FORBIDDEN_SDIST_PREFIXES = (
+    ".git/",
+    ".github/",
+    ".venv/",
+    "build/",
+    "dist/",
+    "htmlcov/",
+    "notes/perf_reports/",
+    "target/",
+    "tmp/",
+)
+FORBIDDEN_SDIST_NAMES = {
+    ".env",
+    ".envrc",
+    ".netrc",
+    ".pypirc",
+}
 
 
 def expected_artifact_names(version: str) -> tuple[str, ...]:
@@ -43,15 +61,54 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
             f"actual:   {list(actual)!r}"
         )
 
+    validate_sdist(dist_dir / f"{PACKAGE_STEM}-{tag_match.group('version')}.tar.gz")
+
+
+def validate_sdist(sdist_path: Path) -> None:
+    if sdist_path.is_symlink() or not sdist_path.is_file():
+        raise ValueError(f"source distribution does not exist or is not a file: {sdist_path}")
+    if not sdist_path.name.endswith(".tar.gz"):
+        raise ValueError(f"source distribution must be a .tar.gz file: {sdist_path}")
+
+    root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
+    try:
+        with tarfile.open(sdist_path, "r:gz") as archive:
+            for member in archive.getmembers():
+                name = member.name
+                if name.startswith("/") or ".." in Path(name).parts:
+                    raise ValueError(f"unsafe sdist path: {name!r}")
+                if member.issym() or member.islnk():
+                    raise ValueError(f"unexpected link in sdist: {name!r}")
+                if not name.startswith(root):
+                    raise ValueError(f"sdist member is outside archive root: {name!r}")
+
+                relative = name[len(root) :]
+                if not relative:
+                    continue
+                if relative in FORBIDDEN_SDIST_NAMES or any(
+                    relative.startswith(prefix) for prefix in FORBIDDEN_SDIST_PREFIXES
+                ):
+                    raise ValueError(f"forbidden file in sdist: {relative!r}")
+    except (OSError, tarfile.TarError) as exc:
+        raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
+
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("dist_dir", type=Path)
-    parser.add_argument("--tag", required=True)
+    parser.add_argument("artifact_path", type=Path)
+    parser.add_argument("--tag")
+    parser.add_argument("--sdist-only", action="store_true")
     args = parser.parse_args(argv)
 
     try:
-        validate_artifacts(args.dist_dir, args.tag)
+        if args.sdist_only:
+            if args.tag is not None:
+                raise ValueError("--tag cannot be used with --sdist-only")
+            validate_sdist(args.artifact_path)
+        else:
+            if args.tag is None:
+                raise ValueError("--tag is required unless --sdist-only is used")
+            validate_artifacts(args.artifact_path, args.tag)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2

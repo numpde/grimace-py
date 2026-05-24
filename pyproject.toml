@@ -32,6 +32,11 @@ Issues = "https://github.com/numpde/grimace-py/issues"
 python-source = "python"
 module-name = "grimace._core"
 features = ["python-extension"]
+exclude = [
+    { path = ".github/**", format = "sdist" },
+    { path = "notes/perf_reports/**", format = "sdist" },
+    { path = "tmp/**", format = "sdist" },
+]
 
 [dependency-groups]
 test = []

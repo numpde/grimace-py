@@ -309,6 +309,13 @@ The Docker and release lanes use locked Rust builds (`cargo fetch --locked`,
 of the source boundary. It must stay checked in and must not be excluded from
 the Docker build context.
 
+### Source Distribution Boundary
+
+The sdist is a release artifact, not an archive of every checked-in diagnostic.
+Package and release validation reject unsafe archive paths, links, local
+credential filenames, build outputs, `tmp/`, and raw `notes/perf_reports/`
+captures.
+
 ## Repository Boundary Decision
 
 Use three explicit repository boundary modes:

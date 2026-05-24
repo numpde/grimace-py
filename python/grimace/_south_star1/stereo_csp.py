@@ -37,6 +37,10 @@ from dataclasses import dataclass
 from itertools import product
 from typing import Any
 
+from .certificates import AnnotationSelectionCertificate
+from .certificates import CertificateRelationKind
+from .certificates import RelationCertificate
+from .certificates import StereoSolutionCertificate
 from .constraints import TraversalAssignment
 from .facts import (
     DirectionalValue,
@@ -168,6 +172,12 @@ class StereoSolution:
             for carrier, mark in self.direction_marks.items()
             if mark is not DirectionMark.ABSENT
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SelectedStereoSolution:
+    solution: StereoSolution
+    certificate: AnnotationSelectionCertificate
 
 
 def build_stereo_csp(
@@ -332,6 +342,109 @@ def select_stereo_solutions(
         return (min(maximal, key=_canonical_stereo_solution_key),)
 
     raise ValueError(f"unknown annotation mode: {mode!r}")
+
+
+def select_stereo_solutions_with_certificates(
+    *,
+    csp: StereoCSP,
+    solutions: tuple[StereoSolution, ...],
+    mode: AnnotationMode,
+) -> tuple[SelectedStereoSolution, ...]:
+    selected = select_stereo_solutions(csp=csp, solutions=solutions, mode=mode)
+    feasible_supports = frozenset(solution.marker_support for solution in solutions)
+    selected_supports = frozenset(solution.marker_support for solution in selected)
+    out: list[SelectedStereoSolution] = []
+    for solution in selected:
+        certificate = AnnotationSelectionCertificate(
+            mode=mode,
+            selected_support=solution.marker_support,
+            feasible_supports=feasible_supports,
+            selected_supports=selected_supports,
+        )
+        certificate.validate()
+        out.append(
+            SelectedStereoSolution(
+                solution=solution,
+                certificate=certificate,
+            )
+        )
+    return tuple(out)
+
+
+def certify_stereo_solution(
+    *,
+    csp: StereoCSP,
+    solution: StereoSolution,
+    annotation_certificate: AnnotationSelectionCertificate,
+) -> StereoSolutionCertificate:
+    relation_certificates: list[RelationCertificate] = []
+
+    for relation in csp.tetra_relations:
+        token = solution.tetra_tokens[relation.center]
+        if token not in relation.allowed_tokens:
+            raise ValueError(f"tetra relation rejected site {relation.site!r}")
+        relation_certificates.append(
+            RelationCertificate(
+                kind=CertificateRelationKind.TETRA_SITE,
+                subject=f"site:{int(relation.site)}",
+                detail=(
+                    "center",
+                    int(relation.center),
+                    "token",
+                    token.value,
+                    "target",
+                    relation.target.value,
+                ),
+            )
+        )
+
+    for relation in csp.mark_relations():
+        row = tuple(solution.direction_marks[carrier] for carrier in relation.scope)
+        if row not in relation.allowed_rows:
+            raise ValueError(f"mark relation rejected {relation.subject!r}")
+        relation_certificates.append(
+            RelationCertificate(
+                kind=_certificate_kind_for_mark_relation(relation),
+                subject=relation.subject,
+                detail=(
+                    "scope",
+                    tuple(int(carrier) for carrier in relation.scope),
+                    "row",
+                    tuple(mark.value for mark in row),
+                ),
+            )
+        )
+
+    return StereoSolutionCertificate(
+        tetra_tokens=tuple(
+            sorted(
+                solution.tetra_tokens.items(),
+                key=lambda item: int(item[0]),
+            )
+        ),
+        direction_marks=tuple(
+            sorted(
+                solution.direction_marks.items(),
+                key=lambda item: int(item[0]),
+            )
+        ),
+        relation_certificates=tuple(relation_certificates),
+        annotation_certificate=annotation_certificate,
+    )
+
+
+def _certificate_kind_for_mark_relation(
+    relation: MarkRelation,
+) -> CertificateRelationKind:
+    if relation.name == "tree_bond_decode":
+        return CertificateRelationKind.BOND_DECODE
+    if relation.name == "ring_pair_decode":
+        return CertificateRelationKind.RING_PAIR_DECODE
+    if relation.name == "directional_site":
+        return CertificateRelationKind.DIRECTIONAL_SITE
+    if relation.name == "no_accidental_stereo":
+        return CertificateRelationKind.NO_ACCIDENTAL_STEREO
+    return CertificateRelationKind.NO_ACCIDENTAL_STEREO
 
 
 def enumerate_stereo_assignments_for_prefix(
@@ -763,7 +876,9 @@ def _directional_site_relations(
 
         relations.append(
             MarkRelation(
-                name="directional_site",
+                name="directional_site"
+                if site.status is SiteStatus.SPECIFIED
+                else "no_accidental_stereo",
                 subject=f"site:{int(site.id)}",
                 scope=scope,
                 allowed_rows=frozenset(allowed),
@@ -981,12 +1096,15 @@ def _require_exact_keys(
 __all__ = (
     "MarkRelation",
     "PresentationPrefix",
+    "SelectedStereoSolution",
     "StereoCSP",
     "StereoSolution",
     "TetraSiteRelation",
     "assignment_from_prefix_solution",
     "build_stereo_csp",
+    "certify_stereo_solution",
     "enumerate_stereo_assignments_for_prefix",
     "select_stereo_solutions",
+    "select_stereo_solutions_with_certificates",
     "solve_stereo_csp",
 )

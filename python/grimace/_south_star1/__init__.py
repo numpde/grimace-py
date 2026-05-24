@@ -11,6 +11,7 @@ from __future__ import annotations
 
 CORE_MODULES: tuple[str, ...] = (
     "annotation",
+    "certificates",
     "constraints",
     "enumerate",
     "errors",

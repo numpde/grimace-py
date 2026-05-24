@@ -39,6 +39,8 @@ from .skeleton import TraversalSkeleton
 from .skeleton import enumerate_traversal_skeletons
 from .slots import SlotBundle
 from .slots import allocate_traversal_slots
+from .stereo_witness import CertifiedWitness
+from .stereo_witness import enumerate_certified_stereo_witnesses_for_skeleton
 from .stereo_witness import enumerate_stereo_witnesses_for_skeleton
 
 
@@ -63,6 +65,12 @@ class StereoSupportResult:
 
     image: SupportImage
     stats: StereoSupportStats
+
+
+@dataclass(frozen=True, slots=True)
+class CertifiedSupportImage:
+    support: SupportImage
+    certified_witnesses: tuple[CertifiedWitness, ...]
 
 
 def enumerate_stereo_witnesses(
@@ -140,6 +148,49 @@ def enumerate_stereo_witnesses(
         )
 
 
+def enumerate_certified_stereo_witnesses(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    skeletons: Iterable[TraversalSkeleton] | None = None,
+    eligible_marker_carriers: EligibleMarkerCarrierSelector | None = None,
+    allow_global_directional_scope: bool = False,
+) -> Iterator[CertifiedWitness]:
+    """Yield certified stereo witnesses over all traversal skeletons."""
+
+    facts.validate()
+    policy.validate_for_facts(facts)
+
+    if skeletons is None:
+        index = build_graph_index(facts)
+        skeleton_iterable = enumerate_traversal_skeletons(
+            facts=facts,
+            index=index,
+            policy=policy,
+        )
+    else:
+        skeleton_iterable = skeletons
+
+    for skeleton in skeleton_iterable:
+        slots = allocate_traversal_slots(facts, skeleton)
+
+        if eligible_marker_carriers is None:
+            eligible = None
+        else:
+            eligible = eligible_marker_carriers(facts, skeleton, slots)
+
+        yield from enumerate_certified_stereo_witnesses_for_skeleton(
+            facts=facts,
+            skeleton=skeleton,
+            slots=slots,
+            policy=policy,
+            semantics=semantics,
+            eligible_marker_carriers=eligible,
+            allow_global_directional_scope=allow_global_directional_scope,
+        )
+
+
 def enumerate_stereo_support(
     *,
     facts: MoleculeFacts,
@@ -170,6 +221,37 @@ def enumerate_stereo_support(
     )
 
     return render_image_from_witnesses(witnesses)
+
+
+def enumerate_certified_stereo_support(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    skeletons: Iterable[TraversalSkeleton] | None = None,
+    eligible_marker_carriers: EligibleMarkerCarrierSelector | None = None,
+    allow_global_directional_scope: bool = False,
+) -> CertifiedSupportImage:
+    """Enumerate certified witnesses and their unique rendered support image."""
+
+    certified = tuple(
+        enumerate_certified_stereo_witnesses(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            skeletons=skeletons,
+            eligible_marker_carriers=eligible_marker_carriers,
+            allow_global_directional_scope=allow_global_directional_scope,
+        )
+    )
+    support = render_image_from_witnesses(
+        certified_witness.witness
+        for certified_witness in certified
+    )
+    return CertifiedSupportImage(
+        support=support,
+        certified_witnesses=certified,
+    )
 
 
 def enumerate_stereo_support_with_stats(
@@ -220,9 +302,12 @@ def enumerate_stereo_support_with_stats(
 
 
 __all__ = (
+    "CertifiedSupportImage",
     "EligibleMarkerCarrierSelector",
     "StereoSupportResult",
     "StereoSupportStats",
+    "enumerate_certified_stereo_support",
+    "enumerate_certified_stereo_witnesses",
     "enumerate_stereo_support",
     "enumerate_stereo_support_with_stats",
     "enumerate_stereo_witnesses",

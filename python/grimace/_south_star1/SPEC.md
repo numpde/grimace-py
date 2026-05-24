@@ -88,6 +88,18 @@ The audit matrix is a falsifier for this spec, not the source of truth. A
 passing RDKit audit means generated strings parse back to isomorphic facts under
 the declared adapter, not that RDKit defines the support.
 
+## Witness Certificates
+
+A certified witness records the traversal skeleton key, presentation prefix
+key, stereo-CSP solution, relation rows, and annotation-selection certificate
+that justify a rendered string. These are internal South Star proof objects:
+they explain why the finite CSP accepted a witness, but they do not use RDKit
+and they do not repair or filter generated support.
+
+`SupportImage` is the unique rendered string image. Certified witnesses keep
+witness multiplicity because distinct traversal, prefix, or CSP witnesses may
+render to the same support string.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

@@ -9,6 +9,10 @@ provides:
 - legal next-token choices from a current SMILES prefix
 - prepared molecule bytes for reuse outside RDKit
 
+GRIMACE stands for "graph representation integrating multiple alternate
+chemical equivalents", motivated by research on NMR spectroscopy with
+language transformers ([link](https://numpde.github.io/shared/msc/)).
+
 The public import name is `grimace`. Install the PyPI distribution named
 `grimace-py`:
 

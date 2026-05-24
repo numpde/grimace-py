@@ -9,6 +9,10 @@ enumeration and online next-token decoding.
 Use it when you need the full RDKit-style random-writer support for a molecule,
 or when you need exact legal next tokens while constructing a SMILES string.
 
+GRIMACE stands for "graph representation integrating multiple alternate
+chemical equivalents", motivated by research on NMR spectroscopy with
+language transformers ([link](https://numpde.github.io/shared/msc/)).
+
 Install the distribution named `grimace-py`, then import `grimace`:
 
 ```bash

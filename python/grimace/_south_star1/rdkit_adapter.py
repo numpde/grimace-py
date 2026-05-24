@@ -30,6 +30,10 @@ from .ids import AtomId
 from .ids import BondId
 from .ids import ComponentId
 from .ids import OccurrenceId
+from .ordinary_stereo_closure import RawDirectionalStereoRecord
+from .ordinary_stereo_closure import RawSpecifiedStereo
+from .ordinary_stereo_closure import RawTetraStereoRecord
+from .ordinary_stereo_closure import build_ordinary_stereo_specified_closure
 from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from .ordinary_stereo_sites import add_ordinary_potential_sites
 
@@ -44,6 +48,11 @@ class RdkitOrdinaryExtractionOptions:
     tetra_viewpoint_mode: Literal["smiles_parse_order"] = "smiles_parse_order"
     stereo_site_options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions()
     stereo_site_discovery_passes: Literal[1, 2] = 1
+    stereo_site_discovery_mode: Literal[
+        "one_pass",
+        "two_pass",
+        "specified_closure",
+    ] = "one_pass"
 
 
 def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
@@ -84,12 +93,23 @@ def ordinary_molecule_facts_from_rdkit(
         mol,
         normalize_non_graph_hydrogens=options.normalize_non_graph_hydrogens,
     )
+    discovery_mode = _effective_stereo_site_discovery_mode(options)
+    if discovery_mode == "specified_closure":
+        raw = _extract_raw_rdkit_specified_stereo(mol, facts, options)
+        result = build_ordinary_stereo_specified_closure(
+            facts,
+            raw_specified=raw,
+            site_options=options.stereo_site_options,
+        )
+        result.facts.validate()
+        return result.facts
+
     if options.include_potential_sites:
         facts = add_ordinary_potential_sites(
             facts,
             options=options.stereo_site_options,
         )
-    if options.stereo_site_discovery_passes == 2:
+    if discovery_mode == "two_pass":
         facts = _overlay_rdkit_specified_stereo(mol, facts, options, require_all=False)
         facts = add_ordinary_potential_sites(
             facts,
@@ -98,6 +118,16 @@ def ordinary_molecule_facts_from_rdkit(
     facts = _overlay_rdkit_specified_stereo(mol, facts, options, require_all=True)
     facts.validate()
     return facts
+
+
+def _effective_stereo_site_discovery_mode(
+    options: RdkitOrdinaryExtractionOptions,
+) -> str:
+    if options.stereo_site_discovery_mode != "one_pass":
+        return options.stereo_site_discovery_mode
+    if options.stereo_site_discovery_passes == 2:
+        return "two_pass"
+    return "one_pass"
 
 
 def _overlay_rdkit_specified_stereo(
@@ -135,10 +165,33 @@ def _validate_extraction_options(options: RdkitOrdinaryExtractionOptions) -> Non
             "unsupported stereo site discovery pass count: "
             f"{options.stereo_site_discovery_passes!r}",
         )
-    if options.stereo_site_discovery_passes == 2 and not options.include_potential_sites:
+    if options.stereo_site_discovery_mode not in {
+        "one_pass",
+        "two_pass",
+        "specified_closure",
+    }:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
-            "two-pass stereo site discovery requires potential-site construction",
+            "unsupported stereo site discovery mode: "
+            f"{options.stereo_site_discovery_mode!r}",
+        )
+    if (
+        options.stereo_site_discovery_mode != "one_pass"
+        and options.stereo_site_discovery_passes != 1
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "stereo site discovery pass count is only a compatibility option "
+            "for one_pass mode",
+        )
+    discovery_mode = _effective_stereo_site_discovery_mode(options)
+    if discovery_mode in {"two_pass", "specified_closure"} and not (
+        options.include_potential_sites
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            f"{discovery_mode} stereo site discovery requires potential-site "
+            "construction",
         )
 
 
@@ -200,6 +253,86 @@ def _has_rdkit_bond_stereo(mol: Chem.Mol) -> bool:
         bond.GetStereo() != Chem.BondStereo.STEREONONE
         for bond in mol.GetBonds()
     )
+
+
+def _extract_raw_rdkit_specified_stereo(
+    mol: Chem.Mol,
+    facts: MoleculeFacts,
+    options: RdkitOrdinaryExtractionOptions,
+) -> RawSpecifiedStereo:
+    tetrahedral: list[RawTetraStereoRecord] = []
+    directional: list[RawDirectionalStereoRecord] = []
+    if options.extract_specified_tetrahedral:
+        tetrahedral.extend(_raw_rdkit_tetrahedral_records(mol, facts))
+    if options.extract_specified_directional:
+        directional.extend(_raw_rdkit_directional_records(mol))
+    return RawSpecifiedStereo(
+        tetrahedral=tuple(tetrahedral),
+        directional=tuple(directional),
+    )
+
+
+def _raw_rdkit_tetrahedral_records(
+    mol: Chem.Mol,
+    facts: MoleculeFacts,
+) -> tuple[RawTetraStereoRecord, ...]:
+    records: list[RawTetraStereoRecord] = []
+    atom_facts_by_id = {atom.id: atom for atom in facts.atoms}
+    for atom in mol.GetAtoms():
+        tag = atom.GetChiralTag()
+        if tag == Chem.ChiralType.CHI_UNSPECIFIED:
+            continue
+        if tag not in {
+            Chem.ChiralType.CHI_TETRAHEDRAL_CW,
+            Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
+        }:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                f"unsupported RDKit atom stereo: {tag!r}",
+            )
+        center = AtomId(atom.GetIdx())
+        implicit_h_count = atom_facts_by_id[center].implicit_h_count
+        records.append(
+            RawTetraStereoRecord(
+                center=center,
+                target=_rdkit_tetra_target_for_south_star_reference_order(atom),
+                reference_atoms=tuple(
+                    AtomId(neighbor.GetIdx())
+                    for neighbor in atom.GetNeighbors()
+                )
+                + (None,) * implicit_h_count,
+            )
+        )
+    return tuple(records)
+
+
+def _raw_rdkit_directional_records(
+    mol: Chem.Mol,
+) -> tuple[RawDirectionalStereoRecord, ...]:
+    records: list[RawDirectionalStereoRecord] = []
+    for bond in mol.GetBonds():
+        stereo = bond.GetStereo()
+        if stereo == Chem.BondStereo.STEREONONE:
+            continue
+        if stereo not in {Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOZ}:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                f"unsupported RDKit bond stereo: {stereo!r}",
+            )
+        stereo_atoms = tuple(AtomId(atom_idx) for atom_idx in bond.GetStereoAtoms())
+        if len(stereo_atoms) != 2:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                f"RDKit stereo bond {BondId(bond.GetIdx())!r} lacks two stereo atoms",
+            )
+        records.append(
+            RawDirectionalStereoRecord(
+                center_bond=BondId(bond.GetIdx()),
+                target=_directional_target_from_rdkit_stereo(stereo),
+                reference_atoms=stereo_atoms,
+            )
+        )
+    return tuple(records)
 
 
 def _overlay_rdkit_tetrahedral_stereo(

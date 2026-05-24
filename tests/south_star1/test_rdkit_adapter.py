@@ -219,6 +219,27 @@ class RdkitAdapterTest(unittest.TestCase):
             )
         )
 
+    def test_ordinary_adapter_specified_closure_uses_remote_stereo(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(
+            sorted(site.center for site in facts.stereo.tetrahedral),
+            [AtomId(0), AtomId(2), AtomId(6)],
+        )
+        self.assertTrue(
+            all(site.status is SiteStatus.SPECIFIED for site in facts.stereo.tetrahedral)
+        )
+
     def test_ordinary_adapter_rejects_two_pass_without_potential_sites(self) -> None:
         mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
         options = RdkitOrdinaryExtractionOptions(
@@ -227,6 +248,28 @@ class RdkitAdapterTest(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(SouthStarError, "requires potential-site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_rejects_specified_closure_without_potential_sites(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            include_potential_sites=False,
+            stereo_site_discovery_mode="specified_closure",
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "requires potential-site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_rejects_mixed_pass_count_and_named_mode(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_discovery_passes=2,
+            stereo_site_discovery_mode="specified_closure",
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "compatibility option"):
             ordinary_molecule_facts_from_rdkit(mol, options)
 
     def test_ordinary_adapter_two_pass_preserves_v0_support(self) -> None:

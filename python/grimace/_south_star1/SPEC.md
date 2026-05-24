@@ -107,6 +107,13 @@ options. The default one-pass adapter builds ordinary potential sites before it
 overlays RDKit specified stereo, so a remote-stereo-dependent candidate that
 requires `exact_stereochemical_graph_automorphism` is not discoverable in that
 mode. `RdkitOrdinaryExtractionOptions(stereo_site_discovery_passes=2)` enables
-an explicit experimental second pass: overlay any discoverable specified stereo,
+an explicit operational second pass: overlay any discoverable specified stereo,
 rebuild missing potential sites with those labels available, then require the
 final overlay to resolve all supported RDKit stereo.
+
+`RdkitOrdinaryExtractionOptions(stereo_site_discovery_mode="specified_closure")`
+is the mathematical experimental mode for raw specified RDKit stereo. The
+adapter extracts raw specified stereo records first, materializes them as a
+temporary specified context, checks every raw site for ordinary eligibility with
+its own site id ignored, and then rebuilds the full potential-site universe
+under the accepted specified context.

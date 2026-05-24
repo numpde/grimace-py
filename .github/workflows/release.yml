@@ -10,6 +10,8 @@ env:
   MATURIN_PIP_VERSION: "1.13.1"
   MATURIN_ACTION_VERSION: "v1.13.1"
   MANYLINUX_2_28_X86_64_IMAGE: "quay.io/pypa/manylinux_2_28_x86_64@sha256:441c35fdc6ee809ff9260894f8468ab4fea8c15dc880f8700a3f81b7922c1cda"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_CACHE_DIR: "1"
   RDKIT_FIXTURE_PIP_VERSION: "2026.3.1"
 
 permissions:
@@ -66,7 +68,7 @@ jobs:
       - name: Install pinned RDKit fixture version
         run: python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install built wheel
-        run: python -m pip install dist/*.whl
+        run: python -m pip install --no-deps dist/*.whl
       - name: Run installed-package correctness subset
         run: python -m unittest tests.run_installed_package_correctness -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -95,7 +97,7 @@ jobs:
       - name: Install pinned build and runtime fixture versions
         run: python -m pip install "maturin==$MATURIN_PIP_VERSION" "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install built source distribution
-        run: python -m pip install --no-build-isolation dist/*.tar.gz
+        run: python -m pip install --no-deps --no-build-isolation dist/*.tar.gz
       - name: Run installed-package correctness subset
         run: python -m unittest tests.run_installed_package_correctness -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

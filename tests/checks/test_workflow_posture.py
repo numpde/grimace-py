@@ -87,6 +87,8 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/release.yml")
         self.assertIn('MATURIN_PIP_VERSION: "1.13.1"', workflow)
         self.assertIn('MATURIN_ACTION_VERSION: "v1.13.1"', workflow)
+        self.assertIn('PIP_DISABLE_PIP_VERSION_CHECK: "1"', workflow)
+        self.assertIn('PIP_NO_CACHE_DIR: "1"', workflow)
         self.assertRegex(
             workflow,
             r'MANYLINUX_2_28_X86_64_IMAGE: "quay\.io/pypa/manylinux_2_28_x86_64@sha256:[0-9a-f]{64}"',
@@ -98,7 +100,8 @@ class WorkflowPostureTests(unittest.TestCase):
             workflow,
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
-        self.assertIn("python -m pip install --no-build-isolation dist/*.tar.gz", workflow)
+        self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
+        self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
         self.assertIn("path: dist/*.whl", workflow)
         self.assertIn("path: dist/*.tar.gz", workflow)
         self.assertEqual(workflow.count("if-no-files-found: error"), 2)

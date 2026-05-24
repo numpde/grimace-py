@@ -260,7 +260,8 @@ until the dependency surface is large enough to justify the extra object.
   version used by `PyO3/maturin-action` and uses no-build-isolation sdist
   install checks with the same pinned maturin version. The manylinux release
   build container is pinned by digest rather than using the action's mutable
-  default tag.
+  default tag. Release artifact install checks use already-pinned fixture
+  dependencies and pass `--no-deps`.
 
 - [x] Final validation before committing implementation.
   - `make checks`.
@@ -333,6 +334,9 @@ token-like filenames.
 Build images disable pip's version check and root-user warning path. Package
 versions remain explicit; the image builds should not perform extra package
 index checks beyond the requested installs.
+
+Release artifact install checks follow the same principle: install the pinned
+test fixtures first, then install the built wheel or sdist with `--no-deps`.
 
 ## Repository Boundary Decision
 

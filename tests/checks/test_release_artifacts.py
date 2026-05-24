@@ -200,6 +200,22 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "forbidden file in wheel"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_unexpected_top_level_wheel_content(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("grimace/__init__.py", "other_package/__init__.py"))
+            with self.assertRaisesRegex(ValueError, "unexpected top-level wheel member"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wrong_project_wheel_filename(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "other_project-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel)
+            with self.assertRaisesRegex(ValueError, "wheel filename does not match grimace_py"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_tag_that_does_not_match_release_version_shape(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

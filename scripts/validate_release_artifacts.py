@@ -13,6 +13,9 @@ PACKAGE_STEM = "grimace_py"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
+WHEEL_NAME_PATTERN = re.compile(
+    rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-.+\.whl$"
+)
 FORBIDDEN_SDIST_PREFIXES = (
     ".git/",
     ".github/",
@@ -161,6 +164,15 @@ def validate_wheel(wheel_path: Path) -> None:
         raise ValueError(f"wheel does not exist or is not a file: {wheel_path}")
     if not wheel_path.name.endswith(".whl"):
         raise ValueError(f"wheel must be a .whl file: {wheel_path}")
+    wheel_match = WHEEL_NAME_PATTERN.fullmatch(wheel_path.name)
+    if wheel_match is None:
+        raise ValueError(
+            f"wheel filename does not match {PACKAGE_STEM}: {wheel_path.name!r}"
+        )
+    allowed_roots = {
+        "grimace",
+        f"{PACKAGE_STEM}-{wheel_match.group('version')}.dist-info",
+    }
 
     try:
         with zipfile.ZipFile(wheel_path) as archive:
@@ -175,6 +187,9 @@ def validate_wheel(wheel_path: Path) -> None:
                     raise ValueError(f"unexpected special file in wheel: {name!r}")
                 if is_forbidden_archive_member(name):
                     raise ValueError(f"forbidden file in wheel: {name!r}")
+                root = name.rstrip("/").split("/", 1)[0]
+                if root not in allowed_roots:
+                    raise ValueError(f"unexpected top-level wheel member: {name!r}")
     except (OSError, zipfile.BadZipFile) as exc:
         raise ValueError(f"could not read wheel {wheel_path}: {exc}") from exc
 

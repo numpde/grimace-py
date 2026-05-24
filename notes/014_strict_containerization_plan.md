@@ -295,7 +295,9 @@ when `dist/` is a symlink.
 `make perf` is intentionally not strict in the same way as default checks: it is
 write-enabled and long-running. Its strictness comes from being explicit,
 opt-in, and limited to the timing output files it owns.
-It refuses to bind perf output files that are missing or symlinks.
+It refuses to bind perf output files that are missing, symlinks, or resolved
+outside the physical repository path. The physical repository path and artifact
+list are Makefile facts, not command-line overrides.
 
 ## Repository Boundary Decision
 

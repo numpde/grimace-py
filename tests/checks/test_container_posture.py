@@ -192,11 +192,12 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("SHELL := bash", makefile)
         self.assertIn(".SHELLFLAGS := -eu -o pipefail -c", makefile)
         self.assertIn("DOCKER_COMPOSE ?= docker compose", makefile)
-        self.assertIn("ACTUAL_UID := $(shell id -u)", makefile)
+        self.assertIn("override ACTUAL_UID := $(shell id -u)", makefile)
         self.assertIn("LOCAL_UID ?= $(shell id -u)", makefile)
         self.assertIn("LOCAL_GID ?= $(shell id -g)", makefile)
+        self.assertIn("override REPO_ROOT := $(shell pwd -P)", makefile)
         self.assertIn(
-            "PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl",
+            "override PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl",
             makefile,
         )
         self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
@@ -205,8 +206,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn('"$(LOCAL_GID)" == "0"', makefile)
         self.assertIn("do not set LOCAL_UID=0 or LOCAL_GID=0", makefile)
         self.assertIn("DIST_GUARD := if [[ -L dist ]]", makefile)
-        self.assertIn("PERF_ARTIFACTS_GUARD := for path in $(PERF_ARTIFACTS)", makefile)
-        self.assertIn("missing or a symlink", makefile)
+        self.assertIn('PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
+        self.assertIn('resolved="$$(realpath -e -- "$$path"', makefile)
+        self.assertIn('expected="$$repo_root/$$path"', makefile)
+        self.assertIn("missing, a symlink, or outside the repository", makefile)
         self.assertLess(
             makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
             makefile.index("\t@find dist"),

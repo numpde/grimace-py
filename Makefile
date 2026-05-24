@@ -4,14 +4,15 @@ SHELL := bash
 
 COMPOSE_DIR ?= compose
 DOCKER_COMPOSE ?= docker compose
-ACTUAL_UID := $(shell id -u)
+override ACTUAL_UID := $(shell id -u)
 LOCAL_UID ?= $(shell id -u)
 LOCAL_GID ?= $(shell id -g)
-PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl
+override REPO_ROOT := $(shell pwd -P)
+override PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl
 
 NON_ROOT_GUARD := if [[ "$(ACTUAL_UID)" == "0" || "$(LOCAL_UID)" == "0" || "$(LOCAL_GID)" == "0" ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user and do not set LOCAL_UID=0 or LOCAL_GID=0.' >&2; exit 2; fi
 DIST_GUARD := if [[ -L dist ]]; then printf '%s\n' 'Refusing to use dist because it is a symlink.' >&2; exit 2; fi
-PERF_ARTIFACTS_GUARD := for path in $(PERF_ARTIFACTS); do if [[ ! -f "$$path" || -L "$$path" ]]; then printf 'Refusing to bind perf artifact %s because it is missing or a symlink.\n' "$$path" >&2; exit 2; fi; done
+PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PERF_ARTIFACTS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run

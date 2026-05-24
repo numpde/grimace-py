@@ -2,8 +2,11 @@
 title: Runtime requirements
 ---
 
+This page is the source of truth for supported public runtime options.
+
 The public signatures mirror RDKit flag names and defaults, but the current
-runtime intentionally supports only a strict subset.
+runtime supports a strict subset. A call that looks like RDKit's default
+`MolToSmiles(...)` call is not the supported Grimace path.
 
 Pass these options explicitly:
 
@@ -20,6 +23,12 @@ Unsupported flag combinations fail fast with `NotImplementedError`. Other
 invalid public inputs can still raise more specific exceptions such as
 `IndexError` or `ValueError`.
 
+Use this copy-paste base while experimenting:
+
+```python
+FLAGS = dict(canonical=False, doRandom=True)
+```
+
 ## Writer flags
 
 The supported writer flags are:
@@ -32,6 +41,9 @@ The supported writer flags are:
 
 The current writer target is RDKit writer parity for the supported regime,
 currently validated against `RDKit 2026.03.1`.
+
+For the difference between writer parity and chemical equivalence, see
+[Correctness contracts](correctness-contracts.md).
 
 ## Rooting
 

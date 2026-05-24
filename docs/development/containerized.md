@@ -2,8 +2,8 @@
 title: Containerized development
 ---
 
-The Docker-backed Make lanes use pinned images and avoid the host Python
-environment for routine checks.
+This page is for contributors. The Docker-backed Make lanes use pinned images
+and avoid the host Python environment for routine checks.
 
 ```bash
 make checks

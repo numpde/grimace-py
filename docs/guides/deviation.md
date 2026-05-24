@@ -5,6 +5,9 @@ title: Deviation diagnostics
 `MolToSmilesDeviation(...)` reports the first place where a candidate leaves
 the molecule's supported SMILES language under the requested writer flags.
 
+Use it for diagnostics: model output validation, tokenizer boundary checks, or
+explaining why a candidate is not in Grimace's RDKit-writer support.
+
 It returns `None` for an accepted candidate. Otherwise it returns a
 `SmilesDeviation`.
 
@@ -41,3 +44,5 @@ grimace.MolToSmilesDeviation(mol, ("C", "Cl"), **kwargs).accepted_text
 
 The sequence form is useful when a model or tokenizer already split the
 candidate into external token strings.
+
+For the meaning of Grimace tokens, see [Concepts](../concepts.md).

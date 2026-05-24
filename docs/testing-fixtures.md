@@ -2,8 +2,11 @@
 title: Testing fixtures
 ---
 
-Grimace keeps RDKit-derived test data in JSON fixtures instead of inline
-Python constants when the data is part of the correctness evidence.
+This page is for contributors who need to understand the checked-in RDKit
+evidence. Most users should start with [Correctness contracts](correctness-contracts.md).
+
+Grimace keeps RDKit-derived test data in JSON fixtures instead of inline Python
+constants when the data is part of the correctness evidence.
 
 Fixture claims follow the separation in
 [Correctness contracts](correctness-contracts.md): exact RDKit writer-parity

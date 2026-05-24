@@ -2,8 +2,9 @@
 title: Correctness contracts
 ---
 
-`grimace` needs two correctness vocabularies. They are related, but they are
-not the same contract.
+Grimace intentionally separates chemical validity from RDKit writer parity.
+That distinction matters when a string is chemically reasonable but not a
+string RDKit would emit for the supported writer regime.
 
 ## Principled layer
 
@@ -18,10 +19,8 @@ The principled layer is the chemistry and language-semantics layer:
 - decoder prefixes and token inventories must describe a real language of
   valid continuations, not just terminal strings that happen to parse
 
-This layer is the right place to ask whether `grimace` is building better
-software than a single serializer implementation. It is also the right place
-to compare parsed molecules, stereo assignments, and language-level
-well-formedness.
+This layer is where parsed molecules, stereo assignments, and language-level
+well-formedness belong.
 
 Semantic equivalence is not enough for the current public `MolToSmilesEnum`
 contract, because `grimace` also exposes token-level decoding. A terminal
@@ -39,10 +38,9 @@ specific:
   placement conventions when the public contract says "RDKit writer support"
 - key exact expectations by RDKit version
 
-This layer contains bolted-on RDKit-matching behavior. That is not a criticism:
-it is necessary when the public promise is exact support for RDKit's
-`canonical=False, doRandom=True` writer convention. But those rules should stay
-visibly separated from general SMILES validity or chemical equivalence.
+This layer is narrower because it mirrors RDKit's spelling choices. That is
+necessary when the public promise is exact support for RDKit's
+`canonical=False, doRandom=True` writer convention.
 
 ## Current public contract
 
@@ -51,7 +49,7 @@ subset:
 
 - `canonical=False`
 - `doRandom=True`
-- supported writer flags listed in the Python API docs
+- supported writer flags listed in [Runtime requirements](runtime.md)
 - exact expectations validated against the pinned current stable RDKit writer
   convention
 

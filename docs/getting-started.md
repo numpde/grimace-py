@@ -14,13 +14,17 @@ from rdkit import Chem
 import grimace
 ```
 
-All examples below use the currently supported runtime subset:
+All examples below use the currently supported runtime subset. Keep these
+flags together while you are getting started:
 
 ```python
 FLAGS = dict(canonical=False, doRandom=True)
 ```
 
 ## Enumerate exact support
+
+Use `MolToSmilesEnum(...)` when you want the finished SMILES strings Grimace can
+emit for a molecule.
 
 ```python
 mol = Chem.MolFromSmiles("CC(=O)Oc1ccccc1C(=O)O")
@@ -38,9 +42,13 @@ assert len(all_smiles) == 304
 ```
 
 Use `rootedAtAtom=-1` for the all-roots support, or pass a nonnegative atom
-index for one explicit root.
+index for one explicit root. See [Runtime requirements](runtime.md) for the
+full rooting rules.
 
 ## Decode one token at a time
+
+Use `MolToSmilesDecoder(...)` when you are constructing a SMILES string and
+need to know the legal next choices for the current prefix.
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
@@ -73,17 +81,9 @@ different branch choices with the same emitted text. Use
 `MolToSmilesDeterminizedDecoder(...)` when you want at most one choice per
 token text.
 
-## What counts as a token?
-
-A Grimace token is one string emitted by one decoder transition. Tokens are
-defined by the walker, not by splitting a finished SMILES into characters and
-not by integer token IDs.
-
-Examples include `C`, `c`, `Cl`, `[C@H]`, `=`, `/`, `\\`, `(`, `)`, `1`, and
-`%10`.
-
 ## Next pages
 
+- [Concepts](concepts.md)
 - [Runtime requirements](runtime.md)
 - [Python API](api/python.md)
 - [Prepared molecules](guides/prepared-mol.md)

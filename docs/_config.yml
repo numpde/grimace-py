@@ -4,5 +4,6 @@ theme: minima
 markdown: kramdown
 header_pages:
   - getting-started.md
+  - concepts.md
   - runtime.md
   - api/python.md

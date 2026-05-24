@@ -5,6 +5,9 @@ title: Token inventories
 `MolToSmilesTokenInventory(...)` returns the exact sorted tuple of reachable
 decoder tokens for one molecule under the public writer flags.
 
+Use exact inventory when you need the tokens that can really occur during
+runtime decoding for one molecule and one flag set.
+
 ```python
 inventory = grimace.MolToSmilesTokenInventory(
     mol,
@@ -18,7 +21,8 @@ inventory = grimace.MolToSmilesTokenInventory(
 This is an exact runtime inventory, not a frequency distribution and not a
 general-purpose tokenizer vocabulary.
 
-For fast dataset vocabulary coverage, use the static conservative inventory:
+For dataset vocabulary coverage, use the static conservative inventory. It is
+designed to be fast to union across many molecules:
 
 ```python
 vocab_tokens = set()
@@ -45,3 +49,21 @@ set(grimace.MolToSmilesTokenInventory(mol, **kwargs)) <= set(
 
 Tokens are literal decoder fragments such as `C`, `Cl`, `[C@H]`, `=`, `(`,
 `)`, `1`, and `%10`.
+
+## Dataset workflow
+
+For a molecular dataset, the practical tokenizer workflow is:
+
+1. Parse each molecule with RDKit.
+2. Choose the writer surface you want to support, usually
+   `isomericSmiles=True` for stereo-aware data.
+3. Union `MolToSmilesTokenInventorySuperset(...)` across the dataset.
+4. Add ordinary tokenizer special tokens such as padding, unknown, beginning,
+   or end tokens according to the tokenizer library you use.
+5. Keep the Grimace inventory as a required vocabulary seed or coverage check.
+
+The superset inventory is not a learned tokenizer. It answers a narrower
+question: which SMILES fragments must be representable if your tokenizer should
+cover Grimace's supported writer language for the dataset?
+
+For more tokenizer terminology, see [Concepts](../concepts.md).

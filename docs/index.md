@@ -6,6 +6,9 @@ title: grimace-py
 `grimace-py` is a Rust-first RDKit add-on for exact rooted SMILES support
 enumeration and online next-token decoding.
 
+Use it when you need the full RDKit-style random-writer support for a molecule,
+or when you need exact legal next tokens while constructing a SMILES string.
+
 Install the distribution named `grimace-py`, then import `grimace`:
 
 ```bash
@@ -23,15 +26,21 @@ The current public runtime targets RDKit writer parity for
 
 ## Start here
 
-- [Getting started](getting-started.md)
-- [Runtime requirements](runtime.md)
-- [Python API](api/python.md)
+- [Getting started](getting-started.md): install, enumerate support, and step a
+  decoder.
+- [Concepts](concepts.md): support, roots, decoder tokens, and writer parity.
+- [Runtime requirements](runtime.md): supported flags, root behavior, and
+  release matrix.
+- [Python API](api/python.md): concise reference for public objects.
 
 ## Guides
 
-- [Prepared molecules](guides/prepared-mol.md)
-- [Deviation diagnostics](guides/deviation.md)
-- [Token inventories](guides/token-inventory.md)
+- [Prepared molecules](guides/prepared-mol.md): prepare once, reuse, and
+  serialize.
+- [Deviation diagnostics](guides/deviation.md): find where a candidate leaves
+  the supported language.
+- [Token inventories](guides/token-inventory.md): build dataset vocabulary
+  coverage.
 
 ## Correctness and evidence
 

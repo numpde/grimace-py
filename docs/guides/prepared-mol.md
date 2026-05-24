@@ -5,6 +5,10 @@ title: Prepared molecules
 `PrepareMol(...)` pays the RDKit preparation cost once and returns an opaque
 `PreparedMol`.
 
+Use it when the same molecule will be decoded, enumerated, inventoried, or
+checked more than once. It is also the storage path when you want to load a
+prepared molecule later without touching RDKit again.
+
 ```python
 from rdkit import Chem
 import grimace
@@ -44,3 +48,5 @@ all_smiles = tuple(
 
 `PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
 core. Treat the bytes as opaque.
+
+For the supported writer flags, see [Runtime requirements](../runtime.md).

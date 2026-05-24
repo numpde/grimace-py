@@ -2,8 +2,9 @@
 title: RDKit serializer coverage
 ---
 
-This project keeps a version-pinned ledger of upstream RDKit serializer tests
-that were reviewed for relevance to Grimace's current public surface.
+This page is for contributors maintaining RDKit parity coverage. It records
+which upstream RDKit serializer tests have been reviewed for relevance to
+Grimace's current public surface.
 
 The ledger lives at:
 

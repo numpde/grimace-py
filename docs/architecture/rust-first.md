@@ -4,9 +4,9 @@ title: Rust-first layout
 
 ## Goal
 
-Build a Rust-first, tests-first library where Rust is the source of truth for
-runtime behavior and Python provides a thin public façade plus internal
-RDKit-based bridge and oracle code.
+This page is for contributors changing internals. The design goal is a
+Rust-first, tests-first library where Rust is the source of truth for runtime
+behavior and Python provides the public façade plus RDKit bridge code.
 
 ## Ownership
 

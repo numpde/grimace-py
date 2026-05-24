@@ -1,14 +1,13 @@
 # grimace-py
 
-SMILES enumeration with exact next-token decoding.
-
 `grimace-py` is a Rust-first RDKit add-on for exact rooted SMILES support
-enumeration and online next-token decoding. It provides:
+enumeration, online next-token decoding, and reusable prepared molecules. It
+provides:
 
 - exact support enumeration for a molecule under RDKit-style writer flags
 - exact token inventories implied by that support
 - legal next-token choices from a current SMILES prefix
-- prepared molecule byte round trips for reuse outside RDKit
+- prepared molecule bytes for reuse outside RDKit
 
 The public import name is `grimace`. Install the PyPI distribution named
 `grimace-py`:
@@ -64,6 +63,7 @@ assert len(all_smiles) == 304
 Start with the [documentation index](docs/index.md), then see:
 
 - [Getting started](docs/getting-started.md)
+- [Concepts](docs/concepts.md)
 - [Runtime requirements](docs/runtime.md)
 - [Python API](docs/api/python.md)
 - [Prepared molecules](docs/guides/prepared-mol.md)

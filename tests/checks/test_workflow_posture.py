@@ -110,6 +110,10 @@ class WorkflowPostureTests(unittest.TestCase):
             "args: --release --compatibility pypi --out dist -i python${{ matrix.python-version }}",
             workflow,
         )
+        self.assertEqual(
+            workflow.count("--constraint requirements/container-build-constraints.txt"),
+            2,
+        )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)

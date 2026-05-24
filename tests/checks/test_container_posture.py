@@ -162,6 +162,23 @@ class ContainerPostureTests(unittest.TestCase):
                 self.assertIn("PIP_NO_CACHE_DIR=1", dockerfile)
                 self.assertIn("PIP_ROOT_USER_ACTION=ignore", dockerfile)
 
+    def test_build_dockerfiles_use_pip_constraints(self) -> None:
+        for relative_path in (
+            "containers/package/Dockerfile",
+            "containers/perf/Dockerfile",
+            "containers/test/Dockerfile",
+        ):
+            dockerfile = read_text(relative_path)
+            with self.subTest(path=relative_path):
+                self.assertIn(
+                    "COPY requirements/container-build-constraints.txt /tmp/container-build-constraints.txt",
+                    dockerfile,
+                )
+                self.assertIn(
+                    "python -m pip install --constraint /tmp/container-build-constraints.txt",
+                    dockerfile,
+                )
+
     def test_test_dockerfile_builds_installed_package_image(self) -> None:
         dockerfile = read_text("containers/test/Dockerfile")
         self.assertIn("rust:1.83.0-slim-bookworm@", dockerfile)

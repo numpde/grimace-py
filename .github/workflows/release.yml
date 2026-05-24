@@ -76,7 +76,7 @@ jobs:
           container: ${{ env.MANYLINUX_2_28_X86_64_IMAGE }}
           args: --release --compatibility pypi --out dist -i python${{ matrix.python-version }}
       - name: Install pinned RDKit fixture version
-        run: python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+        run: python -m pip install --constraint requirements/container-build-constraints.txt "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install built wheel
         run: python -m pip install --no-deps dist/*.whl
       - name: Run installed-package correctness subset
@@ -105,7 +105,7 @@ jobs:
           command: sdist
           args: --out dist
       - name: Install pinned build and runtime fixture versions
-        run: python -m pip install "maturin==$MATURIN_PIP_VERSION" "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
+        run: python -m pip install --constraint requirements/container-build-constraints.txt "maturin==$MATURIN_PIP_VERSION" "rdkit==$RDKIT_FIXTURE_PIP_VERSION"
       - name: Install built source distribution
         run: python -m pip install --no-deps --no-build-isolation dist/*.tar.gz
       - name: Run installed-package correctness subset

@@ -13,6 +13,24 @@ def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def pinned_constraints() -> dict[str, str]:
+    constraints: dict[str, str] = {}
+    for line in constraint_lines():
+        name, version = line.split("==", 1)
+        constraints[name.lower()] = version
+    return constraints
+
+
+def constraint_lines() -> tuple[str, ...]:
+    lines: list[str] = []
+    for line in read_text("requirements/container-build-constraints.txt").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        lines.append(stripped)
+    return tuple(lines)
+
+
 class BuildDependencyPinTests(unittest.TestCase):
     def test_pyproject_build_backend_uses_pinned_maturin(self) -> None:
         pyproject = tomllib.loads(read_text("pyproject.toml"))
@@ -36,6 +54,9 @@ class BuildDependencyPinTests(unittest.TestCase):
                 self.assertNotRegex(read_text(relative_path), r"maturin build\b[^\n]*--locked")
 
     def test_container_and_release_lanes_use_same_maturin_pin(self) -> None:
+        constraints = pinned_constraints()
+        self.assertEqual(MATURIN_VERSION, constraints["maturin"])
+
         checked_files = (
             ".github/workflows/release.yml",
             "containers/package/Dockerfile",
@@ -56,6 +77,20 @@ class BuildDependencyPinTests(unittest.TestCase):
                     )
                 else:
                     self.assertRegex(text, rf"\bmaturin=={re.escape(MATURIN_VERSION)}\b")
+
+    def test_container_constraints_pin_direct_fixture_tools(self) -> None:
+        constraints = pinned_constraints()
+        self.assertEqual("2026.3.1", constraints["rdkit"])
+        self.assertEqual("6.2.0", constraints["twine"])
+
+    def test_container_constraints_are_exact_and_sorted(self) -> None:
+        lines = constraint_lines()
+        names = tuple(line.split("==", 1)[0] for line in lines)
+        self.assertTrue(lines)
+        self.assertEqual(tuple(sorted(names)), names)
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertRegex(line, r"^[a-z0-9_.-]+==[A-Za-z0-9_.!+-]+$")
 
 
 if __name__ == "__main__":

@@ -134,6 +134,38 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         self.assertEqual(banned_imports, [])
         self.assertEqual(sorted(set(calls) & banned_calls), [])
 
+    def test_online_residual_kernel_boundary_is_rdkit_and_artifact_free(self) -> None:
+        for path in (
+            SOUTH_STAR1_ROOT / "residual_constraints.py",
+            SOUTH_STAR1_ROOT / "stereo_templates.py",
+        ):
+            with self.subTest(path=path):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                banned_modules = {
+                    "audit_rdkit",
+                    "rdkit_adapter",
+                    "stereo_witness",
+                    "support_artifact",
+                    "support_artifact_checker",
+                    "support_artifact_schema",
+                    "support_enumeration",
+                }
+                banned_imports: list[str] = []
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        banned_imports.extend(
+                            alias.name
+                            for alias in node.names
+                            if alias.name.split(".", 1)[0] in banned_modules
+                        )
+                    if isinstance(node, ast.ImportFrom):
+                        module = node.module or ""
+                        if module.split(".", 1)[0] in banned_modules:
+                            banned_imports.append(module)
+
+                self.assertFalse(_imports_rdkit(tree))
+                self.assertEqual(banned_imports, [])
+
 
 def _imports_rdkit(tree: ast.AST) -> bool:
     for node in ast.walk(tree):

@@ -228,6 +228,21 @@ validates the JSONable object first, decodes it into artifact dataclasses, and
 then validates dataclass-level cross references and canonical hashes before the
 semantic artifact checker runs.
 
+### Online Runtime Track
+
+The proof-artifact track materializes finite certificates. The online runtime
+track uses the same facts, policy, and ordinary semantics, but maintains only a
+DFS traversal state, output buffer, and reversible residual stereo constraints.
+It may emit witness strings with multiplicity and does not deduplicate support
+globally.
+
+`stereo_templates.py` extracts small static tetrahedral and directional stereo
+templates from `MoleculeFacts`. `residual_constraints.py` provides the
+trail-based residual store and the first incremental tetrahedral/directional
+stereo factors for the future online DFS enumerator. These modules are
+RDKit-free and do not depend on the support-artifact or support-enumeration
+tracks.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

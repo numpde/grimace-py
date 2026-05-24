@@ -113,6 +113,23 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsafe sdist path"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_platform_specific_unsafe_sdist_paths(self) -> None:
+        validator = load_validator()
+        unsafe_names = (
+            "grimace_py-0.1.12/nested\\escape",
+            "grimace_py-0.1.12/C:/escape",
+        )
+        for unsafe_name in unsafe_names:
+            with self.subTest(unsafe_name=unsafe_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+                    with tarfile.open(sdist, "w:gz") as archive:
+                        with tempfile.NamedTemporaryFile() as payload:
+                            Path(payload.name).write_text("", encoding="utf-8")
+                            archive.add(payload.name, arcname=unsafe_name)
+                    with self.assertRaisesRegex(ValueError, "unsafe sdist path"):
+                        validator.validate_sdist(sdist)
+
     def test_rejects_non_tar_sdist(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -128,6 +145,17 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_wheel(wheel, ("../escape",))
             with self.assertRaisesRegex(ValueError, "unsafe wheel path"):
                 validator.validate_wheel(wheel)
+
+    def test_rejects_platform_specific_unsafe_wheel_paths(self) -> None:
+        validator = load_validator()
+        unsafe_names = ("nested\\escape", "C:/escape")
+        for unsafe_name in unsafe_names:
+            with self.subTest(unsafe_name=unsafe_name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+                    write_wheel(wheel, (unsafe_name,))
+                    with self.assertRaisesRegex(ValueError, "unsafe wheel path"):
+                        validator.validate_wheel(wheel)
 
     def test_rejects_wheel_link(self) -> None:
         validator = load_validator()

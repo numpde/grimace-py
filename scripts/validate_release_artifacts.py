@@ -117,6 +117,16 @@ def is_forbidden_archive_member(relative: str) -> bool:
     )
 
 
+def is_unsafe_archive_path(name: str) -> bool:
+    parts = Path(name).parts
+    return (
+        name.startswith("/")
+        or "\\" in name
+        or ".." in parts
+        or any(re.match(r"^[A-Za-z]:", part) is not None for part in parts)
+    )
+
+
 def validate_sdist(sdist_path: Path) -> None:
     if sdist_path.is_symlink() or not sdist_path.is_file():
         raise ValueError(f"source distribution does not exist or is not a file: {sdist_path}")
@@ -128,7 +138,7 @@ def validate_sdist(sdist_path: Path) -> None:
         with tarfile.open(sdist_path, "r:gz") as archive:
             for member in archive.getmembers():
                 name = member.name
-                if name.startswith("/") or ".." in Path(name).parts:
+                if is_unsafe_archive_path(name):
                     raise ValueError(f"unsafe sdist path: {name!r}")
                 if member.issym() or member.islnk():
                     raise ValueError(f"unexpected link in sdist: {name!r}")
@@ -154,7 +164,7 @@ def validate_wheel(wheel_path: Path) -> None:
         with zipfile.ZipFile(wheel_path) as archive:
             for member in archive.infolist():
                 name = member.filename
-                if name.startswith("/") or ".." in Path(name).parts:
+                if is_unsafe_archive_path(name):
                     raise ValueError(f"unsafe wheel path: {name!r}")
                 mode = (member.external_attr >> 16) & 0o170000
                 if mode == 0o120000:

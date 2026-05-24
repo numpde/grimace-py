@@ -125,3 +125,18 @@ record is eligible under the context of all other raw specified records, with
 its own candidate site ignored. The implementation exposes a certificate per
 raw record recording the matched site, context records, ignored self-site ids,
 and accept/reject reason.
+
+### Known Specified-Closure RDKit Audit Boundary
+
+The specified-closure audit has a known RDKit boundary mismatch for generated
+strings whose unsanitized parse retains a raw tetrahedral tag that sanitized
+`Chem.MolFromSmiles(...)` removes during RDKit cleanup. The diagnostic trace
+classifies this as `SPECIFIED_TETRA_RECORD_LOSS`: South Star's source facts
+and the unsanitized RDKit parse contain the raw tetrahedral record, while the
+sanitized RDKit `Mol` used by ordinary adapter ingestion no longer exposes it.
+
+This is not hidden by the conformance suite. The representative failure is
+pinned by `trace_specified_closure_round_trip(...)`; the full specified-closure
+RDKit audit remains a skipped diagnostic until the project chooses whether the
+fix belongs in a SMILES-source raw-stereo ingestion path, a stricter closure
+policy, or a different external audit contract.

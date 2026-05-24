@@ -9,16 +9,23 @@ from rdkit import Chem
 from grimace._south_star1.audit_rdkit import (
     SOUTH_STAR1_EXPERIMENTAL_EXACT_EQUIVALENCE_SUPPORTED_CASES,
 )
+from grimace._south_star1.audit_rdkit import RoundTripFailureKind
 from grimace._south_star1.audit_rdkit import SOUTH_STAR1_SUPPORTED_V0_AUDIT_CASES
 from grimace._south_star1.audit_rdkit import SOUTH_STAR1_UNSUPPORTED_V0_AUDIT_CASES
 from grimace._south_star1.audit_rdkit import audit_generated_support_with_rdkit
 from grimace._south_star1.audit_rdkit import audit_generated_witnesses_with_rdkit
+from grimace._south_star1.audit_rdkit import classify_specified_closure_round_trips
 from grimace._south_star1.audit_rdkit import summarize_rdkit_audit
+from grimace._south_star1.audit_rdkit import trace_specified_closure_round_trip
+from grimace._south_star1.audit_rdkit import trace_specified_closure_support_round_trips
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
+from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
+from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.support_enumeration import enumerate_stereo_support
@@ -159,6 +166,88 @@ class RdkitAuditTest(unittest.TestCase):
         self.assertTrue(all(result.ok for result in results))
         self.assertTrue(all(result.witness_id for result in results))
         self.assertTrue(all(result.constraints for result in results))
+
+    def test_specified_closure_round_trip_failure_is_classified(self) -> None:
+        adapter_options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+        original = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@H](F)([C@H](F)Cl)[C@@H](F)Cl"),
+            adapter_options,
+        )
+
+        trace = trace_specified_closure_round_trip(
+            "[C@H]([C@@H](F)([C@@H](F)(Cl)))(F)(Cl)",
+            original_facts=original,
+            extraction_options=adapter_options,
+            policy_options=OrdinaryPolicyOptions(),
+        )
+
+        self.assertTrue(trace.parsed)
+        self.assertIs(
+            trace.failure_kind,
+            RoundTripFailureKind.SPECIFIED_TETRA_RECORD_LOSS,
+        )
+        self.assertEqual(trace.original_tetra_status.specified, 3)
+        self.assertEqual(trace.reparsed_tetra_status.specified, 2)
+        self.assertEqual(len(trace.original_raw.tetrahedral), 3)
+        self.assertEqual(len(trace.reparsed_raw_sanitized.tetrahedral), 2)
+        self.assertIsNotNone(trace.reparsed_raw_unsanitized)
+        self.assertEqual(len(trace.reparsed_raw_unsanitized.tetrahedral), 3)
+        self.assertFalse(trace.isomorphic_without_potential_sites)
+
+        summary = classify_specified_closure_round_trips((trace,))
+        self.assertEqual(
+            summary[RoundTripFailureKind.SPECIFIED_TETRA_RECORD_LOSS],
+            1,
+        )
+
+    @unittest.skip(
+        "Known specified-closure RDKit round-trip mismatch; the classifier "
+        "pins a representative sanitized raw-stereo loss.",
+    )
+    def test_specified_closure_full_rdkit_audit_round_trips(self) -> None:
+        adapter_options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+        results = audit_generated_support_with_rdkit(
+            Chem.MolFromSmiles("[C@H](F)([C@H](F)Cl)[C@@H](F)Cl"),
+            adapter_options=adapter_options,
+        )
+
+        self.assertTrue(all(result.ok for result in results))
+
+    @unittest.skip(
+        "Diagnostic for known specified-closure RDKit round-trip mismatch.",
+    )
+    def test_specified_closure_full_rdkit_audit_failure_summary(self) -> None:
+        adapter_options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_mode="specified_closure",
+        )
+        original = ordinary_molecule_facts_from_rdkit(
+            Chem.MolFromSmiles("[C@H](F)([C@H](F)Cl)[C@@H](F)Cl"),
+            adapter_options,
+        )
+        traces = trace_specified_closure_support_round_trips(
+            original,
+            extraction_options=adapter_options,
+        )
+        summary = classify_specified_closure_round_trips(traces)
+
+        self.assertEqual(len(traces), 1216)
+        self.assertEqual(
+            summary,
+            {RoundTripFailureKind.SPECIFIED_TETRA_RECORD_LOSS: 384},
+        )
 
 
 def _support_for_smiles(text: str, *, adapter_options=None) -> frozenset[str]:

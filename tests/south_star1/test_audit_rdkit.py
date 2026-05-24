@@ -13,8 +13,10 @@ from grimace._south_star1.audit_rdkit import summarize_rdkit_audit
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
+from grimace._south_star1.support_enumeration import enumerate_stereo_support
 
 
 SUPPORTED_AUDIT_CASES = (
@@ -97,6 +99,18 @@ class RdkitAuditTest(unittest.TestCase):
         self.assertTrue(results)
         self.assertTrue(all(result.ok for result in results))
 
+    def test_small_connected_support_is_stable_under_rdkit_reparse(self) -> None:
+        cases = ("[C@H](F)(Cl)Br", "C(/F)=C(\\Cl)")
+
+        for text in cases:
+            with self.subTest(text=text):
+                original_support = _support_for_smiles(text)
+                self.assertTrue(original_support)
+
+                for generated in original_support:
+                    reparsed_support = _support_for_smiles(generated)
+                    self.assertEqual(reparsed_support, original_support, generated)
+
     def test_witness_audit_preserves_witness_context(self) -> None:
         mol = Chem.MolFromSmiles("CCO")
         facts = ordinary_molecule_facts_from_rdkit(mol)
@@ -113,6 +127,16 @@ class RdkitAuditTest(unittest.TestCase):
         self.assertTrue(all(result.ok for result in results))
         self.assertTrue(all(result.witness_id for result in results))
         self.assertTrue(all(result.constraints for result in results))
+
+
+def _support_for_smiles(text: str) -> frozenset[str]:
+    facts = ordinary_molecule_facts_from_rdkit(Chem.MolFromSmiles(text))
+    image = enumerate_stereo_support(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+    )
+    return frozenset(image.strings)
 
 
 if __name__ == "__main__":

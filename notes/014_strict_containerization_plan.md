@@ -326,6 +326,12 @@ The Docker build context excludes local editor state, generated artifacts, and
 common credential files for Python, npm, Cargo, cloud CLIs, SSH, TLS keys, and
 token-like filenames.
 
+### Pip In Build Images
+
+Build images disable pip's version check and root-user warning path. Package
+versions remain explicit; the image builds should not perform extra package
+index checks beyond the requested installs.
+
 ## Repository Boundary Decision
 
 Use three explicit repository boundary modes:

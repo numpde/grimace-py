@@ -4,6 +4,9 @@ FROM rust:1.83.0-slim-bookworm@sha256:540c902e99c384163b688bbd8b5b8520e94e7731b2
 ENV CARGO_HOME=/usr/local/cargo \
     LD_LIBRARY_PATH=/usr/local/lib \
     PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     RUSTUP_HOME=/usr/local/rustup
@@ -16,9 +19,9 @@ COPY . /build-src
 RUN python --version \
     && rustc --version \
     && cargo --version \
-    && python -m pip install --no-cache-dir maturin==1.13.1 rdkit==2026.3.1 \
+    && python -m pip install maturin==1.13.1 rdkit==2026.3.1 \
     && python -m maturin build --release --locked --out /tmp/grimace-dist -i python3.12 \
-    && python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl \
+    && python -m pip install /tmp/grimace-dist/*.whl \
     && rm -rf /tmp/grimace-dist
 
 WORKDIR /build-src

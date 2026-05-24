@@ -149,6 +149,18 @@ class ContainerPostureTests(unittest.TestCase):
                     image = from_line.split(" AS ", 1)[0]
                     self.assertRegex(image, r"@sha256:[0-9a-f]{64}$")
 
+    def test_build_dockerfiles_disable_pip_network_notice_and_root_warning(self) -> None:
+        for relative_path in (
+            "containers/package/Dockerfile",
+            "containers/perf/Dockerfile",
+            "containers/test/Dockerfile",
+        ):
+            dockerfile = read_text(relative_path)
+            with self.subTest(path=relative_path):
+                self.assertIn("PIP_DISABLE_PIP_VERSION_CHECK=1", dockerfile)
+                self.assertIn("PIP_NO_CACHE_DIR=1", dockerfile)
+                self.assertIn("PIP_ROOT_USER_ACTION=ignore", dockerfile)
+
     def test_test_dockerfile_builds_installed_package_image(self) -> None:
         dockerfile = read_text("containers/test/Dockerfile")
         self.assertIn("rust:1.83.0-slim-bookworm@", dockerfile)
@@ -159,7 +171,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("python -m maturin build --release --locked", dockerfile)
         self.assertIn(
-            "python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl",
+            "python -m pip install /tmp/grimace-dist/*.whl",
             dockerfile,
         )
         self.assertIn("tests.run_installed_package_correctness", dockerfile)
@@ -190,7 +202,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("WORKDIR /src", dockerfile)
         self.assertIn("python -m maturin build --release --locked", dockerfile)
         self.assertIn(
-            "python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl",
+            "python -m pip install /tmp/grimace-dist/*.whl",
             dockerfile,
         )
         self.assertIn('"discover", "-s", "tests/perf"', dockerfile)

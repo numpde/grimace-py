@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
@@ -87,9 +89,15 @@ def _validate_options(options: OrdinaryPolicyOptions) -> None:
     if any(value < 1 for value in options.ring_label_values):
         raise ValueError("ordinary policy ring labels must be positive")
     if options.bracket_all_atoms:
-        raise NotImplementedError("bracket_all_atoms is not implemented yet")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "bracket_all_atoms is not implemented yet",
+        )
     if options.non_single_ring_closures == "joint":
-        raise NotImplementedError("joint non-single ring closures are not implemented")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "joint non-single ring closures are not implemented",
+        )
 
 
 def _atom_text_choice(
@@ -109,21 +117,33 @@ def _atom_text_choice(
 
 def _require_plain_neutral_atom(atom: AtomFacts) -> None:
     if atom.isotope is not None:
-        raise NotImplementedError(f"isotopic atoms are unsupported: {atom.id!r}")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"isotopic atoms are unsupported: {atom.id!r}",
+        )
     if atom.formal_charge != 0:
-        raise NotImplementedError(f"charged atoms are unsupported: {atom.id!r}")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"charged atoms are unsupported: {atom.id!r}",
+        )
     if atom.explicit_h_count != 0:
-        raise NotImplementedError(
-            f"explicit atom hydrogens are unsupported: {atom.id!r}"
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"explicit atom hydrogens are unsupported: {atom.id!r}",
         )
     if atom.no_implicit:
-        raise NotImplementedError(f"no-implicit atoms are unsupported: {atom.id!r}")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"no-implicit atoms are unsupported: {atom.id!r}",
+        )
 
 
 def _organic_atom_choice(atom: AtomFacts) -> AtomTextChoice:
     if atom.symbol not in _ORGANIC_SUBSET:
-        raise NotImplementedError(
-            f"ordinary organic-subset spelling is unsupported for {atom.symbol!r}"
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            "ordinary organic-subset spelling is unsupported for "
+            f"{atom.symbol!r}",
         )
     return AtomTextChoice(
         name=f"organic_{atom.symbol}",
@@ -136,11 +156,15 @@ def _aromatic_atom_choice(
     options: OrdinaryPolicyOptions,
 ) -> AtomTextChoice:
     if not options.allow_aromatic_atoms:
-        raise NotImplementedError(f"aromatic atoms are disabled: {atom.id!r}")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"aromatic atoms are disabled: {atom.id!r}",
+        )
     symbol = _AROMATIC_SYMBOLS.get(atom.symbol)
     if symbol is None:
-        raise NotImplementedError(
-            f"ordinary aromatic spelling is unsupported for {atom.symbol!r}"
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"ordinary aromatic spelling is unsupported for {atom.symbol!r}",
         )
     return AtomTextChoice(
         name=f"aromatic_{symbol}",
@@ -154,17 +178,20 @@ def _tetra_atom_choice(
     implicit_h_count: int,
 ) -> AtomTextChoice:
     if atom.is_aromatic:
-        raise NotImplementedError(
-            f"aromatic tetrahedral centers are unsupported: {atom.id!r}"
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"aromatic tetrahedral centers are unsupported: {atom.id!r}",
         )
     if atom.symbol not in _ORGANIC_SUBSET:
-        raise NotImplementedError(
-            f"tetrahedral spelling is unsupported for {atom.symbol!r}"
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
+            f"tetrahedral spelling is unsupported for {atom.symbol!r}",
         )
     if implicit_h_count not in {0, 1}:
-        raise NotImplementedError(
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_ATOM,
             f"tetrahedral center {atom.id!r} has unsupported implicit-H count "
-            f"{implicit_h_count}"
+            f"{implicit_h_count}",
         )
 
     hydrogen = "H" if implicit_h_count == 1 else ""
@@ -218,7 +245,10 @@ def _tree_bond_choices(
         return (BondTextChoice(name="triple", base_text="#", permits_direction=False),)
     if bond.order is BondOrder.AROMATIC:
         return _aromatic_bond_choices(options)
-    raise NotImplementedError(f"unsupported bond order: {bond.order!r}")
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_BOND,
+        f"unsupported bond order: {bond.order!r}",
+    )
 
 
 def _ring_endpoint_bond_choices(
@@ -231,7 +261,10 @@ def _ring_endpoint_bond_choices(
         return _aromatic_bond_choices(options)
     if options.non_single_ring_closures == "unsupported":
         return None
-    raise NotImplementedError("joint non-single ring closures are not implemented")
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        "joint non-single ring closures are not implemented",
+    )
 
 
 def _single_bond_choices(
@@ -291,9 +324,10 @@ def _reject_unsupported_ring_closures(
         if bond.order in {BondOrder.SINGLE, BondOrder.AROMATIC}:
             continue
         if _bond_can_be_ring_closure(facts, bond):
-            raise NotImplementedError(
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
                 "ordinary policy does not yet support non-single ring closures "
-                f"for bond {bond.id!r}"
+                f"for bond {bond.id!r}",
             )
 
 

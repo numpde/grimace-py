@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 import unittest
 
+from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
@@ -89,8 +91,12 @@ class OrdinaryPolicyTest(unittest.TestCase):
     def test_non_single_ring_closure_is_explicitly_unsupported(self) -> None:
         facts = _cyclopropene_facts()
 
-        with self.assertRaisesRegex(NotImplementedError, "non-single ring closures"):
+        with self.assertRaisesRegex(
+            SouthStarError,
+            "non-single ring closures",
+        ) as raised:
             ordinary_policy_for_facts(facts)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_unsupported_atom_facts_fail_fast(self) -> None:
         base = tetrahedral_facts()
@@ -99,8 +105,9 @@ class OrdinaryPolicyTest(unittest.TestCase):
             atoms=(replace(base.atoms[0], formal_charge=1),) + base.atoms[1:],
         )
 
-        with self.assertRaisesRegex(NotImplementedError, "charged atoms"):
+        with self.assertRaisesRegex(SouthStarError, "charged atoms") as raised:
             ordinary_policy_for_facts(facts)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_ATOM)
 
 
 def _cyclopropene_facts() -> MoleculeFacts:

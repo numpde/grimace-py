@@ -12,6 +12,8 @@ from typing import Literal
 
 from rdkit import Chem
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
@@ -91,9 +93,10 @@ def ordinary_molecule_facts_from_rdkit(
 
 def _validate_extraction_options(options: RdkitOrdinaryExtractionOptions) -> None:
     if options.tetra_viewpoint_mode != "smiles_parse_order":
-        raise ValueError(
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
             "unsupported tetra viewpoint mode: "
-            f"{options.tetra_viewpoint_mode!r}"
+            f"{options.tetra_viewpoint_mode!r}",
         )
 
 
@@ -124,7 +127,10 @@ def _validate_stereo_extraction_scope(
     options: RdkitOrdinaryExtractionOptions,
 ) -> None:
     if options.reject_unsupported_stereo and mol.GetStereoGroups():
-        raise NotImplementedError("South Star 1 RDKit adapter rejects enhanced stereo")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "South Star 1 RDKit adapter rejects enhanced stereo",
+        )
 
     has_atom_stereo = _has_rdkit_atom_stereo(mol)
     has_bond_stereo = _has_rdkit_bond_stereo(mol)
@@ -172,13 +178,18 @@ def _overlay_rdkit_tetrahedral_stereo(
             Chem.ChiralType.CHI_TETRAHEDRAL_CW,
             Chem.ChiralType.CHI_TETRAHEDRAL_CCW,
         }:
-            raise NotImplementedError(f"unsupported RDKit atom stereo: {tag!r}")
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                f"unsupported RDKit atom stereo: {tag!r}",
+            )
 
         center = AtomId(atom.GetIdx())
         site = sites_by_center.get(center)
         if site is None:
-            raise NotImplementedError(
-                f"RDKit tetrahedral atom has no ordinary potential site: {center!r}"
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                "RDKit tetrahedral atom has no ordinary potential site: "
+                f"{center!r}",
             )
 
         replacement_by_id[site.id] = TetrahedralSiteFacts(
@@ -205,7 +216,10 @@ def _rdkit_tetra_target_for_south_star_reference_order(atom: Chem.Atom) -> Tetra
     elif tag == Chem.ChiralType.CHI_TETRAHEDRAL_CCW:
         target = TetraValue.MINUS
     else:
-        raise NotImplementedError(f"unsupported RDKit tetrahedral tag: {tag!r}")
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            f"unsupported RDKit tetrahedral tag: {tag!r}",
+        )
 
     if _rdkit_tetra_atom_has_predecessor(atom):
         # RDKit's parsed non-root chiral tag is interpreted from the
@@ -311,18 +325,24 @@ def _overlay_rdkit_directional_stereo(
         if stereo == Chem.BondStereo.STEREONONE:
             continue
         if stereo not in {Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOZ}:
-            raise NotImplementedError(f"unsupported RDKit bond stereo: {stereo!r}")
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                f"unsupported RDKit bond stereo: {stereo!r}",
+            )
 
         center_bond = BondId(bond.GetIdx())
         site = sites_by_center_bond.get(center_bond)
         if site is None:
-            raise NotImplementedError(
-                f"RDKit stereo bond has no ordinary potential site: {center_bond!r}"
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                "RDKit stereo bond has no ordinary potential site: "
+                f"{center_bond!r}",
             )
         stereo_atoms = tuple(AtomId(atom_idx) for atom_idx in bond.GetStereoAtoms())
         if len(stereo_atoms) != 2:
-            raise NotImplementedError(
-                f"RDKit stereo bond {center_bond!r} lacks two stereo atoms"
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                f"RDKit stereo bond {center_bond!r} lacks two stereo atoms",
             )
         reference_pair = _directional_reference_pair_from_stereo_atoms(
             facts,
@@ -367,8 +387,9 @@ def _directional_reference_pair_from_stereo_atoms(
         return (left_by_atom[first], right_by_atom[second])
     if second in left_by_atom and first in right_by_atom:
         return (left_by_atom[second], right_by_atom[first])
-    raise NotImplementedError(
-        f"RDKit stereo atoms do not match ordinary directional site {site.id!r}"
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_STEREO,
+        f"RDKit stereo atoms do not match ordinary directional site {site.id!r}",
     )
 
 
@@ -396,7 +417,10 @@ def _directional_target_from_rdkit_stereo(stereo) -> DirectionalValue:
         return DirectionalValue.TOGETHER
     if stereo == Chem.BondStereo.STEREOE:
         return DirectionalValue.OPPOSITE
-    raise NotImplementedError(f"unsupported RDKit bond stereo: {stereo!r}")
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_STEREO,
+        f"unsupported RDKit bond stereo: {stereo!r}",
+    )
 
 
 def _replace_directional_sites(
@@ -421,10 +445,16 @@ def _replace_directional_sites(
 def _reject_rdkit_stereo(mol: Chem.Mol) -> None:
     for atom in mol.GetAtoms():
         if atom.GetChiralTag() != Chem.ChiralType.CHI_UNSPECIFIED:
-            raise NotImplementedError("South Star 1 RDKit adapter rejects atom stereo")
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                "South Star 1 RDKit adapter rejects atom stereo",
+            )
     for bond in mol.GetBonds():
         if bond.GetStereo() != Chem.BondStereo.STEREONONE:
-            raise NotImplementedError("South Star 1 RDKit adapter rejects bond stereo")
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_STEREO,
+                "South Star 1 RDKit adapter rejects bond stereo",
+            )
 
 
 def _atom_facts(
@@ -474,7 +504,10 @@ def _bond_order(bond: Chem.Bond) -> BondOrder:
         return BondOrder.TRIPLE
     if bond_type == Chem.BondType.AROMATIC:
         return BondOrder.AROMATIC
-    raise NotImplementedError(f"unsupported RDKit bond type: {bond_type!r}")
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_BOND,
+        f"unsupported RDKit bond type: {bond_type!r}",
+    )
 
 
 def _component_facts(mol: Chem.Mol) -> tuple[ComponentFacts, ...]:

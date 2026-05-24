@@ -7,6 +7,8 @@ import unittest
 
 from rdkit import Chem
 
+from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
@@ -60,14 +62,16 @@ class RdkitAdapterTest(unittest.TestCase):
     def test_rejects_rdkit_atom_stereo_until_stereo_adapter_is_explicit(self) -> None:
         mol = Chem.MolFromSmiles("F[C@H](Cl)Br")
 
-        with self.assertRaisesRegex(NotImplementedError, "atom stereo"):
+        with self.assertRaisesRegex(SouthStarError, "atom stereo") as raised:
             molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_rejects_rdkit_bond_stereo_until_stereo_adapter_is_explicit(self) -> None:
         mol = Chem.MolFromSmiles("F/C=C/Cl")
 
-        with self.assertRaisesRegex(NotImplementedError, "bond stereo"):
+        with self.assertRaisesRegex(SouthStarError, "bond stereo") as raised:
             molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_ordinary_adapter_normalizes_non_graph_hydrogens(self) -> None:
         mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
@@ -120,8 +124,9 @@ class RdkitAdapterTest(unittest.TestCase):
         mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
         options = RdkitOrdinaryExtractionOptions(tetra_viewpoint_mode="renumbered")
 
-        with self.assertRaisesRegex(ValueError, "tetra viewpoint mode"):
+        with self.assertRaisesRegex(SouthStarError, "tetra viewpoint mode") as raised:
             ordinary_molecule_facts_from_rdkit(mol, options)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
         self,
@@ -296,29 +301,33 @@ class RdkitAdapterTest(unittest.TestCase):
     def test_ordinary_adapter_rejects_enhanced_stereo_groups(self) -> None:
         mol = Chem.MolFromSmiles("F[C@H](Cl)Br |&1:1|")
 
-        with self.assertRaisesRegex(NotImplementedError, "enhanced stereo"):
+        with self.assertRaisesRegex(SouthStarError, "enhanced stereo") as raised:
             ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_ordinary_adapter_rejects_non_tetrahedral_atom_stereo(self) -> None:
         mol = Chem.MolFromSmiles("C(F)(Cl)(Br)I")
         mol.GetAtomWithIdx(0).SetChiralTag(Chem.ChiralType.CHI_SQUAREPLANAR)
 
-        with self.assertRaisesRegex(NotImplementedError, "unsupported RDKit atom"):
+        with self.assertRaisesRegex(SouthStarError, "unsupported RDKit atom") as raised:
             ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_ordinary_adapter_rejects_unknown_bond_stereo(self) -> None:
         mol = Chem.MolFromSmiles("F/C=C/Cl")
         mol.GetBondWithIdx(1).SetStereo(Chem.BondStereo.STEREOANY)
 
-        with self.assertRaisesRegex(NotImplementedError, "unsupported RDKit bond"):
+        with self.assertRaisesRegex(SouthStarError, "unsupported RDKit bond") as raised:
             ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_ordinary_adapter_rejects_atropisomeric_bond_stereo(self) -> None:
         mol = Chem.MolFromSmiles("F/C=C/Cl")
         mol.GetBondWithIdx(1).SetStereo(Chem.BondStereo.STEREOATROPCW)
 
-        with self.assertRaisesRegex(NotImplementedError, "unsupported RDKit bond"):
+        with self.assertRaisesRegex(SouthStarError, "unsupported RDKit bond") as raised:
             ordinary_molecule_facts_from_rdkit(mol)
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
 @dataclass(frozen=True, slots=True)
 class TetraRoundTripTrace:

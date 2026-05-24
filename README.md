@@ -26,6 +26,7 @@ import grimace
 
 Plain `pip install grimace` installs an unrelated older package.
 
+Documentation: [numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/).
 Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
 
 `grimace-py` is distributed under `PolyForm-Noncommercial-1.0.0`. Commercial
@@ -55,18 +56,17 @@ all_smiles = tuple(
 assert len(all_smiles) == 304
 ```
 
-## Public API
+## What to use
 
-- `MolToSmilesEnum(...)`
-- `MolToSmilesDecoder(...)`
-- `MolToSmilesDeterminizedDecoder(...)`
-- `MolToSmilesDeviation(...)`
-- `MolToSmilesTokenInventory(...)`
-- `MolToSmilesTokenInventorySuperset(...)`
-- `PrepareMol(...)`
-- `PreparedMol`
+- Enumerate every supported string with `MolToSmilesEnum(...)`.
+- Step through legal next tokens with `MolToSmilesDecoder(...)` or
+  `MolToSmilesDeterminizedDecoder(...)`.
+- Diagnose rejected candidates with `MolToSmilesDeviation(...)`.
+- Build dataset token coverage with `MolToSmilesTokenInventorySuperset(...)`.
+- Reuse prepared molecules with `PrepareMol(...)` and `PreparedMol`.
 
-Start with the [documentation index](docs/index.md), then see:
+Start with the [documentation site](https://numpde.github.io/grimace-py/), or
+read the checked-in [documentation index](docs/index.md):
 
 - [Getting started](docs/getting-started.md)
 - [Concepts](docs/concepts.md)

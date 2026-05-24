@@ -111,6 +111,29 @@ class RdkitAdapterTest(unittest.TestCase):
         self.assertEqual(set(site.reference_order), set(site.ligand_occurrences))
         ordinary_policy_for_facts(facts)
 
+    def test_ordinary_adapter_declares_smiles_parse_order_viewpoint_mode(self) -> None:
+        options = RdkitOrdinaryExtractionOptions()
+
+        self.assertEqual(options.tetra_viewpoint_mode, "smiles_parse_order")
+
+    def test_ordinary_adapter_rejects_unknown_tetra_viewpoint_mode(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(tetra_viewpoint_mode="renumbered")
+
+        with self.assertRaisesRegex(ValueError, "tetra viewpoint mode"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("C[C@H](F)Cl")
+        renumbered = Chem.RenumberAtoms(mol, [1, 0, 2, 3])
+
+        original = ordinary_molecule_facts_from_rdkit(mol)
+        changed = ordinary_molecule_facts_from_rdkit(renumbered)
+
+        self.assertFalse(facts_are_isomorphic(original, changed).isomorphic)
+
     def test_rdkit_tetra_adapter_tag_matches_semantics_for_root_and_nonroot(self) -> None:
         semantics = OrdinarySmilesSemantics()
         cases = {

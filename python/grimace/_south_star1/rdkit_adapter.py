@@ -8,6 +8,7 @@ called by core enumeration for candidate validation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from rdkit import Chem
 
@@ -37,6 +38,7 @@ class RdkitOrdinaryExtractionOptions:
     extract_specified_directional: bool = True
     normalize_non_graph_hydrogens: bool = True
     reject_unsupported_stereo: bool = True
+    tetra_viewpoint_mode: Literal["smiles_parse_order"] = "smiles_parse_order"
 
 
 def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
@@ -64,8 +66,14 @@ def ordinary_molecule_facts_from_rdkit(
     mol: Chem.Mol,
     options: RdkitOrdinaryExtractionOptions = RdkitOrdinaryExtractionOptions(),
 ) -> MoleculeFacts:
-    """Snapshot RDKit molecules into the ordinary South Star fact convention."""
+    """Snapshot RDKit molecules into the ordinary South Star fact convention.
 
+    Tetrahedral extraction currently assumes RDKit atom ids preserve the
+    lexical order produced by ``Chem.MolFromSmiles``.  Arbitrarily renumbered
+    RDKit molecules are not a supported stereo-ingestion provenance yet.
+    """
+
+    _validate_extraction_options(options)
     _validate_stereo_extraction_scope(mol, options)
     facts = _base_molecule_facts_from_rdkit(
         mol,
@@ -79,6 +87,14 @@ def ordinary_molecule_facts_from_rdkit(
         facts = _overlay_rdkit_directional_stereo(mol, facts)
     facts.validate()
     return facts
+
+
+def _validate_extraction_options(options: RdkitOrdinaryExtractionOptions) -> None:
+    if options.tetra_viewpoint_mode != "smiles_parse_order":
+        raise ValueError(
+            "unsupported tetra viewpoint mode: "
+            f"{options.tetra_viewpoint_mode!r}"
+        )
 
 
 def _base_molecule_facts_from_rdkit(

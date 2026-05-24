@@ -9,6 +9,9 @@ on:
 env:
   RDKIT_FIXTURE_PIP_VERSION: "2026.3.1"
 
+permissions:
+  contents: read
+
 jobs:
   wheel:
     name: Build wheel (linux-x86_64, cp${{ matrix.python-version }})
@@ -29,6 +32,8 @@ jobs:
             python-version: "3.13"
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
@@ -46,13 +51,16 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: wheel-${{ matrix.name }}-cp${{ matrix.python-version }}
-          path: dist
+          path: dist/*.whl
+          if-no-files-found: error
 
   sdist:
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -69,7 +77,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: sdist
-          path: dist
+          path: dist/*.tar.gz
+          if-no-files-found: error
 
   release:
     name: Publish GitHub release
@@ -78,16 +87,21 @@ jobs:
       - wheel
       - sdist
     permissions:
+      actions: read
       contents: write
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
       - name: Require checked-in release notes
         run: test -f "notes/releases/${GITHUB_REF_NAME}.md"
+      - name: Validate release artifacts
+        run: python scripts/validate_release_artifacts.py dist --tag "$GITHUB_REF_NAME"
       - uses: softprops/action-gh-release@v3
         with:
           name: grimace-py ${{ github.ref_name }}
@@ -101,16 +115,23 @@ jobs:
       - wheel
       - sdist
     permissions:
+      actions: read
+      contents: read
       id-token: write
     environment:
       name: pypi
       url: https://pypi.org/p/grimace-py
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+      - name: Validate release artifacts
+        run: python scripts/validate_release_artifacts.py dist --tag "$GITHUB_REF_NAME"
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist

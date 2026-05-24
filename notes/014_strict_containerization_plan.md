@@ -251,8 +251,10 @@ until the dependency surface is large enough to justify the extra object.
   - Do not make perf part of default CI.
 
   Replaced host-venv CI jobs with Docker-backed `make ci` and `make package`
-  jobs. Left the tag-triggered release workflow unchanged and kept perf out of
-  default CI. Added an offline posture check for the CI workflow shape.
+  jobs. Kept perf out of default CI. Added offline posture checks for CI and
+  release workflow token permissions and non-persistent checkout credentials.
+  Added release artifact allowlist validation before GitHub release and PyPI
+  publish.
 
 - [x] Final validation before committing implementation.
   - `make checks`.

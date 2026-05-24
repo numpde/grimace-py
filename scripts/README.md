@@ -22,6 +22,12 @@ bounded correctness checks; heavier profiling runs should be explicit.
     `notes/004_perf_history.jsonl`
   - optionally saves the full report under `notes/perf_reports/`
 
+## Release Tooling
+
+- `validate_release_artifacts.py`
+  - checks that tag-triggered release jobs publish exactly the expected wheel
+    and sdist filenames
+
 ## `mine_rdkit_regressions.py`
 
 Local dataset miner for RDKit-derived writer regressions.

@@ -254,7 +254,7 @@ until the dependency surface is large enough to justify the extra object.
   jobs. Kept perf out of default CI. Added offline posture checks for CI and
   release workflow token permissions and non-persistent checkout credentials.
   Added release artifact allowlist validation before GitHub release and PyPI
-  publish.
+  publish. Pinned workflow action refs to commit SHAs.
 
 - [x] Final validation before committing implementation.
   - `make checks`.

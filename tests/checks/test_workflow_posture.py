@@ -4,6 +4,9 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+PINNED_ACTION_REF = re.compile(
+    r"(?m)^\s*-\s+uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
+)
 
 
 def read_text(relative_path: str) -> str:
@@ -19,6 +22,14 @@ def job_section(workflow: str, job_name: str) -> str:
 
 
 class WorkflowPostureTests(unittest.TestCase):
+    def test_workflow_actions_are_pinned_to_commit_sha(self) -> None:
+        for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            workflow = workflow_path.read_text(encoding="utf-8")
+            uses_count = len(re.findall(r"(?m)^\s*-\s+uses:\s+", workflow))
+            pinned_count = len(PINNED_ACTION_REF.findall(workflow))
+            with self.subTest(workflow=workflow_path.name):
+                self.assertEqual(uses_count, pinned_count)
+
     def test_ci_workflow_uses_read_only_token_and_non_persistent_checkout(self) -> None:
         workflow = read_text(".github/workflows/ci.yml")
         self.assertRegex(workflow, r"(?m)^permissions:\n  contents: read$")

@@ -73,15 +73,17 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertNotIn("contents: write", publish)
         self.assertNotIn("id-token: write", release)
 
-    def test_release_workflow_validates_tag_shape_before_building(self) -> None:
+    def test_release_workflow_validates_release_metadata_before_building(self) -> None:
         workflow = read_text(".github/workflows/release.yml")
-        self.assertRegex(workflow, r"(?m)^  validate-tag:")
+        self.assertRegex(workflow, r"(?m)^  validate-release:")
         self.assertIn('"$GITHUB_REF_NAME" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$', workflow)
+        validate = job_section(workflow, "validate-release")
+        self.assertIn('test -f "notes/releases/${GITHUB_REF_NAME}.md"', validate)
 
         wheel = job_section(workflow, "wheel")
         sdist = job_section(workflow, "sdist")
-        self.assertRegex(wheel, r"(?m)^    needs:\n      - validate-tag$")
-        self.assertRegex(sdist, r"(?m)^    needs:\n      - validate-tag$")
+        self.assertRegex(wheel, r"(?m)^    needs:\n      - validate-release$")
+        self.assertRegex(sdist, r"(?m)^    needs:\n      - validate-release$")
 
     def test_release_workflow_allowlists_uploaded_and_published_artifacts(self) -> None:
         workflow = read_text(".github/workflows/release.yml")

@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 jobs:
-  validate-tag:
-    name: Validate release tag
+  validate-release:
+    name: Validate release metadata
     runs-on: ubuntu-24.04
     steps:
       - name: Require vX.Y.Z tag
@@ -31,12 +31,18 @@ jobs:
             printf 'Release tag must look like vX.Y.Z, got %s.\n' "$GITHUB_REF_NAME" >&2
             exit 2
           fi
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Require checked-in release notes
+        if: github.event_name == 'push'
+        run: test -f "notes/releases/${GITHUB_REF_NAME}.md"
 
   wheel:
     name: Build wheel (linux-x86_64, cp${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     needs:
-      - validate-tag
+      - validate-release
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +87,7 @@ jobs:
     name: Build source distribution
     runs-on: ubuntu-24.04
     needs:
-      - validate-tag
+      - validate-release
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -124,8 +130,6 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Require checked-in release notes
-        run: test -f "notes/releases/${GITHUB_REF_NAME}.md"
       - name: Validate release artifacts
         run: python scripts/validate_release_artifacts.py dist --tag "$GITHUB_REF_NAME"
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3

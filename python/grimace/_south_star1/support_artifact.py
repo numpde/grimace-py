@@ -96,15 +96,15 @@ class TraversalDecisionCertificate:
 
     atoms_covered: tuple[int, ...]
     bonds_covered: tuple[int, ...]
-    parent_tree_check: bool
-    edge_partition_check: bool
 
 
 @dataclass(frozen=True, slots=True)
 class TraversalSpaceCertificate:
     component_root_domains: tuple[tuple[int, tuple[int, ...]], ...]
-    spanning_tree_domain_hash: str
-    local_order_domain_hash: str
+    spanning_tree_edge_sets: tuple[tuple[int, ...], ...]
+    local_order_keys_by_skeleton: tuple[
+        tuple[tuple[object, ...], tuple[object, ...]], ...
+    ]
     skeleton_keys: tuple[tuple[object, ...], ...]
 
 
@@ -321,10 +321,12 @@ def compile_support_artifact(
                 )
                 add_edge(witness_node, support_node, "renders_to")
                 render_programs.append(
-                    ArtifactRenderProgram(
+                    _render_program_for_witness(
                         witness_node=witness_node,
+                        skeleton=skeleton,
+                        assignment=witness.assignment,
+                        slots=slots,
                         rendered=witness.witness.rendered,
-                        pieces=(("literal", (witness.witness.rendered,)),),
                     )
                 )
 
@@ -338,8 +340,29 @@ def compile_support_artifact(
             (int(component.id), tuple(int(atom) for atom in component.atoms))
             for component in facts.components
         ),
-        spanning_tree_domain_hash=sequence_hash(repr(key) for key in skeleton_keys),
-        local_order_domain_hash=sequence_hash(repr(key) for key in skeleton_keys),
+        spanning_tree_edge_sets=tuple(
+            sorted(
+                {
+                    tuple(sorted(int(bond) for bond in skeleton.tree_bonds))
+                    for skeleton in skeleton_tuple
+                }
+            )
+        ),
+        local_order_keys_by_skeleton=tuple(
+            (
+                skeleton_key(skeleton),
+                tuple(
+                    sorted(
+                        (
+                            int(atom),
+                            tuple(_event_key(event) for event in events),
+                        )
+                        for atom, events in skeleton.events_at.items()
+                    )
+                ),
+            )
+            for skeleton in skeleton_tuple
+        ),
         skeleton_keys=tuple(skeleton_keys),
     )
     header = SupportArtifactHeader(
@@ -617,7 +640,6 @@ def _traversal_decision_certificate(
 ) -> TraversalDecisionCertificate:
     atom_ids = tuple(int(atom.id) for atom in facts.atoms)
     bond_ids = tuple(int(bond.id) for bond in facts.bonds)
-    skeleton_bonds = set(skeleton.tree_bonds) | set(skeleton.ring_bonds)
     return TraversalDecisionCertificate(
         skeleton_key=skeleton_key(skeleton),
         roots=tuple(int(root) for root in skeleton.roots),
@@ -633,15 +655,121 @@ def _traversal_decision_certificate(
             sorted(
                 (
                     int(atom),
-                    tuple(repr(event) for event in events),
+                    tuple(_event_key(event) for event in events),
                 )
                 for atom, events in skeleton.events_at.items()
             )
         ),
         atoms_covered=atom_ids,
         bonds_covered=bond_ids,
-        parent_tree_check=len(skeleton.parent) == len(facts.atoms),
-        edge_partition_check=skeleton_bonds == {bond.id for bond in facts.bonds},
+    )
+
+
+def _event_key(event: object) -> tuple[object, ...]:
+    if event.__class__.__name__ == "ChildEvent":
+        return (
+            "child",
+            int(event.bond),
+            int(event.parent),
+            int(event.child),
+            event.role.value,
+        )
+    if event.__class__.__name__ == "RingEvent":
+        return (
+            "ring",
+            int(event.bond),
+            int(event.atom),
+            int(event.other_atom),
+        )
+    raise TypeError(event)
+
+
+def _render_program_for_witness(
+    *,
+    witness_node: ArtifactNode,
+    skeleton,
+    slots,
+    assignment,
+    rendered: str,
+) -> ArtifactRenderProgram:
+    tree_slot_by_bond = {
+        slot.bond: slot
+        for slot in slots.bond_slots
+        if slot.kind.value == "tree"
+    }
+    ring_slot_by_endpoint = {
+        (slot.bond, slot.written_from): slot
+        for slot in slots.bond_slots
+        if slot.kind.value == "ring_endpoint"
+    }
+    endpoint_by_id = {endpoint.id: endpoint for endpoint in slots.ring_endpoints}
+    carrier_by_bond_slot = {slot.bond_slot: slot for slot in slots.carrier_slots}
+    pieces: list[tuple[str, tuple[object, ...]]] = []
+
+    def append_atom(atom) -> None:
+        pieces.append(
+            (
+                "atom",
+                (
+                    int(atom),
+                    assignment.atom_text[atom].name,
+                    assignment.tetra_tokens[atom].value,
+                ),
+            )
+        )
+        for event in skeleton.events_at[atom]:
+            if event.__class__.__name__ == "RingEvent":
+                slot = ring_slot_by_endpoint[(event.bond, event.atom)]
+                if slot.ring_endpoint is None:
+                    raise ValueError(f"ring slot lacks endpoint id: {slot.id!r}")
+                pieces.append(_bond_piece(slot, assignment, carrier_by_bond_slot))
+                pieces.append(
+                    (
+                        "ring_label",
+                        (
+                            int(slot.ring_endpoint),
+                            assignment.ring_labels[
+                                endpoint_by_id[slot.ring_endpoint].id
+                            ].value,
+                        ),
+                    )
+                )
+                continue
+
+            slot = tree_slot_by_bond[event.bond]
+            if event.role.value == "branch":
+                pieces.append(("branch_open", ()))
+                pieces.append(_bond_piece(slot, assignment, carrier_by_bond_slot))
+                append_atom(event.child)
+                pieces.append(("branch_close", ()))
+                continue
+
+            pieces.append(_bond_piece(slot, assignment, carrier_by_bond_slot))
+            append_atom(event.child)
+
+    for index, root in enumerate(skeleton.roots):
+        if index:
+            pieces.append(("dot", ()))
+        append_atom(root)
+
+    return ArtifactRenderProgram(
+        witness_node=witness_node,
+        rendered=rendered,
+        pieces=tuple(pieces),
+    )
+
+
+def _bond_piece(slot, assignment, carrier_by_bond_slot) -> tuple[str, tuple[object, ...]]:
+    carrier = carrier_by_bond_slot[slot.id]
+    return (
+        "bond",
+        (
+            int(slot.id),
+            int(slot.bond),
+            slot.kind.value,
+            assignment.bond_text[slot.id].name,
+            assignment.direction_marks[carrier.id].value,
+        ),
     )
 
 
@@ -896,8 +1024,14 @@ def _traversal_space_from_jsonable(data: Mapping[str, object]) -> TraversalSpace
             (int(item[0]), tuple(int(atom) for atom in item[1]))
             for item in _require_list(data["component_root_domains"])
         ),
-        spanning_tree_domain_hash=str(data["spanning_tree_domain_hash"]),
-        local_order_domain_hash=str(data["local_order_domain_hash"]),
+        spanning_tree_edge_sets=tuple(
+            tuple(int(bond) for bond in item)
+            for item in _require_list(data["spanning_tree_edge_sets"])
+        ),
+        local_order_keys_by_skeleton=tuple(
+            (_tuple_from_jsonable(item[0]), _tuple_from_jsonable(item[1]))
+            for item in _require_list(data["local_order_keys_by_skeleton"])
+        ),
         skeleton_keys=tuple(
             _tuple_from_jsonable(item)
             for item in _require_list(data["skeleton_keys"])
@@ -926,8 +1060,6 @@ def _traversal_decision_from_jsonable(data: object) -> TraversalDecisionCertific
         ),
         atoms_covered=tuple(int(item) for item in _require_list(mapping["atoms_covered"])),
         bonds_covered=tuple(int(item) for item in _require_list(mapping["bonds_covered"])),
-        parent_tree_check=bool(mapping["parent_tree_check"]),
-        edge_partition_check=bool(mapping["edge_partition_check"]),
     )
 
 

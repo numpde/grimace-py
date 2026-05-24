@@ -5,6 +5,8 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 
+from grimace._south_star1.certificates import RelationCertificate
+from grimace._south_star1.certificates import CertificateRelationKind
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
@@ -181,6 +183,274 @@ class SupportArtifactTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "schema version"):
             check_support_artifact(mutated)
 
+    def test_artifact_checker_rejects_parent_cycle(self) -> None:
+        artifact = _artifact_for_tetra()
+        decision = artifact.traversal_decisions[0]
+        mutated_decision = replace(
+            decision,
+            roots=(2,),
+            parent_items=((0, 1), (1, 0), (2, None), (3, 0)),
+        )
+
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            check_support_artifact(
+                _replace_traversal_decision(artifact, decision, mutated_decision),
+            )
+
+    def test_artifact_checker_rejects_parent_nonedge(self) -> None:
+        artifact = _artifact_for_tetra()
+        decision = artifact.traversal_decisions[0]
+        mutated_decision = replace(
+            decision,
+            parent_items=((0, None), (1, 2), (2, 0), (3, 0)),
+        )
+
+        with self.assertRaisesRegex(ValueError, "parent edge"):
+            check_support_artifact(
+                _replace_traversal_decision(artifact, decision, mutated_decision),
+            )
+
+    def test_artifact_checker_rejects_wrong_tree_ring_partition(self) -> None:
+        artifact = _artifact_for_tetra()
+        decision = artifact.traversal_decisions[0]
+        mutated_decision = replace(
+            decision,
+            tree_bonds=decision.tree_bonds[:-1],
+            ring_bonds=decision.ring_bonds + (decision.tree_bonds[-1],),
+        )
+
+        with self.assertRaisesRegex(ValueError, "tree bonds"):
+            check_support_artifact(
+                _replace_traversal_decision(artifact, decision, mutated_decision),
+            )
+
+    def test_artifact_checker_rejects_extra_local_event(self) -> None:
+        artifact = _artifact_for_tetra()
+        decision = artifact.traversal_decisions[0]
+        atom, events = decision.local_event_orders[0]
+        mutated_decision = replace(
+            decision,
+            local_event_orders=((atom, events + events[:1]),)
+            + decision.local_event_orders[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "child event coverage"):
+            check_support_artifact(
+                _replace_traversal_decision(artifact, decision, mutated_decision),
+            )
+
+    def test_artifact_checker_rejects_missing_ring_endpoint(self) -> None:
+        artifact = _artifact_for_facts(ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"))
+        decision = next(item for item in artifact.traversal_decisions if item.ring_bonds)
+        mutated_orders = []
+        removed = False
+        for atom, events in decision.local_event_orders:
+            if not removed:
+                kept = tuple(event for event in events if event[0] != "ring")
+                if len(kept) != len(events):
+                    mutated_orders.append((atom, kept))
+                    removed = True
+                    continue
+            mutated_orders.append((atom, events))
+        self.assertTrue(removed)
+
+        with self.assertRaisesRegex(ValueError, "ring endpoint coverage"):
+            check_support_artifact(
+                _replace_traversal_decision(
+                    artifact,
+                    decision,
+                    replace(decision, local_event_orders=tuple(mutated_orders)),
+                ),
+            )
+
+    def test_artifact_checker_rejects_prefix_atom_domain_not_in_policy(self) -> None:
+        artifact = _artifact_for_tetra()
+        space = artifact.prefix_spaces[0]
+        atom, values = space.atom_text_domains[0]
+        mutated_space = replace(
+            space,
+            atom_text_domains=((atom, values + ("not_in_policy",)),)
+            + space.atom_text_domains[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "atom domains"):
+            check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_prefix_bond_domain_not_in_policy(self) -> None:
+        artifact = _artifact_for_tetra()
+        space = artifact.prefix_spaces[0]
+        slot, values = space.bond_text_domains[0]
+        mutated_space = replace(
+            space,
+            bond_text_domains=((slot, values + ("not_in_policy",)),)
+            + space.bond_text_domains[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "bond domains"):
+            check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_non_least_free_ring_label(self) -> None:
+        artifact = _artifact_for_facts(ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"))
+        space = next(item for item in artifact.prefix_spaces if item.ring_label_assignments)
+        assignment = space.ring_label_assignments[0]
+        mutated_assignment = tuple((endpoint, 2) for endpoint, _ in assignment)
+        mutated_space = replace(
+            space,
+            ring_label_assignments=(mutated_assignment,)
+            + space.ring_label_assignments[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "least-free"):
+            check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_atom_piece_with_wrong_tetra_token(self) -> None:
+        artifact = _artifact_for_tetra()
+        program = artifact.render_programs[0]
+        pieces = _mutate_first_piece_arg(program.pieces, "atom", 2, "@@")
+        mutated_program = replace(program, pieces=pieces)
+
+        with self.assertRaisesRegex(ValueError, "render program mismatch|outside policy"):
+            check_support_artifact(
+                _replace_render_program(artifact, program, mutated_program),
+            )
+
+    def test_artifact_checker_rejects_bond_piece_with_wrong_direction_mark(self) -> None:
+        artifact = _artifact_for_facts(directional_facts())
+        program = artifact.render_programs[0]
+        pieces = _mutate_first_piece_arg(program.pieces, "bond", 4, -1)
+        mutated_program = replace(program, pieces=pieces)
+
+        with self.assertRaisesRegex(ValueError, "render program mismatch|render policy"):
+            check_support_artifact(
+                _replace_render_program(artifact, program, mutated_program),
+            )
+
+    def test_artifact_checker_rejects_wrong_ring_label_piece(self) -> None:
+        artifact = _artifact_for_facts(ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"))
+        program = next(
+            item
+            for item in artifact.render_programs
+            if any(piece[0] == "ring_label" for piece in item.pieces)
+        )
+        pieces = _mutate_first_piece_arg(program.pieces, "ring_label", 1, 2)
+        mutated_program = replace(program, pieces=pieces)
+
+        with self.assertRaisesRegex(ValueError, "render program mismatch"):
+            check_support_artifact(
+                _replace_render_program(artifact, program, mutated_program),
+            )
+
+    def test_artifact_checker_rejects_literal_render_program_for_nonliteral_witness(
+        self,
+    ) -> None:
+        artifact = _artifact_for_tetra()
+        program = artifact.render_programs[0]
+        mutated_program = replace(
+            program,
+            pieces=(("literal", (program.rendered,)),),
+        )
+
+        with self.assertRaisesRegex(ValueError, "unsupported render-program piece"):
+            check_support_artifact(
+                _replace_render_program(artifact, program, mutated_program),
+            )
+
+    def test_artifact_checker_rejects_render_piece_order_swap(self) -> None:
+        artifact = _artifact_for_tetra()
+        program = artifact.render_programs[0]
+        pieces = (program.pieces[1], program.pieces[0]) + program.pieces[2:]
+        mutated_program = replace(program, pieces=pieces)
+
+        with self.assertRaisesRegex(ValueError, "render program mismatch"):
+            check_support_artifact(
+                _replace_render_program(artifact, program, mutated_program),
+            )
+
+    def test_artifact_checker_rejects_witness_certificate_missing_relation(self) -> None:
+        artifact = _artifact_for_tetra()
+        certified = artifact.traced_support.certified_witnesses[0]
+        stereo = certified.certificate.stereo_solution
+        mutated_stereo = replace(
+            stereo,
+            relation_certificates=stereo.relation_certificates[:-1],
+        )
+
+        with self.assertRaisesRegex(ValueError, "relation certificate coverage"):
+            check_support_artifact(
+                _replace_certified_witness(
+                    artifact,
+                    certified,
+                    replace(
+                        certified,
+                        certificate=replace(
+                            certified.certificate,
+                            stereo_solution=mutated_stereo,
+                        ),
+                    ),
+                )
+            )
+
+    def test_artifact_checker_rejects_witness_certificate_extra_relation(self) -> None:
+        artifact = _artifact_for_tetra()
+        certified = artifact.traced_support.certified_witnesses[0]
+        stereo = certified.certificate.stereo_solution
+        extra = RelationCertificate(
+            kind=CertificateRelationKind.TETRA_SITE,
+            subject="extra",
+            detail=("token", "@"),
+        )
+        mutated_stereo = replace(
+            stereo,
+            relation_certificates=stereo.relation_certificates + (extra,),
+        )
+
+        with self.assertRaisesRegex(ValueError, "relation certificate coverage"):
+            check_support_artifact(
+                _replace_certified_witness(
+                    artifact,
+                    certified,
+                    replace(
+                        certified,
+                        certificate=replace(
+                            certified.certificate,
+                            stereo_solution=mutated_stereo,
+                        ),
+                    ),
+                )
+            )
+
+    def test_artifact_checker_rejects_witness_certificate_row_not_in_relation(
+        self,
+    ) -> None:
+        artifact = _artifact_for_tetra()
+        certified = artifact.traced_support.certified_witnesses[0]
+        stereo = certified.certificate.stereo_solution
+        first_relation = stereo.relation_certificates[0]
+        mutated_relation = replace(
+            first_relation,
+            detail=first_relation.detail[:-3] + ("token", ""),
+        )
+        mutated_stereo = replace(
+            stereo,
+            relation_certificates=(mutated_relation,)
+            + stereo.relation_certificates[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "row is outside artifact relation"):
+            check_support_artifact(
+                _replace_certified_witness(
+                    artifact,
+                    certified,
+                    replace(
+                        certified,
+                        certificate=replace(
+                            certified.certificate,
+                            stereo_solution=mutated_stereo,
+                        ),
+                    ),
+                )
+            )
+
 
 def _artifact_for_tetra() -> SupportArtifact:
     return _artifact_for_facts(tetrahedral_facts())
@@ -215,6 +485,62 @@ def _replace_csp_space(artifact, old, new):
             new if item == old else item for item in artifact.csp_solution_spaces
         ),
     )
+
+
+def _replace_traversal_decision(artifact, old, new):
+    return replace(
+        artifact,
+        traversal_decisions=tuple(
+            new if item == old else item for item in artifact.traversal_decisions
+        ),
+    )
+
+
+def _replace_prefix_space(artifact, old, new):
+    return replace(
+        artifact,
+        prefix_spaces=tuple(
+            new if item == old else item for item in artifact.prefix_spaces
+        ),
+    )
+
+
+def _replace_render_program(artifact, old, new):
+    return replace(
+        artifact,
+        render_programs=tuple(
+            new if item == old else item for item in artifact.render_programs
+        ),
+    )
+
+
+def _replace_certified_witness(artifact, old, new):
+    traced = artifact.traced_support
+    return replace(
+        artifact,
+        traced_support=replace(
+            traced,
+            certified_witnesses=tuple(
+                new if item == old else item for item in traced.certified_witnesses
+            ),
+        ),
+    )
+
+
+def _mutate_first_piece_arg(pieces, kind, arg_index, new_value):
+    out = []
+    changed = False
+    for piece_kind, args in pieces:
+        if not changed and piece_kind == kind:
+            mutable = list(args)
+            mutable[arg_index] = new_value
+            out.append((piece_kind, tuple(mutable)))
+            changed = True
+            continue
+        out.append((piece_kind, args))
+    if not changed:
+        raise AssertionError(f"no render piece of kind {kind!r}")
+    return tuple(out)
 
 
 if __name__ == "__main__":

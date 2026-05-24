@@ -90,7 +90,18 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             "stereo_witness",
             "support_enumeration",
         }
+        banned_calls = {
+            "OrdinarySmilesSemantics",
+            "build_stereo_csp",
+            "compile_support_artifact",
+            "enumerate_presentation_prefixes",
+            "enumerate_traced_certified_stereo_support",
+            "enumerate_traversal_skeletons",
+            "ordinary_policy_for_facts",
+            "render_stereo_traversal",
+        }
         banned_imports: list[str] = []
+        calls: list[str] = []
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -103,9 +114,15 @@ class SouthStar1BoundaryTest(unittest.TestCase):
                 module = node.module or ""
                 if module.split(".", 1)[0] in banned_modules:
                     banned_imports.append(module)
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    calls.append(node.func.id)
+                if isinstance(node.func, ast.Attribute):
+                    calls.append(node.func.attr)
 
         self.assertFalse(_imports_rdkit(tree))
         self.assertEqual(banned_imports, [])
+        self.assertEqual(sorted(set(calls) & banned_calls), [])
 
 
 def _imports_rdkit(tree: ast.AST) -> bool:

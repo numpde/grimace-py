@@ -178,6 +178,15 @@ This split is intentional:
 - external audit: RDKit source parse-back remains a falsifier, not part of the
   artifact checker.
 
+### Artifact De-Self-Certification
+
+The artifact checker does not trust boolean fields inside traversal
+certificates, literal render strings, or certificate-local domain declarations.
+It recomputes traversal validity from canonical facts and encoded parent/event
+data, reconstructs rendering from structured atom/bond/ring/punctuation pieces,
+checks prefix domains against the policy snapshot, and checks witness relation
+rows against the artifact's compiled relation tables.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

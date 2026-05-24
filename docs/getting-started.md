@@ -47,39 +47,49 @@ full rooting rules.
 
 ## Decode one token at a time
 
-Use `MolToSmilesDecoder(...)` when you are constructing a SMILES string and
-need to know the legal next choices for the current prefix.
+Use `MolToSmilesDeterminizedDecoder(...)` when you are constructing a SMILES
+string and need one legal next choice per token text for the current prefix.
 
 ```python
-decoder = grimace.MolToSmilesDecoder(
+decoder = grimace.MolToSmilesDeterminizedDecoder(
     mol,
-    rootedAtAtom=0,
+    rootedAtAtom=-1,
     isomericSmiles=False,
     **FLAGS,
 )
 
-for _ in range(7):
+target = "c1(ccccc1OC(=O)C)C(O)=O"
+
+for token in target[:13]:
     prefix = decoder.prefix if decoder.prefix else '""'
     print(f"{prefix} -> {[choice.text for choice in decoder.next_choices]}")
-    decoder = decoder.next_choices[0].next_state
+    decoder = next(
+        choice.next_state
+        for choice in decoder.next_choices
+        if choice.text == token
+    )
 ```
 
-Early output on aspirin:
+Early output on aspirin along that target path:
 
 ```text
-"" -> ['C']
-C -> ['C']
-CC -> ['(', '(']
-CC( -> ['=']
-CC(= -> ['O']
-CC(=O -> [')']
-CC(=O) -> ['O']
+"" -> ['C', 'O', 'c']
+c -> ['1']
+c1 -> ['(', 'c']
+c1( -> ['C', 'O', 'c']
+c1(c -> ['(', 'c']
+c1(cc -> ['c']
+c1(ccc -> ['c']
+c1(cccc -> ['c']
+c1(ccccc -> ['1']
+c1(ccccc1 -> ['C', 'O']
+c1(ccccc1O -> ['C']
+c1(ccccc1OC -> ['(']
+c1(ccccc1OC( -> ['=', 'C']
 ```
 
-Duplicate token texts are meaningful in `MolToSmilesDecoder(...)`: they are
-different branch choices with the same emitted text. Use
-`MolToSmilesDeterminizedDecoder(...)` when you want at most one choice per
-token text.
+The determinized decoder merges same-text continuations. Use
+`MolToSmilesDecoder(...)` when you need branch-preserving choices instead.
 
 ## Next pages
 

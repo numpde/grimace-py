@@ -24,7 +24,7 @@ COPY . /src
 RUN mkdir -p .venv/lib/python3.12 \
     && ln -s /usr/local/lib/python3.12/site-packages .venv/lib/python3.12/site-packages
 
-RUN python -m maturin build --release --locked --out /tmp/grimace-dist -i python3.12 \
+RUN python -m maturin build --release --out /tmp/grimace-dist -i python3.12 \
     && python -m pip install --no-deps /tmp/grimace-dist/*.whl \
     && rm -rf /tmp/grimace-dist
 

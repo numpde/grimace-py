@@ -20,7 +20,7 @@ RUN python --version \
     && rustc --version \
     && cargo --version \
     && python -m pip install maturin==1.13.1 rdkit==2026.3.1 \
-    && python -m maturin build --release --locked --out /tmp/grimace-dist -i python3.12 \
+    && python -m maturin build --release --out /tmp/grimace-dist -i python3.12 \
     && python -m pip install --no-deps /tmp/grimace-dist/*.whl \
     && rm -rf /tmp/grimace-dist
 

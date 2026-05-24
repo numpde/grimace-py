@@ -26,6 +26,7 @@ services:
       - test
       - --lib
       - --offline
+      - --locked
     environment:
       CARGO_TARGET_DIR: /cargo-target
 

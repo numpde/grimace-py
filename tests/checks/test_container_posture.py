@@ -65,6 +65,7 @@ class ContainerPostureTests(unittest.TestCase):
             with self.subTest(service=service):
                 self.assertRegex(compose, rf"(?m)^  {service}:$")
         self.assertIn("dockerfile: containers/test/Dockerfile", compose)
+        self.assertIn("- --offline\n      - --locked", compose)
         self.assertRegex(compose, r'(?m)^  user:\s+"65532:65532"\s*$')
         self.assertRegex(compose, r'(?m)^  network_mode:\s+"none"\s*$')
         self.assertRegex(compose, r"(?m)^  read_only:\s+true\s*$")
@@ -92,9 +93,9 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("source: ../dist", compose)
         self.assertIn("target: /dist", compose)
-        self.assertIn("python -m maturin build --release --locked --out /dist", compose)
+        self.assertIn("python -m maturin build --release --out /dist", compose)
         self.assertIn(
-            "python -m maturin build --release --locked --sdist --out /dist",
+            "python -m maturin build --release --sdist --out /dist",
             compose,
         )
         self.assertIn(
@@ -169,7 +170,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("rdkit==2026.3.1", dockerfile)
         self.assertIn("COPY . /src", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
-        self.assertIn("python -m maturin build --release --locked", dockerfile)
+        self.assertIn("python -m maturin build --release --out", dockerfile)
         self.assertIn(
             "python -m pip install --no-deps /tmp/grimace-dist/*.whl",
             dockerfile,
@@ -200,7 +201,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("COPY . /build-src", dockerfile)
         self.assertIn("WORKDIR /build-src", dockerfile)
         self.assertNotIn("WORKDIR /src", dockerfile)
-        self.assertIn("python -m maturin build --release --locked", dockerfile)
+        self.assertIn("python -m maturin build --release --out", dockerfile)
         self.assertIn(
             "python -m pip install --no-deps /tmp/grimace-dist/*.whl",
             dockerfile,

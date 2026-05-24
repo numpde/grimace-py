@@ -98,7 +98,7 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertEqual(workflow.count("maturin-version: ${{ env.MATURIN_ACTION_VERSION }}"), 2)
         self.assertEqual(workflow.count("container: ${{ env.MANYLINUX_2_28_X86_64_IMAGE }}"), 1)
         self.assertIn(
-            "args: --release --locked --compatibility pypi --out dist -i python${{ matrix.python-version }}",
+            "args: --release --compatibility pypi --out dist -i python${{ matrix.python-version }}",
             workflow,
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)

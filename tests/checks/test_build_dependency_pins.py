@@ -21,6 +21,20 @@ class BuildDependencyPinTests(unittest.TestCase):
             pyproject["build-system"]["requires"],
         )
 
+    def test_pyproject_is_authoritative_for_locked_maturin_builds(self) -> None:
+        pyproject = tomllib.loads(read_text("pyproject.toml"))
+        self.assertIs(True, pyproject["tool"]["maturin"]["locked"])
+
+        checked_files = (
+            ".github/workflows/release.yml",
+            "compose/package.yml",
+            "containers/perf/Dockerfile",
+            "containers/test/Dockerfile",
+        )
+        for relative_path in checked_files:
+            with self.subTest(path=relative_path):
+                self.assertNotRegex(read_text(relative_path), r"maturin build\b[^\n]*--locked")
+
     def test_container_and_release_lanes_use_same_maturin_pin(self) -> None:
         checked_files = (
             ".github/workflows/release.yml",

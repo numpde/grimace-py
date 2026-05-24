@@ -310,10 +310,11 @@ list are Makefile facts, not command-line overrides.
 
 ### Rust Dependency Lock
 
-The Docker and release lanes use locked Rust builds (`cargo fetch --locked`,
-`cargo test --offline`, and `maturin build --locked`), so `Cargo.lock` is part
-of the source boundary. It must stay checked in and must not be excluded from
-the Docker build context. The Python build backend is pinned to the same
+The Docker and release lanes use locked Rust builds. Raw Cargo lanes pass
+`--locked`, and maturin builds get the same policy from `tool.maturin.locked`,
+so PEP 517 sdist builds cannot silently update `Cargo.lock`. `Cargo.lock` is
+part of the source boundary. It must stay checked in and must not be excluded
+from the Docker build context. The Python build backend is pinned to the same
 maturin version used by the Docker and release lanes.
 
 ### Source Distribution Boundary

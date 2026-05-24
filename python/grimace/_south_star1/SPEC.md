@@ -101,7 +101,10 @@ to avoid circularly using a site's stereo label as evidence for its own ligand
 distinctness.
 
 RDKit ingestion remains one-way and non-definitional for these experimental
-options. In particular, the adapter builds ordinary potential sites before it
-overlays RDKit specified stereo; therefore a remote-stereo-dependent candidate
-that requires `exact_stereochemical_graph_automorphism` is not yet discoverable
-from a single RDKit `Mol` ingestion pass.
+options. The default one-pass adapter builds ordinary potential sites before it
+overlays RDKit specified stereo, so a remote-stereo-dependent candidate that
+requires `exact_stereochemical_graph_automorphism` is not discoverable in that
+mode. `RdkitOrdinaryExtractionOptions(stereo_site_discovery_passes=2)` enables
+an explicit experimental second pass: overlay any discoverable specified stereo,
+rebuild missing potential sites with those labels available, then require the
+final overlay to resolve all supported RDKit stereo.

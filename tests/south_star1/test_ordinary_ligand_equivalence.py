@@ -122,12 +122,36 @@ class OrdinaryLigandEquivalenceTest(unittest.TestCase):
 
         self.assertEqual(first.cache_hits, 0)
         self.assertEqual(first.cache_misses, 1)
+        self.assertEqual(first.searches_started, 1)
         self.assertGreater(first.atom_maps_considered, 0)
         self.assertGreater(first.complete_automorphisms_considered, 0)
         self.assertEqual(second.cache_hits, 1)
         self.assertEqual(second.cache_misses, 0)
+        self.assertEqual(second.searches_started, 0)
         self.assertEqual(second.atom_maps_considered, 0)
         self.assertEqual(second.complete_automorphisms_considered, 0)
+
+    def test_exact_equivalence_stats_without_cache_record_search_not_miss(
+        self,
+    ) -> None:
+        facts = deep_tetra_ligand_facts(right_terminal="Br")
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=2, bond_id=1),
+            "right": _neighbor_occurrence(atom=5, bond_id=3),
+        }
+
+        expected = ligand_occurrences_equivalent(**kwargs)
+        stats = LigandEquivalenceStats()
+        actual = ligand_occurrences_equivalent(**kwargs, stats=stats)
+
+        self.assertEqual(actual, expected)
+        self.assertEqual(stats.cache_hits, 0)
+        self.assertEqual(stats.cache_misses, 0)
+        self.assertEqual(stats.searches_started, 1)
+        self.assertGreater(stats.atom_maps_considered, 0)
+        self.assertGreater(stats.complete_automorphisms_considered, 0)
 
     def test_stereochemical_mode_distinguishes_remote_directional_stereo(self) -> None:
         facts = _remote_directional_ligand_facts(

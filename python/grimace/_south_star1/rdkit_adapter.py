@@ -43,6 +43,7 @@ class RdkitOrdinaryExtractionOptions:
     reject_unsupported_stereo: bool = True
     tetra_viewpoint_mode: Literal["smiles_parse_order"] = "smiles_parse_order"
     stereo_site_options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions()
+    stereo_site_discovery_passes: Literal[1, 2] = 1
 
 
 def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
@@ -88,11 +89,36 @@ def ordinary_molecule_facts_from_rdkit(
             facts,
             options=options.stereo_site_options,
         )
-    if options.extract_specified_tetrahedral:
-        facts = _overlay_rdkit_tetrahedral_stereo(mol, facts)
-    if options.extract_specified_directional:
-        facts = _overlay_rdkit_directional_stereo(mol, facts)
+    if options.stereo_site_discovery_passes == 2:
+        facts = _overlay_rdkit_specified_stereo(mol, facts, options, require_all=False)
+        facts = add_ordinary_potential_sites(
+            facts,
+            options=options.stereo_site_options,
+        )
+    facts = _overlay_rdkit_specified_stereo(mol, facts, options, require_all=True)
     facts.validate()
+    return facts
+
+
+def _overlay_rdkit_specified_stereo(
+    mol: Chem.Mol,
+    facts: MoleculeFacts,
+    options: RdkitOrdinaryExtractionOptions,
+    *,
+    require_all: bool,
+) -> MoleculeFacts:
+    if options.extract_specified_tetrahedral:
+        facts = _overlay_rdkit_tetrahedral_stereo(
+            mol,
+            facts,
+            require_all=require_all,
+        )
+    if options.extract_specified_directional:
+        facts = _overlay_rdkit_directional_stereo(
+            mol,
+            facts,
+            require_all=require_all,
+        )
     return facts
 
 
@@ -102,6 +128,17 @@ def _validate_extraction_options(options: RdkitOrdinaryExtractionOptions) -> Non
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "unsupported tetra viewpoint mode: "
             f"{options.tetra_viewpoint_mode!r}",
+        )
+    if options.stereo_site_discovery_passes not in {1, 2}:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "unsupported stereo site discovery pass count: "
+            f"{options.stereo_site_discovery_passes!r}",
+        )
+    if options.stereo_site_discovery_passes == 2 and not options.include_potential_sites:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "two-pass stereo site discovery requires potential-site construction",
         )
 
 
@@ -168,6 +205,8 @@ def _has_rdkit_bond_stereo(mol: Chem.Mol) -> bool:
 def _overlay_rdkit_tetrahedral_stereo(
     mol: Chem.Mol,
     facts: MoleculeFacts,
+    *,
+    require_all: bool,
 ) -> MoleculeFacts:
     sites_by_center = {
         site.center: site
@@ -191,6 +230,8 @@ def _overlay_rdkit_tetrahedral_stereo(
         center = AtomId(atom.GetIdx())
         site = sites_by_center.get(center)
         if site is None:
+            if not require_all:
+                continue
             raise SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_STEREO,
                 "RDKit tetrahedral atom has no ordinary potential site: "
@@ -318,6 +359,8 @@ def _replace_tetrahedral_sites(
 def _overlay_rdkit_directional_stereo(
     mol: Chem.Mol,
     facts: MoleculeFacts,
+    *,
+    require_all: bool,
 ) -> MoleculeFacts:
     sites_by_center_bond = {
         site.center_bond: site
@@ -338,6 +381,8 @@ def _overlay_rdkit_directional_stereo(
         center_bond = BondId(bond.GetIdx())
         site = sites_by_center_bond.get(center_bond)
         if site is None:
+            if not require_all:
+                continue
             raise SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_STEREO,
                 "RDKit stereo bond has no ordinary potential site: "

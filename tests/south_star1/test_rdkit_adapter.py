@@ -181,7 +181,9 @@ class RdkitAdapterTest(unittest.TestCase):
         self.assertEqual(len(facts.stereo.directional), 1)
         self.assertEqual(facts.stereo.directional[0].status, SiteStatus.SPECIFIED)
 
-    def test_ordinary_adapter_does_not_yet_two_pass_stereo_exact_sites(self) -> None:
+    def test_ordinary_adapter_one_pass_stereo_exact_cannot_use_remote_stereo(
+        self,
+    ) -> None:
         mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
         options = RdkitOrdinaryExtractionOptions(
             stereo_site_options=OrdinaryStereoSiteOptions(
@@ -191,6 +193,31 @@ class RdkitAdapterTest(unittest.TestCase):
 
         with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
             ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_two_pass_stereo_exact_uses_remote_stereo(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)([C@](F)(Cl)Br)[C@@](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_stereochemical_graph_automorphism",
+            ),
+            stereo_site_discovery_passes=2,
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(
+            sorted(site.center for site in facts.stereo.tetrahedral),
+            [AtomId(0), AtomId(2), AtomId(6)],
+        )
+        self.assertTrue(
+            all(
+                site.status is SiteStatus.SPECIFIED
+                for site in facts.stereo.tetrahedral
+                if site.center in {AtomId(0), AtomId(2), AtomId(6)}
+            )
+        )
 
     def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
         self,

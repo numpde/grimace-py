@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
@@ -39,6 +40,7 @@ class LigandEquivalenceStats:
 
     cache_hits: int = 0
     cache_misses: int = 0
+    searches_started: int = 0
     atom_maps_considered: int = 0
     complete_automorphisms_considered: int = 0
 
@@ -78,6 +80,8 @@ def ligand_occurrences_equivalent(
         return cache.by_key[key]
     if cache is not None and stats is not None:
         stats.cache_misses += 1
+    if stats is not None:
+        stats.searches_started += 1
 
     if left.kind is not right.kind:
         return _cache_result(cache, key, False)
@@ -96,7 +100,7 @@ def ligand_occurrences_equivalent(
             return _cache_result(cache, key, False)
 
     _validate_anchor(facts, anchor)
-    for atom_map in _anchored_atom_automorphisms(facts, anchor, stats):
+    for atom_map in _iter_anchored_atom_automorphisms(facts, anchor, stats):
         bond_map = _bond_map_for_atom_map(facts, atom_map)
         if bond_map is None:
             continue
@@ -172,11 +176,11 @@ def _validate_stereo_mode(stereo_mode: str) -> None:
         raise ValueError(f"unsupported ligand equivalence stereo mode: {stereo_mode!r}")
 
 
-def _anchored_atom_automorphisms(
+def _iter_anchored_atom_automorphisms(
     facts: MoleculeFacts,
     anchor: AutomorphismAnchor,
     stats: LigandEquivalenceStats | None = None,
-) -> tuple[dict[AtomId, AtomId], ...]:
+) -> Iterator[dict[AtomId, AtomId]]:
     candidates_by_atom: dict[AtomId, tuple[AtomId, ...]] = {}
     atoms_by_signature: dict[tuple[object, ...], list[AtomId]] = {}
     for atom in facts.atoms:
@@ -209,13 +213,15 @@ def _anchored_atom_automorphisms(
             ),
         )
     )
-    mappings: list[dict[AtomId, AtomId]] = []
-
-    def search(index: int, atom_map: dict[AtomId, AtomId], used: set[AtomId]) -> None:
+    def search(
+        index: int,
+        atom_map: dict[AtomId, AtomId],
+        used: set[AtomId],
+    ) -> Iterator[dict[AtomId, AtomId]]:
         if index == len(order):
             if stats is not None:
                 stats.complete_automorphisms_considered += 1
-            mappings.append(dict(atom_map))
+            yield dict(atom_map)
             return
 
         atom = order[index]
@@ -234,12 +240,11 @@ def _anchored_atom_automorphisms(
                 continue
             atom_map[atom.id] = candidate
             used.add(candidate)
-            search(index + 1, atom_map, used)
+            yield from search(index + 1, atom_map, used)
             used.remove(candidate)
             del atom_map[atom.id]
 
-    search(0, {}, set())
-    return tuple(mappings)
+    yield from search(0, {}, set())
 
 
 def _mapped_bonds_match(

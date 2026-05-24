@@ -3,10 +3,22 @@
 .agents
 .idea
 .vscode
+tmp
 
 .venv
 .env
 .env.*
+.envrc
+.netrc
+.pypirc
+.ssh
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa
+id_ed25519
 
 dist
 build

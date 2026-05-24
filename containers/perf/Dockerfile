@@ -21,7 +21,7 @@ RUN python --version \
     && python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl \
     && rm -rf /tmp/grimace-dist
 
-WORKDIR /src
+WORKDIR /build-src
 USER 65532:65532
 
 ENTRYPOINT ["python"]

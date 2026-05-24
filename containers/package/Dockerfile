@@ -20,3 +20,5 @@ WORKDIR /src
 COPY . /src
 
 RUN cargo fetch --locked
+
+USER 65532:65532

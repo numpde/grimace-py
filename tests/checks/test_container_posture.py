@@ -166,6 +166,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("COPY . /src", dockerfile)
         self.assertIn("cargo fetch --locked", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
+        self.assertIn("USER 65532:65532", dockerfile)
 
     def test_perf_dockerfile_builds_installed_package_image(self) -> None:
         dockerfile = read_text("containers/perf/Dockerfile")
@@ -176,6 +177,8 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertNotIn("git", dockerfile)
         self.assertIn("COPY . /build-src", dockerfile)
+        self.assertIn("WORKDIR /build-src", dockerfile)
+        self.assertNotIn("WORKDIR /src", dockerfile)
         self.assertIn("python -m maturin build --release", dockerfile)
         self.assertIn(
             "python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl",
@@ -192,12 +195,18 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("ACTUAL_UID := $(shell id -u)", makefile)
         self.assertIn("LOCAL_UID ?= $(shell id -u)", makefile)
         self.assertIn("LOCAL_GID ?= $(shell id -g)", makefile)
+        self.assertIn(
+            "PERF_ARTIFACTS := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl",
+            makefile,
+        )
         self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
         self.assertIn('"$(ACTUAL_UID)" == "0"', makefile)
         self.assertIn('"$(LOCAL_UID)" == "0"', makefile)
         self.assertIn('"$(LOCAL_GID)" == "0"', makefile)
         self.assertIn("do not set LOCAL_UID=0 or LOCAL_GID=0", makefile)
         self.assertIn("DIST_GUARD := if [[ -L dist ]]", makefile)
+        self.assertIn("PERF_ARTIFACTS_GUARD := for path in $(PERF_ARTIFACTS)", makefile)
+        self.assertIn("missing or a symlink", makefile)
         self.assertLess(
             makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
             makefile.index("\t@find dist"),
@@ -251,9 +260,21 @@ class ContainerPostureTests(unittest.TestCase):
             ".agents",
             ".idea",
             ".vscode",
+            "tmp",
             ".venv",
             ".env",
             ".env.*",
+            ".envrc",
+            ".netrc",
+            ".pypirc",
+            ".ssh",
+            "*.pem",
+            "*.key",
+            "*.p12",
+            "*.pfx",
+            "*.crt",
+            "id_rsa",
+            "id_ed25519",
             "dist",
             "build",
             "target",

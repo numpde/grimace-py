@@ -130,6 +130,15 @@ class OrdinaryPolicyTest(unittest.TestCase):
             ordinary_policy_for_facts(facts)
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_ATOM)
 
+    def test_invalid_policy_options_raise_typed_policy_error(self) -> None:
+        with self.assertRaisesRegex(SouthStarError, "at least one ring label") as raised:
+            ordinary_policy_for_facts(
+                tetrahedral_facts(),
+                OrdinaryPolicyOptions(ring_label_values=()),
+            )
+
+        self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
 
 def _cyclopropene_facts() -> MoleculeFacts:
     return MoleculeFacts(

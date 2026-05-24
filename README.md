@@ -72,10 +72,8 @@ read the checked-in [documentation index](docs/index.md):
 - [Concepts](docs/concepts.md)
 - [Runtime](docs/runtime.md)
 - [Limitations](docs/current-limitations.md)
+- [Guides](docs/guides.md)
 - [API](docs/api/python.md)
-- [Prepared molecules](docs/guides/prepared-mol.md)
-- [Deviation diagnostics](docs/guides/deviation.md)
-- [Token inventories](docs/guides/token-inventory.md)
 
 ## Install matrix
 

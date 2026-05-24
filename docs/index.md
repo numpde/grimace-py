@@ -36,16 +36,13 @@ and known gaps.
 - [Concepts](concepts.md)
 - [Runtime](runtime.md)
 - [Limitations](current-limitations.md)
+- [Guides](guides.md)
 - [API](api/python.md)
 
 ## Guides
 
-- [Prepared molecules](guides/prepared-mol.md): prepare once, reuse, and
-  serialize.
-- [Deviation diagnostics](guides/deviation.md): find where a candidate leaves
-  the supported language.
-- [Token inventories](guides/token-inventory.md): build dataset vocabulary
-  coverage.
+[Guides](guides.md) cover prepared molecules, deviation diagnostics, and token
+inventories.
 
 ## Correctness and evidence
 

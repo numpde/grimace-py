@@ -111,7 +111,5 @@ The determinized decoder merges same-text continuations. Use
 
 - [Concepts](concepts.md)
 - [Runtime](runtime.md)
+- [Guides](guides.md)
 - [API](api/python.md)
-- [Prepared molecules](guides/prepared-mol.md)
-- [Deviation diagnostics](guides/deviation.md)
-- [Token inventories](guides/token-inventory.md)

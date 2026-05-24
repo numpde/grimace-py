@@ -7,4 +7,5 @@ header_pages:
   - concepts.md
   - runtime.md
   - current-limitations.md
+  - guides.md
   - api/python.md

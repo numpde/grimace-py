@@ -42,6 +42,56 @@ class RdkitAuditCase:
     expected_error_kind: SouthStarErrorKind | None = None
 
 
+SOUTH_STAR1_SUPPORTED_V0_AUDIT_CASES = (
+    RdkitAuditCase(
+        name="nonstereo_tree",
+        smiles="CCO",
+        kind="supported",
+        tags=("nonstereo",),
+        max_support_size=12,
+    ),
+    RdkitAuditCase(
+        name="simple_directional",
+        smiles="C(/F)=C(\\Cl)",
+        kind="supported",
+        tags=("directional",),
+        max_support_size=64,
+    ),
+    RdkitAuditCase(
+        name="ring_tetra",
+        smiles="[C@H]1(F)CO1",
+        kind="supported",
+        tags=("ring", "tetra"),
+        max_support_size=168,
+    ),
+    RdkitAuditCase(
+        name="disconnected_stereo",
+        smiles="CCO.[C@H](F)(Cl)Br",
+        kind="supported",
+        tags=("disconnected", "tetra"),
+        max_support_size=432,
+    ),
+    RdkitAuditCase(
+        name="mixed_tetra_directional",
+        smiles="[C@H](F)(Cl)C(/F)=C(\\Cl)",
+        kind="supported",
+        tags=("mixed", "tetra", "directional"),
+        max_support_size=1024,
+    ),
+)
+
+
+SOUTH_STAR1_UNSUPPORTED_V0_AUDIT_CASES = (
+    RdkitAuditCase(
+        name="enhanced_stereo_group",
+        smiles="F[C@H](Cl)Br |&1:1|",
+        kind="unsupported",
+        tags=("enhanced", "tetra"),
+        expected_error_kind=SouthStarErrorKind.UNSUPPORTED_STEREO,
+    ),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class RdkitAuditResult:
     text: str
@@ -240,6 +290,8 @@ __all__ = (
     "RdkitAuditResult",
     "RdkitAuditSummary",
     "RdkitWitnessAuditResult",
+    "SOUTH_STAR1_SUPPORTED_V0_AUDIT_CASES",
+    "SOUTH_STAR1_UNSUPPORTED_V0_AUDIT_CASES",
     "audit_generated_support_with_rdkit",
     "audit_generated_witnesses_with_rdkit",
     "summarize_rdkit_audit",

@@ -215,6 +215,19 @@ traversal decisions, slot-bundle certificates, and prefix assignments:
 The checker rejects an artifact whose compiled relation rows differ from these
 reconstructed finite semantic tables.
 
+### Support Artifact Schema
+
+Support Artifact v1 has a closed schema. Unknown fields, unknown enum values,
+duplicate proof nodes, duplicate domains or relations, dangling references,
+noncanonical relation-row ordering, malformed facts JSON, and malformed policy
+JSON are rejected before semantic replay.
+
+The schema validator is RDKit-free and producer-free. It defines the artifact
+input language consumed by the support artifact checker. Checked JSON loading
+validates the JSONable object first, decodes it into artifact dataclasses, and
+then validates dataclass-level cross references and canonical hashes before the
+semantic artifact checker runs.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

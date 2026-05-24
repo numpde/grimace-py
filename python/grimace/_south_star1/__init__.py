@@ -41,6 +41,7 @@ CORE_MODULES: tuple[str, ...] = (
     "stereo_mapping",
     "support_artifact",
     "support_artifact_checker",
+    "support_artifact_schema",
     "support_enumeration",
     "stereo_witness",
 )

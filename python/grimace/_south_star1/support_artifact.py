@@ -615,6 +615,18 @@ def support_artifact_from_jsonable(data: Mapping[str, object]) -> SupportArtifac
     )
 
 
+def support_artifact_from_jsonable_checked(
+    data: Mapping[str, object],
+) -> SupportArtifact:
+    from .support_artifact_schema import validate_support_artifact_jsonable
+    from .support_artifact_schema import validate_support_artifact_schema
+
+    validate_support_artifact_jsonable(data)
+    artifact = support_artifact_from_jsonable(data)
+    validate_support_artifact_schema(artifact)
+    return artifact
+
+
 def _certified_for_key(
     *,
     traced: TracedCertifiedSupportImage,
@@ -1182,5 +1194,6 @@ __all__ = (
     "semantics_identity",
     "support_artifact_digest",
     "support_artifact_from_jsonable",
+    "support_artifact_from_jsonable_checked",
     "support_artifact_to_jsonable",
 )

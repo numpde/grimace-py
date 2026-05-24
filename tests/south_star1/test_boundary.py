@@ -84,6 +84,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             SOUTH_STAR1_ROOT / "finite_space_checker.py",
             SOUTH_STAR1_ROOT / "semantic_relation_checker.py",
             SOUTH_STAR1_ROOT / "support_artifact_checker.py",
+            SOUTH_STAR1_ROOT / "support_artifact_schema.py",
         ):
             with self.subTest(path=path):
                 self._assert_artifact_checker_boundary(path)

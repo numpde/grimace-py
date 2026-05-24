@@ -17,6 +17,7 @@ from .semantic_relation_checker import check_semantic_relation_tables
 from .support_artifact import SUPPORT_ARTIFACT_SCHEMA_VERSION
 from .support_artifact import ArtifactNode
 from .support_artifact import SupportArtifact
+from .support_artifact_schema import validate_support_artifact_schema
 
 
 _LEGAL_EDGES = {
@@ -34,6 +35,7 @@ _LEGAL_EDGES = {
 def check_support_artifact(artifact: SupportArtifact) -> None:
     """Check a compiled support artifact without calling producer code."""
 
+    validate_support_artifact_schema(artifact)
     if artifact.header.schema_version != SUPPORT_ARTIFACT_SCHEMA_VERSION:
         raise ValueError("unknown support artifact schema version")
     if artifact.traced_support.trace.schema_version != TRACE_SCHEMA_VERSION:

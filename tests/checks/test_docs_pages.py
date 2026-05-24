@@ -68,6 +68,11 @@ class DocsPagesTests(unittest.TestCase):
         self.assertIn("theme: minima", config)
         self.assertIn("header_pages:", config)
 
+    def test_pages_disable_minima_default_footer(self) -> None:
+        footer = ROOT / "docs" / "_includes" / "footer.html"
+        self.assertTrue(footer.is_file())
+        self.assertEqual("", footer.read_text(encoding="utf-8").strip())
+
     def test_readme_points_to_pages_index(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("[documentation index](docs/index.md)", readme)

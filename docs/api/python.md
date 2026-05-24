@@ -54,7 +54,8 @@ opaque object ready for the runtime.
 
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This yields the complete exact support as whole SMILES strings.
+This yields the complete exact support of Grimace's modeled writer language as
+whole SMILES strings.
 
 Although the signature mirrors RDKit defaults, the current runtime does not
 support those defaults. Use the supported options from
@@ -83,7 +84,8 @@ outputs = list(
 This is the important semantic point:
 
 - in RDKit, `canonical=False, doRandom=True` returns one sampled SMILES string
-- here, `MolToSmilesEnum(...)` yields the full exact support of that same writer mode
+- here, `MolToSmilesEnum(...)` yields the full exact support of Grimace's modeled
+  language for that writer mode
 
 ## MolToSmilesDecoder
 

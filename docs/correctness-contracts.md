@@ -39,19 +39,23 @@ specific:
 - key exact expectations by RDKit version
 
 This layer is narrower because it mirrors RDKit's spelling choices. That is
-necessary when the public promise is exact support for RDKit's
-`canonical=False, doRandom=True` writer convention.
+necessary when a fixture or API claim says a string is in covered RDKit writer
+support for the `canonical=False, doRandom=True` writer convention.
 
 ## Current public contract
 
-The current public runtime contract is RDKit writer parity for the supported
-subset:
+The current public runtime contract is exact behavior for Grimace's modeled
+RDKit-style writer language under the supported subset:
 
 - `canonical=False`
 - `doRandom=True`
 - supported writer flags listed in [Runtime requirements](runtime.md)
-- exact expectations validated against the pinned current stable RDKit writer
+- covered expectations validated against the pinned current stable RDKit writer
   convention
+
+This is not full RDKit serializer parity. Known gaps are tracked separately,
+primarily coupled directional double-bond and ring-closure stereo cases; see
+[RDKit serializer coverage](rdkit-serializer-coverage.md).
 
 Therefore, RDKit string support remains the oracle for current public parity
 tests. Parsed-object equivalence may be added as a separate evidence layer, but

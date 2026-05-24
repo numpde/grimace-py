@@ -27,6 +27,7 @@ from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.policy import AnnotationMode
+from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.semantics import INVALID
@@ -116,6 +117,69 @@ class OrdinarySemanticsTest(unittest.TestCase):
         self.assertEqual(
             {carrier_by_id[carrier].bond for carrier in scope},
             {facts.bonds[1].id, facts.bonds[2].id},
+        )
+
+    def test_joint_non_single_ring_pair_decode_requires_one_order_endpoint(
+        self,
+    ) -> None:
+        semantics = OrdinarySmilesSemantics()
+        double_facts = _two_atom_bond_facts(BondOrder.DOUBLE)
+        triple_facts = _two_atom_bond_facts(BondOrder.TRIPLE)
+        absent = BondTextChoice(
+            name="ring_absent",
+            base_text="",
+            permits_direction=False,
+        )
+        double = BondTextChoice(
+            name="ring_double",
+            base_text="=",
+            permits_direction=False,
+        )
+        triple = BondTextChoice(
+            name="ring_triple",
+            base_text="#",
+            permits_direction=False,
+        )
+
+        self.assertTrue(
+            semantics.ring_pair_decode_ok(
+                double_facts,
+                BondId(0),
+                double,
+                DirectionMark.ABSENT,
+                absent,
+                DirectionMark.ABSENT,
+            )
+        )
+        self.assertTrue(
+            semantics.ring_pair_decode_ok(
+                triple_facts,
+                BondId(0),
+                absent,
+                DirectionMark.ABSENT,
+                triple,
+                DirectionMark.ABSENT,
+            )
+        )
+        self.assertFalse(
+            semantics.ring_pair_decode_ok(
+                double_facts,
+                BondId(0),
+                double,
+                DirectionMark.ABSENT,
+                double,
+                DirectionMark.ABSENT,
+            )
+        )
+        self.assertFalse(
+            semantics.ring_pair_decode_ok(
+                double_facts,
+                BondId(0),
+                double,
+                DirectionMark.FWD,
+                absent,
+                DirectionMark.ABSENT,
+            )
         )
 
     def test_ordinary_directional_center_carrier_is_forced_absent(self) -> None:
@@ -600,6 +664,21 @@ def _mark_for_raw_value(
         )
     mark_sign = raw * orientation
     return DirectionMark.FWD if mark_sign == 1 else DirectionMark.REV
+
+
+def _two_atom_bond_facts(order: BondOrder) -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C")),
+        bonds=(bond(0, 0, 1, order),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+    )
+
 
 def _imports_rdkit(tree: ast.AST) -> bool:
     for node in ast.walk(tree):

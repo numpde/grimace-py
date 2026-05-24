@@ -40,6 +40,8 @@ The current ordinary bounded dialect supports:
 - single, double, triple, and aromatic tree-bond spellings currently modeled by
   the ordinary policy;
 - single and aromatic ring closures with bounded normalized labels;
+- optional joint non-single ring closures where exactly one endpoint carries
+  the double or triple bond-order marker;
 - tetrahedral `@` / `@@` sites represented as explicit local relations;
 - ordinary directional double-bond stereo represented as finite carrier-scope
   relations;
@@ -56,7 +58,6 @@ The current dialect rejects or omits:
 - `STEREOANY` and unknown/unspecified RDKit bond stereo classes;
 - arbitrary-renumbered RDKit `Mol` stereo ingestion;
 - non-single ring closures under the default policy;
-- joint non-single ring-closure decode;
 - recursive ligand-equivalence refinement beyond the current immediate ligand
   color checks;
 - RDKit writer-parity quirks unless they are explicitly modeled at the adapter

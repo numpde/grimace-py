@@ -93,10 +93,11 @@ def _validate_options(options: OrdinaryPolicyOptions) -> None:
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "bracket_all_atoms is not implemented yet",
         )
-    if options.non_single_ring_closures == "joint":
+    if options.non_single_ring_closures not in {"unsupported", "joint"}:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
-            "joint non-single ring closures are not implemented",
+            "unsupported non-single ring closure mode: "
+            f"{options.non_single_ring_closures!r}",
         )
 
 
@@ -261,10 +262,7 @@ def _ring_endpoint_bond_choices(
         return _aromatic_bond_choices(options)
     if options.non_single_ring_closures == "unsupported":
         return None
-    raise SouthStarError(
-        SouthStarErrorKind.UNSUPPORTED_POLICY,
-        "joint non-single ring closures are not implemented",
-    )
+    return _joint_non_single_ring_choices(bond)
 
 
 def _single_bond_choices(
@@ -311,6 +309,39 @@ def _aromatic_bond_choices(
             )
         )
     return tuple(choices)
+
+
+def _joint_non_single_ring_choices(bond: BondFacts) -> tuple[BondTextChoice, ...]:
+    if bond.order is BondOrder.DOUBLE:
+        return (
+            BondTextChoice(
+                name="double_ring_absent",
+                base_text="",
+                permits_direction=False,
+            ),
+            BondTextChoice(
+                name="double_ring_order",
+                base_text="=",
+                permits_direction=False,
+            ),
+        )
+    if bond.order is BondOrder.TRIPLE:
+        return (
+            BondTextChoice(
+                name="triple_ring_absent",
+                base_text="",
+                permits_direction=False,
+            ),
+            BondTextChoice(
+                name="triple_ring_order",
+                base_text="#",
+                permits_direction=False,
+            ),
+        )
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_BOND,
+        f"joint ring closures do not support bond order: {bond.order!r}",
+    )
 
 
 def _reject_unsupported_ring_closures(

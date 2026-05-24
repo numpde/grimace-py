@@ -98,6 +98,27 @@ class OrdinaryPolicyTest(unittest.TestCase):
             ordinary_policy_for_facts(facts)
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_joint_non_single_ring_closure_builds_endpoint_domains(self) -> None:
+        facts = _cyclopropene_facts()
+
+        policy = ordinary_policy_for_facts(
+            facts,
+            OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        )
+
+        tree_choice = policy.bond_text_domain(
+            facts,
+            BondId(0),
+            slot_kind=BondSlotKind.TREE.value,
+        )[0]
+        ring_choices = policy.bond_text_domain(
+            facts,
+            BondId(0),
+            slot_kind=BondSlotKind.RING_ENDPOINT.value,
+        )
+        self.assertEqual(tree_choice.base_text, "=")
+        self.assertEqual({choice.base_text for choice in ring_choices}, {"", "="})
+
     def test_unsupported_atom_facts_fail_fast(self) -> None:
         base = tetrahedral_facts()
         facts = replace(

@@ -78,6 +78,22 @@ SOUTH_STAR1_SUPPORTED_V0_AUDIT_CASES = (
         tags=("mixed", "tetra", "directional"),
         max_support_size=1024,
     ),
+    RdkitAuditCase(
+        name="joint_double_ring_closure",
+        smiles="C1=CC1",
+        kind="supported",
+        tags=("ring", "double"),
+        policy_options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        max_support_size=32,
+    ),
+    RdkitAuditCase(
+        name="joint_triple_ring_closure",
+        smiles="C1#CC1",
+        kind="supported",
+        tags=("ring", "triple"),
+        policy_options=OrdinaryPolicyOptions(non_single_ring_closures="joint"),
+        max_support_size=32,
+    ),
 )
 
 

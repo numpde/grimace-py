@@ -78,6 +78,21 @@ class OrdinarySmilesSemantics(ParserSemantics):
         endpoint_2: BondTextChoice,
         mark_2: DirectionMark,
     ) -> bool:
+        bond_facts = _bond_by_id(facts)[bond]
+        if bond_facts.order is BondOrder.DOUBLE:
+            return (
+                mark_1 is DirectionMark.ABSENT
+                and mark_2 is DirectionMark.ABSENT
+                and (endpoint_1.base_text, endpoint_2.base_text)
+                in {("=", ""), ("", "=")}
+            )
+        if bond_facts.order is BondOrder.TRIPLE:
+            return (
+                mark_1 is DirectionMark.ABSENT
+                and mark_2 is DirectionMark.ABSENT
+                and (endpoint_1.base_text, endpoint_2.base_text)
+                in {("#", ""), ("", "#")}
+            )
         return self.bond_decode_ok(facts, bond, endpoint_1, mark_1) and (
             self.bond_decode_ok(facts, bond, endpoint_2, mark_2)
         )

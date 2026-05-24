@@ -13,6 +13,7 @@ CORE_MODULES: tuple[str, ...] = (
     "annotation",
     "constraints",
     "enumerate",
+    "errors",
     "facts",
     "fact_isomorphism",
     "graph_index",

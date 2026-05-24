@@ -31,6 +31,19 @@ class SouthStar1BoundaryTest(unittest.TestCase):
                     f"{path} imports RDKit outside the adapter/audit boundary",
                 )
 
+    def test_only_declared_boundary_modules_import_rdkit(self) -> None:
+        allowed = set(south_star1.BOUNDARY_MODULES)
+        for path in SOUTH_STAR1_ROOT.glob("*.py"):
+            if path.name == "__init__.py":
+                continue
+            with self.subTest(path=path):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    _imports_rdkit(tree),
+                    path.stem in allowed,
+                    f"{path} RDKit import status disagrees with boundary list",
+                )
+
     def test_rdkit_boundary_is_explicit(self) -> None:
         self.assertEqual(
             south_star1.BOUNDARY_MODULES,

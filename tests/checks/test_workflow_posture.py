@@ -124,6 +124,18 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
+        self.assertEqual(
+            workflow.count(
+                "python scripts/validate_release_artifacts.py dist/*.whl --wheel-only"
+            ),
+            1,
+        )
+        self.assertEqual(
+            workflow.count(
+                "python scripts/validate_release_artifacts.py dist/*.tar.gz --sdist-only"
+            ),
+            1,
+        )
         self.assertIn("path: dist/*.whl", workflow)
         self.assertIn("path: dist/*.tar.gz", workflow)
         self.assertEqual(workflow.count("if-no-files-found: error"), 2)

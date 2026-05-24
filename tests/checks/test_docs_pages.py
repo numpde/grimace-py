@@ -79,6 +79,13 @@ class DocsPagesTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("[documentation index](docs/index.md)", readme)
 
+    def test_timings_tables_are_scrollable(self) -> None:
+        timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
+        self.assertIn("table.timings-table", timings)
+        self.assertIn("overflow-x: auto;", timings)
+        self.assertIn("white-space: nowrap;", timings)
+        self.assertEqual(2, timings.count("{: .timings-table}"))
+
     def test_pages_use_front_matter_title_without_body_h1(self) -> None:
         offenders: list[str] = []
         for markdown in sorted((ROOT / "docs").rglob("*.md")):

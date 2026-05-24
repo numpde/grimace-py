@@ -19,6 +19,7 @@ CORE_MODULES: tuple[str, ...] = (
     "graph_index",
     "ids",
     "nonstereo_witness_search",
+    "ordinary_ligand_equivalence",
     "ordinary_policy",
     "ordinary_semantics",
     "ordinary_stereo_sites",

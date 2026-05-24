@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import field
 
 from .facts import AtomFacts
 from .facts import BondFacts
@@ -22,12 +23,20 @@ class AutomorphismAnchor:
     fixed_bonds: frozenset[BondId] = frozenset()
 
 
+@dataclass(slots=True)
+class LigandEquivalenceCache:
+    """Memo table for exact anchored ligand-equivalence queries."""
+
+    by_key: dict[tuple[object, ...], bool] = field(default_factory=dict)
+
+
 def ligand_occurrences_equivalent(
     facts: MoleculeFacts,
     *,
     anchor: AutomorphismAnchor,
     left: LigandOccurrence,
     right: LigandOccurrence,
+    cache: LigandEquivalenceCache | None = None,
 ) -> bool:
     """Return whether an anchored graph automorphism maps ``left`` to ``right``.
 
@@ -38,13 +47,17 @@ def ligand_occurrences_equivalent(
     """
 
     facts.validate()
+    key = _cache_key(facts, anchor, left, right)
+    if cache is not None and key in cache.by_key:
+        return cache.by_key[key]
+
     if left.kind is not right.kind:
-        return False
+        return _cache_result(cache, key, False)
     if left.kind is LigandKind.PSEUDO:
-        return False
+        return _cache_result(cache, key, False)
     if left.kind is LigandKind.IMPLICIT_H:
         if left.atom is None or right.atom is None:
-            return False
+            return _cache_result(cache, key, False)
     if left.kind is LigandKind.NEIGHBOR_ATOM:
         if (
             left.atom is None
@@ -52,7 +65,7 @@ def ligand_occurrences_equivalent(
             or left.bond is None
             or right.bond is None
         ):
-            return False
+            return _cache_result(cache, key, False)
 
     _validate_anchor(facts, anchor)
     for atom_map in _anchored_atom_automorphisms(facts, anchor):
@@ -62,8 +75,42 @@ def ligand_occurrences_equivalent(
         if any(bond_map[bond] != bond for bond in anchor.fixed_bonds):
             continue
         if _occurrence_maps_to(left, right, atom_map=atom_map, bond_map=bond_map):
-            return True
-    return False
+            return _cache_result(cache, key, True)
+    return _cache_result(cache, key, False)
+
+
+def _cache_result(
+    cache: LigandEquivalenceCache | None,
+    key: tuple[object, ...],
+    value: bool,
+) -> bool:
+    if cache is not None:
+        cache.by_key[key] = value
+    return value
+
+
+def _cache_key(
+    facts: MoleculeFacts,
+    anchor: AutomorphismAnchor,
+    left: LigandOccurrence,
+    right: LigandOccurrence,
+) -> tuple[object, ...]:
+    return (
+        id(facts),
+        tuple(sorted(anchor.fixed_atoms, key=int)),
+        tuple(sorted(anchor.fixed_bonds, key=int)),
+        _occurrence_key(left),
+        _occurrence_key(right),
+    )
+
+
+def _occurrence_key(occurrence: LigandOccurrence) -> tuple[object, ...]:
+    return (
+        occurrence.kind,
+        occurrence.atom,
+        occurrence.bond,
+        occurrence.ordinal,
+    )
 
 
 def _validate_anchor(facts: MoleculeFacts, anchor: AutomorphismAnchor) -> None:
@@ -232,5 +279,6 @@ def _bond_signature(bond: BondFacts) -> tuple[object, ...]:
 
 __all__ = (
     "AutomorphismAnchor",
+    "LigandEquivalenceCache",
     "ligand_occurrences_equivalent",
 )

@@ -11,6 +11,7 @@ from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_ligand_equivalence import AutomorphismAnchor
+from grimace._south_star1.ordinary_ligand_equivalence import LigandEquivalenceCache
 from grimace._south_star1.ordinary_ligand_equivalence import (
     ligand_occurrences_equivalent,
 )
@@ -71,6 +72,24 @@ class OrdinaryLigandEquivalenceTest(unittest.TestCase):
                 right=_neighbor_occurrence(atom=2, bond_id=1),
             )
         )
+
+    def test_exact_equivalence_queries_can_share_cache(self) -> None:
+        facts = deep_tetra_ligand_facts(right_terminal="Br")
+        cache = LigandEquivalenceCache()
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=2, bond_id=1),
+            "right": _neighbor_occurrence(atom=5, bond_id=3),
+            "cache": cache,
+        }
+
+        self.assertTrue(ligand_occurrences_equivalent(**kwargs))
+        size_after_first = len(cache.by_key)
+        self.assertTrue(ligand_occurrences_equivalent(**kwargs))
+
+        self.assertGreater(size_after_first, 0)
+        self.assertEqual(len(cache.by_key), size_after_first)
 
 
 def _neighbor_occurrence(*, atom: int, bond_id: int) -> LigandOccurrence:

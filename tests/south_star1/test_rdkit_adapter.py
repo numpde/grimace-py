@@ -22,6 +22,7 @@ from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
@@ -127,6 +128,58 @@ class RdkitAdapterTest(unittest.TestCase):
         with self.assertRaisesRegex(SouthStarError, "tetra viewpoint mode") as raised:
             ordinary_molecule_facts_from_rdkit(mol, options)
         self.assertIs(raised.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_ordinary_adapter_defaults_to_immediate_ligand_equivalence(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(CBr)CCl")
+
+        with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
+            ordinary_molecule_facts_from_rdkit(mol)
+
+        directional = Chem.MolFromSmiles("BrC/C(CCl)=C/F")
+        with self.assertRaisesRegex(SouthStarError, "no ordinary potential site"):
+            ordinary_molecule_facts_from_rdkit(directional)
+
+    def test_ordinary_adapter_accepts_explicit_exact_ligand_equivalence(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(CBr)CCl")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_graph_automorphism",
+            ),
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(len(facts.stereo.tetrahedral), 1)
+        self.assertEqual(facts.stereo.tetrahedral[0].status, SiteStatus.SPECIFIED)
+
+    def test_ordinary_adapter_exact_ligand_equivalence_rejects_deep_duplicate(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(CCl)CCl")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_graph_automorphism",
+            ),
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(facts.stereo.tetrahedral, ())
+
+    def test_ordinary_adapter_exact_ligand_equivalence_accepts_deep_directional(
+        self,
+    ) -> None:
+        mol = Chem.MolFromSmiles("BrC/C(CCl)=C/F")
+        options = RdkitOrdinaryExtractionOptions(
+            stereo_site_options=OrdinaryStereoSiteOptions(
+                ligand_equivalence="exact_graph_automorphism",
+            ),
+        )
+
+        facts = ordinary_molecule_facts_from_rdkit(mol, options)
+
+        self.assertEqual(len(facts.stereo.directional), 1)
+        self.assertEqual(facts.stereo.directional[0].status, SiteStatus.SPECIFIED)
 
     def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
         self,

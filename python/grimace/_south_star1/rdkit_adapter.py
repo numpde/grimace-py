@@ -30,6 +30,7 @@ from .ids import AtomId
 from .ids import BondId
 from .ids import ComponentId
 from .ids import OccurrenceId
+from .ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from .ordinary_stereo_sites import add_ordinary_potential_sites
 
 
@@ -41,6 +42,7 @@ class RdkitOrdinaryExtractionOptions:
     normalize_non_graph_hydrogens: bool = True
     reject_unsupported_stereo: bool = True
     tetra_viewpoint_mode: Literal["smiles_parse_order"] = "smiles_parse_order"
+    stereo_site_options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions()
 
 
 def molecule_facts_from_rdkit(mol: Chem.Mol) -> MoleculeFacts:
@@ -82,7 +84,10 @@ def ordinary_molecule_facts_from_rdkit(
         normalize_non_graph_hydrogens=options.normalize_non_graph_hydrogens,
     )
     if options.include_potential_sites:
-        facts = add_ordinary_potential_sites(facts)
+        facts = add_ordinary_potential_sites(
+            facts,
+            options=options.stereo_site_options,
+        )
     if options.extract_specified_tetrahedral:
         facts = _overlay_rdkit_tetrahedral_stereo(mol, facts)
     if options.extract_specified_directional:

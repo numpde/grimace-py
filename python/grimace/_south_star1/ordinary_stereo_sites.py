@@ -26,6 +26,7 @@ from .ids import BondId
 from .ids import OccurrenceId
 from .ids import SiteId
 from .ordinary_ligand_equivalence import AutomorphismAnchor
+from .ordinary_ligand_equivalence import LigandEquivalenceCache
 from .ordinary_ligand_equivalence import ligand_occurrences_equivalent
 
 
@@ -42,10 +43,11 @@ class OrdinaryStereoSiteOptions:
 def ordinary_tetrahedral_candidates(
     facts: MoleculeFacts,
     options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
+    ligand_equivalence_cache: LigandEquivalenceCache | None = None,
 ) -> tuple[tuple[TetrahedralSiteFacts, ...], tuple[LigandOccurrence, ...]]:
     """Return ordinary potential tetrahedral sites implied by graph facts."""
 
-    builder = _SiteBuilder(facts, options)
+    builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
     builder.add_tetrahedral_candidates(skip_centers=frozenset())
     return tuple(builder.tetrahedral), tuple(builder.occurrences)
 
@@ -53,10 +55,11 @@ def ordinary_tetrahedral_candidates(
 def ordinary_directional_candidates(
     facts: MoleculeFacts,
     options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
+    ligand_equivalence_cache: LigandEquivalenceCache | None = None,
 ) -> tuple[tuple[DirectionalSiteFacts, ...], tuple[LigandOccurrence, ...]]:
     """Return ordinary potential directional sites implied by graph facts."""
 
-    builder = _SiteBuilder(facts, options)
+    builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
     builder.add_directional_candidates(skip_center_bonds=frozenset())
     return tuple(builder.directional), tuple(builder.occurrences)
 
@@ -66,6 +69,7 @@ def add_ordinary_potential_sites(
     *,
     preserve_specified: bool = True,
     options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
+    ligand_equivalence_cache: LigandEquivalenceCache | None = None,
 ) -> MoleculeFacts:
     """Add ordinary potential stereo sites without using RDKit perception."""
 
@@ -80,7 +84,7 @@ def add_ordinary_potential_sites(
         skip_tetra_centers = frozenset()
         skip_directional_bonds = frozenset()
 
-    builder = _SiteBuilder(facts, options)
+    builder = _SiteBuilder(facts, options, ligand_equivalence_cache)
     builder.add_tetrahedral_candidates(skip_centers=skip_tetra_centers)
     builder.add_directional_candidates(skip_center_bonds=skip_directional_bonds)
 
@@ -101,11 +105,18 @@ class _SiteBuilder:
         self,
         facts: MoleculeFacts,
         options: OrdinaryStereoSiteOptions,
+        ligand_equivalence_cache: LigandEquivalenceCache | None,
     ) -> None:
         facts.validate()
         _validate_options(options)
         self.facts = facts
         self.options = options
+        if (
+            ligand_equivalence_cache is None
+            and options.ligand_equivalence == "exact_graph_automorphism"
+        ):
+            ligand_equivalence_cache = LigandEquivalenceCache()
+        self.ligand_equivalence_cache = ligand_equivalence_cache
         self.bonds_by_atom = _bonds_by_atom(facts)
         self.tetrahedral: list[TetrahedralSiteFacts] = []
         self.directional: list[DirectionalSiteFacts] = []
@@ -130,6 +141,7 @@ class _SiteBuilder:
                 center=atom.id,
                 occurrences=occurrences,
                 options=self.options,
+                cache=self.ligand_equivalence_cache,
             ):
                 continue
 
@@ -180,6 +192,7 @@ class _SiteBuilder:
                 center_bond=bond.id,
                 occurrences=left_ligands,
                 options=self.options,
+                cache=self.ligand_equivalence_cache,
             ):
                 continue
             if not _eligible_directional_ligands(
@@ -188,6 +201,7 @@ class _SiteBuilder:
                 center_bond=bond.id,
                 occurrences=right_ligands,
                 options=self.options,
+                cache=self.ligand_equivalence_cache,
             ):
                 continue
 
@@ -327,6 +341,7 @@ def _eligible_tetrahedral_ligands(
     center: AtomId,
     occurrences: tuple[LigandOccurrence, ...],
     options: OrdinaryStereoSiteOptions,
+    cache: LigandEquivalenceCache | None,
 ) -> bool:
     if len(occurrences) != 4:
         return False
@@ -338,6 +353,7 @@ def _eligible_tetrahedral_ligands(
         center=center,
         occurrences=occurrences,
         options=options,
+        cache=cache,
     )
 
 
@@ -348,6 +364,7 @@ def _eligible_directional_ligands(
     center_bond: BondId,
     occurrences: tuple[LigandOccurrence, ...],
     options: OrdinaryStereoSiteOptions,
+    cache: LigandEquivalenceCache | None,
 ) -> bool:
     if len(occurrences) not in {1, 2}:
         return False
@@ -368,6 +385,7 @@ def _eligible_directional_ligands(
         center=endpoint,
         occurrences=occurrences,
         options=options,
+        cache=cache,
     )
 
 
@@ -385,6 +403,7 @@ def _ligands_are_distinguishable(
     center: AtomId,
     occurrences: tuple[LigandOccurrence, ...],
     options: OrdinaryStereoSiteOptions,
+    cache: LigandEquivalenceCache | None,
 ) -> bool:
     if options.ligand_equivalence == "immediate_color":
         return _ligand_colors_are_unique(facts, center=center, occurrences=occurrences)
@@ -401,6 +420,7 @@ def _ligands_are_distinguishable(
             anchor=anchor,
             left=left,
             right=right,
+            cache=cache,
         )
         for left, right in combinations(occurrences, 2)
     )

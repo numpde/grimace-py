@@ -29,6 +29,15 @@ class WorkflowPostureTests(unittest.TestCase):
                 self.assertNotIn("ubuntu-latest", workflow)
                 self.assertIn("ubuntu-24.04", workflow)
 
+    def test_workflows_use_explicit_bash_shell(self) -> None:
+        for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            workflow = workflow_path.read_text(encoding="utf-8")
+            with self.subTest(workflow=workflow_path.name):
+                self.assertRegex(
+                    workflow,
+                    r"(?m)^defaults:\n  run:\n    shell: bash$",
+                )
+
     def test_workflow_actions_are_pinned_to_commit_sha(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")

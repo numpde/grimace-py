@@ -17,6 +17,10 @@ env:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   validate-release:
     name: Validate release metadata

@@ -257,11 +257,12 @@ until the dependency surface is large enough to justify the extra object.
   publish. Pinned workflow action refs to commit SHAs and GitHub-hosted runner
   labels to `ubuntu-24.04`. Tag-triggered release builds now require `vX.Y.Z`
   tag shape and checked-in release notes before building artifacts. The release
-  workflow pins the maturin version used by `PyO3/maturin-action` and uses
-  no-build-isolation sdist install checks with the same pinned maturin version.
-  The manylinux release build container is pinned by digest rather than using
-  the action's mutable default tag. Release artifact install checks use
-  already-pinned fixture dependencies and pass `--no-deps`.
+  workflow pins the maturin version used by `PyO3/maturin-action`, declares
+  Bash explicitly for run steps, and uses no-build-isolation sdist install
+  checks with the same pinned maturin version. The manylinux release build
+  container is pinned by digest rather than using the action's mutable default
+  tag. Release artifact install checks use already-pinned fixture dependencies
+  and pass `--no-deps`.
 
 - [x] Final validation before committing implementation.
   - `make checks`.

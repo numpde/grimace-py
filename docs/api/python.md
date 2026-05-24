@@ -205,7 +205,7 @@ semantics. The guide shows both cases.
 `MolToSmilesTokenInventory(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
 This returns the exact sorted tuple of reachable decoder tokens for one
-molecule under the same public writer flags.
+molecule under the requested public writer flags.
 
 When `rootedAtAtom < 0`, it unions the exact reachable token inventories
 across all roots. When `rootedAtAtom >= 0`, it reports the inventory for that
@@ -215,15 +215,14 @@ disconnected molecules it includes the `"."` separator token when fragment
 transitions are reachable under the requested root mode. `rootedAtAtom=None`
 is not supported; omit the argument or use `-1` instead.
 
-This is an exact runtime inventory, not a probabilistic distribution.
+Use this when you need exact per-molecule coverage for Grimace decoder tokens.
 
 ## MolToSmilesTokenInventorySuperset
 
 `MolToSmilesTokenInventorySuperset(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
 
-This returns a sorted static conservative token inventory for one molecule
-under the same public writer flags. It uses prepared-graph atom, bond, stereo,
-branch, ring, and fragment metadata.
+This returns a sorted conservative token inventory for one molecule under the
+requested public writer flags.
 
 The main use is fast vocabulary-building and coverage checks over molecular
 datasets. See [Token inventories](../guides/token-inventory.md).
@@ -231,7 +230,7 @@ datasets. See [Token inventories](../guides/token-inventory.md).
 For the same molecule and flags, the exact inventory is contained in the
 superset inventory.
 
-When `rootedAtAtom < 0`, it unions static token inventories across all roots.
-For disconnected molecules it includes the `"."` separator token. Prepared
-graph inputs are accepted when their writer flags match the requested public
-options.
+When `rootedAtAtom < 0`, it unions conservative token inventories across all
+roots.
+For disconnected molecules it includes the `"."` separator token. `PreparedMol`
+inputs are accepted when their writer flags match the requested public options.

@@ -18,11 +18,10 @@ inventory = grimace.MolToSmilesTokenInventory(
 )
 ```
 
-This is an exact runtime inventory, not a frequency distribution and not a
-general-purpose tokenizer vocabulary.
+Use the result as exact per-molecule coverage for Grimace decoder tokens.
 
-For dataset vocabulary coverage, use the static conservative inventory. It is
-designed to be fast to union across many molecules:
+For dataset vocabulary coverage, use the conservative inventory. It is designed
+to be fast to union across many molecules:
 
 ```python
 vocab_tokens = set()
@@ -62,8 +61,8 @@ For a molecular dataset, the practical tokenizer workflow is:
    or end tokens according to the tokenizer library you use.
 5. Keep the Grimace inventory as a required vocabulary seed or coverage check.
 
-The superset inventory is not a learned tokenizer. It answers a narrower
-question: which SMILES fragments must be representable if your tokenizer should
-cover Grimace's supported writer language for the dataset?
+The superset inventory answers a coverage question: which SMILES fragments must
+be representable if your tokenizer should cover Grimace's supported writer
+language for the dataset?
 
 For more tokenizer terminology, see [Concepts](../concepts.md).

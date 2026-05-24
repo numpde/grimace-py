@@ -6,7 +6,7 @@ title: Deviation diagnostics
 the molecule's supported SMILES language under the requested writer flags.
 
 Use it for diagnostics: model output validation, tokenizer boundary checks, or
-explaining why a candidate is not in Grimace's RDKit-writer support.
+explaining where a candidate leaves Grimace's RDKit-writer support.
 
 It returns `None` for an accepted candidate. Otherwise it returns a
 `SmilesDeviation`.

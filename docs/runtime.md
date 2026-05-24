@@ -2,7 +2,7 @@
 title: Runtime requirements
 ---
 
-This page is the source of truth for supported public runtime options.
+Use this page to choose supported public runtime options.
 
 The public signatures mirror RDKit flag names and defaults, but the current
 runtime supports a strict subset. A call that looks like RDKit's default

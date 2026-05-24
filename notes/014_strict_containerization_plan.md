@@ -297,8 +297,8 @@ checked-in fixtures.
 
 `make package` should produce and validate release-shaped artifacts, but it
 should not publish. Publishing remains the tag-triggered GitHub workflow.
-It refuses root execution, non-numeric or zero container UID/GID settings, and
-refuses to clean or bind-mount `dist/` when `dist/` is a symlink.
+It derives the container write UID/GID from the current host user, refuses root
+execution, and refuses to clean or bind-mount `dist/` when `dist/` is a symlink.
 
 ### Perf
 

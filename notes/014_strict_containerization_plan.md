@@ -255,7 +255,8 @@ until the dependency surface is large enough to justify the extra object.
   release workflow token permissions and non-persistent checkout credentials.
   Added release artifact allowlist validation before GitHub release and PyPI
   publish. Pinned workflow action refs to commit SHAs and GitHub-hosted runner
-  labels to `ubuntu-24.04`.
+  labels to `ubuntu-24.04`. Tag-triggered release builds now require `vX.Y.Z`
+  tag shape before building artifacts.
 
 - [x] Final validation before committing implementation.
   - `make checks`.

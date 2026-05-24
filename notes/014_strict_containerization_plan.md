@@ -301,7 +301,8 @@ checked-in fixtures.
 should not publish. Publishing remains the tag-triggered GitHub workflow.
 It derives the container write UID/GID from the current host user, refuses root
 execution, and refuses to clean or bind-mount `dist/` when `dist/` is a symlink.
-The Compose bind mount also disables implicit host-path creation.
+The write-enabled Compose service requires that UID/GID input explicitly, and
+the Compose bind mount disables implicit host-path creation.
 
 ### Perf
 
@@ -325,11 +326,12 @@ maturin version used by the Docker and release lanes.
 ### Release Archive Boundary
 
 Release archives are not blind upload blobs. Package and release validation
-reject unsafe archive paths, links, local credential filenames, build outputs,
-`tmp/`, and raw `notes/perf_reports/` captures. The validator also rejects
-common local secret locations and key-like filenames if they ever reach a wheel
-or sdist. The local package lane runs the same archive safety checks on its
-locally tagged wheel and sdist.
+reject unsafe archive paths, links, special archive members, local credential
+filenames, build outputs, `tmp/`, and raw `notes/perf_reports/` captures. Wheel
+archives are also constrained to the expected `grimace/` package tree and
+matching `.dist-info` tree. The local package lane runs the same archive safety
+checks on its locally tagged wheel and sdist, and the release workflow validates
+archives before upload and again before GitHub release or PyPI publication.
 
 ### Docker Build Context Secrets
 

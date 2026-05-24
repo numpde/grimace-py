@@ -24,7 +24,7 @@ support = tuple(
 
 This is different from RDKit's `MolToSmiles(..., doRandom=True)`. RDKit returns
 one sampled string per call. `MolToSmilesEnum(...)` enumerates the full support
-of Grimace's modeled writer language for the same writer options.
+of Grimace's supported writer language for the same writer options.
 
 ## Root
 
@@ -53,16 +53,15 @@ token text if they represent different underlying writer branches.
 
 ## Writer parity
 
-The public runtime models an RDKit-style writer language for the supported
-runtime regime. Full RDKit serializer parity is not complete; known gaps remain
-in coupled directional-stereo and ring-closure cases.
+Writer parity is a string-level claim, not just a chemical-equivalence claim.
+It asks whether a string belongs to the relevant writer language.
 
 A SMILES string can be chemically valid and parse to the same molecule while
-still being outside the modeled writer support for that regime.
+still being outside that writer language.
 
 Use [Correctness contracts](correctness-contracts.md) for the detailed
-boundary between chemical semantics, covered RDKit writer parity, and known
-gaps.
+boundary between chemical semantics and writer parity. Use
+[Current limitations](current-limitations.md) for the current supported scope.
 
 ## What to use when
 

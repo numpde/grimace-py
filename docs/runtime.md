@@ -39,10 +39,8 @@ The supported writer flags are:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-The writer target is RDKit-style behavior for the supported regime, currently
-validated against `RDKit 2026.03.1` on the covered fixture set. Full RDKit
-serializer parity is not complete; known gaps are tracked in
-[RDKit serializer coverage](rdkit-serializer-coverage.md).
+For current runtime scope and known gaps, see
+[Current limitations](current-limitations.md).
 
 For the difference between writer parity and chemical equivalence, see
 [Correctness contracts](correctness-contracts.md).

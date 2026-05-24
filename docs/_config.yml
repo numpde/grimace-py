@@ -6,4 +6,5 @@ header_pages:
   - getting-started.md
   - concepts.md
   - runtime.md
+  - current-limitations.md
   - api/python.md

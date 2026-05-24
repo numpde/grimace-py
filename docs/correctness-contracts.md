@@ -44,18 +44,9 @@ support for the `canonical=False, doRandom=True` writer convention.
 
 ## Current public contract
 
-The current public runtime contract is exact behavior for Grimace's modeled
-RDKit-style writer language under the supported subset:
-
-- `canonical=False`
-- `doRandom=True`
-- supported writer flags listed in [Runtime requirements](runtime.md)
-- covered expectations validated against the pinned current stable RDKit writer
-  convention
-
-This is not full RDKit serializer parity. Known gaps are tracked separately,
-primarily coupled directional double-bond and ring-closure stereo cases; see
-[RDKit serializer coverage](rdkit-serializer-coverage.md).
+The current public runtime scope is documented in
+[Runtime requirements](runtime.md), and active limitations are documented in
+[Current limitations](current-limitations.md).
 
 Therefore, RDKit string support remains the oracle for current public parity
 tests. Parsed-object equivalence may be added as a separate evidence layer, but

@@ -104,6 +104,10 @@ class ContainerPostureTests(unittest.TestCase):
             "python scripts/validate_release_artifacts.py /dist/*.tar.gz --sdist-only",
             compose,
         )
+        self.assertIn(
+            "python scripts/validate_release_artifacts.py /dist/*.whl --wheel-only",
+            compose,
+        )
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)

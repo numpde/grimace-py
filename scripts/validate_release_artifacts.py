@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import sys
 import tarfile
+import zipfile
 
 
 PACKAGE_STEM = "grimace_py"
@@ -91,10 +92,13 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
             f"actual:   {list(actual)!r}"
         )
 
+    for path in paths:
+        if path.name.endswith(".whl"):
+            validate_wheel(path)
     validate_sdist(dist_dir / f"{PACKAGE_STEM}-{tag_match.group('version')}.tar.gz")
 
 
-def is_forbidden_sdist_member(relative: str) -> bool:
+def is_forbidden_archive_member(relative: str) -> bool:
     path = Path(relative)
     parts = path.parts
     name = path.name
@@ -134,10 +138,31 @@ def validate_sdist(sdist_path: Path) -> None:
                 relative = name[len(root) :]
                 if not relative:
                     continue
-                if is_forbidden_sdist_member(relative):
+                if is_forbidden_archive_member(relative):
                     raise ValueError(f"forbidden file in sdist: {relative!r}")
     except (OSError, tarfile.TarError) as exc:
         raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
+
+
+def validate_wheel(wheel_path: Path) -> None:
+    if wheel_path.is_symlink() or not wheel_path.is_file():
+        raise ValueError(f"wheel does not exist or is not a file: {wheel_path}")
+    if not wheel_path.name.endswith(".whl"):
+        raise ValueError(f"wheel must be a .whl file: {wheel_path}")
+
+    try:
+        with zipfile.ZipFile(wheel_path) as archive:
+            for member in archive.infolist():
+                name = member.filename
+                if name.startswith("/") or ".." in Path(name).parts:
+                    raise ValueError(f"unsafe wheel path: {name!r}")
+                mode = (member.external_attr >> 16) & 0o170000
+                if mode == 0o120000:
+                    raise ValueError(f"unexpected link in wheel: {name!r}")
+                if is_forbidden_archive_member(name):
+                    raise ValueError(f"forbidden file in wheel: {name!r}")
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise ValueError(f"could not read wheel {wheel_path}: {exc}") from exc
 
 
 def main(argv: list[str]) -> int:
@@ -145,16 +170,23 @@ def main(argv: list[str]) -> int:
     parser.add_argument("artifact_path", type=Path)
     parser.add_argument("--tag")
     parser.add_argument("--sdist-only", action="store_true")
+    parser.add_argument("--wheel-only", action="store_true")
     args = parser.parse_args(argv)
 
     try:
+        if args.sdist_only and args.wheel_only:
+            raise ValueError("--sdist-only and --wheel-only cannot be used together")
         if args.sdist_only:
             if args.tag is not None:
                 raise ValueError("--tag cannot be used with --sdist-only")
             validate_sdist(args.artifact_path)
+        elif args.wheel_only:
+            if args.tag is not None:
+                raise ValueError("--tag cannot be used with --wheel-only")
+            validate_wheel(args.artifact_path)
         else:
             if args.tag is None:
-                raise ValueError("--tag is required unless --sdist-only is used")
+                raise ValueError("--tag is required unless an artifact-only mode is used")
             validate_artifacts(args.artifact_path, args.tag)
     except ValueError as exc:
         print(exc, file=sys.stderr)

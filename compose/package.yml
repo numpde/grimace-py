@@ -33,6 +33,7 @@ services:
         python -m maturin build --release --out /dist -i python3.12
         python -m maturin build --release --sdist --out /dist -i python3.12
         python -m twine check /dist/*
+        python scripts/validate_release_artifacts.py /dist/*.whl --wheel-only
         python scripts/validate_release_artifacts.py /dist/*.tar.gz --sdist-only
         python -m venv --system-site-packages /venv/wheel
         /venv/wheel/bin/python -m pip install --no-deps /dist/*.whl

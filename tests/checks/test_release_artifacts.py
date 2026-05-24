@@ -5,6 +5,7 @@ import importlib.util
 import tarfile
 import tempfile
 import unittest
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,12 +22,18 @@ def write_sdist(path: Path, names: tuple[str, ...]) -> None:
                 archive.add(tmp.name, arcname=full_name)
 
 
+def write_wheel(path: Path, names: tuple[str, ...] = ("grimace/__init__.py",)) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        for name in names:
+            archive.writestr(name, "")
+
+
 def write_expected_artifacts(validator, dist: Path, version: str) -> None:
     for name in validator.expected_artifact_names(version):
         if name.endswith(".tar.gz"):
             write_sdist(dist / name, ("pyproject.toml", "Cargo.toml"))
         else:
-            (dist / name).write_text("", encoding="utf-8")
+            write_wheel(dist / name)
 
 
 def load_validator():
@@ -114,6 +121,34 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "could not read source distribution"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_unsafe_wheel_path(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("../escape",))
+            with self.assertRaisesRegex(ValueError, "unsafe wheel path"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_link(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                info = zipfile.ZipInfo("grimace/link")
+                info.create_system = 3
+                info.external_attr = 0o120777 << 16
+                archive.writestr(info, "target")
+            with self.assertRaisesRegex(ValueError, "unexpected link in wheel"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_secret_shaped_wheel_content(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("grimace/__init__.py", ".config/gh/hosts.yml"))
+            with self.assertRaisesRegex(ValueError, "forbidden file in wheel"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_tag_that_does_not_match_release_version_shape(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -127,13 +162,30 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             write_sdist(sdist, ("pyproject.toml", "Cargo.toml"))
             self.assertEqual(0, validator.main([str(sdist), "--sdist-only"]))
 
+    def test_wheel_only_cli_validates_wheel_content_without_release_set(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-linux_x86_64.whl"
+            write_wheel(wheel)
+            self.assertEqual(0, validator.main([str(wheel), "--wheel-only"]))
+
     def test_release_cli_requires_tag(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             stderr = io.StringIO()
             with redirect_stderr(stderr):
                 self.assertEqual(2, validator.main([str(tmp)]))
-            self.assertIn("--tag is required", stderr.getvalue())
+            self.assertIn("--tag is required unless an artifact-only mode is used", stderr.getvalue())
+
+    def test_artifact_only_cli_modes_are_mutually_exclusive(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-linux_x86_64.whl"
+            write_wheel(wheel)
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                self.assertEqual(2, validator.main([str(wheel), "--wheel-only", "--sdist-only"]))
+            self.assertIn("--sdist-only and --wheel-only cannot be used together", stderr.getvalue())
 
 
 if __name__ == "__main__":

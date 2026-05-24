@@ -320,13 +320,14 @@ part of the source boundary. It must stay checked in and must not be excluded
 from the Docker build context. The Python build backend is pinned to the same
 maturin version used by the Docker and release lanes.
 
-### Source Distribution Boundary
+### Release Archive Boundary
 
-The sdist is a release artifact, not an archive of every checked-in diagnostic.
-Package and release validation reject unsafe archive paths, links, local
-credential filenames, build outputs, `tmp/`, and raw `notes/perf_reports/`
-captures. The validator also rejects common local secret locations and
-key-like filenames if they ever reach the checked-in source tree.
+Release archives are not blind upload blobs. Package and release validation
+reject unsafe archive paths, links, local credential filenames, build outputs,
+`tmp/`, and raw `notes/perf_reports/` captures. The validator also rejects
+common local secret locations and key-like filenames if they ever reach a wheel
+or sdist. The local package lane runs the same archive safety checks on its
+locally tagged wheel and sdist.
 
 ### Docker Build Context Secrets
 

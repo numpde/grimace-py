@@ -219,6 +219,44 @@ class RdkitAdapterTest(unittest.TestCase):
             )
         )
 
+    def test_ordinary_adapter_rejects_two_pass_without_potential_sites(self) -> None:
+        mol = Chem.MolFromSmiles("[C@H](F)(Cl)Br")
+        options = RdkitOrdinaryExtractionOptions(
+            include_potential_sites=False,
+            stereo_site_discovery_passes=2,
+        )
+
+        with self.assertRaisesRegex(SouthStarError, "requires potential-site"):
+            ordinary_molecule_facts_from_rdkit(mol, options)
+
+    def test_ordinary_adapter_two_pass_preserves_v0_support(self) -> None:
+        cases = ("[C@H](F)(Cl)Br", "C(/F)=C(\\Cl)")
+
+        for text in cases:
+            with self.subTest(text=text):
+                one_pass = ordinary_molecule_facts_from_rdkit(
+                    Chem.MolFromSmiles(text)
+                )
+                two_pass = ordinary_molecule_facts_from_rdkit(
+                    Chem.MolFromSmiles(text),
+                    RdkitOrdinaryExtractionOptions(stereo_site_discovery_passes=2),
+                )
+
+                self.assertTrue(
+                    facts_are_isomorphic(one_pass, two_pass).isomorphic
+                )
+                one_support = enumerate_stereo_support(
+                    facts=one_pass,
+                    policy=ordinary_policy_for_facts(one_pass),
+                    semantics=OrdinarySmilesSemantics(),
+                )
+                two_support = enumerate_stereo_support(
+                    facts=two_pass,
+                    policy=ordinary_policy_for_facts(two_pass),
+                    semantics=OrdinarySmilesSemantics(),
+                )
+                self.assertEqual(set(one_support.strings), set(two_support.strings))
+
     def test_ordinary_adapter_tetra_viewpoint_is_not_renumbering_invariant(
         self,
     ) -> None:

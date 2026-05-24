@@ -67,6 +67,8 @@ The current dialect rejects or omits:
 
 The executable v0 conformance corpus lives in `tests/south_star1`:
 
+- `tests.run_south_star_semantics` is the canonical unittest runner for the
+  South Star 1 proof-kernel suite;
 - `test_audit_rdkit.py` contains the RDKit external audit matrix and support
   stability checks;
 - `test_boundary.py` enforces that only `rdkit_adapter.py` and

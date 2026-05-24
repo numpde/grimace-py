@@ -80,8 +80,6 @@ def ligand_occurrences_equivalent(
         return cache.by_key[key]
     if cache is not None and stats is not None:
         stats.cache_misses += 1
-    if stats is not None:
-        stats.searches_started += 1
 
     if left.kind is not right.kind:
         return _cache_result(cache, key, False)
@@ -100,6 +98,8 @@ def ligand_occurrences_equivalent(
             return _cache_result(cache, key, False)
 
     _validate_anchor(facts, anchor)
+    if stats is not None:
+        stats.searches_started += 1
     for atom_map in _iter_anchored_atom_automorphisms(facts, anchor, stats):
         bond_map = _bond_map_for_atom_map(facts, atom_map)
         if bond_map is None:

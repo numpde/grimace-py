@@ -29,7 +29,7 @@ figure.timing-plot img {
   height: auto;
 }
 figure.timing-plot figcaption {
-  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
   overflow-x: auto;
   font-size: 0.9rem;
 }
@@ -97,48 +97,48 @@ stability, or universality guarantee.
 | `CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1` | 25 | 12096 | **76.7** ± 2.0 ms | **1198.7** ± 154.3 ms | **917.3** ± 140.9 ms | **702.0** ± 79.7 ms | **374.9** ± 30.8 ms | **328.7** ± 6.1 ms (9541.7 ± 102.1 draws) | **11825.9** ± 2525.9 ms (311150.0 ± 67407.2 draws) |
 
 <figure class="timing-plot">
+  <figcaption><code>CC(=O)Oc1ccccc1C(=O)O</code>:</figcaption>
   <img src="timing-plots/non-stereo-01.png" alt="Timing bar chart for CC(=O)Oc1ccccc1C(=O)O">
-  <figcaption><code>CC(=O)Oc1ccccc1C(=O)O</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>C1CC2(CCO1)CO2</code>:</figcaption>
   <img src="timing-plots/non-stereo-02.png" alt="Timing bar chart for C1CC2(CCO1)CO2">
-  <figcaption><code>C1CC2(CCO1)CO2</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>CN1CCC[C@H]1c1cccnc1</code>:</figcaption>
   <img src="timing-plots/non-stereo-03.png" alt="Timing bar chart for CN1CCC[C@H]1c1cccnc1">
-  <figcaption><code>CN1CCC[C@H]1c1cccnc1</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>CNC(=O)O/N=C(\C)SC</code>:</figcaption>
   <img src="timing-plots/non-stereo-04.png" alt="Timing bar chart for CNC(=O)O/N=C(\C)SC">
-  <figcaption><code>CNC(=O)O/N=C(\C)SC</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O</code>:</figcaption>
   <img src="timing-plots/non-stereo-05.png" alt="Timing bar chart for N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O">
-  <figcaption><code>N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>COc1ccc2cc([C@H](C)C(=O)O)ccc2c1</code>:</figcaption>
   <img src="timing-plots/non-stereo-06.png" alt="Timing bar chart for COc1ccc2cc([C@H](C)C(=O)O)ccc2c1">
-  <figcaption><code>COc1ccc2cc([C@H](C)C(=O)O)ccc2c1</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-]</code>:</figcaption>
   <img src="timing-plots/non-stereo-07.png" alt="Timing bar chart for O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-]">
-  <figcaption><code>O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-]</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([CH]C)CC[C@@H]12</code>:</figcaption>
   <img src="timing-plots/non-stereo-08.png" alt="Timing bar chart for C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([CH]C)CC[C@@H]12">
-  <figcaption><code>C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([CH]C)CC[C@@H]12</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1</code>:</figcaption>
   <img src="timing-plots/non-stereo-09.png" alt="Timing bar chart for CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1">
-  <figcaption><code>CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1</code></figcaption>
 </figure>
 
 ## Stereo (`isomericSmiles=True`)
@@ -157,46 +157,46 @@ stability, or universality guarantee.
 | `CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1` | 25 | 12096 | **363.6** ± 17.3 ms | **5598.4** ± 103.0 ms | **4643.6** ± 457.8 ms | **4504.4** ± 193.7 ms | **3448.7** ± 69.7 ms | **337.5** ± 5.8 ms (9556.3 ± 55.7 draws) | **9734.5** ± 1283.7 ms (260894.1 ± 28940.6 draws) |
 
 <figure class="timing-plot">
+  <figcaption><code>CC(=O)Oc1ccccc1C(=O)O</code>:</figcaption>
   <img src="timing-plots/stereo-01.png" alt="Timing bar chart for CC(=O)Oc1ccccc1C(=O)O">
-  <figcaption><code>CC(=O)Oc1ccccc1C(=O)O</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>C1CC2(CCO1)CO2</code>:</figcaption>
   <img src="timing-plots/stereo-02.png" alt="Timing bar chart for C1CC2(CCO1)CO2">
-  <figcaption><code>C1CC2(CCO1)CO2</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>CN1CCC[C@H]1c1cccnc1</code>:</figcaption>
   <img src="timing-plots/stereo-03.png" alt="Timing bar chart for CN1CCC[C@H]1c1cccnc1">
-  <figcaption><code>CN1CCC[C@H]1c1cccnc1</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>CNC(=O)O/N=C(\C)SC</code>:</figcaption>
   <img src="timing-plots/stereo-04.png" alt="Timing bar chart for CNC(=O)O/N=C(\C)SC">
-  <figcaption><code>CNC(=O)O/N=C(\C)SC</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O</code>:</figcaption>
   <img src="timing-plots/stereo-05.png" alt="Timing bar chart for N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O">
-  <figcaption><code>N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>COc1ccc2cc([C@H](C)C(=O)O)ccc2c1</code>:</figcaption>
   <img src="timing-plots/stereo-06.png" alt="Timing bar chart for COc1ccc2cc([C@H](C)C(=O)O)ccc2c1">
-  <figcaption><code>COc1ccc2cc([C@H](C)C(=O)O)ccc2c1</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-]</code>:</figcaption>
   <img src="timing-plots/stereo-07.png" alt="Timing bar chart for O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-]">
-  <figcaption><code>O=[N+]([O-])O[C@H]1CO[C@H]2[C@@H]1OC[C@H]2O[N+](=O)[O-]</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([CH]C)CC[C@@H]12</code>:</figcaption>
   <img src="timing-plots/stereo-08.png" alt="Timing bar chart for C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([CH]C)CC[C@@H]12">
-  <figcaption><code>C=C1CC[C@H](O)C/C1=C/C=C1\CCC[C@]2(C)[C@@H]([CH]C)CC[C@@H]12</code></figcaption>
 </figure>
 
 <figure class="timing-plot">
+  <figcaption><code>CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1</code>:</figcaption>
   <img src="timing-plots/stereo-09.png" alt="Timing bar chart for CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1">
-  <figcaption><code>CC1=C(CC(=O)O)c2cc(F)ccc2/C1=C\c1ccc(S(C)=O)cc1</code></figcaption>
 </figure>

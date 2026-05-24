@@ -471,8 +471,8 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             rendered_figures[surface].extend(
                 (
                     '<figure class="timing-plot">',
+                    f"  <figcaption><code>{escaped_molecule}</code>:</figcaption>",
                     f'  <img src="{image_path}" alt="Timing bar chart for {escaped_molecule}">',
-                    f"  <figcaption><code>{escaped_molecule}</code></figcaption>",
                     "</figure>",
                     "",
                 )
@@ -510,7 +510,7 @@ class ReadmeTimingPerfTests(unittest.TestCase):
             "  height: auto;",
             "}",
             "figure.timing-plot figcaption {",
-            "  margin-top: 0.25rem;",
+            "  margin-bottom: 0.25rem;",
             "  overflow-x: auto;",
             "  font-size: 0.9rem;",
             "}",

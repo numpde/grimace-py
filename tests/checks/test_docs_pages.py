@@ -90,12 +90,15 @@ class DocsPagesTests(unittest.TestCase):
     def test_timings_plots_are_captioned_and_present(self) -> None:
         timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
         self.assertEqual(18, timings.count('<figure class="timing-plot">'))
-        self.assertEqual(18, timings.count("<figcaption><code>"))
+        self.assertEqual(18, timings.count("</code>:</figcaption>"))
 
         image_paths = HTML_IMAGE_SRC.findall(timings)
         self.assertEqual(18, len(image_paths))
         for image_path in image_paths:
             self.assertTrue((ROOT / "docs" / image_path).is_file(), image_path)
+
+        for figure in timings.split('<figure class="timing-plot">')[1:]:
+            self.assertLess(figure.index("<figcaption>"), figure.index("<img "))
 
     def test_pages_use_front_matter_title_without_body_h1(self) -> None:
         offenders: list[str] = []

@@ -67,7 +67,12 @@ class DocsPagesTests(unittest.TestCase):
         self.assertTrue((ROOT / "docs" / "index.md").is_file())
         config = (ROOT / "docs" / "_config.yml").read_text(encoding="utf-8")
         self.assertIn("theme: minima", config)
+        self.assertIn("url: https://numpde.github.io", config)
+        self.assertIn("baseurl: /grimace-py", config)
         self.assertIn("header_pages:", config)
+        local_config = (ROOT / "docs" / "_config_local.yml").read_text(encoding="utf-8")
+        self.assertIn("url: http://127.0.0.1:8000", local_config)
+        self.assertIn('baseurl: ""', local_config)
         index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
         self.assertIn("layout: page", index)
 
@@ -76,9 +81,21 @@ class DocsPagesTests(unittest.TestCase):
         self.assertTrue(footer.is_file())
         self.assertEqual("", footer.read_text(encoding="utf-8").strip())
 
-    def test_readme_points_to_pages_index(self) -> None:
+    def test_readme_points_to_pages_site(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("[documentation index](docs/index.md)", readme)
+        self.assertIn(
+            "[numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/)",
+            readme,
+        )
+        self.assertNotIn("[documentation index](docs/index.md)", readme)
+
+    def test_pages_use_system_theme_stylesheet(self) -> None:
+        stylesheet = ROOT / "docs" / "assets" / "main.scss"
+        self.assertTrue(stylesheet.is_file())
+        text = stylesheet.read_text(encoding="utf-8")
+        self.assertIn('@import "minima";', text)
+        self.assertIn("color-scheme: light dark;", text)
+        self.assertIn("@media (prefers-color-scheme: dark)", text)
 
     def test_timings_tables_are_scrollable(self) -> None:
         timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")

@@ -1,0 +1,69 @@
+services:
+  docs:
+    image: ghcr.io/actions/jekyll-build-pages:latest@sha256:a4ebed99056cd2a2c867cfce074d0cc92070855516b131ff099db3b3f961dfa9
+    working_dir: /tmp
+    entrypoint: ["jekyll"]
+    command:
+      - build
+      - --source
+      - /work/docs
+      - --destination
+      - /work/build/docs-site
+      - --config
+      - /work/docs/_config.yml,/work/docs/_config_local.yml
+      - --strict_front_matter
+    user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    environment:
+      JEKYLL_ENV: production
+      SASS_CACHE_LOCATION: /tmp/sass-cache
+    volumes:
+      - type: bind
+        source: ../docs
+        target: /work/docs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../build/docs-site
+        target: /work/build/docs-site
+        bind:
+          create_host_path: false
+  docs-serve:
+    image: python:3.12.13-alpine3.22@sha256:a190708a2dec1bd18b1decb539f8e8f5407abaa9bf39cacda583f7f8c11db322
+    working_dir: /site
+    user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    ports:
+      - "127.0.0.1:${DOCS_PORT:-8000}:8000"
+    command:
+      - python
+      - -m
+      - http.server
+      - "8000"
+      - --bind
+      - 0.0.0.0
+    volumes:
+      - type: bind
+        source: ../build/docs-site
+        target: /site
+        read_only: true
+        bind:
+          create_host_path: false

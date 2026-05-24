@@ -1,0 +1,189 @@
+---
+---
+
+@import "minima";
+
+:root {
+  color-scheme: light dark;
+  --grimace-bg: #ffffff;
+  --grimace-surface: #f6f8fa;
+  --grimace-text: #111827;
+  --grimace-muted: #4b5563;
+  --grimace-border: #d0d7de;
+  --grimace-link: #0b63ce;
+  --grimace-link-visited: #6f42c1;
+  --grimace-code-bg: #f3f4f6;
+  --grimace-code-text: #111827;
+  --grimace-code-muted: #6b7280;
+  --grimace-code-accent: #0b7285;
+  --grimace-code-keyword: #1d4ed8;
+  --grimace-code-string: #9f1239;
+  --grimace-table-alt: #f6f8fa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grimace-bg: #111418;
+    --grimace-surface: #1a1f26;
+    --grimace-text: #d8dee6;
+    --grimace-muted: #9aa4b2;
+    --grimace-border: #343b45;
+    --grimace-link: #7db8ff;
+    --grimace-link-visited: #c3a6ff;
+    --grimace-code-bg: #202631;
+    --grimace-code-text: #d8dee6;
+    --grimace-code-muted: #8b949e;
+    --grimace-code-accent: #79c0ff;
+    --grimace-code-keyword: #a5b4fc;
+    --grimace-code-string: #f0a3b2;
+    --grimace-table-alt: #171b21;
+  }
+}
+
+html,
+body {
+  background: var(--grimace-bg);
+  color: var(--grimace-text);
+}
+
+a {
+  color: var(--grimace-link);
+}
+
+a:visited {
+  color: var(--grimace-link-visited);
+}
+
+.site-header,
+.site-footer {
+  background: var(--grimace-bg);
+  border-color: var(--grimace-border);
+}
+
+.site-title,
+.site-title:visited,
+.site-nav .page-link,
+.post-title,
+.post-content h1,
+.post-content h2,
+.post-content h3,
+.post-content h4,
+.post-content h5,
+.post-content h6 {
+  color: var(--grimace-text);
+}
+
+.site-nav {
+  background: var(--grimace-bg);
+  border-color: var(--grimace-border);
+}
+
+.site-nav .menu-icon > svg path {
+  fill: var(--grimace-text);
+}
+
+.post-meta,
+.site-footer,
+.footer-col-wrapper,
+blockquote {
+  color: var(--grimace-muted);
+}
+
+blockquote {
+  border-left-color: var(--grimace-border);
+}
+
+pre,
+code,
+.highlighter-rouge .highlight {
+  background-color: var(--grimace-code-bg);
+  color: var(--grimace-code-text);
+  border-color: var(--grimace-border);
+}
+
+.highlight {
+  background: var(--grimace-code-bg);
+}
+
+.highlight .c,
+.highlight .cm,
+.highlight .c1,
+.highlight .cs,
+.highlight .cp,
+.highlight .go,
+.highlight .gp,
+.highlight .w,
+.highlight .bp {
+  color: var(--grimace-code-muted);
+}
+
+.highlight .k,
+.highlight .kc,
+.highlight .kd,
+.highlight .kp,
+.highlight .kr,
+.highlight .ow,
+.highlight .o {
+  color: var(--grimace-code-keyword);
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2,
+.highlight .sb,
+.highlight .sc,
+.highlight .sd,
+.highlight .se,
+.highlight .sh,
+.highlight .si,
+.highlight .sx,
+.highlight .ss {
+  color: var(--grimace-code-string);
+}
+
+.highlight .m,
+.highlight .mi,
+.highlight .mf,
+.highlight .mh,
+.highlight .mo,
+.highlight .nb,
+.highlight .nc,
+.highlight .nf,
+.highlight .nn,
+.highlight .nt,
+.highlight .nv,
+.highlight .na,
+.highlight .no,
+.highlight .vc,
+.highlight .vg,
+.highlight .vi,
+.highlight .il {
+  color: var(--grimace-code-accent);
+}
+
+table {
+  color: var(--grimace-text);
+  border-color: var(--grimace-border);
+}
+
+table th,
+table td {
+  border-color: var(--grimace-border);
+}
+
+table tr:nth-child(even) {
+  background-color: var(--grimace-table-alt);
+}
+
+table th {
+  background-color: var(--grimace-surface);
+}
+
+hr {
+  background-color: var(--grimace-border);
+}
+
+figure.timing-plot img {
+  background: #ffffff;
+  border: 1px solid var(--grimace-border);
+}

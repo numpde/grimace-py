@@ -1,5 +1,7 @@
 title: grimace-py
 description: Exact rooted SMILES support enumeration and next-token decoding.
+url: https://numpde.github.io
+baseurl: /grimace-py
 theme: minima
 markdown: kramdown
 header_pages:

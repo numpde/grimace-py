@@ -146,6 +146,61 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
+    def test_docs_compose_builds_pages_site_strictly(self) -> None:
+        compose = read_text("compose/docs.yml")
+        self.assertRegex(compose, r"(?m)^  docs:$")
+        self.assertIn(
+            "image: ghcr.io/actions/jekyll-build-pages:latest@sha256:",
+            compose,
+        )
+        self.assertIn("working_dir: /tmp", compose)
+        self.assertIn('entrypoint: ["jekyll"]', compose)
+        self.assertIn("- --config", compose)
+        self.assertIn("- /work/docs/_config.yml,/work/docs/_config_local.yml", compose)
+        self.assertIn(REQUIRED_WRITE_USER, compose)
+        self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
+        self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
+        self.assertRegex(compose, r"(?ms)^\s+cap_drop:\n\s+- ALL\s*$")
+        self.assertRegex(
+            compose,
+            r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
+        )
+        self.assertIn("JEKYLL_ENV: production", compose)
+        self.assertIn("SASS_CACHE_LOCATION: /tmp/sass-cache", compose)
+        self.assertNotIn("GITHUB_WORKSPACE", compose)
+        self.assertNotIn("INPUT_SOURCE", compose)
+        self.assertNotIn("INPUT_DESTINATION", compose)
+        self.assertIn("- /work/docs", compose)
+        self.assertIn("- /work/build/docs-site", compose)
+        self.assertIn("source: ../docs", compose)
+        self.assertIn("target: /work/docs", compose)
+        self.assertRegex(compose, r"(?ms)source: ../docs\n\s+target: /work/docs\n\s+read_only: true")
+        self.assertIn("source: ../build/docs-site", compose)
+        self.assertIn("target: /work/build/docs-site", compose)
+        self.assertRegex(compose, r"(?m)^  docs-serve:$")
+        self.assertIn(
+            "image: python:3.12.13-alpine3.22@sha256:",
+            compose,
+        )
+        self.assertIn('ports:\n      - "127.0.0.1:${DOCS_PORT:-8000}:8000"', compose)
+        self.assertIn("- http.server", compose)
+        self.assertRegex(compose, r"(?ms)^  docs-serve:\n(?:.*\n)*?    read_only: true")
+        self.assertRegex(compose, r"(?ms)^  docs-serve:\n(?:.*\n)*?    cap_drop:\n      - ALL")
+        self.assertRegex(
+            compose,
+            r"(?ms)^  docs-serve:\n(?:.*\n)*?    security_opt:\n      - no-new-privileges:true",
+        )
+        self.assertRegex(
+            compose,
+            r"(?ms)source: ../build/docs-site\n\s+target: /site\n\s+read_only: true",
+        )
+        self.assertEqual(3, compose.count("create_host_path: false"))
+        self.assertNotRegex(compose, r"(?m)^\s+network_mode:\s*[\"']?host[\"']?\s*$")
+        self.assertNotIn("target: /src", compose)
+        self.assertNotIn(".venv", compose)
+        self.assertNotIn("docker.sock", compose)
+        self.assertNotIn("privileged: true", compose)
+
     def test_checks_dockerfile_is_pinned_and_does_not_embed_repo(self) -> None:
         dockerfile = read_text("containers/checks/Dockerfile")
         self.assertNotRegex(dockerfile, r"(?m)^(COPY|ADD|RUN)\b")
@@ -259,16 +314,24 @@ class ContainerPostureTests(unittest.TestCase):
             "override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)",
             makefile,
         )
-        self.assertIn("COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)", makefile)
+        self.assertIn("override DOCS_SOURCE_DIR := docs", makefile)
+        self.assertIn("override DOCS_OUTPUT_DIR := build/docs-site", makefile)
+        self.assertIn("DOCS_PORT ?= 8000", makefile)
+        self.assertIn(
+            "COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) DOCS_PORT=$(DOCS_PORT)",
+            makefile,
+        )
         self.assertIn('! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$', makefile)
         self.assertIn('! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$', makefile)
         self.assertIn("positive numeric UID and GID", makefile)
         self.assertIn("DIST_GUARD := if [[ -L dist ]]", makefile)
         self.assertIn('PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
+        self.assertIn('DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
         self.assertIn('resolved="$$(realpath -e -- "$$path"', makefile)
         self.assertIn('expected="$$repo_root/$$path"', makefile)
         self.assertIn("missing, a symlink, or outside the repository", makefile)
         self.assertIn("perf artifact directory", makefile)
+        self.assertIn("docs path", makefile)
         self.assertLess(
             makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
             makefile.index("\t@find dist"),
@@ -299,6 +362,13 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(makefile, r"(?m)^perf:")
         self.assertIn("$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/perf.yml", makefile)
         self.assertIn("run --build --rm perf", makefile)
+        self.assertRegex(makefile, r"(?m)^docs:")
+        self.assertIn("mkdir -p $(DOCS_OUTPUT_DIR)", makefile)
+        self.assertIn("find $(DOCS_OUTPUT_DIR) -mindepth 1 -maxdepth 1", makefile)
+        self.assertIn("$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml", makefile)
+        self.assertIn("run --rm docs", makefile)
+        self.assertRegex(makefile, r"(?m)^docs-serve: docs$")
+        self.assertIn("run --rm --service-ports docs-serve", makefile)
         self.assertRegex(
             makefile,
             r"(?m)^ci: checks rust test parity exact-public-invariants$",

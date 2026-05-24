@@ -67,8 +67,7 @@ assert len(all_smiles) == 304
 ## Documentation
 
 Please find the main documentation at
-[numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/), or read
-the checked-in [documentation index](docs/index.md).
+[numpde.github.io/grimace-py](https://numpde.github.io/grimace-py/).
 
 ## Install matrix
 
@@ -95,6 +94,8 @@ Routine local checks are Docker-backed:
 make checks
 make ci
 make package
+make docs
+make docs-serve
 ```
 
 See [containerized development](docs/development/containerized.md) for the

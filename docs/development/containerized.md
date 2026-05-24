@@ -10,6 +10,8 @@ make checks
 make ci
 make test
 make package
+make docs
+make docs-serve
 ```
 
 - `make checks` runs offline source and container-posture checks against a
@@ -20,6 +22,10 @@ make package
 - `make package` builds and validates wheel/sdist artifacts under `dist/`.
 - `make perf` is opt-in and write-enabled; it refreshes `docs/timings.*`,
   `docs/timing-plots/`, and `notes/004_perf_history.jsonl`.
+- `make docs` builds the Pages site under `build/docs-site/` with the
+  GitHub Pages Jekyll image.
+- `make docs-serve` rebuilds that site and serves it at
+  `http://127.0.0.1:8000/` from a container.
 
 Routine check/test lanes do not use host `.venv`, `target`, or `dist`
 artifacts.

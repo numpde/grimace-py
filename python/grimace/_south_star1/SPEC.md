@@ -199,6 +199,22 @@ slot-bundle certificates: atom text domains, bond text domains, and bounded
 ring-label assignments. The artifact is rejected if any legal skeleton or
 prefix is missing, or if any extra skeleton or prefix is present.
 
+### Semantic Relation Table Checking
+
+The artifact checker does not trust compiled stereo-CSP relation tables merely
+because they are present in the artifact. It independently reconstructs the
+ordinary bounded semantic relations from canonical facts, policy JSON,
+traversal decisions, slot-bundle certificates, and prefix assignments:
+
+- tetrahedral local-order/parity relations;
+- directional carrier scopes and signed reference-pair relations;
+- tree-bond mark decode relations;
+- ring-pair joint decode relations;
+- no-accidental-stereo relations for potential unspecified sites.
+
+The checker rejects an artifact whose compiled relation rows differ from these
+reconstructed finite semantic tables.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

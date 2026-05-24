@@ -34,6 +34,7 @@ CORE_MODULES: tuple[str, ...] = (
     "render",
     "ring_labels",
     "semantics",
+    "semantic_relation_checker",
     "skeleton",
     "slots",
     "stereo_csp",

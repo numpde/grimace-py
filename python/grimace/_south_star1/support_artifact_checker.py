@@ -13,6 +13,7 @@ from .finite_space_checker import expected_skeleton_keys_from_traversal_grammar
 from .finite_space_checker import expected_slot_bundle_key_from_traversal_decision
 from .finite_space_checker import enumerate_ring_label_assignments_from_slots
 from .proof_terms import sequence_hash
+from .semantic_relation_checker import check_semantic_relation_tables
 from .support_artifact import SUPPORT_ARTIFACT_SCHEMA_VERSION
 from .support_artifact import ArtifactNode
 from .support_artifact import SupportArtifact
@@ -50,6 +51,7 @@ def check_support_artifact(artifact: SupportArtifact) -> None:
     _check_relations(artifact)
     _check_traversal_space(nodes, artifact)
     _check_prefix_spaces(nodes, artifact)
+    check_semantic_relation_tables(artifact)
     _check_csp_solution_spaces(nodes, artifact)
     _check_render_programs(nodes, artifact)
     _check_witness_relation_certificates(artifact)

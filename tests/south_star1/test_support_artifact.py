@@ -78,7 +78,7 @@ class SupportArtifactTest(unittest.TestCase):
             row_hash=sequence_hash(()),
         )
 
-        with self.assertRaisesRegex(ValueError, "feasible solution coverage"):
+        with self.assertRaisesRegex(ValueError, "semantic relation row"):
             check_support_artifact(
                 _replace_relation(artifact, relation, mutated_relation),
             )
@@ -92,7 +92,7 @@ class SupportArtifactTest(unittest.TestCase):
             row_hash=sequence_hash(()),
         )
 
-        with self.assertRaisesRegex(ValueError, "feasible solution coverage"):
+        with self.assertRaisesRegex(ValueError, "semantic relation row"):
             check_support_artifact(
                 _replace_relation(artifact, relation, mutated_relation),
             )
@@ -574,6 +574,127 @@ class SupportArtifactTest(unittest.TestCase):
                         ),
                     ),
                 )
+            )
+
+    def test_artifact_checker_rejects_tetra_domain_allowing_token_on_non_site(
+        self,
+    ) -> None:
+        artifact = _artifact_for_facts(directional_facts())
+        space = artifact.csp_solution_spaces[0]
+        name, values = space.tetra_domains[0]
+        mutated_space = replace(
+            space,
+            tetra_domains=((name, values + ("@",)),) + space.tetra_domains[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic tetra domain"):
+            check_support_artifact(_replace_csp_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_tetra_domain_disallowing_specified_token(
+        self,
+    ) -> None:
+        artifact = _artifact_for_tetra()
+        space = artifact.csp_solution_spaces[0]
+        name, _ = next(
+            item for item in space.tetra_domains if item[0] == "tetra:0"
+        )
+        mutated_space = replace(
+            space,
+            tetra_domains=tuple(
+                (name, ("@",)) if item[0] == name else item
+                for item in space.tetra_domains
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic tetra domain"):
+            check_support_artifact(_replace_csp_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_direction_domain_marker_on_ineligible_carrier(
+        self,
+    ) -> None:
+        artifact = _artifact_for_tetra()
+        space = artifact.csp_solution_spaces[0]
+        name, values = space.direction_domains[0]
+        mutated_space = replace(
+            space,
+            direction_domains=((name, values + (1,)),) + space.direction_domains[1:],
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic direction domain"):
+            check_support_artifact(_replace_csp_space(artifact, space, mutated_space))
+
+    def test_semantic_relation_checker_rejects_directional_scope_with_center_bond(
+        self,
+    ) -> None:
+        artifact = _artifact_for_facts(directional_facts())
+        relation = next(item for item in artifact.relations if item.name == "directional_site")
+        mutated_relation = replace(
+            relation,
+            scope=("direction:0",) + relation.scope,
+            allowed_rows=tuple((0,) + row for row in relation.allowed_rows),
+            row_hash=sequence_hash(
+                repr(tuple((0,) + row)) for row in relation.allowed_rows
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic relation scope"):
+            check_support_artifact(
+                _replace_relation(artifact, relation, mutated_relation),
+            )
+
+    def test_semantic_relation_checker_rejects_directional_scope_missing_carrier(
+        self,
+    ) -> None:
+        artifact = _artifact_for_facts(directional_facts())
+        relation = next(item for item in artifact.relations if item.name == "directional_site")
+        mutated_relation = replace(
+            relation,
+            scope=relation.scope[:-1],
+            allowed_rows=tuple(row[:-1] for row in relation.allowed_rows),
+            row_hash=sequence_hash(
+                repr(tuple(row[:-1])) for row in relation.allowed_rows
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic relation scope"):
+            check_support_artifact(
+                _replace_relation(artifact, relation, mutated_relation),
+            )
+
+    def test_semantic_relation_checker_rejects_directional_wrong_reference_row(
+        self,
+    ) -> None:
+        artifact = _artifact_for_facts(directional_facts())
+        relation = next(item for item in artifact.relations if item.name == "directional_site")
+        mutated_rows = ((1, 1),)
+        mutated_relation = replace(
+            relation,
+            allowed_rows=mutated_rows,
+            row_hash=sequence_hash(repr(row) for row in mutated_rows),
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic relation row"):
+            check_support_artifact(
+                _replace_relation(artifact, relation, mutated_relation),
+            )
+
+    def test_semantic_relation_checker_rejects_tree_marker_on_double_bond(self) -> None:
+        artifact = _artifact_for_facts(directional_facts())
+        relation = next(
+            item
+            for item in artifact.relations
+            if item.name == "tree_bond_decode" and item.subject.endswith("bond_slot:0")
+        )
+        mutated_rows = relation.allowed_rows + ((1,),)
+        mutated_relation = replace(
+            relation,
+            allowed_rows=mutated_rows,
+            row_hash=sequence_hash(repr(row) for row in mutated_rows),
+        )
+
+        with self.assertRaisesRegex(ValueError, "semantic relation row"):
+            check_support_artifact(
+                _replace_relation(artifact, relation, mutated_relation),
             )
 
 

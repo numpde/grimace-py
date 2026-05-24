@@ -82,6 +82,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
     ) -> None:
         for path in (
             SOUTH_STAR1_ROOT / "finite_space_checker.py",
+            SOUTH_STAR1_ROOT / "semantic_relation_checker.py",
             SOUTH_STAR1_ROOT / "support_artifact_checker.py",
         ):
             with self.subTest(path=path):
@@ -94,6 +95,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             "ordinary_semantics",
             "rdkit_adapter",
             "skeleton",
+            "stereo_csp",
             "stereo_witness",
             "support_enumeration",
         }

@@ -67,6 +67,8 @@ class DocsPagesTests(unittest.TestCase):
         config = (ROOT / "docs" / "_config.yml").read_text(encoding="utf-8")
         self.assertIn("theme: minima", config)
         self.assertIn("header_pages:", config)
+        index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
+        self.assertIn("layout: page", index)
 
     def test_pages_disable_minima_default_footer(self) -> None:
         footer = ROOT / "docs" / "_includes" / "footer.html"

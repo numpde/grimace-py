@@ -146,6 +146,38 @@ depend on private enumeration-helper names for proof keys. Trace JSON has an
 explicit schema version, and unknown schema versions are rejected rather than
 silently interpreted.
 
+### Compiled Support Artifact
+
+South Star can compile a support problem into a proof-carrying finite artifact.
+The artifact contains canonical facts and policy identity, a traversal-space
+certificate, prefix-space certificates, explicit stereo-CSP domains and
+relations, feasible/selected solution partitions, render programs, witness
+certificates, support-completeness traces, and a manifest.
+
+`support_artifact.py` is the compiler side: it translates
+`MoleculeFacts + policy + semantics` into explicit tables and proof objects.
+The compiler may call the live traversal, prefix, CSP, renderer, and support
+enumeration implementation because its job is to materialize the finite
+problem.
+
+`support_artifact_checker.py` is the artifact proof checker. It is RDKit-free
+and producer-free: it does not import RDKit, the RDKit adapters or audits,
+ordinary semantics, the traversal generator, the witness generator, or the
+support enumerator. It consumes only the artifact's finite tables and checks
+schema versions, canonical hashes, node/edge well-formedness, traversal and
+prefix coverage, CSP relation-row satisfaction, annotation selection,
+render-program output, support quotienting, trace reachability, and manifest
+hashes.
+
+This split is intentional:
+
+- compiler trust: translation of live South Star objects into an explicit
+  artifact;
+- checker trust: internal consistency of the finite artifact and its proof
+  ledger;
+- external audit: RDKit source parse-back remains a falsifier, not part of the
+  artifact checker.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

@@ -77,6 +77,36 @@ class SouthStar1BoundaryTest(unittest.TestCase):
 
         self.assertEqual(private_imports, [])
 
+    def test_support_artifact_checker_import_boundary_is_producer_free(
+        self,
+    ) -> None:
+        path = SOUTH_STAR1_ROOT / "support_artifact_checker.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        banned_modules = {
+            "audit_rdkit",
+            "ordinary_semantics",
+            "rdkit_adapter",
+            "skeleton",
+            "stereo_witness",
+            "support_enumeration",
+        }
+        banned_imports: list[str] = []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                banned_imports.extend(
+                    alias.name
+                    for alias in node.names
+                    if alias.name.split(".", 1)[0] in banned_modules
+                )
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module.split(".", 1)[0] in banned_modules:
+                    banned_imports.append(module)
+
+        self.assertFalse(_imports_rdkit(tree))
+        self.assertEqual(banned_imports, [])
+
 
 def _imports_rdkit(tree: ast.AST) -> bool:
     for node in ast.walk(tree):

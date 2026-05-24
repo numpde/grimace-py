@@ -8,6 +8,10 @@ from typing import Mapping
 
 from .enumeration_trace import TRACE_SCHEMA_VERSION
 from .enumeration_trace import build_trace_index
+from .finite_space_checker import expected_prefix_keys_from_policy_product
+from .finite_space_checker import expected_skeleton_keys_from_traversal_grammar
+from .finite_space_checker import expected_slot_bundle_key_from_traversal_decision
+from .finite_space_checker import enumerate_ring_label_assignments_from_slots
 from .proof_terms import sequence_hash
 from .support_artifact import SUPPORT_ARTIFACT_SCHEMA_VERSION
 from .support_artifact import ArtifactNode
@@ -118,6 +122,12 @@ def _check_traversal_space(
     listed = set(artifact.traversal_space.skeleton_keys)
     if skeleton_nodes != listed:
         raise ValueError("skeleton node set disagrees with traversal space")
+    expected = expected_skeleton_keys_from_traversal_grammar(
+        facts_json=artifact.facts_json,
+        policy_json=artifact.policy_json,
+    )
+    if frozenset(listed) != expected:
+        raise ValueError("traversal grammar skeleton coverage mismatch")
     decision_keys = {decision.skeleton_key for decision in artifact.traversal_decisions}
     if decision_keys != listed:
         raise ValueError("traversal decision coverage mismatch")
@@ -279,15 +289,62 @@ def _check_prefix_spaces(
             continue
         skeleton_key = node.key[0]
         prefix_nodes_by_skeleton.setdefault(skeleton_key, set()).add(node.key[1])
+    slot_bundle_by_skeleton = _slot_bundle_by_skeleton(nodes)
+    decision_by_key = {
+        decision.skeleton_key: decision
+        for decision in artifact.traversal_decisions
+    }
 
     for space in artifact.prefix_spaces:
+        slot_bundle_key = slot_bundle_by_skeleton.get(space.skeleton_key)
+        if slot_bundle_key is None:
+            raise ValueError("prefix space lacks slot bundle")
+        decision = decision_by_key.get(space.skeleton_key)
+        if decision is None:
+            raise ValueError("prefix space lacks traversal decision")
+        expected_slot_key = expected_slot_bundle_key_from_traversal_decision(
+            facts_json=artifact.facts_json,
+            roots=decision.roots,
+            local_event_orders=decision.local_event_orders,
+        )
+        if slot_bundle_key != expected_slot_key:
+            raise ValueError("slot bundle is not induced by skeleton")
         _check_prefix_domains_against_policy(space, artifact)
-        expected = _prefix_cartesian_keys(space)
+        expected_ring_labels = enumerate_ring_label_assignments_from_slots(
+            ring_endpoints=tuple(slot_bundle_key[2]),
+            ring_labels=tuple(
+                int(label)
+                for label in _require_list(artifact.policy_json["ring_labels"])
+            ),
+            least_free=bool(artifact.policy_json["least_free_ring_labels"]),
+        )
+        if set(space.ring_label_assignments) != set(expected_ring_labels):
+            raise ValueError("ring label assignment space mismatch")
+        expected = expected_prefix_keys_from_policy_product(
+            facts_json=artifact.facts_json,
+            policy_json=artifact.policy_json,
+            skeleton_key=space.skeleton_key,
+            slot_bundle_key=slot_bundle_key,
+        )
         listed = set(space.prefix_keys)
         if listed != expected:
-            raise ValueError("prefix space is not the Cartesian product")
+            raise ValueError("prefix space is not the policy product")
         if prefix_nodes_by_skeleton.get(space.skeleton_key, set()) != listed:
             raise ValueError("prefix node coverage mismatch")
+
+
+def _slot_bundle_by_skeleton(
+    nodes: dict[ArtifactNode, ArtifactNode],
+) -> dict[tuple[object, ...], tuple[object, ...]]:
+    out: dict[tuple[object, ...], tuple[object, ...]] = {}
+    for node in nodes:
+        if node.kind != "slot_bundle":
+            continue
+        skeleton_key = node.key[0]
+        if skeleton_key in out:
+            raise ValueError("duplicate slot bundle for skeleton")
+        out[skeleton_key] = node.key[1]
+    return out
 
 
 def _check_csp_solution_spaces(

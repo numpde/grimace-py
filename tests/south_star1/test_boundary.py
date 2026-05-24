@@ -80,7 +80,14 @@ class SouthStar1BoundaryTest(unittest.TestCase):
     def test_support_artifact_checker_import_boundary_is_producer_free(
         self,
     ) -> None:
-        path = SOUTH_STAR1_ROOT / "support_artifact_checker.py"
+        for path in (
+            SOUTH_STAR1_ROOT / "finite_space_checker.py",
+            SOUTH_STAR1_ROOT / "support_artifact_checker.py",
+        ):
+            with self.subTest(path=path):
+                self._assert_artifact_checker_boundary(path)
+
+    def _assert_artifact_checker_boundary(self, path: Path) -> None:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         banned_modules = {
             "audit_rdkit",

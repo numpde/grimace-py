@@ -187,6 +187,18 @@ data, reconstructs rendering from structured atom/bond/ring/punctuation pieces,
 checks prefix domains against the policy snapshot, and checks witness relation
 rows against the artifact's compiled relation tables.
 
+### Traversal and Prefix Space Completeness
+
+The artifact checker independently reconstructs the finite traversal grammar
+space from canonical graph facts and policy root domains. It checks root
+choices, spanning forest edge sets, parent orientations, ring-edge complements,
+and local event-order products without calling the live traversal generator.
+
+The checker also reconstructs the finite prefix space from policy domains and
+slot-bundle certificates: atom text domains, bond text domains, and bounded
+ring-label assignments. The artifact is rejected if any legal skeleton or
+prefix is missing, or if any extra skeleton or prefix is present.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

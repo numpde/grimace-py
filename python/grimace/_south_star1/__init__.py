@@ -20,6 +20,7 @@ CORE_MODULES: tuple[str, ...] = (
     "errors",
     "facts",
     "fact_isomorphism",
+    "finite_space_checker",
     "graph_index",
     "ids",
     "nonstereo_witness_search",

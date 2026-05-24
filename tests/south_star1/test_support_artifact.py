@@ -119,6 +119,49 @@ class SupportArtifactTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "prefix node coverage"):
             check_support_artifact(mutated)
 
+    def test_artifact_checker_rejects_missing_spanning_tree_skeleton(self) -> None:
+        artifact = _artifact_for_tetra()
+        mutated = replace(
+            artifact,
+            traversal_space=replace(
+                artifact.traversal_space,
+                skeleton_keys=artifact.traversal_space.skeleton_keys[:-1],
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "skeleton node set"):
+            check_support_artifact(mutated)
+
+    def test_artifact_checker_rejects_extra_non_spanning_tree_skeleton(self) -> None:
+        artifact = _artifact_for_tetra()
+        extra = ("not-a-grammar-skeleton",)
+        mutated = replace(
+            artifact,
+            nodes=artifact.nodes + (ArtifactNode(kind="skeleton", key=extra),),
+            traversal_space=replace(
+                artifact.traversal_space,
+                skeleton_keys=artifact.traversal_space.skeleton_keys + (extra,),
+            ),
+            traversal_decisions=artifact.traversal_decisions
+            + (replace(artifact.traversal_decisions[0], skeleton_key=extra),),
+        )
+
+        with self.assertRaisesRegex(ValueError, "traversal grammar skeleton coverage"):
+            check_support_artifact(mutated)
+
+    def test_artifact_checker_rejects_missing_local_event_order_skeleton(self) -> None:
+        artifact = _artifact_for_tetra()
+        decision = artifact.traversal_decisions[0]
+        mutated_decision = replace(
+            decision,
+            local_event_orders=decision.local_event_orders[:-1],
+        )
+
+        with self.assertRaisesRegex(ValueError, "local-order table"):
+            check_support_artifact(
+                _replace_traversal_decision(artifact, decision, mutated_decision),
+            )
+
     def test_support_artifact_checker_rejects_missing_feasible_solution(self) -> None:
         artifact = _artifact_for_tetra()
         space = artifact.csp_solution_spaces[0]
@@ -144,6 +187,34 @@ class SupportArtifactTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "selected solution coverage"):
             check_support_artifact(_replace_csp_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_missing_prefix_cartesian_product_element(
+        self,
+    ) -> None:
+        artifact = _artifact_for_tetra()
+        space = artifact.prefix_spaces[0]
+        mutated_space = replace(space, prefix_keys=space.prefix_keys[:-1])
+
+        with self.assertRaisesRegex(ValueError, "policy product"):
+            check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_extra_prefix_not_in_policy_product(self) -> None:
+        artifact = _artifact_for_tetra()
+        space = artifact.prefix_spaces[0]
+        extra_prefix = (("extra",), (), ())
+        mutated_space = replace(
+            space,
+            prefix_keys=space.prefix_keys + (extra_prefix,),
+        )
+        mutated = _replace_prefix_space(artifact, space, mutated_space)
+        mutated = replace(
+            mutated,
+            nodes=mutated.nodes
+            + (ArtifactNode(kind="prefix", key=(space.skeleton_key, extra_prefix)),),
+        )
+
+        with self.assertRaisesRegex(ValueError, "policy product"):
+            check_support_artifact(mutated)
 
     def test_support_artifact_checker_rejects_render_program_mismatch(self) -> None:
         artifact = _artifact_for_tetra()
@@ -302,6 +373,60 @@ class SupportArtifactTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "least-free"):
             check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_missing_ring_label_assignment(self) -> None:
+        artifact = _artifact_for_facts(ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"))
+        space = next(item for item in artifact.prefix_spaces if item.ring_label_assignments)
+        mutated_space = replace(space, ring_label_assignments=())
+
+        with self.assertRaisesRegex(ValueError, "ring label assignment"):
+            check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_extra_overlapping_ring_label_assignment(
+        self,
+    ) -> None:
+        artifact = _artifact_for_facts(ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"))
+        space = next(item for item in artifact.prefix_spaces if item.ring_label_assignments)
+        bad_assignment = ((999, 1),)
+        mutated_space = replace(
+            space,
+            ring_label_assignments=space.ring_label_assignments + (bad_assignment,),
+        )
+
+        with self.assertRaisesRegex(ValueError, "endpoint coverage|policy product"):
+            check_support_artifact(_replace_prefix_space(artifact, space, mutated_space))
+
+    def test_artifact_checker_rejects_slot_bundle_not_induced_by_skeleton(self) -> None:
+        artifact = _artifact_for_tetra()
+        slot_node = next(node for node in artifact.nodes if node.kind == "slot_bundle")
+        atom_slots, bond_slots, ring_endpoints, carrier_slots = slot_node.key[1]
+        mutated_slot_key = (
+            atom_slots,
+            bond_slots[:-1],
+            ring_endpoints,
+            carrier_slots,
+        )
+        mutated_node = replace(slot_node, key=(slot_node.key[0], mutated_slot_key))
+
+        with self.assertRaisesRegex(ValueError, "slot bundle"):
+            check_support_artifact(_replace_node(artifact, slot_node, mutated_node))
+
+    def test_artifact_checker_rejects_carrier_slot_not_induced_by_bond_slot(self) -> None:
+        artifact = _artifact_for_tetra()
+        slot_node = next(node for node in artifact.nodes if node.kind == "slot_bundle")
+        atom_slots, bond_slots, ring_endpoints, carrier_slots = slot_node.key[1]
+        carrier = carrier_slots[0]
+        mutated_carriers = ((carrier[0], 999, carrier[2], carrier[3], carrier[4]),) + carrier_slots[1:]
+        mutated_slot_key = (
+            atom_slots,
+            bond_slots,
+            ring_endpoints,
+            mutated_carriers,
+        )
+        mutated_node = replace(slot_node, key=(slot_node.key[0], mutated_slot_key))
+
+        with self.assertRaisesRegex(ValueError, "slot bundle"):
+            check_support_artifact(_replace_node(artifact, slot_node, mutated_node))
 
     def test_artifact_checker_rejects_atom_piece_with_wrong_tetra_token(self) -> None:
         artifact = _artifact_for_tetra()
@@ -523,6 +648,27 @@ def _replace_certified_witness(artifact, old, new):
             certified_witnesses=tuple(
                 new if item == old else item for item in traced.certified_witnesses
             ),
+        ),
+    )
+
+
+def _replace_node(artifact, old, new):
+    return replace(
+        artifact,
+        nodes=tuple(new if item == old else item for item in artifact.nodes),
+        edges=tuple(
+            replace(
+                edge,
+                parent=new if edge.parent == old else edge.parent,
+                child=new if edge.child == old else edge.child,
+            )
+            for edge in artifact.edges
+        ),
+        domains=tuple(
+            replace(domain, owner=new)
+            if domain.owner == old
+            else domain
+            for domain in artifact.domains
         ),
     )
 

@@ -77,3 +77,13 @@ The executable v0 conformance corpus lives in `tests/south_star1`:
 The audit matrix is a falsifier for this spec, not the source of truth. A
 passing RDKit audit means generated strings parse back to isomorphic facts under
 the declared adapter, not that RDKit defines the support.
+
+## Experimental Options
+
+`OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`
+broadens potential stereo-site recognition beyond the v0 immediate-color rule.
+It uses an anchored label-preserving graph automorphism relation to decide
+whether two ligand occurrences are equivalent.
+
+This option is opt-in and is not part of the v0 conformance corpus. The v0
+default remains `ligand_equivalence="immediate_color"`.

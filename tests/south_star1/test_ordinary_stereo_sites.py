@@ -17,6 +17,7 @@ from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ordinary_stereo_sites import add_ordinary_potential_sites
+from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from grimace._south_star1.ordinary_stereo_sites import (
     ordinary_directional_candidates,
 )
@@ -26,6 +27,8 @@ from grimace._south_star1.ordinary_stereo_sites import (
 
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
+from tests.south_star1.helpers import deep_directional_endpoint_facts
+from tests.south_star1.helpers import deep_tetra_ligand_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
@@ -122,6 +125,64 @@ class OrdinaryStereoSitesTest(unittest.TestCase):
 
             self.assertEqual(sites, ())
             self.assertEqual(occurrences, ())
+
+    def test_exact_ligand_equivalence_admits_deep_distinct_tetra_site(self) -> None:
+        facts = _deep_tetra_candidate_facts(right_terminal="Cl")
+        exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_graph_automorphism"
+        )
+
+        immediate_sites, _ = ordinary_tetrahedral_candidates(facts)
+        exact_sites, exact_occurrences = ordinary_tetrahedral_candidates(
+            facts,
+            exact,
+        )
+
+        self.assertEqual(immediate_sites, ())
+        self.assertEqual(len(exact_sites), 1)
+        self.assertEqual(exact_sites[0].center, AtomId(0))
+        self.assertEqual(len(exact_occurrences), 4)
+
+    def test_exact_ligand_equivalence_rejects_deep_duplicate_tetra_site(self) -> None:
+        facts = _deep_tetra_candidate_facts(right_terminal="Br")
+        exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_graph_automorphism"
+        )
+
+        sites, occurrences = ordinary_tetrahedral_candidates(facts, exact)
+
+        self.assertEqual(sites, ())
+        self.assertEqual(occurrences, ())
+
+    def test_exact_ligand_equivalence_admits_deep_distinct_directional_site(
+        self,
+    ) -> None:
+        facts = deep_directional_endpoint_facts(right_terminal="Cl")
+        exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_graph_automorphism"
+        )
+
+        immediate_sites, _ = ordinary_directional_candidates(facts)
+        exact_sites, exact_occurrences = ordinary_directional_candidates(
+            facts,
+            exact,
+        )
+
+        self.assertEqual(immediate_sites, ())
+        self.assertEqual(len(exact_sites), 1)
+        self.assertEqual(exact_sites[0].center_bond, BondId(0))
+        self.assertEqual(len(exact_occurrences), 3)
+
+    def test_exact_ligand_equivalence_rejects_symmetric_ring_ligands(self) -> None:
+        facts = _symmetric_ring_tetra_candidate_facts()
+        exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_graph_automorphism"
+        )
+
+        sites, occurrences = ordinary_tetrahedral_candidates(facts, exact)
+
+        self.assertEqual(sites, ())
+        self.assertEqual(occurrences, ())
 
 
 def _tetrahedral_carbon_without_stereo() -> MoleculeFacts:
@@ -307,6 +368,40 @@ def _duplicate_f_alkene_facts() -> MoleculeFacts:
                     BondId(3),
                     BondId(4),
                 ),
+            ),
+        ),
+    )
+
+
+def _deep_tetra_candidate_facts(*, right_terminal: str) -> MoleculeFacts:
+    base = deep_tetra_ligand_facts(right_terminal=right_terminal)
+    return replace(
+        base,
+        atoms=(replace(base.atoms[0], implicit_h_count=1),) + base.atoms[1:],
+    )
+
+
+def _symmetric_ring_tetra_candidate_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=1),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "O"),
+            atom(4, "F"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 1, 3),
+            single_bond(3, 2, 3),
+            single_bond(4, 0, 4),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(5)),
+                bonds=tuple(BondId(index) for index in range(5)),
             ),
         ),
     )

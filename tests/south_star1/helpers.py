@@ -176,6 +176,95 @@ def directional_facts() -> MoleculeFacts:
     )
 
 
+def deep_tetra_ligand_facts(*, right_terminal: str) -> MoleculeFacts:
+    """Tetra-candidate graph whose carbon ligands differ only distally."""
+
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "F"),
+            atom(2, "C"),
+            atom(3, "C"),
+            atom(4, "Br"),
+            atom(5, "C"),
+            atom(6, "C"),
+            atom(7, right_terminal),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 2, 3),
+            single_bond(3, 0, 5),
+            single_bond(4, 5, 6),
+            single_bond(5, 3, 4),
+            single_bond(6, 6, 7),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(8)),
+                bonds=tuple(BondId(index) for index in range(7)),
+            ),
+        ),
+    )
+
+
+def deep_directional_endpoint_facts(*, right_terminal: str) -> MoleculeFacts:
+    """Directional-candidate graph with same-endpoint deep ligand contrast."""
+
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "C"),
+            atom(4, "Br"),
+            atom(5, "C"),
+            atom(6, "C"),
+            atom(7, right_terminal),
+            atom(8, "F"),
+        ),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 0, 2),
+            single_bond(2, 2, 3),
+            single_bond(3, 0, 5),
+            single_bond(4, 5, 6),
+            single_bond(5, 3, 4),
+            single_bond(6, 6, 7),
+            single_bond(7, 1, 8),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(9)),
+                bonds=tuple(BondId(index) for index in range(8)),
+            ),
+        ),
+    )
+
+
+def symmetric_ring_center_facts() -> MoleculeFacts:
+    """Central atom with two symmetry-equivalent ring ligand occurrences."""
+
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C"), atom(3, "O")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 1, 3),
+            single_bond(3, 2, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
+            ),
+        ),
+    )
+
+
 def atom(idx: int, symbol: str) -> AtomFacts:
     return AtomFacts(
         id=AtomId(idx),

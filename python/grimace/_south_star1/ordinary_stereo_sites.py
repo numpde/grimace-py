@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from dataclasses import replace
+from itertools import combinations
+from typing import Literal
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .facts import AtomFacts
 from .facts import BondFacts
 from .facts import BondOrder
@@ -20,24 +25,38 @@ from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
 from .ids import SiteId
+from .ordinary_ligand_equivalence import AutomorphismAnchor
+from .ordinary_ligand_equivalence import ligand_occurrences_equivalent
+
+
+@dataclass(frozen=True, slots=True)
+class OrdinaryStereoSiteOptions:
+    """Options for ordinary RDKit-free potential stereo-site construction."""
+
+    ligand_equivalence: Literal[
+        "immediate_color",
+        "exact_graph_automorphism",
+    ] = "immediate_color"
 
 
 def ordinary_tetrahedral_candidates(
     facts: MoleculeFacts,
+    options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
 ) -> tuple[tuple[TetrahedralSiteFacts, ...], tuple[LigandOccurrence, ...]]:
     """Return ordinary potential tetrahedral sites implied by graph facts."""
 
-    builder = _SiteBuilder(facts)
+    builder = _SiteBuilder(facts, options)
     builder.add_tetrahedral_candidates(skip_centers=frozenset())
     return tuple(builder.tetrahedral), tuple(builder.occurrences)
 
 
 def ordinary_directional_candidates(
     facts: MoleculeFacts,
+    options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
 ) -> tuple[tuple[DirectionalSiteFacts, ...], tuple[LigandOccurrence, ...]]:
     """Return ordinary potential directional sites implied by graph facts."""
 
-    builder = _SiteBuilder(facts)
+    builder = _SiteBuilder(facts, options)
     builder.add_directional_candidates(skip_center_bonds=frozenset())
     return tuple(builder.directional), tuple(builder.occurrences)
 
@@ -46,10 +65,12 @@ def add_ordinary_potential_sites(
     facts: MoleculeFacts,
     *,
     preserve_specified: bool = True,
+    options: OrdinaryStereoSiteOptions = OrdinaryStereoSiteOptions(),
 ) -> MoleculeFacts:
     """Add ordinary potential stereo sites without using RDKit perception."""
 
     facts.validate()
+    _validate_options(options)
     if preserve_specified:
         skip_tetra_centers = frozenset(site.center for site in facts.stereo.tetrahedral)
         skip_directional_bonds = frozenset(
@@ -59,7 +80,7 @@ def add_ordinary_potential_sites(
         skip_tetra_centers = frozenset()
         skip_directional_bonds = frozenset()
 
-    builder = _SiteBuilder(facts)
+    builder = _SiteBuilder(facts, options)
     builder.add_tetrahedral_candidates(skip_centers=skip_tetra_centers)
     builder.add_directional_candidates(skip_center_bonds=skip_directional_bonds)
 
@@ -76,9 +97,15 @@ def add_ordinary_potential_sites(
 
 
 class _SiteBuilder:
-    def __init__(self, facts: MoleculeFacts) -> None:
+    def __init__(
+        self,
+        facts: MoleculeFacts,
+        options: OrdinaryStereoSiteOptions,
+    ) -> None:
         facts.validate()
+        _validate_options(options)
         self.facts = facts
+        self.options = options
         self.bonds_by_atom = _bonds_by_atom(facts)
         self.tetrahedral: list[TetrahedralSiteFacts] = []
         self.directional: list[DirectionalSiteFacts] = []
@@ -102,6 +129,7 @@ class _SiteBuilder:
                 self.facts,
                 center=atom.id,
                 occurrences=occurrences,
+                options=self.options,
             ):
                 continue
 
@@ -149,13 +177,17 @@ class _SiteBuilder:
             if not _eligible_directional_ligands(
                 self.facts,
                 endpoint=bond.a,
+                center_bond=bond.id,
                 occurrences=left_ligands,
+                options=self.options,
             ):
                 continue
             if not _eligible_directional_ligands(
                 self.facts,
                 endpoint=bond.b,
+                center_bond=bond.id,
                 occurrences=right_ligands,
+                options=self.options,
             ):
                 continue
 
@@ -294,19 +326,28 @@ def _eligible_tetrahedral_ligands(
     *,
     center: AtomId,
     occurrences: tuple[LigandOccurrence, ...],
+    options: OrdinaryStereoSiteOptions,
 ) -> bool:
     if len(occurrences) != 4:
         return False
     if _implicit_h_count(occurrences) > 1:
         return False
-    return _ligand_colors_are_unique(facts, center=center, occurrences=occurrences)
+    return _ligands_are_distinguishable(
+        facts,
+        anchor=AutomorphismAnchor(fixed_atoms=frozenset({center})),
+        center=center,
+        occurrences=occurrences,
+        options=options,
+    )
 
 
 def _eligible_directional_ligands(
     facts: MoleculeFacts,
     *,
     endpoint: AtomId,
+    center_bond: BondId,
     occurrences: tuple[LigandOccurrence, ...],
+    options: OrdinaryStereoSiteOptions,
 ) -> bool:
     if len(occurrences) not in {1, 2}:
         return False
@@ -317,13 +358,51 @@ def _eligible_directional_ligands(
         return False
     if _implicit_h_count(occurrences) > 1:
         return False
-    return _ligand_colors_are_unique(facts, center=endpoint, occurrences=occurrences)
+    bond = _bond_by_id(facts)[center_bond]
+    return _ligands_are_distinguishable(
+        facts,
+        anchor=AutomorphismAnchor(
+            fixed_atoms=frozenset({bond.a, bond.b}),
+            fixed_bonds=frozenset({center_bond}),
+        ),
+        center=endpoint,
+        occurrences=occurrences,
+        options=options,
+    )
 
 
 def _implicit_h_count(occurrences: tuple[LigandOccurrence, ...]) -> int:
     return sum(
         occurrence.kind is LigandKind.IMPLICIT_H
         for occurrence in occurrences
+    )
+
+
+def _ligands_are_distinguishable(
+    facts: MoleculeFacts,
+    *,
+    anchor: AutomorphismAnchor,
+    center: AtomId,
+    occurrences: tuple[LigandOccurrence, ...],
+    options: OrdinaryStereoSiteOptions,
+) -> bool:
+    if options.ligand_equivalence == "immediate_color":
+        return _ligand_colors_are_unique(facts, center=center, occurrences=occurrences)
+    if options.ligand_equivalence != "exact_graph_automorphism":
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "unsupported ordinary stereo-site ligand equivalence mode: "
+            f"{options.ligand_equivalence!r}",
+        )
+
+    return all(
+        not ligand_occurrences_equivalent(
+            facts,
+            anchor=anchor,
+            left=left,
+            right=right,
+        )
+        for left, right in combinations(occurrences, 2)
     )
 
 
@@ -444,7 +523,20 @@ def _next_occurrence_id(facts: MoleculeFacts) -> int:
     )
 
 
+def _validate_options(options: OrdinaryStereoSiteOptions) -> None:
+    if options.ligand_equivalence not in {
+        "immediate_color",
+        "exact_graph_automorphism",
+    }:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "unsupported ordinary stereo-site ligand equivalence mode: "
+            f"{options.ligand_equivalence!r}",
+        )
+
+
 __all__ = (
+    "OrdinaryStereoSiteOptions",
     "add_ordinary_potential_sites",
     "ordinary_directional_candidates",
     "ordinary_tetrahedral_candidates",

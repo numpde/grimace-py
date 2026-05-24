@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+HEADING = re.compile(r"^(#{1,6}) ")
 
 
 def markdown_files() -> tuple[Path, ...]:
@@ -31,6 +32,32 @@ def linked_path(source: Path, raw_target: str) -> Path | None:
     if not path_text:
         return None
     return (source.parent / path_text).resolve()
+
+
+def document_headings(markdown: Path) -> tuple[int, ...]:
+    headings: list[int] = []
+    in_fence = False
+    in_front_matter = False
+
+    for line_number, line in enumerate(markdown.read_text(encoding="utf-8").splitlines()):
+        if line_number == 0 and line == "---":
+            in_front_matter = True
+            continue
+        if in_front_matter:
+            if line == "---":
+                in_front_matter = False
+            continue
+        if line.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        match = HEADING.match(line)
+        if match is not None:
+            headings.append(len(match.group(1)))
+
+    return tuple(headings)
 
 
 class DocsPagesTests(unittest.TestCase):
@@ -61,6 +88,42 @@ class DocsPagesTests(unittest.TestCase):
                 elif not in_fence and line.startswith("# "):
                     offenders.append(f"{relative}: body h1")
                     break
+
+        self.assertEqual([], offenders)
+
+    def test_markdown_heading_levels_are_consistent(self) -> None:
+        readme_headings = document_headings(ROOT / "README.md")
+        self.assertTrue(readme_headings)
+        self.assertEqual(1, readme_headings[0])
+        self.assertNotIn(1, readme_headings[1:])
+
+        offenders: list[str] = []
+        for markdown in (ROOT / "README.md", *sorted((ROOT / "docs").rglob("*.md"))):
+            relative = markdown.relative_to(ROOT)
+            headings = document_headings(markdown)
+            if not headings:
+                continue
+
+            if markdown.parent == ROOT:
+                expected_first = 1
+            else:
+                expected_first = 2
+                if 1 in headings:
+                    offenders.append(f"{relative}: body h1")
+
+            if headings[0] != expected_first:
+                offenders.append(
+                    f"{relative}: starts at h{headings[0]}, expected h{expected_first}"
+                )
+
+            previous = headings[0]
+            for current in headings[1:]:
+                if current > previous + 1:
+                    offenders.append(
+                        f"{relative}: jumps from h{previous} to h{current}"
+                    )
+                    break
+                previous = current
 
         self.assertEqual([], offenders)
 

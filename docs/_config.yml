@@ -8,4 +8,5 @@ header_pages:
   - runtime.md
   - current-limitations.md
   - guides.md
+  - timings.md
   - api/python.md

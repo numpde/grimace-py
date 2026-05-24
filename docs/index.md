@@ -37,6 +37,7 @@ and known gaps.
 - [Runtime](runtime.md)
 - [Limitations](current-limitations.md)
 - [Guides](guides.md)
+- [Timings](timings.md)
 - [API](api/python.md)
 
 ## Guides
@@ -49,7 +50,6 @@ inventories.
 - [Correctness contracts](correctness-contracts.md)
 - [Testing fixtures](testing-fixtures.md)
 - [RDKit serializer coverage](rdkit-serializer-coverage.md)
-- [Timings](timings.md)
 
 ## Development
 

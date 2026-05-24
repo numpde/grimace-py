@@ -73,8 +73,8 @@ read the checked-in [documentation index](docs/index.md):
 - [Runtime](docs/runtime.md)
 - [Limitations](docs/current-limitations.md)
 - [Guides](docs/guides.md)
-- [API](docs/api/python.md)
 - [Timings](docs/timings.md)
+- [API](docs/api/python.md)
 
 ## Install matrix
 

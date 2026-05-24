@@ -57,6 +57,10 @@ class WorkflowPostureTests(unittest.TestCase):
 
     def test_release_workflow_allowlists_uploaded_and_published_artifacts(self) -> None:
         workflow = read_text(".github/workflows/release.yml")
+        self.assertIn(
+            "args: --release --locked --out dist -i python${{ matrix.python-version }}",
+            workflow,
+        )
         self.assertIn("path: dist/*.whl", workflow)
         self.assertIn("path: dist/*.tar.gz", workflow)
         self.assertEqual(workflow.count("if-no-files-found: error"), 2)

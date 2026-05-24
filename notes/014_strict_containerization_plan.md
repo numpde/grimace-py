@@ -303,9 +303,10 @@ list are Makefile facts, not command-line overrides.
 
 ### Rust Dependency Lock
 
-The Docker lanes use `cargo fetch --locked` and `cargo test --offline`, so
-`Cargo.lock` is part of the source boundary. It must stay checked in and must
-not be excluded from the Docker build context.
+The Docker and release lanes use locked Rust builds (`cargo fetch --locked`,
+`cargo test --offline`, and `maturin build --locked`), so `Cargo.lock` is part
+of the source boundary. It must stay checked in and must not be excluded from
+the Docker build context.
 
 ## Repository Boundary Decision
 

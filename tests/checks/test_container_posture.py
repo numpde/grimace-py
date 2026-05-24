@@ -92,6 +92,11 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("source: ../dist", compose)
         self.assertIn("target: /dist", compose)
+        self.assertIn("python -m maturin build --release --locked --out /dist", compose)
+        self.assertIn(
+            "python -m maturin build --release --locked --sdist --out /dist",
+            compose,
+        )
         self.assertNotIn("source: ..\n", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)
@@ -148,7 +153,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("rdkit==2026.3.1", dockerfile)
         self.assertIn("COPY . /src", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
-        self.assertIn("python -m maturin build --release", dockerfile)
+        self.assertIn("python -m maturin build --release --locked", dockerfile)
         self.assertIn(
             "python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl",
             dockerfile,
@@ -179,7 +184,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("COPY . /build-src", dockerfile)
         self.assertIn("WORKDIR /build-src", dockerfile)
         self.assertNotIn("WORKDIR /src", dockerfile)
-        self.assertIn("python -m maturin build --release", dockerfile)
+        self.assertIn("python -m maturin build --release --locked", dockerfile)
         self.assertIn(
             "python -m pip install --no-cache-dir /tmp/grimace-dist/*.whl",
             dockerfile,

@@ -7,6 +7,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 MATURIN_VERSION = "1.13.1"
 MATURIN_ACTION_VERSION = f"v{MATURIN_VERSION}"
+RDKIT_VERSION = "2026.3.1"
+TWINE_VERSION = "6.2.0"
 
 
 def read_text(relative_path: str) -> str:
@@ -53,9 +55,11 @@ class BuildDependencyPinTests(unittest.TestCase):
             with self.subTest(path=relative_path):
                 self.assertNotRegex(read_text(relative_path), r"maturin build\b[^\n]*--locked")
 
-    def test_container_and_release_lanes_use_same_maturin_pin(self) -> None:
+    def test_container_and_release_lanes_use_same_direct_pins(self) -> None:
         constraints = pinned_constraints()
         self.assertEqual(MATURIN_VERSION, constraints["maturin"])
+        self.assertEqual(RDKIT_VERSION, constraints["rdkit"])
+        self.assertEqual(TWINE_VERSION, constraints["twine"])
 
         checked_files = (
             ".github/workflows/release.yml",
@@ -75,13 +79,20 @@ class BuildDependencyPinTests(unittest.TestCase):
                         f'MATURIN_ACTION_VERSION: "{MATURIN_ACTION_VERSION}"',
                         text,
                     )
+                    self.assertIn(
+                        f'RDKIT_FIXTURE_PIP_VERSION: "{RDKIT_VERSION}"',
+                        text,
+                    )
                 else:
                     self.assertRegex(text, rf"\bmaturin=={re.escape(MATURIN_VERSION)}\b")
+                    self.assertRegex(text, rf"\brdkit=={re.escape(RDKIT_VERSION)}\b")
+                    if relative_path == "containers/package/Dockerfile":
+                        self.assertRegex(text, rf"\btwine=={re.escape(TWINE_VERSION)}\b")
 
     def test_container_constraints_pin_direct_fixture_tools(self) -> None:
         constraints = pinned_constraints()
-        self.assertEqual("2026.3.1", constraints["rdkit"])
-        self.assertEqual("6.2.0", constraints["twine"])
+        self.assertEqual(RDKIT_VERSION, constraints["rdkit"])
+        self.assertEqual(TWINE_VERSION, constraints["twine"])
 
     def test_container_constraints_are_exact_and_sorted(self) -> None:
         lines = constraint_lines()

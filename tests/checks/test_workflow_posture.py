@@ -22,6 +22,13 @@ def job_section(workflow: str, job_name: str) -> str:
 
 
 class WorkflowPostureTests(unittest.TestCase):
+    def test_workflows_pin_github_hosted_runner_image(self) -> None:
+        for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            workflow = workflow_path.read_text(encoding="utf-8")
+            with self.subTest(workflow=workflow_path.name):
+                self.assertNotIn("ubuntu-latest", workflow)
+                self.assertIn("ubuntu-24.04", workflow)
+
     def test_workflow_actions_are_pinned_to_commit_sha(self) -> None:
         for workflow_path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
             workflow = workflow_path.read_text(encoding="utf-8")

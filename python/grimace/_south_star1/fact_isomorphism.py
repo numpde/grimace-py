@@ -8,16 +8,12 @@ from dataclasses import dataclass
 
 from .facts import AtomFacts
 from .facts import BondFacts
-from .facts import DirectionalSiteFacts
-from .facts import DirectionalValue
-from .facts import LigandOccurrence
 from .facts import MoleculeFacts
 from .facts import SiteStatus
-from .facts import TetraValue
-from .facts import TetrahedralSiteFacts
 from .ids import AtomId
 from .ids import BondId
-from .ids import OccurrenceId
+from .stereo_mapping import directional_sites_compatible_under_mapping
+from .stereo_mapping import tetrahedral_sites_compatible_under_mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,354 +281,23 @@ def _stereo_matches(
     *,
     compare_potential_sites: bool,
 ) -> tuple[bool, str | None]:
-    if not _tetrahedral_sites_match(
+    if not tetrahedral_sites_compatible_under_mapping(
         left,
         right,
-        atom_map,
-        bond_map,
+        atom_map=atom_map,
+        bond_map=bond_map,
         compare_potential_sites=compare_potential_sites,
     ):
         return (False, "tetrahedral stereo mismatch")
-    if not _directional_sites_match(
+    if not directional_sites_compatible_under_mapping(
         left,
         right,
-        atom_map,
-        bond_map,
+        atom_map=atom_map,
+        bond_map=bond_map,
         compare_potential_sites=compare_potential_sites,
     ):
         return (False, "directional stereo mismatch")
     return (True, None)
-
-
-def _tetrahedral_sites_match(
-    left: MoleculeFacts,
-    right: MoleculeFacts,
-    atom_map: Mapping[AtomId, AtomId],
-    bond_map: Mapping[BondId, BondId],
-    *,
-    compare_potential_sites: bool,
-) -> bool:
-    right_sites = list(_filtered_tetrahedral_sites(right, compare_potential_sites))
-    used: set[int] = set()
-    right_occurrences = _occurrences_by_id(right)
-
-    for left_site in _filtered_tetrahedral_sites(left, compare_potential_sites):
-        mapped_key = _tetrahedral_structure_key(
-            left,
-            left_site,
-            atom_map,
-            bond_map,
-        )
-        mapped_order = _mapped_tetra_order(left, left_site, atom_map, bond_map)
-        found = False
-
-        for index, right_site in enumerate(right_sites):
-            if index in used:
-                continue
-            if mapped_key != _tetrahedral_structure_key(
-                right,
-                right_site,
-                _identity_atom_map(right),
-                _identity_bond_map(right),
-            ):
-                continue
-            if not _tetra_targets_match(
-                left_site,
-                mapped_order,
-                right_site,
-                right_occurrences,
-            ):
-                continue
-            used.add(index)
-            found = True
-            break
-
-        if not found:
-            return False
-    return len(used) == len(right_sites)
-
-
-def _tetra_targets_match(
-    left_site: TetrahedralSiteFacts,
-    mapped_left_order: tuple[tuple[object, ...], ...],
-    right_site: TetrahedralSiteFacts,
-    right_occurrences: Mapping[OccurrenceId, LigandOccurrence],
-) -> bool:
-    if left_site.status != right_site.status:
-        return False
-    if left_site.status is SiteStatus.UNSPECIFIED:
-        return right_site.target is TetraValue.NONE
-
-    right_order = tuple(
-        _identity_occurrence_key(right_occurrences[occurrence])
-        for occurrence in right_site.reference_order
-    )
-    if set(mapped_left_order) != set(right_order):
-        return False
-    parity = _permutation_parity(
-        tuple(mapped_left_order.index(occurrence) for occurrence in right_order)
-    )
-    expected = (
-        _flip_tetra_value(left_site.target)
-        if parity == -1
-        else left_site.target
-    )
-    return expected == right_site.target
-
-
-def _directional_sites_match(
-    left: MoleculeFacts,
-    right: MoleculeFacts,
-    atom_map: Mapping[AtomId, AtomId],
-    bond_map: Mapping[BondId, BondId],
-    *,
-    compare_potential_sites: bool,
-) -> bool:
-    right_sites = list(_filtered_directional_sites(right, compare_potential_sites))
-    used: set[int] = set()
-    right_occurrences = _occurrences_by_id(right)
-
-    for left_site in _filtered_directional_sites(left, compare_potential_sites):
-        mapped = _mapped_directional_site(left, left_site, atom_map, bond_map)
-        found = False
-
-        for index, right_site in enumerate(right_sites):
-            if index in used:
-                continue
-            if not _directional_target_matches(
-                mapped,
-                right_site,
-                right_occurrences,
-            ):
-                continue
-            used.add(index)
-            found = True
-            break
-
-        if not found:
-            return False
-    return len(used) == len(right_sites)
-
-
-@dataclass(frozen=True, slots=True)
-class _MappedDirectionalSite:
-    center_bond: int
-    left_endpoint: int
-    right_endpoint: int
-    status: SiteStatus
-    target: DirectionalValue
-    left_ligands: tuple[tuple[object, ...], ...]
-    right_ligands: tuple[tuple[object, ...], ...]
-    reference_pair: tuple[tuple[object, ...], tuple[object, ...]] | None
-
-
-def _mapped_directional_site(
-    facts: MoleculeFacts,
-    site: DirectionalSiteFacts,
-    atom_map: Mapping[AtomId, AtomId],
-    bond_map: Mapping[BondId, BondId],
-) -> _MappedDirectionalSite:
-    occurrences = _occurrences_by_id(facts)
-    left_ligands = tuple(
-        _occurrence_key(occurrences[occurrence], atom_map, bond_map)
-        for occurrence in site.left_ligands
-    )
-    right_ligands = tuple(
-        _occurrence_key(occurrences[occurrence], atom_map, bond_map)
-        for occurrence in site.right_ligands
-    )
-    reference_pair = (
-        None
-        if site.reference_pair is None
-        else tuple(
-            _occurrence_key(occurrences[occurrence], atom_map, bond_map)
-            for occurrence in site.reference_pair
-        )
-    )
-    return _MappedDirectionalSite(
-        center_bond=int(bond_map[site.center_bond]),
-        left_endpoint=int(atom_map[site.left_endpoint]),
-        right_endpoint=int(atom_map[site.right_endpoint]),
-        status=site.status,
-        target=site.target,
-        left_ligands=left_ligands,
-        right_ligands=right_ligands,
-        reference_pair=reference_pair,
-    )
-
-
-def _directional_target_matches(
-    left: _MappedDirectionalSite,
-    right_site: DirectionalSiteFacts,
-    right_occurrences: Mapping[OccurrenceId, LigandOccurrence],
-) -> bool:
-    right = _identity_mapped_directional_site(
-        right_site,
-        right_occurrences,
-    )
-    return _directional_orientation_matches(left, right) or (
-        _directional_orientation_matches(left, _swap_directional_site_sides(right))
-    )
-
-
-def _directional_orientation_matches(
-    left: _MappedDirectionalSite,
-    right: _MappedDirectionalSite,
-) -> bool:
-    if (
-        left.center_bond != right.center_bond
-        or left.left_endpoint != right.left_endpoint
-        or left.right_endpoint != right.right_endpoint
-        or left.status is not right.status
-        or set(left.left_ligands) != set(right.left_ligands)
-        or set(left.right_ligands) != set(right.right_ligands)
-    ):
-        return False
-
-    if left.status is SiteStatus.UNSPECIFIED:
-        return right.target is DirectionalValue.NONE
-    if left.reference_pair is None or right.reference_pair is None:
-        return left.reference_pair is None and right.reference_pair is None and (
-            left.target is right.target
-        )
-
-    expected = left.target
-    left_changed = left.reference_pair[0] != right.reference_pair[0]
-    right_changed = left.reference_pair[1] != right.reference_pair[1]
-    if left_changed != right_changed:
-        expected = _flip_directional_value(expected)
-    return expected is right.target
-
-
-def _swap_directional_site_sides(
-    site: _MappedDirectionalSite,
-) -> _MappedDirectionalSite:
-    return _MappedDirectionalSite(
-        center_bond=site.center_bond,
-        left_endpoint=site.right_endpoint,
-        right_endpoint=site.left_endpoint,
-        status=site.status,
-        target=site.target,
-        left_ligands=site.right_ligands,
-        right_ligands=site.left_ligands,
-        reference_pair=None
-        if site.reference_pair is None
-        else (site.reference_pair[1], site.reference_pair[0]),
-    )
-
-
-def _identity_mapped_directional_site(
-    site: DirectionalSiteFacts,
-    occurrences: Mapping[OccurrenceId, LigandOccurrence],
-) -> _MappedDirectionalSite:
-    reference_pair = (
-        None
-        if site.reference_pair is None
-        else tuple(
-            _identity_occurrence_key(occurrences[occurrence])
-            for occurrence in site.reference_pair
-        )
-    )
-    return _MappedDirectionalSite(
-        center_bond=int(site.center_bond),
-        left_endpoint=int(site.left_endpoint),
-        right_endpoint=int(site.right_endpoint),
-        status=site.status,
-        target=site.target,
-        left_ligands=tuple(
-            _identity_occurrence_key(occurrences[occurrence])
-            for occurrence in site.left_ligands
-        ),
-        right_ligands=tuple(
-            _identity_occurrence_key(occurrences[occurrence])
-            for occurrence in site.right_ligands
-        ),
-        reference_pair=reference_pair,
-    )
-
-
-def _tetrahedral_structure_key(
-    facts: MoleculeFacts,
-    site: TetrahedralSiteFacts,
-    atom_map: Mapping[AtomId, AtomId],
-    bond_map: Mapping[BondId, BondId],
-) -> tuple[object, ...]:
-    occurrences = _occurrences_by_id(facts)
-    return (
-        int(atom_map[site.center]),
-        site.status.value,
-        tuple(
-            sorted(
-                _occurrence_key(occurrences[occurrence], atom_map, bond_map)
-                for occurrence in site.ligand_occurrences
-            )
-        ),
-    )
-
-
-def _mapped_tetra_order(
-    facts: MoleculeFacts,
-    site: TetrahedralSiteFacts,
-    atom_map: Mapping[AtomId, AtomId],
-    bond_map: Mapping[BondId, BondId],
-) -> tuple[tuple[object, ...], ...]:
-    occurrences = _occurrences_by_id(facts)
-    return tuple(
-        _occurrence_key(occurrences[occurrence], atom_map, bond_map)
-        for occurrence in site.reference_order
-    )
-
-
-def _occurrence_key(
-    occurrence: LigandOccurrence,
-    atom_map: Mapping[AtomId, AtomId],
-    bond_map: Mapping[BondId, BondId],
-) -> tuple[object, ...]:
-    return (
-        occurrence.kind.value,
-        None if occurrence.atom is None else int(atom_map[occurrence.atom]),
-        None if occurrence.bond is None else int(bond_map[occurrence.bond]),
-    )
-
-
-def _identity_occurrence_key(
-    occurrence: LigandOccurrence,
-) -> tuple[object, ...]:
-    return (
-        occurrence.kind.value,
-        None if occurrence.atom is None else int(occurrence.atom),
-        None if occurrence.bond is None else int(occurrence.bond),
-    )
-
-
-def _occurrences_by_id(facts: MoleculeFacts) -> dict[OccurrenceId, LigandOccurrence]:
-    return {occurrence.id: occurrence for occurrence in facts.ligand_occurrences}
-
-
-def _filtered_tetrahedral_sites(
-    facts: MoleculeFacts,
-    compare_potential_sites: bool,
-) -> tuple[TetrahedralSiteFacts, ...]:
-    if compare_potential_sites:
-        return facts.stereo.tetrahedral
-    return tuple(
-        site
-        for site in facts.stereo.tetrahedral
-        if site.status is SiteStatus.SPECIFIED
-    )
-
-
-def _filtered_directional_sites(
-    facts: MoleculeFacts,
-    compare_potential_sites: bool,
-) -> tuple[DirectionalSiteFacts, ...]:
-    if compare_potential_sites:
-        return facts.stereo.directional
-    return tuple(
-        site
-        for site in facts.stereo.directional
-        if site.status is SiteStatus.SPECIFIED
-    )
 
 
 def _atom_signature(atom: AtomFacts) -> tuple[object, ...]:
@@ -670,39 +335,6 @@ def _bond_by_atom_pair(facts: MoleculeFacts) -> dict[frozenset[AtomId], BondId]:
 
 def _atom_degree(facts: MoleculeFacts, atom_id: AtomId) -> int:
     return sum(atom_id in (bond.a, bond.b) for bond in facts.bonds)
-
-
-def _identity_atom_map(facts: MoleculeFacts) -> dict[AtomId, AtomId]:
-    return {atom.id: atom.id for atom in facts.atoms}
-
-
-def _identity_bond_map(facts: MoleculeFacts) -> dict[BondId, BondId]:
-    return {bond.id: bond.id for bond in facts.bonds}
-
-
-def _permutation_parity(indices: tuple[int, ...]) -> int:
-    inversions = 0
-    for left, value in enumerate(indices):
-        for other in indices[left + 1 :]:
-            if value > other:
-                inversions += 1
-    return 1 if inversions % 2 == 0 else -1
-
-
-def _flip_tetra_value(value: TetraValue) -> TetraValue:
-    if value is TetraValue.PLUS:
-        return TetraValue.MINUS
-    if value is TetraValue.MINUS:
-        return TetraValue.PLUS
-    return value
-
-
-def _flip_directional_value(value: DirectionalValue) -> DirectionalValue:
-    if value is DirectionalValue.TOGETHER:
-        return DirectionalValue.OPPOSITE
-    if value is DirectionalValue.OPPOSITE:
-        return DirectionalValue.TOGETHER
-    return value
 
 
 def _failure(reason: str) -> FactIsomorphismResult:

@@ -301,6 +301,12 @@ It refuses to bind perf output files that are missing, symlinks, or resolved
 outside the physical repository path. The physical repository path and artifact
 list are Makefile facts, not command-line overrides.
 
+### Rust Dependency Lock
+
+The Docker lanes use `cargo fetch --locked` and `cargo test --offline`, so
+`Cargo.lock` is part of the source boundary. It must stay checked in and must
+not be excluded from the Docker build context.
+
 ## Repository Boundary Decision
 
 Use three explicit repository boundary modes:

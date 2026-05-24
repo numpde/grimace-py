@@ -309,6 +309,15 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("Cargo.toml", patterns)
         self.assertNotIn("rust-toolchain.toml", patterns)
 
+    def test_rust_lockfile_is_part_of_the_container_source_boundary(self) -> None:
+        gitignore_patterns = {
+            line.strip()
+            for line in read_text(".gitignore").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+        self.assertTrue((ROOT / "Cargo.lock").is_file())
+        self.assertNotIn("Cargo.lock", gitignore_patterns)
+
 
 if __name__ == "__main__":
     unittest.main()

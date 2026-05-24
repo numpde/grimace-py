@@ -17,6 +17,9 @@ tmp
 .cargo/credentials
 .cargo/credentials.toml
 .config/gcloud
+.config/gh
+.config/pip
+.docker
 .gcloud
 .gnupg
 .kube

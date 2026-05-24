@@ -328,8 +328,9 @@ captures.
 ### Docker Build Context Secrets
 
 The Docker build context excludes local editor state, generated artifacts, and
-common credential files for Python, npm, Cargo, cloud CLIs, SSH, TLS keys, and
-token-like filenames.
+common credential files for Python, npm, Cargo, Docker, cloud CLIs, SSH, TLS
+keys, and token-like filenames. `.gitignore` mirrors the local-secret boundary
+so those files are also harder to stage accidentally.
 
 ### Pip In Build Images
 

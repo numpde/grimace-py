@@ -315,6 +315,9 @@ class ContainerPostureTests(unittest.TestCase):
             ".cargo/credentials",
             ".cargo/credentials.toml",
             ".config/gcloud",
+            ".config/gh",
+            ".config/pip",
+            ".docker",
             ".gcloud",
             ".gnupg",
             ".kube",
@@ -360,6 +363,66 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("pyproject.toml", patterns)
         self.assertNotIn("Cargo.toml", patterns)
         self.assertNotIn("rust-toolchain.toml", patterns)
+
+    def test_gitignore_excludes_local_secrets_and_generated_outputs(self) -> None:
+        patterns = {
+            line.strip()
+            for line in read_text(".gitignore").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+        required_patterns = {
+            ".env",
+            ".env.*",
+            ".envrc",
+            ".netrc",
+            ".npmrc",
+            ".pypirc",
+            ".aws/",
+            ".azure/",
+            ".cargo/credentials",
+            ".cargo/credentials.toml",
+            ".config/gcloud/",
+            ".config/gh/",
+            ".config/pip/",
+            ".docker/",
+            ".gcloud/",
+            ".gnupg/",
+            ".kube/",
+            ".ssh/",
+            "pip.conf",
+            "pip.ini",
+            "*.pem",
+            "*.key",
+            "*.p12",
+            "*.pfx",
+            "*.crt",
+            "*.secret",
+            "*.token",
+            "id_rsa",
+            "id_ed25519",
+            "dist/",
+            "build/",
+            "target/",
+            "__pycache__/",
+            "*.py[cod]",
+            ".pytest_cache/",
+            ".ruff_cache/",
+            ".mypy_cache/",
+            ".coverage",
+            ".coverage.*",
+            "htmlcov/",
+            ".venv/",
+            "python/grimace/_core*.so",
+            "python/grimace/_core*.dylib",
+            "python/grimace/_core*.dll",
+            "python/grimace/_core*.pyd",
+            ".codex",
+            ".agents",
+            ".idea/",
+            ".vscode/",
+        }
+        self.assertFalse(required_patterns - patterns)
+        self.assertNotIn("Cargo.lock", patterns)
 
     def test_rust_lockfile_is_part_of_the_container_source_boundary(self) -> None:
         gitignore_patterns = {

@@ -74,6 +74,7 @@ read the checked-in [documentation index](docs/index.md):
 - [Limitations](docs/current-limitations.md)
 - [Guides](docs/guides.md)
 - [API](docs/api/python.md)
+- [Timings](docs/timings.md)
 
 ## Install matrix
 

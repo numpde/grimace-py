@@ -4,6 +4,8 @@ title: Runtime
 
 Use this page to choose supported public runtime options.
 
+For measured example timings, see [Timings](timings.md).
+
 The public signatures mirror RDKit flag names and defaults, but the current
 runtime supports a strict subset. A call that looks like RDKit's default
 `MolToSmiles(...)` call is not the supported Grimace path.

@@ -337,6 +337,9 @@ index checks beyond the requested installs.
 
 Release artifact install checks follow the same principle: install the pinned
 test fixtures first, then install the built wheel or sdist with `--no-deps`.
+Copied-context test and perf images also install the locally built wheel with
+`--no-deps`; dependency resolution belongs to the explicit fixture install
+step.
 
 ## Repository Boundary Decision
 

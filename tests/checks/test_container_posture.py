@@ -171,7 +171,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("python -m maturin build --release --locked", dockerfile)
         self.assertIn(
-            "python -m pip install /tmp/grimace-dist/*.whl",
+            "python -m pip install --no-deps /tmp/grimace-dist/*.whl",
             dockerfile,
         )
         self.assertIn("tests.run_installed_package_correctness", dockerfile)
@@ -202,7 +202,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("WORKDIR /src", dockerfile)
         self.assertIn("python -m maturin build --release --locked", dockerfile)
         self.assertIn(
-            "python -m pip install /tmp/grimace-dist/*.whl",
+            "python -m pip install --no-deps /tmp/grimace-dist/*.whl",
             dockerfile,
         )
         self.assertIn('"discover", "-s", "tests/perf"', dockerfile)

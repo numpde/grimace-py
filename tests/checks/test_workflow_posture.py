@@ -87,7 +87,12 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/release.yml")
         self.assertIn('MATURIN_PIP_VERSION: "1.13.1"', workflow)
         self.assertIn('MATURIN_ACTION_VERSION: "v1.13.1"', workflow)
+        self.assertRegex(
+            workflow,
+            r'MANYLINUX_2_28_X86_64_IMAGE: "quay\.io/pypa/manylinux_2_28_x86_64@sha256:[0-9a-f]{64}"',
+        )
         self.assertEqual(workflow.count("maturin-version: ${{ env.MATURIN_ACTION_VERSION }}"), 2)
+        self.assertEqual(workflow.count("container: ${{ env.MANYLINUX_2_28_X86_64_IMAGE }}"), 1)
         self.assertIn(
             "args: --release --locked --compatibility pypi --out dist -i python${{ matrix.python-version }}",
             workflow,

@@ -9,6 +9,7 @@ on:
 env:
   MATURIN_PIP_VERSION: "1.13.1"
   MATURIN_ACTION_VERSION: "v1.13.1"
+  MANYLINUX_2_28_X86_64_IMAGE: "quay.io/pypa/manylinux_2_28_x86_64@sha256:441c35fdc6ee809ff9260894f8468ab4fea8c15dc880f8700a3f81b7922c1cda"
   RDKIT_FIXTURE_PIP_VERSION: "2026.3.1"
 
 permissions:
@@ -60,6 +61,7 @@ jobs:
           maturin-version: ${{ env.MATURIN_ACTION_VERSION }}
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
+          container: ${{ env.MANYLINUX_2_28_X86_64_IMAGE }}
           args: --release --locked --compatibility pypi --out dist -i python${{ matrix.python-version }}
       - name: Install pinned RDKit fixture version
         run: python -m pip install "rdkit==$RDKIT_FIXTURE_PIP_VERSION"

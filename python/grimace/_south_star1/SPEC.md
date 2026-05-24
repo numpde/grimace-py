@@ -243,6 +243,12 @@ stereo factors for the future online DFS enumerator. These modules are
 RDKit-free and do not depend on the support-artifact or support-enumeration
 tracks.
 
+`online_traversal.py` provides a lazy traversal/event stream. It enumerates
+roots, spanning forests, parent orientations, ring endpoints, branches,
+continuations, and component dots by DFS without materializing the
+traversal-skeleton space. The first online traversal tests compare yielded
+trace keys against the offline finite-space skeleton keys on small molecules.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

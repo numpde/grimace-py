@@ -26,6 +26,8 @@ import grimace
 
 Plain `pip install grimace` installs an unrelated older package.
 
+Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
+
 `grimace-py` is distributed under `PolyForm-Noncommercial-1.0.0`. Commercial
 use is not permitted under the current license.
 

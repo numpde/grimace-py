@@ -25,6 +25,8 @@ import grimace
 
 Plain `pip install grimace` installs an unrelated older package.
 
+Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
+
 The current public runtime targets RDKit writer parity for
 `canonical=False, doRandom=True` under the documented writer flags.
 

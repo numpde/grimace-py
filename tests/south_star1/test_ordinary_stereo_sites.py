@@ -9,13 +9,17 @@ from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
+from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.facts import SiteStatus
 from grimace._south_star1.facts import StereoFacts
 from grimace._south_star1.facts import TetraValue
+from grimace._south_star1.facts import TetrahedralSiteFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_stereo_sites import add_ordinary_potential_sites
 from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
 from grimace._south_star1.ordinary_stereo_sites import (
@@ -183,6 +187,53 @@ class OrdinaryStereoSitesTest(unittest.TestCase):
 
         self.assertEqual(sites, ())
         self.assertEqual(occurrences, ())
+
+    def test_stereochemical_equivalence_admits_remote_opposite_tetra_ligands(
+        self,
+    ) -> None:
+        facts = _remote_tetra_ligand_facts(right_target=TetraValue.MINUS)
+        graph_exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_graph_automorphism"
+        )
+        stereo_exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_stereochemical_graph_automorphism"
+        )
+
+        graph_augmented = add_ordinary_potential_sites(facts, options=graph_exact)
+        stereo_augmented = add_ordinary_potential_sites(facts, options=stereo_exact)
+
+        self.assertEqual(len(graph_augmented.stereo.tetrahedral), 2)
+        self.assertEqual(len(stereo_augmented.stereo.tetrahedral), 3)
+        self.assertIn(
+            AtomId(0),
+            {site.center for site in stereo_augmented.stereo.tetrahedral},
+        )
+
+    def test_stereochemical_equivalence_rejects_remote_identical_tetra_ligands(
+        self,
+    ) -> None:
+        facts = _remote_tetra_ligand_facts(right_target=TetraValue.PLUS)
+        stereo_exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_stereochemical_graph_automorphism"
+        )
+
+        augmented = add_ordinary_potential_sites(facts, options=stereo_exact)
+
+        self.assertEqual(len(augmented.stereo.tetrahedral), 2)
+
+    def test_stereochemical_equivalence_ignores_candidate_self_stereo(self) -> None:
+        facts = _self_stereo_with_equivalent_ligands()
+        stereo_exact = OrdinaryStereoSiteOptions(
+            ligand_equivalence="exact_stereochemical_graph_automorphism"
+        )
+
+        augmented = add_ordinary_potential_sites(
+            facts,
+            preserve_specified=False,
+            options=stereo_exact,
+        )
+
+        self.assertEqual(augmented.stereo.tetrahedral, facts.stereo.tetrahedral)
 
 
 def _tetrahedral_carbon_without_stereo() -> MoleculeFacts:
@@ -404,6 +455,152 @@ def _symmetric_ring_tetra_candidate_facts() -> MoleculeFacts:
                 bonds=tuple(BondId(index) for index in range(5)),
             ),
         ),
+    )
+
+
+def _remote_tetra_ligand_facts(*, right_target: TetraValue) -> MoleculeFacts:
+    left_site = SiteId(0)
+    right_site = SiteId(1)
+    return MoleculeFacts(
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=1),
+            atom(1, "F"),
+            atom(2, "C"),
+            atom(3, "F"),
+            atom(4, "Cl"),
+            atom(5, "Br"),
+            atom(6, "C"),
+            atom(7, "F"),
+            atom(8, "Cl"),
+            atom(9, "Br"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 2, 3),
+            single_bond(3, 2, 4),
+            single_bond(4, 2, 5),
+            single_bond(5, 0, 6),
+            single_bond(6, 6, 7),
+            single_bond(7, 6, 8),
+            single_bond(8, 6, 9),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(10)),
+                bonds=tuple(BondId(index) for index in range(9)),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                _remote_tetra_site(
+                    site=left_site,
+                    center=2,
+                    target=TetraValue.PLUS,
+                    occurrence_offset=0,
+                    ligands=((0, 1), (3, 2), (4, 3), (5, 4)),
+                ),
+                _remote_tetra_site(
+                    site=right_site,
+                    center=6,
+                    target=right_target,
+                    occurrence_offset=4,
+                    ligands=((0, 5), (7, 6), (8, 7), (9, 8)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            _neighbor(left_site, 0, atom=0, bond=1),
+            _neighbor(left_site, 1, atom=3, bond=2),
+            _neighbor(left_site, 2, atom=4, bond=3),
+            _neighbor(left_site, 3, atom=5, bond=4),
+            _neighbor(right_site, 4, atom=0, bond=5),
+            _neighbor(right_site, 5, atom=7, bond=6),
+            _neighbor(right_site, 6, atom=8, bond=7),
+            _neighbor(right_site, 7, atom=9, bond=8),
+        ),
+    )
+
+
+def _remote_tetra_site(
+    *,
+    site: SiteId,
+    center: int,
+    target: TetraValue,
+    occurrence_offset: int,
+    ligands: tuple[tuple[int, int], ...],
+):
+    occurrence_ids = tuple(
+        OccurrenceId(occurrence_offset + index)
+        for index, _ligand in enumerate(ligands)
+    )
+    return TetrahedralSiteFacts(
+        id=site,
+        center=AtomId(center),
+        status=SiteStatus.SPECIFIED,
+        target=target,
+        ligand_occurrences=occurrence_ids,
+        reference_order=occurrence_ids,
+    )
+
+
+def _self_stereo_with_equivalent_ligands() -> MoleculeFacts:
+    site = SiteId(0)
+    occurrence_ids = tuple(OccurrenceId(index) for index in range(4))
+    return MoleculeFacts(
+        atoms=(
+            replace(atom(0, "C"), implicit_h_count=1),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "F"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                TetrahedralSiteFacts(
+                    id=site,
+                    center=AtomId(0),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=occurrence_ids,
+                    reference_order=occurrence_ids,
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            _neighbor(site, 0, atom=1, bond=0),
+            _neighbor(site, 1, atom=2, bond=1),
+            _neighbor(site, 2, atom=3, bond=2),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(0),
+                bond=None,
+            ),
+        ),
+    )
+
+
+def _neighbor(site: SiteId, idx: int, *, atom: int, bond: int) -> LigandOccurrence:
+    return LigandOccurrence(
+        id=OccurrenceId(idx),
+        site=site,
+        kind=LigandKind.NEIGHBOR_ATOM,
+        atom=AtomId(atom),
+        bond=BondId(bond),
     )
 
 

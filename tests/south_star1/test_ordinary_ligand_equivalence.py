@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import unittest
 
+from grimace._south_star1.facts import BondOrder
+from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalSiteFacts
+from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
+from grimace._south_star1.facts import MoleculeFacts
+from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import StereoFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
+from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.ids import SiteId
 from grimace._south_star1.ordinary_ligand_equivalence import AutomorphismAnchor
@@ -19,6 +27,9 @@ from grimace._south_star1.ordinary_ligand_equivalence import (
 from tests.south_star1.helpers import deep_directional_endpoint_facts
 from tests.south_star1.helpers import deep_tetra_ligand_facts
 from tests.south_star1.helpers import symmetric_ring_center_facts
+from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import bond
+from tests.south_star1.helpers import single_bond
 
 
 class OrdinaryLigandEquivalenceTest(unittest.TestCase):
@@ -91,6 +102,42 @@ class OrdinaryLigandEquivalenceTest(unittest.TestCase):
         self.assertGreater(size_after_first, 0)
         self.assertEqual(len(cache.by_key), size_after_first)
 
+    def test_stereochemical_mode_distinguishes_remote_directional_stereo(self) -> None:
+        facts = _remote_directional_ligand_facts(
+            right_target=DirectionalValue.TOGETHER
+        )
+        kwargs = {
+            "facts": facts,
+            "anchor": AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+            "left": _neighbor_occurrence(atom=1, bond_id=0),
+            "right": _neighbor_occurrence(atom=5, bond_id=4),
+        }
+
+        self.assertTrue(ligand_occurrences_equivalent(**kwargs))
+        self.assertFalse(
+            ligand_occurrences_equivalent(
+                **kwargs,
+                stereo_mode="stereochemical",
+            )
+        )
+
+    def test_stereochemical_mode_preserves_identical_remote_directional_stereo(
+        self,
+    ) -> None:
+        facts = _remote_directional_ligand_facts(
+            right_target=DirectionalValue.OPPOSITE
+        )
+
+        self.assertTrue(
+            ligand_occurrences_equivalent(
+                facts=facts,
+                anchor=AutomorphismAnchor(fixed_atoms=frozenset({AtomId(0)})),
+                left=_neighbor_occurrence(atom=1, bond_id=0),
+                right=_neighbor_occurrence(atom=5, bond_id=4),
+                stereo_mode="stereochemical",
+            )
+        )
+
 
 def _neighbor_occurrence(*, atom: int, bond_id: int) -> LigandOccurrence:
     return LigandOccurrence(
@@ -99,6 +146,100 @@ def _neighbor_occurrence(*, atom: int, bond_id: int) -> LigandOccurrence:
         kind=LigandKind.NEIGHBOR_ATOM,
         atom=AtomId(atom),
         bond=BondId(bond_id),
+    )
+
+
+def _remote_directional_ligand_facts(
+    *,
+    right_target: DirectionalValue,
+) -> MoleculeFacts:
+    left_site = SiteId(0)
+    right_site = SiteId(1)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "C"),
+            atom(3, "F"),
+            atom(4, "Cl"),
+            atom(5, "C"),
+            atom(6, "C"),
+            atom(7, "F"),
+            atom(8, "Cl"),
+        ),
+        bonds=(
+            single_bond(0, 0, 1),
+            bond(1, 1, 2, BondOrder.DOUBLE),
+            single_bond(2, 2, 3),
+            single_bond(3, 1, 4),
+            single_bond(4, 0, 5),
+            bond(5, 5, 6, BondOrder.DOUBLE),
+            single_bond(6, 6, 7),
+            single_bond(7, 5, 8),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(9)),
+                bonds=tuple(BondId(index) for index in range(8)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=left_site,
+                    center_bond=BondId(1),
+                    left_endpoint=AtomId(1),
+                    right_endpoint=AtomId(2),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.OPPOSITE,
+                    left_ligands=(OccurrenceId(0),),
+                    right_ligands=(OccurrenceId(1),),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(1)),
+                ),
+                DirectionalSiteFacts(
+                    id=right_site,
+                    center_bond=BondId(5),
+                    left_endpoint=AtomId(5),
+                    right_endpoint=AtomId(6),
+                    status=SiteStatus.SPECIFIED,
+                    target=right_target,
+                    left_ligands=(OccurrenceId(2),),
+                    right_ligands=(OccurrenceId(3),),
+                    reference_pair=(OccurrenceId(2), OccurrenceId(3)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(0),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=left_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(0),
+                bond=BondId(4),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=right_site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(7),
+                bond=BondId(6),
+            ),
+        ),
     )
 
 

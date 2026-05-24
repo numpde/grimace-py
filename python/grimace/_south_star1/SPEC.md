@@ -92,3 +92,12 @@ The current exact mode is atom/bond graph exact. It does not yet make
 pre-existing stereo labels part of the automorphism relation; that future
 extension should be named separately, for example as stereochemical-graph
 automorphism.
+
+`OrdinaryStereoSiteOptions(
+ligand_equivalence="exact_stereochemical_graph_automorphism"
+)` is the stronger experimental relation. It uses the same atom/bond graph
+automorphism search, then requires all non-ignored specified stereo facts to be
+compatible under the shared `stereo_mapping.py` parity/reference-pair relation.
+The candidate site's own existing site id is ignored during site construction
+to avoid circularly using a site's stereo label as evidence for its own ligand
+distinctness.

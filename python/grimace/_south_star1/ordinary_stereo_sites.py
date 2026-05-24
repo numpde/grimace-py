@@ -37,6 +37,7 @@ class OrdinaryStereoSiteOptions:
     ligand_equivalence: Literal[
         "immediate_color",
         "exact_graph_automorphism",
+        "exact_stereochemical_graph_automorphism",
     ] = "immediate_color"
 
 
@@ -113,7 +114,11 @@ class _SiteBuilder:
         self.options = options
         if (
             ligand_equivalence_cache is None
-            and options.ligand_equivalence == "exact_graph_automorphism"
+            and options.ligand_equivalence
+            in {
+                "exact_graph_automorphism",
+                "exact_stereochemical_graph_automorphism",
+            }
         ):
             ligand_equivalence_cache = LigandEquivalenceCache()
         self.ligand_equivalence_cache = ligand_equivalence_cache
@@ -140,6 +145,7 @@ class _SiteBuilder:
                 self.facts,
                 center=atom.id,
                 occurrences=occurrences,
+                ignore_site_ids=_tetra_site_ids_for_center(self.facts, atom.id),
                 options=self.options,
                 cache=self.ligand_equivalence_cache,
             ):
@@ -191,6 +197,10 @@ class _SiteBuilder:
                 endpoint=bond.a,
                 center_bond=bond.id,
                 occurrences=left_ligands,
+                ignore_site_ids=_directional_site_ids_for_center_bond(
+                    self.facts,
+                    bond.id,
+                ),
                 options=self.options,
                 cache=self.ligand_equivalence_cache,
             ):
@@ -200,6 +210,10 @@ class _SiteBuilder:
                 endpoint=bond.b,
                 center_bond=bond.id,
                 occurrences=right_ligands,
+                ignore_site_ids=_directional_site_ids_for_center_bond(
+                    self.facts,
+                    bond.id,
+                ),
                 options=self.options,
                 cache=self.ligand_equivalence_cache,
             ):
@@ -340,6 +354,7 @@ def _eligible_tetrahedral_ligands(
     *,
     center: AtomId,
     occurrences: tuple[LigandOccurrence, ...],
+    ignore_site_ids: frozenset[SiteId],
     options: OrdinaryStereoSiteOptions,
     cache: LigandEquivalenceCache | None,
 ) -> bool:
@@ -352,6 +367,7 @@ def _eligible_tetrahedral_ligands(
         anchor=AutomorphismAnchor(fixed_atoms=frozenset({center})),
         center=center,
         occurrences=occurrences,
+        ignore_site_ids=ignore_site_ids,
         options=options,
         cache=cache,
     )
@@ -363,6 +379,7 @@ def _eligible_directional_ligands(
     endpoint: AtomId,
     center_bond: BondId,
     occurrences: tuple[LigandOccurrence, ...],
+    ignore_site_ids: frozenset[SiteId],
     options: OrdinaryStereoSiteOptions,
     cache: LigandEquivalenceCache | None,
 ) -> bool:
@@ -384,6 +401,7 @@ def _eligible_directional_ligands(
         ),
         center=endpoint,
         occurrences=occurrences,
+        ignore_site_ids=ignore_site_ids,
         options=options,
         cache=cache,
     )
@@ -402,24 +420,35 @@ def _ligands_are_distinguishable(
     anchor: AutomorphismAnchor,
     center: AtomId,
     occurrences: tuple[LigandOccurrence, ...],
+    ignore_site_ids: frozenset[SiteId],
     options: OrdinaryStereoSiteOptions,
     cache: LigandEquivalenceCache | None,
 ) -> bool:
     if options.ligand_equivalence == "immediate_color":
         return _ligand_colors_are_unique(facts, center=center, occurrences=occurrences)
-    if options.ligand_equivalence != "exact_graph_automorphism":
+    if options.ligand_equivalence not in {
+        "exact_graph_automorphism",
+        "exact_stereochemical_graph_automorphism",
+    }:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "unsupported ordinary stereo-site ligand equivalence mode: "
             f"{options.ligand_equivalence!r}",
         )
 
+    stereo_mode = (
+        "stereochemical"
+        if options.ligand_equivalence == "exact_stereochemical_graph_automorphism"
+        else "graph"
+    )
     return all(
         not ligand_occurrences_equivalent(
             facts,
             anchor=anchor,
             left=left,
             right=right,
+            stereo_mode=stereo_mode,
+            ignore_site_ids=ignore_site_ids,
             cache=cache,
         )
         for left, right in combinations(occurrences, 2)
@@ -543,10 +572,31 @@ def _next_occurrence_id(facts: MoleculeFacts) -> int:
     )
 
 
+def _tetra_site_ids_for_center(
+    facts: MoleculeFacts,
+    center: AtomId,
+) -> frozenset[SiteId]:
+    return frozenset(
+        site.id for site in facts.stereo.tetrahedral if site.center == center
+    )
+
+
+def _directional_site_ids_for_center_bond(
+    facts: MoleculeFacts,
+    center_bond: BondId,
+) -> frozenset[SiteId]:
+    return frozenset(
+        site.id
+        for site in facts.stereo.directional
+        if site.center_bond == center_bond
+    )
+
+
 def _validate_options(options: OrdinaryStereoSiteOptions) -> None:
     if options.ligand_equivalence not in {
         "immediate_color",
         "exact_graph_automorphism",
+        "exact_stereochemical_graph_automorphism",
     }:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,

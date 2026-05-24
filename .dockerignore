@@ -10,13 +10,26 @@ tmp
 .env.*
 .envrc
 .netrc
+.npmrc
 .pypirc
+.aws
+.azure
+.cargo/credentials
+.cargo/credentials.toml
+.config/gcloud
+.gcloud
+.gnupg
+.kube
 .ssh
+pip.conf
+pip.ini
 *.pem
 *.key
 *.p12
 *.pfx
 *.crt
+*.secret
+*.token
 id_rsa
 id_ed25519
 

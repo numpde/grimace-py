@@ -316,6 +316,12 @@ Package and release validation reject unsafe archive paths, links, local
 credential filenames, build outputs, `tmp/`, and raw `notes/perf_reports/`
 captures.
 
+### Docker Build Context Secrets
+
+The Docker build context excludes local editor state, generated artifacts, and
+common credential files for Python, npm, Cargo, cloud CLIs, SSH, TLS keys, and
+token-like filenames.
+
 ## Repository Boundary Decision
 
 Use three explicit repository boundary modes:

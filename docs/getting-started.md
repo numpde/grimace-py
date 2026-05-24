@@ -58,9 +58,13 @@ decoder = grimace.MolToSmilesDeterminizedDecoder(
     **FLAGS,
 )
 
-target = "c1(ccccc1OC(=O)C)C(O)=O"
+target_tokens = [
+    "c", "1", "(", "c", "c", "c", "c", "c", "1", "O", "C", "(",
+    "=", "O", ")", "C", ")", "C", "(", "O", ")", "=", "O",
+]
+# Grimace tokens can be multi-character, so keep this as a token list.
 
-for token in target[:13]:
+for token in target_tokens:
     prefix = decoder.prefix if decoder.prefix else '""'
     print(f"{prefix} -> {[choice.text for choice in decoder.next_choices]}")
     decoder = next(
@@ -70,7 +74,7 @@ for token in target[:13]:
     )
 ```
 
-Early output on aspirin along that target path:
+Output on aspirin along that target path:
 
 ```text
 "" -> ['C', 'O', 'c']
@@ -86,6 +90,17 @@ c1(ccccc1 -> ['C', 'O']
 c1(ccccc1O -> ['C']
 c1(ccccc1OC -> ['(']
 c1(ccccc1OC( -> ['=', 'C']
+c1(ccccc1OC(= -> ['O']
+c1(ccccc1OC(=O -> [')']
+c1(ccccc1OC(=O) -> ['C']
+c1(ccccc1OC(=O)C -> [')']
+c1(ccccc1OC(=O)C) -> ['C']
+c1(ccccc1OC(=O)C)C -> ['(']
+c1(ccccc1OC(=O)C)C( -> ['=', 'O']
+c1(ccccc1OC(=O)C)C(O -> [')']
+c1(ccccc1OC(=O)C)C(O) -> ['=']
+c1(ccccc1OC(=O)C)C(O)= -> ['O']
+c1(ccccc1OC(=O)C)C(O)=O -> []
 ```
 
 The determinized decoder merges same-text continuations. Use

@@ -248,8 +248,8 @@ validates `MoleculeFacts`, fixes the writer-surface flags, builds the finite
 policy and parser semantics when callers do not provide them, extracts static
 stereo templates, records a policy-derived token inventory superset, and stores
 basic graph metadata. Query-time runtime options such as rooting are kept out
-of the prepared identity. `rooted_at_atom=-1` enumerates all roots; an explicit
-nonnegative `rooted_at_atom` restricts traversal roots to that atom in its
+of the prepared identity. Negative `rooted_at_atom` values enumerate all roots;
+an explicit nonnegative `rooted_at_atom` restricts traversal roots to that atom in its
 component while other components keep their root domains. `canonical=True` and
 `do_random=False` are rejected in the current online runtime. Per-query decoder
 state still owns DFS traversal, output, ring, residual trail, and frame-stack

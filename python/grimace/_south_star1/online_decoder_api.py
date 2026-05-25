@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .facts import MoleculeFacts
+from .ids import AtomId
 from .online_decoder import online_decode_tokens
 from .online_continuation import OnlineContinuationDecoderState
 from .online_continuation import OnlineContinuationRawChoiceResult
@@ -70,6 +71,7 @@ class SouthStarOnlineDecoder:
     policy: SmilesPolicy
     semantics: ParserSemantics
     templates: StereoTemplateBundle | None = None
+    rooted_at_atom: AtomId | None = None
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions()
     branch_mode: Literal["branch_preserving", "determinized"] = "determinized"
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY
@@ -128,7 +130,6 @@ class SouthStarOnlineDecoder:
         self,
         state: OnlineDecoderState | OnlineContinuationDecoderState | OnlineResidualDecoderState,
     ) -> OnlineRawChoiceResult | OnlineContinuationRawChoiceResult | OnlineResidualRawChoiceResult:
-        rooted_at_atom = runtime_root_atom(self.runtime_options, facts=self.facts)
         if self.execution_mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
             if not isinstance(state, OnlineContinuationDecoderState):
                 raise ValueError("cached-completion decoder received prefix-replay state")
@@ -140,7 +141,7 @@ class SouthStarOnlineDecoder:
                     state=state,
                     compaction_mode=self.compaction_mode,
                     templates=self.templates,
-                    rooted_at_atom=rooted_at_atom,
+                    rooted_at_atom=self.rooted_at_atom,
                 )
             if self.branch_mode == "determinized":
                 return online_determinized_continuation_choice_result(
@@ -150,7 +151,7 @@ class SouthStarOnlineDecoder:
                     state=state,
                     compaction_mode=self.compaction_mode,
                     templates=self.templates,
-                    rooted_at_atom=rooted_at_atom,
+                    rooted_at_atom=self.rooted_at_atom,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
         if self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
@@ -163,7 +164,7 @@ class SouthStarOnlineDecoder:
                     semantics=self.semantics,
                     state=state,
                     templates=self.templates,
-                    rooted_at_atom=rooted_at_atom,
+                    rooted_at_atom=self.rooted_at_atom,
                 )
             if self.branch_mode == "determinized":
                 return online_determinized_residual_choice_result(
@@ -172,7 +173,7 @@ class SouthStarOnlineDecoder:
                     semantics=self.semantics,
                     state=state,
                     templates=self.templates,
-                    rooted_at_atom=rooted_at_atom,
+                    rooted_at_atom=self.rooted_at_atom,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
@@ -186,7 +187,7 @@ class SouthStarOnlineDecoder:
                 state=state,
                 compaction_mode=self.compaction_mode,
                 templates=self.templates,
-                rooted_at_atom=rooted_at_atom,
+                rooted_at_atom=self.rooted_at_atom,
             )
         if self.branch_mode == "determinized":
             return online_determinized_choice_result(
@@ -196,7 +197,7 @@ class SouthStarOnlineDecoder:
                 state=state,
                 compaction_mode=self.compaction_mode,
                 templates=self.templates,
-                rooted_at_atom=rooted_at_atom,
+                rooted_at_atom=self.rooted_at_atom,
             )
         raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
@@ -219,11 +220,13 @@ def make_branch_preserving_online_decoder(
         semantics=semantics,
     )
     validate_south_star_runtime_options(runtime_options, facts=facts)
+    rooted_at_atom = runtime_root_atom(runtime_options, facts=facts)
     return SouthStarOnlineDecoder(
         facts=facts,
         policy=policy,
         semantics=semantics,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
         runtime_options=runtime_options,
         branch_mode="branch_preserving",
         compaction_mode=compaction_mode,
@@ -250,11 +253,13 @@ def make_determinized_online_decoder(
         semantics=semantics,
     )
     validate_south_star_runtime_options(runtime_options, facts=facts)
+    rooted_at_atom = runtime_root_atom(runtime_options, facts=facts)
     return SouthStarOnlineDecoder(
         facts=facts,
         policy=policy,
         semantics=semantics,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
         runtime_options=runtime_options,
         branch_mode="determinized",
         compaction_mode=compaction_mode,

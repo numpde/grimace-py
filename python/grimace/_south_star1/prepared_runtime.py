@@ -156,11 +156,6 @@ def validate_south_star_runtime_options(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "South Star online runtime currently supports do_random=True",
         )
-    if options.rooted_at_atom < -1:
-        raise SouthStarError(
-            SouthStarErrorKind.INVALID_FACTS,
-            f"rooted_at_atom must be -1 or a nonnegative atom id: {options.rooted_at_atom}",
-        )
     if facts is not None and options.rooted_at_atom >= 0:
         atom = AtomId(options.rooted_at_atom)
         if atom not in {item.id for item in facts.atoms}:
@@ -176,7 +171,7 @@ def runtime_root_atom(
     facts: MoleculeFacts,
 ) -> AtomId | None:
     validate_south_star_runtime_options(options, facts=facts)
-    if options.rooted_at_atom == -1:
+    if options.rooted_at_atom < 0:
         return None
     return AtomId(options.rooted_at_atom)
 

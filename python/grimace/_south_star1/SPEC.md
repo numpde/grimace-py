@@ -273,6 +273,14 @@ contains the union of branch continuations. This is lazy determinization: it
 preserves a residual branch frontier for the next state but does not build a
 global transition table.
 
+The lazy determinized decoder stores frontier decision prefixes at the point
+where an emitted token crosses the requested prefix boundary. A frontier path is
+committed only after some complete witness extension is found, but the next
+state stores the boundary prefix rather than the full completing path. This
+keeps successor states residual and avoids turning decoder states into lists of
+full witness completions. `OnlineDecoderChoice.multiplicity` counts merged
+frontier paths; `completion_count` is diagnostic witness-count information.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

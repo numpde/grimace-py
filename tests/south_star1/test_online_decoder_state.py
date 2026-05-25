@@ -12,6 +12,10 @@ from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_decoder import online_allowed_next_token_texts_one_pass
+from grimace._south_star1.online_decisions import DecisionPathFilter
+from grimace._south_star1.online_decisions import OnlineDecision
+from grimace._south_star1.online_decisions import OnlineDecisionFrontier
+from grimace._south_star1.online_decisions import OnlineDecisionPath
 from grimace._south_star1.online_decoder_state import OnlineDecoderState
 from grimace._south_star1.online_decoder_state import online_branch_preserving_choices
 from grimace._south_star1.online_decoder_state import online_determinized_choices
@@ -45,6 +49,7 @@ class OnlineDecoderStateTest(unittest.TestCase):
 
         self.assertEqual(tuple(choice.text for choice in choices), ("C",))
         self.assertEqual(choices[0].multiplicity, 4)
+        self.assertEqual(choices[0].completion_count, 4)
 
     def test_determinized_choice_multiplicity_counts_merged_branches(self) -> None:
         state = _determinized_choices(ethane_facts(), "")[0].next_state
@@ -109,6 +114,75 @@ class OnlineDecoderStateTest(unittest.TestCase):
 
     def test_decoder_state_rejects_dead_prefix(self) -> None:
         self.assertEqual(_determinized_choices(tetrahedral_facts(), "not-smiles"), ())
+
+    def test_frontier_state_stores_boundary_prefix_not_full_completion(self) -> None:
+        choice = _choice_with_text(_determinized_choices(directional_facts(), ""), "C")
+        frontier = choice.next_state.allowed_frontier
+        self.assertIsNotNone(frontier)
+
+        self.assertTrue(frontier.paths)
+        self.assertTrue(
+            all(
+                tuple(decision.kind for decision in path.items) == ("traversal",)
+                for path in frontier.paths
+            )
+        )
+
+    def test_frontier_filter_allows_extensions_beyond_saved_prefix(self) -> None:
+        frontier_path = OnlineDecisionPath((OnlineDecision("traversal", ("a",)),))
+        longer_path = OnlineDecisionPath(
+            (
+                OnlineDecision("traversal", ("a",)),
+                OnlineDecision("direction_mark", (0, "FWD")),
+            )
+        )
+        unrelated_path = OnlineDecisionPath((OnlineDecision("traversal", ("b",)),))
+        path_filter = DecisionPathFilter(OnlineDecisionFrontier(frozenset({frontier_path})))
+
+        self.assertTrue(path_filter.allows_prefix(longer_path))
+        self.assertFalse(path_filter.allows_prefix(unrelated_path))
+
+    def test_determinized_choice_multiplicity_counts_frontier_paths_not_completions(self) -> None:
+        choice = _choice_with_text(_determinized_choices(directional_facts(), ""), "C")
+
+        self.assertLess(choice.multiplicity, choice.completion_count)
+        self.assertEqual(choice.multiplicity, len(choice.next_state.allowed_frontier.paths))
+
+    def test_completion_count_tracks_multiple_completions_for_same_frontier(self) -> None:
+        choice = _choice_with_text(_branch_choices(directional_facts(), ""), "C")
+
+        self.assertEqual(choice.multiplicity, 1)
+        self.assertGreater(choice.completion_count, 1)
+
+    def test_branch_preserving_choice_next_state_can_continue_after_frontier_prefix(self) -> None:
+        choice = _choice_with_text(_branch_choices(directional_facts(), ""), "C")
+        next_choices = _branch_choices(
+            directional_facts(),
+            choice.next_state.prefix,
+            choice.next_state,
+        )
+
+        self.assertTrue(next_choices)
+
+    def test_determinized_walk_matches_online_witness_prefixes_for_multiple_steps(self) -> None:
+        facts = directional_facts()
+        witnesses = set(_witnesses(facts))
+        state = OnlineDecoderState(prefix="")
+        for _ in range(4):
+            choices = _determinized_choices(facts, state.prefix, state)
+            self.assertEqual(
+                tuple(sorted(choice.text for choice in choices)),
+                online_allowed_next_token_texts_one_pass(
+                    facts=facts,
+                    policy=ordinary_policy_for_facts(facts),
+                    semantics=OrdinarySmilesSemantics(),
+                    prefix=state.prefix,
+                ),
+            )
+            if not choices:
+                break
+            state = choices[0].next_state
+            self.assertTrue(any(witness.startswith(state.prefix) for witness in witnesses))
 
     def test_online_decoder_state_boundary_no_artifact_or_rdkit_imports(self) -> None:
         tree = ast.parse(ONLINE_DECODER_STATE_PATH.read_text(encoding="utf-8"))
@@ -212,6 +286,13 @@ def _witnesses(facts: MoleculeFacts) -> tuple[str, ...]:
             semantics=OrdinarySmilesSemantics(),
         )
     )
+
+
+def _choice_with_text(choices, text: str):
+    for choice in choices:
+        if choice.text == text:
+            return choice
+    raise AssertionError(f"missing choice text {text!r}: {choices!r}")
 
 
 def ethane_facts() -> MoleculeFacts:

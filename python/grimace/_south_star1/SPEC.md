@@ -256,11 +256,14 @@ supports the ordinary bounded tetrahedral and directional semantics, bounded
 ring labels, and support-wise maximal marker selection within the current
 traversal/prefix branch.
 
-`online_decoder.py` provides exact prefix feasibility and next-character
-decoding by running the online DFS with a prefix-constrained render sink. It
-does not build a support trie, support image, compiled artifact, or global
-deduplication table. A character or token is allowed after prefix `p` iff `p`
-plus that character or token has at least one complete online witness extension.
+`online_decoder.py` provides exact prefix feasibility and determinized token
+frontier queries by running the online DFS with prefix-constrained render sinks.
+It does not build a support trie, support image, compiled artifact, or global
+deduplication table. The one-pass frontier collector runs a single
+prefix-constrained DFS and commits a next character or token text only after
+finding a complete valid witness. This is not yet the full main-branch
+determinized decoder state: it returns the merged frontier for a prefix, but
+does not retain a reusable merged successor state.
 
 ## Experimental Options
 

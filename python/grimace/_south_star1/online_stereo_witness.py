@@ -424,11 +424,14 @@ def _iter_directional_solutions(
                 for carrier_id, mark in marks.items()
                 if mark is not DirectionMark.ABSENT
             )
-            yield _DirectionalSolution(
-                rendered=rendered,
-                support=support,
-                annotation_count=len(support),
-            )
+            try:
+                yield _DirectionalSolution(
+                    rendered=rendered,
+                    support=support,
+                    annotation_count=len(support),
+                )
+            finally:
+                sink.rollback(checkpoint)
             return
 
         carrier_id = carriers[index]
@@ -729,12 +732,14 @@ def _render_online_to_sink(
     }
     for event in trace.events:
         if isinstance(event, OnlineAtomEvent):
-            if not sink.append(prefix.atom_text[event.atom].render(tetra_tokens[event.atom])):
+            text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
+            if not sink.append(text, token_text=text):
                 return False
             continue
         if isinstance(event, OnlineTreeBondEvent):
             key = ("tree", event.bond, event.written_from, event.written_to, None)
-            if not sink.append(_render_bond_slot(bond_slot_by_event[key], prefix, marks)):
+            text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
+            if not sink.append(text, token_text=text or None):
                 return False
             continue
         if isinstance(event, OnlineRingEndpointEvent):
@@ -747,23 +752,25 @@ def _render_online_to_sink(
                 and item.written_to == event.other_atom
                 and item.syntax_position == event.syntax_position
             )
-            if not sink.append(_render_bond_slot(slot, prefix, marks)):
+            text = _render_bond_slot(slot, prefix, marks)
+            if not sink.append(text, token_text=text or None):
                 return False
             if slot.ring_endpoint_id is None:
                 raise ValueError("ring endpoint slot lacks endpoint id")
-            if not sink.append(ring_label_by_endpoint[slot.ring_endpoint_id].text()):
+            label_text = ring_label_by_endpoint[slot.ring_endpoint_id].text()
+            if not sink.append(label_text, token_text=label_text):
                 return False
             continue
         if isinstance(event, OnlineBranchOpen):
-            if not sink.append("("):
+            if not sink.append("(", token_text="("):
                 return False
             continue
         if isinstance(event, OnlineBranchClose):
-            if not sink.append(")"):
+            if not sink.append(")", token_text=")"):
                 return False
             continue
         if isinstance(event, OnlineDotEvent):
-            if not sink.append("."):
+            if not sink.append(".", token_text="."):
                 return False
             continue
         raise TypeError(event)

@@ -15,6 +15,7 @@ from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_decisions import OnlineDecision
 from grimace._south_star1.online_render_sink import OnlineStringBuffer
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
+from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import capture_residual_continuation
 from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
@@ -23,6 +24,9 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.residual_constraints import VarId
+from grimace._south_star1.residual_constraints import direction_var
+from grimace._south_star1.policy import DirectionMark
+from grimace._south_star1.policy import RingLabel
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
@@ -74,10 +78,18 @@ class OnlineSearchVmTest(unittest.TestCase):
         state = _state(tetrahedral_facts())
         snapshot = state.checkpoint()
 
-        state.ring.labels = ((0, 1),)
+        self.assertTrue(
+            state.ring.register_endpoint(
+                bond=BondId(0),
+                endpoint=0,
+                label=RingLabel(1),
+            )
+        )
         state.rollback(snapshot)
 
-        self.assertEqual(state.ring.labels, ())
+        self.assertEqual(state.ring.endpoint_by_bond, {})
+        self.assertEqual(state.ring.label_by_endpoint, {})
+        self.assertEqual(state.ring.open_intervals, {})
 
     def test_vm_snapshot_restores_decision_path(self) -> None:
         state = _state(tetrahedral_facts())
@@ -97,6 +109,73 @@ class OnlineSearchVmTest(unittest.TestCase):
         state.rollback(snapshot)
 
         self.assertEqual(state.frames, [OnlineSearchFrame("root", (0,))])
+
+    def test_vm_snapshot_restores_real_traversal_state_after_root(self) -> None:
+        state = _state(tetrahedral_facts())
+        snapshot = state.checkpoint()
+
+        state.traversal.component_index = 1
+        state.traversal.roots.append(AtomId(0))
+        state.traversal.parent[AtomId(0)] = None
+        state.traversal.tree_bonds.add(BondId(0))
+        state.traversal.visited_atoms.add(AtomId(0))
+        state.traversal.active_atom_stack.append(AtomId(0))
+        state.traversal.syntax_position = 3
+        state.rollback(snapshot)
+
+        self.assertEqual(state.traversal.component_index, 0)
+        self.assertEqual(state.traversal.roots, [])
+        self.assertEqual(state.traversal.parent, {})
+        self.assertEqual(state.traversal.tree_bonds, set())
+        self.assertEqual(state.traversal.visited_atoms, set())
+        self.assertEqual(state.traversal.active_atom_stack, [])
+        self.assertEqual(state.traversal.syntax_position, 0)
+
+    def test_vm_snapshot_restores_ring_endpoint_state(self) -> None:
+        state = _state(ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"))
+        snapshot = state.checkpoint()
+
+        self.assertTrue(
+            state.ring.register_endpoint(
+                bond=BondId(1),
+                endpoint=0,
+                label=RingLabel(1),
+            )
+        )
+        state.rollback(snapshot)
+
+        self.assertEqual(state.ring.endpoint_by_bond, {})
+        self.assertEqual(state.ring.label_by_endpoint, {})
+        self.assertEqual(state.ring.open_intervals, {})
+        self.assertEqual(state.ring.next_endpoint_id, 0)
+
+    def test_vm_snapshot_restores_direction_mark_assignment(self) -> None:
+        state = _state(directional_facts())
+        var = direction_var(0)
+        state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
+        snapshot = state.checkpoint()
+
+        self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
+        state.rollback(snapshot)
+
+        self.assertIsNone(state.residual.assignment(var))
+
+    def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:
+        vm = OnlineSearchVM(
+            facts=disconnected_facts(),
+            policy=ordinary_policy_for_facts(disconnected_facts()),
+            semantics=OrdinarySmilesSemantics(),
+        )
+
+        first = vm.step()
+
+        self.assertEqual(first.kind, "yield_witness")
+        self.assertIsNotNone(first.witness)
+        while True:
+            result = vm.step()
+            if result.kind == "exhausted":
+                break
+        self.assertEqual(vm.step().kind, "exhausted")
 
     def test_capture_residual_continuation_contains_snapshot(self) -> None:
         state = _state(tetrahedral_facts())
@@ -121,9 +200,11 @@ class OnlineSearchVmTest(unittest.TestCase):
         banned_calls = {
             "iter_online_stereo_witnesses_with_sink",
             "iter_online_stereo_witness_strings",
+            "iter_online_traversal_traces",
             "online_branch_preserving_choices",
             "online_determinized_choices",
         }
+        private_online_stereo_imports: list[str] = []
         imports: list[str] = []
         calls: list[str] = []
         for node in ast.walk(tree):
@@ -137,6 +218,12 @@ class OnlineSearchVmTest(unittest.TestCase):
                 module = node.module or ""
                 if module.split(".", 1)[0] in banned_modules:
                     imports.append(module)
+                if module == "online_stereo_witness":
+                    private_online_stereo_imports.extend(
+                        alias.name
+                        for alias in node.names
+                        if alias.name.startswith("_")
+                    )
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     calls.append(node.func.id)
@@ -144,6 +231,7 @@ class OnlineSearchVmTest(unittest.TestCase):
                     calls.append(node.func.attr)
 
         self.assertEqual(imports, [])
+        self.assertEqual(private_online_stereo_imports, [])
         self.assertEqual(sorted(set(calls) & banned_calls), [])
 
     def _assert_vm_matches_recursive(self, facts: MoleculeFacts) -> None:

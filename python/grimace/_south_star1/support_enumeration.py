@@ -130,6 +130,7 @@ def enumerate_stereo_witnesses(
     skeletons: Iterable[TraversalSkeleton] | None = None,
     eligible_marker_carriers: EligibleMarkerCarrierSelector | None = None,
     allow_global_directional_scope: bool = False,
+    validate_inputs: bool = True,
 ) -> Iterator[ValidWitness]:
     """Yield stereo-valid witnesses over all traversal skeletons.
 
@@ -165,8 +166,9 @@ def enumerate_stereo_witnesses(
         object instead of relying on global scopes.
     """
 
-    facts.validate()
-    policy.validate_for_facts(facts)
+    if validate_inputs:
+        facts.validate()
+        policy.validate_for_facts(facts)
 
     if skeletons is None:
         index = build_graph_index(facts)
@@ -174,12 +176,17 @@ def enumerate_stereo_witnesses(
             facts=facts,
             index=index,
             policy=policy,
+            validate_inputs=validate_inputs,
         )
     else:
         skeleton_iterable = skeletons
 
     for skeleton in skeleton_iterable:
-        slots = allocate_traversal_slots(facts, skeleton)
+        slots = allocate_traversal_slots(
+            facts,
+            skeleton,
+            validate_inputs=validate_inputs,
+        )
 
         if eligible_marker_carriers is None:
             eligible = None
@@ -194,6 +201,7 @@ def enumerate_stereo_witnesses(
             semantics=semantics,
             eligible_marker_carriers=eligible,
             allow_global_directional_scope=allow_global_directional_scope,
+            validate_inputs=validate_inputs,
         )
 
 
@@ -248,6 +256,7 @@ def enumerate_stereo_support(
     skeletons: Iterable[TraversalSkeleton] | None = None,
     eligible_marker_carriers: EligibleMarkerCarrierSelector | None = None,
     allow_global_directional_scope: bool = False,
+    validate_inputs: bool = True,
 ) -> SupportImage:
     """Enumerate the rendered stereo support image over all skeletons.
 
@@ -267,6 +276,7 @@ def enumerate_stereo_support(
         skeletons=skeletons,
         eligible_marker_carriers=eligible_marker_carriers,
         allow_global_directional_scope=allow_global_directional_scope,
+        validate_inputs=validate_inputs,
     )
 
     return render_image_from_witnesses(witnesses)

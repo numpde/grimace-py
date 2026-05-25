@@ -106,11 +106,13 @@ def enumerate_traversal_skeletons(
     policy: SmilesPolicy,
     rooted_at_atom: AtomId | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    validate_inputs: bool = True,
 ) -> tuple[TraversalSkeleton, ...]:
     """Enumerate traversal skeletons with explicit tree/ring partitions."""
 
-    facts.validate()
-    policy.validate_for_facts(facts)
+    if validate_inputs:
+        facts.validate()
+        policy.validate_for_facts(facts)
 
     root_domains = (
         component_root_domains

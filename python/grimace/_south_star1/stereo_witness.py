@@ -122,6 +122,7 @@ def enumerate_stereo_witnesses_for_skeleton(
     slots: SlotBundle | None = None,
     eligible_marker_carriers: frozenset[CarrierSlotId] | None = None,
     allow_global_directional_scope: bool = False,
+    validate_inputs: bool = True,
 ) -> Iterator[ValidWitness]:
     """Yield stereo-valid witnesses for one traversal skeleton.
 
@@ -134,16 +135,22 @@ def enumerate_stereo_witnesses_for_skeleton(
     would recreate the post-hoc validation pattern South Star is meant to avoid.
     """
 
-    facts.validate()
-    policy.validate_for_facts(facts)
+    if validate_inputs:
+        facts.validate()
+        policy.validate_for_facts(facts)
 
     if slots is None:
-        slots = allocate_traversal_slots(facts, skeleton)
+        slots = allocate_traversal_slots(
+            facts,
+            skeleton,
+            validate_inputs=validate_inputs,
+        )
 
     for prefix in enumerate_presentation_prefixes(
         facts=facts,
         slots=slots,
         policy=policy,
+        validate_inputs=validate_inputs,
     ):
         for assignment in enumerate_stereo_assignments_for_prefix(
             facts=facts,
@@ -154,6 +161,7 @@ def enumerate_stereo_witnesses_for_skeleton(
             semantics=semantics,
             eligible_marker_carriers=eligible_marker_carriers,
             allow_global_directional_scope=allow_global_directional_scope,
+            validate_inputs=validate_inputs,
         ):
             constraints = validate_stereo_traversal_witness(
                 facts=facts,
@@ -162,6 +170,7 @@ def enumerate_stereo_witnesses_for_skeleton(
                 assignment=assignment,
                 policy=policy,
                 semantics=semantics,
+                validate_inputs=validate_inputs,
             )
 
             rendered = render_stereo_traversal(
@@ -401,6 +410,7 @@ def enumerate_presentation_prefixes(
     facts: MoleculeFacts,
     slots: SlotBundle,
     policy: SmilesPolicy,
+    validate_inputs: bool = True,
 ) -> Iterator[PresentationPrefix]:
     """Enumerate finite presentation prefixes for one slot bundle.
 
@@ -413,21 +423,34 @@ def enumerate_presentation_prefixes(
     empty relation or domain.
     """
 
-    facts.validate()
-    policy.validate_for_facts(facts)
+    if validate_inputs:
+        facts.validate()
+        policy.validate_for_facts(facts)
 
     atom_domains = tuple(
-        (atom.id, policy.atom_text_domain(facts, atom.id))
+        (
+            atom.id,
+            policy.atom_text_domain(facts, atom.id)
+            if validate_inputs
+            else policy.atom_text_domain_unchecked(atom.id),
+        )
         for atom in facts.atoms
     )
 
     bond_domains = tuple(
         (
             slot.id,
-            policy.bond_text_domain(
-                facts,
-                slot.bond,
-                slot_kind=slot.kind.value,
+            (
+                policy.bond_text_domain(
+                    facts,
+                    slot.bond,
+                    slot_kind=slot.kind.value,
+                )
+                if validate_inputs
+                else policy.bond_text_domain_unchecked(
+                    slot.bond,
+                    slot_kind=slot.kind.value,
+                )
             ),
         )
         for slot in slots.bond_slots

@@ -140,9 +140,12 @@ def validate_stereo_traversal_witness(
     assignment: TraversalAssignment,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
+    *,
+    validate_inputs: bool = True,
 ) -> tuple[NamedConstraint, ...]:
-    facts.validate()
-    policy.validate_for_facts(facts)
+    if validate_inputs:
+        facts.validate()
+        policy.validate_for_facts(facts)
     _validate_traversal_assignment_coverage(
         facts,
         skeleton,

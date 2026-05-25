@@ -6,6 +6,7 @@ import unittest
 from dataclasses import dataclass
 from unittest.mock import patch
 
+import grimace._south_star1.graph_index as graph_index_module
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -13,6 +14,7 @@ from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.prepared_bench_matrix import PreparedEnumerationMatrixEntry
+from grimace._south_star1.prepared_bench_matrix import PreparedRuntimeProbe
 from grimace._south_star1.prepared_bench_matrix import collect_prepared_enumeration_matrix_entry
 from grimace._south_star1.prepared_bench_matrix import collect_prepared_prefix_workload_stats
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -46,7 +48,9 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
                     )
                     _assert_entry_conforms(self, entry)
 
-    def test_prepared_matrix_rows_record_no_cache_rebuilds_after_prepare(self) -> None:
+    def test_prepared_matrix_probe_reports_zero_graph_index_rebuilds_after_prepare(
+        self,
+    ) -> None:
         prepared = prepare_south_star_mol_from_facts(
             tetrahedral_facts(),
             writer_surface=SouthStarWriterSurface(),
@@ -58,9 +62,115 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
             execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
         )
 
-        self.assertEqual(entry.row.graph_rebuild_count_after_prepare, 0)
-        self.assertEqual(entry.row.root_domain_recompute_count_after_prepare, 0)
-        self.assertEqual(entry.row.stereo_template_rebuild_count_after_prepare, 0)
+        self.assertEqual(entry.row.probe.graph_index_rebuild_count, 0)
+
+    def test_prepared_matrix_probe_reports_zero_online_traversal_graph_rebuilds_after_prepare(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        self.assertEqual(entry.row.probe.online_traversal_graph_from_facts_count, 0)
+        self.assertEqual(entry.row.probe.online_traversal_graph_from_index_count, 0)
+        self.assertEqual(entry.row.probe.online_traversal_graph_view_rebuild_count, 0)
+        self.assertEqual(entry.row.probe.online_vm_graph_view_rebuild_count, 0)
+        self.assertEqual(entry.row.probe.prepare_from_facts_count, 0)
+        self.assertEqual(entry.row.probe.prepare_from_rdkit_count, 0)
+
+    def test_prepared_matrix_probe_reports_zero_root_domain_recomputes_after_prepare(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        self.assertEqual(entry.row.probe.root_domain_recompute_count, 0)
+        self.assertEqual(entry.row.probe.root_domain_from_metadata_count, 0)
+
+    def test_prepared_matrix_probe_reports_zero_stereo_template_rebuilds_after_prepare(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        self.assertEqual(entry.row.probe.stereo_template_rebuild_count, 0)
+
+    def test_prepared_matrix_probe_reports_zero_facts_validation_after_prepare(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        self.assertEqual(entry.row.probe.facts_validate_count, 0)
+
+    def test_prepared_matrix_probe_reports_zero_policy_validation_after_prepare(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        self.assertEqual(entry.row.probe.policy_validate_count, 0)
+
+    def test_prepared_matrix_probe_is_owned_by_matrix_not_caller_supplied(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with self.assertRaises(TypeError):
+            collect_prepared_enumeration_matrix_entry(
+                fixture_name="tetrahedral",
+                prepared=prepared,
+                graph_rebuild_count_after_prepare=0,
+            )
+
+    def test_prepared_matrix_probe_detects_forced_graph_rebuild(self) -> None:
+        with PreparedRuntimeProbe() as probe:
+            graph_index_module.build_graph_index(tetrahedral_facts())
+
+        result = probe.result()
+
+        self.assertEqual(result.graph_index_rebuild_count, 1)
+        self.assertGreaterEqual(result.facts_validate_count, 1)
 
     def test_residual_matrix_rows_have_no_rendered_suffix_payload(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
@@ -177,9 +287,18 @@ def _assert_entry_conforms(
     test.assertEqual(entry.online_strings, entry.offline_strings)
     test.assertEqual(row.online_support_count, row.offline_support_count)
     test.assertEqual(row.online_witness_completion_count, row.offline_witness_count)
-    test.assertEqual(row.graph_rebuild_count_after_prepare, 0)
-    test.assertEqual(row.root_domain_recompute_count_after_prepare, 0)
-    test.assertEqual(row.stereo_template_rebuild_count_after_prepare, 0)
+    test.assertEqual(row.probe.graph_index_rebuild_count, 0)
+    test.assertEqual(row.probe.online_traversal_graph_from_facts_count, 0)
+    test.assertEqual(row.probe.online_traversal_graph_from_index_count, 0)
+    test.assertEqual(row.probe.prepare_from_facts_count, 0)
+    test.assertEqual(row.probe.prepare_from_rdkit_count, 0)
+    test.assertEqual(row.probe.root_domain_recompute_count, 0)
+    test.assertEqual(row.probe.root_domain_from_metadata_count, 0)
+    test.assertEqual(row.probe.stereo_template_rebuild_count, 0)
+    test.assertEqual(row.probe.facts_validate_count, 0)
+    test.assertEqual(row.probe.policy_validate_count, 0)
+    test.assertEqual(row.probe.online_traversal_graph_view_rebuild_count, 0)
+    test.assertEqual(row.probe.online_vm_graph_view_rebuild_count, 0)
     test.assertGreater(row.frontier_queries, 0)
     test.assertGreater(row.max_choice_count, 0)
     test.assertGreater(row.max_pending_stream_states, 0)

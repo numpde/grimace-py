@@ -78,8 +78,11 @@ def allocate_tree_slots(
 def allocate_traversal_slots(
     facts: MoleculeFacts,
     skeleton: TraversalSkeleton,
+    *,
+    validate_inputs: bool = True,
 ) -> SlotBundle:
-    facts.validate()
+    if validate_inputs:
+        facts.validate()
 
     atom_slots = tuple(
         AtomSlot(id=AtomSlotId(i), atom=atom.id)

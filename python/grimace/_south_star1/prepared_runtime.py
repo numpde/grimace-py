@@ -188,12 +188,14 @@ def enumerate_prepared_stereo_support(
         policy=prepared.policy,
         rooted_at_atom=rooted_at_atom,
         component_root_domains=tuple(atoms for _, atoms in root_domains),
+        validate_inputs=False,
     )
     return enumerate_stereo_support(
         facts=prepared.facts,
         policy=prepared.policy,
         semantics=prepared.semantics,
         skeletons=skeletons,
+        validate_inputs=False,
     )
 
 

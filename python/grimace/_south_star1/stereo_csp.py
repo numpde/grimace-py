@@ -190,6 +190,7 @@ def build_stereo_csp(
     semantics: ParserSemantics,
     eligible_marker_carriers: frozenset[CarrierSlotId] | None = None,
     allow_global_directional_scope: bool = False,
+    validate_inputs: bool = True,
 ) -> StereoCSP:
     """Build the finite stereo CSP for one traversal skeleton and prefix.
 
@@ -209,9 +210,16 @@ def build_stereo_csp(
     policy.
     """
 
-    facts.validate()
-    policy.validate_for_facts(facts)
-    _validate_prefix(facts, slots, prefix, policy)
+    if validate_inputs:
+        facts.validate()
+        policy.validate_for_facts(facts)
+    _validate_prefix(
+        facts,
+        slots,
+        prefix,
+        policy,
+        validate_policy=validate_inputs,
+    )
 
     directional_scopes = _directional_scopes(
         facts=facts,
@@ -476,6 +484,7 @@ def enumerate_stereo_assignments_for_prefix(
     semantics: ParserSemantics,
     eligible_marker_carriers: frozenset[CarrierSlotId] | None = None,
     allow_global_directional_scope: bool = False,
+    validate_inputs: bool = True,
 ) -> Iterator[TraversalAssignment]:
     """Yield full TraversalAssignment objects for one presentation prefix.
 
@@ -491,6 +500,7 @@ def enumerate_stereo_assignments_for_prefix(
         semantics=semantics,
         eligible_marker_carriers=eligible_marker_carriers,
         allow_global_directional_scope=allow_global_directional_scope,
+        validate_inputs=validate_inputs,
     )
 
     raw_solutions = tuple(solve_stereo_csp(csp))
@@ -524,6 +534,8 @@ def _validate_prefix(
     slots: SlotBundle,
     prefix: PresentationPrefix,
     policy: SmilesPolicy,
+    *,
+    validate_policy: bool = True,
 ) -> None:
     atom_ids = {atom.id for atom in facts.atoms}
     bond_slot_ids = {slot.id for slot in slots.bond_slots}
@@ -532,7 +544,11 @@ def _validate_prefix(
     _require_exact_keys("prefix bond text", set(prefix.bond_text), bond_slot_ids)
 
     for atom in facts.atoms:
-        domain = policy.atom_text_domain(facts, atom.id)
+        domain = (
+            policy.atom_text_domain(facts, atom.id)
+            if validate_policy
+            else policy.atom_text_domain_unchecked(atom.id)
+        )
         choice = prefix.atom_text[atom.id]
         if choice not in domain:
             raise ValueError(
@@ -541,10 +557,17 @@ def _validate_prefix(
             )
 
     for slot in slots.bond_slots:
-        domain = policy.bond_text_domain(
-            facts,
-            slot.bond,
-            slot_kind=slot.kind.value,
+        domain = (
+            policy.bond_text_domain(
+                facts,
+                slot.bond,
+                slot_kind=slot.kind.value,
+            )
+            if validate_policy
+            else policy.bond_text_domain_unchecked(
+                slot.bond,
+                slot_kind=slot.kind.value,
+            )
         )
         choice = prefix.bond_text[slot.id]
         if choice not in domain:

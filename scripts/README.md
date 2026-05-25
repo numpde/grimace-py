@@ -32,7 +32,7 @@ bounded correctness checks; heavier profiling runs should be explicit.
 
 Local dataset miner for RDKit-derived writer regressions.
 
-It scans the bundled `top_100000` fixture and can either:
+It scans the checked-in `top_100000` fixture and can either:
 
 - compare the deterministic RDKit writer output against Grimace support
 - sample RDKit random writer outputs until a simple plateau heuristic fires

@@ -3,12 +3,12 @@ from __future__ import annotations
 import random
 import unittest
 
-from grimace._reference import (
+from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
+from grimace._reference.prepared_graph import prepare_smiles_graph
+from grimace._reference.rooted.connected_nonstereo import (
     RootedConnectedNonStereoWalker as PythonRootedConnectedNonStereoWalker,
-    enumerate_rooted_nonstereo_smiles_support,
-    load_default_connected_nonstereo_molecule_cases,
-    prepare_smiles_graph,
-    validate_rooted_nonstereo_smiles_support,
+    enumerate_rooted_connected_nonstereo_smiles_support as enumerate_rooted_nonstereo_smiles_support,
+    validate_rooted_connected_nonstereo_smiles_support as validate_rooted_nonstereo_smiles_support,
 )
 from tests.helpers.cases import NONSTEREO_CURATED_ROOT_CASES
 from tests.helpers.kernel import CORE_MODULE

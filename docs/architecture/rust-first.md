@@ -20,8 +20,7 @@ behavior and Python provides the public façade plus RDKit bridge code.
 - Python owns:
   - the thin public wrapper over `_core`
   - RDKit interop at the `PrepareMol` boundary
-  - policy loading
-  - dataset and artifact tooling
+  - dataset-backed test tooling
   - oracle/reference checks
 
 ## Implications

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections import defaultdict, deque
+from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
 
@@ -17,7 +17,7 @@ from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
-from grimace._reference.rooted import connected_stereo as cs
+import grimace._reference.rooted.connected_stereo as cs
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
 from tests.rdkit_serialization._support import mol_from_pinned_source
 

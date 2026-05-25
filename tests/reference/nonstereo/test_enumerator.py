@@ -5,16 +5,13 @@ import unittest
 
 from rdkit import Chem
 
-from grimace._reference import (
-    PreparedSmilesGraph,
-    ReferencePolicy,
-    enumerate_rooted_nonstereo_smiles_support,
-    enumerate_rooted_smiles_support,
-    load_default_connected_nonstereo_molecule_cases,
-    prepare_smiles_graph,
-    sample_rdkit_random_smiles_from_root,
-    validate_rooted_nonstereo_smiles_support,
-    validate_rooted_smiles_support,
+from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
+from grimace._reference.policy import ReferencePolicy
+from grimace._reference.prepared_graph import PreparedSmilesGraph, prepare_smiles_graph
+from grimace._reference.rdkit_random import sample_rdkit_random_smiles_from_root
+from grimace._reference.rooted.connected_nonstereo import (
+    enumerate_rooted_connected_nonstereo_smiles_support as enumerate_rooted_nonstereo_smiles_support,
+    validate_rooted_connected_nonstereo_smiles_support as validate_rooted_nonstereo_smiles_support,
 )
 from tests.helpers.cases import NONSTEREO_AWKWARD_CASES
 from tests.helpers.mols import parse_smiles
@@ -46,8 +43,8 @@ class RootedEnumeratorTest(unittest.TestCase):
         *,
         expected_draw_budget_floor: int = 1,
         policy=None,
-        enumerator=enumerate_rooted_smiles_support,
-        validator=validate_rooted_smiles_support,
+        enumerator=enumerate_rooted_nonstereo_smiles_support,
+        validator=validate_rooted_nonstereo_smiles_support,
     ) -> None:
         mol = parse_smiles(smiles)
 
@@ -164,8 +161,8 @@ class RootedEnumeratorTest(unittest.TestCase):
         Chem.RemoveStereochemistry(stripped)
 
         self.assertEqual(
-            enumerate_rooted_smiles_support(stripped, 0, self.nonstereo_output_policy),
-            enumerate_rooted_smiles_support(mol, 0, self.nonstereo_output_policy),
+            enumerate_rooted_nonstereo_smiles_support(stripped, 0, self.nonstereo_output_policy),
+            enumerate_rooted_nonstereo_smiles_support(mol, 0, self.nonstereo_output_policy),
         )
 
     def test_connected_nonstereo_branch_drops_bond_stereo_input(self) -> None:

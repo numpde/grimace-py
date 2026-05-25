@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import unittest
 
-from grimace._reference import (
+from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph as PythonPreparedSmilesGraph,
     prepare_smiles_graph,

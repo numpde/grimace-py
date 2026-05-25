@@ -7,10 +7,10 @@ import unittest
 
 from rdkit import Chem
 
-from grimace._reference import (
-    enumerate_rooted_nonstereo_smiles_support,
-    load_default_connected_nonstereo_molecule_cases,
-    prepare_smiles_graph,
+from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
+from grimace._reference.prepared_graph import prepare_smiles_graph
+from grimace._reference.rooted.connected_nonstereo import (
+    enumerate_rooted_connected_nonstereo_smiles_support as enumerate_rooted_nonstereo_smiles_support,
 )
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles

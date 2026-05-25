@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from grimace._reference import (
-    CONNECTED_STEREO_SURFACE,
+from grimace._reference.prepared_graph import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
+from grimace._reference.rooted.connected_stereo import (
     enumerate_rooted_connected_stereo_smiles_support,
-    prepare_smiles_graph,
     validate_rooted_connected_stereo_smiles_support,
 )
 from tests.helpers.cases import (

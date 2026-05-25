@@ -13,7 +13,6 @@ from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     PreparedSmilesGraph,
     build_atom_tokens as _build_atom_tokens_from_mol,
-    check_supported_smiles_graph_surface,
     prepare_smiles_graph,
     ring_label_text,
 )
@@ -72,10 +71,6 @@ class RootedConnectedNonStereoWalkerState:
     @property
     def tokens(self) -> tuple[str, ...]:
         return tuple(self.prefix_tokens)
-
-
-def check_supported_surface(mol: Chem.Mol) -> None:
-    check_supported_smiles_graph_surface(mol, surface_kind=CONNECTED_NONSTEREO_SURFACE)
 
 
 def build_atom_tokens(

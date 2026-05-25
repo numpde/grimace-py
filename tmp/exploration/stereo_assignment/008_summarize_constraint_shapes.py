@@ -16,9 +16,8 @@ from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
 )
-from grimace._reference.rooted import connected_stereo as cs
+import grimace._reference.rooted.connected_stereo as cs
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
-from tests.rdkit_serialization._support import mol_from_pinned_source
 
 STEREO_KINDS = {"STEREOCIS", "STEREOZ", "STEREOE", "STEREOTRANS"}
 

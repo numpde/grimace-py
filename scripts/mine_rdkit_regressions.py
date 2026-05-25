@@ -1,4 +1,4 @@
-"""Scan the bundled RDKit-backed dataset for writer-support mismatches.
+"""Scan the checked-in RDKit-backed dataset for writer-support mismatches.
 
 The controller walks the local molecule fixture, filters it to the requested
 public-surface mode, and evaluates one molecule per subprocess. The worker

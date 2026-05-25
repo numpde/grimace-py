@@ -11,7 +11,7 @@ The logs are not checked in. Checked-in fixtures are the promoted evidence.
 
 ## Scans
 
-Four bounded deterministic scans were run against the bundled molecule
+Four bounded deterministic scans were run against the checked-in molecule
 fixture:
 
 - disconnected all-roots isomeric writer surface

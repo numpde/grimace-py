@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 import grimace._runtime as _runtime
-from grimace._reference import load_default_connected_nonstereo_molecule_cases
+from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,

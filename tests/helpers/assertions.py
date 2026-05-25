@@ -7,16 +7,6 @@ import unittest
 from tests.helpers.tokenization import expected_next_tokens_from_support
 
 
-def assert_support_valid(
-    test_case: unittest.TestCase,
-    prepared,
-    root_idx: int,
-    support,
-    validator,
-) -> None:
-    test_case.assertEqual([], validator(prepared, root_idx, None, support))
-
-
 def assert_prefix_options_match_outputs(
     test_case: unittest.TestCase,
     prefix: str,

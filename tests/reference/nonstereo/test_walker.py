@@ -3,13 +3,13 @@ from __future__ import annotations
 import random
 import unittest
 
-from grimace._reference import (
+from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
+from grimace._reference.prepared_graph import prepare_smiles_graph
+from grimace._reference.rooted.connected_nonstereo import (
     RootedConnectedNonStereoWalker,
     RootedConnectedNonStereoWalkerState,
-    enumerate_rooted_nonstereo_smiles_support,
-    load_default_connected_nonstereo_molecule_cases,
-    prepare_smiles_graph,
-    validate_rooted_nonstereo_smiles_support,
+    enumerate_rooted_connected_nonstereo_smiles_support as enumerate_rooted_nonstereo_smiles_support,
+    validate_rooted_connected_nonstereo_smiles_support as validate_rooted_nonstereo_smiles_support,
 )
 from tests.helpers.cases import NONSTEREO_CURATED_ROOT_CASES
 from tests.helpers.mols import parse_smiles
@@ -53,7 +53,7 @@ class RootedNextTokenWalkerTests(unittest.TestCase):
                 )
                 self.assertEqual(expected, walker.next_token_support(walker.initial_state()))
 
-    def test_walker_exact_support_matches_rooted_enumerator_on_curated_cases(self) -> None:
+    def test_walker_exact_support_matches_connected_reference_on_curated_cases(self) -> None:
         for smiles, root_idx in NONSTEREO_CURATED_ROOT_CASES:
             with self.subTest(smiles=smiles, root_idx=root_idx):
                 prepared = prepare_smiles_graph(parse_smiles(smiles), self.policy)
@@ -98,7 +98,7 @@ class RootedNextTokenWalkerTests(unittest.TestCase):
                     self.assertEqual(state.prefix, "".join(seen_tokens))
                     self.assertIn(state.prefix, expected_support)
 
-    def test_walker_exact_support_matches_rooted_enumerator_on_dataset_slice(self) -> None:
+    def test_walker_exact_support_matches_connected_reference_on_dataset_slice(self) -> None:
         cases = load_default_connected_nonstereo_molecule_cases(limit=20, max_smiles_length=10)
         self.assertEqual(20, len(cases))
 

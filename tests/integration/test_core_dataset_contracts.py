@@ -4,9 +4,11 @@ import unittest
 
 from rdkit import Chem
 
-from grimace._reference import (
+from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
+from grimace._reference.prepared_graph import (
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
-    load_default_connected_nonstereo_molecule_cases,
+)
+from grimace._reference.rooted.connected_stereo import (
     validate_rooted_connected_stereo_smiles_support,
 )
 from tests.helpers.cases import (

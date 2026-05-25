@@ -90,13 +90,6 @@ class StereoSystem:
 
 
 @dataclass(frozen=True)
-class ObservedOutput:
-    smiles: str
-    shapes: frozenset[tuple[tuple[int, int], ...]]
-    preserving_match_count: int
-
-
-@dataclass(frozen=True)
 class ObservationReport:
     output_count: int
     no_preserving_match_count: int

@@ -100,34 +100,6 @@ def _part_tuple(part: str | DeferredDirectionalToken) -> tuple[str | DeferredDir
     return (part,)
 
 
-def _resolve_part(part: str | DeferredDirectionalToken, component_phases: tuple[int, ...]) -> str:
-    if isinstance(part, str):
-        return part
-    phase = component_phases[part.component_idx]
-    if phase in {_UNKNOWN_COMPONENT_PHASE, _STORED_COMPONENT_PHASE}:
-        return part.stored_token
-    return _flip_direction_token(part.stored_token)
-
-
-def _resolve_parts(
-    parts: tuple[str | DeferredDirectionalToken, ...],
-    component_phases: tuple[int, ...],
-    *,
-    component_flips: tuple[bool, ...] | None = None,
-) -> str:
-    resolved_parts: list[str] = []
-    for part in parts:
-        resolved = _resolve_part(part, component_phases)
-        if (
-            component_flips is not None
-            and isinstance(part, DeferredDirectionalToken)
-            and component_flips[part.component_idx]
-        ):
-            resolved = _flip_direction_token(resolved)
-        resolved_parts.append(resolved)
-    return "".join(resolved_parts)
-
-
 def _resolve_directional_token(
     token: str,
     *,

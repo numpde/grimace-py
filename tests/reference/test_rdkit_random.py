@@ -2,33 +2,21 @@ from __future__ import annotations
 
 import unittest
 
-from rdkit import Chem, rdBase
+from rdkit import Chem
 
-from grimace._reference import (
-    DEFAULT_RDKIT_RANDOM_POLICY_PATH,
-    ReferencePolicy,
-    load_default_molecule_cases,
+from grimace._reference.rdkit_random import (
     sample_and_validate_rdkit_random,
     sample_rdkit_random_smiles,
     sample_rdkit_random_smiles_from_root,
 )
+from grimace._reference.dataset import load_default_molecule_cases
+from tests.helpers.policies import load_default_policy
 
 
 class RdkitRandomReferenceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
-
-    def test_policy_declares_rdkit_version(self) -> None:
-        self.assertRegex(str(self.policy.data["rdkit_version"]), r"^\d{4}\.\d{2}\.\d+$")
-
-    def test_policy_rdkit_version_matches_installed_rdkit_when_fixture_is_regenerated(self) -> None:
-        policy_version = str(self.policy.data["rdkit_version"])
-        if policy_version != rdBase.rdkitVersion:
-            raise unittest.SkipTest(
-                "policy fixture targets a different RDKit build than the local environment"
-            )
-        self.assertEqual(rdBase.rdkitVersion, policy_version)
+        cls.policy = load_default_policy()
 
     def test_sampling_is_reproducible_for_fixed_policy(self) -> None:
         mol = Chem.MolFromSmiles("Cc1ccccc1")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
 
 from rdkit import Chem, rdBase
 
@@ -15,12 +14,6 @@ TRACKED_EDGES = {
     (6, 7): "right_outer",
 }
 SOURCE_STEREO = ((3, 4, "Z"), (5, 6, "E"))
-
-
-@dataclass(frozen=True)
-class OutputClass:
-    label: str
-    outputs: set[str]
 
 
 def stereo_class(stereo: Chem.BondStereo) -> str:

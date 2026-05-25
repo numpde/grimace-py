@@ -13,7 +13,6 @@ sys.path.insert(0, str(ROOT / "python"))
 from rdkit import Chem, rdBase
 
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
-from tests.rdkit_serialization._support import mol_from_pinned_source
 
 
 E_LIKE = {Chem.BondStereo.STEREOE, Chem.BondStereo.STEREOTRANS}

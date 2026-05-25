@@ -3,16 +3,11 @@ from __future__ import annotations
 import random
 import unittest
 
-from grimace._reference import (
-    CONNECTED_STEREO_SURFACE,
+from grimace._reference.prepared_graph import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
+from grimace._reference.rooted.connected_stereo import (
     enumerate_rooted_connected_stereo_smiles_support,
-    prepare_smiles_graph,
 )
-from tests.helpers.cases import (
-    STEREO_WALKER_CURATED_CASES,
-    load_connected_atom_stereo_cases,
-    load_connected_bond_stereo_cases,
-)
+from tests.helpers.cases import STEREO_WALKER_CURATED_CASES
 from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy

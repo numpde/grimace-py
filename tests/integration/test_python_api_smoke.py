@@ -1,19 +1,8 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-import tempfile
 import unittest
 
 import grimace
-from grimace._reference import (
-    DEFAULT_MOLECULE_SOURCE_PATH,
-    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
-    DEFAULT_RDKIT_RANDOM_POLICY_PATH,
-    ReferencePolicy,
-    build_core_exact_sets_artifact,
-    write_core_exact_sets_artifact,
-)
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
@@ -323,58 +312,6 @@ class PythonApiSmokeTests(unittest.TestCase):
             expected_regex="root_idx out of range",
             included_entrypoints=("enum", "decoder", "inventory", "inventory_superset"),
         )
-
-    def test_reference_defaults_load_from_installed_package_layout(self) -> None:
-        self.assertTrue(DEFAULT_MOLECULE_SOURCE_PATH.is_file())
-        self.assertTrue(DEFAULT_RDKIT_RANDOM_POLICY_PATH.is_file())
-        self.assertTrue(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH.is_file())
-
-        policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_POLICY_PATH)
-        connected_nonstereo_policy = ReferencePolicy.from_path(
-            DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH
-        )
-
-        self.assertEqual("rdkit_random_v1", policy.policy_name)
-        self.assertEqual("rdkit_random_connected_nonstereo_v1", connected_nonstereo_policy.policy_name)
-        artifact = build_core_exact_sets_artifact(policy, limit=1)
-        connected_nonstereo_artifact = build_core_exact_sets_artifact(
-            connected_nonstereo_policy,
-            limit=1,
-        )
-        self.assertEqual(1, artifact["case_count"])
-        self.assertEqual(1, connected_nonstereo_artifact["case_count"])
-        self.assertEqual(
-            "grimace/_reference/_data/reference/rdkit_random/branches/general/policies/rdkit_random_v1.json",
-            artifact["policy_path"],
-        )
-        self.assertEqual(
-            "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
-            artifact["source_path"],
-        )
-        self.assertEqual(
-            "grimace/_reference/_data/top_100000_CIDs.tsv.gz",
-            artifact["input_source"]["path"],
-        )
-        with tempfile.TemporaryDirectory() as temp_dir:
-            previous_cwd = Path.cwd()
-            os.chdir(temp_dir)
-            try:
-                output_path = write_core_exact_sets_artifact(policy, limit=1)
-            finally:
-                os.chdir(previous_cwd)
-            self.assertEqual(
-                Path(temp_dir)
-                / "grimace_reference_artifacts"
-                / "rdkit_random"
-                / "branches"
-                / "general"
-                / "snapshots"
-                / policy.policy_name
-                / policy.digest()
-                / "core_exact_sets.json",
-                output_path,
-            )
-            self.assertTrue(output_path.is_file())
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
         if CORE_MODULE is None:

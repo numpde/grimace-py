@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from rdkit import Chem
 
-from grimace._reference import (
-    load_default_molecule_cases,
-    molecule_is_connected,
-)
+from grimace._reference.dataset import load_default_molecule_cases, molecule_is_connected
 
 
 SHARED_CURATED_ROOT_CASES: tuple[tuple[str, int], ...] = (

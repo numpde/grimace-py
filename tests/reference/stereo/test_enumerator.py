@@ -4,7 +4,7 @@ import unittest
 
 from rdkit import Chem, rdBase
 
-from grimace._reference import (
+from grimace._reference.rooted.connected_stereo import (
     enumerate_rooted_connected_stereo_smiles_support,
     validate_rooted_connected_stereo_smiles_support,
 )

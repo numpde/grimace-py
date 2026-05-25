@@ -16,9 +16,8 @@ Python suite by intent
 
 - `tests/contract/`
   - package/export invariants
-  - default dataset and policy metadata
+  - default dataset metadata
   - prepared-graph schema and shape validation
-  - reference artifact structure
 
 - `tests/reference/`
   - pure-Python/reference prepared-graph, walker, and enumerator behavior
@@ -58,7 +57,7 @@ What the suite is good at
 
 - Catching package/runtime coupling bugs.
   - wheel and sdist installation are smoke-tested in CI.
-  - bundled reference data is exercised from installed artifacts.
+  - repo fixture data is exercised through the installed wheel in containerized tests.
 
 - Catching public-contract drift.
   - `test_python_api_smoke.py` now covers most public argument-validation and

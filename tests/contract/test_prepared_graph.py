@@ -5,21 +5,20 @@ import unittest
 
 from rdkit import Chem, rdBase
 
-from grimace._reference import (
+from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE,
-    DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH,
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph,
-    ReferencePolicy,
     prepare_smiles_graph,
 )
+from tests.helpers.policies import load_connected_nonstereo_policy
 
 
 class PreparedSmilesGraphContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.policy = ReferencePolicy.from_path(DEFAULT_RDKIT_RANDOM_CONNECTED_NONSTEREO_POLICY_PATH)
+        cls.policy = load_connected_nonstereo_policy()
 
     def test_prepared_graph_tracks_policy_and_writer_metadata(self) -> None:
         mol = Chem.MolFromSmiles("Cc1ccccc1")

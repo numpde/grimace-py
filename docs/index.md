@@ -53,6 +53,7 @@ inventories.
 
 ## Development
 
+- [Make lanes](development/make-lanes.md)
 - [Containerized development](development/containerized.md)
 - [Rust-first architecture](architecture/rust-first.md)
 

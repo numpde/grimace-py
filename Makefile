@@ -17,10 +17,11 @@ override DOCS_OUTPUT_DIR := build/docs-site
 DOCS_PORT ?= 8000
 
 NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$ ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user with positive numeric UID and GID.' >&2; exit 2; fi
+DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_PORT}" -gt 65535 ]]; then printf '%s\n' 'Refusing to run docs lane with DOCS_PORT outside 1..65535.' >&2; exit 2; fi
 DIST_GUARD := if [[ -L dist ]]; then printf '%s\n' 'Refusing to use dist because it is a symlink.' >&2; exit 2; fi
 PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PERF_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(PERF_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(DOCS_SOURCE_DIR) $(DOCS_OUTPUT_DIR); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind docs path %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
-COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID) DOCS_PORT=$(DOCS_PORT)
+COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run
 @$(NON_ROOT_GUARD); \
@@ -28,6 +29,8 @@ $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
 .PHONY: help checks rust test parity exact-public-invariants package perf docs docs-serve ci
+
+docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 
 help:
 	@printf '%s\n' \
@@ -40,8 +43,12 @@ help:
 	  '  make package  Build and validate wheel/sdist artifacts under dist/' \
 	  '  make perf     Update opt-in timing docs and timing history' \
 	  '  make docs     Build the documentation site under build/docs-site/' \
-	  '  make docs-serve  Serve the documentation site at 127.0.0.1:$${DOCS_PORT:-8000}' \
+	  '  make docs-serve  Serve the documentation site on DOCS_PORT' \
 	  '  make ci      Run checks, rust, test, parity, and exact invariants' \
+	  '' \
+	  'Variables:' \
+	  '  DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535' \
+	  '  Example: make docs-serve DOCS_PORT=8010' \
 	  '' \
 	  'Docker-backed lanes refuse root execution and use strict Compose posture.'
 
@@ -83,6 +90,7 @@ perf:
 
 docs:
 	@$(NON_ROOT_GUARD)
+	@$(DOCS_PORT_GUARD)
 	@mkdir -p $(DOCS_OUTPUT_DIR)
 	@$(DOCS_ARTIFACTS_GUARD); \
 	find $(DOCS_OUTPUT_DIR) -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; \
@@ -90,7 +98,8 @@ docs:
 
 docs-serve: docs
 	@$(NON_ROOT_GUARD); \
+	$(DOCS_PORT_GUARD); \
 	$(DOCS_ARTIFACTS_GUARD); \
-	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml run --rm --service-ports docs-serve
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/docs.yml run --rm --publish "127.0.0.1:$${DOCS_PORT}:8000" docs-serve
 
 ci: checks rust test parity exact-public-invariants

@@ -71,8 +71,8 @@ class DocsPagesTests(unittest.TestCase):
         self.assertIn("baseurl: /grimace-py", config)
         self.assertIn("header_pages:", config)
         local_config = (ROOT / "docs" / "_config_local.yml").read_text(encoding="utf-8")
-        self.assertIn("url: http://127.0.0.1:8000", local_config)
         self.assertIn('baseurl: ""', local_config)
+        self.assertNotRegex(local_config, r"(?m)^url:")
         index = (ROOT / "docs" / "index.md").read_text(encoding="utf-8")
         self.assertIn("layout: page", index)
 

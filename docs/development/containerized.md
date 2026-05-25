@@ -5,6 +5,9 @@ title: Containerized development
 This page is for contributors. The Docker-backed Make lanes use pinned images
 and avoid the host Python environment for routine checks.
 
+For a lane-by-lane map of what runs where and what writes files, see
+[Make lanes](make-lanes.md).
+
 ```bash
 make checks
 make ci
@@ -25,7 +28,8 @@ make docs-serve
 - `make docs` builds the Pages site under `build/docs-site/` with the
   GitHub Pages Jekyll image.
 - `make docs-serve` rebuilds that site and serves it at
-  `http://127.0.0.1:8000/` from a container.
+  `http://127.0.0.1:${DOCS_PORT}/` from a container. `DOCS_PORT` defaults to
+  `8000`.
 
 Routine check/test lanes do not use host `.venv`, `target`, or `dist`
 artifacts.

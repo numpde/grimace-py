@@ -10,6 +10,14 @@ from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import EOS
 from grimace._south_star1.online_decoder_api import make_branch_preserving_online_decoder
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
+from grimace._south_star1.online_decisions import OnlineDecision
+from grimace._south_star1.online_decisions import OnlineDecisionPath
+from grimace._south_star1.online_residual_continuation import OnlineResidualContinuation
+from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
+from grimace._south_star1.online_residual_continuation import merge_residual_continuations_by_key
+from grimace._south_star1.online_residual_continuation import residual_continuation_key
+from grimace._south_star1.online_search_vm import OnlineSearchFrame
+from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
@@ -185,6 +193,23 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertFalse(hasattr(continuation, "rendered"))
         self.assertFalse(hasattr(continuation, "tokens"))
 
+    def test_residual_continuation_snapshot_has_frame_stack(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertTrue(continuation.snapshot.frame_stack)
+
+    def test_residual_continuation_snapshot_has_residual_state(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertIsNotNone(continuation.snapshot.residual_snapshot)
+
+    def test_residual_continuation_snapshot_has_ring_state(self) -> None:
+        continuation = _first_residual_continuation(
+            ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"),
+        )
+
+        self.assertIsNotNone(continuation.snapshot.ring_state)
+
     def test_residual_continuation_eos_matches_prefix_replay(self) -> None:
         facts = tetrahedral_facts()
         replay = _replay_determinized_decoder(facts, include_eos=True)
@@ -238,6 +263,109 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             ),
             1,
         )
+
+    def test_residual_frontier_sink_restores_pending_token_after_nested_rollback(self) -> None:
+        sink = _sink_with_providers(required_prefix="")
+        self.assertTrue(sink.append("C", token_text="C"))
+        checkpoint = sink.checkpoint()
+
+        self.assertTrue(sink.append("l", token_text="l"))
+        sink.rollback(checkpoint)
+
+        self.assertEqual(sink.pending_token_text, "C")
+
+    def test_residual_frontier_sink_restores_pending_snapshot_after_nested_rollback(self) -> None:
+        sink = _sink_with_providers(required_prefix="")
+        self.assertTrue(sink.append("C", token_text="C"))
+        checkpoint = sink.checkpoint()
+
+        self.assertTrue(sink.append("l", token_text="l"))
+        sink.rollback(checkpoint)
+
+        self.assertEqual(sink.pending_snapshot, _snapshot("pending"))
+
+    def test_residual_frontier_sink_restores_pending_frontier_path_after_nested_rollback(self) -> None:
+        sink = _sink_with_providers(required_prefix="")
+        self.assertTrue(sink.append("C", token_text="C"))
+        checkpoint = sink.checkpoint()
+
+        self.assertTrue(sink.append("l", token_text="l"))
+        sink.rollback(checkpoint)
+
+        self.assertEqual(sink.pending_frontier_path, _path("pending"))
+
+    def test_residual_frontier_sink_does_not_commit_dead_branch_after_rollback(self) -> None:
+        sink = _sink_with_providers(required_prefix="")
+        self.assertTrue(sink.append("C", token_text="C"))
+        checkpoint = sink.checkpoint()
+
+        self.assertTrue(sink.append("l", token_text="l"))
+        sink.rollback(checkpoint)
+
+        self.assertEqual(sink.completed_by_token, {})
+
+    def test_residual_frontier_sink_preserves_committed_frontiers_across_sibling_rollback(self) -> None:
+        sink = _sink_with_providers(required_prefix="")
+        self.assertTrue(sink.append("C", token_text="C"))
+        checkpoint = sink.checkpoint()
+
+        self.assertTrue(sink.append("l", token_text="l"))
+        self.assertTrue(sink.complete())
+        sink.rollback(checkpoint)
+
+        self.assertIn("C", sink.completed_by_token)
+
+    def test_residual_determinized_multiplicity_counts_unique_snapshots(self) -> None:
+        duplicate = _continuation("C", "C", "same", completion_count=1)
+        other = _continuation("C", "C", "other", completion_count=1)
+
+        self.assertNotEqual(
+            residual_continuation_key(duplicate),
+            residual_continuation_key(other),
+        )
+
+    def test_residual_completion_count_counts_multiple_completions(self) -> None:
+        one = _continuation("C", "C", "same", completion_count=1)
+        three = _continuation("C", "C", "same", completion_count=3)
+
+        self.assertEqual(residual_continuation_key(one), residual_continuation_key(three))
+        self.assertNotEqual(one.completion_count, three.completion_count)
+
+    def test_residual_duplicate_continuations_are_merged_by_key(self) -> None:
+        one = _continuation("C", "C", "same", completion_count=1)
+        three = _continuation("C", "C", "same", completion_count=3)
+
+        merged = merge_residual_continuations_by_key([one, three])
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0].completion_count, 4)
+
+    def test_all_execution_modes_walk_same_tetra_witnesses(self) -> None:
+        self._assert_all_modes_walk_same_witnesses(tetrahedral_facts())
+
+    def test_all_execution_modes_walk_same_directional_witnesses(self) -> None:
+        self._assert_all_modes_walk_same_witnesses(directional_facts())
+
+    def test_all_execution_modes_walk_same_ring_tetra_witnesses(self) -> None:
+        self._assert_all_modes_walk_same_witnesses(
+            ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"),
+        )
+
+    def test_residual_initial_state_stats_root_run_only(self) -> None:
+        result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
+
+        self.assertEqual(result.stats.root_dfs_runs, 1)
+        self.assertEqual(result.stats.resumed_snapshots, 0)
+
+    def test_residual_successor_state_stats_resume_only(self) -> None:
+        result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
+        next_state = result.choices[0].next_state
+        self.assertIsNotNone(next_state)
+
+        successor = next_state.choices_with_stats()
+
+        self.assertEqual(successor.stats.root_dfs_runs, 0)
+        self.assertGreater(successor.stats.resumed_snapshots, 0)
 
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")
@@ -304,6 +432,21 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             _choice_texts(residual.initial_state().choices()),
         )
 
+    def _assert_all_modes_walk_same_witnesses(self, facts) -> None:
+        modes = (
+            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+        for witness in tuple(sorted(set(_witnesses(facts))))[:3]:
+            frontiers = []
+            for mode in modes:
+                decoder = _decoder_for_mode(facts, mode, include_eos=True)
+                state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
+                frontiers.append(_choice_texts(state.choices()))
+            self.assertEqual(frontiers[0], frontiers[1])
+            self.assertEqual(frontiers[0], frontiers[2])
+
 
 def _replay_determinized_decoder(facts, *, include_eos: bool = False):
     return make_determinized_online_decoder(
@@ -351,6 +494,61 @@ def _residual_branch_decoder(facts):
         semantics=OrdinarySmilesSemantics(),
         execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
     )
+
+
+def _decoder_for_mode(facts, mode: OnlineDecoderExecutionMode, *, include_eos: bool = False):
+    return make_determinized_online_decoder(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        include_eos=include_eos,
+        execution_mode=mode,
+    )
+
+
+def _first_residual_continuation(facts):
+    choice = _residual_determinized_decoder(facts).initial_state().choices()[0]
+    if choice.next_state is None or choice.next_state.raw_state.frontier is None:
+        raise AssertionError("residual choice lacks continuation frontier")
+    return choice.next_state.raw_state.frontier.continuations[0]
+
+
+def _sink_with_providers(*, required_prefix: str) -> ResidualFrontierSink:
+    sink = ResidualFrontierSink(required_prefix=required_prefix)
+    sink.snapshot_provider = lambda: _snapshot("pending")
+    sink.decision_path_provider = lambda: _path("pending")
+    return sink
+
+
+def _continuation(
+    prefix: str,
+    token_text: str,
+    tag: str,
+    *,
+    completion_count: int = 1,
+) -> OnlineResidualContinuation:
+    return OnlineResidualContinuation(
+        prefix=prefix,
+        snapshot=_snapshot(tag),
+        frontier_path=_path(tag),
+        token_text=token_text,
+        completion_count=completion_count,
+    )
+
+
+def _snapshot(tag: str) -> OnlineSearchSnapshot:
+    return OnlineSearchSnapshot(
+        traversal_state=(tag, "traversal"),
+        residual_snapshot=(tag, "residual"),
+        ring_state=(tag, "ring"),
+        output_snapshot=(tag, "output"),
+        decision_snapshot=_path(tag),
+        frame_stack=(OnlineSearchFrame("render-resume", (tag,)),),
+    )
+
+
+def _path(tag: str) -> OnlineDecisionPath:
+    return OnlineDecisionPath((OnlineDecision("test", (tag,)),))
 
 
 def _state_for_prefix(decoder, prefix: str):

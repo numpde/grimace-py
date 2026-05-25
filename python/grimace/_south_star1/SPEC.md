@@ -315,6 +315,14 @@ witness extension. Later decoder calls resume those snapshots directly rather
 than restarting DFS from the molecule root or replaying cached completed token
 streams.
 
+Residual continuation snapshots are checkpointed execution states. The
+residual frontier sink checkpoints pending token-boundary snapshots together
+with emitted text, so nested backtracking cannot lose or falsely commit a
+pending continuation. Determinized residual choices merge continuations by
+explicit residual continuation identity; multiplicity counts residual states,
+while `completion_count` counts completing witnesses that prove those states
+viable.
+
 `online_search_vm.py` is the explicit-stack event-level runtime. It owns
 traversal progression, syntax-slot choices, residual stereo propagation,
 ring-label state, output buffering, and decision recording. It does not iterate

@@ -63,6 +63,16 @@ class OnlineResidualRawChoiceResult:
     stats: OnlineResidualDecoderStats
 
 
+@dataclass(frozen=True, slots=True)
+class ResidualFrontierSinkCheckpoint:
+    emitted: tuple[str, ...]
+    pending_token_text: str | None
+    pending_snapshot: OnlineSearchSnapshot | None
+    pending_frontier_path: OnlineDecisionPath | None
+    completed_by_token_lengths: tuple[tuple[str, int], ...]
+    eos_by_frontier_length: int
+
+
 @dataclass(slots=True)
 class ResidualFrontierSink:
     required_prefix: str
@@ -77,19 +87,28 @@ class ResidualFrontierSink:
     sink_rejections: int = 0
     completions_seen: int = 0
 
-    def checkpoint(self) -> tuple[tuple[str, ...]]:
-        return (tuple(self.emitted),)
+    def checkpoint(self) -> ResidualFrontierSinkCheckpoint:
+        return ResidualFrontierSinkCheckpoint(
+            emitted=tuple(self.emitted),
+            pending_token_text=self.pending_token_text,
+            pending_snapshot=self.pending_snapshot,
+            pending_frontier_path=self.pending_frontier_path,
+            completed_by_token_lengths=tuple(
+                sorted(
+                    (token, len(continuations))
+                    for token, continuations in self.completed_by_token.items()
+                )
+            ),
+            eos_by_frontier_length=len(self.eos_by_frontier),
+        )
 
     def rollback(self, checkpoint: object) -> None:
-        if not isinstance(checkpoint, tuple) or len(checkpoint) != 1:
+        if not isinstance(checkpoint, ResidualFrontierSinkCheckpoint):
             raise ValueError(f"invalid residual frontier checkpoint: {checkpoint!r}")
-        emitted = checkpoint[0]
-        if not isinstance(emitted, tuple) or not all(isinstance(item, str) for item in emitted):
-            raise ValueError(f"invalid residual frontier emitted checkpoint: {checkpoint!r}")
-        self.emitted = list(emitted)
-        self.pending_token_text = None
-        self.pending_snapshot = None
-        self.pending_frontier_path = None
+        self.emitted = list(checkpoint.emitted)
+        self.pending_token_text = checkpoint.pending_token_text
+        self.pending_snapshot = checkpoint.pending_snapshot
+        self.pending_frontier_path = checkpoint.pending_frontier_path
 
     def append(self, text: str, *, token_text: str | None = None) -> bool:
         if not text:
@@ -188,13 +207,17 @@ def online_determinized_residual_choice_result(
         semantics=semantics,
         state=state,
     )
-    grouped: dict[str, list[OnlineResidualContinuation]] = defaultdict(list)
-    completion_counts: dict[str, int] = defaultdict(int)
+    grouped: dict[str, dict[tuple[object, ...], OnlineResidualContinuation]] = defaultdict(dict)
     for choice in branch_result.choices:
         if choice.next_state.frontier is None:
             raise ValueError("residual branch choice lacks frontier")
-        grouped[choice.text].extend(choice.next_state.frontier.continuations)
-        completion_counts[choice.text] += choice.completion_count
+        for continuation in choice.next_state.frontier.continuations:
+            key = residual_continuation_key(continuation)
+            existing = grouped[choice.text].get(key)
+            if existing is None:
+                grouped[choice.text][key] = continuation
+                continue
+            grouped[choice.text][key] = _merge_continuation_counts(existing, continuation)
     return OnlineResidualRawChoiceResult(
         choices=tuple(
             OnlineResidualDecoderChoice(
@@ -203,11 +226,14 @@ def online_determinized_residual_choice_result(
                     prefix=state.prefix + text,
                     frontier=OnlineResidualContinuationFrontier(
                         prefix=state.prefix + text,
-                        continuations=tuple(continuations),
+                        continuations=tuple(continuations.values()),
                     ),
                 ),
                 multiplicity=len(continuations),
-                completion_count=completion_counts[text],
+                completion_count=sum(
+                    continuation.completion_count
+                    for continuation in continuations.values()
+                ),
             )
             for text, continuations in sorted(grouped.items())
         ),
@@ -290,6 +316,10 @@ def _result_from_sink(
     sink: ResidualFrontierSink,
     stats: OnlineResidualDecoderStats,
 ) -> OnlineResidualRawChoiceResult:
+    by_token = {
+        text: merge_residual_continuations_by_key(continuations)
+        for text, continuations in sink.completed_by_token.items()
+    }
     choices = [
         OnlineResidualDecoderChoice(
             text=text,
@@ -302,7 +332,7 @@ def _result_from_sink(
             ),
             completion_count=continuation.completion_count,
         )
-        for text, continuations in sink.completed_by_token.items()
+        for text, continuations in by_token.items()
         for continuation in continuations
     ]
     eos_frontier = OnlineDecisionFrontier(
@@ -310,7 +340,10 @@ def _result_from_sink(
     )
     return OnlineResidualRawChoiceResult(
         choices=tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.frontier)))),
-        eos_completion_count=len(sink.eos_by_frontier),
+        eos_completion_count=sum(
+            continuation.completion_count
+            for continuation in merge_residual_continuations_by_key(sink.eos_by_frontier)
+        ),
         eos_frontier=eos_frontier,
         stats=stats,
     )
@@ -322,6 +355,52 @@ def _merge_sink(target: ResidualFrontierSink, source: ResidualFrontierSink) -> N
     target.eos_by_frontier.extend(source.eos_by_frontier)
 
 
+def residual_continuation_key(
+    continuation: OnlineResidualContinuation,
+) -> tuple[object, ...]:
+    snapshot = continuation.snapshot
+    return (
+        continuation.prefix,
+        continuation.token_text,
+        continuation.frontier_path,
+        snapshot.traversal_state,
+        snapshot.residual_snapshot,
+        snapshot.ring_state,
+        snapshot.output_snapshot,
+        snapshot.decision_snapshot,
+        snapshot.frame_stack,
+    )
+
+
+def merge_residual_continuations_by_key(
+    continuations: list[OnlineResidualContinuation],
+) -> tuple[OnlineResidualContinuation, ...]:
+    by_key: dict[tuple[object, ...], OnlineResidualContinuation] = {}
+    for continuation in continuations:
+        key = residual_continuation_key(continuation)
+        existing = by_key.get(key)
+        if existing is None:
+            by_key[key] = continuation
+            continue
+        by_key[key] = _merge_continuation_counts(existing, continuation)
+    return tuple(by_key[key] for key in sorted(by_key, key=repr))
+
+
+def _merge_continuation_counts(
+    left: OnlineResidualContinuation,
+    right: OnlineResidualContinuation,
+) -> OnlineResidualContinuation:
+    if residual_continuation_key(left) != residual_continuation_key(right):
+        raise ValueError("cannot merge different residual continuations")
+    return OnlineResidualContinuation(
+        prefix=left.prefix,
+        snapshot=left.snapshot,
+        frontier_path=left.frontier_path,
+        token_text=left.token_text,
+        completion_count=left.completion_count + right.completion_count,
+    )
+
+
 __all__ = (
     "OnlineResidualContinuation",
     "OnlineResidualContinuationFrontier",
@@ -329,7 +408,10 @@ __all__ = (
     "OnlineResidualDecoderState",
     "OnlineResidualDecoderStats",
     "OnlineResidualRawChoiceResult",
+    "ResidualFrontierSinkCheckpoint",
     "ResidualFrontierSink",
     "online_branch_preserving_residual_choice_result",
     "online_determinized_residual_choice_result",
+    "merge_residual_continuations_by_key",
+    "residual_continuation_key",
 )

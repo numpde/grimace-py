@@ -71,8 +71,11 @@ class OnlineSearchSnapshot:
 class RenderContinuationPayloadShape:
     render_resume_continuation_count: int = 0
     max_render_piece_count: int = 0
+    total_render_piece_count: int = 0
     max_remaining_render_piece_count: int = 0
+    total_remaining_render_piece_count: int = 0
     max_render_payload_chars: int = 0
+    total_render_payload_chars: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,8 +497,11 @@ def render_continuation_payload_shape(
 ) -> RenderContinuationPayloadShape:
     count = 0
     max_piece_count = 0
+    total_piece_count = 0
     max_remaining_piece_count = 0
+    total_remaining_piece_count = 0
     max_payload_chars = 0
+    total_payload_chars = 0
     for frame in frame_stack:
         if frame.kind != "render-resume" or not frame.data:
             continue
@@ -507,13 +513,19 @@ def render_continuation_payload_shape(
         remaining_piece_count = max(0, piece_count - continuation.next_index)
         payload_chars = sum(len(piece.text) for piece in continuation.pieces)
         max_piece_count = max(max_piece_count, piece_count)
+        total_piece_count += piece_count
         max_remaining_piece_count = max(max_remaining_piece_count, remaining_piece_count)
+        total_remaining_piece_count += remaining_piece_count
         max_payload_chars = max(max_payload_chars, payload_chars)
+        total_payload_chars += payload_chars
     return RenderContinuationPayloadShape(
         render_resume_continuation_count=count,
         max_render_piece_count=max_piece_count,
+        total_render_piece_count=total_piece_count,
         max_remaining_render_piece_count=max_remaining_piece_count,
+        total_remaining_render_piece_count=total_remaining_piece_count,
         max_render_payload_chars=max_payload_chars,
+        total_render_payload_chars=total_payload_chars,
     )
 
 

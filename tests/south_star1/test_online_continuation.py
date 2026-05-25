@@ -16,6 +16,7 @@ from grimace._south_star1.online_residual_continuation import OnlineResidualCont
 from grimace._south_star1.online_residual_continuation import OnlineResidualContinuationFrontier
 from grimace._south_star1.online_residual_continuation import OnlineResidualDecoderState
 from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
+from grimace._south_star1.online_residual_continuation import ResidualFrontierSinkCheckpoint
 from grimace._south_star1.online_residual_continuation import merge_residual_continuations_by_key
 from grimace._south_star1.online_residual_continuation import online_search_snapshot_shape
 from grimace._south_star1.online_residual_continuation import residual_frontier_shape
@@ -383,17 +384,19 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
     def test_residual_state_size_reports_render_payload_for_tetra(self) -> None:
         result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
 
-        self.assertGreater(result.stats.state_size.render_resume_continuation_count, 0)
-        self.assertGreater(result.stats.state_size.max_render_piece_count, 0)
-        self.assertGreater(result.stats.state_size.max_render_payload_chars, 0)
+        self.assertGreater(result.stats.retained_state_size.render_resume_continuation_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_render_piece_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_render_payload_chars, 0)
+        self.assertGreater(result.stats.retained_state_size.total_render_payload_chars, 0)
 
     def test_residual_state_size_reports_render_payload_for_ring_tetra(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
         result = _residual_determinized_decoder(facts).initial_state().choices_with_stats()
 
-        self.assertGreater(result.stats.state_size.render_resume_continuation_count, 0)
-        self.assertGreater(result.stats.state_size.max_render_piece_count, 0)
-        self.assertGreater(result.stats.state_size.max_remaining_render_piece_count, 0)
+        self.assertGreater(result.stats.retained_state_size.render_resume_continuation_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_render_piece_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_remaining_render_piece_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_remaining_render_piece_count, 0)
 
     def test_residual_frontier_shape_counts_unique_continuations(self) -> None:
         result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
@@ -445,7 +448,8 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         )
         self.assertEqual(forward_result.stats.eos_completions_seen, backward_result.stats.eos_completions_seen)
         self.assertEqual(forward_result.stats.eos_frontier_paths, backward_result.stats.eos_frontier_paths)
-        self.assertEqual(forward_result.stats.state_size, backward_result.stats.state_size)
+        self.assertEqual(forward_result.stats.candidate_state_size, backward_result.stats.candidate_state_size)
+        self.assertEqual(forward_result.stats.retained_state_size, backward_result.stats.retained_state_size)
 
     def test_execution_modes_report_distinct_storage_behavior(self) -> None:
         facts = tetrahedral_facts()
@@ -465,9 +469,65 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertEqual(prefix_replay.stats.dfs_runs, 1)
         self.assertEqual(cached.stats.root_dfs_runs, 1)
         self.assertEqual(residual.stats.root_dfs_runs, 1)
-        self.assertFalse(hasattr(prefix_replay.stats, "state_size"))
-        self.assertFalse(hasattr(cached.stats, "state_size"))
-        self.assertGreater(residual.stats.state_size.render_resume_continuation_count, 0)
+        self.assertFalse(hasattr(prefix_replay.stats, "candidate_state_size"))
+        self.assertFalse(hasattr(cached.stats, "candidate_state_size"))
+        self.assertGreater(residual.stats.retained_state_size.render_resume_continuation_count, 0)
+
+    def test_candidate_state_size_counts_eos_snapshots_but_retained_state_size_does_not(self) -> None:
+        facts = tetrahedral_facts()
+        decoder = _residual_determinized_decoder(facts, include_eos=True)
+        witness = _witnesses(facts)[0]
+        state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
+
+        result = state.choices_with_stats()
+
+        self.assertTrue(any(choice.is_eos for choice in result.choices))
+        self.assertGreater(result.stats.candidate_state_size.continuation_count, 0)
+        self.assertEqual(result.stats.retained_state_size.continuation_count, 0)
+        self.assertGreater(result.stats.eos_completions_seen, 0)
+
+    def test_retained_state_size_equals_sum_of_successor_frontiers(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+        retained = tuple(
+            continuation
+            for choice in result.choices
+            if choice.next_state is not None
+            and choice.next_state.raw_state.frontier is not None
+            for continuation in choice.next_state.raw_state.frontier.continuations
+        )
+
+        self.assertEqual(
+            result.stats.retained_state_size,
+            residual_frontier_shape(
+                OnlineResidualContinuationFrontier(prefix="", continuations=retained)
+            ),
+        )
+
+    def test_duplicate_merge_stats_are_reported_per_token(self) -> None:
+        duplicate = _continuation("C", "C", "same", completion_count=1)
+        same = _continuation("C", "C", "same", completion_count=3)
+        other = _continuation("C", "C", "other", completion_count=1)
+        frontier = OnlineResidualContinuationFrontier(
+            prefix="C",
+            continuations=(duplicate, same, other),
+        )
+
+        shape = residual_frontier_shape(frontier)
+
+        self.assertEqual(shape.continuation_count, 3)
+        self.assertEqual(shape.unique_continuation_count, 2)
+        self.assertEqual(shape.max_merge_count_per_key, 2)
+        self.assertEqual(shape.max_merge_count_per_token, 3)
+
+    def test_retained_snapshot_output_checkpoint_has_no_nested_pending_snapshot(self) -> None:
+        result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
+        for choice in result.choices:
+            if choice.next_state is None or choice.next_state.raw_state.frontier is None:
+                continue
+            for continuation in choice.next_state.raw_state.frontier.continuations:
+                output_snapshot = continuation.snapshot.output_snapshot
+                if isinstance(output_snapshot, ResidualFrontierSinkCheckpoint):
+                    self.assertIsNone(output_snapshot.pending_snapshot)
 
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")

@@ -56,7 +56,10 @@ class OnlineResidualDecoderStats:
     completions_seen: int = 0
     eos_completions_seen: int = 0
     eos_frontier_paths: int = 0
-    state_size: "OnlineResidualStateSizeStats" = field(
+    candidate_state_size: "OnlineResidualStateSizeStats" = field(
+        default_factory=lambda: OnlineResidualStateSizeStats()
+    )
+    retained_state_size: "OnlineResidualStateSizeStats" = field(
         default_factory=lambda: OnlineResidualStateSizeStats()
     )
 
@@ -88,19 +91,31 @@ class OnlineResidualStateSizeStats:
     continuation_count: int = 0
     unique_continuation_count: int = 0
     merged_continuation_count: int = 0
+    max_merge_count_per_key: int = 0
+    max_merge_count_per_token: int = 0
     max_frame_stack_depth: int = 0
     total_frame_stack_depth: int = 0
     max_residual_var_count: int = 0
+    total_residual_var_count: int = 0
     max_residual_assignment_count: int = 0
+    total_residual_assignment_count: int = 0
     max_residual_factor_count: int = 0
+    total_residual_factor_count: int = 0
     max_decision_path_length: int = 0
+    total_decision_path_length: int = 0
     max_output_snapshot_length: int = 0
+    total_output_snapshot_length: int = 0
     max_ring_endpoint_count: int = 0
+    total_ring_endpoint_count: int = 0
     max_ring_open_interval_count: int = 0
+    total_ring_open_interval_count: int = 0
     render_resume_continuation_count: int = 0
     max_render_piece_count: int = 0
+    total_render_piece_count: int = 0
     max_remaining_render_piece_count: int = 0
+    total_remaining_render_piece_count: int = 0
     max_render_payload_chars: int = 0
+    total_render_payload_chars: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +272,12 @@ def online_determinized_residual_choice_result(
                 grouped[choice.text][key] = continuation
                 continue
             grouped[choice.text][key] = _merge_continuation_counts(existing, continuation)
+    retained = tuple(
+        continuation
+        for continuations in grouped.values()
+        for continuation in continuations.values()
+    )
+    branch_result.stats.retained_state_size = _state_size_from_continuations(retained)
     return OnlineResidualRawChoiceResult(
         choices=tuple(
             OnlineResidualDecoderChoice(
@@ -377,7 +398,13 @@ def _result_from_sink(
     eos_frontier = OnlineDecisionFrontier(
         frozenset(item.frontier_path for item in sink.eos_by_frontier)
     )
-    stats.state_size = _state_size_from_continuations(_sink_continuations(sink))
+    retained = tuple(
+        continuation
+        for continuations in by_token.values()
+        for continuation in continuations
+    )
+    stats.candidate_state_size = _state_size_from_continuations(_sink_continuations(sink))
+    stats.retained_state_size = _state_size_from_continuations(retained)
     return OnlineResidualRawChoiceResult(
         choices=tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.frontier)))),
         eos_completion_count=sum(
@@ -488,19 +515,33 @@ def _state_size_from_continuations(
         return OnlineResidualStateSizeStats()
     unique = merge_residual_continuations_by_key(list(continuations))
     shapes = tuple(online_search_snapshot_shape(continuation.snapshot) for continuation in continuations)
+    key_counts: dict[tuple[object, ...], int] = defaultdict(int)
+    token_counts: dict[str, int] = defaultdict(int)
+    for continuation in continuations:
+        key_counts[residual_continuation_key(continuation)] += 1
+        token_counts[continuation.token_text] += 1
     return OnlineResidualStateSizeStats(
         continuation_count=len(continuations),
         unique_continuation_count=len(unique),
         merged_continuation_count=len(continuations) - len(unique),
+        max_merge_count_per_key=max(key_counts.values()),
+        max_merge_count_per_token=max(token_counts.values()),
         max_frame_stack_depth=max(shape.frame_stack_depth for shape in shapes),
         total_frame_stack_depth=sum(shape.frame_stack_depth for shape in shapes),
         max_residual_var_count=max(shape.residual_var_count for shape in shapes),
+        total_residual_var_count=sum(shape.residual_var_count for shape in shapes),
         max_residual_assignment_count=max(shape.residual_assignment_count for shape in shapes),
+        total_residual_assignment_count=sum(shape.residual_assignment_count for shape in shapes),
         max_residual_factor_count=max(shape.residual_factor_count for shape in shapes),
+        total_residual_factor_count=sum(shape.residual_factor_count for shape in shapes),
         max_decision_path_length=max(shape.decision_path_length for shape in shapes),
+        total_decision_path_length=sum(shape.decision_path_length for shape in shapes),
         max_output_snapshot_length=max(shape.output_snapshot_length for shape in shapes),
+        total_output_snapshot_length=sum(shape.output_snapshot_length for shape in shapes),
         max_ring_endpoint_count=max(shape.ring_endpoint_count for shape in shapes),
+        total_ring_endpoint_count=sum(shape.ring_endpoint_count for shape in shapes),
         max_ring_open_interval_count=max(shape.ring_open_interval_count for shape in shapes),
+        total_ring_open_interval_count=sum(shape.ring_open_interval_count for shape in shapes),
         render_resume_continuation_count=sum(
             shape.render_payload.render_resume_continuation_count
             for shape in shapes
@@ -509,12 +550,24 @@ def _state_size_from_continuations(
             shape.render_payload.max_render_piece_count
             for shape in shapes
         ),
+        total_render_piece_count=sum(
+            shape.render_payload.total_render_piece_count
+            for shape in shapes
+        ),
         max_remaining_render_piece_count=max(
             shape.render_payload.max_remaining_render_piece_count
             for shape in shapes
         ),
+        total_remaining_render_piece_count=sum(
+            shape.render_payload.total_remaining_render_piece_count
+            for shape in shapes
+        ),
         max_render_payload_chars=max(
             shape.render_payload.max_render_payload_chars
+            for shape in shapes
+        ),
+        total_render_payload_chars=sum(
+            shape.render_payload.total_render_payload_chars
             for shape in shapes
         ),
     )
@@ -530,6 +583,10 @@ def _decision_snapshot_length(snapshot: object) -> int:
 
 def _output_snapshot_length(snapshot: object) -> int:
     if isinstance(snapshot, ResidualFrontierSinkCheckpoint):
+        if snapshot.pending_snapshot is not None:
+            raise ValueError(
+                "residual state-size audit does not recursively count nested pending snapshots"
+            )
         return sum(len(item) for item in snapshot.emitted)
     if isinstance(snapshot, tuple):
         return sum(len(item) for item in snapshot if isinstance(item, str))

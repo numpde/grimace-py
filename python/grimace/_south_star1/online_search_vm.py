@@ -85,6 +85,12 @@ class OnlineResidualContinuation:
     snapshot: OnlineSearchSnapshot
 
 
+@dataclass(frozen=True, slots=True)
+class _ResidualStoreSnapshot:
+    store: ResidualStore
+    checkpoint: int
+
+
 @dataclass(slots=True)
 class MutableTraversalState:
     component_index: int = 0
@@ -192,7 +198,10 @@ class OnlineSearchState:
     def checkpoint(self) -> OnlineSearchSnapshot:
         return OnlineSearchSnapshot(
             traversal_state=self.traversal.checkpoint(),
-            residual_snapshot=self.residual.checkpoint(),
+            residual_snapshot=_ResidualStoreSnapshot(
+                store=self.residual,
+                checkpoint=self.residual.checkpoint(),
+            ),
             ring_state=self.ring.checkpoint(),
             output_snapshot=self.output.checkpoint(),
             decision_snapshot=self.decisions.path(),
@@ -201,7 +210,11 @@ class OnlineSearchState:
 
     def rollback(self, snapshot: OnlineSearchSnapshot) -> None:
         self.traversal.rollback(snapshot.traversal_state)
-        self.residual.rollback(snapshot.residual_snapshot)  # type: ignore[arg-type]
+        if isinstance(snapshot.residual_snapshot, _ResidualStoreSnapshot):
+            self.residual = snapshot.residual_snapshot.store
+            self.residual.rollback(snapshot.residual_snapshot.checkpoint)
+        else:
+            self.residual.rollback(snapshot.residual_snapshot)  # type: ignore[arg-type]
         self.ring.rollback(snapshot.ring_state)
         self.output.rollback(snapshot.output_snapshot)
         if isinstance(snapshot.decision_snapshot, OnlineDecisionPath):
@@ -902,14 +915,7 @@ def _restore_resume_snapshot(
     state: OnlineSearchState,
     snapshot: OnlineSearchSnapshot,
 ) -> None:
-    state.traversal.rollback(snapshot.traversal_state)
-    state.ring.rollback(snapshot.ring_state)
-    state.output.rollback(snapshot.output_snapshot)
-    if isinstance(snapshot.decision_snapshot, OnlineDecisionPath):
-        state.decisions.restore_path(snapshot.decision_snapshot)
-    else:
-        state.decisions.rollback(snapshot.decision_snapshot)  # type: ignore[arg-type]
-    state.frames[:] = list(snapshot.frame_stack)
+    state.rollback(snapshot)
 
 
 def _resume_render_from_state(state: OnlineSearchState) -> Iterator[OnlineWitness]:

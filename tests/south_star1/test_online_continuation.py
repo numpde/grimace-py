@@ -315,6 +315,15 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
 
         self.assertIn("C", sink.completed_by_token)
 
+    def test_residual_frontier_sink_rollback_preserves_committed_eos_frontier(self) -> None:
+        sink = _sink_with_providers(required_prefix="")
+        checkpoint = sink.checkpoint()
+
+        self.assertTrue(sink.complete())
+        sink.rollback(checkpoint)
+
+        self.assertTrue(sink.eos_by_frontier)
+
     def test_residual_determinized_multiplicity_counts_unique_snapshots(self) -> None:
         duplicate = _continuation("C", "C", "same", completion_count=1)
         other = _continuation("C", "C", "other", completion_count=1)

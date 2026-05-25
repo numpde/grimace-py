@@ -318,10 +318,17 @@ streams.
 Residual continuation snapshots are checkpointed execution states. The
 residual frontier sink checkpoints pending token-boundary snapshots together
 with emitted text, so nested backtracking cannot lose or falsely commit a
-pending continuation. Determinized residual choices merge continuations by
-explicit residual continuation identity; multiplicity counts residual states,
-while `completion_count` counts completing witnesses that prove those states
-viable.
+pending continuation. Token and EOS frontier entries committed after a complete
+valid witness are query-global evidence for the current frontier query and are
+intentionally not rolled back during later DFS backtracking. Determinized
+residual choices merge continuations by explicit residual continuation identity;
+multiplicity counts residual states, while `completion_count` counts completing
+witnesses that prove those states viable.
+
+The current residual snapshot resumes an event-level render continuation. The
+snapshot may contain a render-continuation payload for the already selected
+trace/prefix/mark context; it is not yet a minimal general scheduler frame for
+all future DFS alternatives.
 
 `online_search_vm.py` is the explicit-stack event-level runtime. It owns
 traversal progression, syntax-slot choices, residual stereo propagation,

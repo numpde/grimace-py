@@ -160,6 +160,32 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         self.assertIsNone(state.residual.assignment(var))
 
+    def test_from_snapshot_restores_residual_snapshot(self) -> None:
+        facts = directional_facts()
+        policy = ordinary_policy_for_facts(facts)
+        semantics = OrdinarySmilesSemantics()
+        state = make_online_search_state(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            sink=OnlineStringBuffer(),
+        )
+        var = direction_var(0)
+        state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
+        self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
+        snapshot = state.checkpoint()
+
+        vm = OnlineSearchVM.from_snapshot(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            snapshot=snapshot,
+            sink=OnlineStringBuffer(),
+        )
+
+        self.assertIs(vm.state.residual, state.residual)
+        self.assertIs(vm.state.residual.assignment(var), DirectionMark.FWD)
+
     def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:
         vm = OnlineSearchVM(
             facts=disconnected_facts(),

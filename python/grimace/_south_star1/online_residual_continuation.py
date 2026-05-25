@@ -69,8 +69,6 @@ class ResidualFrontierSinkCheckpoint:
     pending_token_text: str | None
     pending_snapshot: OnlineSearchSnapshot | None
     pending_frontier_path: OnlineDecisionPath | None
-    completed_by_token_lengths: tuple[tuple[str, int], ...]
-    eos_by_frontier_length: int
 
 
 @dataclass(slots=True)
@@ -93,13 +91,6 @@ class ResidualFrontierSink:
             pending_token_text=self.pending_token_text,
             pending_snapshot=self.pending_snapshot,
             pending_frontier_path=self.pending_frontier_path,
-            completed_by_token_lengths=tuple(
-                sorted(
-                    (token, len(continuations))
-                    for token, continuations in self.completed_by_token.items()
-                )
-            ),
-            eos_by_frontier_length=len(self.eos_by_frontier),
         )
 
     def rollback(self, checkpoint: object) -> None:

@@ -328,7 +328,9 @@ witnesses that prove those states viable.
 The current residual snapshot resumes an event-level render continuation. The
 snapshot may contain a render-continuation payload for the already selected
 trace/prefix/mark context; it is not yet a minimal general scheduler frame for
-all future DFS alternatives.
+all future DFS alternatives. The snapshot owns the residual constraint state
+needed for resumption; restoring one snapshot must not mutate or depend on a
+residual store object owned by the producer VM or by sibling snapshots.
 
 `online_search_vm.py` is the explicit-stack event-level runtime. It owns
 traversal progression, syntax-slot choices, residual stereo propagation,

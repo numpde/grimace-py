@@ -13,6 +13,8 @@ from grimace._south_star1.online_decoder_api import make_determinized_online_dec
 from grimace._south_star1.online_decisions import OnlineDecision
 from grimace._south_star1.online_decisions import OnlineDecisionPath
 from grimace._south_star1.online_residual_continuation import OnlineResidualContinuation
+from grimace._south_star1.online_residual_continuation import OnlineResidualContinuationFrontier
+from grimace._south_star1.online_residual_continuation import OnlineResidualDecoderState
 from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
 from grimace._south_star1.online_residual_continuation import merge_residual_continuations_by_key
 from grimace._south_star1.online_residual_continuation import residual_continuation_key
@@ -376,6 +378,29 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertEqual(successor.stats.root_dfs_runs, 0)
         self.assertGreater(successor.stats.resumed_snapshots, 0)
 
+    def test_resuming_two_residual_continuations_is_order_independent(self) -> None:
+        facts = tetrahedral_facts()
+        decoder = _residual_determinized_decoder(facts)
+        choice = next(
+            choice
+            for choice in decoder.initial_state().choices()
+            if choice.next_state is not None
+            and choice.next_state.raw_state.frontier is not None
+            and len(choice.next_state.raw_state.frontier.continuations) >= 2
+        )
+        assert choice.next_state is not None
+        frontier = choice.next_state.raw_state.frontier
+        assert frontier is not None
+        left, right = frontier.continuations[:2]
+
+        forward = _residual_state_for_continuations(decoder, choice.text, (left, right))
+        backward = _residual_state_for_continuations(decoder, choice.text, (right, left))
+
+        self.assertEqual(
+            _choice_texts(forward.choices()),
+            _choice_texts(backward.choices()),
+        )
+
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")
 
@@ -520,6 +545,18 @@ def _first_residual_continuation(facts):
     if choice.next_state is None or choice.next_state.raw_state.frontier is None:
         raise AssertionError("residual choice lacks continuation frontier")
     return choice.next_state.raw_state.frontier.continuations[0]
+
+
+def _residual_state_for_continuations(decoder, prefix: str, continuations):
+    raw = OnlineResidualDecoderState(
+        prefix=prefix,
+        frontier=OnlineResidualContinuationFrontier(
+            prefix=prefix,
+            continuations=tuple(continuations),
+        ),
+    )
+    state_type = type(decoder.initial_state())
+    return state_type(prefix=prefix, raw_state=raw, decoder=decoder)
 
 
 def _sink_with_providers(*, required_prefix: str) -> ResidualFrontierSink:

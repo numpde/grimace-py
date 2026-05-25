@@ -183,7 +183,7 @@ class OnlineSearchVmTest(unittest.TestCase):
             sink=OnlineStringBuffer(),
         )
 
-        self.assertIs(vm.state.residual, state.residual)
+        self.assertIsNot(vm.state.residual, state.residual)
         self.assertIs(vm.state.residual.assignment(var), DirectionMark.FWD)
 
     def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:

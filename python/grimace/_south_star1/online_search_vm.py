@@ -40,6 +40,7 @@ from .policy import TetraToken
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import ResidualStore
+from .residual_constraints import ResidualStoreValueSnapshot
 from .residual_constraints import direction_var
 from .semantics import ParserSemantics
 from .skeleton import ChildRole
@@ -83,12 +84,6 @@ class OnlineWitness:
 class OnlineResidualContinuation:
     prefix: str
     snapshot: OnlineSearchSnapshot
-
-
-@dataclass(frozen=True, slots=True)
-class _ResidualStoreSnapshot:
-    store: ResidualStore
-    checkpoint: int
 
 
 @dataclass(slots=True)
@@ -198,10 +193,7 @@ class OnlineSearchState:
     def checkpoint(self) -> OnlineSearchSnapshot:
         return OnlineSearchSnapshot(
             traversal_state=self.traversal.checkpoint(),
-            residual_snapshot=_ResidualStoreSnapshot(
-                store=self.residual,
-                checkpoint=self.residual.checkpoint(),
-            ),
+            residual_snapshot=self.residual.value_snapshot(),
             ring_state=self.ring.checkpoint(),
             output_snapshot=self.output.checkpoint(),
             decision_snapshot=self.decisions.path(),
@@ -210,9 +202,8 @@ class OnlineSearchState:
 
     def rollback(self, snapshot: OnlineSearchSnapshot) -> None:
         self.traversal.rollback(snapshot.traversal_state)
-        if isinstance(snapshot.residual_snapshot, _ResidualStoreSnapshot):
-            self.residual = snapshot.residual_snapshot.store
-            self.residual.rollback(snapshot.residual_snapshot.checkpoint)
+        if isinstance(snapshot.residual_snapshot, ResidualStoreValueSnapshot):
+            self.residual = ResidualStore.from_value_snapshot(snapshot.residual_snapshot)
         else:
             self.residual.rollback(snapshot.residual_snapshot)  # type: ignore[arg-type]
         self.ring.rollback(snapshot.ring_state)
@@ -326,6 +317,7 @@ class _RenderContinuation:
     trace_key: tuple[object, ...]
     pieces: tuple[_RenderPiece, ...]
     next_index: int
+    annotation_count: int
 
 
 def make_online_search_state(
@@ -796,6 +788,9 @@ def _directional_solution_rendered(
             trace_key=_trace_key(trace),
             pieces=pieces,
             start_index=0,
+            annotation_count=sum(
+                1 for mark in marks.values() if mark is not DirectionMark.ABSENT
+            ),
         ):
             state.output.rollback(checkpoint)
             return None
@@ -885,6 +880,7 @@ def _render_pieces_to_sink(
     trace_key: tuple[object, ...],
     pieces: tuple[_RenderPiece, ...],
     start_index: int,
+    annotation_count: int,
 ) -> bool:
     for index in range(start_index, len(pieces)):
         piece = pieces[index]
@@ -900,6 +896,7 @@ def _render_pieces_to_sink(
             trace_key=trace_key,
             pieces=pieces,
             next_index=index + 1,
+            annotation_count=annotation_count,
         )
         state.frames.append(OnlineSearchFrame("render-resume", (continuation,), index))
         try:
@@ -928,6 +925,7 @@ def _resume_render_from_state(state: OnlineSearchState) -> Iterator[OnlineWitnes
         trace_key=continuation.trace_key,
         pieces=continuation.pieces,
         start_index=continuation.next_index,
+        annotation_count=continuation.annotation_count,
     ):
         state.output.rollback(checkpoint)
         return
@@ -938,7 +936,7 @@ def _resume_render_from_state(state: OnlineSearchState) -> Iterator[OnlineWitnes
     yield OnlineWitness(
         rendered=rendered,
         traversal_key=continuation.trace_key,
-        annotation_count=0,
+        annotation_count=continuation.annotation_count,
     )
 
 

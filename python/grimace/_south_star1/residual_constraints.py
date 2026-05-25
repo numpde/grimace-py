@@ -39,6 +39,33 @@ class ResidualFactor(Protocol):
     def close(self) -> bool: ...
     def checkpoint(self) -> object: ...
     def rollback(self, token: object) -> None: ...
+    def value_snapshot(self) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class TetraResidualFactorValueSnapshot:
+    scope: tuple[VarId, ...]
+    status: SiteStatus
+    target: TetraValue
+    reference_order: tuple[OccurrenceId, ...]
+    local_order: tuple[OccurrenceId, ...]
+    assigned: object
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionalResidualFactorValueSnapshot:
+    scope: tuple[VarId, ...]
+    status: SiteStatus
+    target: DirectionalValue
+    carrier_models: tuple[tuple[VarId, DirectionalCarrierResidual], ...]
+    marks: tuple[tuple[VarId, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualStoreValueSnapshot:
+    domains: tuple[tuple[VarId, tuple[object, ...]], ...]
+    assignments: tuple[tuple[VarId, object], ...]
+    factors: tuple[object, ...]
 
 
 class ResidualStore:
@@ -119,6 +146,38 @@ class ResidualStore:
     def assignment(self, var: VarId) -> object | None:
         return self._assignments.get(var)
 
+    def value_snapshot(self) -> ResidualStoreValueSnapshot:
+        return ResidualStoreValueSnapshot(
+            domains=tuple(self._domains.items()),
+            assignments=tuple(self._assignments.items()),
+            factors=tuple(factor.value_snapshot() for factor in self._factors),
+        )
+
+    @classmethod
+    def from_value_snapshot(
+        cls,
+        snapshot: ResidualStoreValueSnapshot,
+    ) -> "ResidualStore":
+        store = cls()
+        store._domains = dict(snapshot.domains)
+        store._assignments = dict(snapshot.assignments)
+        store._factors = [
+            _factor_from_value_snapshot(factor_snapshot)
+            for factor_snapshot in snapshot.factors
+        ]
+        store._factor_by_id = {
+            factor_id: factor
+            for factor_id, factor in enumerate(store._factors)
+        }
+        store._factors_by_var = {}
+        for factor in store._factors:
+            for var in factor.scope:
+                if var not in store._domains:
+                    raise ValueError(f"factor snapshot references unknown variable: {var!r}")
+                store._factors_by_var.setdefault(var, []).append(factor)
+        store._trail = []
+        return store
+
 
 @dataclass(frozen=True, slots=True)
 class TetraResidualFactor:
@@ -159,6 +218,16 @@ class TetraResidualFactor:
 
     def rollback(self, token: object) -> None:
         object.__setattr__(self, "_assigned", token)
+
+    def value_snapshot(self) -> TetraResidualFactorValueSnapshot:
+        return TetraResidualFactorValueSnapshot(
+            scope=self.scope,
+            status=self.status,
+            target=self.target,
+            reference_order=self.reference_order,
+            local_order=self.local_order,
+            assigned=self._assigned,
+        )
 
     def allowed_tokens(self) -> frozenset[TetraToken]:
         if self.status is SiteStatus.UNSPECIFIED:
@@ -239,6 +308,17 @@ class DirectionalResidualFactor:
     def value(self) -> DirectionalValue | object:
         return _directional_value(self._marks, self.carrier_models)
 
+    def value_snapshot(self) -> DirectionalResidualFactorValueSnapshot:
+        return DirectionalResidualFactorValueSnapshot(
+            scope=self.scope,
+            status=self.status,
+            target=self.target,
+            carrier_models=tuple(
+                sorted(self.carrier_models.items(), key=lambda item: repr(item[0]))
+            ),
+            marks=tuple(sorted(self._marks.items(), key=lambda item: repr(item[0]))),
+        )
+
 
 def tetra_var(center: object) -> VarId:
     return VarId("tetra", (center,))
@@ -290,6 +370,29 @@ def _is_even_permutation(indices: tuple[int, ...]) -> bool:
     return inversions % 2 == 0
 
 
+def _factor_from_value_snapshot(snapshot: object) -> ResidualFactor:
+    if isinstance(snapshot, TetraResidualFactorValueSnapshot):
+        factor = TetraResidualFactor(
+            scope=snapshot.scope,
+            status=snapshot.status,
+            target=snapshot.target,
+            reference_order=snapshot.reference_order,
+            local_order=snapshot.local_order,
+        )
+        factor.rollback(snapshot.assigned)
+        return factor
+    if isinstance(snapshot, DirectionalResidualFactorValueSnapshot):
+        factor = DirectionalResidualFactor(
+            scope=snapshot.scope,
+            status=snapshot.status,
+            target=snapshot.target,
+            carrier_models=dict(snapshot.carrier_models),
+        )
+        factor.rollback(dict(snapshot.marks))
+        return factor
+    raise ValueError(f"unknown residual factor snapshot: {snapshot!r}")
+
+
 _TETRA_TOKENS = frozenset((TetraToken.NONE, TetraToken.AT, TetraToken.ATAT))
 _DIRECTION_MARKS = frozenset((DirectionMark.ABSENT, DirectionMark.FWD, DirectionMark.REV))
 
@@ -297,10 +400,13 @@ _DIRECTION_MARKS = frozenset((DirectionMark.ABSENT, DirectionMark.FWD, Direction
 __all__ = (
     "DirectionalCarrierResidual",
     "DirectionalResidualFactor",
+    "DirectionalResidualFactorValueSnapshot",
     "ResidualFactor",
     "ResidualStore",
+    "ResidualStoreValueSnapshot",
     "ResidualVariable",
     "TetraResidualFactor",
+    "TetraResidualFactorValueSnapshot",
     "VarId",
     "direction_var",
     "tetra_var",

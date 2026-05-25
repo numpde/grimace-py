@@ -19,6 +19,8 @@ from .graph_index import build_graph_index
 from .ids import AtomId
 from .ids import ComponentId
 from .online_decoder import online_decode_tokens
+from .online_traversal_graph import OnlineTraversalGraph
+from .online_traversal_graph import build_online_traversal_graph_from_index
 from .ordinary_policy import ordinary_policy_for_facts
 from .ordinary_semantics import OrdinarySmilesSemantics
 from .policy import SmilesPolicy
@@ -63,6 +65,7 @@ class SouthStarPreparedMol:
     component_atom_ids: tuple[tuple[AtomId, ...], ...]
     atom_component: tuple[tuple[AtomId, ComponentId], ...]
     graph_index: GraphIndex
+    online_traversal_graph: OnlineTraversalGraph
     all_root_domains: tuple[tuple[ComponentId, tuple[AtomId, ...]], ...]
     atom_component_map: Mapping[AtomId, ComponentId]
     component_root_domains_by_explicit_root: Mapping[
@@ -91,6 +94,10 @@ def prepare_south_star_mol_from_facts(
     resolved_semantics = semantics if semantics is not None else OrdinarySmilesSemantics()
     templates = build_stereo_templates(facts)
     graph_index = build_graph_index(facts)
+    online_traversal_graph = build_online_traversal_graph_from_index(
+        facts,
+        graph_index,
+    )
     atom_component = tuple(
         (atom, component.id)
         for component in facts.components
@@ -123,6 +130,7 @@ def prepare_south_star_mol_from_facts(
         component_atom_ids=tuple(component.atoms for component in facts.components),
         atom_component=atom_component,
         graph_index=graph_index,
+        online_traversal_graph=online_traversal_graph,
         all_root_domains=all_root_domains,
         atom_component_map=atom_component_map,
         component_root_domains_by_explicit_root=explicit_root_domains,
@@ -291,6 +299,7 @@ __all__ = (
     "SouthStarPreparedMol",
     "SouthStarRuntimeOptions",
     "SouthStarWriterSurface",
+    "OnlineTraversalGraph",
     "component_root_domains_for_facts",
     "component_root_domains_for_prepared",
     "enumerate_prepared_stereo_support",

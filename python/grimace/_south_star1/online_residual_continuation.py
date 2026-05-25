@@ -363,6 +363,9 @@ def _root_residual_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        online_traversal_graph=(
+            None if prepared is None else prepared.online_traversal_graph
+        ),
         assume_prepared=prepared is not None,
         sink_factory=lambda: sink,
     )
@@ -412,6 +415,9 @@ def _resume_residual_choice_result(
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
+            online_traversal_graph=(
+                None if prepared is None else prepared.online_traversal_graph
+            ),
             snapshot=continuation.snapshot,
             sink=sink,
             assume_prepared=prepared is not None,

@@ -25,6 +25,9 @@ from .online_decisions import OnlineDecisionPath
 from .online_decisions import OnlineDecisionRecorder
 from .online_render_sink import OnlineRenderSink
 from .online_render_sink import OnlineStringBuffer
+from .online_traversal_graph import OnlineTraversalGraph
+from .online_traversal_graph import build_online_traversal_graph_from_facts
+from .online_traversal_graph import build_online_traversal_graph_from_index
 from .online_traversal import OnlineAtomEvent
 from .online_traversal import OnlineBranchClose
 from .online_traversal import OnlineBranchOpen
@@ -285,6 +288,7 @@ class OnlineSearchState:
     policy: SmilesPolicy
     semantics: ParserSemantics
     templates: StereoTemplateBundle
+    online_traversal_graph: OnlineTraversalGraph | None
     rooted_at_atom: AtomId | None
     graph_index: GraphIndex | None
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None
@@ -319,14 +323,6 @@ class OnlineSearchState:
         else:
             self.decisions.rollback(snapshot.decision_snapshot)  # type: ignore[arg-type]
         self.frames[:] = list(snapshot.frame_stack)
-
-
-@dataclass(frozen=True, slots=True)
-class _Graph:
-    atoms: tuple[AtomId, ...]
-    bonds: dict[BondId, tuple[AtomId, AtomId]]
-    components: tuple[tuple[tuple[AtomId, ...], tuple[BondId, ...]], ...]
-    incident_bonds: dict[AtomId, tuple[BondId, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -451,6 +447,7 @@ def make_online_search_state(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
+    online_traversal_graph: OnlineTraversalGraph | None = None,
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
@@ -463,6 +460,8 @@ def make_online_search_state(
     if assume_prepared:
         if templates is None:
             raise ValueError("prepared online search requires prepared stereo templates")
+        if online_traversal_graph is None:
+            raise ValueError("prepared online search requires prepared traversal graph")
         if graph_index is None:
             raise ValueError("prepared online search requires prepared graph index")
         if component_root_domains is None:
@@ -472,6 +471,7 @@ def make_online_search_state(
         policy=policy,
         semantics=semantics,
         templates=templates if templates is not None else build_stereo_templates(facts),
+        online_traversal_graph=online_traversal_graph,
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
@@ -492,6 +492,7 @@ class OnlineSearchVM:
         policy: SmilesPolicy,
         semantics: ParserSemantics,
         templates: StereoTemplateBundle | None = None,
+        online_traversal_graph: OnlineTraversalGraph | None = None,
         rooted_at_atom: AtomId | None = None,
         graph_index: GraphIndex | None = None,
         component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
@@ -504,6 +505,7 @@ class OnlineSearchVM:
             policy=policy,
             semantics=semantics,
             templates=templates,
+            online_traversal_graph=online_traversal_graph,
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
@@ -535,7 +537,11 @@ class OnlineSearchVM:
         self.state.rollback(snapshot)
 
     def _run(self) -> Iterator[OnlineWitness]:
-        graph = _graph_from_facts(self.state.facts, index=self.state.graph_index)
+        graph = (
+            self.state.online_traversal_graph
+            if self.state.online_traversal_graph is not None
+            else _graph_from_facts(self.state.facts, index=self.state.graph_index)
+        )
         yield from _iter_vm_traversals(self.state, graph, self._sink_factory)
 
     @classmethod
@@ -546,6 +552,7 @@ class OnlineSearchVM:
         policy: SmilesPolicy,
         semantics: ParserSemantics,
         templates: StereoTemplateBundle | None = None,
+        online_traversal_graph: OnlineTraversalGraph | None = None,
         rooted_at_atom: AtomId | None = None,
         graph_index: GraphIndex | None = None,
         component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
@@ -558,6 +565,7 @@ class OnlineSearchVM:
             policy=policy,
             semantics=semantics,
             templates=templates,
+            online_traversal_graph=online_traversal_graph,
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
@@ -710,7 +718,7 @@ def render_continuation_payload_shape(
 
 def _iter_vm_traversals(
     state: OnlineSearchState,
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     sink_factory: Callable[[], OnlineRenderSink],
 ) -> Iterator[OnlineWitness]:
     all_bonds = frozenset(graph.bonds)
@@ -1291,32 +1299,16 @@ def _graph_from_facts(
     facts: MoleculeFacts,
     *,
     index: GraphIndex | None,
-) -> _Graph:
-    incident: dict[AtomId, list[BondId]] = {atom.id: [] for atom in facts.atoms}
-    bonds: dict[BondId, tuple[AtomId, AtomId]] = {}
+) -> OnlineTraversalGraph:
     if index is None:
-        for bond in facts.bonds:
-            bonds[bond.id] = (bond.a, bond.b)
-            incident[bond.a].append(bond.id)
-            incident[bond.b].append(bond.id)
-    else:
-        bonds = {
-            bond_id: (bond.a, bond.b)
-            for bond_id, bond in index.bond_by_id.items()
-        }
-        incident = {
-            atom_id: list(bond_ids)
-            for atom_id, bond_ids in index.incident_bonds.items()
-        }
-    return _Graph(
-        atoms=tuple(atom.id for atom in facts.atoms),
-        bonds=bonds,
-        components=tuple((component.atoms, component.bonds) for component in facts.components),
-        incident_bonds={atom: tuple(items) for atom, items in incident.items()},
-    )
+        return build_online_traversal_graph_from_facts(facts)
+    return build_online_traversal_graph_from_index(facts, index)
 
 
-def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tuple[AtomId, ...]]:
+def _iter_root_choices(
+    state: OnlineSearchState,
+    graph: OnlineTraversalGraph,
+) -> Iterator[tuple[AtomId, ...]]:
     root_domains = _component_root_domains(
         graph,
         state.facts,
@@ -1351,7 +1343,7 @@ def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tupl
 
 
 def _component_root_domains(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
@@ -1367,7 +1359,10 @@ def _component_root_domains(
     )
 
 
-def _iter_spanning_forest_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[frozenset[BondId]]:
+def _iter_spanning_forest_choices(
+    state: OnlineSearchState,
+    graph: OnlineTraversalGraph,
+) -> Iterator[frozenset[BondId]]:
     chosen: list[BondId] = []
 
     def rec(index: int) -> Iterator[frozenset[BondId]]:
@@ -1397,7 +1392,7 @@ def _iter_spanning_forest_choices(state: OnlineSearchState, graph: _Graph) -> It
 
 
 def _iter_component_spanning_trees(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     atoms: tuple[AtomId, ...],
     bonds: tuple[BondId, ...],
 ) -> Iterator[tuple[BondId, ...]]:
@@ -1415,7 +1410,7 @@ def _iter_component_spanning_trees(
 
 def _orient_forest_from_roots(
     *,
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     roots: tuple[AtomId, ...],
     tree_bonds: frozenset[BondId],
 ) -> tuple[dict[AtomId, AtomId | None], dict[AtomId, list[tuple[BondId, AtomId]]]]:
@@ -1448,7 +1443,7 @@ def _orient_forest_from_roots(
 
 
 def _ring_events_by_atom(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     ring_bonds: frozenset[BondId],
 ) -> dict[AtomId, list[_RingLocalEvent]]:
     out: dict[AtomId, list[_RingLocalEvent]] = {atom: [] for atom in graph.atoms}
@@ -1929,7 +1924,7 @@ def _product_choice_name(kind: str) -> Literal["atom_text", "bond_text", "direct
 
 
 def _reachable_atoms_on_bonds(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     start: AtomId,
     allowed_atoms: set[AtomId],
     allowed_bonds: frozenset[BondId],

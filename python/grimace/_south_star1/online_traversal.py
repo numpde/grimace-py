@@ -12,6 +12,9 @@ from .facts import MoleculeFacts
 from .graph_index import GraphIndex
 from .ids import AtomId
 from .ids import BondId
+from .online_traversal_graph import OnlineTraversalGraph
+from .online_traversal_graph import build_online_traversal_graph_from_facts
+from .online_traversal_graph import build_online_traversal_graph_from_index
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
 from .skeleton import ChildRole
@@ -104,14 +107,6 @@ class _OnlineTraversalState:
     syntax_position: int = 0
 
 
-@dataclass(frozen=True, slots=True)
-class _Graph:
-    atoms: tuple[AtomId, ...]
-    bonds: dict[BondId, tuple[AtomId, AtomId]]
-    components: tuple[tuple[tuple[AtomId, ...], tuple[BondId, ...]], ...]
-    incident_bonds: dict[AtomId, tuple[BondId, ...]]
-
-
 def iter_online_traversal_traces(
     *,
     facts: MoleculeFacts,
@@ -124,10 +119,11 @@ def iter_online_traversal_traces(
 
     facts.validate()
     policy.validate_for_facts(facts)
-    yield from _iter_online_traversal_traces_unvalidated(
+    graph = _graph_from_facts(facts, index=index)
+    yield from _iter_online_traversal_traces_on_graph(
         facts=facts,
+        graph=graph,
         rooted_at_atom=rooted_at_atom,
-        index=index,
         component_root_domains=component_root_domains,
     )
 
@@ -140,22 +136,21 @@ def iter_prepared_online_traversal_traces(
 ) -> Iterator[OnlineTraversalTrace]:
     """Yield prepared traversal traces without replaying raw validation."""
 
-    yield from _iter_online_traversal_traces_unvalidated(
+    yield from _iter_online_traversal_traces_on_graph(
         facts=prepared.facts,
+        graph=prepared.online_traversal_graph,
         rooted_at_atom=rooted_at_atom,
-        index=prepared.graph_index,
         component_root_domains=component_root_domains,
     )
 
 
-def _iter_online_traversal_traces_unvalidated(
+def _iter_online_traversal_traces_on_graph(
     *,
     facts: MoleculeFacts,
+    graph: OnlineTraversalGraph,
     rooted_at_atom: AtomId | None,
-    index: GraphIndex | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
 ) -> Iterator[OnlineTraversalTrace]:
-    graph = _graph_from_facts(facts, index=index)
     all_bonds = frozenset(graph.bonds)
 
     for roots in _iter_root_choices(
@@ -250,36 +245,14 @@ def _graph_from_facts(
     facts: MoleculeFacts,
     *,
     index: GraphIndex | None,
-) -> _Graph:
-    incident: dict[AtomId, list[BondId]] = {atom.id: [] for atom in facts.atoms}
-    bonds: dict[BondId, tuple[AtomId, AtomId]] = {}
+) -> OnlineTraversalGraph:
     if index is None:
-        for bond in facts.bonds:
-            bonds[bond.id] = (bond.a, bond.b)
-            incident[bond.a].append(bond.id)
-            incident[bond.b].append(bond.id)
-    else:
-        bonds = {
-            bond_id: (bond.a, bond.b)
-            for bond_id, bond in index.bond_by_id.items()
-        }
-        incident = {
-            atom_id: list(bond_ids)
-            for atom_id, bond_ids in index.incident_bonds.items()
-        }
-    return _Graph(
-        atoms=tuple(atom.id for atom in facts.atoms),
-        bonds=bonds,
-        components=tuple((component.atoms, component.bonds) for component in facts.components),
-        incident_bonds={
-            atom: tuple(items)
-            for atom, items in incident.items()
-        },
-    )
+        return build_online_traversal_graph_from_facts(facts)
+    return build_online_traversal_graph_from_index(facts, index)
 
 
 def _iter_root_choices(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     *,
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None = None,
@@ -306,7 +279,7 @@ def _iter_root_choices(
 
 
 def _component_root_domains(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
@@ -322,7 +295,9 @@ def _component_root_domains(
     )
 
 
-def _iter_spanning_forest_choices_lazy(graph: _Graph) -> Iterator[frozenset[BondId]]:
+def _iter_spanning_forest_choices_lazy(
+    graph: OnlineTraversalGraph,
+) -> Iterator[frozenset[BondId]]:
     chosen: list[BondId] = []
 
     def rec(index: int) -> Iterator[frozenset[BondId]]:
@@ -340,7 +315,7 @@ def _iter_spanning_forest_choices_lazy(graph: _Graph) -> Iterator[frozenset[Bond
 
 
 def _iter_component_spanning_trees(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     atoms: tuple[AtomId, ...],
     bonds: tuple[BondId, ...],
 ) -> Iterator[tuple[BondId, ...]]:
@@ -359,7 +334,7 @@ def _iter_component_spanning_trees(
 
 def _orient_forest_from_roots(
     *,
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     roots: tuple[AtomId, ...],
     tree_bonds: frozenset[BondId],
 ) -> tuple[dict[AtomId, AtomId | None], dict[AtomId, list[tuple[BondId, AtomId]]]]:
@@ -392,7 +367,7 @@ def _orient_forest_from_roots(
 
 
 def _ring_events_by_atom(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     ring_bonds: frozenset[BondId],
 ) -> dict[AtomId, list[_RingLocalEvent]]:
     out: dict[AtomId, list[_RingLocalEvent]] = {atom: [] for atom in graph.atoms}
@@ -524,7 +499,7 @@ def _emit_atom_subtree(state: _OnlineTraversalState, atom: AtomId) -> None:
 
 
 def _reachable_atoms_on_bonds(
-    graph: _Graph,
+    graph: OnlineTraversalGraph,
     start: AtomId,
     allowed_atoms: set[AtomId],
     allowed_bonds: frozenset[BondId],

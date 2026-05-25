@@ -12,13 +12,16 @@ from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
-from grimace._south_star1.online_traversal import iter_online_traversal_traces
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
 from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoder
 from grimace._south_star1.online_decoder_api import online_decode_token_texts_for_policy
 from grimace._south_star1.online_serialization_stream import collect_online_serializations
 from grimace._south_star1.online_serialization_stream import iter_online_serializations
+from grimace._south_star1.online_traversal import iter_online_traversal_traces
+from grimace._south_star1.online_traversal import iter_prepared_online_traversal_traces
+from grimace._south_star1.online_traversal_graph import OnlineTraversalGraph
+from grimace._south_star1.online_traversal_graph import build_online_traversal_graph_from_index
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -497,6 +500,55 @@ class PreparedRuntimeTest(unittest.TestCase):
                     component_root_domains_for_facts(prepared.facts, root),
                 )
 
+    def test_prepared_stores_online_traversal_graph(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        self.assertIsInstance(prepared.online_traversal_graph, OnlineTraversalGraph)
+        self.assertEqual(prepared.online_traversal_graph.atoms, prepared.atom_ids)
+        self.assertEqual(
+            prepared.online_traversal_graph.components,
+            tuple(
+                (component.atoms, component.bonds)
+                for component in prepared.facts.components
+            ),
+        )
+
+    def test_prepared_traversal_graph_matches_raw_graph_view(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            disconnected_two_bond_components_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        expected = build_online_traversal_graph_from_index(
+            prepared.facts,
+            prepared.graph_index,
+        )
+
+        self.assertEqual(prepared.online_traversal_graph, expected)
+
+    def test_prepared_online_traversal_does_not_call_graph_from_facts(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        root_domains = tuple(atoms for _, atoms in prepared.all_root_domains)
+
+        with patch(
+            "grimace._south_star1.online_traversal._graph_from_facts",
+            side_effect=AssertionError("prepared traversal rebuilt graph view"),
+        ):
+            traces = tuple(
+                iter_prepared_online_traversal_traces(
+                    prepared=prepared,
+                    rooted_at_atom=None,
+                    component_root_domains=root_domains,
+                )
+            )
+
+        self.assertTrue(traces)
+
     def test_prepared_explicit_root_domains_match_all_root_metadata(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
             disconnected_two_bond_components_facts(),
@@ -719,6 +771,64 @@ class PreparedRuntimeTest(unittest.TestCase):
             choices = decoder.initial_state().choices()
 
         self.assertTrue(choices)
+
+    def test_prepared_decoder_choices_does_not_rebuild_online_traversal_graph(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        for mode in (
+            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        ):
+            decoder = make_determinized_online_decoder(
+                prepared=prepared,
+                include_eos=True,
+                execution_mode=mode,
+            )
+            with self.subTest(mode=mode.value), patch(
+                "grimace._south_star1.online_traversal._graph_from_facts",
+                side_effect=AssertionError("prepared decoder rebuilt graph view"),
+            ), patch(
+                "grimace._south_star1.online_search_vm._graph_from_facts",
+                side_effect=AssertionError("prepared decoder rebuilt graph view"),
+            ):
+                choices = decoder.initial_state().choices()
+            self.assertTrue(choices)
+
+    def test_prepared_serialization_stream_does_not_rebuild_online_traversal_graph(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with patch(
+            "grimace._south_star1.online_traversal._graph_from_facts",
+            side_effect=AssertionError("prepared stream rebuilt graph view"),
+        ), patch(
+            "grimace._south_star1.online_search_vm._graph_from_facts",
+            side_effect=AssertionError("prepared stream rebuilt graph view"),
+        ):
+            emitted = tuple(iter_online_serializations(prepared=prepared))
+
+        self.assertTrue(emitted)
+
+    def test_raw_online_traversal_still_builds_traversal_graph(self) -> None:
+        facts = tetrahedral_facts()
+        policy = ordinary_policy_for_facts(facts)
+
+        with patch(
+            "grimace._south_star1.online_traversal._graph_from_facts",
+            side_effect=AssertionError("raw traversal built graph view"),
+        ):
+            with self.assertRaisesRegex(AssertionError, "built graph view"):
+                next(iter_online_traversal_traces(facts=facts, policy=policy))
 
     def test_prepared_online_decoder_does_not_validate_facts_for_root_domains_per_choice_query(
         self,

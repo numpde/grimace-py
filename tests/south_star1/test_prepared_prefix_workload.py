@@ -19,9 +19,11 @@ from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
 from grimace._south_star1.prepared_prefix_workload import advance_decoder_to_prefix
+from grimace._south_star1.prepared_prefix_workload import collect_prepared_decoder_walk
 from grimace._south_star1.prepared_prefix_workload import collect_mode_union_token_boundary_prefixes
 from grimace._south_star1.prepared_prefix_workload import collect_prepared_prefix_workload
 from grimace._south_star1.prepared_prefix_workload import collect_token_boundary_prefixes
+from grimace._south_star1.prepared_prefix_workload import validate_prepared_decoder_walk_result
 from grimace._south_star1.prepared_prefix_workload import validate_prepared_prefix_workload_result
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -34,9 +36,124 @@ from tests.south_star1.helpers import tetrahedral_facts
 
 
 _WORKLOAD_RESULTS_CACHE = None
+_DECODER_WALK_RESULTS_CACHE = None
 
 
 class PreparedPrefixWorkloadTest(unittest.TestCase):
+    def test_decoder_walk_next_token_sets_agree_at_every_step(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                for step in result.steps:
+                    token_sets = {item[1] for item in step.next_token_set_by_mode}
+                    self.assertEqual(len(token_sets), 1)
+
+    def test_decoder_walk_eos_counts_agree_at_every_step(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                for step in result.steps:
+                    eos_counts = {item[1] for item in step.eos_count_by_mode}
+                    self.assertEqual(len(eos_counts), 1)
+
+    def test_decoder_walk_accumulates_intermediate_choice_stats(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                self.assertGreater(len(result.steps), 1)
+                self.assertEqual(
+                    result.total_prefix_replay_root_dfs_runs,
+                    sum(
+                        _step_value(
+                            step.root_dfs_runs_by_mode,
+                            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+                        )
+                        for step in result.steps
+                    ),
+                )
+                self.assertGreater(result.total_prefix_replay_root_dfs_runs, 1)
+
+    def test_decoder_walk_residual_root_dfs_runs_less_than_prefix_replay(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                self.assertLess(
+                    result.total_residual_root_dfs_runs,
+                    result.total_prefix_replay_root_dfs_runs,
+                )
+
+    def test_decoder_walk_residual_resumed_snapshots_positive(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                self.assertGreater(result.total_residual_resumed_snapshots, 0)
+
+    def test_decoder_walk_residual_render_payload_zero(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                self.assertEqual(result.max_residual_retained_render_payload_chars, 0)
+
+    def test_decoder_walk_probe_reports_zero_hot_path_rebuilds(self) -> None:
+        for result in _decoder_walk_results():
+            with self.subTest(fixture=result.fixture_name):
+                probe = result.probe
+                self.assertEqual(probe.graph_index_rebuild_count, 0)
+                self.assertEqual(probe.online_traversal_graph_from_facts_count, 0)
+                self.assertEqual(probe.online_traversal_graph_from_index_count, 0)
+                self.assertEqual(probe.prepare_from_facts_count, 0)
+                self.assertEqual(probe.prepare_from_rdkit_count, 0)
+                self.assertEqual(probe.root_domain_recompute_count, 0)
+                self.assertEqual(probe.root_domain_from_metadata_count, 0)
+                self.assertEqual(probe.stereo_template_rebuild_count, 0)
+                self.assertEqual(probe.facts_validate_count, 0)
+                self.assertEqual(probe.policy_validate_count, 0)
+                self.assertEqual(probe.online_traversal_graph_view_rebuild_count, 0)
+                self.assertEqual(probe.online_vm_graph_view_rebuild_count, 0)
+
+    def test_decoder_walk_does_not_call_serialization_collectors(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+
+        with patch.object(
+            serialization_stream_module,
+            "collect_online_serializations",
+            side_effect=AssertionError("decoder walk called serialization collector"),
+        ), patch.object(
+            serialization_stream_module,
+            "iter_online_serializations",
+            side_effect=AssertionError("decoder walk called serialization iterator"),
+        ), patch.object(
+            serialization_stream_module,
+            "count_online_serializations",
+            side_effect=AssertionError("decoder walk called serialization counter"),
+        ):
+            result = collect_prepared_decoder_walk(
+                fixture_name="tetrahedral",
+                prepared=prepared,
+            )
+
+        validate_prepared_decoder_walk_result(result)
+
+    def test_decoder_walk_positive_control_detects_intermediate_mode_disagreement(
+        self,
+    ) -> None:
+        result = _decoder_walk_results()[0]
+        step = result.steps[0]
+        tampered = replace(
+            result,
+            steps=(
+                replace(
+                    step,
+                    next_token_set_by_mode=(
+                        step.next_token_set_by_mode[0],
+                        step.next_token_set_by_mode[1],
+                        (
+                            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                            frozenset({"not-a-token"}),
+                        ),
+                    ),
+                ),
+                *result.steps[1:],
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "next-token disagreement"):
+            validate_prepared_decoder_walk_result(tampered)
+
     def test_prefix_workload_collects_prefixes_from_all_execution_modes(self) -> None:
         with patch.object(
             workload_module,
@@ -344,6 +461,27 @@ def _workload_results():
         for fixture in _fixtures()
     )
     return _WORKLOAD_RESULTS_CACHE
+
+
+def _decoder_walk_results():
+    global _DECODER_WALK_RESULTS_CACHE
+    if _DECODER_WALK_RESULTS_CACHE is not None:
+        return _DECODER_WALK_RESULTS_CACHE
+    _DECODER_WALK_RESULTS_CACHE = tuple(
+        collect_prepared_decoder_walk(
+            fixture_name=fixture.name,
+            prepared=_prepare(fixture.facts),
+            runtime_options=fixture.runtime_options,
+            max_steps=16,
+        )
+        for fixture in _fixtures()
+    )
+    return _DECODER_WALK_RESULTS_CACHE
+
+
+def _step_value(values, mode: OnlineDecoderExecutionMode) -> int:
+    value = dict(values)[mode.value]
+    return 0 if value is None else int(value)
 
 
 def _fixtures() -> tuple[_Fixture, ...]:

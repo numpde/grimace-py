@@ -58,6 +58,36 @@ class PreparedPrefixWorkloadResult:
     probe: PreparedRuntimeProbeResult
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedDecoderWalkStep:
+    prefix: str
+    selected_token: str | None
+    next_token_set_by_mode: tuple[tuple[str, frozenset[str]], ...]
+    eos_count_by_mode: tuple[tuple[str, int], ...]
+    root_dfs_runs_by_mode: tuple[tuple[str, int | None], ...]
+    resumed_snapshots_by_mode: tuple[tuple[str, int | None], ...]
+    retained_render_payload_chars_by_mode: tuple[tuple[str, int | None], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDecoderWalkResult:
+    fixture_name: str
+    rooted_at_atom: int
+    steps: tuple[PreparedDecoderWalkStep, ...]
+    total_prefix_replay_root_dfs_runs: int
+    total_cached_root_dfs_runs: int
+    total_residual_root_dfs_runs: int
+    total_residual_resumed_snapshots: int
+    max_residual_retained_render_payload_chars: int
+    probe: PreparedRuntimeProbeResult
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedStateQuery:
+    observation: PreparedPrefixQueryObservation
+    choices: tuple[object, ...]
+
+
 def collect_token_boundary_prefixes(
     *,
     prepared: SouthStarPreparedMol,
@@ -161,6 +191,64 @@ def collect_prepared_prefix_workload(
     return _result_from_rows(rows, probe.result())
 
 
+def collect_prepared_decoder_walk(
+    *,
+    fixture_name: str,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
+    max_steps: int = 32,
+) -> PreparedDecoderWalkResult:
+    with PreparedRuntimeProbe() as probe:
+        states = {
+            mode: make_determinized_online_decoder(
+                prepared=prepared,
+                include_eos=True,
+                runtime_options=runtime_options,
+                execution_mode=mode,
+            ).initial_state()
+            for mode in _PREFIX_WORKLOAD_MODES
+        }
+        steps: list[PreparedDecoderWalkStep] = []
+        for _ in range(max_steps):
+            queries = {
+                mode: _query_state(mode=mode, state=states[mode])
+                for mode in _PREFIX_WORKLOAD_MODES
+            }
+            observations = {
+                mode: query.observation for mode, query in queries.items()
+            }
+            _validate_observations(
+                states[OnlineDecoderExecutionMode.PREFIX_REPLAY].prefix,
+                observations,
+            )
+            selected_token = choose_walk_token(
+                observations[OnlineDecoderExecutionMode.PREFIX_REPLAY]
+            )
+            steps.append(_walk_step_from_observations(observations, selected_token))
+            if selected_token is None:
+                return _decoder_walk_result(
+                    fixture_name=fixture_name,
+                    rooted_at_atom=runtime_options.rooted_at_atom,
+                    steps=tuple(steps),
+                    probe=probe.result(),
+                )
+            states = {
+                mode: _advance_state_by_token(
+                    observation=observations[mode],
+                    choices=queries[mode].choices,
+                    token=selected_token,
+                )
+                for mode in _PREFIX_WORKLOAD_MODES
+            }
+        raise ValueError("prepared decoder walk exceeded max_steps")
+
+
+def choose_walk_token(observation: PreparedPrefixQueryObservation) -> str | None:
+    for token in observation.next_token_texts:
+        return token
+    return None
+
+
 def advance_decoder_to_prefix(
     decoder: SouthStarOnlineDecoder,
     prefix: str,
@@ -229,6 +317,19 @@ def validate_prepared_prefix_workload_result(
         raise ValueError("residual prefix workload retained rendered-suffix payload")
 
 
+def validate_prepared_decoder_walk_result(result: PreparedDecoderWalkResult) -> None:
+    if not result.steps:
+        raise ValueError("prepared decoder walk produced no steps")
+    for step in result.steps:
+        _validate_walk_step(step)
+    if result.total_residual_root_dfs_runs >= result.total_prefix_replay_root_dfs_runs:
+        raise ValueError("residual decoder walk did not reduce root DFS runs")
+    if result.total_residual_resumed_snapshots <= 0:
+        raise ValueError("residual decoder walk did not resume snapshots")
+    if result.max_residual_retained_render_payload_chars != 0:
+        raise ValueError("residual decoder walk retained rendered-suffix payload")
+
+
 def _collect_row(
     *,
     fixture_name: str,
@@ -278,6 +379,22 @@ def _observe_prefix_query(
         execution_mode=execution_mode,
     )
     state = advance_decoder_to_prefix(decoder, prefix)
+    return _observe_state_query(mode=execution_mode, state=state)
+
+
+def _observe_state_query(
+    *,
+    mode: OnlineDecoderExecutionMode,
+    state: SouthStarOnlineDecoderState,
+) -> PreparedPrefixQueryObservation:
+    return _query_state(mode=mode, state=state).observation
+
+
+def _query_state(
+    *,
+    mode: OnlineDecoderExecutionMode,
+    state: SouthStarOnlineDecoderState,
+) -> _PreparedStateQuery:
     result = state.choices_with_stats()
     eos_choices = tuple(choice for choice in result.choices if choice.is_eos)
     has_eos = bool(eos_choices)
@@ -289,24 +406,48 @@ def _observe_prefix_query(
     )
     next_token_completion_counts = _next_token_completion_counts(result.choices)
     retained = getattr(result.stats, "retained_state_size", None)
-    return PreparedPrefixQueryObservation(
-        prefix=prefix,
-        execution_mode=execution_mode,
-        next_token_texts=next_token_texts,
-        next_token_text_set=frozenset(next_token_texts),
-        next_token_completion_counts=next_token_completion_counts,
-        has_eos=has_eos,
-        eos_completion_count=eos_completion_count,
-        frontier_queries=1,
-        root_dfs_runs=_root_dfs_runs(result.stats),
-        resumed_snapshots=_resumed_snapshots(result.stats),
-        retained_continuation_count=(
-            None if retained is None else int(retained.continuation_count)
+    return _PreparedStateQuery(
+        observation=PreparedPrefixQueryObservation(
+            prefix=state.prefix,
+            execution_mode=mode,
+            next_token_texts=next_token_texts,
+            next_token_text_set=frozenset(next_token_texts),
+            next_token_completion_counts=next_token_completion_counts,
+            has_eos=has_eos,
+            eos_completion_count=eos_completion_count,
+            frontier_queries=1,
+            root_dfs_runs=_root_dfs_runs(result.stats),
+            resumed_snapshots=_resumed_snapshots(result.stats),
+            retained_continuation_count=(
+                None if retained is None else int(retained.continuation_count)
+            ),
+            retained_render_payload_chars=(
+                None if retained is None else int(retained.total_render_payload_chars)
+            ),
         ),
-        retained_render_payload_chars=(
-            None if retained is None else int(retained.total_render_payload_chars)
-        ),
+        choices=tuple(result.choices),
     )
+
+
+def _advance_state_by_token(
+    *,
+    observation: PreparedPrefixQueryObservation,
+    choices: tuple[object, ...],
+    token: str,
+) -> SouthStarOnlineDecoderState:
+    matches = tuple(
+        choice for choice in choices if not choice.is_eos and choice.text == token
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            f"decoder walk token {token!r} is not uniquely legal at {observation.prefix!r}"
+        )
+    next_state = matches[0].next_state
+    if next_state is None:
+        raise ValueError("non-EOS decoder walk choice lacks next_state")
+    if next_state.prefix != observation.prefix + token:
+        raise ValueError("decoder walk choice advanced to unexpected prefix")
+    return next_state
 
 
 def _result_from_rows(
@@ -335,12 +476,113 @@ def _result_from_rows(
     )
 
 
+def _decoder_walk_result(
+    *,
+    fixture_name: str,
+    rooted_at_atom: int,
+    steps: tuple[PreparedDecoderWalkStep, ...],
+    probe: PreparedRuntimeProbeResult,
+) -> PreparedDecoderWalkResult:
+    return PreparedDecoderWalkResult(
+        fixture_name=fixture_name,
+        rooted_at_atom=rooted_at_atom,
+        steps=steps,
+        total_prefix_replay_root_dfs_runs=sum(
+            _step_int(step.root_dfs_runs_by_mode, OnlineDecoderExecutionMode.PREFIX_REPLAY)
+            for step in steps
+        ),
+        total_cached_root_dfs_runs=sum(
+            _step_int(
+                step.root_dfs_runs_by_mode,
+                OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+            )
+            for step in steps
+        ),
+        total_residual_root_dfs_runs=sum(
+            _step_int(
+                step.root_dfs_runs_by_mode,
+                OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+            )
+            for step in steps
+        ),
+        total_residual_resumed_snapshots=sum(
+            _step_int(
+                step.resumed_snapshots_by_mode,
+                OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+            )
+            for step in steps
+        ),
+        max_residual_retained_render_payload_chars=max(
+            (
+                _step_int(
+                    step.retained_render_payload_chars_by_mode,
+                    OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+                )
+                for step in steps
+            ),
+            default=0,
+        ),
+        probe=probe,
+    )
+
+
+def _walk_step_from_observations(
+    observations: dict[OnlineDecoderExecutionMode, PreparedPrefixQueryObservation],
+    selected_token: str | None,
+) -> PreparedDecoderWalkStep:
+    prefix = observations[OnlineDecoderExecutionMode.PREFIX_REPLAY].prefix
+    return PreparedDecoderWalkStep(
+        prefix=prefix,
+        selected_token=selected_token,
+        next_token_set_by_mode=tuple(
+            (mode.value, observations[mode].next_token_text_set)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        eos_count_by_mode=tuple(
+            (mode.value, observations[mode].eos_completion_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        root_dfs_runs_by_mode=tuple(
+            (mode.value, observations[mode].root_dfs_runs)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        resumed_snapshots_by_mode=tuple(
+            (mode.value, observations[mode].resumed_snapshots)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_render_payload_chars_by_mode=tuple(
+            (mode.value, observations[mode].retained_render_payload_chars)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+    )
+
+
+def _validate_observations(
+    prefix: str,
+    observations: dict[OnlineDecoderExecutionMode, PreparedPrefixQueryObservation],
+) -> None:
+    row = PreparedPrefixWorkloadRow(
+        fixture_name="decoder-walk",
+        rooted_at_atom=-1,
+        prefix=prefix,
+        prefix_replay=observations[OnlineDecoderExecutionMode.PREFIX_REPLAY],
+        cached_completions=observations[OnlineDecoderExecutionMode.CACHED_COMPLETIONS],
+        residual_continuations=observations[
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS
+        ],
+    )
+    _validate_row(row)
+
+
 def _validate_row(row: PreparedPrefixWorkloadRow) -> None:
     observations = (
         row.prefix_replay,
         row.cached_completions,
         row.residual_continuations,
     )
+    prefixes = {item.prefix for item in observations}
+    if prefixes != {row.prefix}:
+        raise ValueError(f"prefix workload compared mismatched prefixes at {row.prefix!r}")
     next_tokens = {item.next_token_text_set for item in observations}
     if len(next_tokens) != 1:
         raise ValueError(f"prefix workload next-token disagreement at {row.prefix!r}")
@@ -360,6 +602,24 @@ def _validate_row(row: PreparedPrefixWorkloadRow) -> None:
     for item in observations:
         if item.has_eos and item.eos_completion_count <= 0:
             raise ValueError("EOS choice must have positive completion_count")
+
+
+def _validate_walk_step(step: PreparedDecoderWalkStep) -> None:
+    next_token_sets = {item[1] for item in step.next_token_set_by_mode}
+    if len(next_token_sets) != 1:
+        raise ValueError(f"decoder walk next-token disagreement at {step.prefix!r}")
+    eos_counts = {item[1] for item in step.eos_count_by_mode}
+    if len(eos_counts) != 1:
+        raise ValueError(f"decoder walk EOS count disagreement at {step.prefix!r}")
+
+
+def _step_int(
+    values: tuple[tuple[str, int | None], ...],
+    mode: OnlineDecoderExecutionMode,
+) -> int:
+    by_mode = dict(values)
+    value = by_mode.get(mode.value)
+    return 0 if value is None else int(value)
 
 
 def _next_token_completion_counts(
@@ -388,12 +648,17 @@ def _resumed_snapshots(stats: object) -> int | None:
 
 
 __all__ = (
+    "PreparedDecoderWalkResult",
+    "PreparedDecoderWalkStep",
     "PreparedPrefixQueryObservation",
     "PreparedPrefixWorkloadResult",
     "PreparedPrefixWorkloadRow",
     "advance_decoder_to_prefix",
+    "choose_walk_token",
+    "collect_prepared_decoder_walk",
     "collect_mode_union_token_boundary_prefixes",
     "collect_prepared_prefix_workload",
     "collect_token_boundary_prefixes",
+    "validate_prepared_decoder_walk_result",
     "validate_prepared_prefix_workload_result",
 )

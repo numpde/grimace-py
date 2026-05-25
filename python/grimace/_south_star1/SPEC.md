@@ -265,6 +265,14 @@ finding a complete valid witness. This is not yet the full main-branch
 determinized decoder state: it returns the merged frontier for a prefix, but
 does not retain a reusable merged successor state.
 
+`online_decoder_state.py` provides stateful decoder choices. The
+branch-preserving decoder may return multiple choices with the same emitted
+token text when they correspond to different online generator branches. The
+determinized decoder merges same-text choices into one choice whose next state
+contains the union of branch continuations. This is lazy determinization: it
+preserves a residual branch frontier for the next state but does not build a
+global transition table.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

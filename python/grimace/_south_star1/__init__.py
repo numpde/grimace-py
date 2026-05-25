@@ -30,6 +30,8 @@ CORE_MODULES: tuple[str, ...] = (
     "ordinary_stereo_closure",
     "ordinary_stereo_sites",
     "online_decoder",
+    "online_decoder_state",
+    "online_decisions",
     "online_render_sink",
     "online_stereo_witness",
     "online_traversal",

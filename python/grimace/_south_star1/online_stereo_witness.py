@@ -18,6 +18,9 @@ from .facts import TetraValue
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
+from .online_decisions import DecisionPathFilter
+from .online_decisions import OnlineDecision
+from .online_decisions import OnlineDecisionRecorder
 from .online_traversal import OnlineAtomEvent
 from .online_traversal import OnlineBranchClose
 from .online_traversal import OnlineBranchOpen
@@ -139,6 +142,8 @@ def iter_online_stereo_witnesses_with_sink(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     sink_factory: Callable[[], OnlineRenderSink],
+    decision_recorder: OnlineDecisionRecorder | None = None,
+    decision_filter: DecisionPathFilter | None = None,
 ) -> Iterator[OnlineWitness]:
     facts.validate()
     policy.validate_for_facts(facts)
@@ -146,14 +151,26 @@ def iter_online_stereo_witnesses_with_sink(
     templates = build_stereo_templates(facts)
 
     for trace in iter_online_traversal_traces(facts=facts, policy=policy):
-        yield from _iter_witnesses_for_trace(
-            facts=facts,
-            policy=policy,
-            semantics=semantics,
-            templates=templates,
-            trace=trace,
-            sink_factory=sink_factory,
+        decision_checkpoint = _push_decision(
+            decision_recorder,
+            decision_filter,
+            OnlineDecision("traversal", (trace_to_skeleton_like_key(trace),)),
         )
+        if decision_checkpoint is None:
+            continue
+        try:
+            yield from _iter_witnesses_for_trace(
+                facts=facts,
+                policy=policy,
+                semantics=semantics,
+                templates=templates,
+                trace=trace,
+                sink_factory=sink_factory,
+                decision_recorder=decision_recorder,
+                decision_filter=decision_filter,
+            )
+        finally:
+            _rollback_decision(decision_recorder, decision_checkpoint)
 
 
 def online_local_tetra_order(
@@ -295,6 +312,8 @@ def _iter_witnesses_for_trace(
     templates: StereoTemplateBundle,
     trace: OnlineTraversalTrace,
     sink_factory: Callable[[], OnlineRenderSink],
+    decision_recorder: OnlineDecisionRecorder | None,
+    decision_filter: DecisionPathFilter | None,
 ) -> Iterator[OnlineWitness]:
     slots = _slot_view_for_trace(trace)
     atom_domains = tuple(
@@ -310,42 +329,74 @@ def _iter_witnesses_for_trace(
     )
 
     for ring_labels in iter_online_ring_label_assignments(trace=trace, policy=policy):
-        for atom_text in _dict_product(atom_domains):
-            tetra_tokens = _forced_tetra_tokens(
-                facts=facts,
-                trace=trace,
-                templates=templates,
-                atom_text=atom_text,
-            )
-            if tetra_tokens is None:
-                continue
-            for bond_text in _dict_product(bond_domains):
-                prefix = _PrefixChoice(
-                    atom_text=atom_text,
-                    bond_text=bond_text,
-                    ring_labels=ring_labels,
+        decision_checkpoint = _push_decision(
+            decision_recorder,
+            decision_filter,
+            OnlineDecision("ring_labels", _ring_label_decision_value(ring_labels)),
+        )
+        if decision_checkpoint is None:
+            continue
+        try:
+            for atom_text in _dict_product(atom_domains):
+                atom_decision_checkpoint = _push_decision(
+                    decision_recorder,
+                    decision_filter,
+                    OnlineDecision("atom_text", _atom_text_decision_value(atom_text)),
                 )
-                solutions = tuple(
-                    _iter_directional_solutions(
+                if atom_decision_checkpoint is None:
+                    continue
+                try:
+                    tetra_tokens = _forced_tetra_tokens(
                         facts=facts,
-                        policy=policy,
-                        semantics=semantics,
-                        templates=templates,
                         trace=trace,
-                        slots=slots,
-                        prefix=prefix,
-                        tetra_tokens=tetra_tokens,
-                        sink_factory=sink_factory,
+                        templates=templates,
+                        atom_text=atom_text,
                     )
-                )
-                if policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-                    solutions = tuple(_support_maximal(solutions))
-                for solution in solutions:
-                    yield OnlineWitness(
-                        rendered=solution.rendered,
-                        traversal_key=trace_to_skeleton_like_key(trace),
-                        annotation_count=solution.annotation_count,
-                    )
+                    if tetra_tokens is None:
+                        continue
+                    for bond_text in _dict_product(bond_domains):
+                        bond_decision_checkpoint = _push_decision(
+                            decision_recorder,
+                            decision_filter,
+                            OnlineDecision("bond_text", _bond_text_decision_value(bond_text)),
+                        )
+                        if bond_decision_checkpoint is None:
+                            continue
+                        try:
+                            prefix = _PrefixChoice(
+                                atom_text=atom_text,
+                                bond_text=bond_text,
+                                ring_labels=ring_labels,
+                            )
+                            solutions = tuple(
+                                _iter_directional_solutions(
+                                    facts=facts,
+                                    policy=policy,
+                                    semantics=semantics,
+                                    templates=templates,
+                                    trace=trace,
+                                    slots=slots,
+                                    prefix=prefix,
+                                    tetra_tokens=tetra_tokens,
+                                    sink_factory=sink_factory,
+                                    decision_recorder=decision_recorder,
+                                    decision_filter=decision_filter,
+                                )
+                            )
+                            if policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
+                                solutions = tuple(_support_maximal(solutions))
+                            for solution in solutions:
+                                yield OnlineWitness(
+                                    rendered=solution.rendered,
+                                    traversal_key=trace_to_skeleton_like_key(trace),
+                                    annotation_count=solution.annotation_count,
+                                )
+                        finally:
+                            _rollback_decision(decision_recorder, bond_decision_checkpoint)
+                finally:
+                    _rollback_decision(decision_recorder, atom_decision_checkpoint)
+        finally:
+            _rollback_decision(decision_recorder, decision_checkpoint)
 
 
 def _iter_directional_solutions(
@@ -359,6 +410,8 @@ def _iter_directional_solutions(
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     sink_factory: Callable[[], OnlineRenderSink],
+    decision_recorder: OnlineDecisionRecorder | None,
+    decision_filter: DecisionPathFilter | None,
 ) -> Iterator[_DirectionalSolution]:
     del policy
     carrier_by_slot = {carrier.bond_slot: carrier for carrier in slots.carrier_slots}
@@ -437,12 +490,22 @@ def _iter_directional_solutions(
         carrier_id = carriers[index]
         var = direction_var(carrier_id)
         for mark in domains[carrier_id]:
+            decision_checkpoint = _push_decision(
+                decision_recorder,
+                decision_filter,
+                OnlineDecision("direction_mark", (carrier_id, mark.name)),
+            )
+            if decision_checkpoint is None:
+                continue
             checkpoint = store.checkpoint()
-            if store.assign(var, mark):
-                marks[carrier_id] = mark
-                yield from rec(index + 1)
-                del marks[carrier_id]
-            store.rollback(checkpoint)
+            try:
+                if store.assign(var, mark):
+                    marks[carrier_id] = mark
+                    yield from rec(index + 1)
+                    del marks[carrier_id]
+            finally:
+                store.rollback(checkpoint)
+                _rollback_decision(decision_recorder, decision_checkpoint)
 
     yield from rec(0)
 
@@ -802,6 +865,45 @@ def _support_maximal(
         if any(candidate.support < other.support for other in solutions):
             continue
         yield candidate
+
+
+def _push_decision(
+    recorder: OnlineDecisionRecorder | None,
+    path_filter: DecisionPathFilter | None,
+    decision: OnlineDecision,
+) -> int | None:
+    if recorder is None:
+        return 0
+    checkpoint = recorder.checkpoint()
+    recorder.push(decision)
+    if path_filter is not None and not path_filter.allows_prefix(recorder.path()):
+        recorder.rollback(checkpoint)
+        return None
+    return checkpoint
+
+
+def _rollback_decision(
+    recorder: OnlineDecisionRecorder | None,
+    checkpoint: int,
+) -> None:
+    if recorder is not None:
+        recorder.rollback(checkpoint)
+
+
+def _ring_label_decision_value(ring_labels: dict[int, RingLabel]) -> tuple[object, ...]:
+    return tuple(sorted((endpoint, label.value) for endpoint, label in ring_labels.items()))
+
+
+def _atom_text_decision_value(
+    atom_text: dict[AtomId, AtomTextChoice],
+) -> tuple[object, ...]:
+    return tuple(sorted((int(atom), choice.name) for atom, choice in atom_text.items()))
+
+
+def _bond_text_decision_value(
+    bond_text: dict[int, BondTextChoice],
+) -> tuple[object, ...]:
+    return tuple(sorted((slot_id, choice.name) for slot_id, choice in bond_text.items()))
 
 
 def _dict_product(domains):

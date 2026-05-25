@@ -51,10 +51,92 @@ from .stereo_templates import build_stereo_templates
 
 
 @dataclass(frozen=True, slots=True)
+class ComponentRootChoiceFrame:
+    component_index: int
+    atom: AtomId
+    cursor: int
+
+
+@dataclass(frozen=True, slots=True)
+class SpanningTreeChoiceFrame:
+    component_index: int
+    tree_bonds: tuple[BondId, ...]
+    cursor: int
+
+
+@dataclass(frozen=True, slots=True)
+class ParentOrientationFrame:
+    parent: tuple[tuple[AtomId, AtomId | None], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class LocalEventOrderChoiceFrame:
+    atom: AtomId
+    order_key: tuple[object, ...]
+    cursor: int
+
+
+@dataclass(frozen=True, slots=True)
+class EventLoopFrame:
+    trace_key: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RingLabelChoiceFrame:
+    value: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AtomTextChoiceFrame:
+    value: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BondTextChoiceFrame:
+    value: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionMarkChoiceFrame:
+    value: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ProductChoiceFrame:
+    choice: Literal["atom_text", "bond_text", "direction_mark"]
+    domain_count: int
+    cursor: int
+
+
+@dataclass(frozen=True, slots=True)
+class CompletionFrame:
+    trace_key: tuple[object, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RenderCursorFrame:
+    cursor: "_RenderCursor"
+
+
+OnlineFramePayload = (
+    ComponentRootChoiceFrame
+    | SpanningTreeChoiceFrame
+    | ParentOrientationFrame
+    | LocalEventOrderChoiceFrame
+    | EventLoopFrame
+    | RingLabelChoiceFrame
+    | AtomTextChoiceFrame
+    | BondTextChoiceFrame
+    | DirectionMarkChoiceFrame
+    | ProductChoiceFrame
+    | CompletionFrame
+    | RenderCursorFrame
+)
+
+
+@dataclass(frozen=True, slots=True)
 class OnlineSearchFrame:
-    kind: str
-    data: tuple[object, ...]
-    cursor: int = 0
+    payload: OnlineFramePayload
 
 
 @dataclass(frozen=True, slots=True)
@@ -536,13 +618,9 @@ def render_continuation_payload_shape(
     max_program_choice_count = 0
     total_program_choice_count = 0
     for frame in frame_stack:
-        if not frame.data:
+        if not isinstance(frame.payload, RenderCursorFrame):
             continue
-        if frame.kind != "render-cursor":
-            continue
-        cursor = frame.data[0]
-        if not isinstance(cursor, _RenderCursor):
-            raise ValueError("render-cursor frame lacks cursor data")
+        cursor = frame.payload.cursor
         cursor_count += 1
         event_count = len(cursor.program.trace.events)
         remaining_event_count = max(0, event_count - cursor.event_index)
@@ -589,7 +667,9 @@ def _iter_vm_traversals(
                 tree_bonds=tree_bonds,
             )
             state.traversal.parent = dict(parent)
-            state.frames.append(OnlineSearchFrame("parent-orientation", (tuple(sorted(parent.items())),)))
+            state.frames.append(
+                OnlineSearchFrame(ParentOrientationFrame(tuple(sorted(parent.items()))))
+            )
             try:
                 ring_events_by_atom = _ring_events_by_atom(graph, ring_bonds)
                 local_domains = tuple(
@@ -657,9 +737,11 @@ def _iter_local_order_products(
         for cursor, order in enumerate(orders):
             state.frames.append(
                 OnlineSearchFrame(
-                    "local-event-order-choice",
-                    (int(atom), _local_order_key(order)),
-                    cursor,
+                    LocalEventOrderChoiceFrame(
+                        atom=atom,
+                        order_key=_local_order_key(order),
+                        cursor=cursor,
+                    )
                 )
             )
             events_at[atom] = order
@@ -679,7 +761,7 @@ def _iter_witnesses_for_trace(
     sink_factory: Callable[[], OnlineRenderSink],
 ) -> Iterator[OnlineWitness]:
     traversal_key = _trace_key(trace)
-    state.frames.append(OnlineSearchFrame("event-loop", (traversal_key,)))
+    state.frames.append(OnlineSearchFrame(EventLoopFrame(traversal_key)))
     state.decisions.push(OnlineDecision("traversal", (traversal_key,)))
     decision_checkpoint = state.decisions.checkpoint()
     try:
@@ -700,12 +782,16 @@ def _iter_witnesses_for_trace(
             if not _install_ring_labels(state, slots, ring_labels):
                 state.ring.rollback(ring_checkpoint)
                 continue
-            state.frames.append(OnlineSearchFrame("ring-label-choice", (_ring_label_decision_value(ring_labels),)))
+            state.frames.append(
+                OnlineSearchFrame(RingLabelChoiceFrame(_ring_label_decision_value(ring_labels)))
+            )
             state.decisions.push(OnlineDecision("ring_labels", _ring_label_decision_value(ring_labels)))
             ring_decision_checkpoint = state.decisions.checkpoint()
             try:
                 for atom_text in _iter_dict_product_frame(state, kind="atom-text-choice", domains=atom_domains):
-                    state.frames.append(OnlineSearchFrame("atom-text-choice", (_atom_text_decision_value(atom_text),)))
+                    state.frames.append(
+                        OnlineSearchFrame(AtomTextChoiceFrame(_atom_text_decision_value(atom_text)))
+                    )
                     state.decisions.push(OnlineDecision("atom_text", _atom_text_decision_value(atom_text)))
                     atom_decision_checkpoint = state.decisions.checkpoint()
                     try:
@@ -718,7 +804,9 @@ def _iter_witnesses_for_trace(
                         if tetra_tokens is None:
                             continue
                         for bond_text in _iter_dict_product_frame(state, kind="bond-text-choice", domains=bond_domains):
-                            state.frames.append(OnlineSearchFrame("bond-text-choice", (_bond_text_decision_value(bond_text),)))
+                            state.frames.append(
+                                OnlineSearchFrame(BondTextChoiceFrame(_bond_text_decision_value(bond_text)))
+                            )
                             state.decisions.push(OnlineDecision("bond_text", _bond_text_decision_value(bond_text)))
                             bond_decision_checkpoint = state.decisions.checkpoint()
                             try:
@@ -804,7 +892,9 @@ def _iter_directional_candidates(
                 )
                 factor_ids.append(store.add_factor(factor))
             state.residual = store
-            state.frames.append(OnlineSearchFrame("direction-mark-choice", (_direction_decision_value(marks),)))
+            state.frames.append(
+                OnlineSearchFrame(DirectionMarkChoiceFrame(_direction_decision_value(marks)))
+            )
             decision_checkpoint = state.decisions.checkpoint()
             for carrier_id in carriers:
                 state.decisions.push(OnlineDecision("direction_mark", (carrier_id, marks[carrier_id].name)))
@@ -867,7 +957,7 @@ def _render_directional_candidate(
     state.frames[:] = list(candidate.frame_stack)
     state.output = sink_factory()
     checkpoint = state.output.checkpoint()
-    state.frames.append(OnlineSearchFrame("completion", (_trace_key(trace),)))
+    state.frames.append(OnlineSearchFrame(CompletionFrame(_trace_key(trace))))
     try:
         program = _render_program(
             trace=trace,
@@ -1048,7 +1138,7 @@ def _render_program_to_sink(
                 piece_index=piece_index,
                 piece_count=len(pieces),
             )
-            state.frames.append(OnlineSearchFrame("render-cursor", (next_cursor,), piece_index))
+            state.frames.append(OnlineSearchFrame(RenderCursorFrame(next_cursor)))
             try:
                 if not state.output.append(piece.text, token_text=piece.token_text):
                     state.ring.rollback(checkpoint)
@@ -1094,14 +1184,15 @@ def _pop_active_render_cursor(
 ) -> _RenderCursor | None:
     active_cursor: _RenderCursor | None = None
     for frame in frames:
-        if frame.kind != "render-cursor":
+        if not isinstance(frame.payload, RenderCursorFrame):
             continue
-        if len(frame.data) != 1 or not isinstance(frame.data[0], _RenderCursor):
-            raise ValueError("render-cursor frame lacks cursor data")
-        active_cursor = frame.data[0]
+        active_cursor = frame.payload.cursor
     if active_cursor is None:
         return None
-    frames[:] = [frame for frame in frames if frame.kind != "render-cursor"]
+    frames[:] = [
+        frame for frame in frames
+        if not isinstance(frame.payload, RenderCursorFrame)
+    ]
     return active_cursor
 
 
@@ -1130,7 +1221,15 @@ def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tupl
         atoms, _ = graph.components[index]
         state.traversal.component_index = index
         for cursor, atom in enumerate(atoms):
-            state.frames.append(OnlineSearchFrame("component-root-choice", (index, int(atom)), cursor))
+            state.frames.append(
+                OnlineSearchFrame(
+                    ComponentRootChoiceFrame(
+                        component_index=index,
+                        atom=atom,
+                        cursor=cursor,
+                    )
+                )
+            )
             roots.append(atom)
             try:
                 yield from rec(index + 1)
@@ -1151,7 +1250,13 @@ def _iter_spanning_forest_choices(state: OnlineSearchState, graph: _Graph) -> It
         atoms, bonds = graph.components[index]
         for cursor, tree in enumerate(_iter_component_spanning_trees(graph, atoms, bonds)):
             state.frames.append(
-                OnlineSearchFrame("spanning-tree-choice", (index, tuple(int(bond) for bond in tree)), cursor)
+                OnlineSearchFrame(
+                    SpanningTreeChoiceFrame(
+                        component_index=index,
+                        tree_bonds=tuple(tree),
+                        cursor=cursor,
+                    )
+                )
             )
             checkpoint = len(chosen)
             chosen.extend(tree)
@@ -1671,11 +1776,29 @@ def _iter_dict_product_frame(state: OnlineSearchState, *, kind: str, domains):
     if any(not values for values in value_domains):
         return
     for cursor, values in enumerate(product(*value_domains)):
-        state.frames.append(OnlineSearchFrame(kind, (len(value_domains),), cursor))
+        state.frames.append(
+            OnlineSearchFrame(
+                ProductChoiceFrame(
+                    choice=_product_choice_name(kind),
+                    domain_count=len(value_domains),
+                    cursor=cursor,
+                )
+            )
+        )
         try:
             yield dict(zip(keys, values, strict=True))
         finally:
             state.frames.pop()
+
+
+def _product_choice_name(kind: str) -> Literal["atom_text", "bond_text", "direction_mark"]:
+    if kind == "atom-text-choice":
+        return "atom_text"
+    if kind == "bond-text-choice":
+        return "bond_text"
+    if kind == "direction-mark-choice":
+        return "direction_mark"
+    raise ValueError(f"unknown product choice frame kind: {kind!r}")
 
 
 def _reachable_atoms_on_bonds(
@@ -1869,8 +1992,21 @@ def _validate_annotation_mode(policy: SmilesPolicy) -> None:
 __all__ = (
     "MutableRingState",
     "MutableTraversalState",
+    "AtomTextChoiceFrame",
+    "BondTextChoiceFrame",
+    "CompletionFrame",
+    "ComponentRootChoiceFrame",
+    "DirectionMarkChoiceFrame",
+    "EventLoopFrame",
+    "LocalEventOrderChoiceFrame",
     "OnlineResidualContinuation",
+    "OnlineFramePayload",
+    "ParentOrientationFrame",
+    "ProductChoiceFrame",
     "RenderContinuationPayloadShape",
+    "RenderCursorFrame",
+    "RingLabelChoiceFrame",
+    "SpanningTreeChoiceFrame",
     "OnlineSearchFrame",
     "OnlineSearchSnapshot",
     "OnlineSearchState",

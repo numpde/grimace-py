@@ -15,8 +15,10 @@ from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_decisions import OnlineDecision
 from grimace._south_star1.online_render_sink import OnlineStringBuffer
 from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
+from grimace._south_star1.online_search_vm import EventLoopFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchVM
+from grimace._south_star1.online_search_vm import ParentOrientationFrame
 from grimace._south_star1.online_search_vm import capture_residual_continuation
 from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
@@ -103,13 +105,15 @@ class OnlineSearchVmTest(unittest.TestCase):
 
     def test_vm_snapshot_restores_frame_stack(self) -> None:
         state = _state(tetrahedral_facts())
-        state.frames.append(OnlineSearchFrame("root", (0,)))
+        root_frame = OnlineSearchFrame(EventLoopFrame(("root",)))
+        child_frame = OnlineSearchFrame(EventLoopFrame(("child",)))
+        state.frames.append(root_frame)
         snapshot = state.checkpoint()
 
-        state.frames.append(OnlineSearchFrame("child", (1,)))
+        state.frames.append(child_frame)
         state.rollback(snapshot)
 
-        self.assertEqual(state.frames, [OnlineSearchFrame("root", (0,))])
+        self.assertEqual(state.frames, [root_frame])
 
     def test_vm_snapshot_restores_real_traversal_state_after_root(self) -> None:
         state = _state(tetrahedral_facts())
@@ -237,12 +241,13 @@ class OnlineSearchVmTest(unittest.TestCase):
 
     def test_capture_residual_continuation_contains_snapshot(self) -> None:
         state = _state(tetrahedral_facts())
-        state.frames.append(OnlineSearchFrame("root", (0,)))
+        frame = OnlineSearchFrame(EventLoopFrame(("root",)))
+        state.frames.append(frame)
 
         continuation = capture_residual_continuation(state, prefix="C")
 
         self.assertEqual(continuation.prefix, "C")
-        self.assertEqual(continuation.snapshot.frame_stack, (OnlineSearchFrame("root", (0,)),))
+        self.assertEqual(continuation.snapshot.frame_stack, (frame,))
 
     def test_directional_candidate_rendering_restores_ring_state_between_candidates(self) -> None:
         facts = ring_directional_facts()
@@ -306,11 +311,19 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         self.assertEqual(buffered_directional_candidates, [])
 
-    def test_online_search_vm_uses_render_cursor_frames_not_render_resume_frames(self) -> None:
+    def test_no_string_render_cursor_or_completion_frames_remain(self) -> None:
         text = ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('"render-cursor"', text)
-        self.assertNotIn('"render-resume"', text)
+        self.assertNotIn('OnlineSearchFrame("', text)
+        self.assertNotIn('OnlineSearchFrame("render-cursor"', text)
+        self.assertNotIn('OnlineSearchFrame("completion"', text)
+
+    def test_all_retained_frame_payloads_are_known_dataclasses(self) -> None:
+        state = _state(tetrahedral_facts())
+        state.frames.append(OnlineSearchFrame(ParentOrientationFrame(((AtomId(0), None),))))
+
+        for frame in state.checkpoint().frame_stack:
+            self.assertTrue(hasattr(frame.payload, "__dataclass_fields__"))
 
     def test_online_search_vm_boundary_no_hidden_generator_or_artifact_imports(self) -> None:
         tree = ast.parse(ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8"))

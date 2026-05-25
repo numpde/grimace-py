@@ -21,8 +21,10 @@ from grimace._south_star1.online_residual_continuation import merge_residual_con
 from grimace._south_star1.online_residual_continuation import online_search_snapshot_shape
 from grimace._south_star1.online_residual_continuation import residual_frontier_shape
 from grimace._south_star1.online_residual_continuation import residual_continuation_key
+from grimace._south_star1.online_search_vm import EventLoopFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
+from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
@@ -449,7 +451,7 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertIsNotNone(frontier)
         first = frontier.continuations[0]
 
-        self.assertEqual(first.snapshot.frame_stack[-1].kind, "render-cursor")
+        self.assertIsInstance(first.snapshot.frame_stack[-1].payload, RenderCursorFrame)
         self.assertEqual(first.prefix, choice.next_state.prefix)
         resumed = choice.next_state.choices_with_stats()
         self.assertGreater(resumed.stats.resumed_snapshots, 0)
@@ -545,8 +547,26 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
     def test_residual_continuation_key_hashable_with_render_cursor_frame(self) -> None:
         continuation = _first_residual_continuation(tetrahedral_facts())
 
-        self.assertEqual(continuation.snapshot.frame_stack[-1].kind, "render-cursor")
+        self.assertIsInstance(continuation.snapshot.frame_stack[-1].payload, RenderCursorFrame)
         self.assertIsInstance(hash(residual_continuation_key(continuation)), int)
+
+    def test_all_retained_frame_payloads_are_known_dataclasses(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+        continuations = _retained_continuations(result)
+
+        self.assertTrue(continuations)
+        for continuation in continuations:
+            for frame in continuation.snapshot.frame_stack:
+                self.assertTrue(hasattr(frame.payload, "__dataclass_fields__"))
+
+    def test_state_size_stats_handle_typed_frames(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        shape = online_search_snapshot_shape(continuation.snapshot)
+
+        self.assertGreater(shape.frame_stack_depth, 0)
+        self.assertEqual(shape.render_payload.render_resume_continuation_count, 0)
+        self.assertEqual(shape.render_payload.render_cursor_count, 1)
 
     def test_residual_modes_remain_equivalent_after_render_cursor_refactor(self) -> None:
         for facts in (
@@ -894,7 +914,7 @@ def _render_cursor_frame_count(snapshot: OnlineSearchSnapshot) -> int:
     return sum(
         1
         for frame in snapshot.frame_stack
-        if frame.kind == "render-cursor"
+        if isinstance(frame.payload, RenderCursorFrame)
     )
 
 
@@ -940,7 +960,7 @@ def _snapshot(tag: str) -> OnlineSearchSnapshot:
         ring_state=(tag, "ring"),
         output_snapshot=(tag, "output"),
         decision_snapshot=_path(tag),
-        frame_stack=(OnlineSearchFrame("test-frame", (tag,)),),
+        frame_stack=(OnlineSearchFrame(EventLoopFrame((tag,))),),
     )
 
 

@@ -331,9 +331,11 @@ trace/prefix/mark context; it no longer stores a precomputed rendered-piece
 suffix, but it is not yet a minimal general scheduler frame for all future DFS
 alternatives. Resuming consumes the active render cursor before rendering the
 next piece, so retained successor snapshots have at most one active render
-cursor frame. The snapshot owns the residual constraint state needed for
-resumption; restoring one snapshot must not mutate or depend on a residual store
-object owned by the producer VM or by sibling snapshots.
+cursor frame. Snapshot frame stacks use frozen typed payloads, not stringly
+typed frame names plus unstructured object tuples. The snapshot owns the
+residual constraint state needed for resumption; restoring one snapshot must not
+mutate or depend on a residual store object owned by the producer VM or by
+sibling snapshots.
 Directional candidate admissibility is separated from active-sink rendering.
 In support-maximal annotation mode, directional mark assignments are first
 checked for finite semantic admissibility and captured as value-owned residual

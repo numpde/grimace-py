@@ -68,6 +68,14 @@ class OnlineSearchSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class RenderContinuationPayloadShape:
+    render_resume_continuation_count: int = 0
+    max_render_piece_count: int = 0
+    max_remaining_render_piece_count: int = 0
+    max_render_payload_chars: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class OnlineStepResult:
     kind: Literal["advanced", "yield_witness", "exhausted", "rejected"]
     witness: "OnlineWitness | None" = None
@@ -479,6 +487,34 @@ def resume_online_search_from_snapshot(
             continue
         if result.kind == "exhausted":
             return
+
+
+def render_continuation_payload_shape(
+    frame_stack: tuple[OnlineSearchFrame, ...],
+) -> RenderContinuationPayloadShape:
+    count = 0
+    max_piece_count = 0
+    max_remaining_piece_count = 0
+    max_payload_chars = 0
+    for frame in frame_stack:
+        if frame.kind != "render-resume" or not frame.data:
+            continue
+        continuation = frame.data[0]
+        if not isinstance(continuation, _RenderContinuation):
+            continue
+        count += 1
+        piece_count = len(continuation.pieces)
+        remaining_piece_count = max(0, piece_count - continuation.next_index)
+        payload_chars = sum(len(piece.text) for piece in continuation.pieces)
+        max_piece_count = max(max_piece_count, piece_count)
+        max_remaining_piece_count = max(max_remaining_piece_count, remaining_piece_count)
+        max_payload_chars = max(max_payload_chars, payload_chars)
+    return RenderContinuationPayloadShape(
+        render_resume_continuation_count=count,
+        max_render_piece_count=max_piece_count,
+        max_remaining_render_piece_count=max_remaining_piece_count,
+        max_render_payload_chars=max_payload_chars,
+    )
 
 
 def _iter_vm_traversals(
@@ -1715,6 +1751,7 @@ __all__ = (
     "MutableRingState",
     "MutableTraversalState",
     "OnlineResidualContinuation",
+    "RenderContinuationPayloadShape",
     "OnlineSearchFrame",
     "OnlineSearchSnapshot",
     "OnlineSearchState",
@@ -1725,5 +1762,6 @@ __all__ = (
     "iter_online_stereo_witness_strings_vm",
     "iter_online_stereo_witnesses_vm",
     "make_online_search_state",
+    "render_continuation_payload_shape",
     "resume_online_search_from_snapshot",
 )

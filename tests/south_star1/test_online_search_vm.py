@@ -186,6 +186,37 @@ class OnlineSearchVmTest(unittest.TestCase):
         self.assertIsNot(vm.state.residual, state.residual)
         self.assertIs(vm.state.residual.assignment(var), DirectionMark.FWD)
 
+    def test_resumed_snapshot_residual_store_mutation_does_not_mutate_producer_store(self) -> None:
+        facts = directional_facts()
+        policy = ordinary_policy_for_facts(facts)
+        semantics = OrdinarySmilesSemantics()
+        state = make_online_search_state(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            sink=OnlineStringBuffer(),
+        )
+        var = direction_var(0)
+        state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
+        self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
+        snapshot = state.checkpoint()
+        extra = VarId("extra", (0,))
+
+        vm = OnlineSearchVM.from_snapshot(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            snapshot=snapshot,
+            sink=OnlineStringBuffer(),
+        )
+        vm.state.residual.add_var(extra, ("x",))
+        self.assertTrue(vm.state.residual.assign(extra, "x"))
+
+        with self.assertRaises(ValueError):
+            state.residual.assign(extra, "x")
+        self.assertIs(vm.state.residual.assignment(var), DirectionMark.FWD)
+        self.assertIs(state.residual.assignment(var), DirectionMark.FWD)
+
     def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:
         vm = OnlineSearchVM(
             facts=disconnected_facts(),

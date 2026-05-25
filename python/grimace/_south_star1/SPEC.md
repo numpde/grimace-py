@@ -331,6 +331,12 @@ trace/prefix/mark context; it is not yet a minimal general scheduler frame for
 all future DFS alternatives. The snapshot owns the residual constraint state
 needed for resumption; restoring one snapshot must not mutate or depend on a
 residual store object owned by the producer VM or by sibling snapshots.
+Residual continuation state-size statistics report structural counts for the
+stored snapshots, including residual variables/factors, frame-stack depth,
+decision-path length, ring state, output snapshot length, and any
+render-continuation payload. These statistics are representation audits, not
+Python byte-size measurements, and currently expose the known render-resume
+payload explicitly.
 
 `online_search_vm.py` is the explicit-stack event-level runtime. It owns
 traversal progression, syntax-slot choices, residual stereo propagation,

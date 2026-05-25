@@ -148,8 +148,12 @@ class ResidualStore:
 
     def value_snapshot(self) -> ResidualStoreValueSnapshot:
         return ResidualStoreValueSnapshot(
-            domains=tuple(self._domains.items()),
-            assignments=tuple(self._assignments.items()),
+            domains=tuple(
+                sorted(self._domains.items(), key=lambda item: _var_sort_key(item[0]))
+            ),
+            assignments=tuple(
+                sorted(self._assignments.items(), key=lambda item: _var_sort_key(item[0]))
+            ),
             factors=tuple(factor.value_snapshot() for factor in self._factors),
         )
 
@@ -314,9 +318,9 @@ class DirectionalResidualFactor:
             status=self.status,
             target=self.target,
             carrier_models=tuple(
-                sorted(self.carrier_models.items(), key=lambda item: repr(item[0]))
+                sorted(self.carrier_models.items(), key=lambda item: _var_sort_key(item[0]))
             ),
-            marks=tuple(sorted(self._marks.items(), key=lambda item: repr(item[0]))),
+            marks=tuple(sorted(self._marks.items(), key=lambda item: _var_sort_key(item[0]))),
         )
 
 
@@ -326,6 +330,10 @@ def tetra_var(center: object) -> VarId:
 
 def direction_var(carrier: object) -> VarId:
     return VarId("direction", (carrier,))
+
+
+def _var_sort_key(var: VarId) -> tuple[str, tuple[str, ...]]:
+    return (var.kind, tuple(repr(item) for item in var.key))
 
 
 def _directional_value(

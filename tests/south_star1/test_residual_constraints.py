@@ -122,6 +122,23 @@ class ResidualConstraintTest(unittest.TestCase):
         self.assertTrue(store.assign(right, DirectionMark.REV))
         self.assertTrue(store.close_factor(factor_id))
 
+    def test_residual_store_value_snapshot_is_canonical_by_var_order(self) -> None:
+        left = ResidualStore()
+        right = ResidualStore()
+        first = VarId("test", (1,))
+        second = VarId("test", (2,))
+
+        for var in (second, first):
+            left.add_var(var, ("a", "b"))
+        for var in (first, second):
+            right.add_var(var, ("a", "b"))
+        self.assertTrue(left.assign(first, "a"))
+        self.assertTrue(left.assign(second, "b"))
+        self.assertTrue(right.assign(second, "b"))
+        self.assertTrue(right.assign(first, "a"))
+
+        self.assertEqual(left.value_snapshot(), right.value_snapshot())
+
 
 def _tetra_factor(
     *,

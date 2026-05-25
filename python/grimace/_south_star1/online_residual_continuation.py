@@ -10,9 +10,12 @@ from dataclasses import field
 from .facts import MoleculeFacts
 from .online_decisions import OnlineDecisionFrontier
 from .online_decisions import OnlineDecisionPath
+from .online_search_vm import RenderContinuationPayloadShape
 from .online_search_vm import OnlineSearchSnapshot
 from .online_search_vm import OnlineSearchVM
+from .online_search_vm import render_continuation_payload_shape
 from .policy import SmilesPolicy
+from .residual_constraints import ResidualStoreValueSnapshot
 from .semantics import ParserSemantics
 
 
@@ -53,6 +56,51 @@ class OnlineResidualDecoderStats:
     completions_seen: int = 0
     eos_completions_seen: int = 0
     eos_frontier_paths: int = 0
+    state_size: "OnlineResidualStateSizeStats" = field(
+        default_factory=lambda: OnlineResidualStateSizeStats()
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualStoreSnapshotShape:
+    var_count: int = 0
+    assignment_count: int = 0
+    factor_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OnlineSearchSnapshotShape:
+    frame_stack_depth: int = 0
+    residual_var_count: int = 0
+    residual_assignment_count: int = 0
+    residual_factor_count: int = 0
+    decision_path_length: int = 0
+    output_snapshot_length: int = 0
+    ring_endpoint_count: int = 0
+    ring_open_interval_count: int = 0
+    render_payload: RenderContinuationPayloadShape = field(
+        default_factory=RenderContinuationPayloadShape
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class OnlineResidualStateSizeStats:
+    continuation_count: int = 0
+    unique_continuation_count: int = 0
+    merged_continuation_count: int = 0
+    max_frame_stack_depth: int = 0
+    total_frame_stack_depth: int = 0
+    max_residual_var_count: int = 0
+    max_residual_assignment_count: int = 0
+    max_residual_factor_count: int = 0
+    max_decision_path_length: int = 0
+    max_output_snapshot_length: int = 0
+    max_ring_endpoint_count: int = 0
+    max_ring_open_interval_count: int = 0
+    render_resume_continuation_count: int = 0
+    max_render_piece_count: int = 0
+    max_remaining_render_piece_count: int = 0
+    max_render_payload_chars: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +377,7 @@ def _result_from_sink(
     eos_frontier = OnlineDecisionFrontier(
         frozenset(item.frontier_path for item in sink.eos_by_frontier)
     )
+    stats.state_size = _state_size_from_continuations(_sink_continuations(sink))
     return OnlineResidualRawChoiceResult(
         choices=tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.frontier)))),
         eos_completion_count=sum(
@@ -363,6 +412,38 @@ def residual_continuation_key(
     )
 
 
+def residual_store_snapshot_shape(snapshot: object) -> ResidualStoreSnapshotShape:
+    if not isinstance(snapshot, ResidualStoreValueSnapshot):
+        return ResidualStoreSnapshotShape()
+    return ResidualStoreSnapshotShape(
+        var_count=len(snapshot.domains),
+        assignment_count=len(snapshot.assignments),
+        factor_count=len(snapshot.factors),
+    )
+
+
+def online_search_snapshot_shape(snapshot: OnlineSearchSnapshot) -> OnlineSearchSnapshotShape:
+    residual_shape = residual_store_snapshot_shape(snapshot.residual_snapshot)
+    ring_endpoint_count, ring_open_interval_count = _ring_snapshot_counts(snapshot.ring_state)
+    return OnlineSearchSnapshotShape(
+        frame_stack_depth=len(snapshot.frame_stack),
+        residual_var_count=residual_shape.var_count,
+        residual_assignment_count=residual_shape.assignment_count,
+        residual_factor_count=residual_shape.factor_count,
+        decision_path_length=_decision_snapshot_length(snapshot.decision_snapshot),
+        output_snapshot_length=_output_snapshot_length(snapshot.output_snapshot),
+        ring_endpoint_count=ring_endpoint_count,
+        ring_open_interval_count=ring_open_interval_count,
+        render_payload=render_continuation_payload_shape(snapshot.frame_stack),
+    )
+
+
+def residual_frontier_shape(
+    frontier: OnlineResidualContinuationFrontier,
+) -> OnlineResidualStateSizeStats:
+    return _state_size_from_continuations(frontier.continuations)
+
+
 def merge_residual_continuations_by_key(
     continuations: list[OnlineResidualContinuation],
 ) -> tuple[OnlineResidualContinuation, ...]:
@@ -392,6 +473,80 @@ def _merge_continuation_counts(
     )
 
 
+def _sink_continuations(sink: ResidualFrontierSink) -> tuple[OnlineResidualContinuation, ...]:
+    out: list[OnlineResidualContinuation] = []
+    for continuations in sink.completed_by_token.values():
+        out.extend(continuations)
+    out.extend(sink.eos_by_frontier)
+    return tuple(out)
+
+
+def _state_size_from_continuations(
+    continuations: tuple[OnlineResidualContinuation, ...],
+) -> OnlineResidualStateSizeStats:
+    if not continuations:
+        return OnlineResidualStateSizeStats()
+    unique = merge_residual_continuations_by_key(list(continuations))
+    shapes = tuple(online_search_snapshot_shape(continuation.snapshot) for continuation in continuations)
+    return OnlineResidualStateSizeStats(
+        continuation_count=len(continuations),
+        unique_continuation_count=len(unique),
+        merged_continuation_count=len(continuations) - len(unique),
+        max_frame_stack_depth=max(shape.frame_stack_depth for shape in shapes),
+        total_frame_stack_depth=sum(shape.frame_stack_depth for shape in shapes),
+        max_residual_var_count=max(shape.residual_var_count for shape in shapes),
+        max_residual_assignment_count=max(shape.residual_assignment_count for shape in shapes),
+        max_residual_factor_count=max(shape.residual_factor_count for shape in shapes),
+        max_decision_path_length=max(shape.decision_path_length for shape in shapes),
+        max_output_snapshot_length=max(shape.output_snapshot_length for shape in shapes),
+        max_ring_endpoint_count=max(shape.ring_endpoint_count for shape in shapes),
+        max_ring_open_interval_count=max(shape.ring_open_interval_count for shape in shapes),
+        render_resume_continuation_count=sum(
+            shape.render_payload.render_resume_continuation_count
+            for shape in shapes
+        ),
+        max_render_piece_count=max(
+            shape.render_payload.max_render_piece_count
+            for shape in shapes
+        ),
+        max_remaining_render_piece_count=max(
+            shape.render_payload.max_remaining_render_piece_count
+            for shape in shapes
+        ),
+        max_render_payload_chars=max(
+            shape.render_payload.max_render_payload_chars
+            for shape in shapes
+        ),
+    )
+
+
+def _decision_snapshot_length(snapshot: object) -> int:
+    if isinstance(snapshot, OnlineDecisionPath):
+        return len(snapshot.items)
+    if isinstance(snapshot, int):
+        return snapshot
+    return 0
+
+
+def _output_snapshot_length(snapshot: object) -> int:
+    if isinstance(snapshot, ResidualFrontierSinkCheckpoint):
+        return sum(len(item) for item in snapshot.emitted)
+    if isinstance(snapshot, tuple):
+        return sum(len(item) for item in snapshot if isinstance(item, str))
+    if isinstance(snapshot, int):
+        return snapshot
+    return 0
+
+
+def _ring_snapshot_counts(snapshot: object) -> tuple[int, int]:
+    if not isinstance(snapshot, tuple) or len(snapshot) != 4:
+        return (0, 0)
+    _, label_by_endpoint, open_intervals, _ = snapshot
+    endpoint_count = len(label_by_endpoint) if isinstance(label_by_endpoint, tuple) else 0
+    open_count = len(open_intervals) if isinstance(open_intervals, tuple) else 0
+    return (endpoint_count, open_count)
+
+
 __all__ = (
     "OnlineResidualContinuation",
     "OnlineResidualContinuationFrontier",
@@ -399,10 +554,16 @@ __all__ = (
     "OnlineResidualDecoderState",
     "OnlineResidualDecoderStats",
     "OnlineResidualRawChoiceResult",
+    "OnlineResidualStateSizeStats",
+    "OnlineSearchSnapshotShape",
+    "ResidualStoreSnapshotShape",
     "ResidualFrontierSinkCheckpoint",
     "ResidualFrontierSink",
     "online_branch_preserving_residual_choice_result",
     "online_determinized_residual_choice_result",
+    "online_search_snapshot_shape",
     "merge_residual_continuations_by_key",
+    "residual_frontier_shape",
     "residual_continuation_key",
+    "residual_store_snapshot_shape",
 )

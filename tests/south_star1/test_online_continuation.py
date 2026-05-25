@@ -17,6 +17,8 @@ from grimace._south_star1.online_residual_continuation import OnlineResidualCont
 from grimace._south_star1.online_residual_continuation import OnlineResidualDecoderState
 from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
 from grimace._south_star1.online_residual_continuation import merge_residual_continuations_by_key
+from grimace._south_star1.online_residual_continuation import online_search_snapshot_shape
+from grimace._south_star1.online_residual_continuation import residual_frontier_shape
 from grimace._south_star1.online_residual_continuation import residual_continuation_key
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
@@ -378,6 +380,44 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertEqual(successor.stats.root_dfs_runs, 0)
         self.assertGreater(successor.stats.resumed_snapshots, 0)
 
+    def test_residual_state_size_reports_render_payload_for_tetra(self) -> None:
+        result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
+
+        self.assertGreater(result.stats.state_size.render_resume_continuation_count, 0)
+        self.assertGreater(result.stats.state_size.max_render_piece_count, 0)
+        self.assertGreater(result.stats.state_size.max_render_payload_chars, 0)
+
+    def test_residual_state_size_reports_render_payload_for_ring_tetra(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
+        result = _residual_determinized_decoder(facts).initial_state().choices_with_stats()
+
+        self.assertGreater(result.stats.state_size.render_resume_continuation_count, 0)
+        self.assertGreater(result.stats.state_size.max_render_piece_count, 0)
+        self.assertGreater(result.stats.state_size.max_remaining_render_piece_count, 0)
+
+    def test_residual_frontier_shape_counts_unique_continuations(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+        choice = next(choice for choice in result.choices if choice.next_state is not None)
+        frontier = choice.next_state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+
+        shape = residual_frontier_shape(frontier)
+
+        self.assertGreaterEqual(shape.continuation_count, shape.unique_continuation_count)
+        self.assertEqual(shape.merged_continuation_count, shape.continuation_count - shape.unique_continuation_count)
+        self.assertGreater(shape.max_frame_stack_depth, 0)
+        self.assertGreater(shape.max_residual_factor_count, 0)
+
+    def test_online_search_snapshot_shape_reports_residual_and_render_payload(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        shape = online_search_snapshot_shape(continuation.snapshot)
+
+        self.assertGreater(shape.residual_var_count, 0)
+        self.assertGreater(shape.residual_assignment_count, 0)
+        self.assertGreater(shape.residual_factor_count, 0)
+        self.assertGreater(shape.render_payload.render_resume_continuation_count, 0)
+
     def test_resuming_two_residual_continuations_is_order_independent(self) -> None:
         facts = tetrahedral_facts()
         decoder = _residual_determinized_decoder(facts)
@@ -396,10 +436,38 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         forward = _residual_state_for_continuations(decoder, choice.text, (left, right))
         backward = _residual_state_for_continuations(decoder, choice.text, (right, left))
 
+        forward_result = forward.choices_with_stats()
+        backward_result = backward.choices_with_stats()
+
         self.assertEqual(
-            _choice_texts(forward.choices()),
-            _choice_texts(backward.choices()),
+            _choice_signature(forward_result.choices),
+            _choice_signature(backward_result.choices),
         )
+        self.assertEqual(forward_result.stats.eos_completions_seen, backward_result.stats.eos_completions_seen)
+        self.assertEqual(forward_result.stats.eos_frontier_paths, backward_result.stats.eos_frontier_paths)
+        self.assertEqual(forward_result.stats.state_size, backward_result.stats.state_size)
+
+    def test_execution_modes_report_distinct_storage_behavior(self) -> None:
+        facts = tetrahedral_facts()
+        prefix_replay = _decoder_for_mode(
+            facts,
+            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+        ).initial_state().choices_with_stats()
+        cached = _decoder_for_mode(
+            facts,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+        ).initial_state().choices_with_stats()
+        residual = _decoder_for_mode(
+            facts,
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        ).initial_state().choices_with_stats()
+
+        self.assertEqual(prefix_replay.stats.dfs_runs, 1)
+        self.assertEqual(cached.stats.root_dfs_runs, 1)
+        self.assertEqual(residual.stats.root_dfs_runs, 1)
+        self.assertFalse(hasattr(prefix_replay.stats, "state_size"))
+        self.assertFalse(hasattr(cached.stats, "state_size"))
+        self.assertGreater(residual.stats.state_size.render_resume_continuation_count, 0)
 
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")
@@ -605,6 +673,13 @@ def _state_for_prefix(decoder, prefix: str):
 
 def _choice_texts(choices) -> tuple[str, ...]:
     return tuple(choice.text for choice in choices)
+
+
+def _choice_signature(choices) -> tuple[tuple[str, int, int, bool], ...]:
+    return tuple(
+        (choice.text, choice.multiplicity, choice.completion_count, choice.is_eos)
+        for choice in choices
+    )
 
 
 def _walk_decoder(decoder, token_texts: tuple[str, ...]):

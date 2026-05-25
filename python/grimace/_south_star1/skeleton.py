@@ -103,13 +103,14 @@ def enumerate_traversal_skeletons(
     facts: MoleculeFacts,
     index: GraphIndex,
     policy: SmilesPolicy,
+    rooted_at_atom: AtomId | None = None,
 ) -> tuple[TraversalSkeleton, ...]:
     """Enumerate traversal skeletons with explicit tree/ring partitions."""
 
     facts.validate()
     policy.validate_for_facts(facts)
 
-    component_root_domains = tuple(component.atoms for component in facts.components)
+    component_root_domains = _component_root_domains(facts, rooted_at_atom)
     component_tree_domains = tuple(
         _component_spanning_trees(index, component.atoms, component.bonds)
         for component in facts.components
@@ -183,6 +184,25 @@ def enumerate_traversal_skeletons(
                 )
 
     return tuple(skeletons)
+
+
+def _component_root_domains(
+    facts: MoleculeFacts,
+    rooted_at_atom: AtomId | None,
+) -> tuple[tuple[AtomId, ...], ...]:
+    if rooted_at_atom is None:
+        return tuple(component.atoms for component in facts.components)
+    domains: list[tuple[AtomId, ...]] = []
+    found = False
+    for component in facts.components:
+        if rooted_at_atom in component.atoms:
+            domains.append((rooted_at_atom,))
+            found = True
+        else:
+            domains.append(component.atoms)
+    if not found:
+        raise ValueError(f"rooted atom is not present in any component: {rooted_at_atom!r}")
+    return tuple(domains)
 
 
 def _require_tree_components(facts: MoleculeFacts, index: GraphIndex) -> None:

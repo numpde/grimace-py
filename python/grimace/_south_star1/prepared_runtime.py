@@ -12,11 +12,14 @@ from dataclasses import dataclass
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .facts import MoleculeFacts
+from .graph_index import build_graph_index
+from .ids import AtomId
 from .online_decoder import online_decode_tokens
 from .ordinary_policy import ordinary_policy_for_facts
 from .ordinary_semantics import OrdinarySmilesSemantics
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
+from .skeleton import enumerate_traversal_skeletons
 from .stereo_templates import DirectionalTemplate
 from .stereo_templates import StereoTemplateBundle
 from .stereo_templates import TetraTemplate
@@ -113,7 +116,36 @@ def prepare_south_star_mol_from_rdkit(
     )
 
 
-def validate_south_star_runtime_options(options: SouthStarRuntimeOptions) -> None:
+def enumerate_prepared_stereo_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
+):
+    from .support_enumeration import enumerate_stereo_support
+
+    rooted_at_atom = runtime_root_atom(
+        runtime_options,
+        facts=prepared.facts,
+    )
+    skeletons = enumerate_traversal_skeletons(
+        facts=prepared.facts,
+        index=build_graph_index(prepared.facts),
+        policy=prepared.policy,
+        rooted_at_atom=rooted_at_atom,
+    )
+    return enumerate_stereo_support(
+        facts=prepared.facts,
+        policy=prepared.policy,
+        semantics=prepared.semantics,
+        skeletons=skeletons,
+    )
+
+
+def validate_south_star_runtime_options(
+    options: SouthStarRuntimeOptions,
+    *,
+    facts: MoleculeFacts | None = None,
+) -> None:
     if options.canonical:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -124,11 +156,29 @@ def validate_south_star_runtime_options(options: SouthStarRuntimeOptions) -> Non
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "South Star online runtime currently supports do_random=True",
         )
-    if options.rooted_at_atom != -1:
+    if options.rooted_at_atom < -1:
         raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            "South Star online runtime does not yet implement rooted traversal queries",
+            SouthStarErrorKind.INVALID_FACTS,
+            f"rooted_at_atom must be -1 or a nonnegative atom id: {options.rooted_at_atom}",
         )
+    if facts is not None and options.rooted_at_atom >= 0:
+        atom = AtomId(options.rooted_at_atom)
+        if atom not in {item.id for item in facts.atoms}:
+            raise SouthStarError(
+                SouthStarErrorKind.INVALID_FACTS,
+                f"rooted_at_atom is not present in molecule facts: {options.rooted_at_atom}",
+            )
+
+
+def runtime_root_atom(
+    options: SouthStarRuntimeOptions,
+    *,
+    facts: MoleculeFacts,
+) -> AtomId | None:
+    validate_south_star_runtime_options(options, facts=facts)
+    if options.rooted_at_atom == -1:
+        return None
+    return AtomId(options.rooted_at_atom)
 
 
 def _validate_writer_surface(
@@ -166,7 +216,9 @@ __all__ = (
     "SouthStarPreparedMol",
     "SouthStarRuntimeOptions",
     "SouthStarWriterSurface",
+    "enumerate_prepared_stereo_support",
     "prepare_south_star_mol_from_facts",
     "prepare_south_star_mol_from_rdkit",
+    "runtime_root_atom",
     "validate_south_star_runtime_options",
 )

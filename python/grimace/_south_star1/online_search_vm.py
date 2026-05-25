@@ -283,6 +283,7 @@ class OnlineSearchState:
     policy: SmilesPolicy
     semantics: ParserSemantics
     templates: StereoTemplateBundle
+    rooted_at_atom: AtomId | None
     traversal: MutableTraversalState
     residual: ResidualStore
     ring: MutableRingState
@@ -445,6 +446,7 @@ def make_online_search_state(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
     sink: OnlineRenderSink | None = None,
 ) -> OnlineSearchState:
     facts.validate()
@@ -454,6 +456,7 @@ def make_online_search_state(
         policy=policy,
         semantics=semantics,
         templates=templates if templates is not None else build_stereo_templates(facts),
+        rooted_at_atom=rooted_at_atom,
         traversal=MutableTraversalState(),
         residual=ResidualStore(),
         ring=MutableRingState(),
@@ -470,6 +473,7 @@ class OnlineSearchVM:
         policy: SmilesPolicy,
         semantics: ParserSemantics,
         templates: StereoTemplateBundle | None = None,
+        rooted_at_atom: AtomId | None = None,
         sink_factory: Callable[[], OnlineRenderSink] | None = None,
     ) -> None:
         _validate_annotation_mode(policy)
@@ -478,6 +482,7 @@ class OnlineSearchVM:
             policy=policy,
             semantics=semantics,
             templates=templates,
+            rooted_at_atom=rooted_at_atom,
         )
         self._sink_factory = sink_factory or OnlineStringBuffer
         self._iterator = self._run()
@@ -516,6 +521,7 @@ class OnlineSearchVM:
         policy: SmilesPolicy,
         semantics: ParserSemantics,
         templates: StereoTemplateBundle | None = None,
+        rooted_at_atom: AtomId | None = None,
         snapshot: OnlineSearchSnapshot,
         sink: OnlineRenderSink,
     ) -> "OnlineSearchVM":
@@ -524,6 +530,7 @@ class OnlineSearchVM:
             policy=policy,
             semantics=semantics,
             templates=templates,
+            rooted_at_atom=rooted_at_atom,
             sink_factory=lambda: sink,
         )
         vm.state.output = sink
@@ -561,6 +568,7 @@ def iter_online_stereo_witnesses_vm(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
 ) -> Iterator[OnlineWitness]:
     vm = OnlineSearchVM(
@@ -568,6 +576,7 @@ def iter_online_stereo_witnesses_vm(
         policy=policy,
         semantics=semantics,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
         sink_factory=sink_factory,
     )
     while True:
@@ -587,6 +596,7 @@ def resume_online_search_from_snapshot(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
     snapshot: OnlineSearchSnapshot,
     sink: OnlineRenderSink,
 ) -> Iterator[OnlineWitness]:
@@ -595,6 +605,7 @@ def resume_online_search_from_snapshot(
         policy=policy,
         semantics=semantics,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
         snapshot=snapshot,
         sink=sink,
     )
@@ -1233,15 +1244,15 @@ def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
 
 
 def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tuple[AtomId, ...]]:
+    root_domains = _component_root_domains(graph, state.rooted_at_atom)
     roots: list[AtomId] = []
 
     def rec(index: int) -> Iterator[tuple[AtomId, ...]]:
-        if index == len(graph.components):
+        if index == len(root_domains):
             yield tuple(roots)
             return
-        atoms, _ = graph.components[index]
         state.traversal.component_index = index
-        for cursor, atom in enumerate(atoms):
+        for cursor, atom in enumerate(root_domains[index]):
             state.frames.append(
                 OnlineSearchFrame(
                     ComponentRootChoiceFrame(
@@ -1259,6 +1270,25 @@ def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tupl
                 state.frames.pop()
 
     yield from rec(0)
+
+
+def _component_root_domains(
+    graph: _Graph,
+    rooted_at_atom: AtomId | None,
+) -> tuple[tuple[AtomId, ...], ...]:
+    if rooted_at_atom is None:
+        return tuple(atoms for atoms, _ in graph.components)
+    domains: list[tuple[AtomId, ...]] = []
+    found = False
+    for atoms, _ in graph.components:
+        if rooted_at_atom in atoms:
+            domains.append((rooted_at_atom,))
+            found = True
+        else:
+            domains.append(atoms)
+    if not found:
+        raise ValueError(f"rooted atom is not present in any component: {rooted_at_atom!r}")
+    return tuple(domains)
 
 
 def _iter_spanning_forest_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[frozenset[BondId]]:

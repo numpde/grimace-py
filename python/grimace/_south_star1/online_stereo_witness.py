@@ -147,13 +147,18 @@ def iter_online_stereo_witnesses_with_sink(
     decision_recorder: OnlineDecisionRecorder | None = None,
     decision_filter: DecisionPathFilter | None = None,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
 ) -> Iterator[OnlineWitness]:
     facts.validate()
     policy.validate_for_facts(facts)
     _validate_annotation_mode(policy)
     templates = templates if templates is not None else build_stereo_templates(facts)
 
-    for trace in iter_online_traversal_traces(facts=facts, policy=policy):
+    for trace in iter_online_traversal_traces(
+        facts=facts,
+        policy=policy,
+        rooted_at_atom=rooted_at_atom,
+    ):
         decision_checkpoint = _push_decision(
             decision_recorder,
             decision_filter,

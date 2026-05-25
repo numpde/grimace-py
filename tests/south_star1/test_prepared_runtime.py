@@ -12,6 +12,7 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
+from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.support_enumeration import enumerate_stereo_support
 from tests.south_star1.helpers import cyclopropane_facts
@@ -53,7 +54,91 @@ class PreparedRuntimeTest(unittest.TestCase):
                 writer_surface=SouthStarWriterSurface(isomeric_smiles=False),
             )
 
-    def test_runtime_root_options_do_not_change_prepared_identity(self) -> None:
+    def test_prepared_root_minus_one_matches_all_root_union(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        default_result = collect_online_serializations(prepared=prepared)
+        explicit_all_result = collect_online_serializations(
+            prepared=prepared,
+            runtime_options=SouthStarRuntimeOptions(rooted_at_atom=-1),
+        )
+
+        self.assertEqual(set(explicit_all_result.strings), set(default_result.strings))
+        self.assertEqual(
+            explicit_all_result.witness_completion_count,
+            default_result.witness_completion_count,
+        )
+
+    def test_prepared_explicit_root_is_subset_of_all_root_support(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        all_roots = collect_online_serializations(prepared=prepared)
+        root_zero = collect_online_serializations(
+            prepared=prepared,
+            runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
+        )
+
+        self.assertLess(root_zero.support_count, all_roots.support_count)
+        self.assertLessEqual(set(root_zero.strings), set(all_roots.strings))
+
+    def test_different_roots_can_have_different_support_counts(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        root_zero = collect_online_serializations(
+            prepared=prepared,
+            runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
+        )
+        root_one = collect_online_serializations(
+            prepared=prepared,
+            runtime_options=SouthStarRuntimeOptions(rooted_at_atom=1),
+        )
+
+        self.assertNotEqual(root_zero.support_count, root_one.support_count)
+
+    def test_online_rooted_support_matches_offline_rooted_support(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        options = SouthStarRuntimeOptions(rooted_at_atom=0)
+
+        online = collect_online_serializations(
+            prepared=prepared,
+            runtime_options=options,
+        )
+        offline = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+
+        self.assertEqual(set(online.strings), set(offline.strings))
+        self.assertEqual(online.support_count, offline.distinct_count)
+        self.assertEqual(online.witness_completion_count, offline.witness_count)
+
+    def test_rooted_runtime_option_does_not_change_prepared_identity(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        collect_online_serializations(
+            prepared=prepared,
+            runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
+        )
+
+        self.assertEqual(prepared.atom_count, len(prepared.facts.atoms))
+        self.assertEqual(prepared.component_count, len(prepared.facts.components))
+
+    def test_invalid_root_rejected(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
             tetrahedral_facts(),
             writer_surface=SouthStarWriterSurface(),
@@ -62,11 +147,20 @@ class PreparedRuntimeTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             collect_online_serializations(
                 prepared=prepared,
-                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
+                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=99),
             )
 
-        self.assertEqual(prepared.atom_count, len(prepared.facts.atoms))
-        self.assertEqual(prepared.component_count, len(prepared.facts.components))
+    def test_unsupported_canonical_runtime_option_rejected(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with self.assertRaises(SouthStarError):
+            collect_online_serializations(
+                prepared=prepared,
+                runtime_options=SouthStarRuntimeOptions(canonical=True),
+            )
 
     def test_prepared_online_stream_matches_facts_level_stream(self) -> None:
         facts = tetrahedral_facts()

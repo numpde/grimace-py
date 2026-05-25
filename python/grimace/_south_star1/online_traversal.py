@@ -110,6 +110,7 @@ def iter_online_traversal_traces(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
+    rooted_at_atom: AtomId | None = None,
 ) -> Iterator[OnlineTraversalTrace]:
     """Yield traversal traces lazily without materializing skeleton space."""
 
@@ -118,7 +119,7 @@ def iter_online_traversal_traces(
     graph = _graph_from_facts(facts)
     all_bonds = frozenset(graph.bonds)
 
-    for roots in _iter_root_choices(graph):
+    for roots in _iter_root_choices(graph, rooted_at_atom=rooted_at_atom):
         for tree_bonds in _iter_spanning_forest_choices_lazy(graph):
             ring_bonds = all_bonds - tree_bonds
             parent, children_by_parent = _orient_forest_from_roots(
@@ -219,20 +220,43 @@ def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
     )
 
 
-def _iter_root_choices(graph: _Graph) -> Iterator[tuple[AtomId, ...]]:
+def _iter_root_choices(
+    graph: _Graph,
+    *,
+    rooted_at_atom: AtomId | None = None,
+) -> Iterator[tuple[AtomId, ...]]:
+    root_domains = _component_root_domains(graph, rooted_at_atom)
     roots: list[AtomId] = []
 
     def rec(index: int) -> Iterator[tuple[AtomId, ...]]:
-        if index == len(graph.components):
+        if index == len(root_domains):
             yield tuple(roots)
             return
-        atoms, _ = graph.components[index]
-        for atom in atoms:
+        for atom in root_domains[index]:
             roots.append(atom)
             yield from rec(index + 1)
             roots.pop()
 
     yield from rec(0)
+
+
+def _component_root_domains(
+    graph: _Graph,
+    rooted_at_atom: AtomId | None,
+) -> tuple[tuple[AtomId, ...], ...]:
+    if rooted_at_atom is None:
+        return tuple(atoms for atoms, _ in graph.components)
+    domains: list[tuple[AtomId, ...]] = []
+    found = False
+    for atoms, _ in graph.components:
+        if rooted_at_atom in atoms:
+            domains.append((rooted_at_atom,))
+            found = True
+        else:
+            domains.append(atoms)
+    if not found:
+        raise ValueError(f"rooted atom is not present in any component: {rooted_at_atom!r}")
+    return tuple(domains)
 
 
 def _iter_spanning_forest_choices_lazy(graph: _Graph) -> Iterator[frozenset[BondId]]:

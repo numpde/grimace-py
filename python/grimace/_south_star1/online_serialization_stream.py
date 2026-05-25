@@ -66,6 +66,7 @@ def iter_online_serializations(
     )
     decoder = _make_decoder(
         prepared=prepared,
+        runtime_options=runtime_options,
         execution_mode=execution_mode,
         branch_mode=branch_mode,
     )
@@ -117,6 +118,7 @@ def collect_online_serializations(
     decoder = make_determinized_online_decoder(
         prepared=prepared,
         include_eos=True,
+        runtime_options=runtime_options,
         execution_mode=execution_mode,
     )
     stack = [decoder.initial_state()]
@@ -172,6 +174,7 @@ def collect_online_serializations(
 def _make_decoder(
     *,
     prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
     execution_mode: OnlineDecoderExecutionMode,
     branch_mode: Literal["determinized", "branch_preserving"],
 ):
@@ -179,12 +182,14 @@ def _make_decoder(
         return make_determinized_online_decoder(
             prepared=prepared,
             include_eos=True,
+            runtime_options=runtime_options,
             execution_mode=execution_mode,
         )
     if branch_mode == "branch_preserving":
         return make_branch_preserving_online_decoder(
             prepared=prepared,
             include_eos=True,
+            runtime_options=runtime_options,
             execution_mode=execution_mode,
         )
     raise ValueError(f"unknown online serialization branch mode: {branch_mode!r}")

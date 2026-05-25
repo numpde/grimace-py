@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from .facts import MoleculeFacts
+from .ids import AtomId
 from .online_decisions import OnlineDecisionFrontier
 from .online_decisions import OnlineDecisionPath
 from .online_search_vm import RenderContinuationPayloadShape
@@ -241,6 +242,7 @@ def online_branch_preserving_residual_choice_result(
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         return _root_residual_choice_result(
@@ -249,6 +251,7 @@ def online_branch_preserving_residual_choice_result(
             semantics=semantics,
             state=state,
             templates=templates,
+            rooted_at_atom=rooted_at_atom,
         )
     return _resume_residual_choice_result(
         facts=facts,
@@ -256,6 +259,7 @@ def online_branch_preserving_residual_choice_result(
         semantics=semantics,
         state=state,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
     )
 
 
@@ -266,6 +270,7 @@ def online_determinized_residual_choice_result(
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
 ) -> OnlineResidualRawChoiceResult:
     branch_result = online_branch_preserving_residual_choice_result(
         facts=facts,
@@ -273,6 +278,7 @@ def online_determinized_residual_choice_result(
         semantics=semantics,
         state=state,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
     )
     grouped: dict[str, dict[tuple[object, ...], OnlineResidualContinuation]] = defaultdict(dict)
     for choice in branch_result.choices:
@@ -323,6 +329,7 @@ def _root_residual_choice_result(
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None,
+    rooted_at_atom: AtomId | None,
 ) -> OnlineResidualRawChoiceResult:
     sink = ResidualFrontierSink(required_prefix=state.prefix)
     vm = OnlineSearchVM(
@@ -330,6 +337,7 @@ def _root_residual_choice_result(
         policy=policy,
         semantics=semantics,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
         sink_factory=lambda: sink,
     )
     sink.snapshot_provider = vm.checkpoint
@@ -353,6 +361,7 @@ def _resume_residual_choice_result(
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None,
+    rooted_at_atom: AtomId | None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         raise ValueError("cannot resume residual decoder without a frontier")
@@ -371,6 +380,7 @@ def _resume_residual_choice_result(
             policy=policy,
             semantics=semantics,
             templates=templates,
+            rooted_at_atom=rooted_at_atom,
             snapshot=continuation.snapshot,
             sink=sink,
         )

@@ -15,6 +15,7 @@ from dataclasses import replace
 from enum import Enum
 
 from .facts import MoleculeFacts
+from .ids import AtomId
 from .online_decisions import FrontierCompactionMode
 from .online_decisions import OnlineDecisionFrontier
 from .online_decisions import OnlineDecisionPath
@@ -242,6 +243,7 @@ def online_branch_preserving_continuation_choice_result(
     state: OnlineContinuationDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     if state.frontier is None:
         return _root_continuation_choice_result(
@@ -251,6 +253,7 @@ def online_branch_preserving_continuation_choice_result(
             state=state,
             compaction_mode=compaction_mode,
             templates=templates,
+            rooted_at_atom=rooted_at_atom,
         )
     return _resume_branch_preserving_choice_result(state)
 
@@ -263,6 +266,7 @@ def online_determinized_continuation_choice_result(
     state: OnlineContinuationDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     templates: StereoTemplateBundle | None = None,
+    rooted_at_atom: AtomId | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     branch_result = online_branch_preserving_continuation_choice_result(
         facts=facts,
@@ -271,6 +275,7 @@ def online_determinized_continuation_choice_result(
         state=state,
         compaction_mode=compaction_mode,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
     )
     grouped: dict[str, list[OnlineContinuation]] = defaultdict(list)
     completion_counts: dict[str, int] = defaultdict(int)
@@ -310,6 +315,7 @@ def _root_continuation_choice_result(
     state: OnlineContinuationDecoderState,
     compaction_mode: FrontierCompactionMode,
     templates: StereoTemplateBundle | None,
+    rooted_at_atom: AtomId | None,
 ) -> OnlineContinuationRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     sink = ContinuationFrontierSink(
@@ -325,6 +331,7 @@ def _root_continuation_choice_result(
         sink_factory=lambda: sink,
         decision_recorder=recorder,
         templates=templates,
+        rooted_at_atom=rooted_at_atom,
     ):
         pass
     stats.sink_rejections = sink.sink_rejections

@@ -11,6 +11,11 @@ from .online_continuation import OnlineDecoderExecutionMode
 from .online_decoder_api import make_branch_preserving_online_decoder
 from .online_decoder_api import make_determinized_online_decoder
 from .policy import SmilesPolicy
+from .prepared_runtime import SouthStarPreparedMol
+from .prepared_runtime import SouthStarRuntimeOptions
+from .prepared_runtime import SouthStarWriterSurface
+from .prepared_runtime import prepare_south_star_mol_from_facts
+from .prepared_runtime import validate_south_star_runtime_options
 from .semantics import ParserSemantics
 
 
@@ -40,18 +45,27 @@ class OnlineSerializationSupportResult:
 
 def iter_online_serializations(
     *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    semantics: ParserSemantics,
+    prepared: SouthStarPreparedMol | None = None,
+    facts: MoleculeFacts | None = None,
+    policy: SmilesPolicy | None = None,
+    semantics: ParserSemantics | None = None,
+    writer_surface: SouthStarWriterSurface = SouthStarWriterSurface(),
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
     branch_mode: Literal["determinized", "branch_preserving"] = "determinized",
 ) -> Iterator[OnlineSerialization]:
     """Yield complete online serialization strings from decoder EOS choices."""
 
-    decoder = _make_decoder(
+    validate_south_star_runtime_options(runtime_options)
+    prepared = _resolve_prepared(
+        prepared=prepared,
         facts=facts,
         policy=policy,
         semantics=semantics,
+        writer_surface=writer_surface,
+    )
+    decoder = _make_decoder(
+        prepared=prepared,
         execution_mode=execution_mode,
         branch_mode=branch_mode,
     )
@@ -82,17 +96,26 @@ def iter_online_serializations(
 
 def collect_online_serializations(
     *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    semantics: ParserSemantics,
+    prepared: SouthStarPreparedMol | None = None,
+    facts: MoleculeFacts | None = None,
+    policy: SmilesPolicy | None = None,
+    semantics: ParserSemantics | None = None,
+    writer_surface: SouthStarWriterSurface = SouthStarWriterSurface(),
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
 ) -> OnlineSerializationSupportResult:
     """Materialize the determinized online serialization support and counts."""
 
-    decoder = make_determinized_online_decoder(
+    validate_south_star_runtime_options(runtime_options)
+    prepared = _resolve_prepared(
+        prepared=prepared,
         facts=facts,
         policy=policy,
         semantics=semantics,
+        writer_surface=writer_surface,
+    )
+    decoder = make_determinized_online_decoder(
+        prepared=prepared,
         include_eos=True,
         execution_mode=execution_mode,
     )
@@ -148,29 +171,45 @@ def collect_online_serializations(
 
 def _make_decoder(
     *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    semantics: ParserSemantics,
+    prepared: SouthStarPreparedMol,
     execution_mode: OnlineDecoderExecutionMode,
     branch_mode: Literal["determinized", "branch_preserving"],
 ):
     if branch_mode == "determinized":
         return make_determinized_online_decoder(
-            facts=facts,
-            policy=policy,
-            semantics=semantics,
+            prepared=prepared,
             include_eos=True,
             execution_mode=execution_mode,
         )
     if branch_mode == "branch_preserving":
         return make_branch_preserving_online_decoder(
-            facts=facts,
-            policy=policy,
-            semantics=semantics,
+            prepared=prepared,
             include_eos=True,
             execution_mode=execution_mode,
         )
     raise ValueError(f"unknown online serialization branch mode: {branch_mode!r}")
+
+
+def _resolve_prepared(
+    *,
+    prepared: SouthStarPreparedMol | None,
+    facts: MoleculeFacts | None,
+    policy: SmilesPolicy | None,
+    semantics: ParserSemantics | None,
+    writer_surface: SouthStarWriterSurface,
+) -> SouthStarPreparedMol:
+    if prepared is not None:
+        if facts is not None or policy is not None or semantics is not None:
+            raise ValueError("prepared serialization input cannot be mixed with raw inputs")
+        return prepared
+    if facts is None:
+        raise ValueError("online serialization requires prepared or facts")
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=writer_surface,
+        policy=policy,
+        semantics=semantics,
+    )
 
 
 def _retained_continuation_count(stats: object) -> int | None:

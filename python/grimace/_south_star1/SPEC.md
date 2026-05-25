@@ -243,6 +243,14 @@ stereo factors for the future online DFS enumerator. These modules are
 RDKit-free and do not depend on the support-artifact or support-enumeration
 tracks.
 
+`prepared_runtime.py` defines the South Star preparation boundary. Preparation
+validates `MoleculeFacts`, fixes the writer-surface flags, builds the finite
+policy and parser semantics when callers do not provide them, extracts static
+stereo templates, records a policy-derived token inventory superset, and stores
+basic graph metadata. Query-time runtime options such as rooting are kept out
+of the prepared identity. Per-query decoder state still owns DFS traversal,
+output, ring, residual trail, and frame-stack state.
+
 `online_traversal.py` provides a lazy traversal/event stream. It enumerates
 roots, spanning forests, parent orientations, ring endpoints, branches,
 continuations, and component dots by DFS without materializing the

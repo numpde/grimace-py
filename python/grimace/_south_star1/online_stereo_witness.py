@@ -146,11 +146,12 @@ def iter_online_stereo_witnesses_with_sink(
     sink_factory: Callable[[], OnlineRenderSink],
     decision_recorder: OnlineDecisionRecorder | None = None,
     decision_filter: DecisionPathFilter | None = None,
+    templates: StereoTemplateBundle | None = None,
 ) -> Iterator[OnlineWitness]:
     facts.validate()
     policy.validate_for_facts(facts)
     _validate_annotation_mode(policy)
-    templates = build_stereo_templates(facts)
+    templates = templates if templates is not None else build_stereo_templates(facts)
 
     for trace in iter_online_traversal_traces(facts=facts, policy=policy):
         decision_checkpoint = _push_decision(

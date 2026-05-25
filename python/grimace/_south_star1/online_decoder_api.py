@@ -25,7 +25,9 @@ from .online_residual_continuation import OnlineResidualRawChoiceResult
 from .online_residual_continuation import online_branch_preserving_residual_choice_result
 from .online_residual_continuation import online_determinized_residual_choice_result
 from .policy import SmilesPolicy
+from .prepared_runtime import SouthStarPreparedMol
 from .semantics import ParserSemantics
+from .stereo_templates import StereoTemplateBundle
 
 
 EOS = "<EOS>"
@@ -64,6 +66,7 @@ class SouthStarOnlineDecoder:
     facts: MoleculeFacts
     policy: SmilesPolicy
     semantics: ParserSemantics
+    templates: StereoTemplateBundle | None = None
     branch_mode: Literal["branch_preserving", "determinized"] = "determinized"
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY
     include_eos: bool = False
@@ -131,6 +134,7 @@ class SouthStarOnlineDecoder:
                     semantics=self.semantics,
                     state=state,
                     compaction_mode=self.compaction_mode,
+                    templates=self.templates,
                 )
             if self.branch_mode == "determinized":
                 return online_determinized_continuation_choice_result(
@@ -139,6 +143,7 @@ class SouthStarOnlineDecoder:
                     semantics=self.semantics,
                     state=state,
                     compaction_mode=self.compaction_mode,
+                    templates=self.templates,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
         if self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
@@ -150,6 +155,7 @@ class SouthStarOnlineDecoder:
                     policy=self.policy,
                     semantics=self.semantics,
                     state=state,
+                    templates=self.templates,
                 )
             if self.branch_mode == "determinized":
                 return online_determinized_residual_choice_result(
@@ -157,6 +163,7 @@ class SouthStarOnlineDecoder:
                     policy=self.policy,
                     semantics=self.semantics,
                     state=state,
+                    templates=self.templates,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
@@ -169,6 +176,7 @@ class SouthStarOnlineDecoder:
                 semantics=self.semantics,
                 state=state,
                 compaction_mode=self.compaction_mode,
+                templates=self.templates,
             )
         if self.branch_mode == "determinized":
             return online_determinized_choice_result(
@@ -177,23 +185,32 @@ class SouthStarOnlineDecoder:
                 semantics=self.semantics,
                 state=state,
                 compaction_mode=self.compaction_mode,
+                templates=self.templates,
             )
         raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
 
 def make_branch_preserving_online_decoder(
     *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    semantics: ParserSemantics,
+    prepared: SouthStarPreparedMol | None = None,
+    facts: MoleculeFacts | None = None,
+    policy: SmilesPolicy | None = None,
+    semantics: ParserSemantics | None = None,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     include_eos: bool = False,
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
 ) -> SouthStarOnlineDecoder:
+    facts, policy, semantics, templates = _resolve_decoder_inputs(
+        prepared=prepared,
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+    )
     return SouthStarOnlineDecoder(
         facts=facts,
         policy=policy,
         semantics=semantics,
+        templates=templates,
         branch_mode="branch_preserving",
         compaction_mode=compaction_mode,
         include_eos=include_eos,
@@ -203,17 +220,25 @@ def make_branch_preserving_online_decoder(
 
 def make_determinized_online_decoder(
     *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    semantics: ParserSemantics,
+    prepared: SouthStarPreparedMol | None = None,
+    facts: MoleculeFacts | None = None,
+    policy: SmilesPolicy | None = None,
+    semantics: ParserSemantics | None = None,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     include_eos: bool = False,
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
 ) -> SouthStarOnlineDecoder:
+    facts, policy, semantics, templates = _resolve_decoder_inputs(
+        prepared=prepared,
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+    )
     return SouthStarOnlineDecoder(
         facts=facts,
         policy=policy,
         semantics=semantics,
+        templates=templates,
         branch_mode="determinized",
         compaction_mode=compaction_mode,
         include_eos=include_eos,
@@ -232,6 +257,27 @@ def online_decode_token_texts_for_policy(
     if include_eos:
         token_texts.add(EOS)
     return tuple(sorted(token_texts))
+
+
+def _resolve_decoder_inputs(
+    *,
+    prepared: SouthStarPreparedMol | None,
+    facts: MoleculeFacts | None,
+    policy: SmilesPolicy | None,
+    semantics: ParserSemantics | None,
+) -> tuple[MoleculeFacts, SmilesPolicy, ParserSemantics, StereoTemplateBundle | None]:
+    if prepared is not None:
+        if facts is not None or policy is not None or semantics is not None:
+            raise ValueError("prepared decoder input cannot be mixed with raw inputs")
+        return (
+            prepared.facts,
+            prepared.policy,
+            prepared.semantics,
+            prepared.stereo_template_bundle(),
+        )
+    if facts is None or policy is None or semantics is None:
+        raise ValueError("decoder construction requires prepared or facts/policy/semantics")
+    return facts, policy, semantics, None
 
 
 def _validate_state_belongs_to_decoder(

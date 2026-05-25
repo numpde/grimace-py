@@ -444,6 +444,7 @@ def make_online_search_state(
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
+    templates: StereoTemplateBundle | None = None,
     sink: OnlineRenderSink | None = None,
 ) -> OnlineSearchState:
     facts.validate()
@@ -452,7 +453,7 @@ def make_online_search_state(
         facts=facts,
         policy=policy,
         semantics=semantics,
-        templates=build_stereo_templates(facts),
+        templates=templates if templates is not None else build_stereo_templates(facts),
         traversal=MutableTraversalState(),
         residual=ResidualStore(),
         ring=MutableRingState(),
@@ -468,6 +469,7 @@ class OnlineSearchVM:
         facts: MoleculeFacts,
         policy: SmilesPolicy,
         semantics: ParserSemantics,
+        templates: StereoTemplateBundle | None = None,
         sink_factory: Callable[[], OnlineRenderSink] | None = None,
     ) -> None:
         _validate_annotation_mode(policy)
@@ -475,6 +477,7 @@ class OnlineSearchVM:
             facts=facts,
             policy=policy,
             semantics=semantics,
+            templates=templates,
         )
         self._sink_factory = sink_factory or OnlineStringBuffer
         self._iterator = self._run()
@@ -512,6 +515,7 @@ class OnlineSearchVM:
         facts: MoleculeFacts,
         policy: SmilesPolicy,
         semantics: ParserSemantics,
+        templates: StereoTemplateBundle | None = None,
         snapshot: OnlineSearchSnapshot,
         sink: OnlineRenderSink,
     ) -> "OnlineSearchVM":
@@ -519,6 +523,7 @@ class OnlineSearchVM:
             facts=facts,
             policy=policy,
             semantics=semantics,
+            templates=templates,
             sink_factory=lambda: sink,
         )
         vm.state.output = sink
@@ -555,12 +560,14 @@ def iter_online_stereo_witnesses_vm(
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
+    templates: StereoTemplateBundle | None = None,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
 ) -> Iterator[OnlineWitness]:
     vm = OnlineSearchVM(
         facts=facts,
         policy=policy,
         semantics=semantics,
+        templates=templates,
         sink_factory=sink_factory,
     )
     while True:
@@ -579,6 +586,7 @@ def resume_online_search_from_snapshot(
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
+    templates: StereoTemplateBundle | None = None,
     snapshot: OnlineSearchSnapshot,
     sink: OnlineRenderSink,
 ) -> Iterator[OnlineWitness]:
@@ -586,6 +594,7 @@ def resume_online_search_from_snapshot(
         facts=facts,
         policy=policy,
         semantics=semantics,
+        templates=templates,
         snapshot=snapshot,
         sink=sink,
     )

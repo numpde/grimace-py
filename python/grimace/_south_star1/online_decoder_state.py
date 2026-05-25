@@ -18,6 +18,7 @@ from .online_decisions import compact_frontier_path
 from .online_stereo_witness import iter_online_stereo_witnesses_with_sink
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
+from .stereo_templates import StereoTemplateBundle
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +131,7 @@ def online_branch_preserving_choices(
     semantics: ParserSemantics,
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> tuple[OnlineDecoderChoice, ...]:
     choices, _ = online_branch_preserving_choices_with_stats(
         facts=facts,
@@ -137,6 +139,7 @@ def online_branch_preserving_choices(
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
+        templates=templates,
     )
     return choices
 
@@ -148,6 +151,7 @@ def online_branch_preserving_choices_with_stats(
     semantics: ParserSemantics,
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> tuple[tuple[OnlineDecoderChoice, ...], OnlineStateDecoderStats]:
     result = online_branch_preserving_choice_result(
         facts=facts,
@@ -155,6 +159,7 @@ def online_branch_preserving_choices_with_stats(
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
+        templates=templates,
     )
     return result.choices, result.stats
 
@@ -166,6 +171,7 @@ def online_branch_preserving_choice_result(
     semantics: ParserSemantics,
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> OnlineRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     path_filter = (
@@ -186,6 +192,7 @@ def online_branch_preserving_choice_result(
         sink_factory=lambda: sink,
         decision_recorder=recorder,
         decision_filter=path_filter,
+        templates=templates,
     ):
         pass
     if path_filter is not None:
@@ -222,6 +229,7 @@ def online_determinized_choices(
     semantics: ParserSemantics,
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> tuple[OnlineDecoderChoice, ...]:
     choices, _ = online_determinized_choices_with_stats(
         facts=facts,
@@ -229,6 +237,7 @@ def online_determinized_choices(
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
+        templates=templates,
     )
     return choices
 
@@ -240,6 +249,7 @@ def online_determinized_choices_with_stats(
     semantics: ParserSemantics,
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> tuple[tuple[OnlineDecoderChoice, ...], OnlineStateDecoderStats]:
     result = online_determinized_choice_result(
         facts=facts,
@@ -247,6 +257,7 @@ def online_determinized_choices_with_stats(
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
+        templates=templates,
     )
     return result.choices, result.stats
 
@@ -258,6 +269,7 @@ def online_determinized_choice_result(
     semantics: ParserSemantics,
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> OnlineRawChoiceResult:
     grouped: dict[str, dict[OnlineDecisionPath, int]] = defaultdict(dict)
     branch_result = online_branch_preserving_choice_result(
@@ -266,6 +278,7 @@ def online_determinized_choice_result(
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
+        templates=templates,
     )
     for choice in branch_result.choices:
         if choice.next_state.allowed_frontier is None:

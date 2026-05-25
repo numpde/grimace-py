@@ -17,6 +17,7 @@ from .online_search_vm import render_continuation_payload_shape
 from .policy import SmilesPolicy
 from .residual_constraints import ResidualStoreValueSnapshot
 from .semantics import ParserSemantics
+from .stereo_templates import StereoTemplateBundle
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +240,7 @@ def online_branch_preserving_residual_choice_result(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
+    templates: StereoTemplateBundle | None = None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         return _root_residual_choice_result(
@@ -246,12 +248,14 @@ def online_branch_preserving_residual_choice_result(
             policy=policy,
             semantics=semantics,
             state=state,
+            templates=templates,
         )
     return _resume_residual_choice_result(
         facts=facts,
         policy=policy,
         semantics=semantics,
         state=state,
+        templates=templates,
     )
 
 
@@ -261,12 +265,14 @@ def online_determinized_residual_choice_result(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
+    templates: StereoTemplateBundle | None = None,
 ) -> OnlineResidualRawChoiceResult:
     branch_result = online_branch_preserving_residual_choice_result(
         facts=facts,
         policy=policy,
         semantics=semantics,
         state=state,
+        templates=templates,
     )
     grouped: dict[str, dict[tuple[object, ...], OnlineResidualContinuation]] = defaultdict(dict)
     for choice in branch_result.choices:
@@ -316,12 +322,14 @@ def _root_residual_choice_result(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
+    templates: StereoTemplateBundle | None,
 ) -> OnlineResidualRawChoiceResult:
     sink = ResidualFrontierSink(required_prefix=state.prefix)
     vm = OnlineSearchVM(
         facts=facts,
         policy=policy,
         semantics=semantics,
+        templates=templates,
         sink_factory=lambda: sink,
     )
     sink.snapshot_provider = vm.checkpoint
@@ -344,6 +352,7 @@ def _resume_residual_choice_result(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     state: OnlineResidualDecoderState,
+    templates: StereoTemplateBundle | None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         raise ValueError("cannot resume residual decoder without a frontier")
@@ -361,6 +370,7 @@ def _resume_residual_choice_result(
             facts=facts,
             policy=policy,
             semantics=semantics,
+            templates=templates,
             snapshot=continuation.snapshot,
             sink=sink,
         )

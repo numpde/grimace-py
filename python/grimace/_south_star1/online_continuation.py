@@ -23,6 +23,7 @@ from .online_decisions import compact_frontier_path
 from .online_stereo_witness import iter_online_stereo_witnesses_with_sink
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
+from .stereo_templates import StereoTemplateBundle
 
 
 class OnlineDecoderExecutionMode(Enum):
@@ -240,6 +241,7 @@ def online_branch_preserving_continuation_choice_result(
     semantics: ParserSemantics,
     state: OnlineContinuationDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     if state.frontier is None:
         return _root_continuation_choice_result(
@@ -248,6 +250,7 @@ def online_branch_preserving_continuation_choice_result(
             semantics=semantics,
             state=state,
             compaction_mode=compaction_mode,
+            templates=templates,
         )
     return _resume_branch_preserving_choice_result(state)
 
@@ -259,6 +262,7 @@ def online_determinized_continuation_choice_result(
     semantics: ParserSemantics,
     state: OnlineContinuationDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+    templates: StereoTemplateBundle | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     branch_result = online_branch_preserving_continuation_choice_result(
         facts=facts,
@@ -266,6 +270,7 @@ def online_determinized_continuation_choice_result(
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
+        templates=templates,
     )
     grouped: dict[str, list[OnlineContinuation]] = defaultdict(list)
     completion_counts: dict[str, int] = defaultdict(int)
@@ -304,6 +309,7 @@ def _root_continuation_choice_result(
     semantics: ParserSemantics,
     state: OnlineContinuationDecoderState,
     compaction_mode: FrontierCompactionMode,
+    templates: StereoTemplateBundle | None,
 ) -> OnlineContinuationRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     sink = ContinuationFrontierSink(
@@ -318,6 +324,7 @@ def _root_continuation_choice_result(
         semantics=semantics,
         sink_factory=lambda: sink,
         decision_recorder=recorder,
+        templates=templates,
     ):
         pass
     stats.sink_rejections = sink.sink_rejections

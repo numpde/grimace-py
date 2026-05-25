@@ -256,6 +256,12 @@ supports the ordinary bounded tetrahedral and directional semantics, bounded
 ring labels, and support-wise maximal marker selection within the current
 traversal/prefix branch.
 
+`online_decoder.py` provides exact prefix feasibility and next-character
+decoding by running the online DFS with a prefix-constrained render sink. It
+does not build a support trie, support image, compiled artifact, or global
+deduplication table. A character or token is allowed after prefix `p` iff `p`
+plus that character or token has at least one complete online witness extension.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

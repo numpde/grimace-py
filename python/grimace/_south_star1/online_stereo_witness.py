@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
@@ -33,6 +34,8 @@ from .policy import DirectionMark
 from .policy import RingLabel
 from .policy import SmilesPolicy
 from .policy import TetraToken
+from .online_render_sink import OnlineRenderSink
+from .online_render_sink import OnlineStringBuffer
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import ResidualStore
@@ -122,6 +125,21 @@ def iter_online_stereo_witnesses(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
 ) -> Iterator[OnlineWitness]:
+    yield from iter_online_stereo_witnesses_with_sink(
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+        sink_factory=OnlineStringBuffer,
+    )
+
+
+def iter_online_stereo_witnesses_with_sink(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    sink_factory: Callable[[], OnlineRenderSink],
+) -> Iterator[OnlineWitness]:
     facts.validate()
     policy.validate_for_facts(facts)
     _validate_annotation_mode(policy)
@@ -134,6 +152,7 @@ def iter_online_stereo_witnesses(
             semantics=semantics,
             templates=templates,
             trace=trace,
+            sink_factory=sink_factory,
         )
 
 
@@ -275,6 +294,7 @@ def _iter_witnesses_for_trace(
     semantics: ParserSemantics,
     templates: StereoTemplateBundle,
     trace: OnlineTraversalTrace,
+    sink_factory: Callable[[], OnlineRenderSink],
 ) -> Iterator[OnlineWitness]:
     slots = _slot_view_for_trace(trace)
     atom_domains = tuple(
@@ -315,6 +335,7 @@ def _iter_witnesses_for_trace(
                         slots=slots,
                         prefix=prefix,
                         tetra_tokens=tetra_tokens,
+                        sink_factory=sink_factory,
                     )
                 )
                 if policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
@@ -337,6 +358,7 @@ def _iter_directional_solutions(
     slots: OnlineSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
+    sink_factory: Callable[[], OnlineRenderSink],
 ) -> Iterator[_DirectionalSolution]:
     del policy
     carrier_by_slot = {carrier.bond_slot: carrier for carrier in slots.carrier_slots}
@@ -381,13 +403,22 @@ def _iter_directional_solutions(
                 return
             if not all(store.close_factor(factor_id) for factor_id in factor_ids):
                 return
-            rendered = _render_online(
+            sink = sink_factory()
+            checkpoint = sink.checkpoint()
+            if not _render_online_to_sink(
                 trace=trace,
                 slots=slots,
                 prefix=prefix,
                 tetra_tokens=tetra_tokens,
                 marks=marks,
-            )
+                sink=sink,
+            ):
+                sink.rollback(checkpoint)
+                return
+            if not sink.complete():
+                sink.rollback(checkpoint)
+                return
+            rendered = sink.value()
             support = frozenset(
                 carrier_id
                 for carrier_id, mark in marks.items()
@@ -673,14 +704,15 @@ def _bond_decode_ok(
     return True
 
 
-def _render_online(
+def _render_online_to_sink(
     *,
     trace: OnlineTraversalTrace,
     slots: OnlineSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     marks: dict[int, DirectionMark],
-) -> str:
+    sink: OnlineRenderSink,
+) -> bool:
     bond_slot_by_event: dict[tuple[object, ...], OnlineBondSlot] = {}
     for slot in slots.bond_slots:
         key = (
@@ -695,14 +727,15 @@ def _render_online(
         endpoint.id: prefix.ring_labels[endpoint.id]
         for endpoint in slots.ring_endpoints
     }
-    out: list[str] = []
     for event in trace.events:
         if isinstance(event, OnlineAtomEvent):
-            out.append(prefix.atom_text[event.atom].render(tetra_tokens[event.atom]))
+            if not sink.append(prefix.atom_text[event.atom].render(tetra_tokens[event.atom])):
+                return False
             continue
         if isinstance(event, OnlineTreeBondEvent):
             key = ("tree", event.bond, event.written_from, event.written_to, None)
-            out.append(_render_bond_slot(bond_slot_by_event[key], prefix, marks))
+            if not sink.append(_render_bond_slot(bond_slot_by_event[key], prefix, marks)):
+                return False
             continue
         if isinstance(event, OnlineRingEndpointEvent):
             slot = next(
@@ -714,22 +747,27 @@ def _render_online(
                 and item.written_to == event.other_atom
                 and item.syntax_position == event.syntax_position
             )
-            out.append(_render_bond_slot(slot, prefix, marks))
+            if not sink.append(_render_bond_slot(slot, prefix, marks)):
+                return False
             if slot.ring_endpoint_id is None:
                 raise ValueError("ring endpoint slot lacks endpoint id")
-            out.append(ring_label_by_endpoint[slot.ring_endpoint_id].text())
+            if not sink.append(ring_label_by_endpoint[slot.ring_endpoint_id].text()):
+                return False
             continue
         if isinstance(event, OnlineBranchOpen):
-            out.append("(")
+            if not sink.append("("):
+                return False
             continue
         if isinstance(event, OnlineBranchClose):
-            out.append(")")
+            if not sink.append(")"):
+                return False
             continue
         if isinstance(event, OnlineDotEvent):
-            out.append(".")
+            if not sink.append("."):
+                return False
             continue
         raise TypeError(event)
-    return "".join(out)
+    return True
 
 
 def _render_bond_slot(
@@ -917,6 +955,7 @@ __all__ = (
     "iter_online_ring_label_assignments",
     "iter_online_stereo_witness_strings",
     "iter_online_stereo_witnesses",
+    "iter_online_stereo_witnesses_with_sink",
     "online_local_tetra_order",
     "online_slot_key",
     "online_slot_view_for_trace",

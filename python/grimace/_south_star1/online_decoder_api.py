@@ -19,6 +19,11 @@ from .online_decoder_state import OnlineRawChoiceResult
 from .online_decoder_state import OnlineStateDecoderStats
 from .online_decoder_state import online_branch_preserving_choice_result
 from .online_decoder_state import online_determinized_choice_result
+from .online_residual_continuation import OnlineResidualDecoderState
+from .online_residual_continuation import OnlineResidualDecoderStats
+from .online_residual_continuation import OnlineResidualRawChoiceResult
+from .online_residual_continuation import online_branch_preserving_residual_choice_result
+from .online_residual_continuation import online_determinized_residual_choice_result
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
 
@@ -38,13 +43,13 @@ class SouthStarOnlineChoice:
 @dataclass(frozen=True, slots=True)
 class SouthStarOnlineChoiceResult:
     choices: tuple[SouthStarOnlineChoice, ...]
-    stats: OnlineStateDecoderStats | OnlineContinuationStats
+    stats: OnlineStateDecoderStats | OnlineContinuationStats | OnlineResidualDecoderStats
 
 
 @dataclass(frozen=True, slots=True)
 class SouthStarOnlineDecoderState:
     prefix: str
-    raw_state: OnlineDecoderState | OnlineContinuationDecoderState
+    raw_state: OnlineDecoderState | OnlineContinuationDecoderState | OnlineResidualDecoderState
     decoder: "SouthStarOnlineDecoder"
 
     def choices(self) -> tuple[SouthStarOnlineChoice, ...]:
@@ -70,10 +75,7 @@ class SouthStarOnlineDecoder:
         elif self.execution_mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
             raw = OnlineContinuationDecoderState(prefix="")
         elif self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
-            raise NotImplementedError(
-                "residual online continuations are not implemented; "
-                "use PREFIX_REPLAY or CACHED_COMPLETIONS"
-            )
+            raw = OnlineResidualDecoderState(prefix="")
         else:
             raise ValueError(f"unknown online decoder execution mode: {self.execution_mode!r}")
         return SouthStarOnlineDecoderState(prefix="", raw_state=raw, decoder=self)
@@ -117,8 +119,8 @@ class SouthStarOnlineDecoder:
 
     def _raw_choice_result(
         self,
-        state: OnlineDecoderState | OnlineContinuationDecoderState,
-    ) -> OnlineRawChoiceResult | OnlineContinuationRawChoiceResult:
+        state: OnlineDecoderState | OnlineContinuationDecoderState | OnlineResidualDecoderState,
+    ) -> OnlineRawChoiceResult | OnlineContinuationRawChoiceResult | OnlineResidualRawChoiceResult:
         if self.execution_mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
             if not isinstance(state, OnlineContinuationDecoderState):
                 raise ValueError("cached-completion decoder received prefix-replay state")
@@ -140,10 +142,23 @@ class SouthStarOnlineDecoder:
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
         if self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
-            raise NotImplementedError(
-                "residual online continuations are not implemented; "
-                "use PREFIX_REPLAY or CACHED_COMPLETIONS"
-            )
+            if not isinstance(state, OnlineResidualDecoderState):
+                raise ValueError("residual-continuation decoder received non-residual state")
+            if self.branch_mode == "branch_preserving":
+                return online_branch_preserving_residual_choice_result(
+                    facts=self.facts,
+                    policy=self.policy,
+                    semantics=self.semantics,
+                    state=state,
+                )
+            if self.branch_mode == "determinized":
+                return online_determinized_residual_choice_result(
+                    facts=self.facts,
+                    policy=self.policy,
+                    semantics=self.semantics,
+                    state=state,
+                )
+            raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
         if not isinstance(state, OnlineDecoderState):
             raise ValueError("prefix-replay decoder received continuation state")

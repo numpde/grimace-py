@@ -20,6 +20,7 @@ from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
 from .online_decisions import OnlineDecision
+from .online_decisions import OnlineDecisionPath
 from .online_decisions import OnlineDecisionRecorder
 from .online_render_sink import OnlineRenderSink
 from .online_render_sink import OnlineStringBuffer
@@ -194,7 +195,7 @@ class OnlineSearchState:
             residual_snapshot=self.residual.checkpoint(),
             ring_state=self.ring.checkpoint(),
             output_snapshot=self.output.checkpoint(),
-            decision_snapshot=self.decisions.checkpoint(),
+            decision_snapshot=self.decisions.path(),
             frame_stack=tuple(self.frames),
         )
 
@@ -203,7 +204,10 @@ class OnlineSearchState:
         self.residual.rollback(snapshot.residual_snapshot)  # type: ignore[arg-type]
         self.ring.rollback(snapshot.ring_state)
         self.output.rollback(snapshot.output_snapshot)
-        self.decisions.rollback(snapshot.decision_snapshot)  # type: ignore[arg-type]
+        if isinstance(snapshot.decision_snapshot, OnlineDecisionPath):
+            self.decisions.restore_path(snapshot.decision_snapshot)
+        else:
+            self.decisions.rollback(snapshot.decision_snapshot)  # type: ignore[arg-type]
         self.frames[:] = list(snapshot.frame_stack)
 
 
@@ -290,6 +294,27 @@ class _DirectionalSolution:
     annotation_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class _RingAction:
+    bond: BondId
+    endpoint: int
+    label: RingLabel
+
+
+@dataclass(frozen=True, slots=True)
+class _RenderPiece:
+    text: str
+    token_text: str | None
+    ring_action: _RingAction | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _RenderContinuation:
+    trace_key: tuple[object, ...]
+    pieces: tuple[_RenderPiece, ...]
+    next_index: int
+
+
 def make_online_search_state(
     *,
     facts: MoleculeFacts,
@@ -356,6 +381,28 @@ class OnlineSearchVM:
         graph = _graph_from_facts(self.state.facts)
         yield from _iter_vm_traversals(self.state, graph, self._sink_factory)
 
+    @classmethod
+    def from_snapshot(
+        cls,
+        *,
+        facts: MoleculeFacts,
+        policy: SmilesPolicy,
+        semantics: ParserSemantics,
+        snapshot: OnlineSearchSnapshot,
+        sink: OnlineRenderSink,
+    ) -> "OnlineSearchVM":
+        vm = cls(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            sink_factory=lambda: sink,
+        )
+        vm.state.output = sink
+        _restore_resume_snapshot(vm.state, snapshot)
+        vm._iterator = _resume_render_from_state(vm.state)
+        vm._exhausted = False
+        return vm
+
 
 def capture_residual_continuation(
     state: OnlineSearchState,
@@ -391,6 +438,32 @@ def iter_online_stereo_witnesses_vm(
         policy=policy,
         semantics=semantics,
         sink_factory=sink_factory,
+    )
+    while True:
+        result = vm.step()
+        if result.kind == "yield_witness":
+            if result.witness is None:
+                raise ValueError("yield_witness result lacks witness")
+            yield result.witness
+            continue
+        if result.kind == "exhausted":
+            return
+
+
+def resume_online_search_from_snapshot(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    snapshot: OnlineSearchSnapshot,
+    sink: OnlineRenderSink,
+) -> Iterator[OnlineWitness]:
+    vm = OnlineSearchVM.from_snapshot(
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+        snapshot=snapshot,
+        sink=sink,
     )
     while True:
         result = vm.step()
@@ -697,13 +770,19 @@ def _directional_solution_rendered(
     checkpoint = state.output.checkpoint()
     state.frames.append(OnlineSearchFrame("completion", (_trace_key(trace),)))
     try:
-        if not _render_to_sink(
+        pieces = _render_pieces(
             state=state,
             trace=trace,
             slots=slots,
             prefix=prefix,
             tetra_tokens=tetra_tokens,
             marks=marks,
+        )
+        if not _render_pieces_to_sink(
+            state=state,
+            trace_key=_trace_key(trace),
+            pieces=pieces,
+            start_index=0,
         ):
             state.output.rollback(checkpoint)
             return None
@@ -718,7 +797,7 @@ def _directional_solution_rendered(
         state.output = previous_output
 
 
-def _render_to_sink(
+def _render_pieces(
     *,
     state: OnlineSearchState,
     trace: _VmTraversalTrace,
@@ -726,7 +805,7 @@ def _render_to_sink(
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     marks: dict[int, DirectionMark],
-) -> bool:
+) -> tuple[_RenderPiece, ...]:
     bond_slot_by_event: dict[tuple[object, ...], _BondSlot] = {}
     for slot in slots.bond_slots:
         bond_slot_by_event[
@@ -736,71 +815,137 @@ def _render_to_sink(
         endpoint.id: prefix.ring_labels[endpoint.id]
         for endpoint in slots.ring_endpoints
     }
+    pieces: list[_RenderPiece] = []
     for event in trace.events:
-        state.traversal.syntax_position += 1
         if isinstance(event, OnlineAtomEvent):
-            state.frames.append(OnlineSearchFrame("atom-entry", (int(event.atom),)))
-            try:
-                text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
-                if not state.output.append(text, token_text=text):
-                    return False
-            finally:
-                state.frames.pop()
+            text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
+            pieces.append(_RenderPiece(text=text, token_text=text))
             continue
         if isinstance(event, OnlineTreeBondEvent):
-            state.frames.append(OnlineSearchFrame("tree-bond-slot", (int(event.bond), int(event.written_from), int(event.written_to))))
-            try:
-                key = ("tree", event.bond, event.written_from, event.written_to, None)
-                text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
-                if not state.output.append(text, token_text=text or None):
-                    return False
-            finally:
-                state.frames.pop()
+            key = ("tree", event.bond, event.written_from, event.written_to, None)
+            text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
+            pieces.append(_RenderPiece(text=text, token_text=text or None))
             continue
         if isinstance(event, OnlineRingEndpointEvent):
-            state.frames.append(OnlineSearchFrame("ring-endpoint-slot", (int(event.bond), int(event.at), int(event.other_atom), event.syntax_position)))
-            try:
-                slot = next(
-                    item
-                    for item in slots.bond_slots
-                    if item.kind == "ring_endpoint"
-                    and item.bond == event.bond
-                    and item.written_from == event.at
-                    and item.written_to == event.other_atom
-                    and item.syntax_position == event.syntax_position
+            slot = next(
+                item
+                for item in slots.bond_slots
+                if item.kind == "ring_endpoint"
+                and item.bond == event.bond
+                and item.written_from == event.at
+                and item.written_to == event.other_atom
+                and item.syntax_position == event.syntax_position
+            )
+            text = _render_bond_slot(slot, prefix, marks)
+            pieces.append(_RenderPiece(text=text, token_text=text or None))
+            if slot.ring_endpoint_id is None:
+                raise ValueError("ring endpoint slot lacks endpoint id")
+            label = ring_label_by_endpoint[slot.ring_endpoint_id]
+            pieces.append(
+                _RenderPiece(
+                    text=label.text(),
+                    token_text=label.text(),
+                    ring_action=_RingAction(
+                        bond=slot.bond,
+                        endpoint=slot.ring_endpoint_id,
+                        label=label,
+                    ),
                 )
-                text = _render_bond_slot(slot, prefix, marks)
-                if not state.output.append(text, token_text=text or None):
-                    return False
-                if slot.ring_endpoint_id is None:
-                    raise ValueError("ring endpoint slot lacks endpoint id")
-                label = ring_label_by_endpoint[slot.ring_endpoint_id]
-                if not state.ring.register_endpoint(
-                    bond=slot.bond,
-                    endpoint=slot.ring_endpoint_id,
-                    label=label,
-                ):
-                    return False
-                label_text = label.text()
-                if not state.output.append(label_text, token_text=label_text):
-                    return False
-            finally:
-                state.frames.pop()
+            )
             continue
         if isinstance(event, OnlineBranchOpen):
-            if not state.output.append("(", token_text="("):
-                return False
+            pieces.append(_RenderPiece(text="(", token_text="("))
             continue
         if isinstance(event, OnlineBranchClose):
-            if not state.output.append(")", token_text=")"):
-                return False
+            pieces.append(_RenderPiece(text=")", token_text=")"))
             continue
         if isinstance(event, OnlineDotEvent):
-            if not state.output.append(".", token_text="."):
-                return False
+            pieces.append(_RenderPiece(text=".", token_text="."))
             continue
         raise TypeError(event)
+    return tuple(pieces)
+
+
+def _render_pieces_to_sink(
+    *,
+    state: OnlineSearchState,
+    trace_key: tuple[object, ...],
+    pieces: tuple[_RenderPiece, ...],
+    start_index: int,
+) -> bool:
+    for index in range(start_index, len(pieces)):
+        piece = pieces[index]
+        checkpoint = state.ring.checkpoint()
+        if piece.ring_action is not None and not state.ring.register_endpoint(
+            bond=piece.ring_action.bond,
+            endpoint=piece.ring_action.endpoint,
+            label=piece.ring_action.label,
+        ):
+            state.ring.rollback(checkpoint)
+            return False
+        continuation = _RenderContinuation(
+            trace_key=trace_key,
+            pieces=pieces,
+            next_index=index + 1,
+        )
+        state.frames.append(OnlineSearchFrame("render-resume", (continuation,), index))
+        try:
+            if not state.output.append(piece.text, token_text=piece.token_text):
+                state.ring.rollback(checkpoint)
+                return False
+        finally:
+            state.frames.pop()
     return True
+
+
+def _restore_resume_snapshot(
+    state: OnlineSearchState,
+    snapshot: OnlineSearchSnapshot,
+) -> None:
+    state.traversal.rollback(snapshot.traversal_state)
+    state.ring.rollback(snapshot.ring_state)
+    state.output.rollback(snapshot.output_snapshot)
+    if isinstance(snapshot.decision_snapshot, OnlineDecisionPath):
+        state.decisions.restore_path(snapshot.decision_snapshot)
+    else:
+        state.decisions.rollback(snapshot.decision_snapshot)  # type: ignore[arg-type]
+    state.frames[:] = list(snapshot.frame_stack)
+
+
+def _resume_render_from_state(state: OnlineSearchState) -> Iterator[OnlineWitness]:
+    continuation = _resume_continuation_from_frames(state.frames)
+    if continuation is None:
+        return
+    checkpoint = state.output.checkpoint()
+    if not _render_pieces_to_sink(
+        state=state,
+        trace_key=continuation.trace_key,
+        pieces=continuation.pieces,
+        start_index=continuation.next_index,
+    ):
+        state.output.rollback(checkpoint)
+        return
+    if not state.output.complete():
+        state.output.rollback(checkpoint)
+        return
+    rendered = state.output.value()
+    yield OnlineWitness(
+        rendered=rendered,
+        traversal_key=continuation.trace_key,
+        annotation_count=0,
+    )
+
+
+def _resume_continuation_from_frames(
+    frames: list[OnlineSearchFrame],
+) -> _RenderContinuation | None:
+    for frame in reversed(frames):
+        if frame.kind != "render-resume":
+            continue
+        if len(frame.data) != 1 or not isinstance(frame.data[0], _RenderContinuation):
+            raise ValueError("render-resume frame lacks continuation data")
+        return frame.data[0]
+    return None
 
 
 def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
@@ -1576,4 +1721,5 @@ __all__ = (
     "iter_online_stereo_witness_strings_vm",
     "iter_online_stereo_witnesses_vm",
     "make_online_search_state",
+    "resume_online_search_from_snapshot",
 )

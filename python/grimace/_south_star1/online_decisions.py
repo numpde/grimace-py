@@ -39,6 +39,9 @@ class OnlineDecisionRecorder:
             raise ValueError(f"invalid decision checkpoint: {checkpoint!r}")
         del self._items[checkpoint:]
 
+    def restore_path(self, path: OnlineDecisionPath) -> None:
+        self._items[:] = list(path.items)
+
     def push(self, decision: OnlineDecision) -> None:
         self._items.append(decision)
 

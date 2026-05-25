@@ -148,16 +148,96 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
         )
 
-    def test_residual_continuation_mode_is_reserved(self) -> None:
-        decoder = make_determinized_online_decoder(
-            facts=tetrahedral_facts(),
-            policy=ordinary_policy_for_facts(tetrahedral_facts()),
-            semantics=OrdinarySmilesSemantics(),
-            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+    def test_residual_continuations_match_prefix_replay_tetra(self) -> None:
+        self._assert_residual_texts_match_replay(tetrahedral_facts())
+
+    def test_residual_continuations_match_prefix_replay_directional(self) -> None:
+        self._assert_residual_texts_match_replay(directional_facts())
+
+    def test_residual_continuations_match_prefix_replay_ring_tetra(self) -> None:
+        self._assert_residual_texts_match_replay(
+            ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"),
         )
 
-        with self.assertRaises(NotImplementedError):
-            decoder.initial_state()
+    def test_residual_continuation_next_step_does_not_restart_from_root(self) -> None:
+        decoder = _residual_determinized_decoder(tetrahedral_facts())
+        first = decoder.initial_state().choices_with_stats()
+        self.assertEqual(first.stats.root_dfs_runs, 1)
+        self.assertTrue(first.choices)
+
+        next_state = first.choices[0].next_state
+        self.assertIsNotNone(next_state)
+        second = next_state.choices_with_stats()
+
+        self.assertEqual(second.stats.root_dfs_runs, 0)
+        self.assertGreater(second.stats.resumed_snapshots, 0)
+
+    def test_residual_continuation_state_contains_snapshots_not_completed_token_streams(self) -> None:
+        decoder = _residual_determinized_decoder(tetrahedral_facts())
+        choice = decoder.initial_state().choices()[0]
+        self.assertIsNotNone(choice.next_state)
+        frontier = choice.next_state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+
+        continuation = frontier.continuations[0]
+
+        self.assertTrue(continuation.snapshot.frame_stack)
+        self.assertFalse(hasattr(continuation, "rendered"))
+        self.assertFalse(hasattr(continuation, "tokens"))
+
+    def test_residual_continuation_eos_matches_prefix_replay(self) -> None:
+        facts = tetrahedral_facts()
+        replay = _replay_determinized_decoder(facts, include_eos=True)
+        residual = _residual_determinized_decoder(facts, include_eos=True)
+        witness = _witnesses(facts)[0]
+        replay_state = _walk_decoder(replay, _tokens_for_witness(replay, witness))
+        residual_state = _walk_decoder(residual, _tokens_for_witness(residual, witness))
+
+        self.assertEqual(
+            _choice_texts(replay_state.choices()),
+            _choice_texts(residual_state.choices()),
+        )
+        self.assertTrue(any(choice.is_eos for choice in residual_state.choices()))
+
+    def test_residual_continuation_walks_known_tetra_witness(self) -> None:
+        facts = tetrahedral_facts()
+        decoder = _residual_determinized_decoder(facts, include_eos=True)
+        witness = _witnesses(facts)[0]
+
+        state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
+
+        self.assertEqual(state.prefix, witness)
+        self.assertTrue(any(choice.text == EOS and choice.is_eos for choice in state.choices()))
+
+    def test_residual_continuation_walks_known_directional_witness(self) -> None:
+        facts = directional_facts()
+        decoder = _residual_determinized_decoder(facts, include_eos=True)
+        witness = _witnesses(facts)[0]
+
+        state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
+
+        self.assertEqual(state.prefix, witness)
+        self.assertTrue(any(choice.text == EOS and choice.is_eos for choice in state.choices()))
+
+    def test_residual_continuation_determinized_merges_same_text(self) -> None:
+        choices = _residual_determinized_decoder(cyclopropane_facts()).initial_state().choices()
+
+        self.assertEqual(
+            tuple(choice.text for choice in choices),
+            tuple(sorted({choice.text for choice in choices})),
+        )
+        self.assertTrue(any(choice.multiplicity > 1 for choice in choices))
+
+    def test_residual_continuation_branch_preserving_allows_duplicate_text(self) -> None:
+        choices = _residual_branch_decoder(cyclopropane_facts()).initial_state().choices()
+
+        self.assertGreater(
+            max(
+                sum(1 for choice in choices if choice.text == text)
+                for text in {choice.text for choice in choices}
+            ),
+            1,
+        )
 
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")
@@ -165,6 +245,7 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertIn("CACHED_COMPLETIONS", text)
         self.assertIn("not yet a true residual DFS continuation", text)
         self.assertIn("RESIDUAL_CONTINUATIONS", text)
+        self.assertIn("stores suspended", text)
         self.assertNotIn("RESUMABLE_CONTINUATIONS` execution mode stores suspended", text)
 
     def test_online_continuation_boundary_no_artifact_or_rdkit_imports(self) -> None:
@@ -214,6 +295,15 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             _choice_texts(continuation.initial_state().choices()),
         )
 
+    def _assert_residual_texts_match_replay(self, facts) -> None:
+        replay = _replay_determinized_decoder(facts)
+        residual = _residual_determinized_decoder(facts)
+
+        self.assertEqual(
+            _choice_texts(replay.initial_state().choices()),
+            _choice_texts(residual.initial_state().choices()),
+        )
+
 
 def _replay_determinized_decoder(facts, *, include_eos: bool = False):
     return make_determinized_online_decoder(
@@ -241,6 +331,25 @@ def _continuation_branch_decoder(facts):
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),
         execution_mode=OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+    )
+
+
+def _residual_determinized_decoder(facts, *, include_eos: bool = False):
+    return make_determinized_online_decoder(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        include_eos=include_eos,
+        execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+    )
+
+
+def _residual_branch_decoder(facts):
+    return make_branch_preserving_online_decoder(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
     )
 
 

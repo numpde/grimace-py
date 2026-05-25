@@ -308,17 +308,20 @@ restarting from the molecule root after a choice, but it does so by replaying
 previously discovered valid token completions. It is table-free with respect to
 global support enumeration, but it is not yet a true residual DFS continuation.
 
-A future `RESIDUAL_CONTINUATIONS` execution mode will store suspended traversal
-and residual-constraint frames rather than completed token streams.
+The `RESIDUAL_CONTINUATIONS` execution mode stores suspended
+`OnlineSearchSnapshot` states captured at token boundaries. A snapshot is
+exposed only after the branch is proven to have at least one complete valid
+witness extension. Later decoder calls resume those snapshots directly rather
+than restarting DFS from the molecule root or replaying cached completed token
+streams.
 
 `online_search_vm.py` is the explicit-stack event-level runtime. It owns
 traversal progression, syntax-slot choices, residual stereo propagation,
 ring-label state, output buffering, and decision recording. It does not iterate
 prebuilt traversal traces and does not call the recursive online witness
-enumerator. This VM is the substrate for future true `RESIDUAL_CONTINUATIONS`:
-a future decoder state can store an `OnlineSearchSnapshot` at a token boundary
-and resume from it, instead of replaying from the root or replaying cached
-completions.
+enumerator. This VM is the substrate for `RESIDUAL_CONTINUATIONS`: decoder
+states can store an `OnlineSearchSnapshot` at a token boundary and resume from
+it, instead of replaying from the root or replaying cached completions.
 
 ## Experimental Options
 

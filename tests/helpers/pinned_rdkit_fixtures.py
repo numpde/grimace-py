@@ -244,10 +244,12 @@ def load_pinned_rdkit_fixture_cases(
     fixture_path = fixture_root / f"{rdkit_version}.json"
     fixture_dir = fixture_root / rdkit_version
     if fixture_path.is_file():
-        payloads = ((fixture_path, json.loads(fixture_path.read_text())),)
+        payloads = (
+            (fixture_path, json.loads(fixture_path.read_text(encoding="utf-8"))),
+        )
     elif fixture_dir.is_dir():
         payloads = tuple(
-            (path, json.loads(path.read_text()))
+            (path, json.loads(path.read_text(encoding="utf-8")))
             for path in sorted(fixture_dir.glob("*.json"))
         )
         if not payloads:

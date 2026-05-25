@@ -131,10 +131,9 @@ def checked_in_fixture_case_ids_by_path(
     case_ids_by_fixture: dict[str, frozenset[str]] = {}
     for fixture_path in sorted(fixture_root.rglob("*.json")):
         relative_path = fixture_path.relative_to(repo_root).as_posix()
-        try:
-            payload = json.loads(fixture_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
+        payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"{fixture_path} must contain a JSON object")
         raw_cases = payload.get("cases")
         if not isinstance(raw_cases, list):
             continue

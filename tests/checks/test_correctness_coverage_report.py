@@ -252,6 +252,28 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "without status"):
                 REPORT.build_summary(Path(tmpdir))
 
+    def test_report_fails_on_malformed_checked_in_fixture_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture_root = Path(tmpdir) / "tests" / "fixtures"
+            _write_minimal_fixture_families(fixture_root)
+            _write_serializer_ledger(fixture_root, _minimal_coverage_payload())
+            malformed_fixture = fixture_root / "extra" / "bad.json"
+            malformed_fixture.parent.mkdir(parents=True)
+            malformed_fixture.write_text("[", encoding="utf-8")
+
+            with self.assertRaises(json.JSONDecodeError):
+                REPORT.build_summary(Path(tmpdir))
+
+    def test_report_fails_on_non_object_checked_in_fixture_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture_root = Path(tmpdir) / "tests" / "fixtures"
+            _write_minimal_fixture_families(fixture_root)
+            _write_serializer_ledger(fixture_root, _minimal_coverage_payload())
+            _write_json(fixture_root / "extra" / "list.json", [])
+
+            with self.assertRaisesRegex(ValueError, "must contain a JSON object"):
+                REPORT.build_summary(Path(tmpdir))
+
     def test_report_fails_on_empty_serializer_ledger(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             fixture_root = Path(tmpdir) / "tests" / "fixtures"

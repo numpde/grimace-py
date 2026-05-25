@@ -364,6 +364,16 @@ dispatcher resumes `RenderCursorFrame` payloads; future prefix, directional,
 and support-maximal scheduler frames can be added without making
 `OnlineSearchVM.from_snapshot(...)` render-cursor specific again.
 
+`online_serialization_stream.py` exposes a direct serialization stream on top
+of the online decoder facade. It walks decoder states with EOS enabled and
+emits each determinized support string once, using `RESIDUAL_CONTINUATIONS` by
+default. `support_count` is the number of distinct emitted serialization
+strings, `witness_completion_count` is the sum of EOS `completion_count` values
+over those strings, and each emitted item reports the EOS frontier
+`multiplicity` for that string. This stream is an online runtime API: it does
+not use the support enumerator, support image, compiled artifact, or global
+deduplication table to produce strings.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

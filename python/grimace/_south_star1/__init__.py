@@ -35,6 +35,7 @@ CORE_MODULES: tuple[str, ...] = (
     "online_decoder_state",
     "online_decisions",
     "online_render_sink",
+    "online_search_vm",
     "online_stereo_witness",
     "online_traversal",
     "policy",

@@ -311,6 +311,13 @@ global support enumeration, but it is not yet a true residual DFS continuation.
 A future `RESIDUAL_CONTINUATIONS` execution mode will store suspended traversal
 and residual-constraint frames rather than completed token streams.
 
+`online_search_vm.py` is the explicit-stack online runtime. It represents the
+DFS branch state as replayable frames rather than relying on the Python call
+stack. This is the prerequisite for true `RESIDUAL_CONTINUATIONS`: a future
+decoder state can store an `OnlineSearchSnapshot` at a token boundary and
+resume from it, instead of replaying from the root or replaying cached
+completions.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

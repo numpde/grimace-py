@@ -288,6 +288,13 @@ choices. This may increase search but must not change the determinized token
 frontier. Tests compare traversal-only compaction against full decision-prefix
 compaction.
 
+`online_decoder_api.py` exposes main-branch-shaped online decoder facades. The
+branch-preserving facade may return multiple choices with the same emitted text.
+The determinized facade returns at most one choice per emitted text and merges
+frontier continuations. These APIs remain table-free: they do not build a
+support trie, support image, compiled artifact, or global deduplication table.
+EOS is explicit and optional.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

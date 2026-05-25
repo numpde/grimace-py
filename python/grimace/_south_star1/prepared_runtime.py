@@ -18,8 +18,8 @@ from .online_decoder import online_decode_tokens
 from .ordinary_policy import ordinary_policy_for_facts
 from .ordinary_semantics import OrdinarySmilesSemantics
 from .policy import SmilesPolicy
+from .root_domains import component_root_domains_for_facts
 from .semantics import ParserSemantics
-from .skeleton import enumerate_traversal_skeletons
 from .stereo_templates import DirectionalTemplate
 from .stereo_templates import StereoTemplateBundle
 from .stereo_templates import TetraTemplate
@@ -53,6 +53,10 @@ class SouthStarPreparedMol:
     token_inventory_superset: tuple[str, ...]
     atom_count: int
     component_count: int
+    atom_ids: tuple[AtomId, ...]
+    component_ids: tuple[ComponentId, ...]
+    component_atom_ids: tuple[tuple[AtomId, ...], ...]
+    atom_component: tuple[tuple[AtomId, ComponentId], ...]
 
     def stereo_template_bundle(self) -> StereoTemplateBundle:
         return StereoTemplateBundle(
@@ -84,6 +88,14 @@ def prepare_south_star_mol_from_facts(
         token_inventory_superset=_token_inventory_superset(resolved_policy),
         atom_count=len(facts.atoms),
         component_count=len(facts.components),
+        atom_ids=tuple(atom.id for atom in facts.atoms),
+        component_ids=tuple(component.id for component in facts.components),
+        component_atom_ids=tuple(component.atoms for component in facts.components),
+        atom_component=tuple(
+            (atom, component.id)
+            for component in facts.components
+            for atom in component.atoms
+        ),
     )
 
 
@@ -121,6 +133,7 @@ def enumerate_prepared_stereo_support(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ):
+    from .skeleton import enumerate_traversal_skeletons
     from .support_enumeration import enumerate_stereo_support
 
     rooted_at_atom = runtime_root_atom(
@@ -211,6 +224,7 @@ __all__ = (
     "SouthStarPreparedMol",
     "SouthStarRuntimeOptions",
     "SouthStarWriterSurface",
+    "component_root_domains_for_facts",
     "enumerate_prepared_stereo_support",
     "prepare_south_star_mol_from_facts",
     "prepare_south_star_mol_from_rdkit",

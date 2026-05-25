@@ -42,6 +42,7 @@ from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
 from .residual_constraints import direction_var
+from .root_domains import component_root_domains_for_facts
 from .semantics import ParserSemantics
 from .skeleton import ChildRole
 from .stereo_templates import DirectionalTemplate
@@ -1244,7 +1245,11 @@ def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
 
 
 def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tuple[AtomId, ...]]:
-    root_domains = _component_root_domains(graph, state.rooted_at_atom)
+    root_domains = _component_root_domains(
+        graph,
+        state.facts,
+        state.rooted_at_atom,
+    )
     roots: list[AtomId] = []
 
     def rec(index: int) -> Iterator[tuple[AtomId, ...]]:
@@ -1274,21 +1279,14 @@ def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tupl
 
 def _component_root_domains(
     graph: _Graph,
+    facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
 ) -> tuple[tuple[AtomId, ...], ...]:
-    if rooted_at_atom is None:
-        return tuple(atoms for atoms, _ in graph.components)
-    domains: list[tuple[AtomId, ...]] = []
-    found = False
-    for atoms, _ in graph.components:
-        if rooted_at_atom in atoms:
-            domains.append((rooted_at_atom,))
-            found = True
-        else:
-            domains.append(atoms)
-    if not found:
-        raise ValueError(f"rooted atom is not present in any component: {rooted_at_atom!r}")
-    return tuple(domains)
+    del graph
+    return tuple(
+        atoms
+        for _, atoms in component_root_domains_for_facts(facts, rooted_at_atom)
+    )
 
 
 def _iter_spanning_forest_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[frozenset[BondId]]:

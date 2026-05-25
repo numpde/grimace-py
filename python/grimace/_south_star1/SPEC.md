@@ -247,13 +247,18 @@ tracks.
 validates `MoleculeFacts`, fixes the writer-surface flags, builds the finite
 policy and parser semantics when callers do not provide them, extracts static
 stereo templates, records a policy-derived token inventory superset, and stores
-basic graph metadata. Query-time runtime options such as rooting are kept out
-of the prepared identity. Negative `rooted_at_atom` values enumerate all roots;
-an explicit nonnegative `rooted_at_atom` restricts traversal roots to that atom in its
-component while other components keep their root domains. `canonical=True` and
-`do_random=False` are rejected in the current online runtime. Per-query decoder
-state still owns DFS traversal, output, ring, residual trail, and frame-stack
-state.
+basic graph metadata, including atom ids, component ids, component atom domains,
+and atom-to-component membership. Query-time runtime options such as rooting
+are kept out of the prepared identity. Negative `rooted_at_atom` values
+enumerate all roots; an explicit nonnegative `rooted_at_atom` restricts
+traversal roots to that atom in its component while other components keep their
+root domains. The online and offline traversal paths use the same
+`component_root_domains_for_facts(...)` helper. Rooted count-law tests compare
+all-root witness counts against sums over explicit roots in connected molecules
+and against sums over roots of a fixed component in disconnected molecules.
+`canonical=True` and `do_random=False` are rejected in the current online
+runtime. Per-query decoder state still owns DFS traversal, output, ring,
+residual trail, and frame-stack state.
 
 `online_traversal.py` provides a lazy traversal/event stream. It enumerates
 roots, spanning forests, parent orientations, ring endpoints, branches,

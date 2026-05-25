@@ -11,8 +11,10 @@ from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.online_traversal import iter_online_traversal_traces
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
+from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoder
 from grimace._south_star1.online_decoder_api import online_decode_token_texts_for_policy
 from grimace._south_star1.online_serialization_stream import collect_online_serializations
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -21,6 +23,9 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.root_domains import component_root_domains_for_facts
+from grimace._south_star1.skeleton import enumerate_traversal_skeletons
+from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.support_enumeration import enumerate_stereo_support
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cyclopropane_facts
@@ -286,10 +291,10 @@ class PreparedRuntimeTest(unittest.TestCase):
 
         all_roots = collect_online_serializations(prepared=prepared)
         union: set[str] = set()
-        for atom in range(prepared.atom_count):
+        for atom_id in prepared.atom_ids:
             rooted = collect_online_serializations(
                 prepared=prepared,
-                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=atom),
+                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=int(atom_id)),
             )
             union.update(rooted.strings)
 
@@ -337,6 +342,157 @@ class PreparedRuntimeTest(unittest.TestCase):
 
         self.assertEqual(prepared.atom_count, len(prepared.facts.atoms))
         self.assertEqual(prepared.component_count, len(prepared.facts.components))
+        self.assertEqual(prepared.atom_ids, tuple(atom.id for atom in prepared.facts.atoms))
+        self.assertEqual(
+            prepared.component_atom_ids,
+            tuple(component.atoms for component in prepared.facts.components),
+        )
+
+    def test_prepared_atom_ids_do_not_assume_dense_ids(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            sparse_two_atom_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        self.assertEqual(prepared.atom_ids, (AtomId(10), AtomId(20)))
+        self.assertNotEqual(prepared.atom_ids, tuple(AtomId(i) for i in range(prepared.atom_count)))
+
+    def test_sparse_atom_ids_explicit_root_works(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            sparse_two_atom_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        rooted = collect_online_serializations(
+            prepared=prepared,
+            runtime_options=SouthStarRuntimeOptions(rooted_at_atom=20),
+        )
+
+        self.assertTrue(rooted.strings)
+        self.assertTrue(all(text.startswith("O") for text in rooted.strings))
+
+    def test_sparse_atom_ids_all_roots_uses_actual_atom_ids(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            sparse_two_atom_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        all_roots = collect_online_serializations(prepared=prepared)
+        union: set[str] = set()
+        for atom_id in prepared.atom_ids:
+            rooted = collect_online_serializations(
+                prepared=prepared,
+                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=int(atom_id)),
+            )
+            union.update(rooted.strings)
+
+        self.assertEqual(set(all_roots.strings), union)
+
+    def test_connected_all_root_witness_count_equals_sum_over_explicit_roots(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        all_roots = collect_online_serializations(prepared=prepared)
+        witness_count = 0
+        support_union: set[str] = set()
+        for atom_id in prepared.atom_ids:
+            rooted = collect_online_serializations(
+                prepared=prepared,
+                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=int(atom_id)),
+            )
+            witness_count += rooted.witness_completion_count
+            support_union.update(rooted.strings)
+
+        self.assertEqual(all_roots.witness_completion_count, witness_count)
+        self.assertEqual(set(all_roots.strings), support_union)
+
+    def test_disconnected_all_root_witness_count_equals_sum_over_roots_in_each_component(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            disconnected_two_bond_components_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        all_roots = collect_online_serializations(prepared=prepared)
+
+        for component_atoms in prepared.component_atom_ids:
+            witness_count = 0
+            support_union: set[str] = set()
+            for atom_id in component_atoms:
+                rooted = collect_online_serializations(
+                    prepared=prepared,
+                    runtime_options=SouthStarRuntimeOptions(rooted_at_atom=int(atom_id)),
+                )
+                witness_count += rooted.witness_completion_count
+                support_union.update(rooted.strings)
+            with self.subTest(component=tuple(int(atom) for atom in component_atoms)):
+                self.assertEqual(all_roots.witness_completion_count, witness_count)
+                self.assertEqual(set(all_roots.strings), support_union)
+
+    def test_shared_component_root_domain_helper_used_by_online_and_offline(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            disconnected_two_bond_components_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        expected = tuple(
+            atoms
+            for _, atoms in component_root_domains_for_facts(
+                prepared.facts,
+                AtomId(3),
+            )
+        )
+        online_roots = {
+            trace.roots
+            for trace in iter_online_traversal_traces(
+                facts=prepared.facts,
+                policy=prepared.policy,
+                rooted_at_atom=AtomId(3),
+            )
+        }
+        offline_roots = {
+            skeleton.roots
+            for skeleton in enumerate_traversal_skeletons(
+                facts=prepared.facts,
+                index=build_graph_index(prepared.facts),
+                policy=prepared.policy,
+                rooted_at_atom=AtomId(3),
+            )
+        }
+
+        self.assertEqual(expected, ((AtomId(0), AtomId(1)), (AtomId(3),)))
+        self.assertEqual(online_roots, {(AtomId(0), AtomId(3)), (AtomId(1), AtomId(3))})
+        self.assertEqual(offline_roots, online_roots)
+
+    def test_disconnected_stereo_rooted_support_matches_offline_and_all_modes(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            disconnected_tetra_and_bond_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        options = SouthStarRuntimeOptions(rooted_at_atom=5)
+        offline = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=options,
+        )
+
+        for mode in (
+            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        ):
+            with self.subTest(mode=mode.value):
+                online = collect_online_serializations(
+                    prepared=prepared,
+                    runtime_options=options,
+                    execution_mode=mode,
+                )
+                self.assertEqual(set(online.strings), set(offline.strings))
+                self.assertEqual(online.support_count, offline.distinct_count)
+                self.assertEqual(
+                    online.witness_completion_count,
+                    offline.witness_count,
+                )
 
     def test_invalid_root_rejected(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
@@ -398,6 +554,21 @@ class PreparedRuntimeTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             root_one.choices(root_zero.initial_state())
+
+    def test_decoder_rejects_inconsistent_manual_root_construction(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with self.assertRaises(ValueError):
+            SouthStarOnlineDecoder(
+                facts=prepared.facts,
+                policy=prepared.policy,
+                semantics=prepared.semantics,
+                rooted_at_atom=None,
+                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
+            )
 
     def test_prepared_online_stream_matches_facts_level_stream(self) -> None:
         facts = tetrahedral_facts()
@@ -488,6 +659,42 @@ def disconnected_two_bond_components_facts() -> MoleculeFacts:
                 bonds=(BondId(1),),
             ),
         ),
+    )
+
+
+def sparse_two_atom_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(10, "C"), atom(20, "O")),
+        bonds=(single_bond(30, 10, 20),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(7),
+                atoms=(AtomId(10), AtomId(20)),
+                bonds=(BondId(30),),
+            ),
+        ),
+    )
+
+
+def disconnected_tetra_and_bond_facts() -> MoleculeFacts:
+    base = tetrahedral_facts()
+    return MoleculeFacts(
+        atoms=base.atoms + (atom(4, "F"), atom(5, "Cl")),
+        bonds=base.bonds + (single_bond(3, 4, 5),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(4), AtomId(5)),
+                bonds=(BondId(3),),
+            ),
+        ),
+        stereo=base.stereo,
+        ligand_occurrences=base.ligand_occurrences,
     )
 
 

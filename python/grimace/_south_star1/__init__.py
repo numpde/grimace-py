@@ -44,6 +44,7 @@ CORE_MODULES: tuple[str, ...] = (
     "residual_constraints",
     "render",
     "ring_labels",
+    "root_domains",
     "semantics",
     "semantic_relation_checker",
     "skeleton",

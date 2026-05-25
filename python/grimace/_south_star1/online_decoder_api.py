@@ -78,6 +78,11 @@ class SouthStarOnlineDecoder:
     include_eos: bool = False
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY
 
+    def __post_init__(self) -> None:
+        expected_root = runtime_root_atom(self.runtime_options, facts=self.facts)
+        if self.rooted_at_atom != expected_root:
+            raise ValueError("online decoder rooted_at_atom does not match runtime_options")
+
     def initial_state(self) -> SouthStarOnlineDecoderState:
         if self.execution_mode is OnlineDecoderExecutionMode.PREFIX_REPLAY:
             raw: OnlineDecoderState | OnlineContinuationDecoderState = OnlineDecoderState(prefix="")

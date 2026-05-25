@@ -11,6 +11,7 @@ from .facts import MoleculeFacts
 from .ids import AtomId
 from .ids import BondId
 from .policy import SmilesPolicy
+from .root_domains import component_root_domains_for_facts
 from .skeleton import ChildRole
 
 
@@ -119,7 +120,11 @@ def iter_online_traversal_traces(
     graph = _graph_from_facts(facts)
     all_bonds = frozenset(graph.bonds)
 
-    for roots in _iter_root_choices(graph, rooted_at_atom=rooted_at_atom):
+    for roots in _iter_root_choices(
+        graph,
+        facts=facts,
+        rooted_at_atom=rooted_at_atom,
+    ):
         for tree_bonds in _iter_spanning_forest_choices_lazy(graph):
             ring_bonds = all_bonds - tree_bonds
             parent, children_by_parent = _orient_forest_from_roots(
@@ -223,9 +228,14 @@ def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
 def _iter_root_choices(
     graph: _Graph,
     *,
+    facts: MoleculeFacts,
     rooted_at_atom: AtomId | None = None,
 ) -> Iterator[tuple[AtomId, ...]]:
-    root_domains = _component_root_domains(graph, rooted_at_atom)
+    root_domains = _component_root_domains(
+        graph,
+        facts,
+        rooted_at_atom,
+    )
     roots: list[AtomId] = []
 
     def rec(index: int) -> Iterator[tuple[AtomId, ...]]:
@@ -242,21 +252,14 @@ def _iter_root_choices(
 
 def _component_root_domains(
     graph: _Graph,
+    facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
 ) -> tuple[tuple[AtomId, ...], ...]:
-    if rooted_at_atom is None:
-        return tuple(atoms for atoms, _ in graph.components)
-    domains: list[tuple[AtomId, ...]] = []
-    found = False
-    for atoms, _ in graph.components:
-        if rooted_at_atom in atoms:
-            domains.append((rooted_at_atom,))
-            found = True
-        else:
-            domains.append(atoms)
-    if not found:
-        raise ValueError(f"rooted atom is not present in any component: {rooted_at_atom!r}")
-    return tuple(domains)
+    del graph
+    return tuple(
+        atoms
+        for _, atoms in component_root_domains_for_facts(facts, rooted_at_atom)
+    )
 
 
 def _iter_spanning_forest_choices_lazy(graph: _Graph) -> Iterator[frozenset[BondId]]:

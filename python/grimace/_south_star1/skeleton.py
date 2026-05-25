@@ -15,6 +15,7 @@ from .graph_index import GraphIndex
 from .ids import AtomId
 from .ids import BondId
 from .policy import SmilesPolicy
+from .root_domains import component_root_domains_for_facts
 
 
 class ChildRole(Enum):
@@ -190,19 +191,10 @@ def _component_root_domains(
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
 ) -> tuple[tuple[AtomId, ...], ...]:
-    if rooted_at_atom is None:
-        return tuple(component.atoms for component in facts.components)
-    domains: list[tuple[AtomId, ...]] = []
-    found = False
-    for component in facts.components:
-        if rooted_at_atom in component.atoms:
-            domains.append((rooted_at_atom,))
-            found = True
-        else:
-            domains.append(component.atoms)
-    if not found:
-        raise ValueError(f"rooted atom is not present in any component: {rooted_at_atom!r}")
-    return tuple(domains)
+    return tuple(
+        atoms
+        for _, atoms in component_root_domains_for_facts(facts, rooted_at_atom)
+    )
 
 
 def _require_tree_components(facts: MoleculeFacts, index: GraphIndex) -> None:

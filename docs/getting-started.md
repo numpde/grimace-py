@@ -14,8 +14,7 @@ from rdkit import Chem
 import grimace
 ```
 
-All examples below use the currently supported runtime subset. Keep these
-flags together while you are getting started:
+Examples use the supported random-writer mode:
 
 ```python
 FLAGS = dict(canonical=False, doRandom=True)
@@ -107,9 +106,7 @@ c1(ccccc1OC(=O)C)C(O)=O -> []
 The determinized decoder merges same-text continuations. Use
 `MolToSmilesDecoder(...)` when you need branch-preserving choices instead.
 
-## Next pages
+## Continue
 
-- [Concepts](concepts.md)
-- [Runtime](runtime.md)
-- [Guides](guides.md)
-- [API](api/python.md)
+Read [Concepts](concepts.md) for the terms used above, [Runtime](runtime.md)
+for flags and roots, and [API](api/python.md) for signatures.

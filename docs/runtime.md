@@ -11,12 +11,12 @@ Start with:
 FLAGS = dict(canonical=False, doRandom=True)
 ```
 
-Pass these options explicitly:
-
-- `canonical=False`
-- `doRandom=True`
-- omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all-roots behavior
-- pass `rootedAtAtom >= 0` for one explicit root
+| Option | Starting value | Meaning |
+|---|---|---|
+| `canonical` | `False` | Use the non-canonical writer surface. |
+| `doRandom` | `True` | Use RDKit's random-writer mode as the support language to enumerate or decode. |
+| `rootedAtAtom` | omit or `-1` | Use all valid roots. |
+| `rootedAtAtom` | nonnegative atom index | Use one explicit root. |
 
 Other negative integer `rootedAtAtom` values are accepted for RDKit
 compatibility and behave like `-1`, but `-1` is the preferred public spelling.

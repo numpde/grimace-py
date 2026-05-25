@@ -2,8 +2,14 @@
 title: Concepts
 ---
 
-Grimace is easiest to use if you keep four ideas separate: support, root,
-decoder token, and writer parity.
+Keep four concepts separate:
+
+| Concept | Meaning | Where to look |
+|---|---|---|
+| Support | The complete set of SMILES strings Grimace can emit for one molecule and writer options. | `MolToSmilesEnum(...)` |
+| Root | The atom where a rooted traversal starts, or all roots when `rootedAtAtom=-1`. | `rootedAtAtom` |
+| Decoder token | One string emitted by one decoder transition; not necessarily one character. | `MolToSmilesDecoder(...)`, `MolToSmilesDeterminizedDecoder(...)` |
+| Writer parity | String-level agreement with RDKit's supported writer behavior, not just chemical equivalence. | [Correctness contracts](correctness-contracts.md), [RDKit serializer coverage](rdkit-serializer-coverage.md) |
 
 ## Support
 
@@ -32,7 +38,7 @@ A root is the atom where a rooted SMILES traversal starts.
 
 - `rootedAtAtom=-1` means all valid roots.
 - `rootedAtAtom=0` means start at atom `0`.
-- for disconnected molecules, the original RDKit fragment order is preserved.
+- For disconnected molecules, the original RDKit fragment order is preserved.
 
 Most users should start with `rootedAtAtom=-1`. Use one explicit root when you
 need to compare or constrain a particular traversal start.
@@ -63,14 +69,12 @@ Use [Correctness contracts](correctness-contracts.md) for the detailed
 boundary between chemical semantics and writer parity. Use
 [Limitations](current-limitations.md) for the current supported scope.
 
-## What to use when
+## API choices
 
-- Need every supported finished string: use `MolToSmilesEnum(...)`.
-- Need legal next tokens while building a string: use
-  `MolToSmilesDecoder(...)` or `MolToSmilesDeterminizedDecoder(...)`.
-- Need to explain why a candidate is not supported: use
-  [deviation diagnostics](guides/deviation.md).
-- Need vocabulary coverage for a dataset: use
-  [token inventories](guides/token-inventory.md).
-- Need to reuse the same molecule repeatedly or store it without RDKit: use
-  [prepared molecules](guides/prepared-mol.md).
+| Need | Use |
+|---|---|
+| Every supported finished string | `MolToSmilesEnum(...)` |
+| Legal next tokens while building a string | `MolToSmilesDecoder(...)` or `MolToSmilesDeterminizedDecoder(...)` |
+| The first unsupported token or character in a candidate | [Deviation diagnostics](guides/deviation.md) |
+| Dataset vocabulary coverage | [Token inventories](guides/token-inventory.md) |
+| Repeated calls or storage without RDKit on read | [Prepared molecules](guides/prepared-mol.md) |

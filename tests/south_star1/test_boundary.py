@@ -137,6 +137,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         for path in (
             SOUTH_STAR1_ROOT / "online_traversal.py",
             SOUTH_STAR1_ROOT / "online_stereo_witness.py",
+            SOUTH_STAR1_ROOT / "online_continuation.py",
             SOUTH_STAR1_ROOT / "online_decoder.py",
             SOUTH_STAR1_ROOT / "online_decoder_api.py",
             SOUTH_STAR1_ROOT / "online_decoder_state.py",

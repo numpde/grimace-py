@@ -300,6 +300,15 @@ The decoder does not perform a separate full-witness scan to decide terminality.
 EOS is committed only after a complete valid witness whose rendered string is
 exactly the current prefix.
 
+The first stateful decoder execution mode is prefix-replay based: a next state
+stores a rendered prefix and a compact decision frontier, and later choices are
+recomputed by running the online DFS under that filter. The
+`RESUMABLE_CONTINUATIONS` execution mode stores suspended residual online states
+at token boundaries. It remains table-free and does not precompute support, but
+it can continue decoding from the stored frontier continuations without
+restarting from the molecule root at every step. Prefix replay remains the
+default reference implementation while continuation mode matures.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

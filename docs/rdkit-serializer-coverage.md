@@ -2,128 +2,119 @@
 title: RDKit serializer coverage
 ---
 
-This guide explains the RDKit serializer audit trail: which upstream RDKit
-serializer tests were reviewed, which ones matter for Grimace's public surface,
-and which executable Grimace fixtures carry the evidence.
+The serializer coverage ledger maps upstream RDKit serializer-related source
+blocks to Grimace evidence. It is an audit map, not the parity test itself.
+Passing claims are enforced by the linked fixtures.
 
-The coverage ledger lives at:
+Ledger:
 
 - `tests/fixtures/rdkit_upstream_serializer_coverage/2026.03.1.json`
 
-The local RDKit source files audited by that ledger live at:
+Audited RDKit source snapshot:
 
 - `tests/fixtures/rdkit_upstream_serializer_sources/2026.03.1/`
 
-The ledger is keyed to RDKit `2026.03.1`. Its claims should not be read as
-evidence for a different RDKit serializer version unless a new versioned ledger
-is generated and reviewed.
+## Current coverage
 
-To count reviewed upstream serializer entries by status:
+Snapshot for RDKit `2026.03.1`, generated from:
 
 ```bash
 python scripts/report_rdkit_serializer_coverage.py
 ```
 
-## How to read it
+| Status | Entries | Meaning |
+|---|---:|---|
+| `covered` | 54 | Relevant upstream claim has executable Grimace evidence. |
+| `known-gap` | 6 | Relevant upstream claim has executable failing diagnostics. |
+| `out-of-scope` | 209 | Reviewed upstream block does not map to the current Grimace public surface. |
+| `needs-fixture` | 0 | No unfinished relevant entries are left without fixture mapping. |
+| `unreviewed` | 0 | No regenerated entries are waiting for triage. |
 
-There are three layers:
+Covered entries currently link to 76 Grimace fixture references.
 
-1. RDKit source snapshots: local copies of the RDKit serializer source and test
-   files, with upstream commit metadata and SHA-256 digests.
-2. Coverage ledger: parser-generated entries for serializer-related upstream
-   blocks, plus human-reviewed status and notes.
-3. Grimace fixtures: executable JSON cases linked from the ledger when an
-   upstream claim is covered or intentionally tracked as a known gap.
+By upstream file:
 
-The ledger is not itself the parity test. It is the map from an upstream RDKit
-claim to fixture cases that enforce the claim.
+| Upstream file | Entries |
+|---|---:|
+| `Code/GraphMol/SmilesParse/catch_tests.cpp` | 151 |
+| `Code/GraphMol/Wrap/rough_test.py` | 68 |
+| `Code/GraphMol/SmilesParse/cxsmiles_test.cpp` | 31 |
+| `Code/JavaWrappers/gmwrapper/src-test/org/RDKit/SmilesDetailsTests.java` | 19 |
 
-Each in-scope ledger entry should answer four questions:
+By parser kind:
 
-- What exact RDKit source block is being discussed?
-- Does that source block map to Grimace's current public writer surface?
-- If yes, which fixture case IDs enforce it?
-- If no, why is it out of scope or still a known gap?
+| Kind | Entries |
+|---|---:|
+| `cpp_section` | 120 |
+| `python_test` | 68 |
+| `cpp_test_case` | 62 |
+| `java_test` | 19 |
+
+Most matched serializer terms:
+
+| Term | Entries |
+|---|---:|
+| `MolToSmiles` | 130 |
+| `CXSmiles` | 128 |
+| `MolToCXSmiles` | 111 |
+| `SmilesWriteParams` | 69 |
+| `rootedAtAtom` | 12 |
+| `allBondsExplicit` | 11 |
+| `isomericSmiles` | 10 |
+| `allHsExplicit` | 7 |
+| `doRandom` | 6 |
+| `kekuleSmiles` | 6 |
+| `MolToRandomSmilesVect` | 5 |
+| `ignoreAtomMapNumbers` | 4 |
+
+For fixture-family and provenance counts, see
+[Testing fixtures](testing-fixtures.md).
+
+## How to read an entry
+
+Each ledger entry has three parts:
+
+1. Parser-owned fields: upstream file, line range, language, kind, matched
+   serializer terms, and snippet hash.
+2. Reviewed fields: status, claim label, notes, and `grimace_links`.
+3. Linked fixtures: concrete fixture files and case IDs that enforce covered
+   or known-gap claims.
 
 Use `grimace_links` for executable evidence. Avoid prose-only coverage claims
 when a claim can be represented by a fixture case.
 
-## Where fixture cases come from
-
-RDKit-parity cases are not all copied from one place. The main sources are:
-
-- Upstream RDKit serializer tests: cases derived from RDKit `SmilesWrite.cpp`,
-  `catch_tests.cpp`, `rough_test.py`, Java wrapper SMILES tests, and related
-  serializer checks copied into the source snapshot.
-- Local exact-support probes: small molecules chosen so Grimace can assert
-  complete support and token-inventory equality, often guided by specific RDKit
-  writer branches.
-- Dataset-derived regressions: cases mined from the bundled molecule fixture
-  with `scripts/mine_rdkit_regressions.py`.
-- RDKit random-writer observations: version-pinned random/rooted outputs that
-  Grimace must include in support.
-- Known quirks and known gaps: version-pinned RDKit observations kept separate
-  from ordinary passing parity claims.
-
-Every pinned fixture case should carry a `source` string that states which of
-those paths produced the evidence. The source string is review context; the
-loader and parity tests are the enforcement.
-
-## Current status
-
-For the broader fixture-family and source-class summary, run:
-
-```bash
-python scripts/report_correctness_coverage.py
-```
-
-The contract test
-`tests.contract.test_rdkit_upstream_serializer_coverage` enforces the ledger
-schema, checks source snippet hashes and line spans, validates fixture links,
-and now fails if any entry remains `unreviewed` or `needs-fixture`.
-
 ## Status meanings
 
-`covered` means the upstream serializer claim has corresponding Grimace
-correctness evidence. That evidence may be exact support equality, token
-inventory equality, deterministic RDKit writer output membership, or a bounded
-decoder-path membership check when full support materialization is too large.
-The concrete claim is stated in the entry's `notes` and `grimace_links`.
+`covered` means a relevant upstream serializer claim has corresponding Grimace
+evidence: exact support equality, token-inventory equality, deterministic
+writer-output membership, or bounded decoder-path membership when full support
+materialization is too large.
 
-`known-gap` means the upstream serializer claim is relevant and has executable
-pinned fixture coverage, but at least one parity assertion intentionally fails
-against the current implementation. These are not ignored observations. They
-are red tests for work that remains, primarily coupled directional double-bond
-and ring-closure stereo parity.
+`known-gap` means the upstream claim is relevant and has executable pinned
+fixture coverage, but at least one parity assertion intentionally fails against
+the current implementation.
 
-`out-of-scope` means the upstream test does not map to the current Grimace
+`out-of-scope` means the upstream test does not map to Grimace's current public
 surface. Common examples are CXSMILES extension serialization, wrapper API
 smoke tests, canonical-ranking behavior outside the supported
 `canonical=False, doRandom=True` regime, and internal RDKit helper APIs that
 Grimace does not expose.
 
-`needs-fixture` is a temporary triage state only. It means the entry is
-relevant but has not yet been mapped to a fixture or deliberately classified.
-The current ledger has no `needs-fixture` entries; adding one should be treated
-as unfinished work.
-
-`unreviewed` is also temporary. It is used only when regenerated extractor
-output introduces a new upstream block whose reviewed fields have not been
-assigned yet.
+`needs-fixture` and `unreviewed` are unfinished triage states. The checked-in
+ledger should keep both at zero.
 
 ## Known gaps
 
-The current `known-gap` entries are concentrated in RDKit's #4582 and manual
-bond-stereo regressions. They pin RDKit outputs that Grimace should eventually
-accept but currently does not:
+The six `known-gap` entries are concentrated in RDKit's #4582 and manual
+bond-stereo regressions:
 
 - GitHub #4582 bulk random double-bond/ring-closure outputs for CHEMBL409450.
 - GitHub #4582 continued / #3967 part 2 directional ring-closure output.
 - Manual multi-double-bond stereo outputs from `testBondSetStereoDifficultCase`.
 - Manual stereo-atom mutation outputs from `testBondSetStereoAtoms`.
 
-These point at the same implementation family: RDKit-equivalent traversal-order
-state for coupled directional stereo tokens.
+These point at RDKit-equivalent traversal-order state for coupled directional
+stereo tokens.
 
 ## Maintenance workflow
 
@@ -136,28 +127,14 @@ When updating RDKit serializer coverage:
 python scripts/extract_rdkit_serializer_cases.py --write
 ```
 
-3. Review every new `unreviewed` entry and assign one of the stable statuses
-   above.
+3. Review every new `unreviewed` entry.
 4. Add or link executable fixtures for every in-scope claim.
-5. Run the report and contract tests before treating the audit as complete.
+5. Run the reports and contract tests.
 
-To inspect the serializer ledger:
+Useful commands:
 
 ```bash
 python scripts/report_rdkit_serializer_coverage.py
-```
-
-To summarize pinned RDKit correctness evidence across fixture families, source
-classes, and serializer-ledger statuses:
-
-```bash
 python scripts/report_correctness_coverage.py
-```
-
-To fail explicitly on unfinished triage:
-
-```bash
 python scripts/report_rdkit_serializer_coverage.py --fail-untriaged
 ```
-
-The contract tests enforce the same policy during normal test runs.

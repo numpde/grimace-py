@@ -15,6 +15,7 @@ from dataclasses import replace
 from enum import Enum
 
 from .facts import MoleculeFacts
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .online_decisions import FrontierCompactionMode
 from .online_decisions import OnlineDecisionFrontier
@@ -244,6 +245,8 @@ def online_branch_preserving_continuation_choice_result(
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     if state.frontier is None:
         return _root_continuation_choice_result(
@@ -254,6 +257,8 @@ def online_branch_preserving_continuation_choice_result(
             compaction_mode=compaction_mode,
             templates=templates,
             rooted_at_atom=rooted_at_atom,
+            graph_index=graph_index,
+            component_root_domains=component_root_domains,
         )
     return _resume_branch_preserving_choice_result(state)
 
@@ -267,6 +272,8 @@ def online_determinized_continuation_choice_result(
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     branch_result = online_branch_preserving_continuation_choice_result(
         facts=facts,
@@ -276,6 +283,8 @@ def online_determinized_continuation_choice_result(
         compaction_mode=compaction_mode,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
     )
     grouped: dict[str, list[OnlineContinuation]] = defaultdict(list)
     completion_counts: dict[str, int] = defaultdict(int)
@@ -316,6 +325,8 @@ def _root_continuation_choice_result(
     compaction_mode: FrontierCompactionMode,
     templates: StereoTemplateBundle | None,
     rooted_at_atom: AtomId | None,
+    graph_index: GraphIndex | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
 ) -> OnlineContinuationRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     sink = ContinuationFrontierSink(
@@ -332,6 +343,8 @@ def _root_continuation_choice_result(
         decision_recorder=recorder,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
     ):
         pass
     stats.sink_rejections = sink.sink_rejections

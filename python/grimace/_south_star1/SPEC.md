@@ -248,14 +248,19 @@ validates `MoleculeFacts`, fixes the writer-surface flags, builds the finite
 policy and parser semantics when callers do not provide them, extracts static
 stereo templates, records a policy-derived token inventory superset, and stores
 basic graph metadata, including atom ids, component ids, component atom domains,
-and atom-to-component membership. Query-time runtime options such as rooting
-are kept out of the prepared identity. Negative `rooted_at_atom` values
-enumerate all roots; an explicit nonnegative `rooted_at_atom` restricts
-traversal roots to that atom in its component while other components keep their
-root domains. The online and offline traversal paths use the same
-`component_root_domains_for_facts(...)` helper. Rooted count-law tests compare
-all-root witness counts against sums over explicit roots in connected molecules
-and against sums over roots of a fixed component in disconnected molecules.
+and atom-to-component membership. Prepared molecules also own the reusable
+`GraphIndex`, the all-root component domains, and an explicit-root domain cache.
+Prepared online and offline entrypoints consume those cached structures instead
+of rebuilding graph indexes or validating facts through the raw root-domain
+helper on every query. Query-time runtime options such as rooting are kept out
+of the prepared identity. Negative `rooted_at_atom` values enumerate all roots;
+an explicit nonnegative `rooted_at_atom` restricts traversal roots to that atom
+in its component while other components keep their root domains. Raw online and
+offline traversal paths use the same `component_root_domains_for_facts(...)`
+helper; prepared paths use the prepared root-domain cache. Rooted count-law
+tests compare all-root witness counts against sums over explicit roots in
+connected molecules and against sums over roots of a fixed component in
+disconnected molecules.
 `canonical=True` and `do_random=False` are rejected in the current online
 runtime. Per-query decoder state still owns DFS traversal, output, ring,
 residual trail, and frame-stack state.

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .facts import MoleculeFacts
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .online_decoder import online_decode_tokens
 from .online_continuation import OnlineContinuationDecoderState
@@ -28,6 +29,7 @@ from .online_residual_continuation import online_determinized_residual_choice_re
 from .policy import SmilesPolicy
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
+from .prepared_runtime import component_root_domains_for_prepared
 from .prepared_runtime import runtime_root_atom
 from .prepared_runtime import validate_south_star_runtime_options
 from .semantics import ParserSemantics
@@ -72,6 +74,8 @@ class SouthStarOnlineDecoder:
     semantics: ParserSemantics
     templates: StereoTemplateBundle | None = None
     rooted_at_atom: AtomId | None = None
+    graph_index: GraphIndex | None = None
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions()
     branch_mode: Literal["branch_preserving", "determinized"] = "determinized"
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY
@@ -147,6 +151,8 @@ class SouthStarOnlineDecoder:
                     compaction_mode=self.compaction_mode,
                     templates=self.templates,
                     rooted_at_atom=self.rooted_at_atom,
+                    graph_index=self.graph_index,
+                    component_root_domains=self.component_root_domains,
                 )
             if self.branch_mode == "determinized":
                 return online_determinized_continuation_choice_result(
@@ -157,6 +163,8 @@ class SouthStarOnlineDecoder:
                     compaction_mode=self.compaction_mode,
                     templates=self.templates,
                     rooted_at_atom=self.rooted_at_atom,
+                    graph_index=self.graph_index,
+                    component_root_domains=self.component_root_domains,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
         if self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
@@ -170,6 +178,8 @@ class SouthStarOnlineDecoder:
                     state=state,
                     templates=self.templates,
                     rooted_at_atom=self.rooted_at_atom,
+                    graph_index=self.graph_index,
+                    component_root_domains=self.component_root_domains,
                 )
             if self.branch_mode == "determinized":
                 return online_determinized_residual_choice_result(
@@ -179,6 +189,8 @@ class SouthStarOnlineDecoder:
                     state=state,
                     templates=self.templates,
                     rooted_at_atom=self.rooted_at_atom,
+                    graph_index=self.graph_index,
+                    component_root_domains=self.component_root_domains,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
@@ -193,6 +205,8 @@ class SouthStarOnlineDecoder:
                 compaction_mode=self.compaction_mode,
                 templates=self.templates,
                 rooted_at_atom=self.rooted_at_atom,
+                graph_index=self.graph_index,
+                component_root_domains=self.component_root_domains,
             )
         if self.branch_mode == "determinized":
             return online_determinized_choice_result(
@@ -203,6 +217,8 @@ class SouthStarOnlineDecoder:
                 compaction_mode=self.compaction_mode,
                 templates=self.templates,
                 rooted_at_atom=self.rooted_at_atom,
+                graph_index=self.graph_index,
+                component_root_domains=self.component_root_domains,
             )
         raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
 
@@ -218,7 +234,7 @@ def make_branch_preserving_online_decoder(
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ) -> SouthStarOnlineDecoder:
-    facts, policy, semantics, templates = _resolve_decoder_inputs(
+    facts, policy, semantics, templates, graph_index = _resolve_decoder_inputs(
         prepared=prepared,
         facts=facts,
         policy=policy,
@@ -226,12 +242,18 @@ def make_branch_preserving_online_decoder(
     )
     validate_south_star_runtime_options(runtime_options, facts=facts)
     rooted_at_atom = runtime_root_atom(runtime_options, facts=facts)
+    root_domains = _prepared_root_domains(
+        prepared=prepared,
+        rooted_at_atom=rooted_at_atom,
+    )
     return SouthStarOnlineDecoder(
         facts=facts,
         policy=policy,
         semantics=semantics,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=root_domains,
         runtime_options=runtime_options,
         branch_mode="branch_preserving",
         compaction_mode=compaction_mode,
@@ -251,7 +273,7 @@ def make_determinized_online_decoder(
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.PREFIX_REPLAY,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ) -> SouthStarOnlineDecoder:
-    facts, policy, semantics, templates = _resolve_decoder_inputs(
+    facts, policy, semantics, templates, graph_index = _resolve_decoder_inputs(
         prepared=prepared,
         facts=facts,
         policy=policy,
@@ -259,12 +281,18 @@ def make_determinized_online_decoder(
     )
     validate_south_star_runtime_options(runtime_options, facts=facts)
     rooted_at_atom = runtime_root_atom(runtime_options, facts=facts)
+    root_domains = _prepared_root_domains(
+        prepared=prepared,
+        rooted_at_atom=rooted_at_atom,
+    )
     return SouthStarOnlineDecoder(
         facts=facts,
         policy=policy,
         semantics=semantics,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=root_domains,
         runtime_options=runtime_options,
         branch_mode="determinized",
         compaction_mode=compaction_mode,
@@ -292,7 +320,13 @@ def _resolve_decoder_inputs(
     facts: MoleculeFacts | None,
     policy: SmilesPolicy | None,
     semantics: ParserSemantics | None,
-) -> tuple[MoleculeFacts, SmilesPolicy, ParserSemantics, StereoTemplateBundle | None]:
+) -> tuple[
+    MoleculeFacts,
+    SmilesPolicy,
+    ParserSemantics,
+    StereoTemplateBundle | None,
+    GraphIndex | None,
+]:
     if prepared is not None:
         if facts is not None or policy is not None or semantics is not None:
             raise ValueError("prepared decoder input cannot be mixed with raw inputs")
@@ -301,10 +335,27 @@ def _resolve_decoder_inputs(
             prepared.policy,
             prepared.semantics,
             prepared.stereo_template_bundle(),
+            prepared.graph_index,
         )
     if facts is None or policy is None or semantics is None:
         raise ValueError("decoder construction requires prepared or facts/policy/semantics")
-    return facts, policy, semantics, None
+    return facts, policy, semantics, None, None
+
+
+def _prepared_root_domains(
+    *,
+    prepared: SouthStarPreparedMol | None,
+    rooted_at_atom: AtomId | None,
+) -> tuple[tuple[AtomId, ...], ...] | None:
+    if prepared is None:
+        return None
+    return tuple(
+        atoms
+        for _, atoms in component_root_domains_for_prepared(
+            prepared=prepared,
+            rooted_at_atom=rooted_at_atom,
+        )
+    )
 
 
 def _validate_state_belongs_to_decoder(

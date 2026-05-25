@@ -15,6 +15,7 @@ from .facts import LigandKind
 from .facts import MoleculeFacts
 from .facts import SiteStatus
 from .facts import TetraValue
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -148,6 +149,8 @@ def iter_online_stereo_witnesses_with_sink(
     decision_filter: DecisionPathFilter | None = None,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> Iterator[OnlineWitness]:
     facts.validate()
     policy.validate_for_facts(facts)
@@ -158,6 +161,8 @@ def iter_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
         rooted_at_atom=rooted_at_atom,
+        index=graph_index,
+        component_root_domains=component_root_domains,
     ):
         decision_checkpoint = _push_decision(
             decision_recorder,

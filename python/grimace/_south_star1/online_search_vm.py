@@ -16,6 +16,7 @@ from .facts import LigandKind
 from .facts import MoleculeFacts
 from .facts import SiteStatus
 from .facts import TetraValue
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .ids import BondId
 from .ids import OccurrenceId
@@ -285,6 +286,8 @@ class OnlineSearchState:
     semantics: ParserSemantics
     templates: StereoTemplateBundle
     rooted_at_atom: AtomId | None
+    graph_index: GraphIndex | None
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None
     traversal: MutableTraversalState
     residual: ResidualStore
     ring: MutableRingState
@@ -448,6 +451,8 @@ def make_online_search_state(
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     sink: OnlineRenderSink | None = None,
 ) -> OnlineSearchState:
     facts.validate()
@@ -458,6 +463,8 @@ def make_online_search_state(
         semantics=semantics,
         templates=templates if templates is not None else build_stereo_templates(facts),
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
         traversal=MutableTraversalState(),
         residual=ResidualStore(),
         ring=MutableRingState(),
@@ -475,6 +482,8 @@ class OnlineSearchVM:
         semantics: ParserSemantics,
         templates: StereoTemplateBundle | None = None,
         rooted_at_atom: AtomId | None = None,
+        graph_index: GraphIndex | None = None,
+        component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
         sink_factory: Callable[[], OnlineRenderSink] | None = None,
     ) -> None:
         _validate_annotation_mode(policy)
@@ -484,6 +493,8 @@ class OnlineSearchVM:
             semantics=semantics,
             templates=templates,
             rooted_at_atom=rooted_at_atom,
+            graph_index=graph_index,
+            component_root_domains=component_root_domains,
         )
         self._sink_factory = sink_factory or OnlineStringBuffer
         self._iterator = self._run()
@@ -511,7 +522,7 @@ class OnlineSearchVM:
         self.state.rollback(snapshot)
 
     def _run(self) -> Iterator[OnlineWitness]:
-        graph = _graph_from_facts(self.state.facts)
+        graph = _graph_from_facts(self.state.facts, index=self.state.graph_index)
         yield from _iter_vm_traversals(self.state, graph, self._sink_factory)
 
     @classmethod
@@ -523,6 +534,8 @@ class OnlineSearchVM:
         semantics: ParserSemantics,
         templates: StereoTemplateBundle | None = None,
         rooted_at_atom: AtomId | None = None,
+        graph_index: GraphIndex | None = None,
+        component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
         snapshot: OnlineSearchSnapshot,
         sink: OnlineRenderSink,
     ) -> "OnlineSearchVM":
@@ -532,6 +545,8 @@ class OnlineSearchVM:
             semantics=semantics,
             templates=templates,
             rooted_at_atom=rooted_at_atom,
+            graph_index=graph_index,
+            component_root_domains=component_root_domains,
             sink_factory=lambda: sink,
         )
         vm.state.output = sink
@@ -570,6 +585,8 @@ def iter_online_stereo_witnesses_vm(
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
 ) -> Iterator[OnlineWitness]:
     vm = OnlineSearchVM(
@@ -578,6 +595,8 @@ def iter_online_stereo_witnesses_vm(
         semantics=semantics,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
         sink_factory=sink_factory,
     )
     while True:
@@ -598,6 +617,8 @@ def resume_online_search_from_snapshot(
     semantics: ParserSemantics,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     snapshot: OnlineSearchSnapshot,
     sink: OnlineRenderSink,
 ) -> Iterator[OnlineWitness]:
@@ -607,6 +628,8 @@ def resume_online_search_from_snapshot(
         semantics=semantics,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
         snapshot=snapshot,
         sink=sink,
     )
@@ -1229,13 +1252,27 @@ def _pop_resumable_frame(
     return popped
 
 
-def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
+def _graph_from_facts(
+    facts: MoleculeFacts,
+    *,
+    index: GraphIndex | None,
+) -> _Graph:
     incident: dict[AtomId, list[BondId]] = {atom.id: [] for atom in facts.atoms}
     bonds: dict[BondId, tuple[AtomId, AtomId]] = {}
-    for bond in facts.bonds:
-        bonds[bond.id] = (bond.a, bond.b)
-        incident[bond.a].append(bond.id)
-        incident[bond.b].append(bond.id)
+    if index is None:
+        for bond in facts.bonds:
+            bonds[bond.id] = (bond.a, bond.b)
+            incident[bond.a].append(bond.id)
+            incident[bond.b].append(bond.id)
+    else:
+        bonds = {
+            bond_id: (bond.a, bond.b)
+            for bond_id, bond in index.bond_by_id.items()
+        }
+        incident = {
+            atom_id: list(bond_ids)
+            for atom_id, bond_ids in index.incident_bonds.items()
+        }
     return _Graph(
         atoms=tuple(atom.id for atom in facts.atoms),
         bonds=bonds,
@@ -1249,6 +1286,7 @@ def _iter_root_choices(state: OnlineSearchState, graph: _Graph) -> Iterator[tupl
         graph,
         state.facts,
         state.rooted_at_atom,
+        state.component_root_domains,
     )
     roots: list[AtomId] = []
 
@@ -1281,8 +1319,13 @@ def _component_root_domains(
     graph: _Graph,
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
 ) -> tuple[tuple[AtomId, ...], ...]:
     del graph
+    if component_root_domains is not None:
+        if len(component_root_domains) != len(facts.components):
+            raise ValueError("component root domain count does not match molecule components")
+        return component_root_domains
     return tuple(
         atoms
         for _, atoms in component_root_domains_for_facts(facts, rooted_at_atom)

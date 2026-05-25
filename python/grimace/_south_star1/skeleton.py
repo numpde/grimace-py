@@ -105,20 +105,27 @@ def enumerate_traversal_skeletons(
     index: GraphIndex,
     policy: SmilesPolicy,
     rooted_at_atom: AtomId | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> tuple[TraversalSkeleton, ...]:
     """Enumerate traversal skeletons with explicit tree/ring partitions."""
 
     facts.validate()
     policy.validate_for_facts(facts)
 
-    component_root_domains = _component_root_domains(facts, rooted_at_atom)
+    root_domains = (
+        component_root_domains
+        if component_root_domains is not None
+        else _component_root_domains(facts, rooted_at_atom)
+    )
+    if len(root_domains) != len(facts.components):
+        raise ValueError("component root domain count does not match molecule components")
     component_tree_domains = tuple(
         _component_spanning_trees(index, component.atoms, component.bonds)
         for component in facts.components
     )
 
     skeletons: list[TraversalSkeleton] = []
-    for roots in product(*component_root_domains):
+    for roots in product(*root_domains):
         for tree_bond_sets in product(*component_tree_domains):
             tree_bonds = frozenset(
                 bond_id

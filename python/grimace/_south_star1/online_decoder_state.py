@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from .facts import MoleculeFacts
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .online_decisions import DecisionPathFilter
 from .online_decisions import FrontierCompactionMode
@@ -178,6 +179,8 @@ def online_branch_preserving_choice_result(
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> OnlineRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     path_filter = (
@@ -200,6 +203,8 @@ def online_branch_preserving_choice_result(
         decision_filter=path_filter,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
     ):
         pass
     if path_filter is not None:
@@ -282,6 +287,8 @@ def online_determinized_choice_result(
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> OnlineRawChoiceResult:
     grouped: dict[str, dict[OnlineDecisionPath, int]] = defaultdict(dict)
     branch_result = online_branch_preserving_choice_result(
@@ -292,6 +299,8 @@ def online_determinized_choice_result(
         compaction_mode=compaction_mode,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
     )
     for choice in branch_result.choices:
         if choice.next_state.allowed_frontier is None:

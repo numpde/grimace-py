@@ -7,18 +7,23 @@ state plus query-time runtime options.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .facts import MoleculeFacts
+from .graph_index import GraphIndex
 from .graph_index import build_graph_index
 from .ids import AtomId
+from .ids import ComponentId
 from .online_decoder import online_decode_tokens
 from .ordinary_policy import ordinary_policy_for_facts
 from .ordinary_semantics import OrdinarySmilesSemantics
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
+from .root_domains import component_root_domains_from_metadata
 from .semantics import ParserSemantics
 from .stereo_templates import DirectionalTemplate
 from .stereo_templates import StereoTemplateBundle
@@ -57,6 +62,13 @@ class SouthStarPreparedMol:
     component_ids: tuple[ComponentId, ...]
     component_atom_ids: tuple[tuple[AtomId, ...], ...]
     atom_component: tuple[tuple[AtomId, ComponentId], ...]
+    graph_index: GraphIndex
+    all_root_domains: tuple[tuple[ComponentId, tuple[AtomId, ...]], ...]
+    atom_component_map: Mapping[AtomId, ComponentId]
+    component_root_domains_by_explicit_root: Mapping[
+        AtomId,
+        tuple[tuple[ComponentId, tuple[AtomId, ...]], ...],
+    ]
 
     def stereo_template_bundle(self) -> StereoTemplateBundle:
         return StereoTemplateBundle(
@@ -78,6 +90,24 @@ def prepare_south_star_mol_from_facts(
     resolved_policy.validate_for_facts(facts)
     resolved_semantics = semantics if semantics is not None else OrdinarySmilesSemantics()
     templates = build_stereo_templates(facts)
+    graph_index = build_graph_index(facts)
+    atom_component = tuple(
+        (atom, component.id)
+        for component in facts.components
+        for atom in component.atoms
+    )
+    atom_component_map = MappingProxyType(dict(atom_component))
+    all_root_domains = component_root_domains_for_facts(facts, None)
+    explicit_root_domains = MappingProxyType(
+        {
+            atom_id: component_root_domains_from_metadata(
+                all_root_domains=all_root_domains,
+                atom_component_map=atom_component_map,
+                rooted_at_atom=atom_id,
+            )
+            for atom_id in (atom.id for atom in facts.atoms)
+        }
+    )
     return SouthStarPreparedMol(
         facts=facts,
         policy=resolved_policy,
@@ -91,11 +121,11 @@ def prepare_south_star_mol_from_facts(
         atom_ids=tuple(atom.id for atom in facts.atoms),
         component_ids=tuple(component.id for component in facts.components),
         component_atom_ids=tuple(component.atoms for component in facts.components),
-        atom_component=tuple(
-            (atom, component.id)
-            for component in facts.components
-            for atom in component.atoms
-        ),
+        atom_component=atom_component,
+        graph_index=graph_index,
+        all_root_domains=all_root_domains,
+        atom_component_map=atom_component_map,
+        component_root_domains_by_explicit_root=explicit_root_domains,
     )
 
 
@@ -140,11 +170,16 @@ def enumerate_prepared_stereo_support(
         runtime_options,
         facts=prepared.facts,
     )
+    root_domains = component_root_domains_for_prepared(
+        prepared=prepared,
+        rooted_at_atom=rooted_at_atom,
+    )
     skeletons = enumerate_traversal_skeletons(
         facts=prepared.facts,
-        index=build_graph_index(prepared.facts),
+        index=prepared.graph_index,
         policy=prepared.policy,
         rooted_at_atom=rooted_at_atom,
+        component_root_domains=tuple(atoms for _, atoms in root_domains),
     )
     return enumerate_stereo_support(
         facts=prepared.facts,
@@ -189,6 +224,21 @@ def runtime_root_atom(
     return AtomId(options.rooted_at_atom)
 
 
+def component_root_domains_for_prepared(
+    *,
+    prepared: SouthStarPreparedMol,
+    rooted_at_atom: AtomId | None,
+) -> tuple[tuple[ComponentId, tuple[AtomId, ...]], ...]:
+    if rooted_at_atom is None:
+        return prepared.all_root_domains
+    try:
+        return prepared.component_root_domains_by_explicit_root[rooted_at_atom]
+    except KeyError as exc:
+        raise ValueError(
+            f"rooted atom is not present in prepared molecule: {rooted_at_atom!r}"
+        ) from exc
+
+
 def _validate_writer_surface(
     facts: MoleculeFacts,
     writer_surface: SouthStarWriterSurface,
@@ -225,6 +275,7 @@ __all__ = (
     "SouthStarRuntimeOptions",
     "SouthStarWriterSurface",
     "component_root_domains_for_facts",
+    "component_root_domains_for_prepared",
     "enumerate_prepared_stereo_support",
     "prepare_south_star_mol_from_facts",
     "prepare_south_star_mol_from_rdkit",

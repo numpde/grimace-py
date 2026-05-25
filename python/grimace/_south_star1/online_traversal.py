@@ -8,6 +8,7 @@ from itertools import combinations
 from itertools import permutations
 
 from .facts import MoleculeFacts
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .ids import BondId
 from .policy import SmilesPolicy
@@ -112,18 +113,21 @@ def iter_online_traversal_traces(
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     rooted_at_atom: AtomId | None = None,
+    index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> Iterator[OnlineTraversalTrace]:
     """Yield traversal traces lazily without materializing skeleton space."""
 
     facts.validate()
     policy.validate_for_facts(facts)
-    graph = _graph_from_facts(facts)
+    graph = _graph_from_facts(facts, index=index)
     all_bonds = frozenset(graph.bonds)
 
     for roots in _iter_root_choices(
         graph,
         facts=facts,
         rooted_at_atom=rooted_at_atom,
+        component_root_domains=component_root_domains,
     ):
         for tree_bonds in _iter_spanning_forest_choices_lazy(graph):
             ring_bonds = all_bonds - tree_bonds
@@ -207,13 +211,27 @@ def trace_to_skeleton_like_key(trace: OnlineTraversalTrace) -> tuple[object, ...
     )
 
 
-def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
+def _graph_from_facts(
+    facts: MoleculeFacts,
+    *,
+    index: GraphIndex | None,
+) -> _Graph:
     incident: dict[AtomId, list[BondId]] = {atom.id: [] for atom in facts.atoms}
     bonds: dict[BondId, tuple[AtomId, AtomId]] = {}
-    for bond in facts.bonds:
-        bonds[bond.id] = (bond.a, bond.b)
-        incident[bond.a].append(bond.id)
-        incident[bond.b].append(bond.id)
+    if index is None:
+        for bond in facts.bonds:
+            bonds[bond.id] = (bond.a, bond.b)
+            incident[bond.a].append(bond.id)
+            incident[bond.b].append(bond.id)
+    else:
+        bonds = {
+            bond_id: (bond.a, bond.b)
+            for bond_id, bond in index.bond_by_id.items()
+        }
+        incident = {
+            atom_id: list(bond_ids)
+            for atom_id, bond_ids in index.incident_bonds.items()
+        }
     return _Graph(
         atoms=tuple(atom.id for atom in facts.atoms),
         bonds=bonds,
@@ -230,11 +248,13 @@ def _iter_root_choices(
     *,
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> Iterator[tuple[AtomId, ...]]:
     root_domains = _component_root_domains(
         graph,
         facts,
         rooted_at_atom,
+        component_root_domains,
     )
     roots: list[AtomId] = []
 
@@ -254,8 +274,13 @@ def _component_root_domains(
     graph: _Graph,
     facts: MoleculeFacts,
     rooted_at_atom: AtomId | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
 ) -> tuple[tuple[AtomId, ...], ...]:
     del graph
+    if component_root_domains is not None:
+        if len(component_root_domains) != len(facts.components):
+            raise ValueError("component root domain count does not match molecule components")
+        return component_root_domains
     return tuple(
         atoms
         for _, atoms in component_root_domains_for_facts(facts, rooted_at_atom)

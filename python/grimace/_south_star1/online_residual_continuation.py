@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from .facts import MoleculeFacts
+from .graph_index import GraphIndex
 from .ids import AtomId
 from .online_decisions import OnlineDecisionFrontier
 from .online_decisions import OnlineDecisionPath
@@ -243,6 +244,8 @@ def online_branch_preserving_residual_choice_result(
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         return _root_residual_choice_result(
@@ -252,6 +255,8 @@ def online_branch_preserving_residual_choice_result(
             state=state,
             templates=templates,
             rooted_at_atom=rooted_at_atom,
+            graph_index=graph_index,
+            component_root_domains=component_root_domains,
         )
     return _resume_residual_choice_result(
         facts=facts,
@@ -260,6 +265,8 @@ def online_branch_preserving_residual_choice_result(
         state=state,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
     )
 
 
@@ -271,6 +278,8 @@ def online_determinized_residual_choice_result(
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None = None,
     rooted_at_atom: AtomId | None = None,
+    graph_index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> OnlineResidualRawChoiceResult:
     branch_result = online_branch_preserving_residual_choice_result(
         facts=facts,
@@ -279,6 +288,8 @@ def online_determinized_residual_choice_result(
         state=state,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
     )
     grouped: dict[str, dict[tuple[object, ...], OnlineResidualContinuation]] = defaultdict(dict)
     for choice in branch_result.choices:
@@ -330,6 +341,8 @@ def _root_residual_choice_result(
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None,
     rooted_at_atom: AtomId | None,
+    graph_index: GraphIndex | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
 ) -> OnlineResidualRawChoiceResult:
     sink = ResidualFrontierSink(required_prefix=state.prefix)
     vm = OnlineSearchVM(
@@ -338,6 +351,8 @@ def _root_residual_choice_result(
         semantics=semantics,
         templates=templates,
         rooted_at_atom=rooted_at_atom,
+        graph_index=graph_index,
+        component_root_domains=component_root_domains,
         sink_factory=lambda: sink,
     )
     sink.snapshot_provider = vm.checkpoint
@@ -362,6 +377,8 @@ def _resume_residual_choice_result(
     state: OnlineResidualDecoderState,
     templates: StereoTemplateBundle | None,
     rooted_at_atom: AtomId | None,
+    graph_index: GraphIndex | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         raise ValueError("cannot resume residual decoder without a frontier")
@@ -381,6 +398,8 @@ def _resume_residual_choice_result(
             semantics=semantics,
             templates=templates,
             rooted_at_atom=rooted_at_atom,
+            graph_index=graph_index,
+            component_root_domains=component_root_domains,
             snapshot=continuation.snapshot,
             sink=sink,
         )

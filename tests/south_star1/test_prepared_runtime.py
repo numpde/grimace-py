@@ -21,6 +21,7 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
+from grimace._south_star1.prepared_runtime import component_root_domains_for_prepared
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.root_domains import component_root_domains_for_facts
@@ -49,6 +50,18 @@ class PreparedRuntimeTest(unittest.TestCase):
         self.assertIs(prepared.facts, facts)
         self.assertIs(prepared.policy, policy)
         self.assertIs(prepared.semantics, semantics)
+
+    def test_prepared_stores_graph_index(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        self.assertEqual(set(prepared.graph_index.atom_by_id), set(prepared.atom_ids))
+        self.assertEqual(
+            set(prepared.graph_index.bond_by_id),
+            {bond.id for bond in prepared.facts.bonds},
+        )
 
     def test_prepared_writer_surface_flags_are_baked(self) -> None:
         surface = SouthStarWriterSurface(ignore_atom_map_numbers=True)
@@ -465,6 +478,42 @@ class PreparedRuntimeTest(unittest.TestCase):
         self.assertEqual(online_roots, {(AtomId(0), AtomId(3)), (AtomId(1), AtomId(3))})
         self.assertEqual(offline_roots, online_roots)
 
+    def test_prepared_root_domain_cache_matches_facts_helper(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            disconnected_two_bond_components_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        for root in (None, AtomId(0), AtomId(3)):
+            with self.subTest(root=root):
+                self.assertEqual(
+                    component_root_domains_for_prepared(
+                        prepared=prepared,
+                        rooted_at_atom=root,
+                    ),
+                    component_root_domains_for_facts(prepared.facts, root),
+                )
+
+    def test_prepared_explicit_root_domains_match_all_root_metadata(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            disconnected_two_bond_components_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        for atom_id, component_id in prepared.atom_component:
+            domains = component_root_domains_for_prepared(
+                prepared=prepared,
+                rooted_at_atom=atom_id,
+            )
+            for current_component_id, atoms in domains:
+                if current_component_id == component_id:
+                    self.assertEqual(atoms, (atom_id,))
+                else:
+                    self.assertEqual(
+                        atoms,
+                        dict(prepared.all_root_domains)[current_component_id],
+                    )
+
     def test_disconnected_stereo_rooted_support_matches_offline_and_all_modes(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
             disconnected_tetra_and_bond_facts(),
@@ -628,6 +677,74 @@ class PreparedRuntimeTest(unittest.TestCase):
             result = collect_online_serializations(prepared=prepared)
 
         self.assertEqual(result.support_count, len(result.strings))
+
+    def test_prepared_offline_support_does_not_rebuild_graph_index(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            cyclopropane_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with patch(
+            "grimace._south_star1.prepared_runtime.build_graph_index",
+            side_effect=AssertionError("prepared offline support rebuilt graph index"),
+        ):
+            result = enumerate_prepared_stereo_support(prepared=prepared)
+
+        self.assertGreater(result.distinct_count, 0)
+
+    def test_prepared_online_decoder_does_not_rebuild_graph_index_per_choice_query(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        decoder = make_determinized_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        self.assertIs(decoder.graph_index, prepared.graph_index)
+        with patch(
+            "grimace._south_star1.prepared_runtime.build_graph_index",
+            side_effect=AssertionError("prepared online query rebuilt graph index"),
+        ), patch(
+            "grimace._south_star1.graph_index.build_graph_index",
+            side_effect=AssertionError("prepared online query rebuilt graph index"),
+        ):
+            choices = decoder.initial_state().choices()
+
+        self.assertTrue(choices)
+
+    def test_prepared_online_decoder_does_not_validate_facts_for_root_domains_per_choice_query(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        for mode in (
+            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        ):
+            decoder = make_determinized_online_decoder(
+                prepared=prepared,
+                include_eos=True,
+                execution_mode=mode,
+                runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
+            )
+            with self.subTest(mode=mode.value), patch(
+                "grimace._south_star1.online_traversal.component_root_domains_for_facts",
+                side_effect=AssertionError("prepared online query recomputed root domains"),
+            ), patch(
+                "grimace._south_star1.online_search_vm.component_root_domains_for_facts",
+                side_effect=AssertionError("prepared online query recomputed root domains"),
+            ):
+                choices = decoder.initial_state().choices()
+            self.assertTrue(choices)
 
     def test_prepared_token_inventory_superset_contains_exact_online_inventory(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

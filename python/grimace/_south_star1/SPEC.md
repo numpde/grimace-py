@@ -359,6 +359,10 @@ prebuilt traversal traces and does not call the recursive online witness
 enumerator. This VM is the substrate for `RESIDUAL_CONTINUATIONS`: decoder
 states can store an `OnlineSearchSnapshot` at a token boundary and resume from
 it, instead of replaying from the root or replaying cached completions.
+Snapshot resumption is routed through a typed frame dispatcher. The current
+dispatcher resumes `RenderCursorFrame` payloads; future prefix, directional,
+and support-maximal scheduler frames can be added without making
+`OnlineSearchVM.from_snapshot(...)` render-cursor specific again.
 
 ## Experimental Options
 

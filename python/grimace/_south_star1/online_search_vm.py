@@ -523,7 +523,7 @@ class OnlineSearchVM:
         )
         vm.state.output = sink
         _restore_resume_snapshot(vm.state, snapshot)
-        vm._iterator = _resume_render_cursor_from_state(vm.state)
+        vm._iterator = _resume_from_frames(vm.state)
         vm._exhausted = False
         return vm
 
@@ -1155,10 +1155,21 @@ def _restore_resume_snapshot(
     state.rollback(snapshot)
 
 
-def _resume_render_cursor_from_state(state: OnlineSearchState) -> Iterator[OnlineWitness]:
-    cursor = _pop_active_render_cursor(state.frames)
-    if cursor is None:
+def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
+    frame = _pop_resumable_frame(state.frames)
+    if frame is None:
         return
+    match frame.payload:
+        case RenderCursorFrame(cursor=cursor):
+            yield from _resume_render_cursor_frame(state, cursor)
+        case _:
+            raise TypeError(f"frame is not resumable: {frame.payload!r}")
+
+
+def _resume_render_cursor_frame(
+    state: OnlineSearchState,
+    cursor: _RenderCursor,
+) -> Iterator[OnlineWitness]:
     checkpoint = state.output.checkpoint()
     slots = _slot_view_for_trace(cursor.program.trace)
     if not _render_program_to_sink(
@@ -1179,21 +1190,22 @@ def _resume_render_cursor_from_state(state: OnlineSearchState) -> Iterator[Onlin
     )
 
 
-def _pop_active_render_cursor(
+def _pop_resumable_frame(
     frames: list[OnlineSearchFrame],
-) -> _RenderCursor | None:
-    active_cursor: _RenderCursor | None = None
-    for frame in frames:
+) -> OnlineSearchFrame | None:
+    active_index: int | None = None
+    for index in range(len(frames) - 1, -1, -1):
+        frame = frames[index]
         if not isinstance(frame.payload, RenderCursorFrame):
             continue
-        active_cursor = frame.payload.cursor
-    if active_cursor is None:
+        active_index = index
+        break
+    if active_index is None:
         return None
-    frames[:] = [
-        frame for frame in frames
-        if not isinstance(frame.payload, RenderCursorFrame)
-    ]
-    return active_cursor
+    popped = frames.pop(active_index)
+    if any(isinstance(frame.payload, RenderCursorFrame) for frame in frames):
+        raise AssertionError("multiple active render-cursor frames")
+    return popped
 
 
 def _graph_from_facts(facts: MoleculeFacts) -> _Graph:
@@ -2019,4 +2031,6 @@ __all__ = (
     "make_online_search_state",
     "render_continuation_payload_shape",
     "resume_online_search_from_snapshot",
+    "_pop_resumable_frame",
+    "_resume_from_frames",
 )

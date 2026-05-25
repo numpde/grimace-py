@@ -19,9 +19,11 @@ from grimace._south_star1.online_search_vm import EventLoopFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import ParentOrientationFrame
+from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_search_vm import capture_residual_continuation
 from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
+from grimace._south_star1.online_search_vm import _pop_resumable_frame
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
@@ -222,6 +224,86 @@ class OnlineSearchVmTest(unittest.TestCase):
         self.assertIs(vm.state.residual.assignment(var), DirectionMark.FWD)
         self.assertIs(state.residual.assignment(var), DirectionMark.FWD)
 
+    def test_from_snapshot_uses_frame_dispatcher(self) -> None:
+        text = ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("vm._iterator = _resume_from_frames(vm.state)", text)
+        self.assertNotIn("vm._iterator = _resume_render_cursor", text)
+
+    def test_dispatcher_resumes_render_cursor_frame(self) -> None:
+        facts = tetrahedral_facts()
+        policy = ordinary_policy_for_facts(facts)
+        semantics = OrdinarySmilesSemantics()
+        continuation = _first_residual_continuation(facts)
+        sink = ResidualFrontierSink(required_prefix=continuation.prefix)
+        vm = OnlineSearchVM.from_snapshot(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            snapshot=continuation.snapshot,
+            sink=sink,
+        )
+        sink.snapshot_provider = vm.checkpoint
+        sink.decision_path_provider = vm.state.decisions.path
+
+        witness = vm.run_until_witness_or_exhausted()
+
+        self.assertIsNotNone(witness)
+        self.assertFalse(
+            any(isinstance(frame.payload, RenderCursorFrame) for frame in vm.state.frames)
+        )
+
+    def test_dispatcher_pops_exact_active_cursor_frame(self) -> None:
+        context = OnlineSearchFrame(EventLoopFrame(("context",)))
+        active = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        frames = [context, active]
+
+        popped = _pop_resumable_frame(frames)
+
+        self.assertEqual(popped, active)
+        self.assertEqual(frames, [context])
+
+    def test_dispatcher_does_not_drop_non_cursor_context_frames(self) -> None:
+        context = OnlineSearchFrame(ParentOrientationFrame(((AtomId(0), None),)))
+        active = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        frames = [context, active]
+
+        _pop_resumable_frame(frames)
+
+        self.assertEqual(frames, [context])
+
+    def test_dispatcher_rejects_multiple_active_render_cursors(self) -> None:
+        first = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        second = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        frames = [first, second]
+
+        with self.assertRaises(AssertionError):
+            _pop_resumable_frame(frames)
+
+    def test_dispatcher_preserves_ring_state_annotation_count_and_frontier(self) -> None:
+        facts = ring_directional_facts()
+        continuation = _first_residual_continuation(facts)
+        sink = ResidualFrontierSink(required_prefix=continuation.prefix)
+        vm = OnlineSearchVM.from_snapshot(
+            facts=facts,
+            policy=ordinary_policy_for_facts(facts),
+            semantics=OrdinarySmilesSemantics(),
+            snapshot=continuation.snapshot,
+            sink=sink,
+        )
+        sink.snapshot_provider = vm.checkpoint
+        sink.decision_path_provider = vm.state.decisions.path
+        self.assertEqual(vm.state.ring.checkpoint(), continuation.snapshot.ring_state)
+
+        witness = vm.run_until_witness_or_exhausted()
+
+        self.assertIsNotNone(witness)
+        self.assertEqual(
+            witness.annotation_count,
+            _render_cursor_from_snapshot(continuation.snapshot).program.annotation_count,
+        )
+        self.assertGreaterEqual(vm.state.ring.checkpoint()[3], continuation.snapshot.ring_state[3])
+
     def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:
         vm = OnlineSearchVM(
             facts=disconnected_facts(),
@@ -419,6 +501,36 @@ def disconnected_facts() -> MoleculeFacts:
 
 def ring_directional_facts() -> MoleculeFacts:
     return ordinary_molecule_facts_from_smiles("C/C=C/1CC1")
+
+
+def _first_residual_continuation(facts: MoleculeFacts):
+    sink = ResidualFrontierSink(required_prefix="")
+    vm = OnlineSearchVM(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        sink_factory=lambda: sink,
+    )
+    sink.snapshot_provider = vm.checkpoint
+    sink.decision_path_provider = vm.state.decisions.path
+    while vm.run_until_witness_or_exhausted() is not None:
+        pass
+    for token in sorted(sink.completed_by_token):
+        continuations = sink.completed_by_token[token]
+        if continuations:
+            return continuations[0]
+    raise AssertionError("expected token frontier")
+
+
+def _first_render_cursor(facts: MoleculeFacts):
+    return _render_cursor_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+
+def _render_cursor_from_snapshot(snapshot):
+    for frame in reversed(snapshot.frame_stack):
+        if isinstance(frame.payload, RenderCursorFrame):
+            return frame.payload.cursor
+    raise AssertionError("snapshot lacks render cursor")
 
 
 if __name__ == "__main__":

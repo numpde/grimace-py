@@ -11,10 +11,9 @@ Guides show focused workflows that combine the public API pieces.
 - [Token inventories](guides/token-inventory.md): build dataset vocabulary
   coverage.
 
-Contributor guides:
-
-- [Containerized development](development/containerized.md): see the
-  Docker-backed development contract, including `make` lanes and outputs.
+Contributor workflow: [Containerized development](development/containerized.md)
+covers the Docker-backed development contract, including `make` lanes and
+outputs.
 
 For API signatures, see [API](api/python.md). For supported runtime flags and
 root behavior, see [Runtime](runtime.md).

@@ -39,6 +39,7 @@ CORE_MODULES: tuple[str, ...] = (
     "online_stereo_witness",
     "online_traversal",
     "policy",
+    "prepared_bench_matrix",
     "prepared_runtime",
     "proof_terms",
     "residual_constraints",

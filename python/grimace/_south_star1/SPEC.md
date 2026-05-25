@@ -261,6 +261,15 @@ helper; prepared paths use the prepared root-domain cache. Rooted count-law
 tests compare all-root witness counts against sums over explicit roots in
 connected molecules and against sums over roots of a fixed component in
 disconnected molecules.
+
+`prepared_bench_matrix.py` provides a structural conformance matrix for the
+prepared runtime. It compares prepared offline support enumeration with
+prepared online determinized walks across execution modes, records support and
+witness/EOS completion counts, and exposes query-time cache-reuse counters.
+The matrix is correctness-oriented rather than a timing benchmark: tests assert
+that prepared queries do not rebuild graph indexes, root-domain metadata, or
+stereo templates, and that residual retained states do not carry rendered suffix
+payloads.
 `canonical=True` and `do_random=False` are rejected in the current online
 runtime. Per-query decoder state still owns DFS traversal, output, ring,
 residual trail, and frame-stack state.

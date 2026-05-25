@@ -8,6 +8,7 @@ from dataclasses import replace
 from unittest.mock import patch
 
 import grimace._south_star1.online_serialization_stream as serialization_stream_module
+import grimace._south_star1.prepared_prefix_workload as workload_module
 import grimace._south_star1.prepared_runtime as prepared_runtime_module
 import grimace._south_star1.support_enumeration as support_enumeration_module
 from grimace._south_star1.facts import ComponentFacts
@@ -18,6 +19,7 @@ from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
 from grimace._south_star1.prepared_prefix_workload import advance_decoder_to_prefix
+from grimace._south_star1.prepared_prefix_workload import collect_mode_union_token_boundary_prefixes
 from grimace._south_star1.prepared_prefix_workload import collect_prepared_prefix_workload
 from grimace._south_star1.prepared_prefix_workload import collect_token_boundary_prefixes
 from grimace._south_star1.prepared_prefix_workload import validate_prepared_prefix_workload_result
@@ -35,17 +37,110 @@ _WORKLOAD_RESULTS_CACHE = None
 
 
 class PreparedPrefixWorkloadTest(unittest.TestCase):
-    def test_prefix_workload_next_tokens_agree_across_execution_modes(self) -> None:
+    def test_prefix_workload_collects_prefixes_from_all_execution_modes(self) -> None:
+        with patch.object(
+            workload_module,
+            "make_determinized_online_decoder",
+            side_effect=_fake_decoder_factory(),
+        ):
+            prefixes = collect_mode_union_token_boundary_prefixes(
+                prepared=object(),
+                limit_per_mode=2,
+            )
+
+        self.assertEqual(prefixes, ("", "A", "B", "C"))
+
+    def test_prefix_workload_requires_every_mode_to_reach_every_prefix(self) -> None:
+        with patch.object(
+            workload_module,
+            "make_determinized_online_decoder",
+            side_effect=_fake_decoder_factory(
+                missing={
+                    OnlineDecoderExecutionMode.CACHED_COMPLETIONS: frozenset({"B"}),
+                },
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "not reachable"):
+                collect_mode_union_token_boundary_prefixes(
+                    prepared=object(),
+                    limit_per_mode=3,
+                )
+
+    def test_prefix_workload_fails_if_residual_omits_prefix_seen_by_prefix_replay(
+        self,
+    ) -> None:
+        with patch.object(
+            workload_module,
+            "make_determinized_online_decoder",
+            side_effect=_fake_decoder_factory(
+                missing={
+                    OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS: frozenset({"B"}),
+                },
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "residual_continuations"):
+                collect_mode_union_token_boundary_prefixes(
+                    prepared=object(),
+                    limit_per_mode=3,
+                )
+
+    def test_prefix_workload_fails_if_cached_completions_omits_prefix_seen_by_prefix_replay(
+        self,
+    ) -> None:
+        with patch.object(
+            workload_module,
+            "make_determinized_online_decoder",
+            side_effect=_fake_decoder_factory(
+                missing={
+                    OnlineDecoderExecutionMode.CACHED_COMPLETIONS: frozenset({"B"}),
+                },
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "cached_completions"):
+                collect_mode_union_token_boundary_prefixes(
+                    prepared=object(),
+                    limit_per_mode=3,
+                )
+
+    def test_prefix_workload_eos_availability_is_observed_directly(self) -> None:
+        with patch.object(
+            workload_module,
+            "make_determinized_online_decoder",
+            side_effect=_fake_decoder_factory(eos_completion_count=2),
+        ):
+            result = collect_prepared_prefix_workload(
+                fixture_name="fake",
+                prepared=object(),
+                prefix_limit=1,
+            )
+
+        self.assertTrue(result.rows[0].prefix_replay.has_eos)
+        self.assertEqual(result.rows[0].prefix_replay.eos_completion_count, 2)
+
+    def test_prefix_workload_rejects_zero_completion_count_eos(self) -> None:
+        with patch.object(
+            workload_module,
+            "make_determinized_online_decoder",
+            side_effect=_fake_decoder_factory(eos_completion_count=0),
+        ):
+            with self.assertRaisesRegex(ValueError, "positive completion_count"):
+                collect_prepared_prefix_workload(
+                    fixture_name="fake",
+                    prepared=object(),
+                    prefix_limit=1,
+                )
+
+    def test_prefix_workload_next_token_sets_agree_across_execution_modes(self) -> None:
         for result in _workload_results():
             with self.subTest(fixture=result.rows[0].fixture_name):
                 for row in result.rows:
                     self.assertEqual(
-                        row.prefix_replay.next_token_texts,
-                        row.cached_completions.next_token_texts,
+                        row.prefix_replay.next_token_text_set,
+                        row.cached_completions.next_token_text_set,
                     )
                     self.assertEqual(
-                        row.prefix_replay.next_token_texts,
-                        row.residual_continuations.next_token_texts,
+                        row.prefix_replay.next_token_text_set,
+                        row.residual_continuations.next_token_text_set,
                     )
                     self.assertEqual(
                         row.prefix_replay.next_token_completion_counts,
@@ -84,12 +179,12 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
                         row.residual_continuations.eos_completion_count,
                     )
 
-    def test_prefix_workload_residual_uses_resumed_snapshots(self) -> None:
+    def test_prefix_workload_still_reports_residual_resumed_snapshots(self) -> None:
         for result in _workload_results():
             with self.subTest(fixture=result.rows[0].fixture_name):
                 self.assertGreater(result.total_residual_resumed_snapshots, 0)
 
-    def test_prefix_workload_residual_has_fewer_root_dfs_runs_than_prefix_replay(
+    def test_prefix_workload_still_reports_residual_root_dfs_reduction(
         self,
     ) -> None:
         for result in _workload_results():
@@ -99,7 +194,7 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
                     result.total_prefix_replay_root_dfs_runs,
                 )
 
-    def test_prefix_workload_residual_retained_render_payload_chars_zero(self) -> None:
+    def test_prefix_workload_still_reports_zero_retained_render_payload(self) -> None:
         for result in _workload_results():
             with self.subTest(fixture=result.rows[0].fixture_name):
                 self.assertEqual(result.max_residual_retained_render_payload_chars, 0)
@@ -165,7 +260,7 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
 
         validate_prepared_prefix_workload_result(result)
 
-    def test_prefix_workload_prepared_hot_path_has_zero_probe_rebuilds(self) -> None:
+    def test_prefix_workload_probe_still_reports_zero_hot_path_rebuilds(self) -> None:
         for result in _workload_results():
             with self.subTest(fixture=result.rows[0].fixture_name):
                 probe = result.probe
@@ -193,6 +288,7 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
                     residual_continuations=replace(
                         row.residual_continuations,
                         next_token_texts=("not-a-token",),
+                        next_token_text_set=frozenset({"not-a-token"}),
                     ),
                 ),
                 *result.rows[1:],
@@ -276,6 +372,115 @@ def _prepare(facts):
         facts,
         writer_surface=SouthStarWriterSurface(),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeChoice:
+    text: str
+    next_state: object | None
+    is_eos: bool = False
+    completion_count: int = 1
+    multiplicity: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeChoiceResult:
+    choices: tuple[_FakeChoice, ...]
+    stats: object
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeStats:
+    root_dfs_runs: int = 0
+    resumed_snapshots: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeState:
+    prefix: str
+    execution_mode: OnlineDecoderExecutionMode
+    missing: frozenset[str]
+    eos_completion_count: int
+
+    def choices_with_stats(self) -> _FakeChoiceResult:
+        choices: list[_FakeChoice] = []
+        if self.prefix == "":
+            for text in _mode_order(self.execution_mode):
+                if text in self.missing:
+                    continue
+                choices.append(
+                    _FakeChoice(
+                        text=text,
+                        next_state=_FakeState(
+                            prefix=text,
+                            execution_mode=self.execution_mode,
+                            missing=self.missing,
+                            eos_completion_count=self.eos_completion_count,
+                        ),
+                    )
+                )
+        choices.append(
+            _FakeChoice(
+                text="<EOS>",
+                next_state=None,
+                is_eos=True,
+                completion_count=self.eos_completion_count,
+            )
+        )
+        is_residual_resume = (
+            self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS
+            and bool(self.prefix)
+        )
+        return _FakeChoiceResult(
+            choices=tuple(choices),
+            stats=_FakeStats(
+                root_dfs_runs=0 if is_residual_resume else 1,
+                resumed_snapshots=1 if is_residual_resume else 0,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _FakeDecoder:
+    execution_mode: OnlineDecoderExecutionMode
+    missing: frozenset[str]
+    eos_completion_count: int
+
+    def initial_state(self) -> _FakeState:
+        return _FakeState(
+            prefix="",
+            execution_mode=self.execution_mode,
+            missing=self.missing,
+            eos_completion_count=self.eos_completion_count,
+        )
+
+
+def _fake_decoder_factory(
+    *,
+    missing: dict[OnlineDecoderExecutionMode, frozenset[str]] | None = None,
+    eos_completion_count: int = 1,
+):
+    missing_by_mode = missing or {}
+
+    def make_decoder(**kwargs):
+        mode = kwargs["execution_mode"]
+        return _FakeDecoder(
+            execution_mode=mode,
+            missing=missing_by_mode.get(mode, frozenset()),
+            eos_completion_count=eos_completion_count,
+        )
+
+    return make_decoder
+
+
+def _mode_order(mode: OnlineDecoderExecutionMode) -> tuple[str, ...]:
+    if mode is OnlineDecoderExecutionMode.PREFIX_REPLAY:
+        return ("A", "B", "C")
+    if mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
+        return ("B", "A", "C")
+    if mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
+        return ("C", "A", "B")
+    raise ValueError(f"unexpected fake decoder mode: {mode!r}")
 
 
 def _disconnected_tetra_and_bond_facts() -> MoleculeFacts:

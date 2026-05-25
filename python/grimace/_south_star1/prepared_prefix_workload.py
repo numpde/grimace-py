@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from .online_continuation import OnlineDecoderExecutionMode
@@ -14,11 +15,19 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 
 
+_PREFIX_WORKLOAD_MODES = (
+    OnlineDecoderExecutionMode.PREFIX_REPLAY,
+    OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+    OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedPrefixQueryObservation:
     prefix: str
     execution_mode: OnlineDecoderExecutionMode
     next_token_texts: tuple[str, ...]
+    next_token_text_set: frozenset[str]
     next_token_completion_counts: tuple[tuple[str, int], ...]
     has_eos: bool
     eos_completion_count: int
@@ -55,13 +64,56 @@ def collect_token_boundary_prefixes(
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
     limit: int | None = None,
 ) -> tuple[str, ...]:
-    """Collect reachable decoder-token-boundary prefixes in deterministic order."""
+    """Collect mode-independent decoder-token-boundary prefixes."""
 
+    return collect_mode_union_token_boundary_prefixes(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        limit_per_mode=limit,
+    )
+
+
+def collect_mode_union_token_boundary_prefixes(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
+    limit_per_mode: int | None = 16,
+) -> tuple[str, ...]:
+    """Collect the deterministic union of per-mode token-boundary prefixes."""
+
+    seen: set[str] = set()
+    prefixes: list[str] = []
+    for mode in _PREFIX_WORKLOAD_MODES:
+        for prefix in _collect_token_boundary_prefixes_for_mode(
+            prepared=prepared,
+            runtime_options=runtime_options,
+            execution_mode=mode,
+            limit=limit_per_mode,
+        ):
+            if prefix in seen:
+                continue
+            seen.add(prefix)
+            prefixes.append(prefix)
+    _require_prefixes_reachable_by_all_modes(
+        prepared=prepared,
+        runtime_options=runtime_options,
+        prefixes=tuple(prefixes),
+    )
+    return tuple(prefixes)
+
+
+def _collect_token_boundary_prefixes_for_mode(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    execution_mode: OnlineDecoderExecutionMode,
+    limit: int | None,
+) -> tuple[str, ...]:
     decoder = make_determinized_online_decoder(
         prepared=prepared,
         include_eos=True,
         runtime_options=runtime_options,
-        execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        execution_mode=execution_mode,
     )
     stack = [decoder.initial_state()]
     seen: set[str] = set()
@@ -92,10 +144,10 @@ def collect_prepared_prefix_workload(
     prefix_limit: int | None = 16,
 ) -> PreparedPrefixWorkloadResult:
     with PreparedRuntimeProbe() as probe:
-        prefixes = collect_token_boundary_prefixes(
+        prefixes = collect_mode_union_token_boundary_prefixes(
             prepared=prepared,
             runtime_options=runtime_options,
-            limit=prefix_limit,
+            limit_per_mode=prefix_limit,
         )
         rows = tuple(
             _collect_row(
@@ -138,6 +190,28 @@ def advance_decoder_to_prefix(
             if prefix.startswith(next_prefix) or next_prefix.startswith(prefix):
                 stack.append(choice.next_state)
     raise ValueError(f"prefix is not reachable at a decoder token boundary: {prefix!r}")
+
+
+def _require_prefixes_reachable_by_all_modes(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    prefixes: tuple[str, ...],
+) -> None:
+    for prefix in prefixes:
+        for mode in _PREFIX_WORKLOAD_MODES:
+            decoder = make_determinized_online_decoder(
+                prepared=prepared,
+                include_eos=True,
+                runtime_options=runtime_options,
+                execution_mode=mode,
+            )
+            try:
+                advance_decoder_to_prefix(decoder, prefix)
+            except ValueError as exc:
+                raise ValueError(
+                    f"prefix {prefix!r} is not reachable by execution mode {mode.value}"
+                ) from exc
 
 
 def validate_prepared_prefix_workload_result(
@@ -205,22 +279,23 @@ def _observe_prefix_query(
     )
     state = advance_decoder_to_prefix(decoder, prefix)
     result = state.choices_with_stats()
-    eos_completion_count = sum(
-        choice.completion_count for choice in result.choices if choice.is_eos
+    eos_choices = tuple(choice for choice in result.choices if choice.is_eos)
+    has_eos = bool(eos_choices)
+    eos_completion_count = sum(choice.completion_count for choice in eos_choices)
+    if has_eos and eos_completion_count <= 0:
+        raise ValueError("EOS choice must have positive completion_count")
+    next_token_texts = tuple(
+        choice.text for choice in result.choices if not choice.is_eos
     )
+    next_token_completion_counts = _next_token_completion_counts(result.choices)
     retained = getattr(result.stats, "retained_state_size", None)
     return PreparedPrefixQueryObservation(
         prefix=prefix,
         execution_mode=execution_mode,
-        next_token_texts=tuple(
-            choice.text for choice in result.choices if not choice.is_eos
-        ),
-        next_token_completion_counts=tuple(
-            (choice.text, choice.completion_count)
-            for choice in result.choices
-            if not choice.is_eos
-        ),
-        has_eos=eos_completion_count > 0,
+        next_token_texts=next_token_texts,
+        next_token_text_set=frozenset(next_token_texts),
+        next_token_completion_counts=next_token_completion_counts,
+        has_eos=has_eos,
         eos_completion_count=eos_completion_count,
         frontier_queries=1,
         root_dfs_runs=_root_dfs_runs(result.stats),
@@ -266,7 +341,7 @@ def _validate_row(row: PreparedPrefixWorkloadRow) -> None:
         row.cached_completions,
         row.residual_continuations,
     )
-    next_tokens = {item.next_token_texts for item in observations}
+    next_tokens = {item.next_token_text_set for item in observations}
     if len(next_tokens) != 1:
         raise ValueError(f"prefix workload next-token disagreement at {row.prefix!r}")
     next_completion_counts = {
@@ -282,6 +357,20 @@ def _validate_row(row: PreparedPrefixWorkloadRow) -> None:
     eos_counts = {item.eos_completion_count for item in observations}
     if len(eos_counts) != 1:
         raise ValueError(f"prefix workload EOS count disagreement at {row.prefix!r}")
+    for item in observations:
+        if item.has_eos and item.eos_completion_count <= 0:
+            raise ValueError("EOS choice must have positive completion_count")
+
+
+def _next_token_completion_counts(
+    choices: Iterable[object],
+) -> tuple[tuple[str, int], ...]:
+    counts: dict[str, int] = {}
+    for choice in choices:
+        if choice.is_eos:
+            continue
+        counts[choice.text] = counts.get(choice.text, 0) + int(choice.completion_count)
+    return tuple((text, counts[text]) for text in sorted(counts))
 
 
 def _root_dfs_runs(stats: object) -> int | None:
@@ -303,6 +392,7 @@ __all__ = (
     "PreparedPrefixWorkloadResult",
     "PreparedPrefixWorkloadRow",
     "advance_decoder_to_prefix",
+    "collect_mode_union_token_boundary_prefixes",
     "collect_prepared_prefix_workload",
     "collect_token_boundary_prefixes",
     "validate_prepared_prefix_workload_result",

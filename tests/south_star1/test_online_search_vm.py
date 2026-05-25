@@ -14,6 +14,7 @@ from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_decisions import OnlineDecision
 from grimace._south_star1.online_render_sink import OnlineStringBuffer
+from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import capture_residual_continuation
@@ -243,6 +244,51 @@ class OnlineSearchVmTest(unittest.TestCase):
         self.assertEqual(continuation.prefix, "C")
         self.assertEqual(continuation.snapshot.frame_stack, (OnlineSearchFrame("root", (0,)),))
 
+    def test_directional_candidate_rendering_restores_ring_state_between_candidates(self) -> None:
+        facts = ring_directional_facts()
+        vm = OnlineSearchVM(
+            facts=facts,
+            policy=ordinary_policy_for_facts(facts),
+            semantics=OrdinarySmilesSemantics(),
+        )
+
+        witnesses = [vm.run_until_witness_or_exhausted() for _ in range(2)]
+
+        self.assertTrue(all(witness is not None for witness in witnesses))
+        self.assertEqual(vm.state.ring.checkpoint(), ((), (), (), 0))
+
+    def test_two_directional_candidates_on_same_ring_label_branch_both_render(self) -> None:
+        facts = ring_directional_facts()
+        rendered = tuple(
+            iter_online_stereo_witness_strings_vm(
+                facts=facts,
+                policy=ordinary_policy_for_facts(facts),
+                semantics=OrdinarySmilesSemantics(),
+            )
+        )
+
+        self.assertGreater(len(rendered), len(set(rendered)))
+        self.assertGreaterEqual(len(rendered), 2)
+
+    def test_residual_continuation_captures_partial_ring_state_but_producer_ring_restores(self) -> None:
+        facts = ring_directional_facts()
+        sink = ResidualFrontierSink(required_prefix="C")
+        vm = OnlineSearchVM(
+            facts=facts,
+            policy=ordinary_policy_for_facts(facts),
+            semantics=OrdinarySmilesSemantics(),
+            sink_factory=lambda: sink,
+        )
+        sink.snapshot_provider = vm.checkpoint
+        sink.decision_path_provider = vm.state.decisions.path
+
+        while vm.run_until_witness_or_exhausted() is not None:
+            pass
+
+        self.assertEqual(vm.state.ring.checkpoint(), ((), (), (), 0))
+        continuation = sink.completed_by_token["1"][0]
+        self.assertNotEqual(continuation.snapshot.ring_state, ((), (), (), 0))
+
     def test_online_search_vm_boundary_no_hidden_generator_or_artifact_imports(self) -> None:
         tree = ast.parse(ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8"))
         banned_modules = {
@@ -333,6 +379,10 @@ def disconnected_facts() -> MoleculeFacts:
             ComponentFacts(id=ComponentId(1), atoms=(AtomId(1),), bonds=()),
         ),
     )
+
+
+def ring_directional_facts() -> MoleculeFacts:
+    return ordinary_molecule_facts_from_smiles("C/C=C/1CC1")
 
 
 if __name__ == "__main__":

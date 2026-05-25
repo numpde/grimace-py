@@ -568,6 +568,15 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertEqual(frontiers[0], frontiers[1])
         self.assertEqual(frontiers[0], frontiers[2])
 
+    def test_support_maximal_ring_case_does_not_drop_maximal_candidate(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("C/C=C/1CC1")
+        residual = _residual_determinized_decoder(facts, include_eos=True)
+        witness = _witnesses(facts)[0]
+
+        state = _walk_decoder(residual, _tokens_for_witness(residual, witness))
+
+        self.assertTrue(any(choice.is_eos for choice in state.choices()))
+
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")
 

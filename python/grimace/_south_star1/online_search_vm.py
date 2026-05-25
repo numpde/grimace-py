@@ -308,6 +308,7 @@ class _DirectionalCandidate:
     support: frozenset[int]
     annotation_count: int
     residual_snapshot: ResidualStoreValueSnapshot
+    ring_state: object
     decision_path: OnlineDecisionPath
     frame_stack: tuple[OnlineSearchFrame, ...]
 
@@ -798,6 +799,7 @@ def _iter_directional_candidates(
                         1 for mark in marks.values() if mark is not DirectionMark.ABSENT
                     ),
                     residual_snapshot=store.value_snapshot(),
+                    ring_state=state.ring.checkpoint(),
                     decision_path=state.decisions.path(),
                     frame_stack=tuple(state.frames),
                 )
@@ -820,9 +822,11 @@ def _render_directional_candidate(
 ) -> str | None:
     previous_output = state.output
     previous_store = state.residual
+    previous_ring = state.ring.checkpoint()
     previous_decisions = state.decisions.path()
     previous_frames = tuple(state.frames)
     state.residual = ResidualStore.from_value_snapshot(candidate.residual_snapshot)
+    state.ring.rollback(candidate.ring_state)
     state.decisions.restore_path(candidate.decision_path)
     state.frames[:] = list(candidate.frame_stack)
     state.output = sink_factory()
@@ -857,6 +861,7 @@ def _render_directional_candidate(
         state.frames.pop()
         state.output = previous_output
         state.residual = previous_store
+        state.ring.rollback(previous_ring)
         state.decisions.restore_path(previous_decisions)
         state.frames[:] = list(previous_frames)
 

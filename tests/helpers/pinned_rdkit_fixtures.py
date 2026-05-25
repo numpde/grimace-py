@@ -263,18 +263,30 @@ def load_pinned_rdkit_fixture_cases(
     cases = []
     seen_ids: dict[str, Path] = {}
     for current_fixture_path, data in payloads:
+        if not isinstance(data, dict):
+            raise ValueError(f"fixture {current_fixture_path} must contain a JSON object")
         if data.get("rdkit_version") != rdkit_version:
             raise ValueError(
                 f"fixture {current_fixture_path} declares "
                 f"rdkit_version={data.get('rdkit_version')!r}, "
                 f"expected {rdkit_version!r}"
             )
-        for raw_case in data["cases"]:
-            case_id = str(raw_case["id"])
-            if not case_id:
+        raw_cases = data.get("cases")
+        if not isinstance(raw_cases, list) or not raw_cases:
+            raise ValueError(
+                f"fixture {current_fixture_path} must define nonempty cases list"
+            )
+        for raw_case in raw_cases:
+            if not isinstance(raw_case, dict):
                 raise ValueError(
-                    f"fixture {current_fixture_path} contains an empty case id"
+                    f"fixture {current_fixture_path} contains a non-object case"
                 )
+            raw_case_id = raw_case.get("id")
+            if type(raw_case_id) is not str or not raw_case_id:
+                raise ValueError(
+                    f"fixture {current_fixture_path} contains an invalid case id"
+                )
+            case_id = raw_case_id
             if case_id in seen_ids:
                 raise ValueError(
                     f"fixture {current_fixture_path} duplicates case id {case_id!r} "

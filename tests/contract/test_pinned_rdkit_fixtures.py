@@ -179,6 +179,28 @@ class PinnedRdkitFixtureLoaderTest(unittest.TestCase):
                     fixture_label="contract",
                 )
 
+    def test_fixture_rejects_malformed_payloads(self) -> None:
+        invalid_payloads = (
+            [],
+            {"rdkit_version": RDKIT_VERSION, "cases": []},
+            {"rdkit_version": RDKIT_VERSION, "cases": "case_a"},
+            {"rdkit_version": RDKIT_VERSION, "cases": ["case_a"]},
+            {"rdkit_version": RDKIT_VERSION, "cases": [{"id": 123, "source": "x"}]},
+            {"rdkit_version": RDKIT_VERSION, "cases": [{"id": "", "source": "x"}]},
+        )
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    _write_json(root / f"{RDKIT_VERSION}.json", payload)
+
+                    with self.assertRaises(ValueError):
+                        load_pinned_rdkit_fixture_cases(
+                            fixture_root=root,
+                            rdkit_version=RDKIT_VERSION,
+                            fixture_label="contract",
+                        )
+
 
 class SerializerRegressionFixtureLoaderTest(unittest.TestCase):
     def test_serializer_fixture_accepts_smiles_or_molblock_cases(self) -> None:

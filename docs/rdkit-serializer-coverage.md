@@ -18,6 +18,12 @@ The ledger is keyed to RDKit `2026.03.1`. Its claims should not be read as
 evidence for a different RDKit serializer version unless a new versioned ledger
 is generated and reviewed.
 
+To count reviewed upstream serializer entries by status:
+
+```bash
+python scripts/report_rdkit_serializer_coverage.py
+```
+
 ## How to read it
 
 There are three layers:
@@ -64,12 +70,6 @@ those paths produced the evidence. The source string is review context; the
 loader and parity tests are the enforcement.
 
 ## Current status
-
-Generate the current reviewed counts from the checked-in ledger:
-
-```bash
-python scripts/report_rdkit_serializer_coverage.py
-```
 
 For the broader fixture-family and source-class summary, run:
 

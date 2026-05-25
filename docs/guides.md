@@ -16,9 +16,11 @@ Contributor guides:
 - [Containerized development](development/containerized.md): use the
   Docker-backed development contract, including `make` lanes and outputs.
 - [Testing fixtures](testing-fixtures.md): understand fixture families,
-  promotion rules, and the tests that enforce checked-in RDKit evidence.
+  promotion rules, generated fixture counts, and the tests that enforce
+  checked-in RDKit evidence.
 - [RDKit serializer coverage](rdkit-serializer-coverage.md): trace upstream
-  RDKit serializer tests to executable Grimace evidence.
+  RDKit serializer tests to executable Grimace evidence and reviewed ledger
+  counts.
 
 For API signatures, see [API](api/python.md). For supported runtime flags and
 root behavior, see [Runtime](runtime.md).

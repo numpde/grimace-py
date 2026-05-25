@@ -19,6 +19,12 @@ This guide is not the machine source of truth. Fixture validity is enforced by
 typed loader helpers under `tests/helpers/`, contract tests under
 `tests/contract/`, and the relevant runtime/parity tests.
 
+To count checked-in fixture cases by family, RDKit version, and provenance:
+
+```bash
+python scripts/report_correctness_coverage.py
+```
+
 ## How to read a fixture
 
 Start with the fixture family, then the RDKit version, then the case `source`.
@@ -121,16 +127,9 @@ behavioral checks against the installed RDKit build.
 Use [RDKit serializer coverage](rdkit-serializer-coverage.md) when you need to
 trace upstream RDKit source blocks to executable fixture cases.
 
-To generate a current pinned RDKit evidence summary from checked-in fixtures
-and the serializer ledger:
-
-```bash
-python scripts/report_correctness_coverage.py
-```
-
-The report fails on fixture `source` strings that do not match a known
-provenance class, empty serializer ledgers, and serializer statuses outside
-the reviewed status vocabulary.
+The correctness report also fails on fixture `source` strings that do not
+match a known provenance class, empty serializer ledgers, and serializer
+statuses outside the reviewed status vocabulary.
 
 ## Reference dataset fixtures
 

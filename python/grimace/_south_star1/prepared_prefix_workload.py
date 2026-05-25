@@ -69,6 +69,7 @@ class PreparedDecoderWalkStep:
     eos_count_by_mode: tuple[tuple[str, int], ...]
     root_dfs_runs_by_mode: tuple[tuple[str, int | None], ...]
     resumed_snapshots_by_mode: tuple[tuple[str, int | None], ...]
+    retained_continuation_count_by_mode: tuple[tuple[str, int | None], ...]
     retained_render_payload_chars_by_mode: tuple[tuple[str, int | None], ...]
 
 
@@ -600,23 +601,39 @@ def _result_from_rows(
     rows: tuple[PreparedPrefixWorkloadRow, ...],
     probe: PreparedRuntimeProbeResult,
 ) -> PreparedPrefixWorkloadResult:
-    residual_payloads = tuple(
-        row.residual_continuations.retained_render_payload_chars or 0
-        for row in rows
-    )
     return PreparedPrefixWorkloadResult(
         rows=rows,
         total_prefix_replay_root_dfs_runs=sum(
-            row.prefix_replay.root_dfs_runs or 0 for row in rows
+            _required_observation_int(
+                row.prefix_replay,
+                field_name="root_dfs_runs",
+            )
+            for row in rows
         ),
         total_residual_root_dfs_runs=sum(
-            row.residual_continuations.root_dfs_runs or 0 for row in rows
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="root_dfs_runs",
+            )
+            for row in rows
         ),
         total_residual_resumed_snapshots=sum(
-            row.residual_continuations.resumed_snapshots or 0 for row in rows
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="resumed_snapshots",
+            )
+            for row in rows
         ),
         max_residual_retained_render_payload_chars=(
-            max(residual_payloads) if residual_payloads else 0
+            max(
+                _required_residual_observation_int(
+                    row.residual_continuations,
+                    field_name="retained_render_payload_chars",
+                )
+                for row in rows
+            )
+            if rows
+            else 0
         ),
         probe=probe,
     )
@@ -634,35 +651,42 @@ def _decoder_walk_result(
         rooted_at_atom=rooted_at_atom,
         steps=steps,
         total_prefix_replay_root_dfs_runs=sum(
-            _step_int(step.root_dfs_runs_by_mode, OnlineDecoderExecutionMode.PREFIX_REPLAY)
+            _required_mode_int(
+                step.root_dfs_runs_by_mode,
+                mode_name=OnlineDecoderExecutionMode.PREFIX_REPLAY.value,
+                field_name="root_dfs_runs",
+            )
             for step in steps
         ),
         total_cached_root_dfs_runs=sum(
-            _step_int(
+            _optional_mode_int(
                 step.root_dfs_runs_by_mode,
                 OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
             )
             for step in steps
         ),
         total_residual_root_dfs_runs=sum(
-            _step_int(
+            _required_mode_int(
                 step.root_dfs_runs_by_mode,
-                OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="root_dfs_runs",
             )
             for step in steps
         ),
         total_residual_resumed_snapshots=sum(
-            _step_int(
+            _required_mode_int(
                 step.resumed_snapshots_by_mode,
-                OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="resumed_snapshots",
             )
             for step in steps
         ),
         max_residual_retained_render_payload_chars=max(
             (
-                _step_int(
+                _required_mode_int(
                     step.retained_render_payload_chars_by_mode,
-                    OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+                    mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                    field_name="retained_render_payload_chars",
                 )
                 for step in steps
             ),
@@ -728,6 +752,10 @@ def _walk_step_from_observations(
             (mode.value, observations[mode].resumed_snapshots)
             for mode in _PREFIX_WORKLOAD_MODES
         ),
+        retained_continuation_count_by_mode=tuple(
+            (mode.value, observations[mode].retained_continuation_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
         retained_render_payload_chars_by_mode=tuple(
             (mode.value, observations[mode].retained_render_payload_chars)
             for mode in _PREFIX_WORKLOAD_MODES
@@ -761,6 +789,8 @@ def _validate_row(row: PreparedPrefixWorkloadRow) -> None:
     prefixes = {item.prefix for item in observations}
     if prefixes != {row.prefix}:
         raise ValueError(f"prefix workload compared mismatched prefixes at {row.prefix!r}")
+    _required_observation_int(row.prefix_replay, field_name="root_dfs_runs")
+    _require_residual_observation_stats(row.residual_continuations)
     next_tokens = {item.next_token_text_set for item in observations}
     if len(next_tokens) != 1:
         raise ValueError(f"prefix workload next-token disagreement at {row.prefix!r}")
@@ -783,6 +813,31 @@ def _validate_row(row: PreparedPrefixWorkloadRow) -> None:
 
 
 def _validate_walk_step(step: PreparedDecoderWalkStep) -> None:
+    _required_mode_int(
+        step.root_dfs_runs_by_mode,
+        mode_name=OnlineDecoderExecutionMode.PREFIX_REPLAY.value,
+        field_name="root_dfs_runs",
+    )
+    _required_mode_int(
+        step.root_dfs_runs_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="root_dfs_runs",
+    )
+    _required_mode_int(
+        step.resumed_snapshots_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="resumed_snapshots",
+    )
+    _required_mode_int(
+        step.retained_continuation_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="retained_continuation_count",
+    )
+    _required_mode_int(
+        step.retained_render_payload_chars_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="retained_render_payload_chars",
+    )
     next_token_sets = {item[1] for item in step.next_token_set_by_mode}
     if len(next_token_sets) != 1:
         raise ValueError(f"decoder walk next-token disagreement at {step.prefix!r}")
@@ -805,13 +860,68 @@ def _validate_walk_step(step: PreparedDecoderWalkStep) -> None:
                 )
 
 
-def _step_int(
+def _required_mode_int(
+    values: tuple[tuple[str, int | None], ...],
+    *,
+    mode_name: str,
+    field_name: str,
+) -> int:
+    by_mode = dict(values)
+    if mode_name not in by_mode:
+        raise ValueError(f"{field_name} is missing for mode {mode_name}")
+    value = by_mode[mode_name]
+    if value is None:
+        raise ValueError(f"{field_name} is missing for mode {mode_name}")
+    return int(value)
+
+
+def _optional_mode_int(
     values: tuple[tuple[str, int | None], ...],
     mode: OnlineDecoderExecutionMode,
 ) -> int:
     by_mode = dict(values)
     value = by_mode.get(mode.value)
     return 0 if value is None else int(value)
+
+
+def _require_residual_observation_stats(
+    observation: PreparedPrefixQueryObservation,
+) -> None:
+    if observation.execution_mode is not OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
+        raise ValueError("residual stat validation received non-residual observation")
+    _required_residual_observation_int(observation, field_name="root_dfs_runs")
+    _required_residual_observation_int(observation, field_name="resumed_snapshots")
+    _required_residual_observation_int(
+        observation,
+        field_name="retained_continuation_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="retained_render_payload_chars",
+    )
+
+
+def _required_residual_observation_int(
+    observation: PreparedPrefixQueryObservation,
+    *,
+    field_name: str,
+) -> int:
+    if observation.execution_mode is not OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
+        raise ValueError(f"{field_name} requires a residual observation")
+    return _required_observation_int(observation, field_name=field_name)
+
+
+def _required_observation_int(
+    observation: PreparedPrefixQueryObservation,
+    *,
+    field_name: str,
+) -> int:
+    value = getattr(observation, field_name)
+    if value is None:
+        raise ValueError(
+            f"{field_name} is missing for mode {observation.execution_mode.value}"
+        )
+    return int(value)
 
 
 def _next_token_completion_counts(

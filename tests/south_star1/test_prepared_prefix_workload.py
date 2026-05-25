@@ -484,10 +484,104 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
             with self.subTest(fixture=result.rows[0].fixture_name):
                 self.assertEqual(result.max_residual_retained_render_payload_chars, 0)
                 for row in result.rows:
-                    self.assertIn(
+                    self.assertEqual(
                         row.residual_continuations.retained_render_payload_chars,
-                        (0, None),
+                        0,
                     )
+                    self.assertIsNotNone(
+                        row.residual_continuations.retained_continuation_count
+                    )
+
+    def test_prefix_workload_requires_residual_root_dfs_runs_stat(self) -> None:
+        result = _prefix_result_with_missing_residual_stat("root_dfs_runs")
+
+        with self.assertRaisesRegex(ValueError, "root_dfs_runs is missing"):
+            validate_prepared_prefix_workload_result(result)
+
+    def test_prefix_workload_requires_residual_resumed_snapshots_stat(self) -> None:
+        result = _prefix_result_with_missing_residual_stat("resumed_snapshots")
+
+        with self.assertRaisesRegex(ValueError, "resumed_snapshots is missing"):
+            validate_prepared_prefix_workload_result(result)
+
+    def test_prefix_workload_requires_residual_retained_continuation_count(
+        self,
+    ) -> None:
+        result = _prefix_result_with_missing_residual_stat(
+            "retained_continuation_count"
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "retained_continuation_count is missing",
+        ):
+            validate_prepared_prefix_workload_result(result)
+
+    def test_prefix_workload_requires_residual_render_payload_stat(self) -> None:
+        result = _prefix_result_with_missing_residual_stat(
+            "retained_render_payload_chars"
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "retained_render_payload_chars is missing",
+        ):
+            validate_prepared_prefix_workload_result(result)
+
+    def test_decoder_walk_requires_residual_stats_presence(self) -> None:
+        result = _decoder_walk_with_missing_residual_step_stat(
+            "root_dfs_runs_by_mode",
+            "root_dfs_runs",
+        )
+
+        with self.assertRaisesRegex(ValueError, "root_dfs_runs is missing"):
+            validate_prepared_decoder_walk_result(result)
+
+    def test_branch_walk_requires_residual_stats_presence(self) -> None:
+        result = _branch_walk_with_missing_residual_step_stat(
+            "retained_continuation_count_by_mode",
+            "retained_continuation_count",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "retained_continuation_count is missing",
+        ):
+            validate_prepared_branch_decoder_walk_result(result)
+
+    def test_missing_residual_render_payload_is_not_treated_as_zero(self) -> None:
+        prefix_result = _prefix_result_with_missing_residual_stat(
+            "retained_render_payload_chars"
+        )
+        walk_result = _decoder_walk_with_missing_residual_step_stat(
+            "retained_render_payload_chars_by_mode",
+            "retained_render_payload_chars",
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "retained_render_payload_chars is missing",
+        ):
+            validate_prepared_prefix_workload_result(prefix_result)
+        with self.assertRaisesRegex(
+            ValueError,
+            "retained_render_payload_chars is missing",
+        ):
+            validate_prepared_decoder_walk_result(walk_result)
+
+    def test_missing_residual_resumed_snapshots_is_not_treated_as_zero(self) -> None:
+        prefix_result = _prefix_result_with_missing_residual_stat(
+            "resumed_snapshots"
+        )
+        branch_result = _branch_walk_with_missing_residual_step_stat(
+            "resumed_snapshots_by_mode",
+            "resumed_snapshots",
+        )
+
+        with self.assertRaisesRegex(ValueError, "resumed_snapshots is missing"):
+            validate_prepared_prefix_workload_result(prefix_result)
+        with self.assertRaisesRegex(ValueError, "resumed_snapshots is missing"):
+            validate_prepared_branch_decoder_walk_result(branch_result)
 
     def test_prefix_workload_uses_token_boundary_prefixes_only(self) -> None:
         prepared = _prepare(tetrahedral_facts())
@@ -669,6 +763,92 @@ def _step_value(values, mode: OnlineDecoderExecutionMode) -> int:
     return 0 if value is None else int(value)
 
 
+def _prefix_result_with_missing_residual_stat(field_name: str):
+    result = _workload_results()[0]
+    row = result.rows[0]
+    return replace(
+        result,
+        rows=(
+            replace(
+                row,
+                residual_continuations=replace(
+                    row.residual_continuations,
+                    **{field_name: None},
+                ),
+            ),
+            *result.rows[1:],
+        ),
+    )
+
+
+def _decoder_walk_with_missing_residual_step_stat(
+    step_field_name: str,
+    stat_name: str,
+):
+    result = _decoder_walk_results()[0]
+    walk = _walk_with_missing_residual_step_stat(
+        result,
+        step_field_name,
+    )
+    return replace(
+        result,
+        steps=walk.steps,
+        **_zero_result_aggregate(stat_name),
+    )
+
+
+def _branch_walk_with_missing_residual_step_stat(
+    step_field_name: str,
+    stat_name: str,
+):
+    result = _branch_walk_results()[0]
+    walk = _walk_with_missing_residual_step_stat(
+        result.walks[0],
+        step_field_name,
+    )
+    return replace(
+        result,
+        walks=(walk, *result.walks[1:]),
+        **_zero_result_aggregate(stat_name),
+    )
+
+
+def _walk_with_missing_residual_step_stat(walk, step_field_name: str):
+    step = walk.steps[0]
+    return replace(
+        walk,
+        steps=(
+            replace(
+                step,
+                **{
+                    step_field_name: _replace_mode_value_with_none(
+                        getattr(step, step_field_name),
+                        OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+                    )
+                },
+            ),
+            *walk.steps[1:],
+        ),
+    )
+
+
+def _replace_mode_value_with_none(values, mode: OnlineDecoderExecutionMode):
+    return tuple(
+        (name, None if name == mode.value else value)
+        for name, value in values
+    )
+
+
+def _zero_result_aggregate(stat_name: str) -> dict[str, int]:
+    if stat_name == "root_dfs_runs":
+        return {"total_residual_root_dfs_runs": 0}
+    if stat_name == "resumed_snapshots":
+        return {"total_residual_resumed_snapshots": 0}
+    if stat_name == "retained_render_payload_chars":
+        return {"max_residual_retained_render_payload_chars": 0}
+    return {}
+
+
 def _branch_fixtures() -> tuple[_Fixture, ...]:
     return (
         _Fixture("tetrahedral", tetrahedral_facts()),
@@ -726,9 +906,16 @@ class _FakeChoiceResult:
 
 
 @dataclass(frozen=True, slots=True)
+class _FakeRetainedStats:
+    continuation_count: int = 1
+    total_render_payload_chars: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class _FakeStats:
     root_dfs_runs: int = 0
     resumed_snapshots: int = 0
+    retained_state_size: _FakeRetainedStats = _FakeRetainedStats()
 
 
 @dataclass(frozen=True, slots=True)

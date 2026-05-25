@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-import json
 import unittest
 
 from rdkit import Chem, rdBase
 
-from tests.helpers.fixture_paths import checked_in_fixture_path
-from tests.helpers.pinned_rdkit_fixtures import PINNED_RDKIT_KNOWN_STEREO_GAPS
 from tests.helpers.public_runtime import make_determinized_decoder
+from tests.helpers.rdkit_known_stereo_gaps import (
+    PinnedKnownStereoGapCase,
+    load_pinned_known_stereo_gap_cases,
+)
 from tests.helpers.rdkit_writer_membership import (
     load_pinned_writer_membership_cases,
 )
@@ -18,73 +18,6 @@ from tests.rdkit_serialization._support import (
     rdkit_mol_to_smiles_kwargs_from_options,
     supported_public_kwargs_from_rdkit_options,
 )
-
-
-FIXTURE_ROOT = checked_in_fixture_path(PINNED_RDKIT_KNOWN_STEREO_GAPS)
-
-
-@dataclass(frozen=True, slots=True)
-class KnownStereoGapCase:
-    case_id: str
-    source: str
-    smiles: str | None
-    molblock: str | None
-    writer_membership_case_id: str | None
-    expected: str
-    rooted_at_atom: int | None
-    isomeric_smiles: bool
-    rdkit_canonical: bool
-    rdkit_random_vector_seed: int | None
-    rdkit_random_vector_index: int | None
-    check_grimace_decoder_path: bool
-    check_grimace_support: bool
-
-
-def _load_known_stereo_gap_cases(rdkit_version: str) -> tuple[KnownStereoGapCase, ...]:
-    fixture_path = FIXTURE_ROOT / f"{rdkit_version}.json"
-    if not fixture_path.is_file():
-        raise FileNotFoundError(
-            f"no pinned known stereo-gap corpus for RDKit {rdkit_version}"
-        )
-
-    payload = json.loads(fixture_path.read_text())
-    if payload["rdkit_version"] != rdkit_version:
-        raise ValueError(f"fixture {fixture_path} RDKit version mismatch")
-
-    cases = []
-    for raw_case in payload["cases"]:
-        smiles = raw_case.get("smiles")
-        molblock = raw_case.get("molblock")
-        writer_membership_case_id = raw_case.get("writer_membership_case_id")
-        molecule_source_count = sum(
-            value is not None
-            for value in (smiles, molblock, writer_membership_case_id)
-        )
-        if molecule_source_count != 1:
-            raise ValueError(
-                f"known stereo-gap case {raw_case['id']!r} must define exactly "
-                "one of 'smiles', 'molblock', or 'writer_membership_case_id'"
-            )
-        cases.append(
-            KnownStereoGapCase(
-                case_id=raw_case["id"],
-                source=raw_case["source"],
-                smiles=smiles,
-                molblock=molblock,
-                writer_membership_case_id=writer_membership_case_id,
-                expected=raw_case["expected"],
-                rooted_at_atom=raw_case["rooted_at_atom"],
-                isomeric_smiles=raw_case["isomeric_smiles"],
-                rdkit_canonical=raw_case["rdkit_canonical"],
-                rdkit_random_vector_seed=raw_case.get("rdkit_random_vector_seed"),
-                rdkit_random_vector_index=raw_case.get("rdkit_random_vector_index"),
-                check_grimace_decoder_path=raw_case.get(
-                    "check_grimace_decoder_path", False
-                ),
-                check_grimace_support=raw_case.get("check_grimace_support", True),
-            )
-        )
-    return tuple(cases)
 
 
 class KnownStereoGapTests(unittest.TestCase):
@@ -99,7 +32,7 @@ class KnownStereoGapTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            cls.cases = _load_known_stereo_gap_cases(rdBase.rdkitVersion)
+            cls.cases = load_pinned_known_stereo_gap_cases(rdBase.rdkitVersion)
             writer_cases = load_pinned_writer_membership_cases(rdBase.rdkitVersion)
         except FileNotFoundError:
             raise unittest.SkipTest(
@@ -107,38 +40,31 @@ class KnownStereoGapTests(unittest.TestCase):
             )
         cls.writer_cases_by_id = {case.case_id: case for case in writer_cases}
 
-    def _mol_from_case(self, case: KnownStereoGapCase) -> Chem.Mol:
+    def _mol_from_case(self, case: PinnedKnownStereoGapCase) -> Chem.Mol:
         if case.writer_membership_case_id is not None:
             writer_case = self.writer_cases_by_id[case.writer_membership_case_id]
             return mol_from_pinned_source(writer_case)
         return mol_from_pinned_source(case)
 
-    def _molecule_source_key(self, case: KnownStereoGapCase) -> str:
+    def _molecule_source_key(self, case: PinnedKnownStereoGapCase) -> str:
         if case.writer_membership_case_id is not None:
             return f"writer-membership:{case.writer_membership_case_id}"
         if case.smiles is not None:
             return f"smiles:{case.smiles}"
         return f"molblock:{case.case_id}"
 
-    def _rdkit_output(self, mol: Chem.Mol, case: KnownStereoGapCase) -> str:
+    def _rdkit_output(self, mol: Chem.Mol, case: PinnedKnownStereoGapCase) -> str:
         if case.rdkit_random_vector_seed is not None:
-            if case.rdkit_random_vector_index is None:
-                raise ValueError(
-                    f"{case.case_id}: rdkit_random_vector_seed requires "
-                    "rdkit_random_vector_index"
-                )
+            vector_index = case.rdkit_random_vector_index
+            if vector_index is None:
+                raise AssertionError(f"{case.case_id}: loader allowed unpaired seed")
             random_outputs = Chem.MolToRandomSmilesVect(
                 Chem.Mol(mol),
-                case.rdkit_random_vector_index + 1,
+                vector_index + 1,
                 randomSeed=case.rdkit_random_vector_seed,
                 isomericSmiles=case.isomeric_smiles,
             )
-            return random_outputs[case.rdkit_random_vector_index]
-        if case.rdkit_random_vector_index is not None:
-            raise ValueError(
-                f"{case.case_id}: rdkit_random_vector_index requires "
-                "rdkit_random_vector_seed"
-            )
+            return random_outputs[vector_index]
         return Chem.MolToSmiles(
             Chem.Mol(mol),
             **rdkit_mol_to_smiles_kwargs_from_options(
@@ -152,7 +78,7 @@ class KnownStereoGapTests(unittest.TestCase):
     def _assert_determinized_decoder_accepts(
         self,
         mol: Chem.Mol,
-        case: KnownStereoGapCase,
+        case: PinnedKnownStereoGapCase,
     ) -> None:
         decoder = make_determinized_decoder(
             mol,

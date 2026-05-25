@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 
 from .facts import MoleculeFacts
 from .graph_index import GraphIndex
@@ -20,6 +21,9 @@ from .policy import SmilesPolicy
 from .residual_constraints import ResidualStoreValueSnapshot
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +250,7 @@ def online_branch_preserving_residual_choice_result(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         return _root_residual_choice_result(
@@ -257,6 +262,7 @@ def online_branch_preserving_residual_choice_result(
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
+            prepared=prepared,
         )
     return _resume_residual_choice_result(
         facts=facts,
@@ -267,6 +273,7 @@ def online_branch_preserving_residual_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        prepared=prepared,
     )
 
 
@@ -280,6 +287,7 @@ def online_determinized_residual_choice_result(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> OnlineResidualRawChoiceResult:
     branch_result = online_branch_preserving_residual_choice_result(
         facts=facts,
@@ -290,6 +298,7 @@ def online_determinized_residual_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        prepared=prepared,
     )
     grouped: dict[str, dict[tuple[object, ...], OnlineResidualContinuation]] = defaultdict(dict)
     for choice in branch_result.choices:
@@ -343,6 +352,7 @@ def _root_residual_choice_result(
     rooted_at_atom: AtomId | None,
     graph_index: GraphIndex | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
+    prepared: SouthStarPreparedMol | None,
 ) -> OnlineResidualRawChoiceResult:
     sink = ResidualFrontierSink(required_prefix=state.prefix)
     vm = OnlineSearchVM(
@@ -353,6 +363,7 @@ def _root_residual_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        assume_prepared=prepared is not None,
         sink_factory=lambda: sink,
     )
     sink.snapshot_provider = vm.checkpoint
@@ -379,6 +390,7 @@ def _resume_residual_choice_result(
     rooted_at_atom: AtomId | None,
     graph_index: GraphIndex | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
+    prepared: SouthStarPreparedMol | None,
 ) -> OnlineResidualRawChoiceResult:
     if state.frontier is None:
         raise ValueError("cannot resume residual decoder without a frontier")
@@ -402,6 +414,7 @@ def _resume_residual_choice_result(
             component_root_domains=component_root_domains,
             snapshot=continuation.snapshot,
             sink=sink,
+            assume_prepared=prepared is not None,
         )
         sink.snapshot_provider = vm.checkpoint
         sink.decision_path_provider = vm.state.decisions.path

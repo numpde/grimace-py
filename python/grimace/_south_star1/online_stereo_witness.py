@@ -6,6 +6,7 @@ from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
+from typing import TYPE_CHECKING
 from typing import Literal
 
 from .errors import SouthStarError
@@ -31,6 +32,7 @@ from .online_traversal import OnlineRingEndpointEvent
 from .online_traversal import OnlineTraversalTrace
 from .online_traversal import OnlineTreeBondEvent
 from .online_traversal import iter_online_traversal_traces
+from .online_traversal import iter_prepared_online_traversal_traces
 from .online_traversal import trace_to_skeleton_like_key
 from .policy import AnnotationMode
 from .policy import AtomTextChoice
@@ -50,6 +52,9 @@ from .stereo_templates import DirectionalTemplate
 from .stereo_templates import StereoTemplateBundle
 from .stereo_templates import TetraTemplate
 from .stereo_templates import build_stereo_templates
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,19 +156,50 @@ def iter_online_stereo_witnesses_with_sink(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> Iterator[OnlineWitness]:
-    facts.validate()
-    policy.validate_for_facts(facts)
     _validate_annotation_mode(policy)
-    templates = templates if templates is not None else build_stereo_templates(facts)
+    if prepared is None:
+        facts.validate()
+        policy.validate_for_facts(facts)
+        templates = templates if templates is not None else build_stereo_templates(facts)
+        traces = iter_online_traversal_traces(
+            facts=facts,
+            policy=policy,
+            rooted_at_atom=rooted_at_atom,
+            index=graph_index,
+            component_root_domains=component_root_domains,
+        )
+    else:
+        if facts is not prepared.facts:
+            raise ValueError("prepared online witness traversal requires prepared facts")
+        if policy is not prepared.policy:
+            raise ValueError("prepared online witness traversal requires prepared policy")
+        if semantics is not prepared.semantics:
+            raise ValueError("prepared online witness traversal requires prepared semantics")
+        if templates is None:
+            raise ValueError("prepared online witness traversal requires prepared templates")
+        if templates != prepared.stereo_template_bundle():
+            raise ValueError("prepared online witness traversal requires prepared templates")
+        if graph_index is not prepared.graph_index:
+            raise ValueError("prepared online witness traversal requires prepared graph index")
+        if component_root_domains is None:
+            raise ValueError("prepared online witness traversal requires prepared root domains")
+        prepared_root_domains = (
+            prepared.all_root_domains
+            if rooted_at_atom is None
+            else prepared.component_root_domains_by_explicit_root[rooted_at_atom]
+        )
+        expected_root_domains = tuple(atoms for _, atoms in prepared_root_domains)
+        if component_root_domains != expected_root_domains:
+            raise ValueError("prepared online witness traversal requires prepared root domains")
+        traces = iter_prepared_online_traversal_traces(
+            prepared=prepared,
+            rooted_at_atom=rooted_at_atom,
+            component_root_domains=component_root_domains,
+        )
 
-    for trace in iter_online_traversal_traces(
-        facts=facts,
-        policy=policy,
-        rooted_at_atom=rooted_at_atom,
-        index=graph_index,
-        component_root_domains=component_root_domains,
-    ):
+    for trace in traces:
         decision_checkpoint = _push_decision(
             decision_recorder,
             decision_filter,
@@ -181,6 +217,7 @@ def iter_online_stereo_witnesses_with_sink(
                 sink_factory=sink_factory,
                 decision_recorder=decision_recorder,
                 decision_filter=decision_filter,
+                assume_prepared=prepared is not None,
             )
         finally:
             _rollback_decision(decision_recorder, decision_checkpoint)
@@ -327,19 +364,33 @@ def _iter_witnesses_for_trace(
     sink_factory: Callable[[], OnlineRenderSink],
     decision_recorder: OnlineDecisionRecorder | None,
     decision_filter: DecisionPathFilter | None,
+    assume_prepared: bool = False,
 ) -> Iterator[OnlineWitness]:
     slots = _slot_view_for_trace(trace)
-    atom_domains = tuple(
-        (atom.id, policy.atom_text_domain(facts, atom.id))
-        for atom in facts.atoms
-    )
-    bond_domains = tuple(
-        (
-            slot.id,
-            policy.bond_text_domain(facts, slot.bond, slot_kind=slot.kind),
+    if assume_prepared:
+        atom_domains = tuple(
+            (atom.id, policy.atom_text_domain_unchecked(atom.id))
+            for atom in facts.atoms
         )
-        for slot in slots.bond_slots
-    )
+        bond_domains = tuple(
+            (
+                slot.id,
+                policy.bond_text_domain_unchecked(slot.bond, slot_kind=slot.kind),
+            )
+            for slot in slots.bond_slots
+        )
+    else:
+        atom_domains = tuple(
+            (atom.id, policy.atom_text_domain(facts, atom.id))
+            for atom in facts.atoms
+        )
+        bond_domains = tuple(
+            (
+                slot.id,
+                policy.bond_text_domain(facts, slot.bond, slot_kind=slot.kind),
+            )
+            for slot in slots.bond_slots
+        )
 
     for ring_labels in iter_online_ring_label_assignments(trace=trace, policy=policy):
         decision_checkpoint = _push_decision(

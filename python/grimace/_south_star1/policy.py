@@ -136,6 +136,12 @@ class SmilesPolicy:
         atom: AtomId,
     ) -> tuple[AtomTextChoice, ...]:
         facts.validate()
+        return self.atom_text_domain_unchecked(atom)
+
+    def atom_text_domain_unchecked(
+        self,
+        atom: AtomId,
+    ) -> tuple[AtomTextChoice, ...]:
         for domain in self.atom_text_domains:
             if domain.atom == atom:
                 return domain.choices
@@ -149,6 +155,14 @@ class SmilesPolicy:
         slot_kind: str,
     ) -> tuple[BondTextChoice, ...]:
         facts.validate()
+        return self.bond_text_domain_unchecked(bond, slot_kind=slot_kind)
+
+    def bond_text_domain_unchecked(
+        self,
+        bond: BondId,
+        *,
+        slot_kind: str,
+    ) -> tuple[BondTextChoice, ...]:
         for domain in self.bond_text_domains:
             if domain.bond == bond and domain.slot_kind == slot_kind:
                 return domain.choices

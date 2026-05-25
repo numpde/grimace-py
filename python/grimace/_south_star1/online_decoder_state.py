@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 
 from .facts import MoleculeFacts
 from .graph_index import GraphIndex
@@ -21,6 +22,9 @@ from .online_stereo_witness import iter_online_stereo_witnesses_with_sink
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +185,7 @@ def online_branch_preserving_choice_result(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> OnlineRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     path_filter = (
@@ -205,6 +210,7 @@ def online_branch_preserving_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        prepared=prepared,
     ):
         pass
     if path_filter is not None:
@@ -289,6 +295,7 @@ def online_determinized_choice_result(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> OnlineRawChoiceResult:
     grouped: dict[str, dict[OnlineDecisionPath, int]] = defaultdict(dict)
     branch_result = online_branch_preserving_choice_result(
@@ -301,6 +308,7 @@ def online_determinized_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        prepared=prepared,
     )
     for choice in branch_result.choices:
         if choice.next_state.allowed_frontier is None:

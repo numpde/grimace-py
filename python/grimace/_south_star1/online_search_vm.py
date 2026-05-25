@@ -293,6 +293,7 @@ class OnlineSearchState:
     ring: MutableRingState
     output: OnlineRenderSink
     decisions: OnlineDecisionRecorder
+    assume_prepared: bool = False
     frames: list[OnlineSearchFrame] = field(default_factory=list)
 
     def checkpoint(self) -> OnlineSearchSnapshot:
@@ -454,9 +455,18 @@ def make_online_search_state(
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     sink: OnlineRenderSink | None = None,
+    assume_prepared: bool = False,
 ) -> OnlineSearchState:
-    facts.validate()
-    policy.validate_for_facts(facts)
+    if not assume_prepared:
+        facts.validate()
+        policy.validate_for_facts(facts)
+    if assume_prepared:
+        if templates is None:
+            raise ValueError("prepared online search requires prepared stereo templates")
+        if graph_index is None:
+            raise ValueError("prepared online search requires prepared graph index")
+        if component_root_domains is None:
+            raise ValueError("prepared online search requires prepared root domains")
     return OnlineSearchState(
         facts=facts,
         policy=policy,
@@ -470,6 +480,7 @@ def make_online_search_state(
         ring=MutableRingState(),
         output=sink if sink is not None else OnlineStringBuffer(),
         decisions=OnlineDecisionRecorder(),
+        assume_prepared=assume_prepared,
     )
 
 
@@ -484,6 +495,7 @@ class OnlineSearchVM:
         rooted_at_atom: AtomId | None = None,
         graph_index: GraphIndex | None = None,
         component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+        assume_prepared: bool = False,
         sink_factory: Callable[[], OnlineRenderSink] | None = None,
     ) -> None:
         _validate_annotation_mode(policy)
@@ -495,6 +507,7 @@ class OnlineSearchVM:
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
+            assume_prepared=assume_prepared,
         )
         self._sink_factory = sink_factory or OnlineStringBuffer
         self._iterator = self._run()
@@ -538,6 +551,7 @@ class OnlineSearchVM:
         component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
         snapshot: OnlineSearchSnapshot,
         sink: OnlineRenderSink,
+        assume_prepared: bool = False,
     ) -> "OnlineSearchVM":
         vm = cls(
             facts=facts,
@@ -547,6 +561,7 @@ class OnlineSearchVM:
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
+            assume_prepared=assume_prepared,
             sink_factory=lambda: sink,
         )
         vm.state.output = sink
@@ -810,17 +825,37 @@ def _iter_witnesses_for_trace(
     decision_checkpoint = state.decisions.checkpoint()
     try:
         slots = _slot_view_for_trace(trace)
-        atom_domains = tuple(
-            (atom.id, state.policy.atom_text_domain(state.facts, atom.id))
-            for atom in state.facts.atoms
-        )
-        bond_domains = tuple(
-            (
-                slot.id,
-                state.policy.bond_text_domain(state.facts, slot.bond, slot_kind=slot.kind),
+        if state.assume_prepared:
+            atom_domains = tuple(
+                (atom.id, state.policy.atom_text_domain_unchecked(atom.id))
+                for atom in state.facts.atoms
             )
-            for slot in slots.bond_slots
-        )
+            bond_domains = tuple(
+                (
+                    slot.id,
+                    state.policy.bond_text_domain_unchecked(
+                        slot.bond,
+                        slot_kind=slot.kind,
+                    ),
+                )
+                for slot in slots.bond_slots
+            )
+        else:
+            atom_domains = tuple(
+                (atom.id, state.policy.atom_text_domain(state.facts, atom.id))
+                for atom in state.facts.atoms
+            )
+            bond_domains = tuple(
+                (
+                    slot.id,
+                    state.policy.bond_text_domain(
+                        state.facts,
+                        slot.bond,
+                        slot_kind=slot.kind,
+                    ),
+                )
+                for slot in slots.bond_slots
+            )
         for ring_labels in _iter_ring_label_assignments(state, slots):
             ring_checkpoint = state.ring.checkpoint()
             if not _install_ring_labels(state, slots, ring_labels):

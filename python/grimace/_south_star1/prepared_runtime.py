@@ -166,9 +166,9 @@ def enumerate_prepared_stereo_support(
     from .skeleton import enumerate_traversal_skeletons
     from .support_enumeration import enumerate_stereo_support
 
-    rooted_at_atom = runtime_root_atom(
+    rooted_at_atom = runtime_root_atom_for_prepared(
         runtime_options,
-        facts=prepared.facts,
+        prepared=prepared,
     )
     root_domains = component_root_domains_for_prepared(
         prepared=prepared,
@@ -222,6 +222,23 @@ def runtime_root_atom(
     if options.rooted_at_atom < 0:
         return None
     return AtomId(options.rooted_at_atom)
+
+
+def runtime_root_atom_for_prepared(
+    options: SouthStarRuntimeOptions,
+    *,
+    prepared: SouthStarPreparedMol,
+) -> AtomId | None:
+    validate_south_star_runtime_options(options)
+    if options.rooted_at_atom < 0:
+        return None
+    atom = AtomId(options.rooted_at_atom)
+    if atom not in prepared.atom_component_map:
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            f"rooted_at_atom is not present in prepared molecule: {options.rooted_at_atom}",
+        )
+    return atom
 
 
 def component_root_domains_for_prepared(
@@ -280,5 +297,6 @@ __all__ = (
     "prepare_south_star_mol_from_facts",
     "prepare_south_star_mol_from_rdkit",
     "runtime_root_atom",
+    "runtime_root_atom_for_prepared",
     "validate_south_star_runtime_options",
 )

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from .facts import MoleculeFacts
 from .graph_index import GraphIndex
@@ -26,6 +27,9 @@ from .online_stereo_witness import iter_online_stereo_witnesses_with_sink
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
 
 
 class OnlineDecoderExecutionMode(Enum):
@@ -247,6 +251,7 @@ def online_branch_preserving_continuation_choice_result(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     if state.frontier is None:
         return _root_continuation_choice_result(
@@ -259,6 +264,7 @@ def online_branch_preserving_continuation_choice_result(
             rooted_at_atom=rooted_at_atom,
             graph_index=graph_index,
             component_root_domains=component_root_domains,
+            prepared=prepared,
         )
     return _resume_branch_preserving_choice_result(state)
 
@@ -274,6 +280,7 @@ def online_determinized_continuation_choice_result(
     rooted_at_atom: AtomId | None = None,
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+    prepared: SouthStarPreparedMol | None = None,
 ) -> OnlineContinuationRawChoiceResult:
     branch_result = online_branch_preserving_continuation_choice_result(
         facts=facts,
@@ -285,6 +292,7 @@ def online_determinized_continuation_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        prepared=prepared,
     )
     grouped: dict[str, list[OnlineContinuation]] = defaultdict(list)
     completion_counts: dict[str, int] = defaultdict(int)
@@ -327,6 +335,7 @@ def _root_continuation_choice_result(
     rooted_at_atom: AtomId | None,
     graph_index: GraphIndex | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
+    prepared: SouthStarPreparedMol | None,
 ) -> OnlineContinuationRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     sink = ContinuationFrontierSink(
@@ -345,6 +354,7 @@ def _root_continuation_choice_result(
         rooted_at_atom=rooted_at_atom,
         graph_index=graph_index,
         component_root_domains=component_root_domains,
+        prepared=prepared,
     ):
         pass
     stats.sink_rejections = sink.sink_rejections

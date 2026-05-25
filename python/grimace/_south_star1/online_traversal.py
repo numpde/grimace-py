@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import combinations
 from itertools import permutations
+from typing import TYPE_CHECKING
 
 from .facts import MoleculeFacts
 from .graph_index import GraphIndex
@@ -14,6 +15,9 @@ from .ids import BondId
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
 from .skeleton import ChildRole
+
+if TYPE_CHECKING:
+    from .prepared_runtime import SouthStarPreparedMol
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +124,37 @@ def iter_online_traversal_traces(
 
     facts.validate()
     policy.validate_for_facts(facts)
+    yield from _iter_online_traversal_traces_unvalidated(
+        facts=facts,
+        rooted_at_atom=rooted_at_atom,
+        index=index,
+        component_root_domains=component_root_domains,
+    )
+
+
+def iter_prepared_online_traversal_traces(
+    *,
+    prepared: SouthStarPreparedMol,
+    rooted_at_atom: AtomId | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...],
+) -> Iterator[OnlineTraversalTrace]:
+    """Yield prepared traversal traces without replaying raw validation."""
+
+    yield from _iter_online_traversal_traces_unvalidated(
+        facts=prepared.facts,
+        rooted_at_atom=rooted_at_atom,
+        index=prepared.graph_index,
+        component_root_domains=component_root_domains,
+    )
+
+
+def _iter_online_traversal_traces_unvalidated(
+    *,
+    facts: MoleculeFacts,
+    rooted_at_atom: AtomId | None,
+    index: GraphIndex | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
+) -> Iterator[OnlineTraversalTrace]:
     graph = _graph_from_facts(facts, index=index)
     all_bonds = frozenset(graph.bonds)
 
@@ -520,6 +555,7 @@ __all__ = (
     "OnlineTraversalEvent",
     "OnlineTraversalTrace",
     "OnlineTreeBondEvent",
+    "iter_prepared_online_traversal_traces",
     "iter_online_traversal_traces",
     "online_trace_key",
     "trace_to_skeleton_like_key",

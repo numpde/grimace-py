@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from grimace._south_star1.online_decoder_api import make_determinized_online_dec
 from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoder
 from grimace._south_star1.online_decoder_api import online_decode_token_texts_for_policy
 from grimace._south_star1.online_serialization_stream import collect_online_serializations
+from grimace._south_star1.online_serialization_stream import iter_online_serializations
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
@@ -24,6 +26,7 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import component_root_domains_for_prepared
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.prepared_runtime import runtime_root_atom_for_prepared
 from grimace._south_star1.root_domains import component_root_domains_for_facts
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.graph_index import build_graph_index
@@ -745,6 +748,119 @@ class PreparedRuntimeTest(unittest.TestCase):
             ):
                 choices = decoder.initial_state().choices()
             self.assertTrue(choices)
+
+    def test_prepared_decoder_choices_does_not_validate_facts(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        decoder = make_determinized_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        with patch.object(
+            type(prepared.facts),
+            "validate",
+            side_effect=AssertionError("prepared decoder choices validated facts"),
+        ):
+            choices = decoder.initial_state().choices()
+
+        self.assertTrue(choices)
+
+    def test_prepared_decoder_choices_does_not_validate_policy(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        decoder = make_determinized_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        with patch.object(
+            type(prepared.policy),
+            "validate_for_facts",
+            side_effect=AssertionError("prepared decoder choices validated policy"),
+        ):
+            choices = decoder.initial_state().choices()
+
+        self.assertTrue(choices)
+
+    def test_prepared_online_stream_does_not_validate_facts(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with patch.object(
+            type(prepared.facts),
+            "validate",
+            side_effect=AssertionError("prepared online stream validated facts"),
+        ):
+            emitted = tuple(iter_online_serializations(prepared=prepared))
+
+        self.assertTrue(emitted)
+
+    def test_prepared_online_stream_does_not_validate_policy(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with patch.object(
+            type(prepared.policy),
+            "validate_for_facts",
+            side_effect=AssertionError("prepared online stream validated policy"),
+        ):
+            emitted = tuple(iter_online_serializations(prepared=prepared))
+
+        self.assertTrue(emitted)
+
+    def test_prepared_runtime_root_normalization_does_not_scan_facts_atoms(self) -> None:
+        class PoisonAtoms(tuple):
+            def __iter__(self):
+                raise AssertionError("prepared root normalization scanned facts atoms")
+
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        poisoned_facts = replace(prepared.facts, atoms=PoisonAtoms(prepared.facts.atoms))
+        poisoned_prepared = replace(prepared, facts=poisoned_facts)
+
+        root = runtime_root_atom_for_prepared(
+            SouthStarRuntimeOptions(rooted_at_atom=0),
+            prepared=poisoned_prepared,
+        )
+
+        self.assertEqual(root, AtomId(0))
+
+    def test_raw_online_traversal_still_validates_facts(self) -> None:
+        facts = tetrahedral_facts()
+        policy = ordinary_policy_for_facts(facts)
+
+        with patch.object(
+            type(facts),
+            "validate",
+            side_effect=AssertionError("raw online traversal validated facts"),
+        ):
+            with self.assertRaisesRegex(AssertionError, "validated facts"):
+                next(iter_online_traversal_traces(facts=facts, policy=policy))
+
+    def test_raw_online_traversal_still_validates_policy(self) -> None:
+        facts = tetrahedral_facts()
+        policy = ordinary_policy_for_facts(facts)
+
+        with patch.object(
+            type(policy),
+            "validate_for_facts",
+            side_effect=AssertionError("raw online traversal validated policy"),
+        ):
+            with self.assertRaisesRegex(AssertionError, "validated policy"):
+                next(iter_online_traversal_traces(facts=facts, policy=policy))
 
     def test_prepared_token_inventory_superset_contains_exact_online_inventory(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

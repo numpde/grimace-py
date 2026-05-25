@@ -2,45 +2,19 @@
 title: Correctness contracts
 ---
 
-Grimace intentionally separates chemical validity from RDKit writer parity.
-That distinction matters when a string is chemically reasonable but not a
-string RDKit would emit for the supported writer regime.
+Grimace separates chemical validity from RDKit writer parity. A string can
+parse to the right molecule and still not be a string RDKit would emit for the
+supported writer regime.
 
-## Principled layer
+| Layer | Question | Evidence |
+|---|---|---|
+| Chemical/language semantics | Is the string valid SMILES for the intended molecule, stereo assignment, and prefix language? | Parsed molecule checks, stereo checks, decoder-language checks. |
+| RDKit writer parity | Would RDKit emit this exact string under the supported writer flags? | RDKit-versioned fixtures and string-level parity tests. |
 
-The principled layer is the chemistry and language-semantics layer:
-
-- every emitted string must be syntactically valid SMILES for the supported
-  writer flags
-- every emitted string must parse back to the same molecular graph and stereo
-  assignment intended by the input
-- equivalent SMILES strings that differ only in legal placement of directional
-  bond markers may still be equally valid at this layer
-- decoder prefixes and token inventories must describe a real language of
-  valid continuations, not just terminal strings that happen to parse
-
-This layer is where parsed molecules, stereo assignments, and language-level
-well-formedness belong.
-
-Semantic equivalence is not enough for the current public `MolToSmilesEnum`
-contract, because `grimace` also exposes token-level decoding. A terminal
-string that parses correctly does not prove that all intermediate prefixes,
-token choices, or branch structure match a documented language.
-
-## RDKit writer-parity layer
-
-The RDKit writer-parity layer is narrower and deliberately implementation
-specific:
-
-- match the string support of RDKit's supported writer regime
-- preserve RDKit-compatible public flag behavior where it is meaningful
-- mirror RDKit traversal, rooting, fragment-order, and slash/backslash
-  placement conventions when the public contract says "RDKit writer support"
-- key exact expectations by RDKit version
-
-This layer is narrower because it mirrors RDKit's spelling choices. That is
-necessary when a fixture or API claim says a string is in covered RDKit writer
-support for the `canonical=False, doRandom=True` writer convention.
+Semantic equivalence alone is not enough for `MolToSmilesEnum(...)` because
+Grimace also exposes token-level decoding. A terminal string that parses
+correctly does not prove that intermediate prefixes, token choices, or branch
+structure match the supported writer language.
 
 ## Current public contract
 
@@ -48,9 +22,9 @@ The current public runtime scope is documented in
 [Runtime](runtime.md), and active limitations are documented in
 [Limitations](current-limitations.md).
 
-Therefore, RDKit string support remains the oracle for current public parity
-tests. Parsed-object equivalence may be added as a separate evidence layer, but
-it should not silently replace string equality in RDKit-parity tests.
+RDKit string support remains the oracle for public parity tests. Parsed-object
+equivalence may be added as a separate evidence layer, but it must not replace
+string equality in RDKit-parity tests.
 
 ## Classification policy
 
@@ -72,7 +46,7 @@ is part of RDKit writer support.
 
 ## Implementation rule
 
-Keep the code paths and tests separable:
+Keep code paths and tests separable:
 
 - principled semantic constraints should be named as semantic constraints
 - RDKit-specific compatibility rules should be named as RDKit writer rules

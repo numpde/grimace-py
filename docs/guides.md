@@ -2,25 +2,21 @@
 title: Guides
 ---
 
-Guides show focused workflows that combine the public API pieces.
+## Public workflows
 
-- [Prepared molecules](guides/prepared-mol.md): prepare once, reuse, and
-  serialize.
-- [Deviation diagnostics](guides/deviation.md): find where a candidate leaves
-  the supported language.
-- [Token inventories](guides/token-inventory.md): build dataset vocabulary
-  coverage.
+| Task | Guide |
+|---|---|
+| Prepare an RDKit molecule once, serialize it, and reuse it without RDKit at runtime. | [Prepared molecules](guides/prepared-mol.md) |
+| Find the first token or character where a candidate leaves the supported language. | [Deviation diagnostics](guides/deviation.md) |
+| Build required SMILES-token vocabulary coverage for a molecule or dataset. | [Token inventories](guides/token-inventory.md) |
 
-Contributor guides:
+## Contributor workflows
 
-- [Containerized development](development/containerized.md): use the
-  Docker-backed development contract, including `make` lanes and outputs.
-- [Testing fixtures](testing-fixtures.md): understand fixture families,
-  promotion rules, generated fixture counts, and the tests that enforce
-  checked-in RDKit evidence.
-- [RDKit serializer coverage](rdkit-serializer-coverage.md): trace upstream
-  RDKit serializer tests to executable Grimace evidence and reviewed ledger
-  counts.
+| Task | Guide |
+|---|---|
+| Run checks, tests, docs, packaging, and timings through Docker-backed `make` lanes. | [Containerized development](development/containerized.md) |
+| Read fixture-family counts, provenance counts, promotion rules, and fixture maintenance rules. | [Testing fixtures](testing-fixtures.md) |
+| Trace reviewed upstream RDKit serializer tests to executable Grimace fixture evidence. | [RDKit serializer coverage](rdkit-serializer-coverage.md) |
 
-For API signatures, see [API](api/python.md). For supported runtime flags and
-root behavior, see [Runtime](runtime.md).
+For signatures, see [API](api/python.md). For supported flags and roots, see
+[Runtime](runtime.md).

@@ -2,13 +2,14 @@
 title: Runtime
 ---
 
-Use this page to choose supported public runtime options.
+Grimace mirrors RDKit flag names, but the supported public runtime is the
+random-writer support mode, not RDKit's default canonical writer call.
 
-For measured example timings, see [Timings](timings.md).
+Start with:
 
-The public signatures mirror RDKit flag names and defaults, but the current
-runtime supports a strict subset. A call that looks like RDKit's default
-`MolToSmiles(...)` call is not the supported Grimace path.
+```python
+FLAGS = dict(canonical=False, doRandom=True)
+```
 
 Pass these options explicitly:
 
@@ -24,12 +25,6 @@ compatibility and behave like `-1`, but `-1` is the preferred public spelling.
 Unsupported flag combinations fail fast with `NotImplementedError`. Other
 invalid public inputs can still raise more specific exceptions such as
 `IndexError` or `ValueError`.
-
-Use this copy-paste base while experimenting:
-
-```python
-FLAGS = dict(canonical=False, doRandom=True)
-```
 
 ## Writer flags
 

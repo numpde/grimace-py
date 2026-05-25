@@ -27,34 +27,21 @@ Plain `pip install grimace` installs an unrelated older package.
 
 Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py).
 
-See [Limitations](current-limitations.md) for supported runtime scope
-and known gaps.
+## Where to start
 
-## Start here
-
-- [Intro](getting-started.md)
-- [Concepts](concepts.md)
-- [Runtime](runtime.md)
-- [Limitations](current-limitations.md)
-- [Guides](guides.md)
-- [Timings](timings.md)
-- [API](api/python.md)
-
-## Guides
-
-[Guides](guides.md) cover prepared molecules, deviation diagnostics, and token
-inventories.
-
-## Correctness and evidence
-
-- [Correctness contracts](correctness-contracts.md)
-- [Testing fixtures](testing-fixtures.md)
-- [RDKit serializer coverage](rdkit-serializer-coverage.md)
-
-## Development
-
-- [Containerized development](development/containerized.md)
-- [Rust-first architecture](architecture/rust-first.md)
+| Task | Read |
+|---|---|
+| Install and run the first enumeration/decoder examples | [Intro](getting-started.md) |
+| Understand support, roots, decoder tokens, and writer parity | [Concepts](concepts.md) |
+| Choose supported flags and root behavior | [Runtime](runtime.md) |
+| Check current gaps and supported release assets | [Limitations](current-limitations.md) |
+| Use prepared molecules, deviation diagnostics, or token inventories | [Guides](guides.md) |
+| Compare measured enumeration/decoder timings | [Timings](timings.md) |
+| Look up signatures and return objects | [API](api/python.md) |
+| Inspect checked-in RDKit evidence and counts | [Testing fixtures](testing-fixtures.md) |
+| Trace upstream RDKit serializer coverage | [RDKit serializer coverage](rdkit-serializer-coverage.md) |
+| Work on the codebase in containers | [Containerized development](development/containerized.md) |
+| Change internals | [Rust-first architecture](architecture/rust-first.md) |
 
 ## License
 

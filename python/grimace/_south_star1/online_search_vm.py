@@ -76,6 +76,13 @@ class RenderContinuationPayloadShape:
     total_remaining_render_piece_count: int = 0
     max_render_payload_chars: int = 0
     total_render_payload_chars: int = 0
+    render_cursor_count: int = 0
+    max_render_program_event_count: int = 0
+    total_render_program_event_count: int = 0
+    max_remaining_render_event_count: int = 0
+    total_remaining_render_event_count: int = 0
+    max_render_program_choice_count: int = 0
+    total_render_program_choice_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,11 +335,26 @@ class _RenderPiece:
 
 
 @dataclass(frozen=True, slots=True)
-class _RenderContinuation:
-    trace_key: tuple[object, ...]
-    pieces: tuple[_RenderPiece, ...]
-    next_index: int
+class _FrozenPrefixChoice:
+    atom_text: tuple[tuple[AtomId, AtomTextChoice], ...]
+    bond_text: tuple[tuple[int, BondTextChoice], ...]
+    ring_labels: tuple[tuple[int, RingLabel], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _RenderProgram:
+    trace: _VmTraversalTrace
+    prefix: _FrozenPrefixChoice
+    tetra_tokens: tuple[tuple[AtomId, TetraToken], ...]
+    marks: tuple[tuple[int, DirectionMark], ...]
     annotation_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _RenderCursor:
+    program: _RenderProgram
+    event_index: int
+    piece_index: int
 
 
 def make_online_search_state(
@@ -419,7 +441,7 @@ class OnlineSearchVM:
         )
         vm.state.output = sink
         _restore_resume_snapshot(vm.state, snapshot)
-        vm._iterator = _resume_render_from_state(vm.state)
+        vm._iterator = _resume_render_cursor_from_state(vm.state)
         vm._exhausted = False
         return vm
 
@@ -506,22 +528,31 @@ def render_continuation_payload_shape(
     total_remaining_piece_count = 0
     max_payload_chars = 0
     total_payload_chars = 0
+    cursor_count = 0
+    max_program_event_count = 0
+    total_program_event_count = 0
+    max_remaining_event_count = 0
+    total_remaining_event_count = 0
+    max_program_choice_count = 0
+    total_program_choice_count = 0
     for frame in frame_stack:
-        if frame.kind != "render-resume" or not frame.data:
+        if not frame.data:
             continue
-        continuation = frame.data[0]
-        if not isinstance(continuation, _RenderContinuation):
+        if frame.kind != "render-cursor":
             continue
-        count += 1
-        piece_count = len(continuation.pieces)
-        remaining_piece_count = max(0, piece_count - continuation.next_index)
-        payload_chars = sum(len(piece.text) for piece in continuation.pieces)
-        max_piece_count = max(max_piece_count, piece_count)
-        total_piece_count += piece_count
-        max_remaining_piece_count = max(max_remaining_piece_count, remaining_piece_count)
-        total_remaining_piece_count += remaining_piece_count
-        max_payload_chars = max(max_payload_chars, payload_chars)
-        total_payload_chars += payload_chars
+        cursor = frame.data[0]
+        if not isinstance(cursor, _RenderCursor):
+            raise ValueError("render-cursor frame lacks cursor data")
+        cursor_count += 1
+        event_count = len(cursor.program.trace.events)
+        remaining_event_count = max(0, event_count - cursor.event_index)
+        choice_count = _render_program_choice_count(cursor.program)
+        max_program_event_count = max(max_program_event_count, event_count)
+        total_program_event_count += event_count
+        max_remaining_event_count = max(max_remaining_event_count, remaining_event_count)
+        total_remaining_event_count += remaining_event_count
+        max_program_choice_count = max(max_program_choice_count, choice_count)
+        total_program_choice_count += choice_count
     return RenderContinuationPayloadShape(
         render_resume_continuation_count=count,
         max_render_piece_count=max_piece_count,
@@ -530,6 +561,13 @@ def render_continuation_payload_shape(
         total_remaining_render_piece_count=total_remaining_piece_count,
         max_render_payload_chars=max_payload_chars,
         total_render_payload_chars=total_payload_chars,
+        render_cursor_count=cursor_count,
+        max_render_program_event_count=max_program_event_count,
+        total_render_program_event_count=total_program_event_count,
+        max_remaining_render_event_count=max_remaining_event_count,
+        total_remaining_render_event_count=total_remaining_event_count,
+        max_render_program_choice_count=max_program_choice_count,
+        total_render_program_choice_count=total_program_choice_count,
     )
 
 
@@ -689,16 +727,14 @@ def _iter_witnesses_for_trace(
                                     bond_text=bond_text,
                                     ring_labels=ring_labels,
                                 )
-                                candidates = tuple(
-                                    _iter_directional_candidates(
-                                        state=state,
-                                        trace=trace,
-                                        slots=slots,
-                                        prefix=prefix,
-                                    )
+                                candidates = _iter_directional_candidates(
+                                    state=state,
+                                    trace=trace,
+                                    slots=slots,
+                                    prefix=prefix,
                                 )
                                 if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-                                    candidates = tuple(_support_maximal_candidates(candidates))
+                                    candidates = tuple(_support_maximal_candidates(tuple(candidates)))
                                 for candidate in candidates:
                                     rendered = _render_directional_candidate(
                                         state=state,
@@ -833,21 +869,17 @@ def _render_directional_candidate(
     checkpoint = state.output.checkpoint()
     state.frames.append(OnlineSearchFrame("completion", (_trace_key(trace),)))
     try:
-        marks = dict(candidate.marks)
-        pieces = _render_pieces(
-            state=state,
+        program = _render_program(
             trace=trace,
-            slots=slots,
             prefix=prefix,
             tetra_tokens=tetra_tokens,
-            marks=marks,
-        )
-        if not _render_pieces_to_sink(
-            state=state,
-            trace_key=_trace_key(trace),
-            pieces=pieces,
-            start_index=0,
+            marks=dict(candidate.marks),
             annotation_count=candidate.annotation_count,
+        )
+        if not _render_program_to_sink(
+            state=state,
+            slots=slots,
+            start_cursor=_RenderCursor(program=program, event_index=0, piece_index=0),
         ):
             state.output.rollback(checkpoint)
             return None
@@ -866,15 +898,78 @@ def _render_directional_candidate(
         state.frames[:] = list(previous_frames)
 
 
-def _render_pieces(
+def _render_program(
     *,
-    state: OnlineSearchState,
     trace: _VmTraversalTrace,
-    slots: _SlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     marks: dict[int, DirectionMark],
+    annotation_count: int,
+) -> _RenderProgram:
+    return _RenderProgram(
+        trace=trace,
+        prefix=_freeze_prefix_choice(prefix),
+        tetra_tokens=tuple(sorted(tetra_tokens.items(), key=lambda item: int(item[0]))),
+        marks=tuple(sorted(marks.items())),
+        annotation_count=annotation_count,
+    )
+
+
+def _freeze_prefix_choice(prefix: _PrefixChoice) -> _FrozenPrefixChoice:
+    return _FrozenPrefixChoice(
+        atom_text=tuple(sorted(prefix.atom_text.items(), key=lambda item: int(item[0]))),
+        bond_text=tuple(sorted(prefix.bond_text.items())),
+        ring_labels=tuple(sorted(prefix.ring_labels.items())),
+    )
+
+
+def _thaw_prefix_choice(prefix: _FrozenPrefixChoice) -> _PrefixChoice:
+    return _PrefixChoice(
+        atom_text=dict(prefix.atom_text),
+        bond_text=dict(prefix.bond_text),
+        ring_labels=dict(prefix.ring_labels),
+    )
+
+
+def _advance_render_cursor(
+    *,
+    program: _RenderProgram,
+    event_index: int,
+    piece_index: int,
+    piece_count: int,
+) -> _RenderCursor:
+    if piece_index + 1 < piece_count:
+        return _RenderCursor(
+            program=program,
+            event_index=event_index,
+            piece_index=piece_index + 1,
+        )
+    return _RenderCursor(
+        program=program,
+        event_index=event_index + 1,
+        piece_index=0,
+    )
+
+
+def _render_program_choice_count(program: _RenderProgram) -> int:
+    return (
+        len(program.prefix.atom_text)
+        + len(program.prefix.bond_text)
+        + len(program.prefix.ring_labels)
+        + len(program.tetra_tokens)
+        + len(program.marks)
+    )
+
+
+def _render_event_pieces(
+    *,
+    program: _RenderProgram,
+    slots: _SlotView,
+    event_index: int,
 ) -> tuple[_RenderPiece, ...]:
+    prefix = _thaw_prefix_choice(program.prefix)
+    marks = dict(program.marks)
+    tetra_tokens = dict(program.tetra_tokens)
     bond_slot_by_event: dict[tuple[object, ...], _BondSlot] = {}
     for slot in slots.bond_slots:
         bond_slot_by_event[
@@ -884,88 +979,82 @@ def _render_pieces(
         endpoint.id: prefix.ring_labels[endpoint.id]
         for endpoint in slots.ring_endpoints
     }
-    pieces: list[_RenderPiece] = []
-    for event in trace.events:
-        if isinstance(event, OnlineAtomEvent):
-            text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
-            pieces.append(_RenderPiece(text=text, token_text=text))
-            continue
-        if isinstance(event, OnlineTreeBondEvent):
-            key = ("tree", event.bond, event.written_from, event.written_to, None)
-            text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
-            pieces.append(_RenderPiece(text=text, token_text=text or None))
-            continue
-        if isinstance(event, OnlineRingEndpointEvent):
-            slot = next(
-                item
-                for item in slots.bond_slots
-                if item.kind == "ring_endpoint"
-                and item.bond == event.bond
-                and item.written_from == event.at
-                and item.written_to == event.other_atom
-                and item.syntax_position == event.syntax_position
-            )
-            text = _render_bond_slot(slot, prefix, marks)
-            pieces.append(_RenderPiece(text=text, token_text=text or None))
-            if slot.ring_endpoint_id is None:
-                raise ValueError("ring endpoint slot lacks endpoint id")
-            label = ring_label_by_endpoint[slot.ring_endpoint_id]
-            pieces.append(
-                _RenderPiece(
-                    text=label.text(),
-                    token_text=label.text(),
-                    ring_action=_RingAction(
-                        bond=slot.bond,
-                        endpoint=slot.ring_endpoint_id,
-                        label=label,
-                    ),
-                )
-            )
-            continue
-        if isinstance(event, OnlineBranchOpen):
-            pieces.append(_RenderPiece(text="(", token_text="("))
-            continue
-        if isinstance(event, OnlineBranchClose):
-            pieces.append(_RenderPiece(text=")", token_text=")"))
-            continue
-        if isinstance(event, OnlineDotEvent):
-            pieces.append(_RenderPiece(text=".", token_text="."))
-            continue
-        raise TypeError(event)
-    return tuple(pieces)
+    event = program.trace.events[event_index]
+    if isinstance(event, OnlineAtomEvent):
+        text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
+        return (_RenderPiece(text=text, token_text=text),)
+    if isinstance(event, OnlineTreeBondEvent):
+        key = ("tree", event.bond, event.written_from, event.written_to, None)
+        text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
+        return (_RenderPiece(text=text, token_text=text or None),)
+    if isinstance(event, OnlineRingEndpointEvent):
+        slot = next(
+            item
+            for item in slots.bond_slots
+            if item.kind == "ring_endpoint"
+            and item.bond == event.bond
+            and item.written_from == event.at
+            and item.written_to == event.other_atom
+            and item.syntax_position == event.syntax_position
+        )
+        text = _render_bond_slot(slot, prefix, marks)
+        if slot.ring_endpoint_id is None:
+            raise ValueError("ring endpoint slot lacks endpoint id")
+        label = ring_label_by_endpoint[slot.ring_endpoint_id]
+        return (
+            _RenderPiece(text=text, token_text=text or None),
+            _RenderPiece(
+                text=label.text(),
+                token_text=label.text(),
+                ring_action=_RingAction(
+                    bond=slot.bond,
+                    endpoint=slot.ring_endpoint_id,
+                    label=label,
+                ),
+            ),
+        )
+    if isinstance(event, OnlineBranchOpen):
+        return (_RenderPiece(text="(", token_text="("),)
+    if isinstance(event, OnlineBranchClose):
+        return (_RenderPiece(text=")", token_text=")"),)
+    if isinstance(event, OnlineDotEvent):
+        return (_RenderPiece(text=".", token_text="."),)
+    raise TypeError(event)
 
 
-def _render_pieces_to_sink(
+def _render_program_to_sink(
     *,
     state: OnlineSearchState,
-    trace_key: tuple[object, ...],
-    pieces: tuple[_RenderPiece, ...],
-    start_index: int,
-    annotation_count: int,
+    slots: _SlotView,
+    start_cursor: _RenderCursor,
 ) -> bool:
-    for index in range(start_index, len(pieces)):
-        piece = pieces[index]
-        checkpoint = state.ring.checkpoint()
-        if piece.ring_action is not None and not state.ring.register_endpoint(
-            bond=piece.ring_action.bond,
-            endpoint=piece.ring_action.endpoint,
-            label=piece.ring_action.label,
-        ):
-            state.ring.rollback(checkpoint)
-            return False
-        continuation = _RenderContinuation(
-            trace_key=trace_key,
-            pieces=pieces,
-            next_index=index + 1,
-            annotation_count=annotation_count,
-        )
-        state.frames.append(OnlineSearchFrame("render-resume", (continuation,), index))
-        try:
-            if not state.output.append(piece.text, token_text=piece.token_text):
+    program = start_cursor.program
+    for event_index in range(start_cursor.event_index, len(program.trace.events)):
+        pieces = _render_event_pieces(program=program, slots=slots, event_index=event_index)
+        first_piece = start_cursor.piece_index if event_index == start_cursor.event_index else 0
+        for piece_index in range(first_piece, len(pieces)):
+            piece = pieces[piece_index]
+            checkpoint = state.ring.checkpoint()
+            if piece.ring_action is not None and not state.ring.register_endpoint(
+                bond=piece.ring_action.bond,
+                endpoint=piece.ring_action.endpoint,
+                label=piece.ring_action.label,
+            ):
                 state.ring.rollback(checkpoint)
                 return False
-        finally:
-            state.frames.pop()
+            next_cursor = _advance_render_cursor(
+                program=program,
+                event_index=event_index,
+                piece_index=piece_index,
+                piece_count=len(pieces),
+            )
+            state.frames.append(OnlineSearchFrame("render-cursor", (next_cursor,), piece_index))
+            try:
+                if not state.output.append(piece.text, token_text=piece.token_text):
+                    state.ring.rollback(checkpoint)
+                    return False
+            finally:
+                state.frames.pop()
     return True
 
 
@@ -976,17 +1065,16 @@ def _restore_resume_snapshot(
     state.rollback(snapshot)
 
 
-def _resume_render_from_state(state: OnlineSearchState) -> Iterator[OnlineWitness]:
-    continuation = _resume_continuation_from_frames(state.frames)
-    if continuation is None:
+def _resume_render_cursor_from_state(state: OnlineSearchState) -> Iterator[OnlineWitness]:
+    cursor = _resume_cursor_from_frames(state.frames)
+    if cursor is None:
         return
     checkpoint = state.output.checkpoint()
-    if not _render_pieces_to_sink(
+    slots = _slot_view_for_trace(cursor.program.trace)
+    if not _render_program_to_sink(
         state=state,
-        trace_key=continuation.trace_key,
-        pieces=continuation.pieces,
-        start_index=continuation.next_index,
-        annotation_count=continuation.annotation_count,
+        slots=slots,
+        start_cursor=cursor,
     ):
         state.output.rollback(checkpoint)
         return
@@ -996,19 +1084,19 @@ def _resume_render_from_state(state: OnlineSearchState) -> Iterator[OnlineWitnes
     rendered = state.output.value()
     yield OnlineWitness(
         rendered=rendered,
-        traversal_key=continuation.trace_key,
-        annotation_count=continuation.annotation_count,
+        traversal_key=_trace_key(cursor.program.trace),
+        annotation_count=cursor.program.annotation_count,
     )
 
 
-def _resume_continuation_from_frames(
+def _resume_cursor_from_frames(
     frames: list[OnlineSearchFrame],
-) -> _RenderContinuation | None:
+) -> _RenderCursor | None:
     for frame in reversed(frames):
-        if frame.kind != "render-resume":
+        if frame.kind != "render-cursor":
             continue
-        if len(frame.data) != 1 or not isinstance(frame.data[0], _RenderContinuation):
-            raise ValueError("render-resume frame lacks continuation data")
+        if len(frame.data) != 1 or not isinstance(frame.data[0], _RenderCursor):
+            raise ValueError("render-cursor frame lacks cursor data")
         return frame.data[0]
     return None
 

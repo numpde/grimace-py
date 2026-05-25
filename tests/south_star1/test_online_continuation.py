@@ -387,19 +387,98 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
     def test_residual_state_size_reports_render_payload_for_tetra(self) -> None:
         result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
 
-        self.assertGreater(result.stats.retained_state_size.render_resume_continuation_count, 0)
-        self.assertGreater(result.stats.retained_state_size.max_render_piece_count, 0)
-        self.assertGreater(result.stats.retained_state_size.max_render_payload_chars, 0)
-        self.assertGreater(result.stats.retained_state_size.total_render_payload_chars, 0)
+        self.assertEqual(result.stats.retained_state_size.render_resume_continuation_count, 0)
+        self.assertEqual(result.stats.retained_state_size.max_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.max_remaining_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_remaining_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.max_render_payload_chars, 0)
+        self.assertEqual(result.stats.retained_state_size.total_render_payload_chars, 0)
+        self.assertGreater(result.stats.retained_state_size.render_cursor_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_render_program_event_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_render_program_choice_count, 0)
 
     def test_residual_state_size_reports_render_payload_for_ring_tetra(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
         result = _residual_determinized_decoder(facts).initial_state().choices_with_stats()
 
-        self.assertGreater(result.stats.retained_state_size.render_resume_continuation_count, 0)
-        self.assertGreater(result.stats.retained_state_size.max_render_piece_count, 0)
-        self.assertGreater(result.stats.retained_state_size.max_remaining_render_piece_count, 0)
-        self.assertGreater(result.stats.retained_state_size.total_remaining_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.render_resume_continuation_count, 0)
+        self.assertEqual(result.stats.retained_state_size.max_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.max_remaining_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_remaining_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.max_render_payload_chars, 0)
+        self.assertEqual(result.stats.retained_state_size.total_render_payload_chars, 0)
+        self.assertGreater(result.stats.retained_state_size.render_cursor_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_remaining_render_event_count, 0)
+
+    def test_retained_residual_continuations_have_no_render_piece_payload(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+
+        self.assertGreater(result.stats.retained_state_size.continuation_count, 0)
+        self.assertEqual(result.stats.retained_state_size.render_resume_continuation_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_remaining_render_piece_count, 0)
+        self.assertEqual(result.stats.retained_state_size.total_render_payload_chars, 0)
+        self.assertGreater(result.stats.retained_state_size.render_cursor_count, 0)
+
+    def test_render_cursor_resume_after_atom_piece(self) -> None:
+        decoder = _residual_determinized_decoder(tetrahedral_facts())
+        initial = decoder.initial_state().choices_with_stats()
+        choice = next(choice for choice in initial.choices if choice.text.startswith("C"))
+        self.assertIsNotNone(choice.next_state)
+        frontier = choice.next_state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+        first = frontier.continuations[0]
+
+        self.assertEqual(first.snapshot.frame_stack[-1].kind, "render-cursor")
+        self.assertEqual(first.prefix, choice.next_state.prefix)
+        resumed = choice.next_state.choices_with_stats()
+        self.assertGreater(resumed.stats.resumed_snapshots, 0)
+        self.assertTrue(resumed.choices)
+
+    def test_render_cursor_resume_after_ring_label_preserves_registered_endpoint(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("C/C=C/1CC1")
+        decoder = _residual_determinized_decoder(facts)
+        state = decoder.initial_state()
+        state = _choose_state(state, "C")
+        state = _choose_state(state, "1")
+        frontier = state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+
+        ring_snapshots = tuple(
+            continuation.snapshot.ring_state
+            for continuation in frontier.continuations
+        )
+
+        self.assertTrue(any(snapshot != ((), (), (), 0) for snapshot in ring_snapshots))
+        self.assertTrue(state.choices())
+
+    def test_render_cursor_resume_after_final_piece_completes(self) -> None:
+        facts = tetrahedral_facts()
+        decoder = _residual_determinized_decoder(facts, include_eos=True)
+        witness = _witnesses(facts)[0]
+
+        state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
+
+        eos_choices = tuple(choice for choice in state.choices() if choice.is_eos)
+        self.assertTrue(eos_choices)
+        self.assertGreater(eos_choices[0].completion_count, 0)
+
+    def test_residual_continuation_key_hashable_with_render_cursor_frame(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertEqual(continuation.snapshot.frame_stack[-1].kind, "render-cursor")
+        self.assertIsInstance(hash(residual_continuation_key(continuation)), int)
+
+    def test_residual_modes_remain_equivalent_after_render_cursor_refactor(self) -> None:
+        for facts in (
+            tetrahedral_facts(),
+            directional_facts(),
+            ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"),
+        ):
+            with self.subTest(atom_count=len(facts.atoms)):
+                self._assert_all_modes_walk_same_witnesses(facts)
 
     def test_residual_frontier_shape_counts_unique_continuations(self) -> None:
         result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
@@ -422,7 +501,8 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertGreater(shape.residual_var_count, 0)
         self.assertGreater(shape.residual_assignment_count, 0)
         self.assertGreater(shape.residual_factor_count, 0)
-        self.assertGreater(shape.render_payload.render_resume_continuation_count, 0)
+        self.assertEqual(shape.render_payload.render_resume_continuation_count, 0)
+        self.assertGreater(shape.render_payload.render_cursor_count, 0)
 
     def test_resuming_two_residual_continuations_is_order_independent(self) -> None:
         facts = tetrahedral_facts()
@@ -474,7 +554,7 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertEqual(residual.stats.root_dfs_runs, 1)
         self.assertFalse(hasattr(prefix_replay.stats, "candidate_state_size"))
         self.assertFalse(hasattr(cached.stats, "candidate_state_size"))
-        self.assertGreater(residual.stats.retained_state_size.render_resume_continuation_count, 0)
+        self.assertGreater(residual.stats.retained_state_size.render_cursor_count, 0)
 
     def test_candidate_state_size_counts_eos_snapshots_but_retained_state_size_does_not(self) -> None:
         facts = tetrahedral_facts()
@@ -765,7 +845,7 @@ def _snapshot(tag: str) -> OnlineSearchSnapshot:
         ring_state=(tag, "ring"),
         output_snapshot=(tag, "output"),
         decision_snapshot=_path(tag),
-        frame_stack=(OnlineSearchFrame("render-resume", (tag,)),),
+        frame_stack=(OnlineSearchFrame("test-frame", (tag,)),),
     )
 
 
@@ -793,14 +873,16 @@ def _choice_signature(choices) -> tuple[tuple[str, int, int, bool], ...]:
 def _walk_decoder(decoder, token_texts: tuple[str, ...]):
     state = decoder.initial_state()
     for token in token_texts:
-        for choice in state.choices():
-            if choice.is_eos or choice.text != token or choice.next_state is None:
-                continue
-            state = choice.next_state
-            break
-        else:
-            raise AssertionError(f"decoder rejected token {token!r} after {state.prefix!r}")
+        state = _choose_state(state, token)
     return state
+
+
+def _choose_state(state, token: str):
+    for choice in state.choices():
+        if choice.is_eos or choice.text != token or choice.next_state is None:
+            continue
+        return choice.next_state
+    raise AssertionError(f"decoder rejected token {token!r} after {state.prefix!r}")
 
 
 def _tokens_for_witness(decoder, witness: str) -> tuple[str, ...]:

@@ -325,12 +325,13 @@ residual choices merge continuations by explicit residual continuation identity;
 multiplicity counts residual states, while `completion_count` counts completing
 witnesses that prove those states viable.
 
-The current residual snapshot resumes an event-level render continuation. The
-snapshot may contain a render-continuation payload for the already selected
-trace/prefix/mark context; it is not yet a minimal general scheduler frame for
-all future DFS alternatives. The snapshot owns the residual constraint state
-needed for resumption; restoring one snapshot must not mutate or depend on a
-residual store object owned by the producer VM or by sibling snapshots.
+The current residual snapshot resumes an event-level render cursor. The snapshot
+contains a frozen render program and event/piece cursor for the already selected
+trace/prefix/mark context; it no longer stores a precomputed rendered-piece
+suffix, but it is not yet a minimal general scheduler frame for all future DFS
+alternatives. The snapshot owns the residual constraint state needed for
+resumption; restoring one snapshot must not mutate or depend on a residual store
+object owned by the producer VM or by sibling snapshots.
 Directional candidate admissibility is separated from active-sink rendering.
 In support-maximal annotation mode, directional mark assignments are first
 checked for finite semantic admissibility and captured as value-owned residual
@@ -344,9 +345,8 @@ only snapshots stored in returned successor decoder states; EOS contributes
 terminal path/count evidence but no retained residual snapshot. The statistics
 report structural counts for residual variables/factors, frame-stack depth,
 decision-path length, ring state, output snapshot length, duplicate merge fan-in,
-and any render-continuation payload. They are representation audits, not Python
-byte-size measurements, and currently expose the known render-resume payload
-explicitly.
+and any render-cursor program payload. They are representation audits, not
+Python byte-size measurements, and keep render-cursor costs explicit.
 
 `online_search_vm.py` is the explicit-stack event-level runtime. It owns
 traversal progression, syntax-slot choices, residual stereo propagation,

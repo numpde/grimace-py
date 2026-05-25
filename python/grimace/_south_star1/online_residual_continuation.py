@@ -116,6 +116,13 @@ class OnlineResidualStateSizeStats:
     total_remaining_render_piece_count: int = 0
     max_render_payload_chars: int = 0
     total_render_payload_chars: int = 0
+    render_cursor_count: int = 0
+    max_render_program_event_count: int = 0
+    total_render_program_event_count: int = 0
+    max_remaining_render_event_count: int = 0
+    total_remaining_render_event_count: int = 0
+    max_render_program_choice_count: int = 0
+    total_render_program_choice_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -568,6 +575,34 @@ def _state_size_from_continuations(
         ),
         total_render_payload_chars=sum(
             shape.render_payload.total_render_payload_chars
+            for shape in shapes
+        ),
+        render_cursor_count=sum(
+            shape.render_payload.render_cursor_count
+            for shape in shapes
+        ),
+        max_render_program_event_count=max(
+            shape.render_payload.max_render_program_event_count
+            for shape in shapes
+        ),
+        total_render_program_event_count=sum(
+            shape.render_payload.total_render_program_event_count
+            for shape in shapes
+        ),
+        max_remaining_render_event_count=max(
+            shape.render_payload.max_remaining_render_event_count
+            for shape in shapes
+        ),
+        total_remaining_render_event_count=sum(
+            shape.render_payload.total_remaining_render_event_count
+            for shape in shapes
+        ),
+        max_render_program_choice_count=max(
+            shape.render_payload.max_render_program_choice_count
+            for shape in shapes
+        ),
+        total_render_program_choice_count=sum(
+            shape.render_payload.total_render_program_choice_count
             for shape in shapes
         ),
     )

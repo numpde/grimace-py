@@ -289,6 +289,29 @@ class OnlineSearchVmTest(unittest.TestCase):
         continuation = sink.completed_by_token["1"][0]
         self.assertNotEqual(continuation.snapshot.ring_state, ((), (), (), 0))
 
+    def test_non_support_maximal_directional_candidates_stream_without_tuple_buffer(self) -> None:
+        tree = ast.parse(ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8"))
+        buffered_directional_candidates = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Name) or node.func.id != "tuple":
+                continue
+            if not node.args:
+                continue
+            arg = node.args[0]
+            if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name):
+                if arg.func.id == "_iter_directional_candidates":
+                    buffered_directional_candidates.append(node.lineno)
+
+        self.assertEqual(buffered_directional_candidates, [])
+
+    def test_online_search_vm_uses_render_cursor_frames_not_render_resume_frames(self) -> None:
+        text = ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('"render-cursor"', text)
+        self.assertNotIn('"render-resume"', text)
+
     def test_online_search_vm_boundary_no_hidden_generator_or_artifact_imports(self) -> None:
         tree = ast.parse(ONLINE_SEARCH_VM_PATH.read_text(encoding="utf-8"))
         banned_modules = {

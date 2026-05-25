@@ -13,10 +13,8 @@ Guides show focused workflows that combine the public API pieces.
 
 Contributor guides:
 
-- [Make lanes](development/make-lanes.md): see what each `make` lane runs,
-  where it runs, and where outputs are written.
 - [Containerized development](development/containerized.md): see the
-  Docker-backed development contract.
+  Docker-backed development contract, including `make` lanes and outputs.
 
 For API signatures, see [API](api/python.md). For supported runtime flags and
 root behavior, see [Runtime](runtime.md).

@@ -295,6 +295,11 @@ frontier continuations. These APIs remain table-free: they do not build a
 support trie, support image, compiled artifact, or global deduplication table.
 EOS is explicit and optional.
 
+EOS is computed by the same prefix-frontier DFS as ordinary next-token choices.
+The decoder does not perform a separate full-witness scan to decide terminality.
+EOS is committed only after a complete valid witness whose rendered string is
+exactly the current prefix.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

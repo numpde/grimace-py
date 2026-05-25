@@ -9,10 +9,10 @@ from .facts import MoleculeFacts
 from .online_decoder import online_decode_tokens
 from .online_decisions import FrontierCompactionMode
 from .online_decoder_state import OnlineDecoderState
+from .online_decoder_state import OnlineRawChoiceResult
 from .online_decoder_state import OnlineStateDecoderStats
-from .online_decoder_state import online_branch_preserving_choices_with_stats
-from .online_decoder_state import online_determinized_choices_with_stats
-from .online_stereo_witness import iter_online_stereo_witness_strings
+from .online_decoder_state import online_branch_preserving_choice_result
+from .online_decoder_state import online_determinized_choice_result
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
 
@@ -72,7 +72,7 @@ class SouthStarOnlineDecoder:
         state: SouthStarOnlineDecoderState,
     ) -> SouthStarOnlineChoiceResult:
         _validate_state_belongs_to_decoder(state, self)
-        raw_choices, stats = self._raw_choices_with_stats(state.raw_state)
+        raw_result = self._raw_choice_result(state.raw_state)
         out = [
             SouthStarOnlineChoice(
                 text=choice.text,
@@ -84,31 +84,26 @@ class SouthStarOnlineDecoder:
                 multiplicity=choice.multiplicity,
                 completion_count=choice.completion_count,
             )
-            for choice in raw_choices
+            for choice in raw_result.choices
         ]
-        if self.include_eos and _prefix_is_complete_witness(
-            facts=self.facts,
-            policy=self.policy,
-            semantics=self.semantics,
-            prefix=state.prefix,
-        ):
+        if self.include_eos and raw_result.eos_completion_count:
             out.append(
                 SouthStarOnlineChoice(
                     text=EOS,
                     next_state=None,
                     is_eos=True,
-                    multiplicity=1,
-                    completion_count=1,
+                    multiplicity=len(raw_result.eos_frontier.paths),
+                    completion_count=raw_result.eos_completion_count,
                 )
             )
-        return SouthStarOnlineChoiceResult(choices=tuple(out), stats=stats)
+        return SouthStarOnlineChoiceResult(choices=tuple(out), stats=raw_result.stats)
 
-    def _raw_choices_with_stats(
+    def _raw_choice_result(
         self,
         state: OnlineDecoderState,
-    ):
+    ) -> OnlineRawChoiceResult:
         if self.branch_mode == "branch_preserving":
-            return online_branch_preserving_choices_with_stats(
+            return online_branch_preserving_choice_result(
                 facts=self.facts,
                 policy=self.policy,
                 semantics=self.semantics,
@@ -116,7 +111,7 @@ class SouthStarOnlineDecoder:
                 compaction_mode=self.compaction_mode,
             )
         if self.branch_mode == "determinized":
-            return online_determinized_choices_with_stats(
+            return online_determinized_choice_result(
                 facts=self.facts,
                 policy=self.policy,
                 semantics=self.semantics,
@@ -183,23 +178,6 @@ def _validate_state_belongs_to_decoder(
         raise ValueError("online decoder state belongs to a different decoder")
     if state.prefix != state.raw_state.prefix:
         raise ValueError("online decoder state prefix does not match raw state")
-
-
-def _prefix_is_complete_witness(
-    *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    semantics: ParserSemantics,
-    prefix: str,
-) -> bool:
-    return any(
-        witness == prefix
-        for witness in iter_online_stereo_witness_strings(
-            facts=facts,
-            policy=policy,
-            semantics=semantics,
-        )
-    )
 
 
 __all__ = (

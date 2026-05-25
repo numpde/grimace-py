@@ -48,10 +48,29 @@ class OnlineDecoderApiTest(unittest.TestCase):
         self.assertEqual(eos.text, EOS)
         self.assertIsNone(eos.next_state)
 
+    def test_eos_is_collected_in_same_frontier_pass(self) -> None:
+        facts = ethane_facts()
+        decoder = _determinized_decoder(facts, include_eos=True)
+        state = _walk_decoder(decoder, ("C", "C"))
+
+        result = state.choices_with_stats()
+
+        self.assertEqual(result.stats.dfs_runs, 1)
+        self.assertGreater(result.stats.eos_completions_seen, 0)
+        self.assertTrue(any(choice.is_eos for choice in result.choices))
+
     def test_decoder_does_not_expose_eos_for_incomplete_prefix(self) -> None:
         decoder = _determinized_decoder(ethane_facts(), include_eos=True)
 
         self.assertFalse(any(choice.is_eos for choice in decoder.initial_state().choices()))
+
+    def test_eos_not_returned_for_dead_prefix(self) -> None:
+        decoder = _determinized_decoder(tetrahedral_facts(), include_eos=True)
+        dead = decoder.initial_state()
+        raw_dead = type(dead.raw_state)(prefix="not-smiles")
+        state = type(dead)(prefix="not-smiles", raw_state=raw_dead, decoder=decoder)
+
+        self.assertEqual(state.choices(), ())
 
     def test_decoder_eos_matches_online_witness_multiset(self) -> None:
         facts = ethane_facts()
@@ -61,6 +80,28 @@ class OnlineDecoderApiTest(unittest.TestCase):
         for witness in witness_counts:
             state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
             self.assertTrue(any(choice.is_eos for choice in state.choices()))
+
+    def test_eos_choice_completion_count_matches_witness_multiplicity(self) -> None:
+        facts = ethane_facts()
+        decoder = _determinized_decoder(facts, include_eos=True)
+        state = _walk_decoder(decoder, ("C", "C"))
+        eos = next(choice for choice in state.choices() if choice.is_eos)
+
+        self.assertEqual(eos.completion_count, Counter(_witnesses(facts))["CC"])
+
+    def test_eos_choice_multiplicity_counts_frontier_paths(self) -> None:
+        decoder = _determinized_decoder(ethane_facts(), include_eos=True)
+        state = _walk_decoder(decoder, ("C", "C"))
+        eos = next(choice for choice in state.choices() if choice.is_eos)
+
+        self.assertGreaterEqual(eos.completion_count, eos.multiplicity)
+        self.assertGreater(eos.multiplicity, 0)
+
+    def test_eos_matches_online_witness_multiset_for_tetra(self) -> None:
+        self._assert_eos_for_each_witness(tetrahedral_facts())
+
+    def test_eos_matches_online_witness_multiset_for_directional(self) -> None:
+        self._assert_eos_for_each_witness(directional_facts())
 
     def test_branch_preserving_facade_allows_duplicate_text(self) -> None:
         decoder = _branch_decoder(ethane_facts())
@@ -211,6 +252,13 @@ class OnlineDecoderApiTest(unittest.TestCase):
 
         self.assertEqual(imports, [])
         self.assertEqual(sorted(set(calls) & banned_calls), [])
+        self.assertNotIn("iter_online_stereo_witness_strings", calls)
+
+    def _assert_eos_for_each_witness(self, facts: MoleculeFacts) -> None:
+        decoder = _determinized_decoder(facts, include_eos=True)
+        for witness in set(_witnesses(facts)):
+            state = _walk_decoder(decoder, _tokens_for_witness(decoder, witness))
+            self.assertTrue(any(choice.is_eos for choice in state.choices()))
 
 
 def _branch_decoder(
@@ -268,23 +316,24 @@ def _try_walk_decoder(decoder, token_texts: tuple[str, ...]):
 
 
 def _tokens_for_witness(decoder, witness: str) -> tuple[str, ...]:
-    state = decoder.initial_state()
-    out: list[str] = []
-    while state.prefix != witness:
+    def rec(state, out: tuple[str, ...]) -> tuple[str, ...] | None:
+        if state.prefix == witness:
+            return out
         choices = tuple(choice for choice in state.choices() if not choice.is_eos)
-        match = next(
-            (
-                choice
-                for choice in choices
-                if witness.startswith(state.prefix + choice.text)
-            ),
-            None,
-        )
-        if match is None or match.next_state is None:
-            raise AssertionError(f"cannot tokenize witness {witness!r} at {state.prefix!r}")
-        out.append(match.text)
-        state = match.next_state
-    return tuple(out)
+        for match in choices:
+            if match.next_state is None:
+                continue
+            if not witness.startswith(state.prefix + match.text):
+                continue
+            result = rec(match.next_state, out + (match.text,))
+            if result is not None:
+                return result
+        return None
+
+    result = rec(decoder.initial_state(), ())
+    if result is None:
+        raise AssertionError(f"cannot tokenize witness {witness!r}")
+    return result
 
 
 def _witnesses(facts: MoleculeFacts) -> tuple[str, ...]:

@@ -46,6 +46,16 @@ class OnlineStateDecoderStats:
     decision_prefix_rejections: int = 0
     sink_rejections: int = 0
     completions_seen: int = 0
+    eos_completions_seen: int = 0
+    eos_frontier_paths: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OnlineRawChoiceResult:
+    choices: tuple[OnlineDecoderChoice, ...]
+    eos_completion_count: int
+    eos_frontier: OnlineDecisionFrontier
+    stats: OnlineStateDecoderStats
 
 
 @dataclass(slots=True)
@@ -55,6 +65,7 @@ class BranchFrontierSink:
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY
     emitted: list[str] = field(default_factory=list)
     completed_frontier: dict[str, dict[OnlineDecisionPath, int]] = field(default_factory=dict)
+    eos_frontier: dict[OnlineDecisionPath, int] = field(default_factory=dict)
     pending_token_text: str | None = None
     pending_frontier_path: OnlineDecisionPath | None = None
     sink_rejections: int = 0
@@ -97,6 +108,12 @@ class BranchFrontierSink:
         if not self.value().startswith(self.required_prefix):
             return False
         self.completions_seen += 1
+        if self.value() == self.required_prefix:
+            frontier_path = compact_frontier_path(
+                self.decision_path_provider(),
+                mode=self.compaction_mode,
+            )
+            self.eos_frontier[frontier_path] = self.eos_frontier.get(frontier_path, 0) + 1
         if self.pending_token_text is not None and self.pending_frontier_path is not None:
             by_path = self.completed_frontier.setdefault(self.pending_token_text, {})
             by_path[self.pending_frontier_path] = by_path.get(self.pending_frontier_path, 0) + 1
@@ -132,6 +149,24 @@ def online_branch_preserving_choices_with_stats(
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
 ) -> tuple[tuple[OnlineDecoderChoice, ...], OnlineStateDecoderStats]:
+    result = online_branch_preserving_choice_result(
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+        state=state,
+        compaction_mode=compaction_mode,
+    )
+    return result.choices, result.stats
+
+
+def online_branch_preserving_choice_result(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    state: OnlineDecoderState,
+    compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+) -> OnlineRawChoiceResult:
     recorder = OnlineDecisionRecorder()
     path_filter = (
         None
@@ -157,6 +192,8 @@ def online_branch_preserving_choices_with_stats(
         stats.decision_prefix_rejections = path_filter.rejection_count
     stats.sink_rejections = sink.sink_rejections
     stats.completions_seen = sink.completions_seen
+    stats.eos_completions_seen = sum(sink.eos_frontier.values())
+    stats.eos_frontier_paths = len(sink.eos_frontier)
 
     choices = [
         OnlineDecoderChoice(
@@ -170,9 +207,11 @@ def online_branch_preserving_choices_with_stats(
         for text, paths in sink.completed_frontier.items()
         for path, completion_count in paths.items()
     ]
-    return (
-        tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.allowed_paths)))),
-        stats,
+    return OnlineRawChoiceResult(
+        choices=tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.allowed_paths)))),
+        eos_completion_count=sum(sink.eos_frontier.values()),
+        eos_frontier=OnlineDecisionFrontier(frozenset(sink.eos_frontier)),
+        stats=stats,
     )
 
 
@@ -202,15 +241,33 @@ def online_determinized_choices_with_stats(
     state: OnlineDecoderState,
     compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
 ) -> tuple[tuple[OnlineDecoderChoice, ...], OnlineStateDecoderStats]:
-    grouped: dict[str, dict[OnlineDecisionPath, int]] = defaultdict(dict)
-    branch_choices, stats = online_branch_preserving_choices_with_stats(
+    result = online_determinized_choice_result(
         facts=facts,
         policy=policy,
         semantics=semantics,
         state=state,
         compaction_mode=compaction_mode,
     )
-    for choice in branch_choices:
+    return result.choices, result.stats
+
+
+def online_determinized_choice_result(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    semantics: ParserSemantics,
+    state: OnlineDecoderState,
+    compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+) -> OnlineRawChoiceResult:
+    grouped: dict[str, dict[OnlineDecisionPath, int]] = defaultdict(dict)
+    branch_result = online_branch_preserving_choice_result(
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+        state=state,
+        compaction_mode=compaction_mode,
+    )
+    for choice in branch_result.choices:
         if choice.next_state.allowed_frontier is None:
             raise ValueError("branch-preserving choice lacks allowed frontier")
         for path in choice.next_state.allowed_frontier.paths:
@@ -218,8 +275,8 @@ def online_determinized_choices_with_stats(
                 grouped[choice.text].get(path, 0) + choice.completion_count
             )
 
-    return (
-        tuple(
+    return OnlineRawChoiceResult(
+        choices=tuple(
             OnlineDecoderChoice(
                 text=text,
                 next_state=OnlineDecoderState(
@@ -231,7 +288,9 @@ def online_determinized_choices_with_stats(
             )
             for text, paths in sorted(grouped.items())
         ),
-        stats,
+        eos_completion_count=branch_result.eos_completion_count,
+        eos_frontier=branch_result.eos_frontier,
+        stats=branch_result.stats,
     )
 
 
@@ -243,9 +302,12 @@ __all__ = (
     "OnlineDecisionPath",
     "OnlineDecoderChoice",
     "OnlineDecoderState",
+    "OnlineRawChoiceResult",
     "OnlineStateDecoderStats",
+    "online_branch_preserving_choice_result",
     "online_branch_preserving_choices",
     "online_branch_preserving_choices_with_stats",
+    "online_determinized_choice_result",
     "online_determinized_choices",
     "online_determinized_choices_with_stats",
 )

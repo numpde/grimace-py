@@ -84,6 +84,7 @@ def _minimal_coverage_payload(
                 "cases": [
                     f"{PINNED_RDKIT_EXACT_SMALL_SUPPORT}_case",
                 ],
+                "note": "contract test",
             }
         ]
     return {
@@ -223,6 +224,7 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
                                 "2099.01.1.json"
                             ),
                             "cases": ["missing_case"],
+                            "note": "contract test",
                         }
                     ],
                 ),

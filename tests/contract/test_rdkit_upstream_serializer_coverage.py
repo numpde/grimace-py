@@ -5,21 +5,19 @@ from pathlib import Path
 import re
 import unittest
 
-from tests.helpers.fixture_paths import CHECKED_IN_FIXTURE_ROOT, checked_in_fixture_path
+from tests.helpers.fixture_paths import CHECKED_IN_FIXTURE_ROOT
 from tests.helpers.rdkit_serializer_coverage import (
     COVERAGE_FIELDS,
-    COVERAGE_STATUS_COVERED,
-    COVERAGE_STATUS_KNOWN_GAP,
-    COVERAGE_STATUS_NEEDS_FIXTURE,
     ENTRY_FIELDS,
-    GRIMACE_LINK_FIELDS,
     KIND_LANGUAGES,
     RDKIT_SERIALIZER_COVERAGE_ROOT,
     RDKIT_SERIALIZER_SOURCE_ROOT,
     UNTRIAGED_COVERAGE_STATUSES,
     VALID_ENTRY_KINDS,
     VALID_ENTRY_LANGUAGES,
+    checked_in_fixture_case_ids_by_path,
     load_serializer_coverage,
+    validate_serializer_coverage_links,
 )
 
 
@@ -64,7 +62,9 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         self.assertIs(type(coverage["extractor_version"]), int)
         self.assertGreater(coverage["extractor_version"], 0)
 
-        source_manifest_path = RDKIT_SERIALIZER_SOURCE_ROOT / rdkit_version / "manifest.json"
+        source_manifest_path = (
+            RDKIT_SERIALIZER_SOURCE_ROOT / rdkit_version / "manifest.json"
+        )
         self.assertTrue(source_manifest_path.is_file())
         self.assertEqual(
             source_manifest_path.relative_to(REPO_ROOT).as_posix(),
@@ -73,7 +73,12 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         source_manifest = json.loads(source_manifest_path.read_text())
         self.assertEqual(source_manifest["source_commit"], coverage["source_commit"])
         manifest_paths = {entry["path"] for entry in source_manifest["files"]}
-        fixture_case_ids = self._load_fixture_case_ids()
+        fixture_case_ids = checked_in_fixture_case_ids_by_path(repo_root=REPO_ROOT)
+        validate_serializer_coverage_links(
+            coverage,
+            coverage_path=fixture_path,
+            fixture_case_ids=fixture_case_ids,
+        )
 
         entries = coverage["entries"]
         seen_ids: set[str] = set()
@@ -84,7 +89,6 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
                     entry,
                     seen_ids,
                     manifest_paths,
-                    fixture_case_ids,
                     rdkit_version,
                 )
                 sort_key = self._entry_sort_key(entry)
@@ -97,7 +101,6 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         entry: dict[str, object],
         seen_ids: set[str],
         manifest_paths: set[str],
-        fixture_case_ids: dict[str, set[str]],
         rdkit_version: str,
     ) -> None:
         self.assertEqual(ENTRY_FIELDS, set(entry))
@@ -114,7 +117,6 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         self.assert_required_optional_string(entry, "parent")
         self._required_string(entry, "name")
         matched_terms = self.assert_required_string_list(entry, "matched_terms")
-        self.assert_grimace_links(entry, fixture_case_ids)
         self.assert_required_optional_string(entry, "notes", allow_empty=True)
         self._required_string(entry, "claim")
         self.assertRegex(self._required_string(entry, "snippet_sha256"), SHA256_RE)
@@ -123,58 +125,15 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         end_line = self._required_int(entry, "end_line")
         self.assertLessEqual(start_line, end_line)
 
-        source_path = RDKIT_SERIALIZER_SOURCE_ROOT / rdkit_version / "source" / upstream_file
+        source_path = (
+            RDKIT_SERIALIZER_SOURCE_ROOT / rdkit_version / "source" / upstream_file
+        )
         source_text = source_path.read_text()
         self.assertLessEqual(end_line, len(source_text.splitlines()))
         line_span = _line_span(source_text, start_line, end_line)
         self.assertTrue(line_span)
         for term in matched_terms:
             self.assertIn(term, line_span)
-
-    def _load_fixture_case_ids(self) -> dict[str, set[str]]:
-        fixture_case_ids: dict[str, set[str]] = {}
-        for fixture_path in sorted(checked_in_fixture_path().rglob("*.json")):
-            relative_path = fixture_path.relative_to(REPO_ROOT).as_posix()
-            try:
-                payload = json.loads(fixture_path.read_text())
-            except json.JSONDecodeError:
-                continue
-            raw_cases = payload.get("cases")
-            if not isinstance(raw_cases, list):
-                continue
-            case_ids = {
-                raw_case["id"]
-                for raw_case in raw_cases
-                if isinstance(raw_case, dict) and type(raw_case.get("id")) is str
-            }
-            if case_ids:
-                fixture_case_ids[relative_path] = case_ids
-        return fixture_case_ids
-
-    def assert_grimace_links(
-        self,
-        entry: dict[str, object],
-        fixture_case_ids: dict[str, set[str]],
-    ) -> None:
-        links = entry["grimace_links"]
-        self.assertIs(type(links), list, "grimace_links")
-        if entry["status"] in {COVERAGE_STATUS_COVERED, COVERAGE_STATUS_KNOWN_GAP}:
-            self.assertTrue(links, entry["id"])
-        elif entry["status"] != COVERAGE_STATUS_NEEDS_FIXTURE:
-            self.assertFalse(links, entry["id"])
-
-        seen_fixtures: set[str] = set()
-        for link in links:
-            self.assertIs(type(link), dict, entry["id"])
-            self.assertEqual(GRIMACE_LINK_FIELDS, set(link), entry["id"])
-            fixture = self._required_string(link, "fixture")
-            self.assertNotIn(fixture, seen_fixtures)
-            seen_fixtures.add(fixture)
-            self.assertIn(fixture, fixture_case_ids)
-            self.assert_required_string_list(link, "cases")
-            self.assert_required_optional_string(link, "note", allow_empty=True)
-            for case_id in link["cases"]:
-                self.assertIn(case_id, fixture_case_ids[fixture], fixture)
 
     def _entry_sort_key(self, entry: dict[str, object]) -> tuple[object, ...]:
         return (

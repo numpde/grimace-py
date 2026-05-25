@@ -13,12 +13,14 @@ from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_decoder import online_allowed_next_token_texts_one_pass
 from grimace._south_star1.online_decisions import DecisionPathFilter
+from grimace._south_star1.online_decisions import FrontierCompactionMode
 from grimace._south_star1.online_decisions import OnlineDecision
 from grimace._south_star1.online_decisions import OnlineDecisionFrontier
 from grimace._south_star1.online_decisions import OnlineDecisionPath
 from grimace._south_star1.online_decoder_state import OnlineDecoderState
 from grimace._south_star1.online_decoder_state import online_branch_preserving_choices
 from grimace._south_star1.online_decoder_state import online_determinized_choices
+from grimace._south_star1.online_decoder_state import online_determinized_choices_with_stats
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
@@ -184,6 +186,63 @@ class OnlineDecoderStateTest(unittest.TestCase):
             state = choices[0].next_state
             self.assertTrue(any(witness.startswith(state.prefix) for witness in witnesses))
 
+    def test_traversal_only_frontier_matches_full_prefix_frontier_tetra(self) -> None:
+        self._assert_compaction_modes_match(tetrahedral_facts(), ())
+
+    def test_traversal_only_frontier_matches_full_prefix_frontier_directional(self) -> None:
+        self._assert_compaction_modes_match(directional_facts(), ())
+
+    def test_traversal_only_frontier_matches_full_prefix_frontier_ring_tetra(self) -> None:
+        self._assert_compaction_modes_match(
+            ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"),
+            (),
+        )
+
+    def test_traversal_only_frontier_matches_full_prefix_frontier_after_two_steps(self) -> None:
+        self._assert_compaction_modes_match(directional_facts(), ("C", "("))
+
+    def test_traversal_only_frontier_matches_full_prefix_frontier_after_branch_token(self) -> None:
+        self._assert_compaction_modes_match(ethane_facts(), ("C", "("))
+
+    def test_traversal_only_frontier_matches_full_prefix_frontier_after_ring_label_token(self) -> None:
+        self._assert_compaction_modes_match(
+            ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1"),
+            ("C", "1"),
+        )
+
+    def test_traversal_only_compaction_prunes_no_more_than_full_prefix(self) -> None:
+        facts = directional_facts()
+        traversal_state = _state_after_tokens(
+            facts,
+            ("C",),
+            FrontierCompactionMode.TRAVERSAL_ONLY,
+        )
+        full_state = _state_after_tokens(
+            facts,
+            ("C",),
+            FrontierCompactionMode.FULL_DECISION_PREFIX,
+        )
+
+        traversal_choices, traversal_stats = _determinized_choices_with_stats(
+            facts,
+            traversal_state,
+            FrontierCompactionMode.TRAVERSAL_ONLY,
+        )
+        full_choices, full_stats = _determinized_choices_with_stats(
+            facts,
+            full_state,
+            FrontierCompactionMode.FULL_DECISION_PREFIX,
+        )
+
+        self.assertEqual(
+            tuple(choice.text for choice in traversal_choices),
+            tuple(choice.text for choice in full_choices),
+        )
+        self.assertLessEqual(
+            traversal_stats.decision_prefix_rejections,
+            full_stats.decision_prefix_rejections,
+        )
+
     def test_online_decoder_state_boundary_no_artifact_or_rdkit_imports(self) -> None:
         tree = ast.parse(ONLINE_DECODER_STATE_PATH.read_text(encoding="utf-8"))
         banned_modules = {
@@ -249,11 +308,47 @@ class OnlineDecoderStateTest(unittest.TestCase):
             ),
         )
 
+    def _assert_compaction_modes_match(
+        self,
+        facts: MoleculeFacts,
+        tokens: tuple[str, ...],
+    ) -> None:
+        traversal_state = _state_after_tokens(
+            facts,
+            tokens,
+            FrontierCompactionMode.TRAVERSAL_ONLY,
+        )
+        full_state = _state_after_tokens(
+            facts,
+            tokens,
+            FrontierCompactionMode.FULL_DECISION_PREFIX,
+        )
+
+        self.assertEqual(
+            _choice_texts(
+                _determinized_choices(
+                    facts,
+                    traversal_state.prefix,
+                    traversal_state,
+                    FrontierCompactionMode.TRAVERSAL_ONLY,
+                )
+            ),
+            _choice_texts(
+                _determinized_choices(
+                    facts,
+                    full_state.prefix,
+                    full_state,
+                    FrontierCompactionMode.FULL_DECISION_PREFIX,
+                )
+            ),
+        )
+
 
 def _branch_choices(
     facts: MoleculeFacts,
     prefix: str,
     state: OnlineDecoderState | None = None,
+    compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
 ):
     policy = ordinary_policy_for_facts(facts)
     return online_branch_preserving_choices(
@@ -261,6 +356,7 @@ def _branch_choices(
         policy=policy,
         semantics=OrdinarySmilesSemantics(),
         state=state or OnlineDecoderState(prefix=prefix),
+        compaction_mode=compaction_mode,
     )
 
 
@@ -268,6 +364,7 @@ def _determinized_choices(
     facts: MoleculeFacts,
     prefix: str,
     state: OnlineDecoderState | None = None,
+    compaction_mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
 ):
     policy = ordinary_policy_for_facts(facts)
     return online_determinized_choices(
@@ -275,6 +372,22 @@ def _determinized_choices(
         policy=policy,
         semantics=OrdinarySmilesSemantics(),
         state=state or OnlineDecoderState(prefix=prefix),
+        compaction_mode=compaction_mode,
+    )
+
+
+def _determinized_choices_with_stats(
+    facts: MoleculeFacts,
+    state: OnlineDecoderState,
+    compaction_mode: FrontierCompactionMode,
+):
+    policy = ordinary_policy_for_facts(facts)
+    return online_determinized_choices_with_stats(
+        facts=facts,
+        policy=policy,
+        semantics=OrdinarySmilesSemantics(),
+        state=state,
+        compaction_mode=compaction_mode,
     )
 
 
@@ -293,6 +406,29 @@ def _choice_with_text(choices, text: str):
         if choice.text == text:
             return choice
     raise AssertionError(f"missing choice text {text!r}: {choices!r}")
+
+
+def _choice_texts(choices) -> tuple[str, ...]:
+    return tuple(sorted(choice.text for choice in choices))
+
+
+def _state_after_tokens(
+    facts: MoleculeFacts,
+    tokens: tuple[str, ...],
+    compaction_mode: FrontierCompactionMode,
+) -> OnlineDecoderState:
+    state = OnlineDecoderState(prefix="")
+    for token in tokens:
+        state = _choice_with_text(
+            _determinized_choices(
+                facts,
+                state.prefix,
+                state,
+                compaction_mode,
+            ),
+            token,
+        ).next_state
+    return state
 
 
 def ethane_facts() -> MoleculeFacts:

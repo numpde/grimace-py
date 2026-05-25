@@ -281,6 +281,13 @@ keeps successor states residual and avoids turning decoder states into lists of
 full witness completions. `OnlineDecoderChoice.multiplicity` counts merged
 frontier paths; `completion_count` is diagnostic witness-count information.
 
+Frontier compaction is an intentional over-approximation of residual branch
+identity. The default compact frontier keeps traversal decisions and relies on
+the emitted prefix plus residual DFS checks to re-filter syntax and stereo
+choices. This may increase search but must not change the determinized token
+frontier. Tests compare traversal-only compaction against full decision-prefix
+compaction.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

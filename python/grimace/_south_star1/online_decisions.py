@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,11 @@ class OnlineDecisionPath:
 @dataclass(frozen=True, slots=True)
 class OnlineDecisionFrontier:
     paths: frozenset[OnlineDecisionPath]
+
+
+class FrontierCompactionMode(Enum):
+    TRAVERSAL_ONLY = "traversal_only"
+    FULL_DECISION_PREFIX = "full_decision_prefix"
 
 
 class OnlineDecisionRecorder:
@@ -40,26 +46,36 @@ class OnlineDecisionRecorder:
         return OnlineDecisionPath(tuple(self._items))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class DecisionPathFilter:
     allowed_frontier: OnlineDecisionFrontier
+    rejection_count: int = 0
 
     def allows_prefix(self, path: OnlineDecisionPath) -> bool:
-        return any(
+        ok = any(
             _compatible(path.items, frontier.items)
             for frontier in self.allowed_frontier.paths
         )
+        if not ok:
+            self.rejection_count += 1
+        return ok
 
     def allows_complete_prefix(self, path: OnlineDecisionPath) -> bool:
         return self.allows_prefix(path)
 
 
-def compact_frontier_path(path: OnlineDecisionPath) -> OnlineDecisionPath:
-    """Keep the branch prefix needed to resume the current traversal frontier."""
-
-    return OnlineDecisionPath(
-        tuple(item for item in path.items if item.kind == "traversal")
-    )
+def compact_frontier_path(
+    path: OnlineDecisionPath,
+    *,
+    mode: FrontierCompactionMode = FrontierCompactionMode.TRAVERSAL_ONLY,
+) -> OnlineDecisionPath:
+    if mode is FrontierCompactionMode.TRAVERSAL_ONLY:
+        return OnlineDecisionPath(
+            tuple(item for item in path.items if item.kind == "traversal")
+        )
+    if mode is FrontierCompactionMode.FULL_DECISION_PREFIX:
+        return OnlineDecisionPath(path.items)
+    raise ValueError(f"unknown frontier compaction mode: {mode!r}")
 
 
 def _compatible(
@@ -72,6 +88,7 @@ def _compatible(
 
 __all__ = (
     "DecisionPathFilter",
+    "FrontierCompactionMode",
     "OnlineDecisionFrontier",
     "OnlineDecision",
     "OnlineDecisionPath",

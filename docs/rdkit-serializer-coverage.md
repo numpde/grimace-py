@@ -65,13 +65,17 @@ loader and parity tests are the enforcement.
 
 ## Current status
 
-Current reviewed counts:
+Generate the current reviewed counts from the checked-in ledger:
 
-- `54 covered`
-- `6 known-gap`
-- `209 out-of-scope`
-- `0 needs-fixture`
-- `0 unreviewed`
+```bash
+python scripts/report_rdkit_serializer_coverage.py
+```
+
+For the broader fixture-family and source-class summary, run:
+
+```bash
+python scripts/report_correctness_coverage.py
+```
 
 The contract test
 `tests.contract.test_rdkit_upstream_serializer_coverage` enforces the ledger
@@ -137,7 +141,7 @@ python scripts/extract_rdkit_serializer_cases.py --write
 4. Add or link executable fixtures for every in-scope claim.
 5. Run the report and contract tests before treating the audit as complete.
 
-To inspect the ledger:
+To inspect the serializer ledger:
 
 ```bash
 python scripts/report_rdkit_serializer_coverage.py

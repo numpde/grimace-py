@@ -18,12 +18,11 @@ Supported writer-surface flags are listed in [Runtime](runtime.md).
 ## RDKit serializer parity
 
 Full RDKit serializer parity is not complete. The current reviewed RDKit
-`2026.03.1` serializer ledger has:
+`2026.03.1` serializer ledger is checked in and summarized by:
 
-- `54 covered`
-- `6 known-gap`
-- `0 needs-fixture`
-- `0 unreviewed`
+```bash
+python scripts/report_rdkit_serializer_coverage.py
+```
 
 Known gaps are concentrated in coupled directional double-bond and ring-closure
 stereo cases. They are pinned as executable known-gap fixtures and summarized

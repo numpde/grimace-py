@@ -11,15 +11,17 @@ The logs are not checked in. Checked-in fixtures are the promoted evidence.
 
 ## Scans
 
-Three bounded deterministic scans were run against the bundled molecule
+Four bounded deterministic scans were run against the bundled molecule
 fixture:
 
 - disconnected all-roots isomeric writer surface
 - disconnected root-0 nonstereo with explicit bonds
 - disconnected root-0 nonstereo with explicit hydrogens
+- disconnected last-fragment-root nonstereo with explicit bonds
 
-All checked cases in these scans were `clean`: RDKit's deterministic writer
-output was contained in Grimace's exact support.
+All completed checked cases in these scans were `clean`: RDKit's deterministic
+writer output was contained in Grimace's exact support. The last-fragment-root
+scan had one timeout; that molecule was not considered for promotion.
 
 ## Promotion rule
 
@@ -45,3 +47,7 @@ Four cases were promoted to `rdkit_exact_small_support`:
   aluminum and silicon bracket atoms.
 
 These are exact-support cases, not membership-only cases.
+
+No cases were promoted from the last-fragment-root explicit-bond scan. Its
+small clean candidates overlapped existing disconnected-root evidence or the
+newly promoted disconnected fragment surfaces.

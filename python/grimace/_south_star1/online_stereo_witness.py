@@ -20,6 +20,7 @@ from .ids import BondId
 from .ids import OccurrenceId
 from .online_decisions import DecisionPathFilter
 from .online_decisions import OnlineDecision
+from .online_decisions import OnlineDecisionPath
 from .online_decisions import OnlineDecisionRecorder
 from .online_traversal import OnlineAtomEvent
 from .online_traversal import OnlineBranchClose
@@ -102,10 +103,11 @@ class _PrefixChoice:
 
 
 @dataclass(frozen=True, slots=True)
-class _DirectionalSolution:
-    rendered: str
+class _DirectionalCandidate:
+    marks: tuple[tuple[int, DirectionMark], ...]
     support: frozenset[int]
     annotation_count: int
+    decision_path: OnlineDecisionPath | None
 
 
 def iter_online_stereo_witness_strings(
@@ -368,8 +370,8 @@ def _iter_witnesses_for_trace(
                                 bond_text=bond_text,
                                 ring_labels=ring_labels,
                             )
-                            solutions = tuple(
-                                _iter_directional_solutions(
+                            candidates = tuple(
+                                _iter_directional_candidates(
                                     facts=facts,
                                     policy=policy,
                                     semantics=semantics,
@@ -384,12 +386,23 @@ def _iter_witnesses_for_trace(
                                 )
                             )
                             if policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-                                solutions = tuple(_support_maximal(solutions))
-                            for solution in solutions:
+                                candidates = tuple(_support_maximal_candidates(candidates))
+                            for candidate in candidates:
+                                rendered = _render_directional_candidate(
+                                    trace=trace,
+                                    slots=slots,
+                                    prefix=prefix,
+                                    tetra_tokens=tetra_tokens,
+                                    candidate=candidate,
+                                    sink_factory=sink_factory,
+                                    decision_recorder=decision_recorder,
+                                )
+                                if rendered is None:
+                                    continue
                                 yield OnlineWitness(
-                                    rendered=solution.rendered,
+                                    rendered=rendered,
                                     traversal_key=trace_to_skeleton_like_key(trace),
-                                    annotation_count=solution.annotation_count,
+                                    annotation_count=candidate.annotation_count,
                                 )
                         finally:
                             _rollback_decision(decision_recorder, bond_decision_checkpoint)
@@ -399,7 +412,7 @@ def _iter_witnesses_for_trace(
             _rollback_decision(decision_recorder, decision_checkpoint)
 
 
-def _iter_directional_solutions(
+def _iter_directional_candidates(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -412,8 +425,8 @@ def _iter_directional_solutions(
     sink_factory: Callable[[], OnlineRenderSink],
     decision_recorder: OnlineDecisionRecorder | None,
     decision_filter: DecisionPathFilter | None,
-) -> Iterator[_DirectionalSolution]:
-    del policy
+) -> Iterator[_DirectionalCandidate]:
+    del policy, sink_factory
     carrier_by_slot = {carrier.bond_slot: carrier for carrier in slots.carrier_slots}
     domains = _direction_domains(
         facts=facts,
@@ -444,7 +457,7 @@ def _iter_directional_solutions(
 
     marks: dict[int, DirectionMark] = {}
 
-    def rec(index: int) -> Iterator[_DirectionalSolution]:
+    def rec(index: int) -> Iterator[_DirectionalCandidate]:
         if index == len(carriers):
             if not _bond_decode_ok(
                 facts=facts,
@@ -456,35 +469,17 @@ def _iter_directional_solutions(
                 return
             if not all(store.close_factor(factor_id) for factor_id in factor_ids):
                 return
-            sink = sink_factory()
-            checkpoint = sink.checkpoint()
-            if not _render_online_to_sink(
-                trace=trace,
-                slots=slots,
-                prefix=prefix,
-                tetra_tokens=tetra_tokens,
-                marks=marks,
-                sink=sink,
-            ):
-                sink.rollback(checkpoint)
-                return
-            if not sink.complete():
-                sink.rollback(checkpoint)
-                return
-            rendered = sink.value()
             support = frozenset(
                 carrier_id
                 for carrier_id, mark in marks.items()
                 if mark is not DirectionMark.ABSENT
             )
-            try:
-                yield _DirectionalSolution(
-                    rendered=rendered,
-                    support=support,
-                    annotation_count=len(support),
-                )
-            finally:
-                sink.rollback(checkpoint)
+            yield _DirectionalCandidate(
+                marks=tuple(sorted(marks.items())),
+                support=support,
+                annotation_count=len(support),
+                decision_path=decision_recorder.path() if decision_recorder is not None else None,
+            )
             return
 
         carrier_id = carriers[index]
@@ -508,6 +503,43 @@ def _iter_directional_solutions(
                 _rollback_decision(decision_recorder, decision_checkpoint)
 
     yield from rec(0)
+
+
+def _render_directional_candidate(
+    *,
+    trace: OnlineTraversalTrace,
+    slots: OnlineSlotView,
+    prefix: _PrefixChoice,
+    tetra_tokens: dict[AtomId, TetraToken],
+    candidate: _DirectionalCandidate,
+    sink_factory: Callable[[], OnlineRenderSink],
+    decision_recorder: OnlineDecisionRecorder | None,
+) -> str | None:
+    previous_decision_path = decision_recorder.path() if decision_recorder is not None else None
+    if decision_recorder is not None and candidate.decision_path is not None:
+        decision_recorder.restore_path(candidate.decision_path)
+    sink = sink_factory()
+    checkpoint = sink.checkpoint()
+    try:
+        if not _render_online_to_sink(
+            trace=trace,
+            slots=slots,
+            prefix=prefix,
+            tetra_tokens=tetra_tokens,
+            marks=dict(candidate.marks),
+            sink=sink,
+        ):
+            sink.rollback(checkpoint)
+            return None
+        if not sink.complete():
+            sink.rollback(checkpoint)
+            return None
+        rendered = sink.value()
+        sink.rollback(checkpoint)
+        return rendered
+    finally:
+        if decision_recorder is not None and previous_decision_path is not None:
+            decision_recorder.restore_path(previous_decision_path)
 
 
 def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
@@ -858,11 +890,11 @@ def _render_bond_slot(
     raise ValueError(f"unknown direction mark: {mark!r}")
 
 
-def _support_maximal(
-    solutions: tuple[_DirectionalSolution, ...],
-) -> Iterator[_DirectionalSolution]:
-    for candidate in solutions:
-        if any(candidate.support < other.support for other in solutions):
+def _support_maximal_candidates(
+    candidates: tuple[_DirectionalCandidate, ...],
+) -> Iterator[_DirectionalCandidate]:
+    for candidate in candidates:
+        if any(candidate.support < other.support for other in candidates):
             continue
         yield candidate
 

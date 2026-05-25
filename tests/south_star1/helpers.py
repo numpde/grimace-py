@@ -176,6 +176,79 @@ def directional_facts() -> MoleculeFacts:
     )
 
 
+def four_substituent_directional_facts() -> MoleculeFacts:
+    site_id = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "C"),
+            atom(1, "C"),
+            atom(2, "F"),
+            atom(3, "Cl"),
+            atom(4, "Br"),
+            atom(5, "O"),
+        ),
+        bonds=(
+            bond(0, 0, 1, BondOrder.DOUBLE),
+            single_bond(1, 0, 2),
+            single_bond(2, 0, 3),
+            single_bond(3, 1, 4),
+            single_bond(4, 1, 5),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=tuple(AtomId(index) for index in range(6)),
+                bonds=tuple(BondId(index) for index in range(5)),
+            ),
+        ),
+        stereo=StereoFacts(
+            directional=(
+                DirectionalSiteFacts(
+                    id=site_id,
+                    center_bond=BondId(0),
+                    left_endpoint=AtomId(0),
+                    right_endpoint=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=DirectionalValue.TOGETHER,
+                    left_ligands=(OccurrenceId(0), OccurrenceId(1)),
+                    right_ligands=(OccurrenceId(2), OccurrenceId(3)),
+                    reference_pair=(OccurrenceId(0), OccurrenceId(2)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(2),
+                bond=BondId(1),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(3),
+                bond=BondId(2),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(4),
+                bond=BondId(3),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site_id,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(5),
+                bond=BondId(4),
+            ),
+        ),
+    )
+
+
 def deep_tetra_ligand_facts(*, right_terminal: str) -> MoleculeFacts:
     """Tetra-candidate graph whose carbon ligands differ only distally."""
 

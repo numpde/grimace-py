@@ -303,10 +303,13 @@ class _PrefixChoice:
 
 
 @dataclass(frozen=True, slots=True)
-class _DirectionalSolution:
-    rendered: str
+class _DirectionalCandidate:
+    marks: tuple[tuple[int, DirectionMark], ...]
     support: frozenset[int]
     annotation_count: int
+    residual_snapshot: ResidualStoreValueSnapshot
+    decision_path: OnlineDecisionPath
+    frame_stack: tuple[OnlineSearchFrame, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -685,23 +688,32 @@ def _iter_witnesses_for_trace(
                                     bond_text=bond_text,
                                     ring_labels=ring_labels,
                                 )
-                                solutions = tuple(
-                                    _iter_directional_solutions(
+                                candidates = tuple(
+                                    _iter_directional_candidates(
+                                        state=state,
+                                        trace=trace,
+                                        slots=slots,
+                                        prefix=prefix,
+                                    )
+                                )
+                                if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
+                                    candidates = tuple(_support_maximal_candidates(candidates))
+                                for candidate in candidates:
+                                    rendered = _render_directional_candidate(
                                         state=state,
                                         trace=trace,
                                         slots=slots,
                                         prefix=prefix,
                                         tetra_tokens=tetra_tokens,
+                                        candidate=candidate,
                                         sink_factory=sink_factory,
                                     )
-                                )
-                                if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-                                    solutions = tuple(_support_maximal(solutions))
-                                for solution in solutions:
+                                    if rendered is None:
+                                        continue
                                     yield OnlineWitness(
-                                        rendered=solution.rendered,
+                                        rendered=rendered,
                                         traversal_key=traversal_key,
-                                        annotation_count=solution.annotation_count,
+                                        annotation_count=candidate.annotation_count,
                                     )
                             finally:
                                 state.decisions.rollback(bond_decision_checkpoint)
@@ -718,15 +730,13 @@ def _iter_witnesses_for_trace(
         state.frames.pop()
 
 
-def _iter_directional_solutions(
+def _iter_directional_candidates(
     *,
     state: OnlineSearchState,
     trace: _VmTraversalTrace,
     slots: _SlotView,
     prefix: _PrefixChoice,
-    tetra_tokens: dict[AtomId, TetraToken],
-    sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[_DirectionalSolution]:
+) -> Iterator[_DirectionalCandidate]:
     domains = _direction_domains(
         facts=state.facts,
         templates=state.templates,
@@ -767,20 +777,18 @@ def _iter_directional_solutions(
                     for carrier_id in carriers
                 ):
                     continue
-                rendered = _directional_solution_rendered(
-                    state=state,
-                    trace=trace,
+                if not _bond_decode_ok(
+                    facts=state.facts,
+                    semantics=state.semantics,
                     slots=slots,
                     prefix=prefix,
-                    tetra_tokens=tetra_tokens,
                     marks=marks,
-                    factor_ids=factor_ids,
-                    sink_factory=sink_factory,
-                )
-                if rendered is None:
+                ):
                     continue
-                yield _DirectionalSolution(
-                    rendered=rendered,
+                if not all(store.close_factor(factor_id) for factor_id in factor_ids):
+                    continue
+                yield _DirectionalCandidate(
+                    marks=tuple(sorted(marks.items())),
                     support=frozenset(
                         carrier_id
                         for carrier_id, mark in marks.items()
@@ -789,6 +797,9 @@ def _iter_directional_solutions(
                     annotation_count=sum(
                         1 for mark in marks.values() if mark is not DirectionMark.ABSENT
                     ),
+                    residual_snapshot=store.value_snapshot(),
+                    decision_path=state.decisions.path(),
+                    frame_stack=tuple(state.frames),
                 )
             finally:
                 state.decisions.rollback(decision_checkpoint)
@@ -797,32 +808,28 @@ def _iter_directional_solutions(
         state.residual = previous_store
 
 
-def _directional_solution_rendered(
+def _render_directional_candidate(
     *,
     state: OnlineSearchState,
     trace: _VmTraversalTrace,
     slots: _SlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
-    marks: dict[int, DirectionMark],
-    factor_ids: list[int],
+    candidate: _DirectionalCandidate,
     sink_factory: Callable[[], OnlineRenderSink],
 ) -> str | None:
-    if not _bond_decode_ok(
-        facts=state.facts,
-        semantics=state.semantics,
-        slots=slots,
-        prefix=prefix,
-        marks=marks,
-    ):
-        return None
-    if not all(state.residual.close_factor(factor_id) for factor_id in factor_ids):
-        return None
     previous_output = state.output
+    previous_store = state.residual
+    previous_decisions = state.decisions.path()
+    previous_frames = tuple(state.frames)
+    state.residual = ResidualStore.from_value_snapshot(candidate.residual_snapshot)
+    state.decisions.restore_path(candidate.decision_path)
+    state.frames[:] = list(candidate.frame_stack)
     state.output = sink_factory()
     checkpoint = state.output.checkpoint()
     state.frames.append(OnlineSearchFrame("completion", (_trace_key(trace),)))
     try:
+        marks = dict(candidate.marks)
         pieces = _render_pieces(
             state=state,
             trace=trace,
@@ -836,9 +843,7 @@ def _directional_solution_rendered(
             trace_key=_trace_key(trace),
             pieces=pieces,
             start_index=0,
-            annotation_count=sum(
-                1 for mark in marks.values() if mark is not DirectionMark.ABSENT
-            ),
+            annotation_count=candidate.annotation_count,
         ):
             state.output.rollback(checkpoint)
             return None
@@ -851,6 +856,9 @@ def _directional_solution_rendered(
     finally:
         state.frames.pop()
         state.output = previous_output
+        state.residual = previous_store
+        state.decisions.restore_path(previous_decisions)
+        state.frames[:] = list(previous_frames)
 
 
 def _render_pieces(
@@ -1551,9 +1559,11 @@ def _render_bond_slot(
     raise ValueError(f"unknown direction mark: {mark!r}")
 
 
-def _support_maximal(solutions: tuple[_DirectionalSolution, ...]) -> Iterator[_DirectionalSolution]:
-    for candidate in solutions:
-        if any(candidate.support < other.support for other in solutions):
+def _support_maximal_candidates(
+    candidates: tuple[_DirectionalCandidate, ...],
+) -> Iterator[_DirectionalCandidate]:
+    for candidate in candidates:
+        if any(candidate.support < other.support for other in candidates):
             continue
         yield candidate
 

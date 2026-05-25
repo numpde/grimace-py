@@ -25,10 +25,13 @@ from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
+from grimace._south_star1.policy import AnnotationMode
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
+from tests.south_star1.helpers import four_substituent_directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
 
@@ -94,7 +97,7 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertTrue(any(choice.is_eos for choice in continuation_state.choices()))
 
     def test_continuation_walks_known_witness(self) -> None:
-        facts = directional_facts()
+        facts = four_substituent_directional_facts()
         decoder = _continuation_determinized_decoder(facts, include_eos=True)
         witness = _witnesses(facts)[0]
 
@@ -115,7 +118,7 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         )
 
     def test_continuation_dead_prefix_matches_replay(self) -> None:
-        facts = directional_facts()
+        facts = four_substituent_directional_facts()
         replay = _replay_determinized_decoder(facts)
         continuation = _continuation_determinized_decoder(facts)
 
@@ -529,6 +532,42 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
                 if isinstance(output_snapshot, ResidualFrontierSinkCheckpoint):
                     self.assertIsNone(output_snapshot.pending_snapshot)
 
+    def test_support_maximal_residual_decoder_ignores_nonmaximal_directional_candidate(self) -> None:
+        facts = four_substituent_directional_facts()
+        nonmaximal = _hard_only_directional_witness(facts)
+        decoder = _residual_determinized_decoder(facts, include_eos=True)
+        state = _state_for_prefix(decoder, nonmaximal)
+
+        result = state.choices_with_stats()
+
+        self.assertEqual(result.choices, ())
+        self.assertEqual(result.stats.eos_completions_seen, 0)
+        self.assertEqual(result.stats.candidate_state_size.continuation_count, 0)
+        self.assertEqual(result.stats.retained_state_size.continuation_count, 0)
+
+    def test_support_maximal_modes_agree_on_nonmaximal_directional_prefix(self) -> None:
+        facts = four_substituent_directional_facts()
+        nonmaximal = _hard_only_directional_witness(facts)
+        modes = (
+            OnlineDecoderExecutionMode.PREFIX_REPLAY,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+            OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        frontiers = tuple(
+            _choice_signature(
+                _state_for_prefix(
+                    _decoder_for_mode(facts, mode, include_eos=True),
+                    nonmaximal,
+                ).choices()
+            )
+            for mode in modes
+        )
+
+        self.assertEqual(frontiers[0], ())
+        self.assertEqual(frontiers[0], frontiers[1])
+        self.assertEqual(frontiers[0], frontiers[2])
+
     def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
         text = SPEC_PATH.read_text(encoding="utf-8")
 
@@ -783,6 +822,32 @@ def _witnesses(facts) -> tuple[str, ...]:
             semantics=OrdinarySmilesSemantics(),
         )
     )
+
+
+def _hard_only_directional_witness(facts) -> str:
+    hard_policy = ordinary_policy_for_facts(
+        facts,
+        OrdinaryPolicyOptions(annotation_mode=AnnotationMode.HARD),
+    )
+    support_policy = ordinary_policy_for_facts(facts)
+    hard = set(
+        iter_online_stereo_witness_strings(
+            facts=facts,
+            policy=hard_policy,
+            semantics=OrdinarySmilesSemantics(),
+        )
+    )
+    support_maximal = set(
+        iter_online_stereo_witness_strings(
+            facts=facts,
+            policy=support_policy,
+            semantics=OrdinarySmilesSemantics(),
+        )
+    )
+    hard_only = tuple(sorted(hard - support_maximal))
+    if not hard_only:
+        raise AssertionError("directional fixture lacks a HARD-only witness")
+    return hard_only[0]
 
 
 if __name__ == "__main__":

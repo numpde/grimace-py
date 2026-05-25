@@ -331,6 +331,12 @@ trace/prefix/mark context; it is not yet a minimal general scheduler frame for
 all future DFS alternatives. The snapshot owns the residual constraint state
 needed for resumption; restoring one snapshot must not mutate or depend on a
 residual store object owned by the producer VM or by sibling snapshots.
+Directional candidate admissibility is separated from active-sink rendering.
+In support-maximal annotation mode, directional mark assignments are first
+checked for finite semantic admissibility and captured as value-owned residual
+snapshots, then support-maximal filtering runs, and only retained candidates are
+rendered into the prefix/frontier sink. Discarded nonmaximal candidates must not
+commit token or EOS frontier evidence.
 Residual continuation state-size statistics separate candidate sink evidence
 from retained decoder state. Candidate statistics count all token-boundary and
 EOS snapshots observed while proving a frontier query. Retained statistics count

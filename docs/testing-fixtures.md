@@ -16,7 +16,7 @@ python scripts/report_correctness_coverage.py
 
 | Fixture family | Cases | Claim |
 |---|---:|---|
-| `rdkit_exact_small_support` | 71 | Exact support and token-inventory equality for small saturable cases. |
+| `rdkit_exact_small_support` | 72 | Exact support and token-inventory equality for small saturable cases. |
 | `rdkit_serializer_regressions` | 130 | Exact support and inventory regressions for serializer edge cases. |
 | `rdkit_writer_membership` | 51 | Deterministic RDKit writer outputs must be in Grimace support. |
 | `rdkit_rooted_random` | 1 | Version-pinned rooted random-writer output. |
@@ -30,7 +30,7 @@ By provenance:
 | `upstream-rdkit` | 171 |
 | `random-writer-observation` | 31 |
 | `local-probe` | 28 |
-| `dataset-derived` | 23 |
+| `dataset-derived` | 24 |
 | `known-rdkit-gap` | 16 |
 | `rdkit-quirk` | 1 |
 

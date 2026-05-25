@@ -51,3 +51,21 @@ These are exact-support cases, not membership-only cases.
 No cases were promoted from the last-fragment-root explicit-bond scan. Its
 small clean candidates overlapped existing disconnected-root evidence or the
 newly promoted disconnected fragment surfaces.
+
+## Follow-Up Explicit-Bond Scan
+
+A later bounded sampled scan covered connected, all-roots, nonstereo
+`allBondsExplicit=True` output:
+
+```text
+/home/ra/tmp/grimace-rdkit-mining-2026-05-25/connected_all_bonds_nonstereo_sampled.jsonl
+```
+
+The scan checked 60 molecules. It found 38 clean cases and 22 uncertain cases;
+there were no `rdkit_only` regressions. Most clean cases duplicated existing
+aliphatic, aromatic, or simple explicit-bond surfaces.
+
+One case was promoted to `rdkit_exact_small_support`:
+
+- PubChem CID `26042`: connected all-roots titanium dioxide with explicit
+  bonds and bracketed metal/oxygen tokens.

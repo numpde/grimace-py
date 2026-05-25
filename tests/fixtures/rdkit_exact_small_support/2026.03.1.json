@@ -1231,6 +1231,25 @@
       ]
     },
     {
+      "id": "mined_connected_exact_01_titanium_dioxide_all_bonds",
+      "source": "Dataset-derived exact-support mining case from PubChem CID 26042",
+      "smiles": "O=[Ti]=O",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": [
+        "[O]=[Ti]=[O]",
+        "[Ti](=[O])=[O]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "[O]",
+        "[Ti]"
+      ]
+    },
+    {
       "id": "mined_disconnected_exact_01_fluorophosphate_all_roots",
       "source": "Dataset-derived exact-support mining case from PubChem CID 24266",
       "smiles": "[O-]P(=O)([O-])F.[Na+].[Na+]",

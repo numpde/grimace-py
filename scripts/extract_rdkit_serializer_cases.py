@@ -121,7 +121,7 @@ def _first_string_literal(source: bytes, node: Node) -> str | None:
             raw = _node_text(source, child)
             try:
                 return ast.literal_eval(raw)
-            except Exception:
+            except (SyntaxError, ValueError):
                 return raw.strip('"')
     return None
 
@@ -229,7 +229,7 @@ def _extract_cpp(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 
 def _extract_python(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
     source_path = source_root / "source" / rel_path
-    text = source_path.read_text()
+    text = source_path.read_text(encoding="utf-8")
     tree = ast.parse(text)
     blocks = []
 
@@ -319,7 +319,7 @@ def _extract_java(source_root: Path, rel_path: str) -> list[ExtractedBlock]:
 
 
 def _load_source_manifest(source_root: Path) -> dict[str, Any]:
-    return json.loads((source_root / "manifest.json").read_text())
+    return json.loads((source_root / "manifest.json").read_text(encoding="utf-8"))
 
 
 def _source_files_from_manifest(source_manifest: dict[str, Any]) -> list[str]:
@@ -356,7 +356,7 @@ def extract_blocks(
 def _load_existing_reviews(output_path: Path) -> dict[str, dict[str, Any]]:
     if not output_path.exists():
         return {}
-    payload = json.loads(output_path.read_text())
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
     reviews = {}
     for entry in payload.get("entries", []):
         reviews[entry["id"]] = {field: entry[field] for field in REVIEW_FIELDS if field in entry}
@@ -417,14 +417,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.write:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(generated)
+        output_path.write_text(generated, encoding="utf-8")
         print(f"wrote {output_path.relative_to(REPO_ROOT)} ({len(manifest['entries'])} entries)")
         return 0
 
     if not output_path.exists():
         print(f"missing {output_path.relative_to(REPO_ROOT)}; run with --write", file=sys.stderr)
         return 1
-    current = output_path.read_text()
+    current = output_path.read_text(encoding="utf-8")
     if current != generated:
         print(f"stale {output_path.relative_to(REPO_ROOT)}; rerun with --write", file=sys.stderr)
         return 1

@@ -7,8 +7,9 @@ provenance, and tests that fail for meaningful reasons.
 
 ## Baseline Snapshot
 
-Snapshot from 2026-05-25. The main pinned RDKit parity lane exercises these
-version-keyed fixture families for RDKit `2026.03.1`:
+Snapshot from the start of this 2026-05-25 slice. At that point, the main
+pinned RDKit parity lane exercised these version-keyed fixture families for
+RDKit `2026.03.1`:
 
 - `rdkit_exact_small_support`: 67 exact-support cases.
 - `rdkit_rooted_random`: 1 rooted-random upstream RDKit case.
@@ -25,10 +26,11 @@ Adjacent RDKit-grounded evidence exists:
 - `rdkit_upstream_serializer_coverage`: reviewed upstream serializer ledger,
   currently with no `unreviewed` or `needs-fixture` entries.
 
-There are 19 checked-in cases explicitly derived from dataset mining: 4 older
-regression cases, 9 deterministic writer-membership cases, and 6 exact-support
-random-slice cases. This is still a small corpus, but it is now broad enough to
-exercise multiple writer surfaces.
+There are 19 checked-in cases explicitly derived from dataset mining in this
+slice: 4 older regression cases, 9 deterministic writer-membership cases, and 6
+exact-support random-slice cases. This is still a small corpus, but it is now
+broad enough to exercise multiple writer surfaces. A later follow-up mining
+campaign is recorded separately in `notes/017_dataset_mining_2026_05_25.md`.
 
 ## Revised Principles
 
@@ -370,5 +372,5 @@ RDKit writer-parity claim no longer holds for the installed pinned RDKit.
 
 This checklist is complete for the current correctness-coverage slice. The next
 meaningful work should be a new, explicitly scoped slice: either fix a known
-stereo gap, add tested feature labels for generated reporting, or run another
-mining campaign and promote only newly classified evidence.
+stereo gap or add tested feature labels for generated reporting. A follow-up
+mining campaign was recorded in `notes/017_dataset_mining_2026_05_25.md`.

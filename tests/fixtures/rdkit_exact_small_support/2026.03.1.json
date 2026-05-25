@@ -1231,6 +1231,118 @@
       ]
     },
     {
+      "id": "mined_disconnected_exact_01_fluorophosphate_all_roots",
+      "source": "Dataset-derived exact-support mining case from PubChem CID 24266",
+      "smiles": "[O-]P(=O)([O-])F.[Na+].[Na+]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected": [
+        "FP(=O)([O-])[O-].[Na+].[Na+]",
+        "FP([O-])(=O)[O-].[Na+].[Na+]",
+        "FP([O-])([O-])=O.[Na+].[Na+]",
+        "O=P(F)([O-])[O-].[Na+].[Na+]",
+        "O=P([O-])(F)[O-].[Na+].[Na+]",
+        "O=P([O-])([O-])F.[Na+].[Na+]",
+        "P(=O)(F)([O-])[O-].[Na+].[Na+]",
+        "P(=O)([O-])(F)[O-].[Na+].[Na+]",
+        "P(=O)([O-])([O-])F.[Na+].[Na+]",
+        "P(F)(=O)([O-])[O-].[Na+].[Na+]",
+        "P(F)([O-])(=O)[O-].[Na+].[Na+]",
+        "P(F)([O-])([O-])=O.[Na+].[Na+]",
+        "P([O-])(=O)(F)[O-].[Na+].[Na+]",
+        "P([O-])(=O)([O-])F.[Na+].[Na+]",
+        "P([O-])(F)(=O)[O-].[Na+].[Na+]",
+        "P([O-])(F)([O-])=O.[Na+].[Na+]",
+        "P([O-])([O-])(=O)F.[Na+].[Na+]",
+        "P([O-])([O-])(F)=O.[Na+].[Na+]",
+        "[O-]P(=O)(F)[O-].[Na+].[Na+]",
+        "[O-]P(=O)([O-])F.[Na+].[Na+]",
+        "[O-]P(F)(=O)[O-].[Na+].[Na+]",
+        "[O-]P(F)([O-])=O.[Na+].[Na+]",
+        "[O-]P([O-])(=O)F.[Na+].[Na+]",
+        "[O-]P([O-])(F)=O.[Na+].[Na+]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "=",
+        "F",
+        "O",
+        "P",
+        "[Na+]",
+        "[O-]"
+      ]
+    },
+    {
+      "id": "mined_disconnected_exact_02_nitrogen_mustard_all_hs_root0",
+      "source": "Dataset-derived exact-support mining case from PubChem CID 5935",
+      "smiles": "CN(CCCl)CCCl.Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_hs_explicit": true,
+      "expected": [
+        "[CH3][N]([CH2][CH2][Cl])[CH2][CH2][Cl].[ClH]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "[CH2]",
+        "[CH3]",
+        "[ClH]",
+        "[Cl]",
+        "[N]"
+      ]
+    },
+    {
+      "id": "mined_disconnected_exact_03_cetylpyridinium_all_bonds_root0",
+      "source": "Dataset-derived exact-support mining case from PubChem CID 31239",
+      "smiles": "CCCCCCCCCCCCCCCC[N+]1=CC=CC=C1.[Cl-]",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": [
+        "C-C-C-C-C-C-C-C-C-C-C-C-C-C-C-C-[n+]1:c:c:c:c:c:1.[Cl-]"
+      ],
+      "expected_inventory": [
+        "-",
+        ".",
+        "1",
+        ":",
+        "C",
+        "[Cl-]",
+        "[n+]",
+        "c"
+      ]
+    },
+    {
+      "id": "mined_disconnected_exact_04_aluminosilicate_all_roots",
+      "source": "Dataset-derived exact-support mining case from PubChem CID 92024769",
+      "smiles": "O.O.[O-][Si]([O-])([O-])O[Si]([O-])([O-])[O-].[Al+3].[Al+3]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected": [
+        "O.O.O([Si]([O-])([O-])[O-])[Si]([O-])([O-])[O-].[Al+3].[Al+3]",
+        "O.O.[O-][Si](O[Si]([O-])([O-])[O-])([O-])[O-].[Al+3].[Al+3]",
+        "O.O.[O-][Si]([O-])(O[Si]([O-])([O-])[O-])[O-].[Al+3].[Al+3]",
+        "O.O.[O-][Si]([O-])([O-])O[Si]([O-])([O-])[O-].[Al+3].[Al+3]",
+        "O.O.[Si](O[Si]([O-])([O-])[O-])([O-])([O-])[O-].[Al+3].[Al+3]",
+        "O.O.[Si]([O-])(O[Si]([O-])([O-])[O-])([O-])[O-].[Al+3].[Al+3]",
+        "O.O.[Si]([O-])([O-])(O[Si]([O-])([O-])[O-])[O-].[Al+3].[Al+3]",
+        "O.O.[Si]([O-])([O-])([O-])O[Si]([O-])([O-])[O-].[Al+3].[Al+3]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "O",
+        "[Al+3]",
+        "[O-]",
+        "[Si]"
+      ]
+    },
+    {
       "id": "feature_matrix_01_cco_all_roots_nonstereo",
       "source": "Local feature-matrix exact-support probe for connected all-roots nonstereo output",
       "smiles": "CCO",

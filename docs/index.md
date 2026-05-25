@@ -48,8 +48,8 @@ inventories.
 ## Correctness and evidence
 
 - [Correctness contracts](correctness-contracts.md)
-- [Testing fixtures](testing-fixtures.md)
-- [RDKit serializer coverage](rdkit-serializer-coverage.md)
+- [Testing fixture guide](testing-fixtures.md)
+- [RDKit serializer coverage guide](rdkit-serializer-coverage.md)
 
 ## Development
 

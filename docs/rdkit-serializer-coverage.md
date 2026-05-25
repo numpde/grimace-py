@@ -1,12 +1,12 @@
 ---
-title: RDKit serializer coverage
+title: RDKit serializer coverage guide
 ---
 
-This page is for contributors maintaining RDKit parity coverage. It records
-which upstream RDKit serializer tests have been reviewed for relevance to
-Grimace's current public surface.
+This guide explains the RDKit serializer audit trail: which upstream RDKit
+serializer tests were reviewed, which ones matter for Grimace's public surface,
+and where the corresponding Grimace evidence lives.
 
-The ledger lives at:
+The coverage ledger lives at:
 
 - `tests/fixtures/rdkit_upstream_serializer_coverage/2026.03.1.json`
 
@@ -17,6 +17,51 @@ The local RDKit source files audited by that ledger live at:
 The ledger is keyed to RDKit `2026.03.1`.  Its claims should not be read as
 evidence for a different RDKit serializer version unless a new versioned ledger
 is generated and reviewed.
+
+## How to read it
+
+There are three layers:
+
+1. RDKit source snapshots: local copies of the RDKit serializer source and test
+   files, with upstream commit metadata and SHA-256 digests.
+2. Coverage ledger: parser-generated entries for serializer-related upstream
+   blocks, plus human-reviewed status and notes.
+3. Grimace fixtures: executable JSON cases linked from the ledger when an
+   upstream claim is covered or intentionally tracked as a known gap.
+
+The ledger is not itself the parity test.  It is the map from an upstream RDKit
+claim to the fixture cases that enforce the claim.
+
+Each in-scope ledger entry should answer four questions:
+
+- What exact RDKit source block is being discussed?
+- Does that source block map to Grimace's current public writer surface?
+- If yes, which fixture case IDs enforce it?
+- If no, why is it out of scope or still a known gap?
+
+Use `grimace_links` for executable evidence.  Avoid prose-only coverage claims
+when a claim can be represented by a fixture case.
+
+## Where fixture cases come from
+
+RDKit-parity cases are not all copied from one place.  The main sources are:
+
+- Upstream RDKit serializer tests: cases derived from RDKit `SmilesWrite.cpp`,
+  `catch_tests.cpp`, `rough_test.py`, Java wrapper SMILES tests, and related
+  serializer checks copied into the source snapshot.
+- Local exact-support probes: small molecules chosen so Grimace can assert
+  complete support and token-inventory equality, often guided by specific RDKit
+  writer branches.
+- Dataset-derived regressions: cases mined from the bundled molecule fixture
+  with `scripts/mine_rdkit_regressions.py`.
+- RDKit random-writer observations: version-pinned random/rooted outputs that
+  Grimace must include in support.
+- Known quirks and known gaps: version-pinned RDKit observations kept separate
+  from ordinary passing parity claims.
+
+Every pinned fixture case should carry a `source` string that states which of
+those paths produced the evidence.  The source string is review context; the
+loader and parity tests are the enforcement.
 
 ## Current status
 
@@ -78,16 +123,19 @@ state for coupled directional stereo tokens.
 
 ## Maintenance workflow
 
-When the local RDKit serializer source fixture changes, regenerate the parser
-owned fields:
+When updating RDKit serializer coverage:
+
+1. Refresh or add the local RDKit source snapshot and manifest.
+2. Regenerate parser-owned coverage fields:
 
 ```bash
 python scripts/extract_rdkit_serializer_cases.py --write
 ```
 
-Then review every new `unreviewed` entry and assign one of the stable statuses
-above.  Use fixture links rather than prose-only claims whenever the entry is
-in scope.
+3. Review every new `unreviewed` entry and assign one of the stable statuses
+   above.
+4. Add or link executable fixtures for every in-scope claim.
+5. Run the report and contract tests before treating the audit as complete.
 
 To inspect the ledger:
 

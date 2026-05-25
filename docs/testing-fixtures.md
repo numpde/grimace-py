@@ -1,9 +1,10 @@
 ---
-title: Testing fixtures
+title: Testing fixture guide
 ---
 
-This page is for contributors who need to understand the checked-in RDKit
-evidence. Most users should start with [Correctness contracts](correctness-contracts.md).
+This guide explains the checked-in test fixtures: what claim each family makes,
+where the data comes from, and which tests enforce it. Most users should start
+with [Correctness contracts](correctness-contracts.md).
 
 Grimace keeps RDKit-derived test data in JSON fixtures instead of inline Python
 constants when the data is part of the correctness evidence.
@@ -13,10 +14,27 @@ Fixture claims follow the separation in
 fixtures are string-level RDKit-version claims, while semantic equivalence and
 known RDKit quirks should be classified separately.
 
-The source of truth for fixture validity is not this page.  Fixture validity is
-enforced by typed loader helpers under `tests/helpers/` and their contract
-tests under `tests/contract/`.  This page only explains why the fixture
-families exist and what claim each family supports.
+This guide is not the machine source of truth. Fixture validity is enforced by
+typed loader helpers under `tests/helpers/`, contract tests under
+`tests/contract/`, and the relevant runtime/parity tests.
+
+## How to read a fixture
+
+Start with the fixture family, then the RDKit version, then the case `source`.
+
+- Family: tells you the kind of claim, such as exact support equality or writer
+  output membership.
+- Version: pins RDKit-derived claims to one `rdBase.rdkitVersion`.
+- Case ID: gives a stable test identifier.
+- Source: explains where the evidence came from: upstream RDKit tests, local
+  exact-support probes, dataset mining, random-writer observations, or known
+  quirks/gaps.
+- Expected fields: define the executable claim. Examples include exact support,
+  token inventory, deterministic writer output, sampled RDKit confirmation, or
+  known rejected members.
+
+If a fixture claim should be continuously enforced, it belongs in code, not
+only in documentation.
 
 ## RDKit-pinned parity fixtures
 
@@ -43,6 +61,9 @@ Large pinned corpora may use `VERSION/*.json` shards under their fixture root.
 Shard names should keep review order stable by source area or serializer
 feature.
 
+The pinned parity runner requires checked-in fixtures for the installed RDKit
+version before running those claims.
+
 ## RDKit compatibility fixtures
 
 These fixtures are not exact-version parity corpora.  They support broader
@@ -66,8 +87,9 @@ behavioral checks against the installed RDKit build.
   upstream file, line range, parser kind, matched terms, and snippet hash.
   Reviewed fields map each upstream block to a coverage status and, when
   covered, `grimace_links` pointing at concrete fixture files and case IDs.
-  See [rdkit-serializer-coverage.md](rdkit-serializer-coverage.md) for the
-  current reviewed counts and status policy.
+
+Use [RDKit serializer coverage guide](rdkit-serializer-coverage.md) when you
+need to understand how upstream RDKit source blocks map to fixture cases.
 
 ## Reference dataset fixtures
 
@@ -78,8 +100,19 @@ behavioral checks against the installed RDKit build.
 
 ## Maintenance rule
 
-Do not use a documentation index as the machine source of truth.  If a fixture
-family needs enforcement, put that enforcement in one of these places:
+When adding or changing fixtures:
+
+1. Put RDKit-derived claims under an exact RDKit version.
+2. Give every case a stable ID and a clear `source`.
+3. Keep expected string lists sorted and unique when the loader requires it.
+4. Add typed loader validation for new fields.
+5. Add contract tests for new schema rules.
+6. Add runtime/parity tests for the actual behavior claim.
+7. Link upstream serializer claims through the coverage ledger when the case
+   exists to cover an upstream RDKit source block.
+
+Do not use documentation as the machine source of truth. If a fixture family
+needs enforcement, put that enforcement in one of these places:
 
 - a typed loader in `tests/helpers/`
 - loader contract tests in `tests/contract/`

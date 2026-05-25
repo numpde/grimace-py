@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Literal
 
 from .facts import MoleculeFacts
 from .online_continuation import OnlineDecoderExecutionMode
-from .online_decoder_api import make_branch_preserving_online_decoder
 from .online_decoder_api import make_determinized_online_decoder
 from .policy import SmilesPolicy
 from .prepared_runtime import SouthStarPreparedMol
@@ -43,6 +41,13 @@ class OnlineSerializationSupportResult:
     stats: OnlineSerializationStreamStats
 
 
+@dataclass(frozen=True, slots=True)
+class OnlineSerializationCountResult:
+    support_count: int
+    witness_completion_count: int
+    stats: OnlineSerializationStreamStats
+
+
 def iter_online_serializations(
     *,
     prepared: SouthStarPreparedMol | None = None,
@@ -52,9 +57,9 @@ def iter_online_serializations(
     writer_surface: SouthStarWriterSurface = SouthStarWriterSurface(),
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
-    branch_mode: Literal["determinized", "branch_preserving"] = "determinized",
+    verify_unique: bool = False,
 ) -> Iterator[OnlineSerialization]:
-    """Yield complete online serialization strings from decoder EOS choices."""
+    """Yield complete determinized support strings from decoder EOS choices."""
 
     validate_south_star_runtime_options(runtime_options)
     prepared = _resolve_prepared(
@@ -64,26 +69,26 @@ def iter_online_serializations(
         semantics=semantics,
         writer_surface=writer_surface,
     )
-    decoder = _make_decoder(
+    decoder = make_determinized_online_decoder(
         prepared=prepared,
+        include_eos=True,
         runtime_options=runtime_options,
         execution_mode=execution_mode,
-        branch_mode=branch_mode,
     )
     stack = [decoder.initial_state()]
-    emitted: set[str] = set()
+    seen = set() if verify_unique else None
     while stack:
         state = stack.pop()
         result = state.choices_with_stats()
         for choice in reversed(result.choices):
             if choice.is_eos:
-                if branch_mode == "determinized":
-                    if state.prefix in emitted:
+                if seen is not None:
+                    if state.prefix in seen:
                         raise ValueError(
                             "online serialization stream emitted duplicate "
                             f"support string: {state.prefix!r}"
                         )
-                    emitted.add(state.prefix)
+                    seen.add(state.prefix)
                 yield OnlineSerialization(
                     text=state.prefix,
                     completion_count=choice.completion_count,
@@ -171,28 +176,72 @@ def collect_online_serializations(
     )
 
 
-def _make_decoder(
+def count_online_serializations(
     *,
-    prepared: SouthStarPreparedMol,
-    runtime_options: SouthStarRuntimeOptions,
-    execution_mode: OnlineDecoderExecutionMode,
-    branch_mode: Literal["determinized", "branch_preserving"],
-):
-    if branch_mode == "determinized":
-        return make_determinized_online_decoder(
-            prepared=prepared,
-            include_eos=True,
-            runtime_options=runtime_options,
-            execution_mode=execution_mode,
-        )
-    if branch_mode == "branch_preserving":
-        return make_branch_preserving_online_decoder(
-            prepared=prepared,
-            include_eos=True,
-            runtime_options=runtime_options,
-            execution_mode=execution_mode,
-        )
-    raise ValueError(f"unknown online serialization branch mode: {branch_mode!r}")
+    prepared: SouthStarPreparedMol | None = None,
+    facts: MoleculeFacts | None = None,
+    policy: SmilesPolicy | None = None,
+    semantics: ParserSemantics | None = None,
+    writer_surface: SouthStarWriterSurface = SouthStarWriterSurface(),
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
+    execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+) -> OnlineSerializationCountResult:
+    """Count determinized online serialization support without retaining strings."""
+
+    validate_south_star_runtime_options(runtime_options)
+    prepared = _resolve_prepared(
+        prepared=prepared,
+        facts=facts,
+        policy=policy,
+        semantics=semantics,
+        writer_surface=writer_surface,
+    )
+    decoder = make_determinized_online_decoder(
+        prepared=prepared,
+        include_eos=True,
+        runtime_options=runtime_options,
+        execution_mode=execution_mode,
+    )
+    stack = [decoder.initial_state()]
+    support_count = 0
+    witness_completion_count = 0
+    frontier_queries = 0
+    max_choice_count = 0
+    max_retained_continuation_count: int | None = None
+    while stack:
+        state = stack.pop()
+        result = state.choices_with_stats()
+        frontier_queries += 1
+        max_choice_count = max(max_choice_count, len(result.choices))
+        retained_count = _retained_continuation_count(result.stats)
+        if retained_count is not None:
+            if max_retained_continuation_count is None:
+                max_retained_continuation_count = retained_count
+            else:
+                max_retained_continuation_count = max(
+                    max_retained_continuation_count,
+                    retained_count,
+                )
+        for choice in reversed(result.choices):
+            if choice.is_eos:
+                support_count += 1
+                witness_completion_count += choice.completion_count
+                continue
+            if choice.next_state is None:
+                raise ValueError("non-EOS online serialization choice lacks next_state")
+            stack.append(choice.next_state)
+    stats = OnlineSerializationStreamStats(
+        frontier_queries=frontier_queries,
+        emitted_support_count=support_count,
+        witness_completion_count=witness_completion_count,
+        max_choice_count=max_choice_count,
+        max_retained_continuation_count=max_retained_continuation_count,
+    )
+    return OnlineSerializationCountResult(
+        support_count=support_count,
+        witness_completion_count=witness_completion_count,
+        stats=stats,
+    )
 
 
 def _resolve_prepared(
@@ -226,8 +275,10 @@ def _retained_continuation_count(stats: object) -> int | None:
 
 __all__ = (
     "OnlineSerialization",
+    "OnlineSerializationCountResult",
     "OnlineSerializationStreamStats",
     "OnlineSerializationSupportResult",
     "collect_online_serializations",
+    "count_online_serializations",
     "iter_online_serializations",
 )

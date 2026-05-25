@@ -1,10 +1,11 @@
 ---
-title: Testing fixture guide
+title: Testing fixtures
 ---
 
-This guide explains the checked-in test fixtures: what claim each family makes,
-where the data comes from, and which tests enforce it. Most users should start
-with [Correctness contracts](correctness-contracts.md).
+This guide explains how to read and maintain the checked-in test fixtures:
+what claim each family makes, where the data comes from, and which tests
+enforce it. Most users should start with
+[Correctness contracts](correctness-contracts.md).
 
 Grimace keeps RDKit-derived test data in JSON fixtures instead of inline Python
 constants when the data is part of the correctness evidence.
@@ -117,8 +118,8 @@ behavioral checks against the installed RDKit build.
   Reviewed fields map each upstream block to a coverage status and, when
   covered, `grimace_links` pointing at concrete fixture files and case IDs.
 
-Use [RDKit serializer coverage guide](rdkit-serializer-coverage.md) when you
-need to understand how upstream RDKit source blocks map to fixture cases.
+Use [RDKit serializer coverage](rdkit-serializer-coverage.md) when you need to
+trace upstream RDKit source blocks to executable fixture cases.
 
 To generate a current pinned RDKit evidence summary from checked-in fixtures
 and the serializer ledger:

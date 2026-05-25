@@ -69,3 +69,50 @@ One case was promoted to `rdkit_exact_small_support`:
 
 - PubChem CID `26042`: connected all-roots titanium dioxide with explicit
   bonds and bracketed metal/oxygen tokens.
+
+## Follow-Up Dataset-Backed Writer-Surface Scans
+
+A later promotion pass used three bounded scans:
+
+```text
+/home/ra/tmp/grimace-dataset-backed-expansion-2026-05-25/connected_isomeric_all_roots_deterministic.jsonl
+/home/ra/tmp/grimace-dataset-backed-expansion-2026-05-25/connected_root0_all_hs_nonstereo_deterministic.jsonl
+/home/ra/tmp/grimace-dataset-backed-expansion-2026-05-25/connected_root0_kekule_nonstereo_deterministic.jsonl
+```
+
+The scans checked 160, 120, and 120 molecules respectively. All checked cases
+were `clean`.
+
+Four bounded cases were promoted to `rdkit_exact_small_support`:
+
+- PubChem CID `4173`: rooted explicit-H nitroimidazole with nitro charge
+  tokens.
+- PubChem CID `204`: rooted explicit-H urazole/urea carbonyl surface.
+- PubChem CID `3385`: rooted kekule fluorouracil heterocycle.
+- PubChem CID `5430`: rooted kekule fused benzimidazole/thiazole surface.
+
+Five larger cases were promoted to `rdkit_writer_membership`:
+
+- PubChem CID `5355130`: all-roots cinnamate ester with directional alkene.
+- PubChem CID `5959`: stereo-rich chloramphenicol writer output.
+- PubChem CID `4510`: all-roots trinitroglycerin nitrate surface.
+- PubChem CID `54670067`: all-roots ascorbic-acid lactone/enediol surface.
+- PubChem CID `6049`: all-roots EDTA polyacid/amine surface.
+
+These promotions are deliberately feature-stratified. Clean candidates that
+only repeated already-covered simple aromatic, aliphatic, or single-flag
+surfaces were left in the raw logs.
+
+An additional longer RDKit random-sampling check was run for these larger
+candidate cases:
+
+```text
+/home/ra/tmp/grimace-long-rdkit-sampling-2026-05-25/long_sampling.jsonl
+```
+
+The five promoted cases saturated exactly against Grimace support under the
+longer sampling budget. PubChem CID `444795` retinoic acid did not: the sampled
+RDKit support and Grimace support both had 2000 strings, but differed by 220
+strings in each direction. It was therefore left out of passing promoted
+writer-membership evidence; it is a candidate for a separate minimized known
+stereo/polyene gap.

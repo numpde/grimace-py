@@ -294,10 +294,10 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                PINNED_RDKIT_EXACT_SMALL_SUPPORT: {RDKIT_VERSION: 72},
+                PINNED_RDKIT_EXACT_SMALL_SUPPORT: {RDKIT_VERSION: 76},
                 PINNED_RDKIT_ROOTED_RANDOM: {RDKIT_VERSION: 1},
                 PINNED_RDKIT_SERIALIZER_REGRESSIONS: {RDKIT_VERSION: 130},
-                PINNED_RDKIT_WRITER_MEMBERSHIP: {RDKIT_VERSION: 51},
+                PINNED_RDKIT_WRITER_MEMBERSHIP: {RDKIT_VERSION: 56},
                 PINNED_RDKIT_KNOWN_QUIRKS: {RDKIT_VERSION: 1},
                 PINNED_RDKIT_KNOWN_STEREO_GAPS: {RDKIT_VERSION: 16},
             },
@@ -307,7 +307,7 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
             {
                 "upstream-rdkit": 171,
                 "local-probe": 28,
-                "dataset-derived": 24,
+                "dataset-derived": 33,
                 "random-writer-observation": 31,
                 "known-rdkit-gap": 16,
                 "rdkit-quirk": 1,

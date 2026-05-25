@@ -84,6 +84,51 @@
       "rooted_at_atom": 0,
       "isomeric_smiles": true,
       "rdkit_canonical": false
+    },
+    {
+      "id": "dataset_membership_10_octyl_cinnamate_all_roots",
+      "source": "Dataset-derived RDKit writer-membership case from PubChem CID 5355130",
+      "smiles": "CCCCC(CC)COC(=O)/C=C/C1=CC=C(C=C1)OC",
+      "expected": "CCCCC(CC)COC(=O)/C=C/c1ccc(OC)cc1",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false
+    },
+    {
+      "id": "dataset_membership_11_chloramphenicol_all_roots",
+      "source": "Dataset-derived RDKit writer-membership case from PubChem CID 5959",
+      "smiles": "C1=CC(=CC=C1[C@H]([C@@H](CO)NC(=O)C(Cl)Cl)O)[N+](=O)[O-]",
+      "expected": "c1cc([N+](=O)[O-])ccc1[C@H]([C@@H](CO)NC(=O)C(Cl)Cl)O",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false
+    },
+    {
+      "id": "dataset_membership_12_trinitroglycerin_all_roots",
+      "source": "Dataset-derived RDKit writer-membership case from PubChem CID 4510",
+      "smiles": "C(C(CO[N+](=O)[O-])O[N+](=O)[O-])O[N+](=O)[O-]",
+      "expected": "C(C(CO[N+](=O)[O-])O[N+](=O)[O-])O[N+](=O)[O-]",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false
+    },
+    {
+      "id": "dataset_membership_13_ascorbic_acid_all_roots",
+      "source": "Dataset-derived RDKit writer-membership case from PubChem CID 54670067",
+      "smiles": "C([C@@H]([C@@H]1C(=C(C(=O)O1)O)O)O)O",
+      "expected": "C([C@@H]([C@@H]1C(O)=C(O)C(=O)O1)O)O",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false
+    },
+    {
+      "id": "dataset_membership_15_edta_all_roots",
+      "source": "Dataset-derived RDKit writer-membership case from PubChem CID 6049",
+      "smiles": "C(CN(CC(=O)O)CC(=O)O)N(CC(=O)O)CC(=O)O",
+      "expected": "C(CN(CC(=O)O)CC(=O)O)N(CC(=O)O)CC(=O)O",
+      "rooted_at_atom": null,
+      "isomeric_smiles": true,
+      "rdkit_canonical": false
     }
   ]
 }

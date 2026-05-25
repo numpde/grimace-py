@@ -453,6 +453,7 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
 class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
     def test_disconnected_root_zero_fixture_rejects_bad_case_list(self) -> None:
         invalid_payloads = (
+            [],
             {"cases": "CC.O"},
             {"cases": []},
             {"cases": ["CC.O", "CC.O"]},
@@ -481,6 +482,13 @@ class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
             {"expected_member": ""},
             {"rejected_member": ""},
         )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture_path = Path(tmpdir) / "steroid.json"
+            _write_json(fixture_path, [])
+
+            with self.assertRaises(ValueError):
+                load_steroid_ring_coupled_component_regression(fixture_path)
+
         for override in invalid_overrides:
             with self.subTest(override=override):
                 with tempfile.TemporaryDirectory() as tmpdir:
@@ -500,9 +508,12 @@ class RdkitCompatibilityFixtureLoaderTest(unittest.TestCase):
             "validate_support": True,
         }
         invalid_payloads = (
+            [],
             {"cases": []},
             {"cases": "case_a"},
+            {"cases": ["case_a"]},
             {"cases": [{**valid_case, "id": ""}]},
+            {"cases": [valid_case, valid_case]},
             {"cases": [{**valid_case, "rooted_at_atom": "0"}]},
             {"cases": [{**valid_case, "validate_support": "true"}]},
         )

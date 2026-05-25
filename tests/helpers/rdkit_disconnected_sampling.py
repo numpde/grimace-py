@@ -15,8 +15,10 @@ _FIXTURE_PATH = checked_in_fixture_path(
 def load_disconnected_root_zero_smiles(
     fixture_path: Path = _FIXTURE_PATH,
 ) -> tuple[str, ...]:
-    data = json.loads(fixture_path.read_text())
-    raw_cases = data["cases"]
+    data = json.loads(fixture_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"fixture {fixture_path} must contain a JSON object")
+    raw_cases = data.get("cases")
     if not isinstance(raw_cases, list):
         raise ValueError(f"fixture {fixture_path} must define a cases list")
     if not raw_cases or not all(type(case) is str and case for case in raw_cases):

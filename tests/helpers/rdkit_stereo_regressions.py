@@ -37,7 +37,9 @@ class StereoExpectedMemberRegression:
 def load_steroid_ring_coupled_component_regression(
     fixture_path: Path = _STEROID_RING_COUPLED_COMPONENT_PATH,
 ) -> StereoMembershipRegression:
-    data = json.loads(fixture_path.read_text())
+    data = json.loads(fixture_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"fixture {fixture_path} must contain a JSON object")
     return StereoMembershipRegression(
         input_smiles=_required_string(data, "input_smiles", fixture_path),
         rooted_at_atom=_required_int(data, "rooted_at_atom", fixture_path),
@@ -49,20 +51,41 @@ def load_steroid_ring_coupled_component_regression(
 def load_stereo_expected_member_regressions(
     fixture_path: Path = _ROOTED_MEMBERSHIP_PATH,
 ) -> tuple[StereoExpectedMemberRegression, ...]:
-    data = json.loads(fixture_path.read_text())
-    raw_cases = data["cases"]
+    data = json.loads(fixture_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"fixture {fixture_path} must contain a JSON object")
+    raw_cases = data.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
         raise ValueError(f"fixture {fixture_path} must define nonempty cases")
-    return tuple(
-        StereoExpectedMemberRegression(
-            case_id=_required_string(raw_case, "id", fixture_path),
-            input_smiles=_required_string(raw_case, "input_smiles", fixture_path),
-            rooted_at_atom=_required_int(raw_case, "rooted_at_atom", fixture_path),
-            expected_member=_required_string(raw_case, "expected_member", fixture_path),
-            validate_support=_required_bool(raw_case, "validate_support", fixture_path),
+    cases = []
+    seen_ids: set[str] = set()
+    for raw_case in raw_cases:
+        if not isinstance(raw_case, dict):
+            raise ValueError(f"fixture {fixture_path} contains a non-object case")
+        case_id = _required_string(raw_case, "id", fixture_path)
+        if case_id in seen_ids:
+            raise ValueError(
+                f"fixture {fixture_path} duplicates case id {case_id!r}"
+            )
+        seen_ids.add(case_id)
+        cases.append(
+            StereoExpectedMemberRegression(
+                case_id=case_id,
+                input_smiles=_required_string(raw_case, "input_smiles", fixture_path),
+                rooted_at_atom=_required_int(raw_case, "rooted_at_atom", fixture_path),
+                expected_member=_required_string(
+                    raw_case,
+                    "expected_member",
+                    fixture_path,
+                ),
+                validate_support=_required_bool(
+                    raw_case,
+                    "validate_support",
+                    fixture_path,
+                ),
+            )
         )
-        for raw_case in raw_cases
-    )
+    return tuple(cases)
 
 
 def _required_string(data: dict[str, object], field_name: str, fixture_path: Path) -> str:

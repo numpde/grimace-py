@@ -67,8 +67,13 @@ class SouthStarOnlineDecoder:
     def initial_state(self) -> SouthStarOnlineDecoderState:
         if self.execution_mode is OnlineDecoderExecutionMode.PREFIX_REPLAY:
             raw: OnlineDecoderState | OnlineContinuationDecoderState = OnlineDecoderState(prefix="")
-        elif self.execution_mode is OnlineDecoderExecutionMode.RESUMABLE_CONTINUATIONS:
+        elif self.execution_mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
             raw = OnlineContinuationDecoderState(prefix="")
+        elif self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
+            raise NotImplementedError(
+                "residual online continuations are not implemented; "
+                "use PREFIX_REPLAY or CACHED_COMPLETIONS"
+            )
         else:
             raise ValueError(f"unknown online decoder execution mode: {self.execution_mode!r}")
         return SouthStarOnlineDecoderState(prefix="", raw_state=raw, decoder=self)
@@ -114,9 +119,9 @@ class SouthStarOnlineDecoder:
         self,
         state: OnlineDecoderState | OnlineContinuationDecoderState,
     ) -> OnlineRawChoiceResult | OnlineContinuationRawChoiceResult:
-        if self.execution_mode is OnlineDecoderExecutionMode.RESUMABLE_CONTINUATIONS:
+        if self.execution_mode is OnlineDecoderExecutionMode.CACHED_COMPLETIONS:
             if not isinstance(state, OnlineContinuationDecoderState):
-                raise ValueError("resumable continuation decoder received prefix-replay state")
+                raise ValueError("cached-completion decoder received prefix-replay state")
             if self.branch_mode == "branch_preserving":
                 return online_branch_preserving_continuation_choice_result(
                     facts=self.facts,
@@ -134,6 +139,11 @@ class SouthStarOnlineDecoder:
                     compaction_mode=self.compaction_mode,
                 )
             raise ValueError(f"unknown online decoder branch mode: {self.branch_mode!r}")
+        if self.execution_mode is OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS:
+            raise NotImplementedError(
+                "residual online continuations are not implemented; "
+                "use PREFIX_REPLAY or CACHED_COMPLETIONS"
+            )
 
         if not isinstance(state, OnlineDecoderState):
             raise ValueError("prefix-replay decoder received continuation state")

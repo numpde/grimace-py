@@ -1,4 +1,4 @@
-"""Tests for resumable South Star online decoder continuations."""
+"""Tests for cached-completion South Star online decoder continuations."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ONLINE_CONTINUATION_PATH = (
     REPO_ROOT / "python" / "grimace" / "_south_star1" / "online_continuation.py"
 )
+SPEC_PATH = REPO_ROOT / "python" / "grimace" / "_south_star1" / "SPEC.md"
 
 
 class OnlineContinuationDecoderTest(unittest.TestCase):
@@ -110,6 +111,62 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             _choice_texts(_state_for_prefix(continuation, "not-smiles").choices()),
         )
 
+    def test_cached_completion_mode_stores_completed_tokens(self) -> None:
+        decoder = _continuation_determinized_decoder(tetrahedral_facts())
+        choice = decoder.initial_state().choices()[0]
+        self.assertIsNotNone(choice.next_state)
+        frontier = choice.next_state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+
+        continuation = frontier.continuations[0]
+
+        self.assertTrue(continuation.rendered)
+        self.assertTrue(continuation.tokens)
+        self.assertGreater(continuation.token_index, 0)
+        self.assertTrue(continuation.rendered.startswith(continuation.prefix))
+
+    def test_cached_completion_mode_does_not_claim_residual_snapshot(self) -> None:
+        decoder = _continuation_determinized_decoder(tetrahedral_facts())
+        choice = decoder.initial_state().choices()[0]
+        self.assertIsNotNone(choice.next_state)
+        frontier = choice.next_state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+
+        continuation = frontier.continuations[0]
+
+        self.assertEqual(continuation.traversal_cursor, ())
+        self.assertEqual(continuation.residual_snapshot, ())
+        self.assertEqual(continuation.ring_state, ())
+
+    def test_execution_mode_alias_resumable_continuations_is_deprecated_if_kept(self) -> None:
+        self.assertIs(
+            OnlineDecoderExecutionMode.RESUMABLE_CONTINUATIONS,
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+        )
+        self.assertEqual(
+            OnlineDecoderExecutionMode("resumable_continuations"),
+            OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
+        )
+
+    def test_residual_continuation_mode_is_reserved(self) -> None:
+        decoder = make_determinized_online_decoder(
+            facts=tetrahedral_facts(),
+            policy=ordinary_policy_for_facts(tetrahedral_facts()),
+            semantics=OrdinarySmilesSemantics(),
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        with self.assertRaises(NotImplementedError):
+            decoder.initial_state()
+
+    def test_spec_mentions_cached_completion_not_true_residual_continuation(self) -> None:
+        text = SPEC_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("CACHED_COMPLETIONS", text)
+        self.assertIn("not yet a true residual DFS continuation", text)
+        self.assertIn("RESIDUAL_CONTINUATIONS", text)
+        self.assertNotIn("RESUMABLE_CONTINUATIONS` execution mode stores suspended", text)
+
     def test_online_continuation_boundary_no_artifact_or_rdkit_imports(self) -> None:
         tree = ast.parse(ONLINE_CONTINUATION_PATH.read_text(encoding="utf-8"))
         banned_modules = {
@@ -174,7 +231,7 @@ def _continuation_determinized_decoder(facts, *, include_eos: bool = False):
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),
         include_eos=include_eos,
-        execution_mode=OnlineDecoderExecutionMode.RESUMABLE_CONTINUATIONS,
+        execution_mode=OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
     )
 
 
@@ -183,7 +240,7 @@ def _continuation_branch_decoder(facts):
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),
-        execution_mode=OnlineDecoderExecutionMode.RESUMABLE_CONTINUATIONS,
+        execution_mode=OnlineDecoderExecutionMode.CACHED_COMPLETIONS,
     )
 
 

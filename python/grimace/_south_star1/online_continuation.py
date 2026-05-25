@@ -1,4 +1,9 @@
-"""Resumable continuation states for South Star online decoding."""
+"""Completion-backed continuation states for South Star online decoding.
+
+The current continuation mode stores proven rendered completions and advances
+through their token sequences. It avoids root replay after the first frontier
+collection, but it is not a suspended traversal/residual DFS frame.
+"""
 
 from __future__ import annotations
 
@@ -22,11 +27,22 @@ from .semantics import ParserSemantics
 
 class OnlineDecoderExecutionMode(Enum):
     PREFIX_REPLAY = "prefix_replay"
-    RESUMABLE_CONTINUATIONS = "resumable_continuations"
+    CACHED_COMPLETIONS = "cached_completions"
+    RESIDUAL_CONTINUATIONS = "residual_continuations"
+    # Deprecated compatibility alias for the first completion-backed mode.
+    RESUMABLE_CONTINUATIONS = "cached_completions"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "OnlineDecoderExecutionMode | None":
+        if value == "resumable_continuations":
+            return cls.CACHED_COMPLETIONS
+        return None
 
 
 @dataclass(frozen=True, slots=True)
 class OnlineContinuation:
+    """A cached-completion continuation, not a suspended residual DFS frame."""
+
     prefix: str
     traversal_cursor: object
     traversal_state: object
@@ -42,6 +58,8 @@ class OnlineContinuation:
 
 @dataclass(frozen=True, slots=True)
 class OnlineContinuationFrontier:
+    """Viable cached completions sharing the same rendered prefix."""
+
     prefix: str
     continuations: tuple[OnlineContinuation, ...]
 

@@ -302,12 +302,14 @@ exactly the current prefix.
 
 The first stateful decoder execution mode is prefix-replay based: a next state
 stores a rendered prefix and a compact decision frontier, and later choices are
-recomputed by running the online DFS under that filter. The
-`RESUMABLE_CONTINUATIONS` execution mode stores suspended residual online states
-at token boundaries. It remains table-free and does not precompute support, but
-it can continue decoding from the stored frontier continuations without
-restarting from the molecule root at every step. Prefix replay remains the
-default reference implementation while continuation mode matures.
+recomputed by running the online DFS under that filter. The `CACHED_COMPLETIONS`
+execution mode stores compact completion-backed token continuations. It avoids
+restarting from the molecule root after a choice, but it does so by replaying
+previously discovered valid token completions. It is table-free with respect to
+global support enumeration, but it is not yet a true residual DFS continuation.
+
+A future `RESIDUAL_CONTINUATIONS` execution mode will store suspended traversal
+and residual-constraint frames rather than completed token streams.
 
 ## Experimental Options
 

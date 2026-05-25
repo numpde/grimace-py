@@ -1066,7 +1066,7 @@ def _restore_resume_snapshot(
 
 
 def _resume_render_cursor_from_state(state: OnlineSearchState) -> Iterator[OnlineWitness]:
-    cursor = _resume_cursor_from_frames(state.frames)
+    cursor = _pop_active_render_cursor(state.frames)
     if cursor is None:
         return
     checkpoint = state.output.checkpoint()
@@ -1089,16 +1089,20 @@ def _resume_render_cursor_from_state(state: OnlineSearchState) -> Iterator[Onlin
     )
 
 
-def _resume_cursor_from_frames(
+def _pop_active_render_cursor(
     frames: list[OnlineSearchFrame],
 ) -> _RenderCursor | None:
-    for frame in reversed(frames):
+    active_cursor: _RenderCursor | None = None
+    for frame in frames:
         if frame.kind != "render-cursor":
             continue
         if len(frame.data) != 1 or not isinstance(frame.data[0], _RenderCursor):
             raise ValueError("render-cursor frame lacks cursor data")
-        return frame.data[0]
-    return None
+        active_cursor = frame.data[0]
+    if active_cursor is None:
+        return None
+    frames[:] = [frame for frame in frames if frame.kind != "render-cursor"]
+    return active_cursor
 
 
 def _graph_from_facts(facts: MoleculeFacts) -> _Graph:

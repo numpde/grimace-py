@@ -422,6 +422,24 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertEqual(result.stats.retained_state_size.total_render_payload_chars, 0)
         self.assertGreater(result.stats.retained_state_size.render_cursor_count, 0)
 
+    def test_retained_continuations_have_exactly_one_render_cursor_frame(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+
+        continuations = _retained_continuations(result)
+
+        self.assertTrue(continuations)
+        for continuation in continuations:
+            self.assertEqual(_render_cursor_frame_count(continuation.snapshot), 1)
+
+    def test_render_cursor_count_equals_retained_continuation_count(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+
+        self.assertGreater(result.stats.retained_state_size.continuation_count, 0)
+        self.assertEqual(
+            result.stats.retained_state_size.render_cursor_count,
+            result.stats.retained_state_size.continuation_count,
+        )
+
     def test_render_cursor_resume_after_atom_piece(self) -> None:
         decoder = _residual_determinized_decoder(tetrahedral_facts())
         initial = decoder.initial_state().choices_with_stats()
@@ -436,6 +454,32 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         resumed = choice.next_state.choices_with_stats()
         self.assertGreater(resumed.stats.resumed_snapshots, 0)
         self.assertTrue(resumed.choices)
+
+    def test_resumed_render_cursor_removes_prior_cursor_frame(self) -> None:
+        decoder = _residual_determinized_decoder(tetrahedral_facts())
+        first = decoder.initial_state().choices_with_stats()
+        first_choice = next(choice for choice in first.choices if choice.next_state is not None)
+        self.assertIsNotNone(first_choice.next_state)
+        first_frontier = first_choice.next_state.raw_state.frontier
+        self.assertIsNotNone(first_frontier)
+        self.assertTrue(first_frontier.continuations)
+        self.assertTrue(
+            all(
+                _render_cursor_frame_count(continuation.snapshot) == 1
+                for continuation in first_frontier.continuations
+            )
+        )
+
+        second = first_choice.next_state.choices_with_stats()
+
+        self.assertGreater(second.stats.resumed_snapshots, 0)
+        self.assertTrue(_retained_continuations(second))
+        for continuation in _retained_continuations(second):
+            self.assertEqual(_render_cursor_frame_count(continuation.snapshot), 1)
+        self.assertEqual(
+            second.stats.retained_state_size.render_cursor_count,
+            second.stats.retained_state_size.continuation_count,
+        )
 
     def test_render_cursor_resume_after_ring_label_preserves_registered_endpoint(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("C/C=C/1CC1")
@@ -453,6 +497,39 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
 
         self.assertTrue(any(snapshot != ((), (), (), 0) for snapshot in ring_snapshots))
         self.assertTrue(state.choices())
+
+    def test_mid_ring_label_resume_has_one_cursor_frame(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("C/C=C/1CC1")
+        decoder = _residual_determinized_decoder(facts)
+        state = decoder.initial_state()
+        state = _choose_state(state, "C")
+        state = _choose_state(state, "1")
+        frontier = state.raw_state.frontier
+        self.assertIsNotNone(frontier)
+
+        self.assertTrue(
+            any(
+                continuation.snapshot.ring_state != ((), (), (), 0)
+                for continuation in frontier.continuations
+            )
+        )
+        for continuation in frontier.continuations:
+            self.assertEqual(_render_cursor_frame_count(continuation.snapshot), 1)
+
+    def test_no_nested_render_cursor_frames_after_three_token_walk(self) -> None:
+        decoder = _residual_determinized_decoder(directional_facts())
+        witness = _witnesses(directional_facts())[0]
+        tokens = _tokens_for_witness(decoder, witness)
+        state = _walk_decoder(decoder, tokens[:3])
+
+        result = state.choices_with_stats()
+
+        self.assertEqual(
+            result.stats.retained_state_size.render_cursor_count,
+            result.stats.retained_state_size.continuation_count,
+        )
+        for continuation in _retained_continuations(result):
+            self.assertEqual(_render_cursor_frame_count(continuation.snapshot), 1)
 
     def test_render_cursor_resume_after_final_piece_completes(self) -> None:
         facts = tetrahedral_facts()
@@ -801,6 +878,24 @@ def _first_residual_continuation(facts):
     if choice.next_state is None or choice.next_state.raw_state.frontier is None:
         raise AssertionError("residual choice lacks continuation frontier")
     return choice.next_state.raw_state.frontier.continuations[0]
+
+
+def _retained_continuations(result):
+    return tuple(
+        continuation
+        for choice in result.choices
+        if choice.next_state is not None
+        and choice.next_state.raw_state.frontier is not None
+        for continuation in choice.next_state.raw_state.frontier.continuations
+    )
+
+
+def _render_cursor_frame_count(snapshot: OnlineSearchSnapshot) -> int:
+    return sum(
+        1
+        for frame in snapshot.frame_stack
+        if frame.kind == "render-cursor"
+    )
 
 
 def _residual_state_for_continuations(decoder, prefix: str, continuations):

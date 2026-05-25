@@ -329,7 +329,9 @@ The current residual snapshot resumes an event-level render cursor. The snapshot
 contains a frozen render program and event/piece cursor for the already selected
 trace/prefix/mark context; it no longer stores a precomputed rendered-piece
 suffix, but it is not yet a minimal general scheduler frame for all future DFS
-alternatives. The snapshot owns the residual constraint state needed for
+alternatives. Resuming consumes the active render cursor before rendering the
+next piece, so retained successor snapshots have at most one active render
+cursor frame. The snapshot owns the residual constraint state needed for
 resumption; restoring one snapshot must not mutate or depend on a residual store
 object owned by the producer VM or by sibling snapshots.
 Directional candidate admissibility is separated from active-sink rendering.

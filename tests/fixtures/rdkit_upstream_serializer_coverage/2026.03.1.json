@@ -1163,7 +1163,7 @@
         "MolToSmiles"
       ],
       "name": "smilesBondOutputOrder",
-      "notes": "Aggregate test validates RDKit private _smilesAtomOutputOrder/_smilesBondOutputOrder properties after MolToSmiles.",
+      "notes": "Aggregate test validates RDKit private _smilesAtomOutputOrder/_smilesBondOutputOrder properties after MolToSmiles. Grimace does not expose RDKit private output-order properties.",
       "parent": null,
       "snippet_sha256": "83e5e8f1022ac1c39bece22100a1d400fad8936b8403041a1392e8643480e873",
       "start_line": 1323,
@@ -3832,7 +3832,7 @@
         "MolToSmiles"
       ],
       "name": "test11MolOps",
-      "notes": "MolToSmiles result is unused; the test exercises sanitization and ring-finding wrapper behavior.",
+      "notes": "MolToSmiles result is unused; the test exercises sanitization and ring-finding wrapper behavior outside Grimace's writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "85d18bf72ee27bd90f3cac6618eab6e9bf4b0ebb3daa692edce98a7f2584a484",
       "start_line": 352,
@@ -4242,7 +4242,7 @@
         "MolToSmiles"
       ],
       "name": "test59Issue3007178",
-      "notes": "Uses MolToSmiles to check atom/bond owning-molecule lifetime behavior.",
+      "notes": "Uses MolToSmiles to check atom/bond owning-molecule lifetime behavior, not a Grimace writer-output contract.",
       "parent": "TestCase",
       "snippet_sha256": "0d703d9b8bd9c7d0205d98628f6de3ed6e9d412afcc6dee9d0552398c791d256",
       "start_line": 2792,
@@ -4496,7 +4496,7 @@
         "MolToSmiles"
       ],
       "name": "testGetSDText",
-      "notes": "Uses MolToSmiles to compare SDWriter/SDMolSupplier round-trips and properties.",
+      "notes": "Uses MolToSmiles to compare SDWriter/SDMolSupplier round-trips and properties, outside Grimace's writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "f469945528d3e43f654d534d1fa90a00fa57c7f0c7341c6d4e1e074ebd9b73cb",
       "start_line": 4735,
@@ -4654,7 +4654,7 @@
         "MolToSmiles"
       ],
       "name": "testSVGParsing",
-      "notes": "Uses MolToSmiles to validate RDKit SVG metadata parsing behavior.",
+      "notes": "Uses MolToSmiles to validate RDKit SVG metadata parsing behavior, outside Grimace's writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "19cfa782312352475beac429fdef6a1f0fe998dc67b0d2e7bd31bfde40b7190a",
       "start_line": 5327,
@@ -4942,7 +4942,7 @@
         "MolToSmiles"
       ],
       "name": "testValidationMol",
-      "notes": "Checks molfile parser stereo validation and legacy stereo perception using external RDKit test data.",
+      "notes": "Checks molfile parser stereo validation and legacy stereo perception using external RDKit test data, outside Grimace's writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "cddb55cc98f407745bf0f8cde2bd31d033882dfb4c1fab2dc961614f64428b7c",
       "start_line": 7574,
@@ -4960,7 +4960,7 @@
         "MolToSmiles"
       ],
       "name": "testValidationMrv",
-      "notes": "Checks MRV parser stereo validation using external RDKit test data.",
+      "notes": "Checks MRV parser stereo validation using external RDKit test data, outside Grimace's writer surface.",
       "parent": "TestCase",
       "snippet_sha256": "eb01bdf4058b674649bc86f25676857931c1cf08a07bc2c289c14d0e0e9772ec",
       "start_line": 7639,

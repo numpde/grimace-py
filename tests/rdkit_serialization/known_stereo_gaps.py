@@ -7,6 +7,7 @@ import unittest
 from rdkit import Chem, rdBase
 
 from tests.helpers.fixture_paths import checked_in_fixture_path
+from tests.helpers.pinned_rdkit_fixtures import PINNED_RDKIT_KNOWN_STEREO_GAPS
 from tests.helpers.public_runtime import make_determinized_decoder
 from tests.helpers.rdkit_writer_membership import (
     load_pinned_writer_membership_cases,
@@ -19,7 +20,7 @@ from tests.rdkit_serialization._support import (
 )
 
 
-FIXTURE_ROOT = checked_in_fixture_path("rdkit_known_stereo_gaps")
+FIXTURE_ROOT = checked_in_fixture_path(PINNED_RDKIT_KNOWN_STEREO_GAPS)
 
 
 @dataclass(frozen=True, slots=True)

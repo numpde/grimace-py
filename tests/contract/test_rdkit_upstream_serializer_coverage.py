@@ -11,7 +11,6 @@ from tests.helpers.rdkit_serializer_coverage import (
     COVERAGE_STATUS_COVERED,
     COVERAGE_STATUS_KNOWN_GAP,
     COVERAGE_STATUS_NEEDS_FIXTURE,
-    COVERAGE_STATUSES,
     ENTRY_FIELDS,
     GRIMACE_LINK_FIELDS,
     KIND_LANGUAGES,
@@ -20,6 +19,7 @@ from tests.helpers.rdkit_serializer_coverage import (
     UNTRIAGED_COVERAGE_STATUSES,
     VALID_ENTRY_KINDS,
     VALID_ENTRY_LANGUAGES,
+    load_serializer_coverage,
 )
 
 
@@ -46,7 +46,7 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         self.assertTrue(fixture_paths)
 
         for fixture_path in fixture_paths:
-            coverage = json.loads(fixture_path.read_text())
+            coverage = load_serializer_coverage(fixture_path)
             untriaged_ids = [
                 entry["id"]
                 for entry in coverage["entries"]
@@ -56,7 +56,7 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
                 self.assertEqual([], untriaged_ids)
 
     def _assert_coverage_fixture(self, fixture_path: Path) -> None:
-        coverage = json.loads(fixture_path.read_text())
+        coverage = load_serializer_coverage(fixture_path)
         self.assertEqual(COVERAGE_FIELDS, set(coverage))
 
         rdkit_version = fixture_path.stem
@@ -76,9 +76,6 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         fixture_case_ids = self._load_fixture_case_ids()
 
         entries = coverage["entries"]
-        self.assertIs(type(entries), list)
-        self.assertTrue(entries)
-
         seen_ids: set[str] = set()
         previous_sort_key: tuple[object, ...] | None = None
         for entry in entries:
@@ -119,7 +116,6 @@ class RdkitUpstreamSerializerCoverageFixtureTest(unittest.TestCase):
         matched_terms = self.assert_required_string_list(entry, "matched_terms")
         self.assert_grimace_links(entry, fixture_case_ids)
         self.assert_required_optional_string(entry, "notes", allow_empty=True)
-        self.assertIn(entry["status"], COVERAGE_STATUSES)
         self._required_string(entry, "claim")
         self.assertRegex(self._required_string(entry, "snippet_sha256"), SHA256_RE)
 

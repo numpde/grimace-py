@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import grimace
 from rdkit import Chem, rdBase
 
 from tests.helpers.rdkit_exact_small_support import (
@@ -11,7 +12,10 @@ from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     make_decoder,
     make_determinized_decoder,
+    prepared_writer_kwargs,
+    public_enum_support,
     public_token_inventory,
+    public_token_inventory_superset,
     reachable_outputs_from_decoder,
 )
 from tests.rdkit_serialization._support import (
@@ -94,6 +98,23 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
                     ),
                 )
 
+    def test_public_token_inventory_superset_contains_pinned_inventory(self) -> None:
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            with self.subTest(
+                case_id=case.case_id,
+                source=case.source,
+            ):
+                self.assertLessEqual(
+                    set(case.expected_inventory),
+                    set(
+                        public_token_inventory_superset(
+                            mol,
+                            **supported_public_kwargs_for_case(case),
+                        )
+                    ),
+                )
+
     def test_decoder_reachable_outputs_match_pinned_fixture(self) -> None:
         for case in self.cases:
             mol = parse_smiles(case.smiles)
@@ -105,6 +126,52 @@ class RdkitExactSmallSupportTests(unittest.TestCase):
                 self.assertEqual(
                     set(case.expected),
                     reachable_outputs_from_decoder(decoder),
+                )
+
+    def test_deviation_accepts_members_and_rejects_nonmember(self) -> None:
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            kwargs = supported_public_kwargs_for_case(case)
+            with self.subTest(
+                case_id=case.case_id,
+                source=case.source,
+                candidate="Z",
+            ):
+                self.assertIsNotNone(
+                    grimace.MolToSmilesDeviation(mol, "Z", **kwargs),
+                )
+
+            for candidate in case.expected:
+                with self.subTest(
+                    case_id=case.case_id,
+                    source=case.source,
+                    candidate=candidate,
+                ):
+                    self.assertIsNone(
+                        grimace.MolToSmilesDeviation(mol, candidate, **kwargs),
+                    )
+
+    def test_prepared_mol_byte_roundtrip_matches_pinned_fixture(self) -> None:
+        for case in self.cases:
+            mol = parse_smiles(case.smiles)
+            kwargs = supported_public_kwargs_for_case(case)
+            with self.subTest(
+                case_id=case.case_id,
+                source=case.source,
+            ):
+                prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
+                restored = grimace.PreparedMol.from_bytes(prepared.to_bytes())
+                self.assertEqual(
+                    set(case.expected),
+                    public_enum_support(restored, **kwargs),
+                )
+                self.assertEqual(
+                    case.expected_inventory,
+                    public_token_inventory(restored, **kwargs),
+                )
+                self.assertLessEqual(
+                    set(case.expected_inventory),
+                    set(public_token_inventory_superset(restored, **kwargs)),
                 )
 
     def test_determinized_decoder_reachable_outputs_match_pinned_fixture(self) -> None:

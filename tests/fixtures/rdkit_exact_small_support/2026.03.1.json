@@ -1086,6 +1086,205 @@
       "expected_inventory": [
         "[CH4]"
       ]
+    },
+    {
+      "id": "random_dataset_exact_01_acetone_all_roots",
+      "source": "Dataset-derived exact-support random-slice case from PubChem CID 180",
+      "smiles": "CC(=O)C",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected": [
+        "C(=O)(C)C",
+        "C(C)(=O)C",
+        "C(C)(C)=O",
+        "CC(=O)C",
+        "CC(C)=O",
+        "O=C(C)C"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "C",
+        "O"
+      ]
+    },
+    {
+      "id": "random_dataset_exact_02_methyl_acetate_root0",
+      "source": "Dataset-derived exact-support random-slice case from PubChem CID 6584",
+      "smiles": "CC(=O)OC",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": true,
+      "expected": [
+        "CC(=O)OC",
+        "CC(OC)=O"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "=",
+        "C",
+        "O"
+      ]
+    },
+    {
+      "id": "random_dataset_exact_03_tridecanediamine_all_bonds_root0",
+      "source": "Dataset-derived exact-support random-slice case from PubChem CID 81603",
+      "smiles": "CCCCCCCCNCCCN",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_bonds_explicit": true,
+      "expected": [
+        "C-C-C-C-C-C-C-C-N-C-C-C-N"
+      ],
+      "expected_inventory": [
+        "-",
+        "C",
+        "N"
+      ]
+    },
+    {
+      "id": "random_dataset_exact_04_pyrazole_ester_all_hs_root0",
+      "source": "Dataset-derived exact-support random-slice case from PubChem CID 7147513",
+      "smiles": "COC(=O)C1=C(C=NN1)Cl",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "all_hs_explicit": true,
+      "expected": [
+        "[CH3][O][C](=[O])[c]1[c]([Cl])[cH][n][nH]1",
+        "[CH3][O][C](=[O])[c]1[c]([cH][n][nH]1)[Cl]",
+        "[CH3][O][C](=[O])[c]1[nH][n][cH][c]1[Cl]",
+        "[CH3][O][C]([c]1[c]([Cl])[cH][n][nH]1)=[O]",
+        "[CH3][O][C]([c]1[c]([cH][n][nH]1)[Cl])=[O]",
+        "[CH3][O][C]([c]1[nH][n][cH][c]1[Cl])=[O]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "=",
+        "[CH3]",
+        "[C]",
+        "[Cl]",
+        "[O]",
+        "[cH]",
+        "[c]",
+        "[nH]",
+        "[n]"
+      ]
+    },
+    {
+      "id": "random_dataset_exact_05_fluorophenyl_aminoalcohol_kekule_root0",
+      "source": "Dataset-derived exact-support random-slice case from PubChem CID 9827",
+      "smiles": "C1=CC(=CC=C1C(CN)O)F",
+      "rooted_at_atom": 0,
+      "isomeric_smiles": false,
+      "kekule_smiles": true,
+      "expected": [
+        "C1=CC(=CC=C1C(CN)O)F",
+        "C1=CC(=CC=C1C(O)CN)F",
+        "C1=CC(F)=CC=C1C(CN)O",
+        "C1=CC(F)=CC=C1C(O)CN",
+        "C1C(=CC=C(C=1)F)C(CN)O",
+        "C1C(=CC=C(C=1)F)C(O)CN",
+        "C1C(=CC=C(F)C=1)C(CN)O",
+        "C1C(=CC=C(F)C=1)C(O)CN",
+        "C1C(C(CN)O)=CC=C(C=1)F",
+        "C1C(C(CN)O)=CC=C(F)C=1",
+        "C1C(C(O)CN)=CC=C(C=1)F",
+        "C1C(C(O)CN)=CC=C(F)C=1"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "=",
+        "C",
+        "F",
+        "N",
+        "O"
+      ]
+    },
+    {
+      "id": "random_dataset_exact_06_disodium_carbonate_all_roots",
+      "source": "Dataset-derived exact-support random-slice case from PubChem CID 10340",
+      "smiles": "C(=O)([O-])[O-].[Na+].[Na+]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected": [
+        "C(=O)([O-])[O-].[Na+].[Na+]",
+        "C([O-])(=O)[O-].[Na+].[Na+]",
+        "C([O-])([O-])=O.[Na+].[Na+]",
+        "O=C([O-])[O-].[Na+].[Na+]",
+        "[O-]C(=O)[O-].[Na+].[Na+]",
+        "[O-]C([O-])=O.[Na+].[Na+]"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        ".",
+        "=",
+        "C",
+        "O",
+        "[Na+]",
+        "[O-]"
+      ]
+    },
+    {
+      "id": "feature_matrix_01_cco_all_roots_nonstereo",
+      "source": "Local feature-matrix exact-support probe for connected all-roots nonstereo output",
+      "smiles": "CCO",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected": [
+        "C(C)O",
+        "C(O)C",
+        "CCO",
+        "OCC"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "C",
+        "O"
+      ]
+    },
+    {
+      "id": "feature_matrix_02_isotopic_ammonium_all_roots",
+      "source": "Local feature-matrix exact-support probe for isotope and charge tokens",
+      "smiles": "[13CH3][NH3+]",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": true,
+      "expected": [
+        "[13CH3][NH3+]",
+        "[NH3+][13CH3]"
+      ],
+      "expected_inventory": [
+        "[13CH3]",
+        "[NH3+]"
+      ]
+    },
+    {
+      "id": "feature_matrix_03_cyclopropyl_chloride_all_roots_nonstereo",
+      "source": "Local feature-matrix exact-support probe for ring closure ordering",
+      "smiles": "C1CC1Cl",
+      "rooted_at_atom": -1,
+      "isomeric_smiles": false,
+      "expected": [
+        "C1(CC1)Cl",
+        "C1(Cl)CC1",
+        "C1C(C1)Cl",
+        "C1C(Cl)C1",
+        "C1CC1Cl",
+        "ClC1CC1"
+      ],
+      "expected_inventory": [
+        "(",
+        ")",
+        "1",
+        "C",
+        "Cl"
+      ]
     }
   ]
 }

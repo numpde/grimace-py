@@ -2,27 +2,24 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-import json
 from pathlib import Path
 import sys
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from tests.helpers.rdkit_serializer_coverage import (
+    COVERAGE_STATUSES,
     COVERAGE_STATUS_COVERED,
     DEFAULT_RDKIT_SERIALIZER_VERSION,
     UNTRIAGED_COVERAGE_STATUSES,
     default_serializer_coverage_path,
+    load_serializer_coverage,
 )
 
 DEFAULT_COVERAGE = default_serializer_coverage_path(DEFAULT_RDKIT_SERIALIZER_VERSION)
-
-
-def _load_entries(path: Path) -> list[dict[str, Any]]:
-    payload = json.loads(path.read_text())
-    return payload["entries"]
 
 
 def _counter(values) -> Counter[str]:
@@ -54,6 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--status",
         action="append",
+        choices=sorted(COVERAGE_STATUSES),
         help="print entries with this status; may be passed more than once",
     )
     parser.add_argument("--limit", type=int, default=40)
@@ -63,16 +61,21 @@ def main(argv: list[str] | None = None) -> int:
         help="exit nonzero if any entries remain unreviewed or need fixtures",
     )
     args = parser.parse_args(argv)
+    if args.limit < 0:
+        parser.error("--limit must be nonnegative")
 
     coverage_path = args.coverage.resolve()
-    entries = _load_entries(coverage_path)
+    entries = load_serializer_coverage(coverage_path)["entries"]
     print(f"{coverage_path.relative_to(REPO_ROOT)}")
     print(f"entries: {len(entries)}")
     print()
 
     _print_counter("by status", _counter(entry["status"] for entry in entries))
     _print_counter("by claim", _counter(entry["claim"] for entry in entries))
-    _print_counter("by upstream file", _counter(entry["upstream_file"] for entry in entries))
+    _print_counter(
+        "by upstream file",
+        _counter(entry["upstream_file"] for entry in entries),
+    )
     _print_counter("by kind", _counter(entry["kind"] for entry in entries))
     _print_counter(
         "by matched term",

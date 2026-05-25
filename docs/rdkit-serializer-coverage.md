@@ -143,6 +143,13 @@ To inspect the ledger:
 python scripts/report_rdkit_serializer_coverage.py
 ```
 
+To summarize pinned RDKit correctness evidence across fixture families, source
+classes, and serializer-ledger statuses:
+
+```bash
+python scripts/report_correctness_coverage.py
+```
+
 To fail explicitly on unfinished triage:
 
 ```bash

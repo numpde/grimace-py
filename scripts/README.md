@@ -148,7 +148,7 @@ The extractor uses:
 - `tree-sitter-java` for RDKit Java `test*` methods
 
 It owns generated fields such as upstream file, line range, parser kind,
-matched serializer terms, and snippet hash.  Reviewed coverage fields such as
+matched serializer terms, and snippet hash. Reviewed coverage fields such as
 `status`, `claim`, `grimace_links`, and `notes` are preserved when
 regenerating.
 
@@ -178,6 +178,8 @@ Show the first unreviewed entries:
 python scripts/report_rdkit_serializer_coverage.py --status unreviewed
 ```
 
+The `--status` value must be one of the reviewed serializer coverage statuses.
+
 Once triage is expected to be complete, make remaining `unreviewed` or
 `needs-fixture` entries fail explicitly:
 
@@ -189,3 +191,20 @@ Entries with `known-gap` status have a pinned fixture and an executable test, bu
 the current Grimace implementation intentionally fails that parity check.
 See `docs/rdkit-serializer-coverage.md` for the reviewed status policy and
 current counts.
+
+## `report_correctness_coverage.py`
+
+Summarizes pinned RDKit correctness evidence from fixture JSON and the RDKit
+serializer coverage ledger. It uses the pinned fixture constants/loaders and
+serializer coverage loader from the test helpers, and does not import RDKit or
+Grimace.
+
+```bash
+python scripts/report_correctness_coverage.py
+```
+
+For machine-readable output:
+
+```bash
+python scripts/report_correctness_coverage.py --format json
+```

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -91,3 +92,23 @@ def default_serializer_coverage_path(rdkit_version: str) -> Path:
 
 def default_serializer_source_root(rdkit_version: str) -> Path:
     return RDKIT_SERIALIZER_SOURCE_ROOT / rdkit_version
+
+
+def load_serializer_coverage(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError(f"{path} must define entries as a list")
+    if not entries:
+        raise ValueError(f"{path} must define at least one entry")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError(f"{path} contains a non-object ledger entry")
+        status = entry.get("status")
+        if not isinstance(status, str) or not status:
+            raise ValueError(f"{path} contains a ledger entry without status")
+        if status not in COVERAGE_STATUSES:
+            raise ValueError(f"{path} contains unknown ledger status: {status!r}")
+    return payload

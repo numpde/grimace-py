@@ -52,6 +52,9 @@ subset.
   fixtures under `tests/fixtures/rdkit_rooted_random/`.
 - Isolated RDKit behaviors that are unusual but still may need to be mirrored
   belong in version-keyed fixtures under `tests/fixtures/rdkit_known_quirks/`.
+- Pinned RDKit writer outputs that Grimace does not yet produce belong in
+  version-keyed diagnostic fixtures under
+  `tests/fixtures/rdkit_known_stereo_gaps/`.
 - RDKit disconnected sampling input suites belong under
   `tests/fixtures/rdkit_disconnected_sampling/`.
 - Large pinned RDKit fixture corpora may use `VERSION/*.json` shards under the

@@ -134,11 +134,20 @@ class SouthStar1BoundaryTest(unittest.TestCase):
         self.assertEqual(banned_imports, [])
 
     def test_online_traversal_boundary_is_lazy_and_producer_free(self) -> None:
-        path = SOUTH_STAR1_ROOT / "online_traversal.py"
+        for path in (
+            SOUTH_STAR1_ROOT / "online_traversal.py",
+            SOUTH_STAR1_ROOT / "online_stereo_witness.py",
+        ):
+            with self.subTest(path=path):
+                self._assert_online_runtime_boundary(path)
+
+    def _assert_online_runtime_boundary(self, path: Path) -> None:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         banned_modules = {
             "audit_rdkit",
+            "finite_space_checker",
             "rdkit_adapter",
+            "semantic_relation_checker",
             "stereo_witness",
             "support_artifact",
             "support_artifact_checker",

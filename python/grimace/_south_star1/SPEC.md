@@ -249,6 +249,13 @@ continuations, and component dots by DFS without materializing the
 traversal-skeleton space. The first online traversal tests compare yielded
 trace keys against the offline finite-space skeleton keys on small molecules.
 
+`online_stereo_witness.py` integrates the online traversal stream with the
+reversible residual constraint store. It emits witness strings with
+multiplicity and performs no global deduplication. The first online runtime
+supports the ordinary bounded tetrahedral and directional semantics, bounded
+ring labels, and support-wise maximal marker selection within the current
+traversal/prefix branch.
+
 ## Experimental Options
 
 `OrdinaryStereoSiteOptions(ligand_equivalence="exact_graph_automorphism")`

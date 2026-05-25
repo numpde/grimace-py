@@ -63,6 +63,9 @@ class PreparedDecoderWalkStep:
     prefix: str
     selected_token: str | None
     next_token_set_by_mode: tuple[tuple[str, frozenset[str]], ...]
+    next_token_completion_counts_by_mode: tuple[
+        tuple[str, tuple[tuple[str, int], ...]], ...
+    ]
     eos_count_by_mode: tuple[tuple[str, int], ...]
     root_dfs_runs_by_mode: tuple[tuple[str, int | None], ...]
     resumed_snapshots_by_mode: tuple[tuple[str, int | None], ...]
@@ -76,6 +79,18 @@ class PreparedDecoderWalkResult:
     steps: tuple[PreparedDecoderWalkStep, ...]
     total_prefix_replay_root_dfs_runs: int
     total_cached_root_dfs_runs: int
+    total_residual_root_dfs_runs: int
+    total_residual_resumed_snapshots: int
+    max_residual_retained_render_payload_chars: int
+    probe: PreparedRuntimeProbeResult
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDecoderBranchWalkResult:
+    fixture_name: str
+    rooted_at_atom: int
+    walks: tuple[PreparedDecoderWalkResult, ...]
+    total_prefix_replay_root_dfs_runs: int
     total_residual_root_dfs_runs: int
     total_residual_resumed_snapshots: int
     max_residual_retained_render_payload_chars: int
@@ -199,54 +214,170 @@ def collect_prepared_decoder_walk(
     max_steps: int = 32,
 ) -> PreparedDecoderWalkResult:
     with PreparedRuntimeProbe() as probe:
-        states = {
-            mode: make_determinized_online_decoder(
-                prepared=prepared,
-                include_eos=True,
-                runtime_options=runtime_options,
-                execution_mode=mode,
-            ).initial_state()
-            for mode in _PREFIX_WORKLOAD_MODES
-        }
-        steps: list[PreparedDecoderWalkStep] = []
-        for _ in range(max_steps):
-            queries = {
-                mode: _query_state(mode=mode, state=states[mode])
-                for mode in _PREFIX_WORKLOAD_MODES
-            }
-            observations = {
-                mode: query.observation for mode, query in queries.items()
-            }
-            _validate_observations(
-                states[OnlineDecoderExecutionMode.PREFIX_REPLAY].prefix,
-                observations,
-            )
-            selected_token = choose_walk_token(
-                observations[OnlineDecoderExecutionMode.PREFIX_REPLAY]
-            )
-            steps.append(_walk_step_from_observations(observations, selected_token))
-            if selected_token is None:
-                return _decoder_walk_result(
-                    fixture_name=fixture_name,
-                    rooted_at_atom=runtime_options.rooted_at_atom,
-                    steps=tuple(steps),
-                    probe=probe.result(),
+        steps = _collect_decoder_walk_steps(
+            prepared=prepared,
+            runtime_options=runtime_options,
+            max_steps=max_steps,
+            token_script=(),
+        )
+    return _decoder_walk_result(
+        fixture_name=fixture_name,
+        rooted_at_atom=runtime_options.rooted_at_atom,
+        steps=steps,
+        probe=probe.result(),
+    )
+
+
+def collect_prepared_branch_decoder_walks(
+    *,
+    fixture_name: str,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
+    max_walks: int = 8,
+    max_steps_per_walk: int = 32,
+) -> PreparedDecoderBranchWalkResult:
+    if max_walks <= 0:
+        raise ValueError("branch decoder workload requires max_walks > 0")
+    queue: list[tuple[str, ...]] = [()]
+    seen_scripts: set[tuple[str, ...]] = {()}
+    collected_steps: list[tuple[PreparedDecoderWalkStep, ...]] = []
+    with PreparedRuntimeProbe() as probe:
+        while queue and len(collected_steps) < max_walks:
+            script = queue.pop(0)
+            collected_steps.append(
+                _collect_decoder_walk_steps(
+                    prepared=prepared,
+                    runtime_options=runtime_options,
+                    max_steps=max_steps_per_walk,
+                    token_script=script,
+                    branch_queue=queue,
+                    seen_scripts=seen_scripts,
+                    max_scripts=max_walks,
                 )
-            states = {
-                mode: _advance_state_by_token(
-                    observation=observations[mode],
-                    choices=queries[mode].choices,
-                    token=selected_token,
-                )
-                for mode in _PREFIX_WORKLOAD_MODES
-            }
-        raise ValueError("prepared decoder walk exceeded max_steps")
+            )
+    probe_result = probe.result()
+    walks = tuple(
+        _decoder_walk_result(
+            fixture_name=fixture_name,
+            rooted_at_atom=runtime_options.rooted_at_atom,
+            steps=steps,
+            probe=probe_result,
+        )
+        for steps in collected_steps
+    )
+    return _branch_walk_result(
+        fixture_name=fixture_name,
+        rooted_at_atom=runtime_options.rooted_at_atom,
+        walks=walks,
+        probe=probe_result,
+    )
 
 
 def choose_walk_token(observation: PreparedPrefixQueryObservation) -> str | None:
     for token in observation.next_token_texts:
         return token
     return None
+
+
+def _collect_decoder_walk_steps(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    max_steps: int,
+    token_script: tuple[str, ...],
+    branch_queue: list[tuple[str, ...]] | None = None,
+    seen_scripts: set[tuple[str, ...]] | None = None,
+    max_scripts: int | None = None,
+) -> tuple[PreparedDecoderWalkStep, ...]:
+    states = {
+        mode: make_determinized_online_decoder(
+            prepared=prepared,
+            include_eos=True,
+            runtime_options=runtime_options,
+            execution_mode=mode,
+        ).initial_state()
+        for mode in _PREFIX_WORKLOAD_MODES
+    }
+    selected_path: tuple[str, ...] = ()
+    steps: list[PreparedDecoderWalkStep] = []
+    for step_index in range(max_steps):
+        queries = {
+            mode: _query_state(mode=mode, state=states[mode])
+            for mode in _PREFIX_WORKLOAD_MODES
+        }
+        observations = {mode: query.observation for mode, query in queries.items()}
+        _validate_observations(
+            states[OnlineDecoderExecutionMode.PREFIX_REPLAY].prefix,
+            observations,
+        )
+        prefix_replay = observations[OnlineDecoderExecutionMode.PREFIX_REPLAY]
+        selected_token = _scripted_walk_token(
+            prefix_replay,
+            token_script=token_script,
+            step_index=step_index,
+        )
+        if branch_queue is not None and seen_scripts is not None:
+            _enqueue_branch_scripts(
+                selected_path=selected_path,
+                selected_token=selected_token,
+                legal_tokens=prefix_replay.next_token_texts,
+                queue=branch_queue,
+                seen_scripts=seen_scripts,
+                max_scripts=max_scripts,
+            )
+        steps.append(_walk_step_from_observations(observations, selected_token))
+        if selected_token is None:
+            return tuple(steps)
+        states = {
+            mode: _advance_state_by_token(
+                observation=observations[mode],
+                choices=queries[mode].choices,
+                token=selected_token,
+            )
+            for mode in _PREFIX_WORKLOAD_MODES
+        }
+        selected_path = (*selected_path, selected_token)
+    raise ValueError("prepared decoder walk exceeded max_steps")
+
+
+def _scripted_walk_token(
+    observation: PreparedPrefixQueryObservation,
+    *,
+    token_script: tuple[str, ...],
+    step_index: int,
+) -> str | None:
+    if step_index < len(token_script):
+        token = token_script[step_index]
+        if token not in observation.next_token_text_set:
+            raise ValueError(
+                f"branch decoder walk script token {token!r} is not legal at "
+                f"{observation.prefix!r}"
+            )
+        return token
+    return choose_walk_token(observation)
+
+
+def _enqueue_branch_scripts(
+    *,
+    selected_path: tuple[str, ...],
+    selected_token: str | None,
+    legal_tokens: tuple[str, ...],
+    queue: list[tuple[str, ...]],
+    seen_scripts: set[tuple[str, ...]],
+    max_scripts: int | None,
+) -> None:
+    if not legal_tokens:
+        return
+    for token in (legal_tokens[0], legal_tokens[-1]):
+        if token == selected_token:
+            continue
+        if max_scripts is not None and len(seen_scripts) >= max_scripts:
+            return
+        script = (*selected_path, token)
+        if script in seen_scripts:
+            continue
+        seen_scripts.add(script)
+        queue.append(script)
 
 
 def advance_decoder_to_prefix(
@@ -328,6 +459,21 @@ def validate_prepared_decoder_walk_result(result: PreparedDecoderWalkResult) -> 
         raise ValueError("residual decoder walk did not resume snapshots")
     if result.max_residual_retained_render_payload_chars != 0:
         raise ValueError("residual decoder walk retained rendered-suffix payload")
+
+
+def validate_prepared_branch_decoder_walk_result(
+    result: PreparedDecoderBranchWalkResult,
+) -> None:
+    if not result.walks:
+        raise ValueError("prepared branch decoder workload produced no walks")
+    for walk in result.walks:
+        validate_prepared_decoder_walk_result(walk)
+    if result.total_residual_root_dfs_runs >= result.total_prefix_replay_root_dfs_runs:
+        raise ValueError("residual branch decoder walk did not reduce root DFS runs")
+    if result.total_residual_resumed_snapshots <= 0:
+        raise ValueError("residual branch decoder walk did not resume snapshots")
+    if result.max_residual_retained_render_payload_chars != 0:
+        raise ValueError("residual branch decoder walk retained rendered-suffix payload")
 
 
 def _collect_row(
@@ -526,6 +672,34 @@ def _decoder_walk_result(
     )
 
 
+def _branch_walk_result(
+    *,
+    fixture_name: str,
+    rooted_at_atom: int,
+    walks: tuple[PreparedDecoderWalkResult, ...],
+    probe: PreparedRuntimeProbeResult,
+) -> PreparedDecoderBranchWalkResult:
+    return PreparedDecoderBranchWalkResult(
+        fixture_name=fixture_name,
+        rooted_at_atom=rooted_at_atom,
+        walks=walks,
+        total_prefix_replay_root_dfs_runs=sum(
+            walk.total_prefix_replay_root_dfs_runs for walk in walks
+        ),
+        total_residual_root_dfs_runs=sum(
+            walk.total_residual_root_dfs_runs for walk in walks
+        ),
+        total_residual_resumed_snapshots=sum(
+            walk.total_residual_resumed_snapshots for walk in walks
+        ),
+        max_residual_retained_render_payload_chars=max(
+            (walk.max_residual_retained_render_payload_chars for walk in walks),
+            default=0,
+        ),
+        probe=probe,
+    )
+
+
 def _walk_step_from_observations(
     observations: dict[OnlineDecoderExecutionMode, PreparedPrefixQueryObservation],
     selected_token: str | None,
@@ -536,6 +710,10 @@ def _walk_step_from_observations(
         selected_token=selected_token,
         next_token_set_by_mode=tuple(
             (mode.value, observations[mode].next_token_text_set)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        next_token_completion_counts_by_mode=tuple(
+            (mode.value, observations[mode].next_token_completion_counts)
             for mode in _PREFIX_WORKLOAD_MODES
         ),
         eos_count_by_mode=tuple(
@@ -608,9 +786,23 @@ def _validate_walk_step(step: PreparedDecoderWalkStep) -> None:
     next_token_sets = {item[1] for item in step.next_token_set_by_mode}
     if len(next_token_sets) != 1:
         raise ValueError(f"decoder walk next-token disagreement at {step.prefix!r}")
+    next_completion_counts = {
+        item[1] for item in step.next_token_completion_counts_by_mode
+    }
+    if len(next_completion_counts) != 1:
+        raise ValueError(
+            f"decoder walk next-token completion count disagreement at {step.prefix!r}"
+        )
     eos_counts = {item[1] for item in step.eos_count_by_mode}
     if len(eos_counts) != 1:
         raise ValueError(f"decoder walk EOS count disagreement at {step.prefix!r}")
+    if step.selected_token is not None:
+        for _, token_set in step.next_token_set_by_mode:
+            if step.selected_token not in token_set:
+                raise ValueError(
+                    f"decoder walk selected illegal token at {step.prefix!r}: "
+                    f"{step.selected_token!r}"
+                )
 
 
 def _step_int(
@@ -648,6 +840,7 @@ def _resumed_snapshots(stats: object) -> int | None:
 
 
 __all__ = (
+    "PreparedDecoderBranchWalkResult",
     "PreparedDecoderWalkResult",
     "PreparedDecoderWalkStep",
     "PreparedPrefixQueryObservation",
@@ -655,10 +848,12 @@ __all__ = (
     "PreparedPrefixWorkloadRow",
     "advance_decoder_to_prefix",
     "choose_walk_token",
+    "collect_prepared_branch_decoder_walks",
     "collect_prepared_decoder_walk",
     "collect_mode_union_token_boundary_prefixes",
     "collect_prepared_prefix_workload",
     "collect_token_boundary_prefixes",
+    "validate_prepared_branch_decoder_walk_result",
     "validate_prepared_decoder_walk_result",
     "validate_prepared_prefix_workload_result",
 )

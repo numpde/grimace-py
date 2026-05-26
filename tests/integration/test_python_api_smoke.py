@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 
 import grimace
+import grimace._deviation as _deviation
+import grimace._runtime as _runtime
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
@@ -12,7 +14,6 @@ from tests.helpers.public_runtime import (
     assert_public_entrypoints_raise,
     supported_public_kwargs,
 )
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
 
@@ -48,20 +49,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertFalse(hasattr(decoder, "next_tokens"))
         self.assertFalse(hasattr(decoder, "advance"))
         self.assertIsInstance(determinized_decoder.next_choices[0].next_state, grimace.MolToSmilesDeterminizedDecoder)
-        if CORE_MODULE is None:
-            with self.assertRaises(ImportError):
-                tuple(
-                    grimace.MolToSmilesEnum(
-                        parse_smiles("CCO"),
-                        rootedAtAtom=0,
-                        isomericSmiles=False,
-                        canonical=False,
-                        doRandom=True,
-                    )
-                )
-            return
-
-        import grimace._runtime as _runtime
 
         self.assertEqual(
             _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
@@ -95,6 +82,27 @@ class PythonApiSmokeTests(unittest.TestCase):
                 canonical=False,
                 do_random=True,
             ),
+        )
+
+    def test_public_decoder_attributes_are_runtime_backed_at_import(self) -> None:
+        self.assertIs(grimace.MolToSmilesChoice, _runtime.MolToSmilesChoice)
+        self.assertIs(grimace.SmilesDeviation, _deviation.SmilesDeviation)
+
+        decoder = grimace.MolToSmilesDecoder(
+            parse_smiles("CCO"),
+            rootedAtAtom=0,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+        self.assertEqual("", decoder.prefix)
+        self.assertIsInstance(decoder.is_terminal, bool)
+        self.assertIsInstance(decoder.next_choices, tuple)
+        self.assertTrue(decoder.next_choices)
+        self.assertIsInstance(decoder.next_choices[0], grimace.MolToSmilesChoice)
+        self.assertIsInstance(
+            decoder.next_choices[0].next_state,
+            grimace.MolToSmilesDecoder,
         )
 
     def test_public_api_rejects_unsupported_flag_combination(self) -> None:
@@ -314,8 +322,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         import grimace._runtime_graphs as _runtime_graphs
         from grimace._runtime_inputs import MolToSmilesFlags
 
@@ -337,8 +343,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertEqual(reference_prepared.to_dict(), prepared.to_dict())
 
     def test_top_level_runtime_nonstereo_surface_smoke(self) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         import grimace._runtime as _runtime
 
         mol = parse_smiles("CCO")
@@ -368,8 +372,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertEqual(expected, support)
 
     def test_top_level_runtime_stereo_surface_smoke(self) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         import grimace._runtime as _runtime
 
         mol = parse_smiles("F/C=C\\Cl")

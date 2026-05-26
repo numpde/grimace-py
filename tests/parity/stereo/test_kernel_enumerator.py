@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import grimace._core as _core
 from grimace._reference.prepared_graph import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
 from grimace._reference.rooted.connected_stereo import (
     enumerate_rooted_connected_stereo_smiles_support,
@@ -13,7 +14,6 @@ from tests.helpers.cases import (
     load_connected_bond_stereo_cases,
     load_connected_multi_atom_stereo_cases,
 )
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 
@@ -21,8 +21,6 @@ from tests.helpers.policies import load_connected_nonstereo_policy
 class CoreRootedConnectedStereoTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         cls.policy = load_connected_nonstereo_policy()
 
     def test_kernel_matches_python_reference_on_curated_stereo_cases(self) -> None:
@@ -32,7 +30,7 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                 self.policy,
                 surface_kind=CONNECTED_STEREO_SURFACE,
             )
-            kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+            kernel_prepared = _core.PreparedSmilesGraph(prepared)
 
             for root_idx in range(prepared.atom_count):
                 with self.subTest(smiles=smiles, root_idx=root_idx):
@@ -73,7 +71,7 @@ class CoreRootedConnectedStereoTests(unittest.TestCase):
                 self.policy,
                 surface_kind=CONNECTED_STEREO_SURFACE,
             )
-            kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+            kernel_prepared = _core.PreparedSmilesGraph(prepared)
             for root_idx in range(prepared.atom_count):
                 with self.subTest(cid=cid, smiles=smiles, category=category, root_idx=root_idx):
                     python_support = enumerate_rooted_connected_stereo_smiles_support(

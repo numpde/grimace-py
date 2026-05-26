@@ -3,12 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 import unittest
 
+import grimace._core as _core
 from grimace._reference.prepared_graph import (
     CONNECTED_STEREO_SURFACE,
     PreparedSmilesGraph as PythonPreparedSmilesGraph,
     prepare_smiles_graph,
 )
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 
@@ -16,14 +16,11 @@ from tests.helpers.policies import load_connected_nonstereo_policy
 class CorePreparedSmilesGraphContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
-
         cls.policy = load_connected_nonstereo_policy()
 
     def test_kernel_prepared_graph_accepts_python_reference_object(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("Cc1ccccc1"), self.policy)
-        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+        kernel_prepared = _core.PreparedSmilesGraph(prepared)
 
         self.assertEqual(prepared.schema_version, kernel_prepared.schema_version)
         self.assertEqual(prepared.surface_kind, kernel_prepared.surface_kind)
@@ -39,7 +36,7 @@ class CorePreparedSmilesGraphContractTests(unittest.TestCase):
 
     def test_kernel_prepared_graph_dict_roundtrip_is_lossless(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("O=[Ti]=O"), self.policy)
-        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared.to_dict())
+        kernel_prepared = _core.PreparedSmilesGraph(prepared.to_dict())
         rebuilt = PythonPreparedSmilesGraph.from_dict(kernel_prepared.to_dict())
 
         self.assertEqual(prepared, rebuilt)
@@ -50,14 +47,14 @@ class CorePreparedSmilesGraphContractTests(unittest.TestCase):
             self.policy,
             surface_kind=CONNECTED_STEREO_SURFACE,
         )
-        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared.to_dict())
+        kernel_prepared = _core.PreparedSmilesGraph(prepared.to_dict())
         rebuilt = PythonPreparedSmilesGraph.from_dict(kernel_prepared.to_dict())
 
         self.assertEqual(prepared, rebuilt)
 
     def test_kernel_prepared_graph_validates_policy_provenance(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("CC#N"), self.policy)
-        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+        kernel_prepared = _core.PreparedSmilesGraph(prepared)
 
         kernel_prepared.validate_policy(prepared.policy_name, prepared.policy_digest)
         with self.assertRaisesRegex(ValueError, "does not match the provided policy"):
@@ -65,16 +62,16 @@ class CorePreparedSmilesGraphContractTests(unittest.TestCase):
 
     def test_kernel_rooted_support_rejects_out_of_range_root(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("CC"), self.policy)
-        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+        kernel_prepared = _core.PreparedSmilesGraph(prepared)
 
         with self.assertRaisesRegex(IndexError, "root_idx out of range"):
             kernel_prepared.enumerate_rooted_connected_nonstereo_support(-1)
         with self.assertRaisesRegex(IndexError, "root_idx out of range"):
             kernel_prepared.enumerate_rooted_connected_nonstereo_support(2)
         with self.assertRaisesRegex(IndexError, "root_idx out of range"):
-            CORE_MODULE.RootedConnectedNonStereoWalker(prepared, -1)
+            _core.RootedConnectedNonStereoWalker(prepared, -1)
         with self.assertRaisesRegex(IndexError, "root_idx out of range"):
-            CORE_MODULE.RootedConnectedNonStereoWalker(prepared, 2)
+            _core.RootedConnectedNonStereoWalker(prepared, 2)
 
     def test_kernel_prepared_graph_rejects_malformed_transport_dicts(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("CCO"), self.policy)
@@ -115,7 +112,7 @@ class CorePreparedSmilesGraphContractTests(unittest.TestCase):
                 broken = deepcopy(source)
                 mutate(broken)
                 with self.assertRaisesRegex(ValueError, expected):
-                    CORE_MODULE.PreparedSmilesGraph(broken)
+                    _core.PreparedSmilesGraph(broken)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tests.helpers.kernel import CORE_MODULE
+import grimace._core as _core
 from tests.helpers.mols import parse_smiles
 
 
@@ -15,11 +15,6 @@ def _runtime_modules():
 
 
 class CoreExtensionSmokeTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
-
     def test_core_objects_construct_and_advance(self) -> None:
         _runtime, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
 
@@ -33,7 +28,7 @@ class CoreExtensionSmokeTests(unittest.TestCase):
                 do_random=True,
             ),
         )
-        kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+        kernel_prepared = _core.PreparedSmilesGraph(prepared)
         walker = _runtime.make_nonstereo_walker(prepared, 0)
         state = walker.initial_state()
 
@@ -54,7 +49,7 @@ class CoreExtensionSmokeTests(unittest.TestCase):
                 do_random=True,
             ),
         )
-        decoder = CORE_MODULE.RootedConnectedNonStereoDecoder(
+        decoder = _core.RootedConnectedNonStereoDecoder(
             prepared,
             0,
         )
@@ -75,11 +70,11 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertIsInstance(
             nonstereo_walker,
-            CORE_MODULE.RootedConnectedNonStereoWalker,
+            _core.RootedConnectedNonStereoWalker,
         )
         self.assertIsInstance(
             stereo_walker,
-            CORE_MODULE.RootedConnectedStereoWalker,
+            _core.RootedConnectedStereoWalker,
         )
 
         self.assertEqual(
@@ -113,11 +108,11 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertIsInstance(
             nonstereo_decoder,
-            CORE_MODULE.RootedConnectedNonStereoDecoder,
+            _core.RootedConnectedNonStereoDecoder,
         )
         self.assertIsInstance(
             stereo_decoder,
-            CORE_MODULE.RootedConnectedStereoDecoder,
+            _core.RootedConnectedStereoDecoder,
         )
 
         self.assertEqual(["F"], nonstereo_decoder.next_token_support())
@@ -137,7 +132,7 @@ class CoreExtensionSmokeTests(unittest.TestCase):
             ),
         )
 
-        decoder = CORE_MODULE.RootedConnectedNonStereoDecoder(prepared, -1)
+        decoder = _core.RootedConnectedNonStereoDecoder(prepared, -1)
 
         self.assertEqual("", decoder.prefix())
         self.assertEqual(["C", "O"], decoder.next_token_support())
@@ -157,7 +152,7 @@ class CoreExtensionSmokeTests(unittest.TestCase):
             ),
         )
 
-        decoder = CORE_MODULE.RootedConnectedStereoDecoder(prepared, -1)
+        decoder = _core.RootedConnectedStereoDecoder(prepared, -1)
 
         self.assertEqual("", decoder.prefix())
         self.assertEqual(["F", "C", "Cl"], decoder.next_token_support())

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unittest
 
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
@@ -89,11 +88,6 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
             ignore_atom_map_numbers=True,
         ),
     )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_enum_support_matches_across_mol_and_prepared_inputs(self) -> None:
         for case in self.CASES:

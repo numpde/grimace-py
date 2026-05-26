@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import importlib
 from collections.abc import Iterator, Sequence
 from itertools import product
 from typing import cast
 
+import grimace._core as _core
 from grimace._runtime_graphs import (
     as_disconnected_prepared_mol as _as_disconnected_prepared_mol,
     atom_count as _atom_count,
@@ -31,8 +31,6 @@ from grimace._runtime_states import (
     _determinized_choice_successors,
     _state_cache_key,
 )
-
-_core = importlib.import_module("grimace._core")
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE as _CONNECTED_NONSTEREO_SURFACE,
     CONNECTED_STEREO_SURFACE as _CONNECTED_STEREO_SURFACE,

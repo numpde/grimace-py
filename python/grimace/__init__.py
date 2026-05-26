@@ -7,31 +7,15 @@ and `doRandom=True` explicitly.
 
 from __future__ import annotations
 
-import importlib
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Any
 
+import grimace._deviation as _deviation
 import grimace._mol_to_smiles_options as _options
+import grimace._runtime as _runtime
 from grimace._prepared_mol import PreparedMol, PrepareMol
 
-try:
-    _RUNTIME = importlib.import_module("grimace._runtime")
-except ImportError as exc:  # pragma: no cover - exercised only in broken installs
-    _RUNTIME = None
-    _CORE_IMPORT_ERROR = exc
-else:  # pragma: no cover - exercised in environments with the extension available
-    _CORE_IMPORT_ERROR = None
-    _DEVIATION = importlib.import_module("grimace._deviation")
-
-
-def _require_runtime() -> Any:
-    if _RUNTIME is None:
-        raise ImportError(
-            "grimace requires the compiled Rust extension "
-            "'grimace._core'. Build or install the package with the "
-            "extension enabled."
-        ) from _CORE_IMPORT_ERROR
-    return _RUNTIME
+MolToSmilesChoice = _runtime.MolToSmilesChoice
+SmilesDeviation = _deviation.SmilesDeviation
 
 
 def _runtime_kwargs(option_values: Mapping[str, object]) -> dict[str, object]:
@@ -61,8 +45,7 @@ def MolToSmilesEnum(
     defaults are currently implemented.
     """
 
-    runtime = _require_runtime()
-    return runtime.mol_to_smiles_enum(
+    return _runtime.mol_to_smiles_enum(
         mol,
         **_runtime_kwargs(locals()),
     )
@@ -87,8 +70,7 @@ def MolToSmilesTokenInventory(
     defaults are currently implemented.
     """
 
-    runtime = _require_runtime()
-    return runtime.mol_to_smiles_token_inventory(
+    return _runtime.mol_to_smiles_token_inventory(
         mol,
         **_runtime_kwargs(locals()),
     )
@@ -113,8 +95,7 @@ def MolToSmilesTokenInventorySuperset(
     defaults are currently implemented.
     """
 
-    runtime = _require_runtime()
-    return runtime.mol_to_smiles_token_inventory_superset(
+    return _runtime.mol_to_smiles_token_inventory_superset(
         mol,
         **_runtime_kwargs(locals()),
     )
@@ -139,85 +120,54 @@ def MolToSmilesDeviation(
     match one legal Grimace decoder token text.
     """
 
-    _require_runtime()
-    return _DEVIATION.mol_to_smiles_deviation(
+    return _deviation.mol_to_smiles_deviation(
         mol,
         candidate,
         **_runtime_kwargs(locals()),
     )
 
 
-if _RUNTIME is not None:
-    MolToSmilesChoice = _RUNTIME.MolToSmilesChoice
-    SmilesDeviation = _DEVIATION.SmilesDeviation
+class _PublicDecoderBase(_runtime._PublicDecoderBase):
+    __slots__ = ()
 
-    class _PublicDecoderBase(_RUNTIME._PublicDecoderBase):
-        __slots__ = ()
-
-        def __init__(
-            self,
-            mol: object,
-            *,
-            isomericSmiles: bool = True,
-            kekuleSmiles: bool = False,
-            rootedAtAtom: int = -1,
-            canonical: bool = True,
-            allBondsExplicit: bool = False,
-            allHsExplicit: bool = False,
-            doRandom: bool = False,
-            ignoreAtomMapNumbers: bool = False,
-        ) -> None:
-            super().__init__(
-                mol,
-                **_runtime_kwargs(locals()),
-            )
+    def __init__(
+        self,
+        mol: object,
+        *,
+        isomericSmiles: bool = True,
+        kekuleSmiles: bool = False,
+        rootedAtAtom: int = -1,
+        canonical: bool = True,
+        allBondsExplicit: bool = False,
+        allHsExplicit: bool = False,
+        doRandom: bool = False,
+        ignoreAtomMapNumbers: bool = False,
+    ) -> None:
+        super().__init__(
+            mol,
+            **_runtime_kwargs(locals()),
+        )
 
 
-    class MolToSmilesDecoder(_RUNTIME.MolToSmilesDecoder, _PublicDecoderBase):
-        """Branch-preserving online decoder for the supported public runtime.
+class MolToSmilesDecoder(_runtime.MolToSmilesDecoder, _PublicDecoderBase):
+    """Branch-preserving online decoder for the supported public runtime.
 
-        Pass `canonical=False` and `doRandom=True` explicitly.
-        """
+    Pass `canonical=False` and `doRandom=True` explicitly.
+    """
 
-        __slots__ = ()
-
-
-    class MolToSmilesDeterminizedDecoder(_RUNTIME.MolToSmilesDeterminizedDecoder, _PublicDecoderBase):
-        """Determinized online decoder for the supported public runtime.
-
-        Pass `canonical=False` and `doRandom=True` explicitly.
-        """
-
-        __slots__ = ()
-
-else:
-    class _ImportErrorRuntimeBase:
-        __slots__ = ()
-
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            _require_runtime()
+    __slots__ = ()
 
 
-    class MolToSmilesChoice:  # pragma: no cover - exercised only in broken installs
-        __slots__ = ()
+class MolToSmilesDeterminizedDecoder(
+    _runtime.MolToSmilesDeterminizedDecoder,
+    _PublicDecoderBase,
+):
+    """Determinized online decoder for the supported public runtime.
 
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            _require_runtime()
+    Pass `canonical=False` and `doRandom=True` explicitly.
+    """
 
-
-    class SmilesDeviation:  # pragma: no cover - exercised only in broken installs
-        __slots__ = ()
-
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            _require_runtime()
-
-
-    class MolToSmilesDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
-        pass
-
-
-    class MolToSmilesDeterminizedDecoder(_ImportErrorRuntimeBase):  # pragma: no cover - broken installs only
-        pass
+    __slots__ = ()
 
 
 __all__ = [

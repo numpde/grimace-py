@@ -7,8 +7,8 @@ import unittest
 
 from rdkit import Chem
 
+import grimace._core as _core
 from grimace._reference.prepared_graph import CONNECTED_STEREO_SURFACE, prepare_smiles_graph
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 
@@ -20,8 +20,6 @@ from tests.helpers.policies import load_connected_nonstereo_policy
 class KernelStereoPerfTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         cls.policy = load_connected_nonstereo_policy()
 
     def test_core_stereo_next_token_path_beats_exact_support_on_branching_atom_stereo_cases(self) -> None:
@@ -39,8 +37,8 @@ class KernelStereoPerfTests(unittest.TestCase):
                     self.policy,
                     surface_kind=CONNECTED_STEREO_SURFACE,
                 )
-                walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, root_idx)
-                kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+                walker = _core.RootedConnectedStereoWalker(prepared, root_idx)
+                kernel_prepared = _core.PreparedSmilesGraph(prepared)
                 exact_outputs = kernel_prepared.enumerate_rooted_connected_stereo_support(root_idx)
                 self.assertGreaterEqual(len(exact_outputs), 32)
 
@@ -81,7 +79,7 @@ class KernelStereoPerfTests(unittest.TestCase):
                     self.policy,
                     surface_kind=CONNECTED_STEREO_SURFACE,
                 )
-                walker = CORE_MODULE.RootedConnectedStereoWalker(prepared, root_idx)
+                walker = _core.RootedConnectedStereoWalker(prepared, root_idx)
 
                 def rdkit_draws() -> None:
                     for _ in range(draw_count):

@@ -4,6 +4,7 @@ import unittest
 
 from rdkit import Chem
 
+import grimace._core as _core
 from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
 from grimace._reference.prepared_graph import (
     PreparedSmilesGraph as ReferencePreparedSmilesGraph,
@@ -16,7 +17,6 @@ from tests.helpers.cases import (
     load_connected_bond_stereo_cases,
     load_connected_multi_atom_stereo_cases,
 )
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 
 
@@ -28,11 +28,6 @@ def _graph_runtime_modules():
 
 
 class CoreDatasetContractsTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
-
     def test_kernel_prepared_graph_roundtrips_dataset_slice(self) -> None:
         _runtime_graphs, MolToSmilesFlags = _graph_runtime_modules()
 
@@ -50,7 +45,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
                         do_random=True,
                     ),
                 )
-                kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+                kernel_prepared = _core.PreparedSmilesGraph(prepared)
                 self.assertEqual(prepared.to_dict(), kernel_prepared.to_dict())
 
     def test_kernel_stereo_outputs_canonicalize_on_representative_case_set(self) -> None:
@@ -83,7 +78,7 @@ class CoreDatasetContractsTests(unittest.TestCase):
                 ),
             )
             reference_prepared = ReferencePreparedSmilesGraph.from_dict(prepared.to_dict())
-            kernel_prepared = CORE_MODULE.PreparedSmilesGraph(prepared)
+            kernel_prepared = _core.PreparedSmilesGraph(prepared)
             generated: set[str] = set()
             for root_idx in range(prepared.atom_count):
                 generated.update(kernel_prepared.enumerate_rooted_connected_stereo_support(root_idx))

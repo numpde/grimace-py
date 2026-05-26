@@ -7,12 +7,12 @@ import unittest
 
 from rdkit import Chem
 
+import grimace._core as _core
 from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
 from grimace._reference.prepared_graph import prepare_smiles_graph
 from grimace._reference.rooted.connected_nonstereo import (
     enumerate_rooted_connected_nonstereo_smiles_support as enumerate_rooted_nonstereo_smiles_support,
 )
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 
@@ -24,8 +24,6 @@ from tests.helpers.policies import load_connected_nonstereo_policy
 class KernelNonStereoPerfTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         cls.policy = load_connected_nonstereo_policy()
 
     def test_kernel_next_token_path_beats_a_few_rooted_rdkit_random_calls(self) -> None:
@@ -43,7 +41,7 @@ class KernelNonStereoPerfTests(unittest.TestCase):
             with self.subTest(smiles=smiles, root_idx=root_idx, draw_count=draw_count):
                 mol = parse_smiles(smiles)
                 prepared = prepare_smiles_graph(mol, self.policy)
-                kernel_walker = CORE_MODULE.RootedConnectedNonStereoWalker(prepared, root_idx)
+                kernel_walker = _core.RootedConnectedNonStereoWalker(prepared, root_idx)
 
                 def rdkit_draws() -> None:
                     for _ in range(draw_count):

@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import importlib
-
 from rdkit import Chem
 
+import grimace._core as _core
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
-
-
-def _core_module() -> object:
-    return importlib.import_module("grimace._core")
 
 
 class PreparedMol:
@@ -37,7 +32,7 @@ class PreparedMol:
     def from_bytes(data: bytes) -> "PreparedMol":
         if not isinstance(data, bytes):
             raise TypeError("PreparedMol.from_bytes requires bytes")
-        return _make_prepared_mol(_core_module().PreparedMol.from_bytes(data))
+        return _make_prepared_mol(_core.PreparedMol.from_bytes(data))
 
 
 def _make_prepared_mol(inner: object) -> PreparedMol:
@@ -131,8 +126,8 @@ def PrepareMol(
         context="PrepareMol",
     )
 
-    runtime_graphs = importlib.import_module("grimace._runtime_graphs")
-    runtime_inputs = importlib.import_module("grimace._runtime_inputs")
+    import grimace._runtime_graphs as runtime_graphs
+    import grimace._runtime_inputs as runtime_inputs
     runtime_flags = runtime_inputs.MolToSmilesFlags(**writer_options)
 
     if mol.GetNumAtoms() == 0:
@@ -157,7 +152,7 @@ def PrepareMol(
         ]
 
     return _make_prepared_mol(
-        _core_module().PreparedMol._from_parts(
+        _core.PreparedMol._from_parts(
             **writer_options,
             fragments=fragments,
         )

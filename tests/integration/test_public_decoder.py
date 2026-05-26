@@ -11,7 +11,6 @@ import grimace._runtime_states as _runtime_states
 from rdkit import Chem
 from grimace._runtime_inputs import MolToSmilesFlags
 from tests.helpers.assertions import assert_prefix_options_match_outputs
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
@@ -103,11 +102,6 @@ class PublicDecoderTests(unittest.TestCase):
             ignore_atom_map_numbers=True,
         ),
     )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
 
     def _make_decoder(
         self,

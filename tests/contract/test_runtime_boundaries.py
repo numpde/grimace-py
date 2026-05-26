@@ -40,6 +40,21 @@ def _imported_module_names(path: Path) -> set[str]:
     return imported
 
 
+def _caught_exception_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    caught: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler) or node.type is None:
+            continue
+        if isinstance(node.type, ast.Name):
+            caught.add(node.type.id)
+        elif isinstance(node.type, ast.Tuple):
+            caught.update(
+                item.id for item in node.type.elts if isinstance(item, ast.Name)
+            )
+    return caught
+
+
 def _import_aliases(path: Path) -> set[tuple[str, str, str | None]]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     aliases: set[tuple[str, str, str | None]] = set()
@@ -62,6 +77,7 @@ def _private_package_imports(path: Path) -> set[str]:
 
 class RuntimeBoundaryTests(unittest.TestCase):
     deviation_module = REPO_ROOT / "python" / "grimace" / "_deviation.py"
+    public_package_module = REPO_ROOT / "python" / "grimace" / "__init__.py"
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
     runtime_input_module = REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py"
     runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
@@ -76,6 +92,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         REPO_ROOT / "python" / "grimace" / "_reference" / "rooted" / "connected_nonstereo.py",
         REPO_ROOT / "python" / "grimace" / "_reference" / "rooted" / "connected_stereo.py",
     )
+    package_modules = tuple(sorted((REPO_ROOT / "python" / "grimace").glob("*.py")))
 
     def test_runtime_modules_do_not_directly_import_rdkit(self) -> None:
         for path in self.runtime_modules:
@@ -111,6 +128,26 @@ class RuntimeBoundaryTests(unittest.TestCase):
         for path in self.runtime_modules:
             with self.subTest(path=path.relative_to(REPO_ROOT)):
                 self.assertFalse(_private_package_imports(path))
+
+    def test_package_modules_do_not_hide_missing_required_imports(self) -> None:
+        forbidden = {"ImportError", "ModuleNotFoundError"}
+
+        for path in self.package_modules:
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                self.assertFalse(forbidden & _caught_exception_names(path))
+
+    def test_runtime_modules_import_core_directly(self) -> None:
+        core_dependent_modules = (
+            self.preparation_module,
+            self.runtime_module,
+            REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
+        )
+
+        for path in core_dependent_modules:
+            with self.subTest(path=path.relative_to(REPO_ROOT)):
+                imported_names = _imported_module_names(path)
+                self.assertIn("grimace._core", imported_names)
+                self.assertNotIn("importlib", imported_names)
 
     def test_runtime_modules_do_not_inspect_prepared_mol_fragment_storage(self) -> None:
         forbidden_methods = {"fragment_atom_indices", "fragment_prepared_graph"}
@@ -160,6 +197,19 @@ class RuntimeBoundaryTests(unittest.TestCase):
                     self.assertIsNotNone(alias)
                     assert alias is not None
                     self.assertTrue(alias.startswith("_"), alias)
+
+    def test_public_package_import_requires_runtime_directly(self) -> None:
+        imported_names = _imported_module_names(self.public_package_module)
+        self.assertIn("grimace._runtime", imported_names)
+        self.assertIn("grimace._deviation", imported_names)
+        self.assertNotIn("importlib", imported_names)
+
+        forbidden_names = {
+            "_CORE_IMPORT_ERROR",
+            "_ImportErrorRuntimeBase",
+            "_require_runtime",
+        }
+        self.assertFalse(forbidden_names & _name_ids(self.public_package_module))
 
     def test_deviation_module_does_not_inspect_decoder_state_storage(self) -> None:
         self.assertNotIn("_state", _attribute_names(self.deviation_module))

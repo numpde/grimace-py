@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import unittest
 
+import grimace._core as _core
 from grimace._reference.dataset import load_default_connected_nonstereo_molecule_cases
 from grimace._reference.prepared_graph import prepare_smiles_graph
 from grimace._reference.rooted.connected_nonstereo import (
@@ -11,7 +12,6 @@ from grimace._reference.rooted.connected_nonstereo import (
     validate_rooted_connected_nonstereo_smiles_support as validate_rooted_nonstereo_smiles_support,
 )
 from tests.helpers.cases import NONSTEREO_CURATED_ROOT_CASES
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.policies import load_connected_nonstereo_policy
 
@@ -19,15 +19,13 @@ from tests.helpers.policies import load_connected_nonstereo_policy
 class CoreRootedNextTokenWalkerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
         cls.policy = load_connected_nonstereo_policy()
 
     def test_core_walker_exact_support_matches_python_reference_on_curated_cases(self) -> None:
         for smiles, root_idx in NONSTEREO_CURATED_ROOT_CASES:
             with self.subTest(smiles=smiles, root_idx=root_idx):
                 prepared = prepare_smiles_graph(parse_smiles(smiles), self.policy)
-                core_walker = CORE_MODULE.RootedConnectedNonStereoWalker(prepared, root_idx)
+                core_walker = _core.RootedConnectedNonStereoWalker(prepared, root_idx)
 
                 expected = enumerate_rooted_nonstereo_smiles_support(prepared, root_idx)
                 observed = set(core_walker.enumerate_support())
@@ -53,7 +51,7 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
                 with self.subTest(smiles=smiles, root_idx=root_idx, seed=seed):
                     rng = random.Random(seed)
                     python_walker = PythonRootedConnectedNonStereoWalker(prepared, root_idx)
-                    core_walker = CORE_MODULE.RootedConnectedNonStereoWalker(prepared, root_idx)
+                    core_walker = _core.RootedConnectedNonStereoWalker(prepared, root_idx)
                     python_state = python_walker.initial_state()
                     core_state = core_walker.initial_state()
 
@@ -88,7 +86,7 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
                     ):
                         rng = random.Random(seed)
                         python_walker = PythonRootedConnectedNonStereoWalker(prepared, root_idx)
-                        core_walker = CORE_MODULE.RootedConnectedNonStereoWalker(prepared, root_idx)
+                        core_walker = _core.RootedConnectedNonStereoWalker(prepared, root_idx)
                         python_state = python_walker.initial_state()
                         core_state = core_walker.initial_state()
 
@@ -108,7 +106,7 @@ class CoreRootedNextTokenWalkerTests(unittest.TestCase):
 
     def test_core_walker_rejects_invalid_token(self) -> None:
         prepared = prepare_smiles_graph(parse_smiles("CCO"), self.policy)
-        core_walker = CORE_MODULE.RootedConnectedNonStereoWalker(prepared, 0)
+        core_walker = _core.RootedConnectedNonStereoWalker(prepared, 0)
         state = core_walker.initial_state()
 
         with self.assertRaisesRegex(KeyError, "choices"):

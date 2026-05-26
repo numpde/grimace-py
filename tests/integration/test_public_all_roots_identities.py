@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unittest
 
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     make_decoder,
@@ -84,11 +83,6 @@ class PublicAllRootsIdentityTests(unittest.TestCase):
             isomeric_smiles=False,
         ),
     )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_enum_all_roots_equals_union_over_explicit_roots(self) -> None:
         for case in self.CASES:

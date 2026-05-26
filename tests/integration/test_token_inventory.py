@@ -11,7 +11,6 @@ from grimace._reference.prepared_graph import (
     PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
     PreparedSmilesGraph,
 )
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     exact_token_inventory_via_decoder,
@@ -190,11 +189,6 @@ class TokenInventoryTests(unittest.TestCase):
             min_stereo_token_count=15,
         ),
     )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
 
     def test_token_inventory_matches_exact_decoder_inventory(self) -> None:
         # Use one shared demanding molecule set for both branches. On the

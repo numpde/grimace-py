@@ -15,7 +15,6 @@ from grimace._reference.rooted.connected_stereo import (
 )
 from grimace._runtime_graphs import runtime_surface_kind
 from grimace._runtime_inputs import MolToSmilesFlags
-from tests.helpers.kernel import CORE_MODULE
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 
@@ -94,11 +93,6 @@ class PublicRuntimeWriterFlagsTests(unittest.TestCase):
             ignore_atom_map_numbers=True,
         ),
     )
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
 
     @staticmethod
     def _runtime_surface_kind(case: WriterFlagCase, mol):

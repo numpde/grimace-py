@@ -9,9 +9,6 @@ import sys
 import tempfile
 import unittest
 
-from tests.helpers.kernel import CORE_MODULE
-
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "mine_rdkit_regressions.py"
 
@@ -30,11 +27,6 @@ MINER = _load_miner_module()
 
 
 class RdkitRegressionMinerTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        if CORE_MODULE is None:
-            raise unittest.SkipTest("private Rust extension is not installed")
-
     def test_support_comparison_classifies_clean_uncertain_and_mismatches(self) -> None:
         self.assertEqual(
             "clean",

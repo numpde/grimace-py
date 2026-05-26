@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass
 from typing import cast
 
+import grimace._core as _core
 import grimace._prepared_mol as _prepared_mol
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
@@ -18,8 +18,6 @@ from grimace._runtime_inputs import (
     ensure_singly_connected_molecule,
     writer_flag_kwargs,
 )
-
-_core = importlib.import_module("grimace._core")
 
 
 @dataclass(frozen=True, slots=True)

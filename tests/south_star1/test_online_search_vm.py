@@ -37,6 +37,7 @@ from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
 from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
@@ -283,6 +284,55 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             _pop_resumable_frame(frames)
+
+    def test_snapshot_with_render_cursor_and_prefix_frame_resumes_in_stack_order(
+        self,
+    ) -> None:
+        prefix = OnlineSearchFrame(_complete_prefix_frame(tetrahedral_facts()))
+        render = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        frames = [OnlineSearchFrame(EventLoopFrame(("context",))), prefix, render]
+
+        self.assertEqual(_pop_resumable_frame(frames), render)
+        self.assertEqual(frames, [OnlineSearchFrame(EventLoopFrame(("context",))), prefix])
+        self.assertEqual(_pop_resumable_frame(frames), prefix)
+        self.assertEqual(frames, [OnlineSearchFrame(EventLoopFrame(("context",)))])
+
+    def test_prefix_frame_resume_reaches_sibling_prefix_alternatives_after_render_completion(
+        self,
+    ) -> None:
+        facts = cyclopropane_facts()
+        complete = _prefix_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+        frame = replace(
+            complete,
+            phase="ring",
+            index=0,
+            ring_labels=(),
+            atom_text=(),
+            bond_text=(),
+        )
+        policy = replace(ordinary_policy_for_facts(facts), least_free_ring_labels=False)
+
+        witnesses = _witnesses_from_prefix_frame(facts, frame, policy=policy)
+
+        self.assertGreater(len({witness.rendered for witness in witnesses}), 1)
+
+    def test_prefix_scheduler_frame_does_not_accumulate_stale_duplicates(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertEqual(
+            sum(
+                isinstance(frame.payload, PrefixEnumerationFrame)
+                for frame in continuation.snapshot.frame_stack
+            ),
+            1,
+        )
+
+    def test_dispatcher_rejects_duplicate_prefix_enumeration_frames(self) -> None:
+        first = OnlineSearchFrame(_complete_prefix_frame(tetrahedral_facts()))
+        second = OnlineSearchFrame(_complete_prefix_frame(tetrahedral_facts()))
+
+        with self.assertRaises(AssertionError):
+            _pop_resumable_frame([first, second])
 
     def test_dispatcher_preserves_ring_state_annotation_count_and_frontier(self) -> None:
         facts = ring_directional_facts()
@@ -701,11 +751,16 @@ def _complete_prefix_frame(facts: MoleculeFacts) -> PrefixEnumerationFrame:
     )
 
 
-def _witnesses_from_prefix_frame(facts: MoleculeFacts, frame: PrefixEnumerationFrame):
+def _witnesses_from_prefix_frame(
+    facts: MoleculeFacts,
+    frame: PrefixEnumerationFrame,
+    *,
+    policy=None,
+):
     sink = ResidualFrontierSink(required_prefix="")
     state = make_online_search_state(
         facts=facts,
-        policy=ordinary_policy_for_facts(facts),
+        policy=policy if policy is not None else ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),
         sink=sink,
     )

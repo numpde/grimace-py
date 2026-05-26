@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import dataclass
+from dataclasses import replace
 from unittest.mock import patch
 
 import grimace._south_star1.graph_index as graph_index_module
@@ -191,6 +192,46 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
             entry.row.max_retained_continuations,
         )
 
+    def test_prepared_matrix_observes_prefix_scheduler_frames_on_prefix_branching_fixture(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        _assert_matrix_prefix_scheduler_evidence(self, entry)
+
+    def test_prepared_matrix_prefix_scheduler_evidence_fails_if_count_zero(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        entry = _guarded_matrix_entry(
+            fixture_name="tetrahedral",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+        tampered = replace(
+            entry,
+            row=replace(
+                entry.row,
+                retained_scheduler_frame_count=0,
+                retained_prefix_enumeration_frame_count=0,
+            ),
+        )
+
+        with self.assertRaises(AssertionError):
+            _assert_matrix_prefix_scheduler_evidence(self, tampered)
+
     def test_residual_prefix_workload_uses_fewer_root_dfs_runs_than_prefix_replay(
         self,
     ) -> None:
@@ -306,6 +347,26 @@ def _assert_entry_conforms(
         test.assertEqual(row.retained_render_payload_chars, 0)
         test.assertIsNotNone(row.max_retained_continuations)
         test.assertIsNotNone(row.retained_render_cursor_count)
+        test.assertIsNotNone(row.retained_scheduler_frame_count)
+        test.assertIsNotNone(row.retained_prefix_enumeration_frame_count)
+        test.assertIsNotNone(row.max_retained_prefix_domain_count)
+        test.assertIsNotNone(row.total_retained_prefix_domain_count)
+        test.assertIsNotNone(row.max_retained_prefix_assignment_count)
+        test.assertIsNotNone(row.total_retained_prefix_assignment_count)
+
+
+def _assert_matrix_prefix_scheduler_evidence(
+    test: unittest.TestCase,
+    entry: PreparedEnumerationMatrixEntry,
+) -> None:
+    row = entry.row
+    test.assertEqual(row.execution_mode, OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS)
+    test.assertGreater(row.retained_scheduler_frame_count or 0, 0)
+    test.assertGreater(row.retained_prefix_enumeration_frame_count or 0, 0)
+    test.assertGreater(row.max_retained_prefix_domain_count or 0, 0)
+    test.assertGreater(row.total_retained_prefix_domain_count or 0, 0)
+    test.assertGreater(row.max_retained_prefix_assignment_count or 0, 0)
+    test.assertGreater(row.total_retained_prefix_assignment_count or 0, 0)
 
 
 def _disconnected_two_bond_components_facts() -> MoleculeFacts:

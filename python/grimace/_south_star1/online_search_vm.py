@@ -1693,6 +1693,14 @@ def _pop_resumable_frame(
     popped = frames.pop(active_index)
     if any(isinstance(frame.payload, RenderCursorFrame) for frame in frames):
         raise AssertionError("multiple active render-cursor frames")
+    remaining_prefix_frame_count = sum(
+        1 for frame in frames if isinstance(frame.payload, PrefixEnumerationFrame)
+    )
+    if remaining_prefix_frame_count > 1 or (
+        isinstance(popped.payload, PrefixEnumerationFrame)
+        and remaining_prefix_frame_count > 0
+    ):
+        raise AssertionError("multiple active prefix-enumeration frames")
     return popped
 
 

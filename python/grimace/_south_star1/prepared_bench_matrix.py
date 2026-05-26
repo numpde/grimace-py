@@ -30,6 +30,12 @@ class PreparedEnumerationMatrixRow:
     resumed_snapshots: int | None
     retained_render_payload_chars: int | None
     retained_render_cursor_count: int | None
+    retained_scheduler_frame_count: int | None
+    retained_prefix_enumeration_frame_count: int | None
+    max_retained_prefix_domain_count: int | None
+    total_retained_prefix_domain_count: int | None
+    max_retained_prefix_assignment_count: int | None
+    total_retained_prefix_assignment_count: int | None
     probe: "PreparedRuntimeProbeResult"
 
 
@@ -100,6 +106,18 @@ def collect_prepared_enumeration_matrix_entry(
         resumed_snapshots=online.resumed_snapshots,
         retained_render_payload_chars=online.retained_render_payload_chars,
         retained_render_cursor_count=online.retained_render_cursor_count,
+        retained_scheduler_frame_count=online.retained_scheduler_frame_count,
+        retained_prefix_enumeration_frame_count=(
+            online.retained_prefix_enumeration_frame_count
+        ),
+        max_retained_prefix_domain_count=online.max_retained_prefix_domain_count,
+        total_retained_prefix_domain_count=online.total_retained_prefix_domain_count,
+        max_retained_prefix_assignment_count=(
+            online.max_retained_prefix_assignment_count
+        ),
+        total_retained_prefix_assignment_count=(
+            online.total_retained_prefix_assignment_count
+        ),
         probe=probe_result,
     )
     return PreparedEnumerationMatrixEntry(
@@ -351,6 +369,12 @@ class _OnlineWalkResult:
     resumed_snapshots: int | None
     retained_render_payload_chars: int | None
     retained_render_cursor_count: int | None
+    retained_scheduler_frame_count: int | None
+    retained_prefix_enumeration_frame_count: int | None
+    max_retained_prefix_domain_count: int | None
+    total_retained_prefix_domain_count: int | None
+    max_retained_prefix_assignment_count: int | None
+    total_retained_prefix_assignment_count: int | None
 
 
 def _walk_prepared_decoder(
@@ -377,6 +401,12 @@ def _walk_prepared_decoder(
     resumed_snapshots = 0
     retained_render_payload_chars: int | None = None
     retained_render_cursor_count: int | None = None
+    retained_scheduler_frame_count: int | None = None
+    retained_prefix_enumeration_frame_count: int | None = None
+    max_retained_prefix_domain_count: int | None = None
+    total_retained_prefix_domain_count: int | None = None
+    max_retained_prefix_assignment_count: int | None = None
+    total_retained_prefix_assignment_count: int | None = None
 
     while stack:
         max_pending_stream_states = max(max_pending_stream_states, len(stack))
@@ -399,6 +429,30 @@ def _walk_prepared_decoder(
             retained_render_cursor_count = _optional_max(
                 retained_render_cursor_count,
                 int(retained.render_cursor_count),
+            )
+            retained_scheduler_frame_count = _optional_max(
+                retained_scheduler_frame_count,
+                int(retained.scheduler_frame_count),
+            )
+            retained_prefix_enumeration_frame_count = _optional_max(
+                retained_prefix_enumeration_frame_count,
+                int(retained.prefix_enumeration_frame_count),
+            )
+            max_retained_prefix_domain_count = _optional_max(
+                max_retained_prefix_domain_count,
+                int(retained.max_prefix_domain_count),
+            )
+            total_retained_prefix_domain_count = _optional_max(
+                total_retained_prefix_domain_count,
+                int(retained.total_prefix_domain_count),
+            )
+            max_retained_prefix_assignment_count = _optional_max(
+                max_retained_prefix_assignment_count,
+                int(retained.max_prefix_assignment_count),
+            )
+            total_retained_prefix_assignment_count = _optional_max(
+                total_retained_prefix_assignment_count,
+                int(retained.total_prefix_assignment_count),
             )
         for choice in reversed(result.choices):
             if choice.is_eos:
@@ -427,6 +481,14 @@ def _walk_prepared_decoder(
         resumed_snapshots=resumed_snapshots,
         retained_render_payload_chars=retained_render_payload_chars,
         retained_render_cursor_count=retained_render_cursor_count,
+        retained_scheduler_frame_count=retained_scheduler_frame_count,
+        retained_prefix_enumeration_frame_count=(
+            retained_prefix_enumeration_frame_count
+        ),
+        max_retained_prefix_domain_count=max_retained_prefix_domain_count,
+        total_retained_prefix_domain_count=total_retained_prefix_domain_count,
+        max_retained_prefix_assignment_count=max_retained_prefix_assignment_count,
+        total_retained_prefix_assignment_count=total_retained_prefix_assignment_count,
     )
 
 

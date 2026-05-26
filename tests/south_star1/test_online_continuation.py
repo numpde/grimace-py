@@ -465,6 +465,18 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertGreater(result.stats.retained_state_size.max_prefix_assignment_count, 0)
         self.assertGreater(result.stats.retained_state_size.total_prefix_assignment_count, 0)
 
+    def test_residual_retained_state_contains_render_cursor_and_prefix_frame(
+        self,
+    ) -> None:
+        result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
+        retained = _retained_continuations(result)
+
+        self.assertTrue(retained)
+        for continuation in retained:
+            payload_types = tuple(type(frame.payload) for frame in continuation.snapshot.frame_stack)
+            self.assertIn(RenderCursorFrame, payload_types)
+            self.assertIn(PrefixEnumerationFrame, payload_types)
+
     def test_render_cursor_resume_after_atom_piece(self) -> None:
         decoder = _residual_determinized_decoder(tetrahedral_facts())
         initial = decoder.initial_state().choices_with_stats()

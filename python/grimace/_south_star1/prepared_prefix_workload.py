@@ -21,6 +21,15 @@ _PREFIX_WORKLOAD_MODES = (
     OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
 )
 
+PREFIX_SCHEDULER_EVIDENCE_FIXTURES = frozenset(
+    {
+        "tetrahedral",
+        "directional",
+        "ring",
+        "prefix-scheduler",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class PreparedPrefixQueryObservation:
@@ -36,6 +45,12 @@ class PreparedPrefixQueryObservation:
     resumed_snapshots: int | None
     retained_continuation_count: int | None
     retained_render_payload_chars: int | None
+    retained_scheduler_frame_count: int | None
+    retained_prefix_enumeration_frame_count: int | None
+    max_retained_prefix_domain_count: int | None
+    total_retained_prefix_domain_count: int | None
+    max_retained_prefix_assignment_count: int | None
+    total_retained_prefix_assignment_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +70,11 @@ class PreparedPrefixWorkloadResult:
     total_residual_root_dfs_runs: int
     total_residual_resumed_snapshots: int
     max_residual_retained_render_payload_chars: int
+    total_residual_prefix_enumeration_frame_count: int
+    max_residual_prefix_domain_count: int
+    total_residual_prefix_domain_count: int
+    max_residual_prefix_assignment_count: int
+    total_residual_prefix_assignment_count: int
     probe: PreparedRuntimeProbeResult
 
 
@@ -71,6 +91,13 @@ class PreparedDecoderWalkStep:
     resumed_snapshots_by_mode: tuple[tuple[str, int | None], ...]
     retained_continuation_count_by_mode: tuple[tuple[str, int | None], ...]
     retained_render_payload_chars_by_mode: tuple[tuple[str, int | None], ...]
+    retained_prefix_enumeration_frame_count_by_mode: tuple[
+        tuple[str, int | None], ...
+    ]
+    retained_max_prefix_domain_count_by_mode: tuple[tuple[str, int | None], ...]
+    retained_total_prefix_domain_count_by_mode: tuple[tuple[str, int | None], ...]
+    retained_max_prefix_assignment_count_by_mode: tuple[tuple[str, int | None], ...]
+    retained_total_prefix_assignment_count_by_mode: tuple[tuple[str, int | None], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +110,11 @@ class PreparedDecoderWalkResult:
     total_residual_root_dfs_runs: int
     total_residual_resumed_snapshots: int
     max_residual_retained_render_payload_chars: int
+    total_residual_prefix_enumeration_frame_count: int
+    max_residual_prefix_domain_count: int
+    total_residual_prefix_domain_count: int
+    max_residual_prefix_assignment_count: int
+    total_residual_prefix_assignment_count: int
     probe: PreparedRuntimeProbeResult
 
 
@@ -95,6 +127,11 @@ class PreparedDecoderBranchWalkResult:
     total_residual_root_dfs_runs: int
     total_residual_resumed_snapshots: int
     max_residual_retained_render_payload_chars: int
+    total_residual_prefix_enumeration_frame_count: int
+    max_residual_prefix_domain_count: int
+    total_residual_prefix_domain_count: int
+    max_residual_prefix_assignment_count: int
+    total_residual_prefix_assignment_count: int
     probe: PreparedRuntimeProbeResult
 
 
@@ -477,6 +514,44 @@ def validate_prepared_branch_decoder_walk_result(
         raise ValueError("residual branch decoder walk retained rendered-suffix payload")
 
 
+def require_prefix_scheduler_frame_evidence(
+    result: (
+        PreparedPrefixWorkloadResult
+        | PreparedDecoderWalkResult
+        | PreparedDecoderBranchWalkResult
+    ),
+    *,
+    fixture_name: str,
+) -> None:
+    if fixture_name not in PREFIX_SCHEDULER_EVIDENCE_FIXTURES:
+        return
+    _require_positive_int(
+        result.total_residual_prefix_enumeration_frame_count,
+        field_name="prefix_enumeration_frame_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.max_residual_prefix_domain_count,
+        field_name="max_prefix_domain_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.total_residual_prefix_domain_count,
+        field_name="total_prefix_domain_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.max_residual_prefix_assignment_count,
+        field_name="max_prefix_assignment_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.total_residual_prefix_assignment_count,
+        field_name="total_prefix_assignment_count",
+        fixture_name=fixture_name,
+    )
+
+
 def _collect_row(
     *,
     fixture_name: str,
@@ -571,6 +646,24 @@ def _query_state(
             retained_render_payload_chars=(
                 None if retained is None else int(retained.total_render_payload_chars)
             ),
+            retained_scheduler_frame_count=(
+                None if retained is None else int(retained.scheduler_frame_count)
+            ),
+            retained_prefix_enumeration_frame_count=(
+                None if retained is None else int(retained.prefix_enumeration_frame_count)
+            ),
+            max_retained_prefix_domain_count=(
+                None if retained is None else int(retained.max_prefix_domain_count)
+            ),
+            total_retained_prefix_domain_count=(
+                None if retained is None else int(retained.total_prefix_domain_count)
+            ),
+            max_retained_prefix_assignment_count=(
+                None if retained is None else int(retained.max_prefix_assignment_count)
+            ),
+            total_retained_prefix_assignment_count=(
+                None if retained is None else int(retained.total_prefix_assignment_count)
+            ),
         ),
         choices=tuple(result.choices),
     )
@@ -635,6 +728,47 @@ def _result_from_rows(
             if rows
             else 0
         ),
+        total_residual_prefix_enumeration_frame_count=sum(
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="retained_prefix_enumeration_frame_count",
+            )
+            for row in rows
+        ),
+        max_residual_prefix_domain_count=max(
+            (
+                _required_residual_observation_int(
+                    row.residual_continuations,
+                    field_name="max_retained_prefix_domain_count",
+                )
+                for row in rows
+            ),
+            default=0,
+        ),
+        total_residual_prefix_domain_count=sum(
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="total_retained_prefix_domain_count",
+            )
+            for row in rows
+        ),
+        max_residual_prefix_assignment_count=max(
+            (
+                _required_residual_observation_int(
+                    row.residual_continuations,
+                    field_name="max_retained_prefix_assignment_count",
+                )
+                for row in rows
+            ),
+            default=0,
+        ),
+        total_residual_prefix_assignment_count=sum(
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="total_retained_prefix_assignment_count",
+            )
+            for row in rows
+        ),
         probe=probe,
     )
 
@@ -692,6 +826,52 @@ def _decoder_walk_result(
             ),
             default=0,
         ),
+        total_residual_prefix_enumeration_frame_count=sum(
+            _required_mode_int(
+                step.retained_prefix_enumeration_frame_count_by_mode,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="prefix_enumeration_frame_count",
+            )
+            for step in steps
+        ),
+        max_residual_prefix_domain_count=max(
+            (
+                _required_mode_int(
+                    step.retained_max_prefix_domain_count_by_mode,
+                    mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                    field_name="max_prefix_domain_count",
+                )
+                for step in steps
+            ),
+            default=0,
+        ),
+        total_residual_prefix_domain_count=sum(
+            _required_mode_int(
+                step.retained_total_prefix_domain_count_by_mode,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="total_prefix_domain_count",
+            )
+            for step in steps
+        ),
+        max_residual_prefix_assignment_count=max(
+            (
+                _required_mode_int(
+                    step.retained_max_prefix_assignment_count_by_mode,
+                    mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                    field_name="max_prefix_assignment_count",
+                )
+                for step in steps
+            ),
+            default=0,
+        ),
+        total_residual_prefix_assignment_count=sum(
+            _required_mode_int(
+                step.retained_total_prefix_assignment_count_by_mode,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="total_prefix_assignment_count",
+            )
+            for step in steps
+        ),
         probe=probe,
     )
 
@@ -719,6 +899,23 @@ def _branch_walk_result(
         max_residual_retained_render_payload_chars=max(
             (walk.max_residual_retained_render_payload_chars for walk in walks),
             default=0,
+        ),
+        total_residual_prefix_enumeration_frame_count=sum(
+            walk.total_residual_prefix_enumeration_frame_count for walk in walks
+        ),
+        max_residual_prefix_domain_count=max(
+            (walk.max_residual_prefix_domain_count for walk in walks),
+            default=0,
+        ),
+        total_residual_prefix_domain_count=sum(
+            walk.total_residual_prefix_domain_count for walk in walks
+        ),
+        max_residual_prefix_assignment_count=max(
+            (walk.max_residual_prefix_assignment_count for walk in walks),
+            default=0,
+        ),
+        total_residual_prefix_assignment_count=sum(
+            walk.total_residual_prefix_assignment_count for walk in walks
         ),
         probe=probe,
     )
@@ -758,6 +955,26 @@ def _walk_step_from_observations(
         ),
         retained_render_payload_chars_by_mode=tuple(
             (mode.value, observations[mode].retained_render_payload_chars)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_prefix_enumeration_frame_count_by_mode=tuple(
+            (mode.value, observations[mode].retained_prefix_enumeration_frame_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_max_prefix_domain_count_by_mode=tuple(
+            (mode.value, observations[mode].max_retained_prefix_domain_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_total_prefix_domain_count_by_mode=tuple(
+            (mode.value, observations[mode].total_retained_prefix_domain_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_max_prefix_assignment_count_by_mode=tuple(
+            (mode.value, observations[mode].max_retained_prefix_assignment_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_total_prefix_assignment_count_by_mode=tuple(
+            (mode.value, observations[mode].total_retained_prefix_assignment_count)
             for mode in _PREFIX_WORKLOAD_MODES
         ),
     )
@@ -838,6 +1055,31 @@ def _validate_walk_step(step: PreparedDecoderWalkStep) -> None:
         mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
         field_name="retained_render_payload_chars",
     )
+    _required_mode_int(
+        step.retained_prefix_enumeration_frame_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="prefix_enumeration_frame_count",
+    )
+    _required_mode_int(
+        step.retained_max_prefix_domain_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="max_prefix_domain_count",
+    )
+    _required_mode_int(
+        step.retained_total_prefix_domain_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="total_prefix_domain_count",
+    )
+    _required_mode_int(
+        step.retained_max_prefix_assignment_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="max_prefix_assignment_count",
+    )
+    _required_mode_int(
+        step.retained_total_prefix_assignment_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="total_prefix_assignment_count",
+    )
     next_token_sets = {item[1] for item in step.next_token_set_by_mode}
     if len(next_token_sets) != 1:
         raise ValueError(f"decoder walk next-token disagreement at {step.prefix!r}")
@@ -899,6 +1141,46 @@ def _require_residual_observation_stats(
         observation,
         field_name="retained_render_payload_chars",
     )
+    _required_residual_observation_int(
+        observation,
+        field_name="retained_scheduler_frame_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="retained_prefix_enumeration_frame_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="max_retained_prefix_domain_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="total_retained_prefix_domain_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="max_retained_prefix_assignment_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="total_retained_prefix_assignment_count",
+    )
+
+
+def _require_positive_int(
+    value: int | None,
+    *,
+    field_name: str,
+    fixture_name: str,
+) -> None:
+    if value is None:
+        raise ValueError(
+            f"{field_name} is missing for prefix-scheduler fixture {fixture_name!r}"
+        )
+    if value <= 0:
+        raise ValueError(
+            f"{field_name} is zero for prefix-scheduler fixture {fixture_name!r}"
+        )
 
 
 def _required_residual_observation_int(
@@ -956,6 +1238,7 @@ __all__ = (
     "PreparedPrefixQueryObservation",
     "PreparedPrefixWorkloadResult",
     "PreparedPrefixWorkloadRow",
+    "PREFIX_SCHEDULER_EVIDENCE_FIXTURES",
     "advance_decoder_to_prefix",
     "choose_walk_token",
     "collect_prepared_branch_decoder_walks",
@@ -963,6 +1246,7 @@ __all__ = (
     "collect_mode_union_token_boundary_prefixes",
     "collect_prepared_prefix_workload",
     "collect_token_boundary_prefixes",
+    "require_prefix_scheduler_frame_evidence",
     "validate_prepared_branch_decoder_walk_result",
     "validate_prepared_decoder_walk_result",
     "validate_prepared_prefix_workload_result",

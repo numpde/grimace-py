@@ -36,6 +36,11 @@ class PreparedEnumerationMatrixRow:
     total_retained_prefix_domain_count: int | None
     max_retained_prefix_assignment_count: int | None
     total_retained_prefix_assignment_count: int | None
+    retained_direction_enumeration_frame_count: int | None
+    max_retained_direction_carrier_count: int | None
+    total_retained_direction_carrier_count: int | None
+    max_retained_direction_assignment_count: int | None
+    total_retained_direction_assignment_count: int | None
     probe: "PreparedRuntimeProbeResult"
 
 
@@ -117,6 +122,19 @@ def collect_prepared_enumeration_matrix_entry(
         ),
         total_retained_prefix_assignment_count=(
             online.total_retained_prefix_assignment_count
+        ),
+        retained_direction_enumeration_frame_count=(
+            online.retained_direction_enumeration_frame_count
+        ),
+        max_retained_direction_carrier_count=online.max_retained_direction_carrier_count,
+        total_retained_direction_carrier_count=(
+            online.total_retained_direction_carrier_count
+        ),
+        max_retained_direction_assignment_count=(
+            online.max_retained_direction_assignment_count
+        ),
+        total_retained_direction_assignment_count=(
+            online.total_retained_direction_assignment_count
         ),
         probe=probe_result,
     )
@@ -375,6 +393,11 @@ class _OnlineWalkResult:
     total_retained_prefix_domain_count: int | None
     max_retained_prefix_assignment_count: int | None
     total_retained_prefix_assignment_count: int | None
+    retained_direction_enumeration_frame_count: int | None
+    max_retained_direction_carrier_count: int | None
+    total_retained_direction_carrier_count: int | None
+    max_retained_direction_assignment_count: int | None
+    total_retained_direction_assignment_count: int | None
 
 
 def _walk_prepared_decoder(
@@ -407,6 +430,11 @@ def _walk_prepared_decoder(
     total_retained_prefix_domain_count: int | None = None
     max_retained_prefix_assignment_count: int | None = None
     total_retained_prefix_assignment_count: int | None = None
+    retained_direction_enumeration_frame_count: int | None = None
+    max_retained_direction_carrier_count: int | None = None
+    total_retained_direction_carrier_count: int | None = None
+    max_retained_direction_assignment_count: int | None = None
+    total_retained_direction_assignment_count: int | None = None
 
     while stack:
         max_pending_stream_states = max(max_pending_stream_states, len(stack))
@@ -454,6 +482,26 @@ def _walk_prepared_decoder(
                 total_retained_prefix_assignment_count,
                 int(retained.total_prefix_assignment_count),
             )
+            retained_direction_enumeration_frame_count = _optional_max(
+                retained_direction_enumeration_frame_count,
+                int(retained.direction_enumeration_frame_count),
+            )
+            max_retained_direction_carrier_count = _optional_max(
+                max_retained_direction_carrier_count,
+                int(retained.max_direction_carrier_count),
+            )
+            total_retained_direction_carrier_count = _optional_max(
+                total_retained_direction_carrier_count,
+                int(retained.total_direction_carrier_count),
+            )
+            max_retained_direction_assignment_count = _optional_max(
+                max_retained_direction_assignment_count,
+                int(retained.max_direction_assignment_count),
+            )
+            total_retained_direction_assignment_count = _optional_max(
+                total_retained_direction_assignment_count,
+                int(retained.total_direction_assignment_count),
+            )
         for choice in reversed(result.choices):
             if choice.is_eos:
                 if state.prefix in emitted:
@@ -489,6 +537,17 @@ def _walk_prepared_decoder(
         total_retained_prefix_domain_count=total_retained_prefix_domain_count,
         max_retained_prefix_assignment_count=max_retained_prefix_assignment_count,
         total_retained_prefix_assignment_count=total_retained_prefix_assignment_count,
+        retained_direction_enumeration_frame_count=(
+            retained_direction_enumeration_frame_count
+        ),
+        max_retained_direction_carrier_count=max_retained_direction_carrier_count,
+        total_retained_direction_carrier_count=total_retained_direction_carrier_count,
+        max_retained_direction_assignment_count=(
+            max_retained_direction_assignment_count
+        ),
+        total_retained_direction_assignment_count=(
+            total_retained_direction_assignment_count
+        ),
     )
 
 

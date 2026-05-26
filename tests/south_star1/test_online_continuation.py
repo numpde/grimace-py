@@ -22,6 +22,7 @@ from grimace._south_star1.online_residual_continuation import online_search_snap
 from grimace._south_star1.online_residual_continuation import residual_frontier_shape
 from grimace._south_star1.online_residual_continuation import residual_continuation_key
 from grimace._south_star1.online_search_vm import EventLoopFrame
+from grimace._south_star1.online_search_vm import DirectionEnumerationFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
 from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
@@ -215,6 +216,17 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertTrue(
             any(
                 isinstance(frame.payload, PrefixEnumerationFrame)
+                for frame in continuation.snapshot.frame_stack
+            )
+        )
+        self.assertIsInstance(hash(residual_continuation_key(continuation)), int)
+
+    def test_residual_continuation_key_hashes_direction_enumeration_frame(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        self.assertTrue(
+            any(
+                isinstance(frame.payload, DirectionEnumerationFrame)
                 for frame in continuation.snapshot.frame_stack
             )
         )
@@ -476,6 +488,19 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             payload_types = tuple(type(frame.payload) for frame in continuation.snapshot.frame_stack)
             self.assertIn(RenderCursorFrame, payload_types)
             self.assertIn(PrefixEnumerationFrame, payload_types)
+
+    def test_residual_snapshot_can_contain_direction_enumeration_frame(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+        retained = _retained_continuations(result)
+
+        self.assertTrue(retained)
+        for continuation in retained:
+            self.assertTrue(
+                any(
+                    isinstance(frame.payload, DirectionEnumerationFrame)
+                    for frame in continuation.snapshot.frame_stack
+                )
+            )
 
     def test_render_cursor_resume_after_atom_piece(self) -> None:
         decoder = _residual_determinized_decoder(tetrahedral_facts())

@@ -45,6 +45,7 @@ from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
 from .residual_constraints import ResidualStore
 from .residual_constraints import ResidualStoreValueSnapshot
+from .residual_constraints import VarId
 from .residual_constraints import direction_var
 from .root_domains import component_root_domains_for_facts
 from .semantics import ParserSemantics
@@ -196,6 +197,32 @@ class PrefixEnumerationFrame:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class DirectionEnumerationFrame:
+    trace: "_VmTraversalTrace"
+    prefix: "_FrozenPrefixChoice"
+    tetra_tokens: tuple[tuple[AtomId, TetraToken], ...]
+    carriers: tuple[int, ...]
+    carrier_index: int
+    marks: tuple[tuple[int, DirectionMark], ...]
+    residual_snapshot: ResidualStoreValueSnapshot
+    ring_state: object
+    decision_path: OnlineDecisionPath
+    frame_stack_prefix: tuple["OnlineSearchFrame", ...]
+    annotation_count: int
+
+    def __post_init__(self) -> None:
+        if self.carrier_index < 0:
+            raise ValueError("direction enumeration frame index must be nonnegative")
+        object.__setattr__(
+            self,
+            "tetra_tokens",
+            tuple(sorted(self.tetra_tokens, key=lambda item: int(item[0]))),
+        )
+        object.__setattr__(self, "carriers", tuple(sorted(self.carriers)))
+        object.__setattr__(self, "marks", tuple(sorted(self.marks)))
+
+
 OnlineFramePayload = (
     ComponentRootChoiceFrame
     | SpanningTreeChoiceFrame
@@ -210,6 +237,7 @@ OnlineFramePayload = (
     | CompletionFrame
     | RenderCursorFrame
     | PrefixEnumerationFrame
+    | DirectionEnumerationFrame
 )
 
 
@@ -250,6 +278,11 @@ class RenderContinuationPayloadShape:
     total_prefix_domain_count: int = 0
     max_prefix_assignment_count: int = 0
     total_prefix_assignment_count: int = 0
+    direction_enumeration_frame_count: int = 0
+    max_direction_carrier_count: int = 0
+    total_direction_carrier_count: int = 0
+    max_direction_assignment_count: int = 0
+    total_direction_assignment_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -770,6 +803,11 @@ def render_continuation_payload_shape(
     total_prefix_domain_count = 0
     max_prefix_assignment_count = 0
     total_prefix_assignment_count = 0
+    direction_enumeration_frame_count = 0
+    max_direction_carrier_count = 0
+    total_direction_carrier_count = 0
+    max_direction_assignment_count = 0
+    total_direction_assignment_count = 0
     for frame in frame_stack:
         if isinstance(frame.payload, PrefixEnumerationFrame):
             scheduler_frame_count += 1
@@ -783,6 +821,17 @@ def render_continuation_payload_shape(
                 assignment_count,
             )
             total_prefix_assignment_count += assignment_count
+        if isinstance(frame.payload, DirectionEnumerationFrame):
+            direction_enumeration_frame_count += 1
+            carrier_count = len(frame.payload.carriers)
+            assignment_count = len(frame.payload.marks)
+            max_direction_carrier_count = max(max_direction_carrier_count, carrier_count)
+            total_direction_carrier_count += carrier_count
+            max_direction_assignment_count = max(
+                max_direction_assignment_count,
+                assignment_count,
+            )
+            total_direction_assignment_count += assignment_count
         if not isinstance(frame.payload, RenderCursorFrame):
             continue
         cursor = frame.payload.cursor
@@ -817,6 +866,11 @@ def render_continuation_payload_shape(
         total_prefix_domain_count=total_prefix_domain_count,
         max_prefix_assignment_count=max_prefix_assignment_count,
         total_prefix_assignment_count=total_prefix_assignment_count,
+        direction_enumeration_frame_count=direction_enumeration_frame_count,
+        max_direction_carrier_count=max_direction_carrier_count,
+        total_direction_carrier_count=total_direction_carrier_count,
+        max_direction_assignment_count=max_direction_assignment_count,
+        total_direction_assignment_count=total_direction_assignment_count,
     )
 
 
@@ -1319,6 +1373,7 @@ def _emit_witnesses_for_prefix_choice(
         trace=trace,
         slots=slots,
         prefix=prefix,
+        tetra_tokens=tetra_tokens,
     )
     if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
         candidates = tuple(_support_maximal_candidates(tuple(candidates)))
@@ -1347,6 +1402,7 @@ def _iter_directional_candidates(
     trace: _VmTraversalTrace,
     slots: _SlotView,
     prefix: _PrefixChoice,
+    tetra_tokens: dict[AtomId, TetraToken],
 ) -> Iterator[_DirectionalCandidate]:
     domains = _direction_domains(
         facts=state.facts,
@@ -1360,66 +1416,152 @@ def _iter_directional_candidates(
         slots=slots,
     )
     carriers = tuple(carrier.id for carrier in slots.carrier_slots)
-    previous_store = state.residual
-    try:
-        mark_domains = tuple((carrier_id, domains[carrier_id]) for carrier_id in carriers)
-        for marks in _iter_dict_product_frame(state, kind="direction-mark-choice", domains=mark_domains):
-            store = ResidualStore()
-            for carrier_id in carriers:
-                store.add_var(direction_var(carrier_id), domains[carrier_id])
-            factor_ids = []
-            for template in state.templates.directional:
-                scope_models = carrier_models_by_site[template.site]
-                factor = DirectionalResidualFactor(
-                    scope=tuple(scope_models),
-                    status=template.status,
-                    target=template.target,
-                    carrier_models=scope_models,
-                )
-                factor_ids.append(store.add_factor(factor))
-            state.residual = store
-            state.frames.append(
-                OnlineSearchFrame(DirectionMarkChoiceFrame(_direction_decision_value(marks)))
+    store = ResidualStore()
+    for carrier_id in carriers:
+        store.add_var(direction_var(carrier_id), domains[carrier_id])
+    for template in state.templates.directional:
+        scope_models = carrier_models_by_site[template.site]
+        store.add_factor(
+            DirectionalResidualFactor(
+                scope=tuple(scope_models),
+                status=template.status,
+                target=template.target,
+                carrier_models=scope_models,
             )
-            decision_checkpoint = state.decisions.checkpoint()
-            for carrier_id in carriers:
-                state.decisions.push(OnlineDecision("direction_mark", (carrier_id, marks[carrier_id].name)))
-            try:
-                if not all(
-                    store.assign(direction_var(carrier_id), marks[carrier_id])
-                    for carrier_id in carriers
-                ):
-                    continue
-                if not _bond_decode_ok(
-                    facts=state.facts,
-                    semantics=state.semantics,
-                    slots=slots,
-                    prefix=prefix,
-                    marks=marks,
-                ):
-                    continue
-                if not all(store.close_factor(factor_id) for factor_id in factor_ids):
-                    continue
-                yield _DirectionalCandidate(
-                    marks=tuple(sorted(marks.items())),
-                    support=frozenset(
-                        carrier_id
-                        for carrier_id, mark in marks.items()
-                        if mark is not DirectionMark.ABSENT
-                    ),
-                    annotation_count=sum(
-                        1 for mark in marks.values() if mark is not DirectionMark.ABSENT
-                    ),
-                    residual_snapshot=store.value_snapshot(),
-                    ring_state=state.ring.checkpoint(),
-                    decision_path=state.decisions.path(),
-                    frame_stack=tuple(state.frames),
-                )
-            finally:
-                state.decisions.rollback(decision_checkpoint)
-                state.frames.pop()
+        )
+    frame = DirectionEnumerationFrame(
+        trace=trace,
+        prefix=_freeze_prefix_choice(prefix),
+        tetra_tokens=tuple(sorted(tetra_tokens.items(), key=lambda item: int(item[0]))),
+        carriers=carriers,
+        carrier_index=0,
+        marks=(),
+        residual_snapshot=store.value_snapshot(),
+        ring_state=state.ring.checkpoint(),
+        decision_path=state.decisions.path(),
+        frame_stack_prefix=tuple(state.frames),
+        annotation_count=0,
+    )
+    yield from _iter_directional_candidates_from_frame(state=state, frame=frame)
+
+
+def _iter_directional_candidates_from_frame(
+    *,
+    state: OnlineSearchState,
+    frame: DirectionEnumerationFrame,
+) -> Iterator[_DirectionalCandidate]:
+    previous_store = state.residual
+    previous_ring = state.ring.checkpoint()
+    previous_decisions = state.decisions.path()
+    previous_frames = tuple(state.frames)
+    try:
+        state.residual = ResidualStore.from_value_snapshot(frame.residual_snapshot)
+        state.ring.rollback(frame.ring_state)
+        state.decisions.restore_path(frame.decision_path)
+        state.frames[:] = list(frame.frame_stack_prefix)
+        yield from _resume_direction_candidate_frame(state=state, frame=frame)
     finally:
         state.residual = previous_store
+        state.ring.rollback(previous_ring)
+        state.decisions.restore_path(previous_decisions)
+        state.frames[:] = list(previous_frames)
+
+
+def _resume_direction_candidate_frame(
+    *,
+    state: OnlineSearchState,
+    frame: DirectionEnumerationFrame,
+) -> Iterator[_DirectionalCandidate]:
+    if frame.carrier_index == len(frame.carriers):
+        yield from _complete_direction_frame(state=state, frame=frame)
+        return
+    if frame.carrier_index > len(frame.carriers):
+        raise ValueError("direction frame carrier index is outside carrier domain")
+    carrier_id = frame.carriers[frame.carrier_index]
+    domains = _direction_domains_from_snapshot(frame.residual_snapshot)
+    choices = domains[direction_var(carrier_id)]
+    for mark in choices:
+        store = ResidualStore.from_value_snapshot(frame.residual_snapshot)
+        if not store.assign(direction_var(carrier_id), mark):
+            continue
+        next_decisions = OnlineDecisionRecorder()
+        next_decisions.restore_path(frame.decision_path)
+        next_decisions.push(OnlineDecision("direction_mark", (carrier_id, mark.name)))
+        next_frame = DirectionEnumerationFrame(
+            trace=frame.trace,
+            prefix=frame.prefix,
+            tetra_tokens=frame.tetra_tokens,
+            carriers=frame.carriers,
+            carrier_index=frame.carrier_index + 1,
+            marks=frame.marks + ((carrier_id, mark),),
+            residual_snapshot=store.value_snapshot(),
+            ring_state=frame.ring_state,
+            decision_path=next_decisions.path(),
+            frame_stack_prefix=frame.frame_stack_prefix,
+            annotation_count=frame.annotation_count
+            + (0 if mark is DirectionMark.ABSENT else 1),
+        )
+        if next_frame.carrier_index == len(next_frame.carriers):
+            yield from _complete_direction_frame(
+                state=state,
+                frame=next_frame,
+                retained_frame=frame,
+            )
+            continue
+        yield from _iter_directional_candidates_from_frame(
+            state=state,
+            frame=next_frame,
+        )
+
+
+def _complete_direction_frame(
+    *,
+    state: OnlineSearchState,
+    frame: DirectionEnumerationFrame,
+    retained_frame: DirectionEnumerationFrame | None = None,
+) -> Iterator[_DirectionalCandidate]:
+    prefix = _thaw_prefix_choice(frame.prefix)
+    slots = _slot_view_for_trace(frame.trace)
+    marks = dict(frame.marks)
+    if not _bond_decode_ok(
+        facts=state.facts,
+        semantics=state.semantics,
+        slots=slots,
+        prefix=prefix,
+        marks=marks,
+    ):
+        return
+    store = ResidualStore.from_value_snapshot(frame.residual_snapshot)
+    if not all(
+        store.close_factor(factor_id)
+        for factor_id in range(len(frame.residual_snapshot.factors))
+    ):
+        return
+    direction_frame = OnlineSearchFrame(
+        frame if retained_frame is None else retained_frame
+    )
+    mark_frame = OnlineSearchFrame(
+        DirectionMarkChoiceFrame(_direction_decision_value(marks))
+    )
+    yield _DirectionalCandidate(
+        marks=tuple(sorted(marks.items())),
+        support=frozenset(
+            carrier_id
+            for carrier_id, mark in marks.items()
+            if mark is not DirectionMark.ABSENT
+        ),
+        annotation_count=frame.annotation_count,
+        residual_snapshot=store.value_snapshot(),
+        ring_state=frame.ring_state,
+        decision_path=frame.decision_path,
+        frame_stack=frame.frame_stack_prefix + (direction_frame, mark_frame),
+    )
+
+
+def _direction_domains_from_snapshot(
+    snapshot: ResidualStoreValueSnapshot,
+) -> dict[VarId, tuple[object, ...]]:
+    return dict(snapshot.domains)
 
 
 def _render_directional_candidate(
@@ -1650,6 +1792,11 @@ def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
             yield from _resume_render_cursor_frame(state, cursor)
         case PrefixEnumerationFrame() as prefix_frame:
             yield from _resume_prefix_enumeration_frame(state=state, frame=prefix_frame)
+        case DirectionEnumerationFrame() as direction_frame:
+            yield from _resume_direction_enumeration_frame(
+                state=state,
+                frame=direction_frame,
+            )
         case _:
             raise TypeError(f"frame is not resumable: {frame.payload!r}")
 
@@ -1678,13 +1825,49 @@ def _resume_render_cursor_frame(
     )
 
 
+def _resume_direction_enumeration_frame(
+    state: OnlineSearchState,
+    frame: DirectionEnumerationFrame,
+    sink_factory: Callable[[], OnlineRenderSink] | None = None,
+) -> Iterator[OnlineWitness]:
+    if sink_factory is None:
+        sink_factory = lambda: state.output
+    candidates: Iterator[_DirectionalCandidate] | tuple[_DirectionalCandidate, ...]
+    candidates = _iter_directional_candidates_from_frame(state=state, frame=frame)
+    if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
+        candidates = tuple(_support_maximal_candidates(tuple(candidates)))
+    prefix = _thaw_prefix_choice(frame.prefix)
+    tetra_tokens = dict(frame.tetra_tokens)
+    slots = _slot_view_for_trace(frame.trace)
+    for candidate in candidates:
+        rendered = _render_directional_candidate(
+            state=state,
+            trace=frame.trace,
+            slots=slots,
+            prefix=prefix,
+            tetra_tokens=tetra_tokens,
+            candidate=candidate,
+            sink_factory=sink_factory,
+        )
+        if rendered is None:
+            continue
+        yield OnlineWitness(
+            rendered=rendered,
+            traversal_key=_trace_key(frame.trace),
+            annotation_count=candidate.annotation_count,
+        )
+
+
 def _pop_resumable_frame(
     frames: list[OnlineSearchFrame],
 ) -> OnlineSearchFrame | None:
     active_index: int | None = None
     for index in range(len(frames) - 1, -1, -1):
         frame = frames[index]
-        if not isinstance(frame.payload, (RenderCursorFrame, PrefixEnumerationFrame)):
+        if not isinstance(
+            frame.payload,
+            (RenderCursorFrame, PrefixEnumerationFrame, DirectionEnumerationFrame),
+        ):
             continue
         active_index = index
         break
@@ -1701,6 +1884,14 @@ def _pop_resumable_frame(
         and remaining_prefix_frame_count > 0
     ):
         raise AssertionError("multiple active prefix-enumeration frames")
+    remaining_direction_frame_count = sum(
+        1 for frame in frames if isinstance(frame.payload, DirectionEnumerationFrame)
+    )
+    if remaining_direction_frame_count > 1 or (
+        isinstance(popped.payload, DirectionEnumerationFrame)
+        and remaining_direction_frame_count > 0
+    ):
+        raise AssertionError("multiple active direction-enumeration frames")
     return popped
 
 
@@ -2527,6 +2718,7 @@ __all__ = (
     "BondTextChoiceFrame",
     "CompletionFrame",
     "ComponentRootChoiceFrame",
+    "DirectionEnumerationFrame",
     "DirectionMarkChoiceFrame",
     "EventLoopFrame",
     "LocalEventOrderChoiceFrame",

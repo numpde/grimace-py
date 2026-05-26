@@ -30,6 +30,12 @@ PREFIX_SCHEDULER_EVIDENCE_FIXTURES = frozenset(
     }
 )
 
+DIRECTION_SCHEDULER_EVIDENCE_FIXTURES = frozenset(
+    {
+        "directional",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class PreparedPrefixQueryObservation:
@@ -51,6 +57,11 @@ class PreparedPrefixQueryObservation:
     total_retained_prefix_domain_count: int | None
     max_retained_prefix_assignment_count: int | None
     total_retained_prefix_assignment_count: int | None
+    retained_direction_enumeration_frame_count: int | None
+    max_retained_direction_carrier_count: int | None
+    total_retained_direction_carrier_count: int | None
+    max_retained_direction_assignment_count: int | None
+    total_retained_direction_assignment_count: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +86,11 @@ class PreparedPrefixWorkloadResult:
     total_residual_prefix_domain_count: int
     max_residual_prefix_assignment_count: int
     total_residual_prefix_assignment_count: int
+    total_residual_direction_enumeration_frame_count: int
+    max_residual_direction_carrier_count: int
+    total_residual_direction_carrier_count: int
+    max_residual_direction_assignment_count: int
+    total_residual_direction_assignment_count: int
     probe: PreparedRuntimeProbeResult
 
 
@@ -98,6 +114,17 @@ class PreparedDecoderWalkStep:
     retained_total_prefix_domain_count_by_mode: tuple[tuple[str, int | None], ...]
     retained_max_prefix_assignment_count_by_mode: tuple[tuple[str, int | None], ...]
     retained_total_prefix_assignment_count_by_mode: tuple[tuple[str, int | None], ...]
+    retained_direction_enumeration_frame_count_by_mode: tuple[
+        tuple[str, int | None], ...
+    ]
+    retained_max_direction_carrier_count_by_mode: tuple[tuple[str, int | None], ...]
+    retained_total_direction_carrier_count_by_mode: tuple[tuple[str, int | None], ...]
+    retained_max_direction_assignment_count_by_mode: tuple[
+        tuple[str, int | None], ...
+    ]
+    retained_total_direction_assignment_count_by_mode: tuple[
+        tuple[str, int | None], ...
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +142,11 @@ class PreparedDecoderWalkResult:
     total_residual_prefix_domain_count: int
     max_residual_prefix_assignment_count: int
     total_residual_prefix_assignment_count: int
+    total_residual_direction_enumeration_frame_count: int
+    max_residual_direction_carrier_count: int
+    total_residual_direction_carrier_count: int
+    max_residual_direction_assignment_count: int
+    total_residual_direction_assignment_count: int
     probe: PreparedRuntimeProbeResult
 
 
@@ -132,6 +164,11 @@ class PreparedDecoderBranchWalkResult:
     total_residual_prefix_domain_count: int
     max_residual_prefix_assignment_count: int
     total_residual_prefix_assignment_count: int
+    total_residual_direction_enumeration_frame_count: int
+    max_residual_direction_carrier_count: int
+    total_residual_direction_carrier_count: int
+    max_residual_direction_assignment_count: int
+    total_residual_direction_assignment_count: int
     probe: PreparedRuntimeProbeResult
 
 
@@ -552,6 +589,44 @@ def require_prefix_scheduler_frame_evidence(
     )
 
 
+def require_direction_scheduler_frame_evidence(
+    result: (
+        PreparedPrefixWorkloadResult
+        | PreparedDecoderWalkResult
+        | PreparedDecoderBranchWalkResult
+    ),
+    *,
+    fixture_name: str,
+) -> None:
+    if fixture_name not in DIRECTION_SCHEDULER_EVIDENCE_FIXTURES:
+        return
+    _require_positive_int(
+        result.total_residual_direction_enumeration_frame_count,
+        field_name="direction_enumeration_frame_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.max_residual_direction_carrier_count,
+        field_name="max_direction_carrier_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.total_residual_direction_carrier_count,
+        field_name="total_direction_carrier_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.max_residual_direction_assignment_count,
+        field_name="max_direction_assignment_count",
+        fixture_name=fixture_name,
+    )
+    _require_positive_int(
+        result.total_residual_direction_assignment_count,
+        field_name="total_direction_assignment_count",
+        fixture_name=fixture_name,
+    )
+
+
 def _collect_row(
     *,
     fixture_name: str,
@@ -664,6 +739,21 @@ def _query_state(
             total_retained_prefix_assignment_count=(
                 None if retained is None else int(retained.total_prefix_assignment_count)
             ),
+            retained_direction_enumeration_frame_count=(
+                None if retained is None else int(retained.direction_enumeration_frame_count)
+            ),
+            max_retained_direction_carrier_count=(
+                None if retained is None else int(retained.max_direction_carrier_count)
+            ),
+            total_retained_direction_carrier_count=(
+                None if retained is None else int(retained.total_direction_carrier_count)
+            ),
+            max_retained_direction_assignment_count=(
+                None if retained is None else int(retained.max_direction_assignment_count)
+            ),
+            total_retained_direction_assignment_count=(
+                None if retained is None else int(retained.total_direction_assignment_count)
+            ),
         ),
         choices=tuple(result.choices),
     )
@@ -766,6 +856,47 @@ def _result_from_rows(
             _required_residual_observation_int(
                 row.residual_continuations,
                 field_name="total_retained_prefix_assignment_count",
+            )
+            for row in rows
+        ),
+        total_residual_direction_enumeration_frame_count=sum(
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="retained_direction_enumeration_frame_count",
+            )
+            for row in rows
+        ),
+        max_residual_direction_carrier_count=max(
+            (
+                _required_residual_observation_int(
+                    row.residual_continuations,
+                    field_name="max_retained_direction_carrier_count",
+                )
+                for row in rows
+            ),
+            default=0,
+        ),
+        total_residual_direction_carrier_count=sum(
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="total_retained_direction_carrier_count",
+            )
+            for row in rows
+        ),
+        max_residual_direction_assignment_count=max(
+            (
+                _required_residual_observation_int(
+                    row.residual_continuations,
+                    field_name="max_retained_direction_assignment_count",
+                )
+                for row in rows
+            ),
+            default=0,
+        ),
+        total_residual_direction_assignment_count=sum(
+            _required_residual_observation_int(
+                row.residual_continuations,
+                field_name="total_retained_direction_assignment_count",
             )
             for row in rows
         ),
@@ -872,6 +1003,52 @@ def _decoder_walk_result(
             )
             for step in steps
         ),
+        total_residual_direction_enumeration_frame_count=sum(
+            _required_mode_int(
+                step.retained_direction_enumeration_frame_count_by_mode,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="direction_enumeration_frame_count",
+            )
+            for step in steps
+        ),
+        max_residual_direction_carrier_count=max(
+            (
+                _required_mode_int(
+                    step.retained_max_direction_carrier_count_by_mode,
+                    mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                    field_name="max_direction_carrier_count",
+                )
+                for step in steps
+            ),
+            default=0,
+        ),
+        total_residual_direction_carrier_count=sum(
+            _required_mode_int(
+                step.retained_total_direction_carrier_count_by_mode,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="total_direction_carrier_count",
+            )
+            for step in steps
+        ),
+        max_residual_direction_assignment_count=max(
+            (
+                _required_mode_int(
+                    step.retained_max_direction_assignment_count_by_mode,
+                    mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                    field_name="max_direction_assignment_count",
+                )
+                for step in steps
+            ),
+            default=0,
+        ),
+        total_residual_direction_assignment_count=sum(
+            _required_mode_int(
+                step.retained_total_direction_assignment_count_by_mode,
+                mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+                field_name="total_direction_assignment_count",
+            )
+            for step in steps
+        ),
         probe=probe,
     )
 
@@ -916,6 +1093,23 @@ def _branch_walk_result(
         ),
         total_residual_prefix_assignment_count=sum(
             walk.total_residual_prefix_assignment_count for walk in walks
+        ),
+        total_residual_direction_enumeration_frame_count=sum(
+            walk.total_residual_direction_enumeration_frame_count for walk in walks
+        ),
+        max_residual_direction_carrier_count=max(
+            (walk.max_residual_direction_carrier_count for walk in walks),
+            default=0,
+        ),
+        total_residual_direction_carrier_count=sum(
+            walk.total_residual_direction_carrier_count for walk in walks
+        ),
+        max_residual_direction_assignment_count=max(
+            (walk.max_residual_direction_assignment_count for walk in walks),
+            default=0,
+        ),
+        total_residual_direction_assignment_count=sum(
+            walk.total_residual_direction_assignment_count for walk in walks
         ),
         probe=probe,
     )
@@ -975,6 +1169,26 @@ def _walk_step_from_observations(
         ),
         retained_total_prefix_assignment_count_by_mode=tuple(
             (mode.value, observations[mode].total_retained_prefix_assignment_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_direction_enumeration_frame_count_by_mode=tuple(
+            (mode.value, observations[mode].retained_direction_enumeration_frame_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_max_direction_carrier_count_by_mode=tuple(
+            (mode.value, observations[mode].max_retained_direction_carrier_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_total_direction_carrier_count_by_mode=tuple(
+            (mode.value, observations[mode].total_retained_direction_carrier_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_max_direction_assignment_count_by_mode=tuple(
+            (mode.value, observations[mode].max_retained_direction_assignment_count)
+            for mode in _PREFIX_WORKLOAD_MODES
+        ),
+        retained_total_direction_assignment_count_by_mode=tuple(
+            (mode.value, observations[mode].total_retained_direction_assignment_count)
             for mode in _PREFIX_WORKLOAD_MODES
         ),
     )
@@ -1080,6 +1294,31 @@ def _validate_walk_step(step: PreparedDecoderWalkStep) -> None:
         mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
         field_name="total_prefix_assignment_count",
     )
+    _required_mode_int(
+        step.retained_direction_enumeration_frame_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="direction_enumeration_frame_count",
+    )
+    _required_mode_int(
+        step.retained_max_direction_carrier_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="max_direction_carrier_count",
+    )
+    _required_mode_int(
+        step.retained_total_direction_carrier_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="total_direction_carrier_count",
+    )
+    _required_mode_int(
+        step.retained_max_direction_assignment_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="max_direction_assignment_count",
+    )
+    _required_mode_int(
+        step.retained_total_direction_assignment_count_by_mode,
+        mode_name=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS.value,
+        field_name="total_direction_assignment_count",
+    )
     next_token_sets = {item[1] for item in step.next_token_set_by_mode}
     if len(next_token_sets) != 1:
         raise ValueError(f"decoder walk next-token disagreement at {step.prefix!r}")
@@ -1165,6 +1404,26 @@ def _require_residual_observation_stats(
         observation,
         field_name="total_retained_prefix_assignment_count",
     )
+    _required_residual_observation_int(
+        observation,
+        field_name="retained_direction_enumeration_frame_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="max_retained_direction_carrier_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="total_retained_direction_carrier_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="max_retained_direction_assignment_count",
+    )
+    _required_residual_observation_int(
+        observation,
+        field_name="total_retained_direction_assignment_count",
+    )
 
 
 def _require_positive_int(
@@ -1238,6 +1497,7 @@ __all__ = (
     "PreparedPrefixQueryObservation",
     "PreparedPrefixWorkloadResult",
     "PreparedPrefixWorkloadRow",
+    "DIRECTION_SCHEDULER_EVIDENCE_FIXTURES",
     "PREFIX_SCHEDULER_EVIDENCE_FIXTURES",
     "advance_decoder_to_prefix",
     "choose_walk_token",
@@ -1246,6 +1506,7 @@ __all__ = (
     "collect_mode_union_token_boundary_prefixes",
     "collect_prepared_prefix_workload",
     "collect_token_boundary_prefixes",
+    "require_direction_scheduler_frame_evidence",
     "require_prefix_scheduler_frame_evidence",
     "validate_prepared_branch_decoder_walk_result",
     "validate_prepared_decoder_walk_result",

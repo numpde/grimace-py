@@ -136,6 +136,11 @@ class OnlineResidualStateSizeStats:
     total_prefix_domain_count: int = 0
     max_prefix_assignment_count: int = 0
     total_prefix_assignment_count: int = 0
+    direction_enumeration_frame_count: int = 0
+    max_direction_carrier_count: int = 0
+    total_direction_carrier_count: int = 0
+    max_direction_assignment_count: int = 0
+    total_direction_assignment_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -691,6 +696,26 @@ def _state_size_from_continuations(
         ),
         total_prefix_assignment_count=sum(
             shape.render_payload.total_prefix_assignment_count
+            for shape in shapes
+        ),
+        direction_enumeration_frame_count=sum(
+            shape.render_payload.direction_enumeration_frame_count
+            for shape in shapes
+        ),
+        max_direction_carrier_count=max(
+            shape.render_payload.max_direction_carrier_count
+            for shape in shapes
+        ),
+        total_direction_carrier_count=sum(
+            shape.render_payload.total_direction_carrier_count
+            for shape in shapes
+        ),
+        max_direction_assignment_count=max(
+            shape.render_payload.max_direction_assignment_count
+            for shape in shapes
+        ),
+        total_direction_assignment_count=sum(
+            shape.render_payload.total_direction_assignment_count
             for shape in shapes
         ),
     )

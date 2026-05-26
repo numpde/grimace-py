@@ -208,6 +208,22 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
 
         _assert_matrix_prefix_scheduler_evidence(self, entry)
 
+    def test_prepared_matrix_observes_direction_scheduler_frames_on_directional_fixture(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            directional_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="directional",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        _assert_matrix_direction_scheduler_evidence(self, entry)
+
     def test_prepared_matrix_prefix_scheduler_evidence_fails_if_count_zero(
         self,
     ) -> None:
@@ -353,6 +369,11 @@ def _assert_entry_conforms(
         test.assertIsNotNone(row.total_retained_prefix_domain_count)
         test.assertIsNotNone(row.max_retained_prefix_assignment_count)
         test.assertIsNotNone(row.total_retained_prefix_assignment_count)
+        test.assertIsNotNone(row.retained_direction_enumeration_frame_count)
+        test.assertIsNotNone(row.max_retained_direction_carrier_count)
+        test.assertIsNotNone(row.total_retained_direction_carrier_count)
+        test.assertIsNotNone(row.max_retained_direction_assignment_count)
+        test.assertIsNotNone(row.total_retained_direction_assignment_count)
 
 
 def _assert_matrix_prefix_scheduler_evidence(
@@ -367,6 +388,19 @@ def _assert_matrix_prefix_scheduler_evidence(
     test.assertGreater(row.total_retained_prefix_domain_count or 0, 0)
     test.assertGreater(row.max_retained_prefix_assignment_count or 0, 0)
     test.assertGreater(row.total_retained_prefix_assignment_count or 0, 0)
+
+
+def _assert_matrix_direction_scheduler_evidence(
+    test: unittest.TestCase,
+    entry: PreparedEnumerationMatrixEntry,
+) -> None:
+    row = entry.row
+    test.assertEqual(row.execution_mode, OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS)
+    test.assertGreater(row.retained_direction_enumeration_frame_count or 0, 0)
+    test.assertGreater(row.max_retained_direction_carrier_count or 0, 0)
+    test.assertGreater(row.total_retained_direction_carrier_count or 0, 0)
+    test.assertGreater(row.max_retained_direction_assignment_count or 0, 0)
+    test.assertGreater(row.total_retained_direction_assignment_count or 0, 0)
 
 
 def _disconnected_two_bond_components_facts() -> MoleculeFacts:

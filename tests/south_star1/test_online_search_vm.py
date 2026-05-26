@@ -18,6 +18,7 @@ from grimace._south_star1.online_decisions import OnlineDecision
 from grimace._south_star1.online_render_sink import OnlineStringBuffer
 from grimace._south_star1.online_residual_continuation import ResidualFrontierSink
 from grimace._south_star1.online_search_vm import EventLoopFrame
+from grimace._south_star1.online_search_vm import DirectionEnumerationFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import ParentOrientationFrame
@@ -333,6 +334,139 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             _pop_resumable_frame([first, second])
+
+    def test_direction_enumeration_frame_is_frozen_hashable_and_canonical(self) -> None:
+        frame = _direction_frame_from_snapshot(
+            _first_residual_continuation(directional_facts()).snapshot
+        )
+        canonical = DirectionEnumerationFrame(
+            trace=frame.trace,
+            prefix=frame.prefix,
+            tetra_tokens=tuple(reversed(frame.tetra_tokens)),
+            carriers=tuple(reversed(frame.carriers)),
+            carrier_index=frame.carrier_index,
+            marks=tuple(reversed(frame.marks)),
+            residual_snapshot=frame.residual_snapshot,
+            ring_state=frame.ring_state,
+            decision_path=frame.decision_path,
+            frame_stack_prefix=frame.frame_stack_prefix,
+            annotation_count=frame.annotation_count,
+        )
+
+        with self.assertRaises(FrozenInstanceError):
+            canonical.carrier_index = 99  # type: ignore[misc]
+        self.assertIsInstance(hash(canonical), int)
+        self.assertEqual(canonical.tetra_tokens, frame.tetra_tokens)
+        self.assertEqual(canonical.carriers, frame.carriers)
+        self.assertEqual(canonical.marks, frame.marks)
+
+    def test_direction_enumeration_frame_resumes_after_partial_mark_assignment(self) -> None:
+        frame = _direction_frame_from_snapshot(
+            _first_residual_continuation(directional_facts()).snapshot
+        )
+
+        self.assertLess(frame.carrier_index, len(frame.carriers))
+        self.assertTrue(_witnesses_from_direction_frame(directional_facts(), frame))
+
+    def test_direction_enumeration_frame_restores_residual_snapshot(self) -> None:
+        facts = directional_facts()
+        state = _state_for_direction_frame(facts)
+        before = state.residual.value_snapshot()
+        frame = _direction_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+        tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+        self.assertEqual(state.residual.value_snapshot(), before)
+
+    def test_direction_enumeration_frame_restores_ring_state(self) -> None:
+        facts = directional_facts()
+        state = _state_for_direction_frame(facts)
+        before = state.ring.checkpoint()
+        frame = _direction_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+        tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+        self.assertEqual(state.ring.checkpoint(), before)
+
+    def test_direction_enumeration_frame_restores_decision_path(self) -> None:
+        facts = directional_facts()
+        state = _state_for_direction_frame(facts)
+        before = state.decisions.path()
+        frame = _direction_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+        tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+        self.assertEqual(state.decisions.path(), before)
+
+    def test_direction_enumeration_frame_rejects_inadmissible_mark_without_sink_append(
+        self,
+    ) -> None:
+        frame = _initial_direction_frame_from(
+            _direction_frame_from_snapshot(
+                _first_residual_continuation(directional_facts()).snapshot
+            )
+        )
+        invalid = replace(
+            frame,
+            carrier_index=len(frame.carriers),
+            marks=tuple(
+                (carrier, DirectionMark.ABSENT)
+                for carrier in frame.carriers
+            ),
+        )
+        state = _state_for_direction_frame(
+            directional_facts(),
+            sink=_AppendRejectingSink(),
+        )
+
+        self.assertEqual(
+            tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(invalid))),
+            (),
+        )
+
+    def test_direction_enumeration_frame_preserves_candidate_order(self) -> None:
+        frame = _direction_frame_from_snapshot(
+            _first_residual_continuation(directional_facts()).snapshot
+        )
+
+        rendered = tuple(
+            witness.rendered
+            for witness in _witnesses_from_direction_frame(directional_facts(), frame)
+        )
+
+        self.assertEqual(rendered, tuple(rendered))
+        self.assertTrue(rendered)
+
+    def test_direction_frame_resume_reaches_sibling_directional_alternatives(self) -> None:
+        frame = _initial_direction_frame_from(
+            _direction_frame_from_snapshot(
+                _first_residual_continuation(directional_facts()).snapshot
+            )
+        )
+        witnesses = _witnesses_from_direction_frame(directional_facts(), frame)
+
+        self.assertGreater(len({witness.rendered for witness in witnesses}), 1)
+
+    def test_direction_scheduler_frame_does_not_accumulate_stale_duplicates(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        self.assertEqual(
+            sum(
+                isinstance(frame.payload, DirectionEnumerationFrame)
+                for frame in continuation.snapshot.frame_stack
+            ),
+            1,
+        )
+
+    def test_dispatcher_rejects_duplicate_direction_enumeration_frames(self) -> None:
+        frame = OnlineSearchFrame(
+            _direction_frame_from_snapshot(
+                _first_residual_continuation(directional_facts()).snapshot
+            )
+        )
+
+        with self.assertRaises(AssertionError):
+            _pop_resumable_frame([frame, frame])
 
     def test_dispatcher_preserves_ring_state_annotation_count_and_frontier(self) -> None:
         facts = ring_directional_facts()
@@ -726,6 +860,34 @@ def _prefix_frame_from_snapshot(snapshot):
     raise AssertionError("snapshot lacks prefix enumeration frame")
 
 
+def _direction_frame_from_snapshot(snapshot):
+    for frame in reversed(snapshot.frame_stack):
+        if isinstance(frame.payload, DirectionEnumerationFrame):
+            return frame.payload
+    raise AssertionError("snapshot lacks direction enumeration frame")
+
+
+def _initial_direction_frame_from(
+    frame: DirectionEnumerationFrame,
+) -> DirectionEnumerationFrame:
+    return replace(
+        frame,
+        carrier_index=0,
+        marks=(),
+        residual_snapshot=replace(
+            frame.residual_snapshot,
+            assignments=(),
+            factors=tuple(
+                replace(factor, marks=())
+                if hasattr(factor, "marks")
+                else factor
+                for factor in frame.residual_snapshot.factors
+            ),
+        ),
+        annotation_count=0,
+    )
+
+
 def _complete_prefix_frame(facts: MoleculeFacts) -> PrefixEnumerationFrame:
     cursor = _first_render_cursor(facts)
     prefix = cursor.program.prefix
@@ -769,6 +931,50 @@ def _witnesses_from_prefix_frame(
     sink.snapshot_provider = state.checkpoint
     sink.decision_path_provider = state.decisions.path
     return tuple(_resume_from_frames(state))
+
+
+def _witnesses_from_direction_frame(
+    facts: MoleculeFacts,
+    frame: DirectionEnumerationFrame,
+):
+    state = _state_for_direction_frame(facts)
+    return tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+
+def _state_for_direction_frame(facts: MoleculeFacts, *, sink=None):
+    sink = sink if sink is not None else ResidualFrontierSink(required_prefix="")
+    state = make_online_search_state(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        sink=sink,
+    )
+    sink.snapshot_provider = state.checkpoint
+    sink.decision_path_provider = state.decisions.path
+    return state
+
+
+class _AppendRejectingSink:
+    def checkpoint(self) -> int:
+        return 0
+
+    def rollback(self, checkpoint: object) -> None:
+        self._checkpoint = checkpoint
+
+    def append(self, text: str, *, token_text: str | None = None) -> bool:
+        raise AssertionError("inadmissible direction frame appended to sink")
+
+    def complete(self) -> bool:
+        return True
+
+    def value(self) -> str:
+        return ""
+
+
+def _resume_from_frames_with_frame(state, frame: OnlineSearchFrame):
+    snapshot = replace(state.checkpoint(), frame_stack=(frame,))
+    state.rollback(snapshot)
+    return _resume_from_frames(state)
 
 
 def _render_cursor_from_snapshot(snapshot):

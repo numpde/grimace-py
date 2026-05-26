@@ -88,6 +88,20 @@ The audit matrix is a falsifier for this spec, not the source of truth. A
 passing RDKit audit means generated strings parse back to isomorphic facts under
 the declared adapter, not that RDKit defines the support.
 
+### Branch Presentation Policy
+
+South Star has two explicit traversal/presentation branch grammars.
+
+`EXHAUSTIVE` preserves the proof-kernel local event grammar and includes
+all-branch local orders. In this grammar, a child can be emitted as a
+parenthesized branch even when it is the only possible continuation child.
+
+`WRITER_SHAPED` suppresses degenerate all-branch local orders when a
+continuation child exists. Tree children are still permuted, true side children
+remain parenthesized, and ring endpoint decorations may still appear before the
+continuation. This narrows the traversal/presentation language toward ordinary
+writer-shaped SMILES, but it is not a claim of RDKit writer parity.
+
 ## Witness Certificates
 
 A certified witness records the traversal skeleton key, presentation prefix

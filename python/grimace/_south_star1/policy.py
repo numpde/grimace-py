@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from dataclasses import replace
 from enum import Enum
 
 from .facts import MoleculeFacts
@@ -28,6 +29,11 @@ class AnnotationMode(Enum):
     SUPPORT_MAXIMAL = "support_maximal"
     CARDINALITY_MAXIMAL = "cardinality_maximal"
     CANONICAL = "canonical"
+
+
+class BranchPresentationMode(Enum):
+    EXHAUSTIVE = "exhaustive"
+    WRITER_SHAPED = "writer_shaped"
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,10 +106,15 @@ class SmilesPolicy:
     atom_text_domains: tuple[AtomTextDomain, ...]
     bond_text_domains: tuple[BondTextDomain, ...]
     least_free_ring_labels: bool = True
+    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE
 
     def validate_for_facts(self, facts: MoleculeFacts) -> None:
         facts.validate()
         _require_nonempty_tuple("ring labels", self.ring_labels)
+        if not isinstance(self.branch_presentation_mode, BranchPresentationMode):
+            raise ValueError(
+                "branch_presentation_mode must be a BranchPresentationMode"
+            )
         if len(set(self.ring_labels)) != len(self.ring_labels):
             raise ValueError("ring label domain contains duplicates")
 
@@ -169,6 +180,13 @@ class SmilesPolicy:
         raise KeyError((bond, slot_kind))
 
 
+def with_branch_presentation_mode(
+    policy: SmilesPolicy,
+    mode: BranchPresentationMode,
+) -> SmilesPolicy:
+    return replace(policy, branch_presentation_mode=mode)
+
+
 def _require_nonempty_tuple(label: str, value: tuple[object, ...]) -> None:
     if not isinstance(value, tuple):
         raise TypeError(f"{label} must be a tuple")
@@ -191,8 +209,10 @@ __all__ = (
     "AtomTextDomain",
     "BondTextChoice",
     "BondTextDomain",
+    "BranchPresentationMode",
     "DirectionMark",
     "RingLabel",
     "SmilesPolicy",
     "TetraToken",
+    "with_branch_presentation_mode",
 )

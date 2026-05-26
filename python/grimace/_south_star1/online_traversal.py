@@ -15,6 +15,7 @@ from .ids import BondId
 from .online_traversal_graph import OnlineTraversalGraph
 from .online_traversal_graph import build_online_traversal_graph_from_facts
 from .online_traversal_graph import build_online_traversal_graph_from_index
+from .policy import BranchPresentationMode
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
 from .skeleton import ChildRole
@@ -125,6 +126,7 @@ def iter_online_traversal_traces(
         graph=graph,
         rooted_at_atom=rooted_at_atom,
         component_root_domains=component_root_domains,
+        branch_presentation_mode=policy.branch_presentation_mode,
     )
 
 
@@ -141,6 +143,7 @@ def iter_prepared_online_traversal_traces(
         graph=prepared.online_traversal_graph,
         rooted_at_atom=rooted_at_atom,
         component_root_domains=component_root_domains,
+        branch_presentation_mode=prepared.policy.branch_presentation_mode,
     )
 
 
@@ -150,6 +153,7 @@ def _iter_online_traversal_traces_on_graph(
     graph: OnlineTraversalGraph,
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
+    branch_presentation_mode: BranchPresentationMode,
 ) -> Iterator[OnlineTraversalTrace]:
     all_bonds = frozenset(graph.bonds)
 
@@ -175,6 +179,7 @@ def _iter_online_traversal_traces_on_graph(
                             atom,
                             children_by_parent[atom],
                             ring_events_by_atom[atom],
+                            branch_presentation_mode=branch_presentation_mode,
                         )
                     ),
                 )
@@ -425,6 +430,8 @@ def _local_event_orders_lazy(
     parent: AtomId,
     children: list[tuple[BondId, AtomId]],
     ring_events: list[_RingLocalEvent],
+    *,
+    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE,
 ) -> Iterator[tuple[_LocalEvent, ...]]:
     branch_children = tuple(
         _ChildLocalEvent(
@@ -438,10 +445,11 @@ def _local_event_orders_lazy(
     ring_event_tuple = tuple(ring_events)
     seen: set[tuple[_LocalEvent, ...]] = set()
 
-    for order in permutations(ring_event_tuple + branch_children):
-        if order not in seen:
-            seen.add(order)
-            yield order
+    if branch_presentation_mode is BranchPresentationMode.EXHAUSTIVE or not children:
+        for order in permutations(ring_event_tuple + branch_children):
+            if order not in seen:
+                seen.add(order)
+                yield order
 
     for ordered_children in permutations(children):
         if not ordered_children:

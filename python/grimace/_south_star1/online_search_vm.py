@@ -38,6 +38,7 @@ from .online_traversal import OnlineTreeBondEvent
 from .policy import AnnotationMode
 from .policy import AtomTextChoice
 from .policy import BondTextChoice
+from .policy import BranchPresentationMode
 from .policy import DirectionMark
 from .policy import RingLabel
 from .policy import SmilesPolicy
@@ -1115,6 +1116,9 @@ def _iter_vm_traversals(
                                 atom,
                                 children_by_parent[atom],
                                 ring_events_by_atom[atom],
+                                branch_presentation_mode=(
+                                    state.policy.branch_presentation_mode
+                                ),
                             )
                         ),
                     )
@@ -2382,6 +2386,8 @@ def _local_event_orders(
     parent: AtomId,
     children: list[tuple[BondId, AtomId]],
     rings: list[_RingLocalEvent],
+    *,
+    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE,
 ) -> Iterator[tuple[object, ...]]:
     branch_children = tuple(
         _ChildLocalEvent(bond=bond, parent=parent, child=child, role=ChildRole.BRANCH)
@@ -2390,10 +2396,11 @@ def _local_event_orders(
     ring_tuple = tuple(rings)
     seen: set[tuple[object, ...]] = set()
     base = ring_tuple + branch_children
-    for order in permutations(base):
-        if order not in seen:
-            seen.add(order)
-            yield order
+    if branch_presentation_mode is BranchPresentationMode.EXHAUSTIVE or not children:
+        for order in permutations(base):
+            if order not in seen:
+                seen.add(order)
+                yield order
     for ordered_children in permutations(children):
         if not ordered_children:
             continue

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
+from rdkit import Chem
+
 import grimace._south_star1.online_serialization_stream as stream_module
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.ids import AtomId
@@ -21,6 +23,8 @@ from grimace._south_star1.online_serialization_stream import iter_online_seriali
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.policy import AnnotationMode
+from grimace._south_star1.policy import BranchPresentationMode
+from grimace._south_star1.policy import with_branch_presentation_mode
 from grimace._south_star1.prepared_bench_matrix import PreparedRuntimeProbe
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
@@ -97,6 +101,55 @@ class OnlineSerializationStreamTest(unittest.TestCase):
                 result = _online_result(facts, execution_mode=mode)
                 self.assertEqual(set(result.strings), offline)
                 self.assertEqual(result.support_count, len(offline))
+
+    def test_writer_shaped_simple_chain_does_not_emit_nested_degenerate_branches(
+        self,
+    ) -> None:
+        facts = ordinary_molecule_facts_from_smiles("CCO")
+        result = _online_result(facts, policy=_writer_shaped_policy(facts))
+
+        self.assertEqual(set(result.strings), {"CCO", "OCC", "C(C)O", "C(O)C"})
+        self.assertFalse(any("C(C(" in text for text in result.strings))
+
+    def test_writer_shaped_branched_molecule_still_emits_true_branches(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("CCO")
+        result = _online_result(facts, policy=_writer_shaped_policy(facts))
+
+        self.assertIn("C(C)O", result.strings)
+        self.assertIn("C(O)C", result.strings)
+
+    def test_writer_shaped_support_count_less_than_exhaustive_on_alkene_fixture(
+        self,
+    ) -> None:
+        facts = ordinary_molecule_facts_from_smiles("CC/C=C\\C(CO)=C(/C)CC")
+        exhaustive = _offline_support(facts)
+        writer_policy = _writer_shaped_policy(facts)
+        writer = _offline_support(facts, policy=writer_policy)
+        source_key = Chem.MolToSmiles(
+            Chem.MolFromSmiles("CC/C=C\\C(CO)=C(/C)CC"),
+            canonical=True,
+            isomericSmiles=True,
+        )
+
+        self.assertGreater(writer.distinct_count, 0)
+        self.assertLess(writer.distinct_count, exhaustive.distinct_count)
+        self.assertFalse(
+            any(
+                text.startswith(("C(C(", "C(C\\", "C(C/"))
+                for text in writer.strings
+            )
+        )
+        self.assertEqual(
+            {
+                Chem.MolToSmiles(
+                    Chem.MolFromSmiles(text),
+                    canonical=True,
+                    isomericSmiles=True,
+                )
+                for text in writer.strings
+            },
+            {source_key},
+        )
 
     def test_iter_online_serializations_defaults_to_residual_mode(self) -> None:
         facts = tetrahedral_facts()
@@ -326,19 +379,24 @@ def _online_result(
     facts,
     *,
     execution_mode: OnlineDecoderExecutionMode = OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+    policy=None,
 ):
+    if policy is None:
+        policy = ordinary_policy_for_facts(facts)
     return collect_online_serializations(
         facts=facts,
-        policy=ordinary_policy_for_facts(facts),
+        policy=policy,
         semantics=OrdinarySmilesSemantics(),
         execution_mode=execution_mode,
     )
 
 
-def _offline_support(facts):
+def _offline_support(facts, *, policy=None):
+    if policy is None:
+        policy = ordinary_policy_for_facts(facts)
     return enumerate_stereo_support(
         facts=facts,
-        policy=ordinary_policy_for_facts(facts),
+        policy=policy,
         semantics=OrdinarySmilesSemantics(),
     )
 
@@ -371,6 +429,13 @@ def _prepare(facts):
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
+    )
+
+
+def _writer_shaped_policy(facts):
+    return with_branch_presentation_mode(
+        ordinary_policy_for_facts(facts),
+        BranchPresentationMode.WRITER_SHAPED,
     )
 
 

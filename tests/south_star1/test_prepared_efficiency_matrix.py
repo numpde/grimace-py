@@ -17,6 +17,9 @@ from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
 from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
 from grimace._south_star1.online_search_vm import validate_residual_frame_stack
+from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
+from grimace._south_star1.policy import BranchPresentationMode
+from grimace._south_star1.policy import with_branch_presentation_mode
 from grimace._south_star1.prepared_bench_matrix import PreparedEnumerationMatrixEntry
 from grimace._south_star1.prepared_bench_matrix import PreparedRuntimeProbe
 from grimace._south_star1.prepared_bench_matrix import collect_prepared_enumeration_matrix_entry
@@ -24,6 +27,7 @@ from grimace._south_star1.prepared_bench_matrix import collect_prepared_prefix_w
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
@@ -51,6 +55,29 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
                         execution_mode=mode,
                     )
                     _assert_entry_conforms(self, entry)
+
+    def test_prepared_offline_online_support_agree_under_writer_shaped_policy(
+        self,
+    ) -> None:
+        facts = ordinary_molecule_facts_from_smiles("CCO")
+        prepared = prepare_south_star_mol_from_facts(
+            facts,
+            writer_surface=SouthStarWriterSurface(),
+            policy=_writer_shaped_policy(facts),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="writer-shaped-chain",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        _assert_entry_conforms(self, entry)
+        self.assertEqual(entry.offline_strings, entry.online_strings)
+        self.assertEqual(
+            entry.offline_strings,
+            frozenset({"CCO", "OCC", "C(C)O", "C(O)C"}),
+        )
 
     def test_prepared_matrix_probe_reports_zero_graph_index_rebuilds_after_prepare(
         self,
@@ -391,6 +418,13 @@ def _guarded_matrix_entry(
             runtime_options=runtime_options,
             execution_mode=execution_mode,
         )
+
+
+def _writer_shaped_policy(facts):
+    return with_branch_presentation_mode(
+        ordinary_policy_for_facts(facts),
+        BranchPresentationMode.WRITER_SHAPED,
+    )
 
 
 def _assert_entry_conforms(

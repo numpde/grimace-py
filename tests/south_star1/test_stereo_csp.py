@@ -19,10 +19,12 @@ from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
 from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import BondTextDomain
+from grimace._south_star1.policy import BranchPresentationMode
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import TetraToken
+from grimace._south_star1.policy import with_branch_presentation_mode
 from grimace._south_star1.render import render_stereo_traversal
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.semantics import Invalid
@@ -30,7 +32,10 @@ from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import SlotBundle
 from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.stereo_csp import PresentationPrefix
+from grimace._south_star1.stereo_csp import build_stereo_csp
 from grimace._south_star1.stereo_csp import enumerate_stereo_assignments_for_prefix
+from grimace._south_star1.stereo_csp import select_stereo_solutions
+from grimace._south_star1.stereo_csp import solve_stereo_csp
 
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import organic_atom_choice
@@ -166,6 +171,45 @@ class StereoCSPTest(unittest.TestCase):
             )
         )
 
+    def test_writer_shaped_policy_does_not_change_csp_feasible_selected_counts_for_fixed_prefix(
+        self,
+    ) -> None:
+        facts = directional_facts()
+        skeleton = _first_skeleton(facts)
+        slots = allocate_traversal_slots(facts, skeleton)
+        semantics = _ScopedDirectionalSemantics(
+            scope=tuple(carrier.id for carrier in slots.carrier_slots),
+        )
+        policy = _policy_for_slots(
+            facts,
+            slots,
+            mode=AnnotationMode.SUPPORT_MAXIMAL,
+        )
+        writer_policy = with_branch_presentation_mode(
+            policy,
+            BranchPresentationMode.WRITER_SHAPED,
+        )
+        prefix = _prefix_for_slots(facts, slots)
+
+        self.assertEqual(
+            _csp_solution_counts(
+                facts=facts,
+                skeleton=skeleton,
+                slots=slots,
+                prefix=prefix,
+                policy=writer_policy,
+                semantics=semantics,
+            ),
+            _csp_solution_counts(
+                facts=facts,
+                skeleton=skeleton,
+                slots=slots,
+                prefix=prefix,
+                policy=policy,
+                semantics=semantics,
+            ),
+        )
+
 
 def _first_skeleton(facts: MoleculeFacts):
     return enumerate_traversal_skeletons(
@@ -173,6 +217,34 @@ def _first_skeleton(facts: MoleculeFacts):
         build_graph_index(facts),
         _policy_for_facts_only(facts),
     )[0]
+
+
+def _csp_solution_counts(
+    *,
+    facts: MoleculeFacts,
+    skeleton,
+    slots: SlotBundle,
+    prefix: PresentationPrefix,
+    policy: SmilesPolicy,
+    semantics,
+) -> tuple[int, int]:
+    csp = build_stereo_csp(
+        facts=facts,
+        skeleton=skeleton,
+        slots=slots,
+        prefix=prefix,
+        policy=policy,
+        semantics=semantics,
+    )
+    feasible = tuple(solve_stereo_csp(csp))
+    selected = tuple(
+        select_stereo_solutions(
+            csp=csp,
+            solutions=feasible,
+            mode=policy.annotation_mode,
+        )
+    )
+    return (len(feasible), len(selected))
 
 
 def _policy_for_slots(

@@ -48,6 +48,9 @@ ONLINE_CONTINUATION_PATH = (
     REPO_ROOT / "python" / "grimace" / "_south_star1" / "online_continuation.py"
 )
 SPEC_PATH = REPO_ROOT / "python" / "grimace" / "_south_star1" / "SPEC.md"
+STABILIZATION_PATH = (
+    REPO_ROOT / "python" / "grimace" / "_south_star1" / "STABILIZATION.md"
+)
 
 
 class OnlineContinuationDecoderTest(unittest.TestCase):
@@ -929,6 +932,20 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertIn("RESIDUAL_CONTINUATIONS", text)
         self.assertIn("stores suspended", text)
         self.assertNotIn("RESUMABLE_CONTINUATIONS` execution mode stores suspended", text)
+
+    def test_stabilization_contract_names_resumable_frame_family(self) -> None:
+        text = STABILIZATION_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("internal and experimental", text)
+        self.assertIn("capture_residual_continuation", text)
+        self.assertIn("retained-state audit", text)
+        self.assertIn("OnlineSearchVM.from_snapshot", text)
+        self.assertIn("resume_online_search_from_snapshot", text)
+        self.assertIn("Direct construction of residual value", text)
+        self.assertIn("RenderCursorFrame", text)
+        self.assertIn("PrefixEnumerationFrame", text)
+        self.assertIn("DirectionEnumerationFrame", text)
+        self.assertIn("SupportMaximalFrame", text)
 
     def test_online_continuation_boundary_no_artifact_or_rdkit_imports(self) -> None:
         tree = ast.parse(ONLINE_CONTINUATION_PATH.read_text(encoding="utf-8"))

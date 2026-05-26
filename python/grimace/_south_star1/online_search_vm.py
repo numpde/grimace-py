@@ -123,6 +123,79 @@ class RenderCursorFrame:
     cursor: "_RenderCursor"
 
 
+@dataclass(frozen=True, slots=True)
+class PrefixEnumerationFrame:
+    trace: "_VmTraversalTrace"
+    ring_label_domains: tuple[tuple[int, tuple[RingLabel, ...]], ...]
+    atom_text_domains: tuple[tuple[AtomId, tuple[AtomTextChoice, ...]], ...]
+    bond_text_domains: tuple[tuple[int, tuple[BondTextChoice, ...]], ...]
+    phase: Literal["ring", "atom", "bond"]
+    index: int
+    ring_labels: tuple[tuple[int, RingLabel], ...] = ()
+    atom_text: tuple[tuple[AtomId, AtomTextChoice], ...] = ()
+    bond_text: tuple[tuple[int, BondTextChoice], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.phase not in {"ring", "atom", "bond"}:
+            raise ValueError(f"unknown prefix enumeration phase: {self.phase!r}")
+        if self.index < 0:
+            raise ValueError("prefix enumeration frame index must be nonnegative")
+        object.__setattr__(
+            self,
+            "ring_label_domains",
+            tuple(
+                sorted(
+                    (
+                        (endpoint, tuple(labels))
+                        for endpoint, labels in self.ring_label_domains
+                    ),
+                    key=lambda item: item[0],
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "atom_text_domains",
+            tuple(
+                sorted(
+                    (
+                        (atom, tuple(choices))
+                        for atom, choices in self.atom_text_domains
+                    ),
+                    key=lambda item: int(item[0]),
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "bond_text_domains",
+            tuple(
+                sorted(
+                    (
+                        (slot, tuple(choices))
+                        for slot, choices in self.bond_text_domains
+                    ),
+                    key=lambda item: item[0],
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "ring_labels",
+            tuple(sorted(self.ring_labels, key=lambda item: item[0])),
+        )
+        object.__setattr__(
+            self,
+            "atom_text",
+            tuple(sorted(self.atom_text, key=lambda item: int(item[0]))),
+        )
+        object.__setattr__(
+            self,
+            "bond_text",
+            tuple(sorted(self.bond_text, key=lambda item: item[0])),
+        )
+
+
 OnlineFramePayload = (
     ComponentRootChoiceFrame
     | SpanningTreeChoiceFrame
@@ -136,6 +209,7 @@ OnlineFramePayload = (
     | ProductChoiceFrame
     | CompletionFrame
     | RenderCursorFrame
+    | PrefixEnumerationFrame
 )
 
 
@@ -170,6 +244,12 @@ class RenderContinuationPayloadShape:
     total_remaining_render_event_count: int = 0
     max_render_program_choice_count: int = 0
     total_render_program_choice_count: int = 0
+    scheduler_frame_count: int = 0
+    prefix_enumeration_frame_count: int = 0
+    max_prefix_domain_count: int = 0
+    total_prefix_domain_count: int = 0
+    max_prefix_assignment_count: int = 0
+    total_prefix_assignment_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -684,7 +764,25 @@ def render_continuation_payload_shape(
     total_remaining_event_count = 0
     max_program_choice_count = 0
     total_program_choice_count = 0
+    scheduler_frame_count = 0
+    prefix_enumeration_frame_count = 0
+    max_prefix_domain_count = 0
+    total_prefix_domain_count = 0
+    max_prefix_assignment_count = 0
+    total_prefix_assignment_count = 0
     for frame in frame_stack:
+        if isinstance(frame.payload, PrefixEnumerationFrame):
+            scheduler_frame_count += 1
+            prefix_enumeration_frame_count += 1
+            domain_count = _prefix_frame_domain_count(frame.payload)
+            assignment_count = _prefix_frame_assignment_count(frame.payload)
+            max_prefix_domain_count = max(max_prefix_domain_count, domain_count)
+            total_prefix_domain_count += domain_count
+            max_prefix_assignment_count = max(
+                max_prefix_assignment_count,
+                assignment_count,
+            )
+            total_prefix_assignment_count += assignment_count
         if not isinstance(frame.payload, RenderCursorFrame):
             continue
         cursor = frame.payload.cursor
@@ -713,7 +811,25 @@ def render_continuation_payload_shape(
         total_remaining_render_event_count=total_remaining_event_count,
         max_render_program_choice_count=max_program_choice_count,
         total_render_program_choice_count=total_program_choice_count,
+        scheduler_frame_count=scheduler_frame_count,
+        prefix_enumeration_frame_count=prefix_enumeration_frame_count,
+        max_prefix_domain_count=max_prefix_domain_count,
+        total_prefix_domain_count=total_prefix_domain_count,
+        max_prefix_assignment_count=max_prefix_assignment_count,
+        total_prefix_assignment_count=total_prefix_assignment_count,
     )
+
+
+def _prefix_frame_domain_count(frame: PrefixEnumerationFrame) -> int:
+    return (
+        len(frame.ring_label_domains)
+        + len(frame.atom_text_domains)
+        + len(frame.bond_text_domains)
+    )
+
+
+def _prefix_frame_assignment_count(frame: PrefixEnumerationFrame) -> int:
+    return len(frame.ring_labels) + len(frame.atom_text) + len(frame.bond_text)
 
 
 def _iter_vm_traversals(
@@ -833,113 +949,396 @@ def _iter_witnesses_for_trace(
     decision_checkpoint = state.decisions.checkpoint()
     try:
         slots = _slot_view_for_trace(trace)
-        if state.assume_prepared:
-            atom_domains = tuple(
-                (atom.id, state.policy.atom_text_domain_unchecked(atom.id))
-                for atom in state.facts.atoms
-            )
-            bond_domains = tuple(
-                (
-                    slot.id,
-                    state.policy.bond_text_domain_unchecked(
-                        slot.bond,
-                        slot_kind=slot.kind,
-                    ),
-                )
-                for slot in slots.bond_slots
-            )
-        else:
-            atom_domains = tuple(
-                (atom.id, state.policy.atom_text_domain(state.facts, atom.id))
-                for atom in state.facts.atoms
-            )
-            bond_domains = tuple(
-                (
-                    slot.id,
-                    state.policy.bond_text_domain(
-                        state.facts,
-                        slot.bond,
-                        slot_kind=slot.kind,
-                    ),
-                )
-                for slot in slots.bond_slots
-            )
-        for ring_labels in _iter_ring_label_assignments(state, slots):
-            ring_checkpoint = state.ring.checkpoint()
-            if not _install_ring_labels(state, slots, ring_labels):
-                state.ring.rollback(ring_checkpoint)
-                continue
-            state.frames.append(
-                OnlineSearchFrame(RingLabelChoiceFrame(_ring_label_decision_value(ring_labels)))
-            )
-            state.decisions.push(OnlineDecision("ring_labels", _ring_label_decision_value(ring_labels)))
-            ring_decision_checkpoint = state.decisions.checkpoint()
-            try:
-                for atom_text in _iter_dict_product_frame(state, kind="atom-text-choice", domains=atom_domains):
-                    state.frames.append(
-                        OnlineSearchFrame(AtomTextChoiceFrame(_atom_text_decision_value(atom_text)))
-                    )
-                    state.decisions.push(OnlineDecision("atom_text", _atom_text_decision_value(atom_text)))
-                    atom_decision_checkpoint = state.decisions.checkpoint()
-                    try:
-                        tetra_tokens = _forced_tetra_tokens(
-                            facts=state.facts,
-                            trace=trace,
-                            templates=state.templates,
-                            atom_text=atom_text,
-                        )
-                        if tetra_tokens is None:
-                            continue
-                        for bond_text in _iter_dict_product_frame(state, kind="bond-text-choice", domains=bond_domains):
-                            state.frames.append(
-                                OnlineSearchFrame(BondTextChoiceFrame(_bond_text_decision_value(bond_text)))
-                            )
-                            state.decisions.push(OnlineDecision("bond_text", _bond_text_decision_value(bond_text)))
-                            bond_decision_checkpoint = state.decisions.checkpoint()
-                            try:
-                                prefix = _PrefixChoice(
-                                    atom_text=atom_text,
-                                    bond_text=bond_text,
-                                    ring_labels=ring_labels,
-                                )
-                                candidates = _iter_directional_candidates(
-                                    state=state,
-                                    trace=trace,
-                                    slots=slots,
-                                    prefix=prefix,
-                                )
-                                if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-                                    candidates = tuple(_support_maximal_candidates(tuple(candidates)))
-                                for candidate in candidates:
-                                    rendered = _render_directional_candidate(
-                                        state=state,
-                                        trace=trace,
-                                        slots=slots,
-                                        prefix=prefix,
-                                        tetra_tokens=tetra_tokens,
-                                        candidate=candidate,
-                                        sink_factory=sink_factory,
-                                    )
-                                    if rendered is None:
-                                        continue
-                                    yield OnlineWitness(
-                                        rendered=rendered,
-                                        traversal_key=traversal_key,
-                                        annotation_count=candidate.annotation_count,
-                                    )
-                            finally:
-                                state.decisions.rollback(bond_decision_checkpoint)
-                                state.frames.pop()
-                    finally:
-                        state.decisions.rollback(atom_decision_checkpoint)
-                        state.frames.pop()
-            finally:
-                state.decisions.rollback(ring_decision_checkpoint)
-                state.frames.pop()
-                state.ring.rollback(ring_checkpoint)
+        frame = PrefixEnumerationFrame(
+            trace=trace,
+            ring_label_domains=_ring_label_domains_for_slots(state, slots),
+            atom_text_domains=_atom_text_domains_for_state(state),
+            bond_text_domains=_bond_text_domains_for_state(state, slots),
+            phase="ring",
+            index=0,
+        )
+        yield from _run_prefix_enumeration_frame(
+            state=state,
+            frame=frame,
+            sink_factory=sink_factory,
+        )
     finally:
         state.decisions.rollback(decision_checkpoint)
         state.frames.pop()
+
+
+def _ring_label_domains_for_slots(
+    state: OnlineSearchState,
+    slots: _SlotView,
+) -> tuple[tuple[int, tuple[RingLabel, ...]], ...]:
+    return tuple(
+        (endpoint_1, state.policy.ring_labels)
+        for endpoint_1, _, _, _ in _ring_intervals(slots)
+    )
+
+
+def _atom_text_domains_for_state(
+    state: OnlineSearchState,
+) -> tuple[tuple[AtomId, tuple[AtomTextChoice, ...]], ...]:
+    if state.assume_prepared:
+        return tuple(
+            (atom.id, state.policy.atom_text_domain_unchecked(atom.id))
+            for atom in state.facts.atoms
+        )
+    return tuple(
+        (atom.id, state.policy.atom_text_domain(state.facts, atom.id))
+        for atom in state.facts.atoms
+    )
+
+
+def _bond_text_domains_for_state(
+    state: OnlineSearchState,
+    slots: _SlotView,
+) -> tuple[tuple[int, tuple[BondTextChoice, ...]], ...]:
+    if state.assume_prepared:
+        return tuple(
+            (
+                slot.id,
+                state.policy.bond_text_domain_unchecked(
+                    slot.bond,
+                    slot_kind=slot.kind,
+                ),
+            )
+            for slot in slots.bond_slots
+        )
+    return tuple(
+        (
+            slot.id,
+            state.policy.bond_text_domain(
+                state.facts,
+                slot.bond,
+                slot_kind=slot.kind,
+            ),
+        )
+        for slot in slots.bond_slots
+    )
+
+
+def _run_prefix_enumeration_frame(
+    *,
+    state: OnlineSearchState,
+    frame: PrefixEnumerationFrame,
+    sink_factory: Callable[[], OnlineRenderSink],
+) -> Iterator[OnlineWitness]:
+    active_index = _active_prefix_frame_index(state.frames)
+    if active_index is None:
+        state.frames.append(OnlineSearchFrame(frame))
+        try:
+            yield from _resume_prefix_enumeration_frame(
+                state=state,
+                frame=frame,
+                sink_factory=sink_factory,
+            )
+        finally:
+            state.frames.pop()
+        return
+
+    previous = state.frames[active_index]
+    state.frames[active_index] = OnlineSearchFrame(frame)
+    try:
+        yield from _resume_prefix_enumeration_frame(
+            state=state,
+            frame=frame,
+            sink_factory=sink_factory,
+        )
+    finally:
+        state.frames[active_index] = previous
+
+
+def _active_prefix_frame_index(frames: list[OnlineSearchFrame]) -> int | None:
+    for index in range(len(frames) - 1, -1, -1):
+        if isinstance(frames[index].payload, PrefixEnumerationFrame):
+            return index
+    return None
+
+
+def _resume_prefix_enumeration_frame(
+    *,
+    state: OnlineSearchState,
+    frame: PrefixEnumerationFrame,
+    sink_factory: Callable[[], OnlineRenderSink] | None = None,
+) -> Iterator[OnlineWitness]:
+    if sink_factory is None:
+        sink_factory = lambda: state.output
+    if frame.phase == "ring":
+        yield from _resume_prefix_ring_phase(
+            state=state,
+            frame=frame,
+            sink_factory=sink_factory,
+        )
+        return
+    if frame.phase == "atom":
+        yield from _resume_prefix_atom_phase(
+            state=state,
+            frame=frame,
+            sink_factory=sink_factory,
+        )
+        return
+    if frame.phase == "bond":
+        yield from _resume_prefix_bond_phase(
+            state=state,
+            frame=frame,
+            sink_factory=sink_factory,
+        )
+        return
+    raise ValueError(f"unknown prefix enumeration phase: {frame.phase!r}")
+
+
+def _resume_prefix_ring_phase(
+    *,
+    state: OnlineSearchState,
+    frame: PrefixEnumerationFrame,
+    sink_factory: Callable[[], OnlineRenderSink],
+) -> Iterator[OnlineWitness]:
+    slots = _slot_view_for_trace(frame.trace)
+    intervals = _ring_intervals(slots)
+    if frame.index == len(intervals):
+        ring_labels = dict(frame.ring_labels)
+        ring_checkpoint = state.ring.checkpoint()
+        if not _install_ring_labels(state, slots, ring_labels):
+            state.ring.rollback(ring_checkpoint)
+            return
+        state.frames.append(
+            OnlineSearchFrame(RingLabelChoiceFrame(_ring_label_decision_value(ring_labels)))
+        )
+        ring_decision_checkpoint = state.decisions.checkpoint()
+        state.decisions.push(
+            OnlineDecision("ring_labels", _ring_label_decision_value(ring_labels))
+        )
+        try:
+            yield from _run_prefix_enumeration_frame(
+                state=state,
+                frame=PrefixEnumerationFrame(
+                    trace=frame.trace,
+                    ring_label_domains=frame.ring_label_domains,
+                    atom_text_domains=frame.atom_text_domains,
+                    bond_text_domains=frame.bond_text_domains,
+                    phase="atom",
+                    index=0,
+                    ring_labels=frame.ring_labels,
+                ),
+                sink_factory=sink_factory,
+            )
+        finally:
+            state.decisions.rollback(ring_decision_checkpoint)
+            state.frames.pop()
+            state.ring.rollback(ring_checkpoint)
+        return
+    if frame.index > len(intervals):
+        raise ValueError("prefix ring phase index is outside ring-label domains")
+
+    endpoint_1, endpoint_2, start, _ = intervals[frame.index]
+    domain_by_endpoint = dict(frame.ring_label_domains)
+    labels = domain_by_endpoint[endpoint_1]
+    candidates = _ring_label_candidates_for_prefix_frame(
+        state=state,
+        intervals=intervals,
+        chosen=frame.ring_labels,
+        position=start,
+        labels=labels,
+    )
+    for label in candidates:
+        yield from _run_prefix_enumeration_frame(
+            state=state,
+            frame=PrefixEnumerationFrame(
+                trace=frame.trace,
+                ring_label_domains=frame.ring_label_domains,
+                atom_text_domains=frame.atom_text_domains,
+                bond_text_domains=frame.bond_text_domains,
+                phase="ring",
+                index=frame.index + 1,
+                ring_labels=frame.ring_labels + (
+                    (endpoint_1, label),
+                    (endpoint_2, label),
+                ),
+            ),
+            sink_factory=sink_factory,
+        )
+
+
+def _resume_prefix_atom_phase(
+    *,
+    state: OnlineSearchState,
+    frame: PrefixEnumerationFrame,
+    sink_factory: Callable[[], OnlineRenderSink],
+) -> Iterator[OnlineWitness]:
+    if frame.index == len(frame.atom_text_domains):
+        atom_text = dict(frame.atom_text)
+        state.frames.append(
+            OnlineSearchFrame(AtomTextChoiceFrame(_atom_text_decision_value(atom_text)))
+        )
+        atom_decision_checkpoint = state.decisions.checkpoint()
+        state.decisions.push(OnlineDecision("atom_text", _atom_text_decision_value(atom_text)))
+        try:
+            tetra_tokens = _forced_tetra_tokens(
+                facts=state.facts,
+                trace=frame.trace,
+                templates=state.templates,
+                atom_text=atom_text,
+            )
+            if tetra_tokens is None:
+                return
+            yield from _run_prefix_enumeration_frame(
+                state=state,
+                frame=PrefixEnumerationFrame(
+                    trace=frame.trace,
+                    ring_label_domains=frame.ring_label_domains,
+                    atom_text_domains=frame.atom_text_domains,
+                    bond_text_domains=frame.bond_text_domains,
+                    phase="bond",
+                    index=0,
+                    ring_labels=frame.ring_labels,
+                    atom_text=frame.atom_text,
+                ),
+                sink_factory=sink_factory,
+            )
+        finally:
+            state.decisions.rollback(atom_decision_checkpoint)
+            state.frames.pop()
+        return
+    if frame.index > len(frame.atom_text_domains):
+        raise ValueError("prefix atom phase index is outside atom-text domains")
+
+    atom, choices = frame.atom_text_domains[frame.index]
+    for choice in choices:
+        yield from _run_prefix_enumeration_frame(
+            state=state,
+            frame=PrefixEnumerationFrame(
+                trace=frame.trace,
+                ring_label_domains=frame.ring_label_domains,
+                atom_text_domains=frame.atom_text_domains,
+                bond_text_domains=frame.bond_text_domains,
+                phase="atom",
+                index=frame.index + 1,
+                ring_labels=frame.ring_labels,
+                atom_text=frame.atom_text + ((atom, choice),),
+            ),
+            sink_factory=sink_factory,
+        )
+
+
+def _resume_prefix_bond_phase(
+    *,
+    state: OnlineSearchState,
+    frame: PrefixEnumerationFrame,
+    sink_factory: Callable[[], OnlineRenderSink],
+) -> Iterator[OnlineWitness]:
+    if frame.index == len(frame.bond_text_domains):
+        atom_text = dict(frame.atom_text)
+        bond_text = dict(frame.bond_text)
+        ring_labels = dict(frame.ring_labels)
+        tetra_tokens = _forced_tetra_tokens(
+            facts=state.facts,
+            trace=frame.trace,
+            templates=state.templates,
+            atom_text=atom_text,
+        )
+        if tetra_tokens is None:
+            return
+        state.frames.append(
+            OnlineSearchFrame(BondTextChoiceFrame(_bond_text_decision_value(bond_text)))
+        )
+        bond_decision_checkpoint = state.decisions.checkpoint()
+        state.decisions.push(OnlineDecision("bond_text", _bond_text_decision_value(bond_text)))
+        try:
+            yield from _emit_witnesses_for_prefix_choice(
+                state=state,
+                trace=frame.trace,
+                prefix=_PrefixChoice(
+                    atom_text=atom_text,
+                    bond_text=bond_text,
+                    ring_labels=ring_labels,
+                ),
+                tetra_tokens=tetra_tokens,
+                sink_factory=sink_factory,
+            )
+        finally:
+            state.decisions.rollback(bond_decision_checkpoint)
+            state.frames.pop()
+        return
+    if frame.index > len(frame.bond_text_domains):
+        raise ValueError("prefix bond phase index is outside bond-text domains")
+
+    slot, choices = frame.bond_text_domains[frame.index]
+    for choice in choices:
+        yield from _run_prefix_enumeration_frame(
+            state=state,
+            frame=PrefixEnumerationFrame(
+                trace=frame.trace,
+                ring_label_domains=frame.ring_label_domains,
+                atom_text_domains=frame.atom_text_domains,
+                bond_text_domains=frame.bond_text_domains,
+                phase="bond",
+                index=frame.index + 1,
+                ring_labels=frame.ring_labels,
+                atom_text=frame.atom_text,
+                bond_text=frame.bond_text + ((slot, choice),),
+            ),
+            sink_factory=sink_factory,
+        )
+
+
+def _ring_label_candidates_for_prefix_frame(
+    *,
+    state: OnlineSearchState,
+    intervals: tuple[tuple[int, int, int, int], ...],
+    chosen: tuple[tuple[int, RingLabel], ...],
+    position: int,
+    labels: tuple[RingLabel, ...],
+) -> tuple[RingLabel, ...]:
+    chosen_by_endpoint = dict(chosen)
+    active = {
+        chosen_by_endpoint[endpoint_1]
+        for endpoint_1, _, start, end in intervals
+        if endpoint_1 in chosen_by_endpoint and start < position < end
+    }
+    candidates = tuple(label for label in labels if label not in active)
+    if state.policy.least_free_ring_labels:
+        if not candidates:
+            return ()
+        return (min(candidates, key=lambda label: label.value),)
+    return candidates
+
+
+def _emit_witnesses_for_prefix_choice(
+    *,
+    state: OnlineSearchState,
+    trace: _VmTraversalTrace,
+    prefix: _PrefixChoice,
+    tetra_tokens: dict[AtomId, TetraToken],
+    sink_factory: Callable[[], OnlineRenderSink],
+) -> Iterator[OnlineWitness]:
+    slots = _slot_view_for_trace(trace)
+    candidates = _iter_directional_candidates(
+        state=state,
+        trace=trace,
+        slots=slots,
+        prefix=prefix,
+    )
+    if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
+        candidates = tuple(_support_maximal_candidates(tuple(candidates)))
+    for candidate in candidates:
+        rendered = _render_directional_candidate(
+            state=state,
+            trace=trace,
+            slots=slots,
+            prefix=prefix,
+            tetra_tokens=tetra_tokens,
+            candidate=candidate,
+            sink_factory=sink_factory,
+        )
+        if rendered is None:
+            continue
+        yield OnlineWitness(
+            rendered=rendered,
+            traversal_key=_trace_key(trace),
+            annotation_count=candidate.annotation_count,
+        )
 
 
 def _iter_directional_candidates(
@@ -1249,6 +1648,8 @@ def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
     match frame.payload:
         case RenderCursorFrame(cursor=cursor):
             yield from _resume_render_cursor_frame(state, cursor)
+        case PrefixEnumerationFrame() as prefix_frame:
+            yield from _resume_prefix_enumeration_frame(state=state, frame=prefix_frame)
         case _:
             raise TypeError(f"frame is not resumable: {frame.payload!r}")
 
@@ -1283,7 +1684,7 @@ def _pop_resumable_frame(
     active_index: int | None = None
     for index in range(len(frames) - 1, -1, -1):
         frame = frames[index]
-        if not isinstance(frame.payload, RenderCursorFrame):
+        if not isinstance(frame.payload, (RenderCursorFrame, PrefixEnumerationFrame)):
             continue
         active_index = index
         break
@@ -2124,6 +2525,7 @@ __all__ = (
     "OnlineResidualContinuation",
     "OnlineFramePayload",
     "ParentOrientationFrame",
+    "PrefixEnumerationFrame",
     "ProductChoiceFrame",
     "RenderContinuationPayloadShape",
     "RenderCursorFrame",

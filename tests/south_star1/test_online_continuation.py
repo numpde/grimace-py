@@ -24,6 +24,7 @@ from grimace._south_star1.online_residual_continuation import residual_continuat
 from grimace._south_star1.online_search_vm import EventLoopFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
+from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
 from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -207,6 +208,17 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         continuation = _first_residual_continuation(tetrahedral_facts())
 
         self.assertTrue(continuation.snapshot.frame_stack)
+
+    def test_residual_continuation_key_hashes_prefix_enumeration_frame(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertTrue(
+            any(
+                isinstance(frame.payload, PrefixEnumerationFrame)
+                for frame in continuation.snapshot.frame_stack
+            )
+        )
+        self.assertIsInstance(hash(residual_continuation_key(continuation)), int)
 
     def test_residual_continuation_snapshot_has_residual_state(self) -> None:
         continuation = _first_residual_continuation(tetrahedral_facts())
@@ -441,6 +453,17 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
             result.stats.retained_state_size.render_cursor_count,
             result.stats.retained_state_size.continuation_count,
         )
+
+    def test_residual_retained_state_size_counts_prefix_scheduler_frames(self) -> None:
+        result = _residual_determinized_decoder(tetrahedral_facts()).initial_state().choices_with_stats()
+
+        self.assertGreater(result.stats.retained_state_size.continuation_count, 0)
+        self.assertGreater(result.stats.retained_state_size.scheduler_frame_count, 0)
+        self.assertGreater(result.stats.retained_state_size.prefix_enumeration_frame_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_prefix_domain_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_prefix_domain_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_prefix_assignment_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_prefix_assignment_count, 0)
 
     def test_render_cursor_resume_after_atom_piece(self) -> None:
         decoder = _residual_determinized_decoder(tetrahedral_facts())

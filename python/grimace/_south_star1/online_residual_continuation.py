@@ -130,6 +130,12 @@ class OnlineResidualStateSizeStats:
     total_remaining_render_event_count: int = 0
     max_render_program_choice_count: int = 0
     total_render_program_choice_count: int = 0
+    scheduler_frame_count: int = 0
+    prefix_enumeration_frame_count: int = 0
+    max_prefix_domain_count: int = 0
+    total_prefix_domain_count: int = 0
+    max_prefix_assignment_count: int = 0
+    total_prefix_assignment_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -661,6 +667,30 @@ def _state_size_from_continuations(
         ),
         total_render_program_choice_count=sum(
             shape.render_payload.total_render_program_choice_count
+            for shape in shapes
+        ),
+        scheduler_frame_count=sum(
+            shape.render_payload.scheduler_frame_count
+            for shape in shapes
+        ),
+        prefix_enumeration_frame_count=sum(
+            shape.render_payload.prefix_enumeration_frame_count
+            for shape in shapes
+        ),
+        max_prefix_domain_count=max(
+            shape.render_payload.max_prefix_domain_count
+            for shape in shapes
+        ),
+        total_prefix_domain_count=sum(
+            shape.render_payload.total_prefix_domain_count
+            for shape in shapes
+        ),
+        max_prefix_assignment_count=max(
+            shape.render_payload.max_prefix_assignment_count
+            for shape in shapes
+        ),
+        total_prefix_assignment_count=sum(
+            shape.render_payload.total_prefix_assignment_count
             for shape in shapes
         ),
     )

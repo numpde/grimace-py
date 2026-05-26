@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import unittest
 from collections import Counter
+from dataclasses import FrozenInstanceError
+from dataclasses import replace
 from pathlib import Path
 
 from grimace._south_star1.facts import ComponentFacts
@@ -19,11 +21,13 @@ from grimace._south_star1.online_search_vm import EventLoopFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import ParentOrientationFrame
+from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
 from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_search_vm import capture_residual_continuation
 from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
 from grimace._south_star1.online_search_vm import _pop_resumable_frame
+from grimace._south_star1.online_search_vm import _resume_from_frames
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
@@ -304,6 +308,145 @@ class OnlineSearchVmTest(unittest.TestCase):
         )
         self.assertGreaterEqual(vm.state.ring.checkpoint()[3], continuation.snapshot.ring_state[3])
 
+    def test_prefix_enumeration_frame_is_frozen_hashable_and_canonical(self) -> None:
+        cursor = _first_render_cursor(tetrahedral_facts())
+        prefix = cursor.program.prefix
+        frame = PrefixEnumerationFrame(
+            trace=cursor.program.trace,
+            ring_label_domains=((2, (RingLabel(2), RingLabel(1))), (1, (RingLabel(1),))),
+            atom_text_domains=tuple(reversed(tuple((atom, (choice,)) for atom, choice in prefix.atom_text))),
+            bond_text_domains=tuple(reversed(tuple((slot, (choice,)) for slot, choice in prefix.bond_text))),
+            phase="bond",
+            index=len(prefix.bond_text),
+            ring_labels=((2, RingLabel(1)), (1, RingLabel(1))),
+            atom_text=tuple(reversed(prefix.atom_text)),
+            bond_text=tuple(reversed(prefix.bond_text)),
+        )
+
+        with self.assertRaises(FrozenInstanceError):
+            frame.index = 99  # type: ignore[misc]
+        self.assertIsInstance(hash(frame), int)
+        self.assertEqual(tuple(slot for slot, _ in frame.bond_text_domains), tuple(sorted(slot for slot, _ in frame.bond_text_domains)))
+        self.assertEqual(tuple(atom for atom, _ in frame.atom_text), tuple(sorted((atom for atom, _ in frame.atom_text), key=int)))
+        self.assertEqual(tuple(endpoint for endpoint, _ in frame.ring_labels), (1, 2))
+
+    def test_prefix_enumeration_frame_resumes_ring_label_choice(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
+        complete = _complete_prefix_frame(facts)
+        frame = replace(
+            complete,
+            phase="ring",
+            index=0,
+            ring_labels=(),
+            atom_text=(),
+            bond_text=(),
+        )
+
+        self.assertTrue(frame.ring_label_domains)
+        self.assertTrue(_witnesses_from_prefix_frame(facts, frame))
+
+    def test_prefix_enumeration_frame_resumes_atom_text_choice(self) -> None:
+        frame = replace(
+            _complete_prefix_frame(tetrahedral_facts()),
+            phase="atom",
+            index=0,
+            atom_text=(),
+            bond_text=(),
+        )
+
+        self.assertTrue(_witnesses_from_prefix_frame(tetrahedral_facts(), frame))
+
+    def test_prefix_enumeration_frame_resumes_bond_text_choice(self) -> None:
+        complete = _complete_prefix_frame(tetrahedral_facts())
+        frame = replace(
+            complete,
+            phase="bond",
+            index=0,
+            bond_text=(),
+        )
+
+        self.assertTrue(_witnesses_from_prefix_frame(tetrahedral_facts(), frame))
+
+    def test_prefix_enumeration_frame_preserves_old_prefix_choice_order(self) -> None:
+        facts = directional_facts()
+        policy = ordinary_policy_for_facts(facts)
+        semantics = OrdinarySmilesSemantics()
+
+        self.assertEqual(
+            tuple(
+                iter_online_stereo_witness_strings_vm(
+                    facts=facts,
+                    policy=policy,
+                    semantics=semantics,
+                )
+            ),
+            tuple(
+                iter_online_stereo_witness_strings(
+                    facts=facts,
+                    policy=policy,
+                    semantics=semantics,
+                )
+            ),
+        )
+
+    def test_residual_snapshot_can_contain_prefix_enumeration_frame(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertTrue(
+            any(
+                isinstance(frame.payload, PrefixEnumerationFrame)
+                for frame in continuation.snapshot.frame_stack
+            )
+        )
+
+    def test_prefix_frame_resume_preserves_ring_state(self) -> None:
+        facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
+        continuation = _first_residual_continuation(facts)
+        frame = _prefix_frame_from_snapshot(continuation.snapshot)
+        sink = ResidualFrontierSink(required_prefix="")
+        state = make_online_search_state(
+            facts=facts,
+            policy=ordinary_policy_for_facts(facts),
+            semantics=OrdinarySmilesSemantics(),
+            sink=sink,
+        )
+        snapshot = replace(state.checkpoint(), frame_stack=(OnlineSearchFrame(frame),))
+        state.rollback(snapshot)
+        sink.snapshot_provider = state.checkpoint
+        sink.decision_path_provider = state.decisions.path
+
+        tuple(_resume_from_frames(state))
+
+        self.assertEqual(state.ring.checkpoint(), ((), (), (), 0))
+
+    def test_prefix_frame_resume_preserves_decision_path(self) -> None:
+        facts = tetrahedral_facts()
+        frame = _complete_prefix_frame(facts)
+        sink = ResidualFrontierSink(required_prefix="")
+        state = make_online_search_state(
+            facts=facts,
+            policy=ordinary_policy_for_facts(facts),
+            semantics=OrdinarySmilesSemantics(),
+            sink=sink,
+        )
+        snapshot = replace(state.checkpoint(), frame_stack=(OnlineSearchFrame(frame),))
+        state.rollback(snapshot)
+        sink.snapshot_provider = state.checkpoint
+        sink.decision_path_provider = state.decisions.path
+
+        tuple(_resume_from_frames(state))
+
+        self.assertEqual(state.decisions.path().items, ())
+
+    def test_prefix_frame_resume_preserves_annotation_count(self) -> None:
+        facts = directional_facts()
+        frame = _complete_prefix_frame(facts)
+
+        witnesses = _witnesses_from_prefix_frame(facts, frame)
+
+        self.assertTrue(witnesses)
+        self.assertTrue(all(witness.annotation_count >= 0 for witness in witnesses))
+
     def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:
         vm = OnlineSearchVM(
             facts=disconnected_facts(),
@@ -524,6 +667,53 @@ def _first_residual_continuation(facts: MoleculeFacts):
 
 def _first_render_cursor(facts: MoleculeFacts):
     return _render_cursor_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+
+def _prefix_frame_from_snapshot(snapshot):
+    for frame in reversed(snapshot.frame_stack):
+        if isinstance(frame.payload, PrefixEnumerationFrame):
+            return frame.payload
+    raise AssertionError("snapshot lacks prefix enumeration frame")
+
+
+def _complete_prefix_frame(facts: MoleculeFacts) -> PrefixEnumerationFrame:
+    cursor = _first_render_cursor(facts)
+    prefix = cursor.program.prefix
+    return PrefixEnumerationFrame(
+        trace=cursor.program.trace,
+        ring_label_domains=tuple(
+            (endpoint, (label,))
+            for endpoint, label in prefix.ring_labels
+        ),
+        atom_text_domains=tuple(
+            (atom, (choice,))
+            for atom, choice in prefix.atom_text
+        ),
+        bond_text_domains=tuple(
+            (slot, (choice,))
+            for slot, choice in prefix.bond_text
+        ),
+        phase="bond",
+        index=len(prefix.bond_text),
+        ring_labels=prefix.ring_labels,
+        atom_text=prefix.atom_text,
+        bond_text=prefix.bond_text,
+    )
+
+
+def _witnesses_from_prefix_frame(facts: MoleculeFacts, frame: PrefixEnumerationFrame):
+    sink = ResidualFrontierSink(required_prefix="")
+    state = make_online_search_state(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        sink=sink,
+    )
+    snapshot = replace(state.checkpoint(), frame_stack=(OnlineSearchFrame(frame),))
+    state.rollback(snapshot)
+    sink.snapshot_provider = state.checkpoint
+    sink.decision_path_provider = state.decisions.path
+    return tuple(_resume_from_frames(state))
 
 
 def _render_cursor_from_snapshot(snapshot):

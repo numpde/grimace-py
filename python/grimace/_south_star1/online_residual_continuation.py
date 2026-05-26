@@ -141,6 +141,13 @@ class OnlineResidualStateSizeStats:
     total_direction_carrier_count: int = 0
     max_direction_assignment_count: int = 0
     total_direction_assignment_count: int = 0
+    support_maximal_frame_count: int = 0
+    max_support_maximal_candidate_count: int = 0
+    total_support_maximal_candidate_count: int = 0
+    max_support_maximal_selected_count: int = 0
+    total_support_maximal_selected_count: int = 0
+    max_support_maximal_remaining_count: int = 0
+    total_support_maximal_remaining_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -716,6 +723,34 @@ def _state_size_from_continuations(
         ),
         total_direction_assignment_count=sum(
             shape.render_payload.total_direction_assignment_count
+            for shape in shapes
+        ),
+        support_maximal_frame_count=sum(
+            shape.render_payload.support_maximal_frame_count
+            for shape in shapes
+        ),
+        max_support_maximal_candidate_count=max(
+            shape.render_payload.max_support_maximal_candidate_count
+            for shape in shapes
+        ),
+        total_support_maximal_candidate_count=sum(
+            shape.render_payload.total_support_maximal_candidate_count
+            for shape in shapes
+        ),
+        max_support_maximal_selected_count=max(
+            shape.render_payload.max_support_maximal_selected_count
+            for shape in shapes
+        ),
+        total_support_maximal_selected_count=sum(
+            shape.render_payload.total_support_maximal_selected_count
+            for shape in shapes
+        ),
+        max_support_maximal_remaining_count=max(
+            shape.render_payload.max_support_maximal_remaining_count
+            for shape in shapes
+        ),
+        total_support_maximal_remaining_count=sum(
+            shape.render_payload.total_support_maximal_remaining_count
             for shape in shapes
         ),
     )

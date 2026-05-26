@@ -24,6 +24,7 @@ from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import ParentOrientationFrame
 from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
 from grimace._south_star1.online_search_vm import RenderCursorFrame
+from grimace._south_star1.online_search_vm import SupportMaximalFrame
 from grimace._south_star1.online_search_vm import capture_residual_continuation
 from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
@@ -468,6 +469,117 @@ class OnlineSearchVmTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             _pop_resumable_frame([frame, frame])
 
+    def test_support_maximal_frame_is_frozen_hashable_and_canonical(self) -> None:
+        frame = _support_maximal_frame_from_snapshot(
+            _first_residual_continuation(directional_facts()).snapshot
+        )
+        canonical = SupportMaximalFrame(
+            trace=frame.trace,
+            prefix=frame.prefix,
+            tetra_tokens=tuple(reversed(frame.tetra_tokens)),
+            candidates=frame.candidates,
+            maximal_indices=tuple(reversed(frame.maximal_indices)),
+            next_index=frame.next_index,
+            annotation_count=frame.annotation_count,
+        )
+
+        with self.assertRaises(FrozenInstanceError):
+            canonical.next_index = 99  # type: ignore[misc]
+        self.assertIsInstance(hash(canonical), int)
+        self.assertEqual(canonical.tetra_tokens, frame.tetra_tokens)
+        self.assertEqual(canonical.maximal_indices, frame.maximal_indices)
+
+    def test_support_maximal_frame_resumes_second_selected_candidate(self) -> None:
+        frame = _support_maximal_frame_from_snapshot(
+            _first_residual_continuation(directional_facts()).snapshot
+        )
+
+        self.assertLess(frame.next_index, len(frame.maximal_indices))
+        self.assertTrue(_witnesses_from_support_maximal_frame(directional_facts(), frame))
+
+    def test_support_maximal_frame_preserves_selected_candidate_order(self) -> None:
+        frame = replace(
+            _support_maximal_frame_from_snapshot(
+                _first_residual_continuation(directional_facts()).snapshot
+            ),
+            next_index=0,
+        )
+
+        rendered = tuple(
+            witness.rendered
+            for witness in _witnesses_from_support_maximal_frame(
+                directional_facts(),
+                frame,
+            )
+        )
+
+        self.assertEqual(rendered, tuple(rendered))
+        self.assertTrue(rendered)
+
+    def test_support_maximal_frame_does_not_render_nonmaximal_candidate(self) -> None:
+        frame = replace(
+            _support_maximal_frame_from_snapshot(
+                _first_residual_continuation(directional_facts()).snapshot
+            ),
+            maximal_indices=(),
+            next_index=0,
+        )
+
+        witnesses = _witnesses_from_support_maximal_frame(directional_facts(), frame)
+
+        self.assertEqual(witnesses, ())
+
+    def test_support_maximal_frame_preserves_residual_snapshot(self) -> None:
+        facts = directional_facts()
+        state = _state_for_direction_frame(facts)
+        before = state.residual.value_snapshot()
+        frame = _support_maximal_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+        tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+        self.assertEqual(state.residual.value_snapshot(), before)
+
+    def test_support_maximal_frame_preserves_ring_state(self) -> None:
+        facts = directional_facts()
+        state = _state_for_direction_frame(facts)
+        before = state.ring.checkpoint()
+        frame = _support_maximal_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+        tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+        self.assertEqual(state.ring.checkpoint(), before)
+
+    def test_support_maximal_frame_preserves_decision_path(self) -> None:
+        facts = directional_facts()
+        state = _state_for_direction_frame(facts)
+        before = state.decisions.path()
+        frame = _support_maximal_frame_from_snapshot(_first_residual_continuation(facts).snapshot)
+
+        tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+        self.assertEqual(state.decisions.path(), before)
+
+    def test_support_maximal_frame_does_not_accumulate_stale_duplicates(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        self.assertEqual(
+            sum(
+                isinstance(frame.payload, SupportMaximalFrame)
+                for frame in continuation.snapshot.frame_stack
+            ),
+            1,
+        )
+
+    def test_dispatcher_rejects_duplicate_support_maximal_frames(self) -> None:
+        frame = OnlineSearchFrame(
+            _support_maximal_frame_from_snapshot(
+                _first_residual_continuation(directional_facts()).snapshot
+            )
+        )
+
+        with self.assertRaises(AssertionError):
+            _pop_resumable_frame([frame, frame])
+
     def test_dispatcher_preserves_ring_state_annotation_count_and_frontier(self) -> None:
         facts = ring_directional_facts()
         continuation = _first_residual_continuation(facts)
@@ -867,6 +979,13 @@ def _direction_frame_from_snapshot(snapshot):
     raise AssertionError("snapshot lacks direction enumeration frame")
 
 
+def _support_maximal_frame_from_snapshot(snapshot):
+    for frame in reversed(snapshot.frame_stack):
+        if isinstance(frame.payload, SupportMaximalFrame):
+            return frame.payload
+    raise AssertionError("snapshot lacks support-maximal frame")
+
+
 def _initial_direction_frame_from(
     frame: DirectionEnumerationFrame,
 ) -> DirectionEnumerationFrame:
@@ -936,6 +1055,14 @@ def _witnesses_from_prefix_frame(
 def _witnesses_from_direction_frame(
     facts: MoleculeFacts,
     frame: DirectionEnumerationFrame,
+):
+    state = _state_for_direction_frame(facts)
+    return tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))
+
+
+def _witnesses_from_support_maximal_frame(
+    facts: MoleculeFacts,
+    frame: SupportMaximalFrame,
 ):
     state = _state_for_direction_frame(facts)
     return tuple(_resume_from_frames_with_frame(state, OnlineSearchFrame(frame)))

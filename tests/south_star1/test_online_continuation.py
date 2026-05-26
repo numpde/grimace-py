@@ -27,6 +27,7 @@ from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
 from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
 from grimace._south_star1.online_search_vm import RenderCursorFrame
+from grimace._south_star1.online_search_vm import SupportMaximalFrame
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
@@ -227,6 +228,17 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertTrue(
             any(
                 isinstance(frame.payload, DirectionEnumerationFrame)
+                for frame in continuation.snapshot.frame_stack
+            )
+        )
+        self.assertIsInstance(hash(residual_continuation_key(continuation)), int)
+
+    def test_residual_continuation_key_hashes_support_maximal_frame(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        self.assertTrue(
+            any(
+                isinstance(frame.payload, SupportMaximalFrame)
                 for frame in continuation.snapshot.frame_stack
             )
         )
@@ -501,6 +513,31 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
                     for frame in continuation.snapshot.frame_stack
                 )
             )
+
+    def test_residual_snapshot_can_contain_support_maximal_frame(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+        retained = _retained_continuations(result)
+
+        self.assertTrue(retained)
+        self.assertTrue(
+            any(
+                isinstance(frame.payload, SupportMaximalFrame)
+                for continuation in retained
+                for frame in continuation.snapshot.frame_stack
+            )
+        )
+
+    def test_residual_retained_state_size_counts_support_maximal_scheduler_frames(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+
+        self.assertGreater(result.stats.retained_state_size.continuation_count, 0)
+        self.assertGreater(result.stats.retained_state_size.support_maximal_frame_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_support_maximal_candidate_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_support_maximal_candidate_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_support_maximal_selected_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_support_maximal_selected_count, 0)
+        self.assertGreater(result.stats.retained_state_size.max_support_maximal_remaining_count, 0)
+        self.assertGreater(result.stats.retained_state_size.total_support_maximal_remaining_count, 0)
 
     def test_render_cursor_resume_after_atom_piece(self) -> None:
         decoder = _residual_determinized_decoder(tetrahedral_facts())

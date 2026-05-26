@@ -224,6 +224,20 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
 
         _assert_matrix_direction_scheduler_evidence(self, entry)
 
+    def test_prepared_matrix_observes_support_maximal_scheduler_frames(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            directional_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        entry = _guarded_matrix_entry(
+            fixture_name="support-maximal",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+
+        _assert_matrix_support_maximal_scheduler_evidence(self, entry)
+
     def test_prepared_matrix_prefix_scheduler_evidence_fails_if_count_zero(
         self,
     ) -> None:
@@ -247,6 +261,30 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             _assert_matrix_prefix_scheduler_evidence(self, tampered)
+
+    def test_support_maximal_scheduler_evidence_fails_if_frame_count_zero(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            directional_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+        entry = _guarded_matrix_entry(
+            fixture_name="support-maximal",
+            prepared=prepared,
+            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+        )
+        tampered = replace(
+            entry,
+            row=replace(
+                entry.row,
+                retained_scheduler_frame_count=0,
+                retained_support_maximal_frame_count=0,
+            ),
+        )
+
+        with self.assertRaises(AssertionError):
+            _assert_matrix_support_maximal_scheduler_evidence(self, tampered)
 
     def test_residual_prefix_workload_uses_fewer_root_dfs_runs_than_prefix_replay(
         self,
@@ -374,6 +412,13 @@ def _assert_entry_conforms(
         test.assertIsNotNone(row.total_retained_direction_carrier_count)
         test.assertIsNotNone(row.max_retained_direction_assignment_count)
         test.assertIsNotNone(row.total_retained_direction_assignment_count)
+        test.assertIsNotNone(row.retained_support_maximal_frame_count)
+        test.assertIsNotNone(row.max_retained_support_maximal_candidate_count)
+        test.assertIsNotNone(row.total_retained_support_maximal_candidate_count)
+        test.assertIsNotNone(row.max_retained_support_maximal_selected_count)
+        test.assertIsNotNone(row.total_retained_support_maximal_selected_count)
+        test.assertIsNotNone(row.max_retained_support_maximal_remaining_count)
+        test.assertIsNotNone(row.total_retained_support_maximal_remaining_count)
 
 
 def _assert_matrix_prefix_scheduler_evidence(
@@ -401,6 +446,21 @@ def _assert_matrix_direction_scheduler_evidence(
     test.assertGreater(row.total_retained_direction_carrier_count or 0, 0)
     test.assertGreater(row.max_retained_direction_assignment_count or 0, 0)
     test.assertGreater(row.total_retained_direction_assignment_count or 0, 0)
+
+
+def _assert_matrix_support_maximal_scheduler_evidence(
+    test: unittest.TestCase,
+    entry: PreparedEnumerationMatrixEntry,
+) -> None:
+    row = entry.row
+    test.assertEqual(row.execution_mode, OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS)
+    test.assertGreater(row.retained_support_maximal_frame_count or 0, 0)
+    test.assertGreater(row.max_retained_support_maximal_candidate_count or 0, 0)
+    test.assertGreater(row.total_retained_support_maximal_candidate_count or 0, 0)
+    test.assertGreater(row.max_retained_support_maximal_selected_count or 0, 0)
+    test.assertGreater(row.total_retained_support_maximal_selected_count or 0, 0)
+    test.assertGreater(row.max_retained_support_maximal_remaining_count or 0, 0)
+    test.assertGreater(row.total_retained_support_maximal_remaining_count or 0, 0)
 
 
 def _disconnected_two_bond_components_facts() -> MoleculeFacts:

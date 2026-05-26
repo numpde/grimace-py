@@ -6,6 +6,7 @@ from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
 from dataclasses import field
+from dataclasses import replace
 from itertools import combinations
 from itertools import permutations
 from itertools import product
@@ -223,6 +224,35 @@ class DirectionEnumerationFrame:
         object.__setattr__(self, "marks", tuple(sorted(self.marks)))
 
 
+@dataclass(frozen=True, slots=True)
+class SupportMaximalFrame:
+    trace: "_VmTraversalTrace"
+    prefix: "_FrozenPrefixChoice"
+    tetra_tokens: tuple[tuple[AtomId, TetraToken], ...]
+    candidates: tuple["_DirectionalCandidate", ...]
+    maximal_indices: tuple[int, ...]
+    next_index: int
+    annotation_count: int
+
+    def __post_init__(self) -> None:
+        if self.next_index < 0:
+            raise ValueError("support-maximal frame index must be nonnegative")
+        object.__setattr__(
+            self,
+            "tetra_tokens",
+            tuple(sorted(self.tetra_tokens, key=lambda item: int(item[0]))),
+        )
+        maximal_indices = tuple(sorted(self.maximal_indices))
+        if len(set(maximal_indices)) != len(maximal_indices):
+            raise ValueError("support-maximal frame has duplicate candidate indices")
+        if self.next_index > len(maximal_indices):
+            raise ValueError("support-maximal frame index is outside selected domain")
+        for index in maximal_indices:
+            if index < 0 or index >= len(self.candidates):
+                raise ValueError("support-maximal frame candidate index is out of range")
+        object.__setattr__(self, "maximal_indices", maximal_indices)
+
+
 OnlineFramePayload = (
     ComponentRootChoiceFrame
     | SpanningTreeChoiceFrame
@@ -238,6 +268,7 @@ OnlineFramePayload = (
     | RenderCursorFrame
     | PrefixEnumerationFrame
     | DirectionEnumerationFrame
+    | SupportMaximalFrame
 )
 
 
@@ -283,6 +314,13 @@ class RenderContinuationPayloadShape:
     total_direction_carrier_count: int = 0
     max_direction_assignment_count: int = 0
     total_direction_assignment_count: int = 0
+    support_maximal_frame_count: int = 0
+    max_support_maximal_candidate_count: int = 0
+    total_support_maximal_candidate_count: int = 0
+    max_support_maximal_selected_count: int = 0
+    total_support_maximal_selected_count: int = 0
+    max_support_maximal_remaining_count: int = 0
+    total_support_maximal_remaining_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -808,6 +846,13 @@ def render_continuation_payload_shape(
     total_direction_carrier_count = 0
     max_direction_assignment_count = 0
     total_direction_assignment_count = 0
+    support_maximal_frame_count = 0
+    max_support_maximal_candidate_count = 0
+    total_support_maximal_candidate_count = 0
+    max_support_maximal_selected_count = 0
+    total_support_maximal_selected_count = 0
+    max_support_maximal_remaining_count = 0
+    total_support_maximal_remaining_count = 0
     for frame in frame_stack:
         if isinstance(frame.payload, PrefixEnumerationFrame):
             scheduler_frame_count += 1
@@ -825,6 +870,7 @@ def render_continuation_payload_shape(
             direction_enumeration_frame_count += 1
             carrier_count = len(frame.payload.carriers)
             assignment_count = len(frame.payload.marks)
+            scheduler_frame_count += 1
             max_direction_carrier_count = max(max_direction_carrier_count, carrier_count)
             total_direction_carrier_count += carrier_count
             max_direction_assignment_count = max(
@@ -832,6 +878,30 @@ def render_continuation_payload_shape(
                 assignment_count,
             )
             total_direction_assignment_count += assignment_count
+        if isinstance(frame.payload, SupportMaximalFrame):
+            scheduler_frame_count += 1
+            support_maximal_frame_count += 1
+            candidate_count = len(frame.payload.candidates)
+            selected_count = len(frame.payload.maximal_indices)
+            remaining_count = max(
+                0,
+                len(frame.payload.maximal_indices) - frame.payload.next_index,
+            )
+            max_support_maximal_candidate_count = max(
+                max_support_maximal_candidate_count,
+                candidate_count,
+            )
+            total_support_maximal_candidate_count += candidate_count
+            max_support_maximal_selected_count = max(
+                max_support_maximal_selected_count,
+                selected_count,
+            )
+            total_support_maximal_selected_count += selected_count
+            max_support_maximal_remaining_count = max(
+                max_support_maximal_remaining_count,
+                remaining_count,
+            )
+            total_support_maximal_remaining_count += remaining_count
         if not isinstance(frame.payload, RenderCursorFrame):
             continue
         cursor = frame.payload.cursor
@@ -871,6 +941,13 @@ def render_continuation_payload_shape(
         total_direction_carrier_count=total_direction_carrier_count,
         max_direction_assignment_count=max_direction_assignment_count,
         total_direction_assignment_count=total_direction_assignment_count,
+        support_maximal_frame_count=support_maximal_frame_count,
+        max_support_maximal_candidate_count=max_support_maximal_candidate_count,
+        total_support_maximal_candidate_count=total_support_maximal_candidate_count,
+        max_support_maximal_selected_count=max_support_maximal_selected_count,
+        total_support_maximal_selected_count=total_support_maximal_selected_count,
+        max_support_maximal_remaining_count=max_support_maximal_remaining_count,
+        total_support_maximal_remaining_count=total_support_maximal_remaining_count,
     )
 
 
@@ -1376,7 +1453,18 @@ def _emit_witnesses_for_prefix_choice(
         tetra_tokens=tetra_tokens,
     )
     if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-        candidates = tuple(_support_maximal_candidates(tuple(candidates)))
+        frame = _support_maximal_frame(
+            trace=trace,
+            prefix=prefix,
+            tetra_tokens=tetra_tokens,
+            candidates=tuple(candidates),
+        )
+        yield from _resume_support_maximal_frame(
+            state=state,
+            frame=frame,
+            sink_factory=sink_factory,
+        )
+        return
     for candidate in candidates:
         rendered = _render_directional_candidate(
             state=state,
@@ -1797,6 +1885,11 @@ def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
                 state=state,
                 frame=direction_frame,
             )
+        case SupportMaximalFrame() as support_frame:
+            yield from _resume_support_maximal_frame(
+                state=state,
+                frame=support_frame,
+            )
         case _:
             raise TypeError(f"frame is not resumable: {frame.payload!r}")
 
@@ -1832,14 +1925,83 @@ def _resume_direction_enumeration_frame(
 ) -> Iterator[OnlineWitness]:
     if sink_factory is None:
         sink_factory = lambda: state.output
-    candidates: Iterator[_DirectionalCandidate] | tuple[_DirectionalCandidate, ...]
     candidates = _iter_directional_candidates_from_frame(state=state, frame=frame)
     if state.policy.annotation_mode is AnnotationMode.SUPPORT_MAXIMAL:
-        candidates = tuple(_support_maximal_candidates(tuple(candidates)))
+        support_frame = _support_maximal_frame(
+            trace=frame.trace,
+            prefix=_thaw_prefix_choice(frame.prefix),
+            tetra_tokens=dict(frame.tetra_tokens),
+            candidates=tuple(candidates),
+        )
+        yield from _resume_support_maximal_frame(
+            state=state,
+            frame=support_frame,
+            sink_factory=sink_factory,
+        )
+        return
     prefix = _thaw_prefix_choice(frame.prefix)
     tetra_tokens = dict(frame.tetra_tokens)
     slots = _slot_view_for_trace(frame.trace)
     for candidate in candidates:
+        rendered = _render_directional_candidate(
+            state=state,
+            trace=frame.trace,
+            slots=slots,
+            prefix=prefix,
+            tetra_tokens=tetra_tokens,
+            candidate=candidate,
+            sink_factory=sink_factory,
+        )
+        if rendered is None:
+            continue
+        yield OnlineWitness(
+            rendered=rendered,
+            traversal_key=_trace_key(frame.trace),
+            annotation_count=candidate.annotation_count,
+        )
+
+
+def _support_maximal_frame(
+    *,
+    trace: _VmTraversalTrace,
+    prefix: _PrefixChoice,
+    tetra_tokens: dict[AtomId, TetraToken],
+    candidates: tuple[_DirectionalCandidate, ...],
+) -> SupportMaximalFrame:
+    return SupportMaximalFrame(
+        trace=trace,
+        prefix=_freeze_prefix_choice(prefix),
+        tetra_tokens=tuple(sorted(tetra_tokens.items(), key=lambda item: int(item[0]))),
+        candidates=candidates,
+        maximal_indices=_support_maximal_candidate_indices(candidates),
+        next_index=0,
+        annotation_count=0,
+    )
+
+
+def _resume_support_maximal_frame(
+    state: OnlineSearchState,
+    frame: SupportMaximalFrame,
+    sink_factory: Callable[[], OnlineRenderSink] | None = None,
+) -> Iterator[OnlineWitness]:
+    if sink_factory is None:
+        sink_factory = lambda: state.output
+    prefix = _thaw_prefix_choice(frame.prefix)
+    tetra_tokens = dict(frame.tetra_tokens)
+    slots = _slot_view_for_trace(frame.trace)
+    for selected_position in range(frame.next_index, len(frame.maximal_indices)):
+        candidate_index = frame.maximal_indices[selected_position]
+        candidate = frame.candidates[candidate_index]
+        next_index = selected_position + 1
+        if next_index < len(frame.maximal_indices):
+            next_frame = replace(frame, next_index=next_index)
+            candidate = replace(
+                candidate,
+                frame_stack=(
+                    *candidate.frame_stack,
+                    OnlineSearchFrame(next_frame),
+                ),
+            )
         rendered = _render_directional_candidate(
             state=state,
             trace=frame.trace,
@@ -1866,7 +2028,12 @@ def _pop_resumable_frame(
         frame = frames[index]
         if not isinstance(
             frame.payload,
-            (RenderCursorFrame, PrefixEnumerationFrame, DirectionEnumerationFrame),
+            (
+                RenderCursorFrame,
+                PrefixEnumerationFrame,
+                DirectionEnumerationFrame,
+                SupportMaximalFrame,
+            ),
         ):
             continue
         active_index = index
@@ -1892,6 +2059,14 @@ def _pop_resumable_frame(
         and remaining_direction_frame_count > 0
     ):
         raise AssertionError("multiple active direction-enumeration frames")
+    remaining_support_maximal_frame_count = sum(
+        1 for frame in frames if isinstance(frame.payload, SupportMaximalFrame)
+    )
+    if remaining_support_maximal_frame_count > 1 or (
+        isinstance(popped.payload, SupportMaximalFrame)
+        and remaining_support_maximal_frame_count > 0
+    ):
+        raise AssertionError("multiple active support-maximal frames")
     return popped
 
 
@@ -2486,10 +2661,18 @@ def _render_bond_slot(
 def _support_maximal_candidates(
     candidates: tuple[_DirectionalCandidate, ...],
 ) -> Iterator[_DirectionalCandidate]:
-    for candidate in candidates:
-        if any(candidate.support < other.support for other in candidates):
-            continue
-        yield candidate
+    for index in _support_maximal_candidate_indices(candidates):
+        yield candidates[index]
+
+
+def _support_maximal_candidate_indices(
+    candidates: tuple[_DirectionalCandidate, ...],
+) -> tuple[int, ...]:
+    return tuple(
+        index
+        for index, candidate in enumerate(candidates)
+        if not any(candidate.support < other.support for other in candidates)
+    )
 
 
 def _iter_dict_product_frame(state: OnlineSearchState, *, kind: str, domains):
@@ -2731,6 +2914,7 @@ __all__ = (
     "RenderCursorFrame",
     "RingLabelChoiceFrame",
     "SpanningTreeChoiceFrame",
+    "SupportMaximalFrame",
     "OnlineSearchFrame",
     "OnlineSearchSnapshot",
     "OnlineSearchState",

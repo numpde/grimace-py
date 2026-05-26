@@ -26,6 +26,7 @@ from grimace._south_star1.prepared_prefix_workload import collect_prepared_prefi
 from grimace._south_star1.prepared_prefix_workload import collect_token_boundary_prefixes
 from grimace._south_star1.prepared_prefix_workload import require_direction_scheduler_frame_evidence
 from grimace._south_star1.prepared_prefix_workload import require_prefix_scheduler_frame_evidence
+from grimace._south_star1.prepared_prefix_workload import require_support_maximal_scheduler_frame_evidence
 from grimace._south_star1.prepared_prefix_workload import validate_prepared_branch_decoder_walk_result
 from grimace._south_star1.prepared_prefix_workload import validate_prepared_decoder_walk_result
 from grimace._south_star1.prepared_prefix_workload import validate_prepared_prefix_workload_result
@@ -140,6 +141,16 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
         )
 
         require_direction_scheduler_frame_evidence(
+            result,
+            fixture_name=result.fixture_name,
+        )
+
+    def test_branch_walk_observes_support_maximal_scheduler_frames(self) -> None:
+        result = next(
+            result for result in _branch_walk_results() if result.fixture_name == "support-maximal"
+        )
+
+        require_support_maximal_scheduler_frame_evidence(
             result,
             fixture_name=result.fixture_name,
         )
@@ -319,6 +330,16 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
         )
 
         require_direction_scheduler_frame_evidence(
+            result,
+            fixture_name=result.fixture_name,
+        )
+
+    def test_decoder_walk_observes_support_maximal_scheduler_frames(self) -> None:
+        result = next(
+            result for result in _decoder_walk_results() if result.fixture_name == "support-maximal"
+        )
+
+        require_support_maximal_scheduler_frame_evidence(
             result,
             fixture_name=result.fixture_name,
         )
@@ -570,6 +591,18 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
             fixture_name=result.rows[0].fixture_name,
         )
 
+    def test_prefix_workload_observes_support_maximal_scheduler_frames(self) -> None:
+        result = next(
+            result
+            for result in _workload_results()
+            if result.rows[0].fixture_name == "support-maximal"
+        )
+
+        require_support_maximal_scheduler_frame_evidence(
+            result,
+            fixture_name=result.rows[0].fixture_name,
+        )
+
     def test_residual_prefix_scheduler_frame_count_is_required_for_marked_fixture(
         self,
     ) -> None:
@@ -608,6 +641,25 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "total_direction_carrier_count"):
             validate_prepared_decoder_walk_result(result)
 
+    def test_support_maximal_frame_count_is_required_for_marked_fixture(
+        self,
+    ) -> None:
+        result = _prefix_result_with_missing_residual_stat(
+            "retained_support_maximal_frame_count"
+        )
+
+        with self.assertRaisesRegex(ValueError, "support_maximal_frame_count"):
+            validate_prepared_prefix_workload_result(result)
+
+    def test_support_maximal_scheduler_stats_are_not_treated_as_optional(self) -> None:
+        result = _decoder_walk_with_missing_residual_step_stat(
+            "retained_total_support_maximal_candidate_count_by_mode",
+            "total_support_maximal_candidate_count",
+        )
+
+        with self.assertRaisesRegex(ValueError, "total_support_maximal_candidate_count"):
+            validate_prepared_decoder_walk_result(result)
+
     def test_prefix_scheduler_evidence_fails_if_prefix_frame_count_zero(self) -> None:
         result = next(
             result
@@ -637,6 +689,50 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
                 tampered,
                 fixture_name=tampered.rows[0].fixture_name,
             )
+
+    def test_support_maximal_scheduler_evidence_fails_if_frame_count_zero(
+        self,
+    ) -> None:
+        result = next(
+            result
+            for result in _workload_results()
+            if result.rows[0].fixture_name == "support-maximal"
+        )
+        tampered = replace(result, total_residual_support_maximal_frame_count=0)
+
+        with self.assertRaisesRegex(ValueError, "support_maximal_frame_count"):
+            require_support_maximal_scheduler_frame_evidence(
+                tampered,
+                fixture_name=tampered.rows[0].fixture_name,
+            )
+
+    def test_support_maximal_nonmaximal_candidates_expose_no_token_or_eos_evidence(
+        self,
+    ) -> None:
+        result = next(
+            result
+            for result in _workload_results()
+            if result.rows[0].fixture_name == "support-maximal"
+        )
+
+        validate_prepared_prefix_workload_result(result)
+        require_support_maximal_scheduler_frame_evidence(
+            result,
+            fixture_name=result.rows[0].fixture_name,
+        )
+
+    def test_support_maximal_selected_sibling_candidates_remain_reachable_after_resume(
+        self,
+    ) -> None:
+        result = next(
+            result for result in _branch_walk_results() if result.fixture_name == "support-maximal"
+        )
+
+        validate_prepared_branch_decoder_walk_result(result)
+        require_support_maximal_scheduler_frame_evidence(
+            result,
+            fixture_name=result.fixture_name,
+        )
 
     def test_prefix_workload_requires_residual_root_dfs_runs_stat(self) -> None:
         result = _prefix_result_with_missing_residual_stat("root_dfs_runs")
@@ -1020,6 +1116,20 @@ def _zero_result_aggregate(stat_name: str) -> dict[str, int]:
         return {"max_residual_direction_assignment_count": 0}
     if stat_name == "total_direction_assignment_count":
         return {"total_residual_direction_assignment_count": 0}
+    if stat_name == "support_maximal_frame_count":
+        return {"total_residual_support_maximal_frame_count": 0}
+    if stat_name == "max_support_maximal_candidate_count":
+        return {"max_residual_support_maximal_candidate_count": 0}
+    if stat_name == "total_support_maximal_candidate_count":
+        return {"total_residual_support_maximal_candidate_count": 0}
+    if stat_name == "max_support_maximal_selected_count":
+        return {"max_residual_support_maximal_selected_count": 0}
+    if stat_name == "total_support_maximal_selected_count":
+        return {"total_residual_support_maximal_selected_count": 0}
+    if stat_name == "max_support_maximal_remaining_count":
+        return {"max_residual_support_maximal_remaining_count": 0}
+    if stat_name == "total_support_maximal_remaining_count":
+        return {"total_residual_support_maximal_remaining_count": 0}
     return {}
 
 
@@ -1028,6 +1138,7 @@ def _branch_fixtures() -> tuple[_Fixture, ...]:
         _Fixture("tetrahedral", tetrahedral_facts()),
         _Fixture("directional", directional_facts()),
         _Fixture("ring", cyclopropane_facts()),
+        _Fixture("support-maximal", directional_facts()),
         _Fixture(
             "disconnected-stereo",
             _disconnected_tetra_and_bond_facts(),
@@ -1094,6 +1205,13 @@ class _FakeRetainedStats:
     total_direction_carrier_count: int = 1
     max_direction_assignment_count: int = 1
     total_direction_assignment_count: int = 1
+    support_maximal_frame_count: int = 1
+    max_support_maximal_candidate_count: int = 1
+    total_support_maximal_candidate_count: int = 1
+    max_support_maximal_selected_count: int = 1
+    total_support_maximal_selected_count: int = 1
+    max_support_maximal_remaining_count: int = 1
+    total_support_maximal_remaining_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)

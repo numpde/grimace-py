@@ -16,7 +16,9 @@ from .online_decisions import OnlineDecisionPath
 from .online_search_vm import RenderContinuationPayloadShape
 from .online_search_vm import OnlineSearchSnapshot
 from .online_search_vm import OnlineSearchVM
+from .online_search_vm import residual_snapshot_frame_audit
 from .online_search_vm import render_continuation_payload_shape
+from .online_search_vm import validate_residual_frame_stack
 from .policy import SmilesPolicy
 from .residual_constraints import ResidualStoreValueSnapshot
 from .semantics import ParserSemantics
@@ -116,6 +118,9 @@ class OnlineResidualStateSizeStats:
     total_ring_endpoint_count: int = 0
     max_ring_open_interval_count: int = 0
     total_ring_open_interval_count: int = 0
+    resumable_frame_count: int = 0
+    context_frame_count: int = 0
+    unknown_frame_count: int = 0
     render_resume_continuation_count: int = 0
     max_render_piece_count: int = 0
     total_render_piece_count: int = 0
@@ -334,7 +339,10 @@ def online_determinized_residual_choice_result(
         for continuations in grouped.values()
         for continuation in continuations.values()
     )
-    branch_result.stats.retained_state_size = _state_size_from_continuations(retained)
+    branch_result.stats.retained_state_size = _state_size_from_continuations(
+        retained,
+        require_resumable=True,
+    )
     return OnlineResidualRawChoiceResult(
         choices=tuple(
             OnlineResidualDecoderChoice(
@@ -487,7 +495,10 @@ def _result_from_sink(
         for continuation in continuations
     )
     stats.candidate_state_size = _state_size_from_continuations(_sink_continuations(sink))
-    stats.retained_state_size = _state_size_from_continuations(retained)
+    stats.retained_state_size = _state_size_from_continuations(
+        retained,
+        require_resumable=True,
+    )
     return OnlineResidualRawChoiceResult(
         choices=tuple(sorted(choices, key=lambda choice: (choice.text, repr(choice.next_state.frontier)))),
         eos_completion_count=sum(
@@ -593,11 +604,20 @@ def _sink_continuations(sink: ResidualFrontierSink) -> tuple[OnlineResidualConti
 
 def _state_size_from_continuations(
     continuations: tuple[OnlineResidualContinuation, ...],
+    *,
+    require_resumable: bool = False,
 ) -> OnlineResidualStateSizeStats:
     if not continuations:
         return OnlineResidualStateSizeStats()
+    if require_resumable:
+        for continuation in continuations:
+            validate_residual_frame_stack(continuation.snapshot.frame_stack)
     unique = merge_residual_continuations_by_key(list(continuations))
     shapes = tuple(online_search_snapshot_shape(continuation.snapshot) for continuation in continuations)
+    audits = tuple(
+        residual_snapshot_frame_audit(continuation.snapshot)
+        for continuation in continuations
+    )
     key_counts: dict[tuple[object, ...], int] = defaultdict(int)
     token_counts: dict[str, int] = defaultdict(int)
     for continuation in continuations:
@@ -625,6 +645,11 @@ def _state_size_from_continuations(
         total_ring_endpoint_count=sum(shape.ring_endpoint_count for shape in shapes),
         max_ring_open_interval_count=max(shape.ring_open_interval_count for shape in shapes),
         total_ring_open_interval_count=sum(shape.ring_open_interval_count for shape in shapes),
+        resumable_frame_count=sum(
+            audit.resumable_frame_count for audit in audits
+        ),
+        context_frame_count=sum(audit.context_frame_count for audit in audits),
+        unknown_frame_count=sum(audit.unknown_frame_count for audit in audits),
         render_resume_continuation_count=sum(
             shape.render_payload.render_resume_continuation_count
             for shape in shapes

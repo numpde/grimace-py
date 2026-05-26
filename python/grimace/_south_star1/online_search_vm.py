@@ -272,9 +272,41 @@ OnlineFramePayload = (
 )
 
 
+RESUMABLE_FRAME_PAYLOAD_TYPES = (
+    RenderCursorFrame,
+    PrefixEnumerationFrame,
+    DirectionEnumerationFrame,
+    SupportMaximalFrame,
+)
+
+CONTEXT_FRAME_PAYLOAD_TYPES = (
+    ComponentRootChoiceFrame,
+    SpanningTreeChoiceFrame,
+    ParentOrientationFrame,
+    LocalEventOrderChoiceFrame,
+    EventLoopFrame,
+    RingLabelChoiceFrame,
+    AtomTextChoiceFrame,
+    BondTextChoiceFrame,
+    DirectionMarkChoiceFrame,
+    ProductChoiceFrame,
+    CompletionFrame,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class OnlineSearchFrame:
     payload: OnlineFramePayload
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualFrameStackAudit:
+    resumable_frame_count: int
+    context_frame_count: int
+    unknown_frame_count: int
+    top_resumable_frame_kind: str
+    resumable_frame_kinds: tuple[str, ...]
+    context_frame_kinds: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,6 +353,83 @@ class RenderContinuationPayloadShape:
     total_support_maximal_selected_count: int = 0
     max_support_maximal_remaining_count: int = 0
     total_support_maximal_remaining_count: int = 0
+
+
+def dispatcher_resumable_frame_payload_types() -> tuple[type[object], ...]:
+    return tuple(_resumable_frame_handlers())
+
+
+def is_resumable_frame(frame: OnlineSearchFrame) -> bool:
+    return isinstance(frame.payload, RESUMABLE_FRAME_PAYLOAD_TYPES)
+
+
+def is_context_frame(frame: OnlineSearchFrame) -> bool:
+    return isinstance(frame.payload, CONTEXT_FRAME_PAYLOAD_TYPES)
+
+
+def active_resumable_frame_count(
+    frames: tuple[OnlineSearchFrame, ...] | list[OnlineSearchFrame],
+) -> int:
+    return sum(1 for frame in frames if is_resumable_frame(frame))
+
+
+def topmost_resumable_frame(
+    frames: tuple[OnlineSearchFrame, ...] | list[OnlineSearchFrame],
+) -> OnlineSearchFrame | None:
+    for frame in reversed(frames):
+        if is_resumable_frame(frame):
+            return frame
+    return None
+
+
+def residual_snapshot_frame_audit(
+    snapshot: OnlineSearchSnapshot,
+) -> ResidualFrameStackAudit:
+    return frame_stack_audit(snapshot.frame_stack)
+
+
+def frame_stack_audit(
+    frames: tuple[OnlineSearchFrame, ...] | list[OnlineSearchFrame],
+) -> ResidualFrameStackAudit:
+    resumable: list[str] = []
+    context: list[str] = []
+    unknown_count = 0
+    for frame in frames:
+        name = type(frame.payload).__name__
+        if is_resumable_frame(frame):
+            resumable.append(name)
+            continue
+        if is_context_frame(frame):
+            context.append(name)
+            continue
+        unknown_count += 1
+    top = topmost_resumable_frame(frames)
+    return ResidualFrameStackAudit(
+        resumable_frame_count=len(resumable),
+        context_frame_count=len(context),
+        unknown_frame_count=unknown_count,
+        top_resumable_frame_kind="" if top is None else type(top.payload).__name__,
+        resumable_frame_kinds=tuple(resumable),
+        context_frame_kinds=tuple(context),
+    )
+
+
+def validate_residual_frame_stack(
+    frames: tuple[OnlineSearchFrame, ...],
+) -> None:
+    audit = frame_stack_audit(frames)
+    if audit.unknown_frame_count:
+        raise ValueError("residual frame stack contains unknown frame payload")
+    if audit.resumable_frame_count == 0:
+        raise ValueError("residual frame stack contains no resumable frame")
+    _assert_no_duplicate_active_resumable_frames(frames, popped=None)
+    top = topmost_resumable_frame(frames)
+    if top is None:
+        raise ValueError("residual frame stack contains no topmost resumable frame")
+    if not isinstance(top.payload, dispatcher_resumable_frame_payload_types()):
+        raise ValueError(
+            f"topmost resumable frame is not dispatcher-handled: {top.payload!r}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1875,23 +1984,58 @@ def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
     frame = _pop_resumable_frame(state.frames)
     if frame is None:
         return
-    match frame.payload:
-        case RenderCursorFrame(cursor=cursor):
-            yield from _resume_render_cursor_frame(state, cursor)
-        case PrefixEnumerationFrame() as prefix_frame:
-            yield from _resume_prefix_enumeration_frame(state=state, frame=prefix_frame)
-        case DirectionEnumerationFrame() as direction_frame:
-            yield from _resume_direction_enumeration_frame(
-                state=state,
-                frame=direction_frame,
-            )
-        case SupportMaximalFrame() as support_frame:
-            yield from _resume_support_maximal_frame(
-                state=state,
-                frame=support_frame,
-            )
-        case _:
-            raise TypeError(f"frame is not resumable: {frame.payload!r}")
+    handler = _resumable_frame_handlers().get(type(frame.payload))
+    if handler is None:
+        raise TypeError(f"frame is not resumable: {frame.payload!r}")
+    yield from handler(state, frame.payload)
+
+
+def _resumable_frame_handlers() -> dict[
+    type[object],
+    Callable[[OnlineSearchState, object], Iterator[OnlineWitness]],
+]:
+    return {
+        RenderCursorFrame: _resume_render_cursor_payload,
+        PrefixEnumerationFrame: _resume_prefix_enumeration_payload,
+        DirectionEnumerationFrame: _resume_direction_enumeration_payload,
+        SupportMaximalFrame: _resume_support_maximal_payload,
+    }
+
+
+def _resume_render_cursor_payload(
+    state: OnlineSearchState,
+    payload: object,
+) -> Iterator[OnlineWitness]:
+    if not isinstance(payload, RenderCursorFrame):
+        raise TypeError(payload)
+    yield from _resume_render_cursor_frame(state, payload.cursor)
+
+
+def _resume_prefix_enumeration_payload(
+    state: OnlineSearchState,
+    payload: object,
+) -> Iterator[OnlineWitness]:
+    if not isinstance(payload, PrefixEnumerationFrame):
+        raise TypeError(payload)
+    yield from _resume_prefix_enumeration_frame(state=state, frame=payload)
+
+
+def _resume_direction_enumeration_payload(
+    state: OnlineSearchState,
+    payload: object,
+) -> Iterator[OnlineWitness]:
+    if not isinstance(payload, DirectionEnumerationFrame):
+        raise TypeError(payload)
+    yield from _resume_direction_enumeration_frame(state=state, frame=payload)
+
+
+def _resume_support_maximal_payload(
+    state: OnlineSearchState,
+    payload: object,
+) -> Iterator[OnlineWitness]:
+    if not isinstance(payload, SupportMaximalFrame):
+        raise TypeError(payload)
+    yield from _resume_support_maximal_frame(state=state, frame=payload)
 
 
 def _resume_render_cursor_frame(
@@ -2023,51 +2167,42 @@ def _resume_support_maximal_frame(
 def _pop_resumable_frame(
     frames: list[OnlineSearchFrame],
 ) -> OnlineSearchFrame | None:
-    active_index: int | None = None
-    for index in range(len(frames) - 1, -1, -1):
-        frame = frames[index]
-        if not isinstance(
-            frame.payload,
-            (
-                RenderCursorFrame,
-                PrefixEnumerationFrame,
-                DirectionEnumerationFrame,
-                SupportMaximalFrame,
-            ),
-        ):
-            continue
-        active_index = index
-        break
+    top = topmost_resumable_frame(frames)
+    active_index = None
+    if top is not None:
+        for index in range(len(frames) - 1, -1, -1):
+            if frames[index] is top:
+                active_index = index
+                break
     if active_index is None:
         return None
     popped = frames.pop(active_index)
-    if any(isinstance(frame.payload, RenderCursorFrame) for frame in frames):
-        raise AssertionError("multiple active render-cursor frames")
-    remaining_prefix_frame_count = sum(
-        1 for frame in frames if isinstance(frame.payload, PrefixEnumerationFrame)
-    )
-    if remaining_prefix_frame_count > 1 or (
-        isinstance(popped.payload, PrefixEnumerationFrame)
-        and remaining_prefix_frame_count > 0
-    ):
-        raise AssertionError("multiple active prefix-enumeration frames")
-    remaining_direction_frame_count = sum(
-        1 for frame in frames if isinstance(frame.payload, DirectionEnumerationFrame)
-    )
-    if remaining_direction_frame_count > 1 or (
-        isinstance(popped.payload, DirectionEnumerationFrame)
-        and remaining_direction_frame_count > 0
-    ):
-        raise AssertionError("multiple active direction-enumeration frames")
-    remaining_support_maximal_frame_count = sum(
-        1 for frame in frames if isinstance(frame.payload, SupportMaximalFrame)
-    )
-    if remaining_support_maximal_frame_count > 1 or (
-        isinstance(popped.payload, SupportMaximalFrame)
-        and remaining_support_maximal_frame_count > 0
-    ):
-        raise AssertionError("multiple active support-maximal frames")
+    _assert_no_duplicate_active_resumable_frames(frames, popped=popped)
     return popped
+
+
+def _assert_no_duplicate_active_resumable_frames(
+    frames: tuple[OnlineSearchFrame, ...] | list[OnlineSearchFrame],
+    *,
+    popped: OnlineSearchFrame | None,
+) -> None:
+    messages = {
+        RenderCursorFrame: "multiple active render-cursor frames",
+        PrefixEnumerationFrame: "multiple active prefix-enumeration frames",
+        DirectionEnumerationFrame: "multiple active direction-enumeration frames",
+        SupportMaximalFrame: "multiple active support-maximal frames",
+    }
+    for payload_type in RESUMABLE_FRAME_PAYLOAD_TYPES:
+        remaining = sum(
+            isinstance(frame.payload, payload_type)
+            for frame in frames
+        )
+        if remaining > 1 or (
+            popped is not None
+            and isinstance(popped.payload, payload_type)
+            and remaining > 0
+        ):
+            raise AssertionError(messages[payload_type])
 
 
 def _graph_from_facts(
@@ -2901,6 +3036,7 @@ __all__ = (
     "BondTextChoiceFrame",
     "CompletionFrame",
     "ComponentRootChoiceFrame",
+    "CONTEXT_FRAME_PAYLOAD_TYPES",
     "DirectionEnumerationFrame",
     "DirectionMarkChoiceFrame",
     "EventLoopFrame",
@@ -2910,6 +3046,8 @@ __all__ = (
     "ParentOrientationFrame",
     "PrefixEnumerationFrame",
     "ProductChoiceFrame",
+    "RESUMABLE_FRAME_PAYLOAD_TYPES",
+    "ResidualFrameStackAudit",
     "RenderContinuationPayloadShape",
     "RenderCursorFrame",
     "RingLabelChoiceFrame",
@@ -2921,12 +3059,20 @@ __all__ = (
     "OnlineSearchVM",
     "OnlineStepResult",
     "OnlineWitness",
+    "active_resumable_frame_count",
     "capture_residual_continuation",
+    "dispatcher_resumable_frame_payload_types",
+    "frame_stack_audit",
     "iter_online_stereo_witness_strings_vm",
     "iter_online_stereo_witnesses_vm",
+    "is_context_frame",
+    "is_resumable_frame",
     "make_online_search_state",
     "render_continuation_payload_shape",
+    "residual_snapshot_frame_audit",
     "resume_online_search_from_snapshot",
+    "topmost_resumable_frame",
+    "validate_residual_frame_stack",
     "_pop_resumable_frame",
     "_resume_from_frames",
 )

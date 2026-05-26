@@ -28,6 +28,8 @@ from grimace._south_star1.online_search_vm import OnlineSearchSnapshot
 from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
 from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_search_vm import SupportMaximalFrame
+from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
+from grimace._south_star1.online_search_vm import validate_residual_frame_stack
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
@@ -210,6 +212,59 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         continuation = _first_residual_continuation(tetrahedral_facts())
 
         self.assertTrue(continuation.snapshot.frame_stack)
+
+    def test_all_retained_residual_snapshots_have_resumable_frame(self) -> None:
+        for facts in (tetrahedral_facts(), directional_facts(), cyclopropane_facts()):
+            with self.subTest(atom_count=len(facts.atoms)):
+                result = _residual_determinized_decoder(facts).initial_state().choices_with_stats()
+                retained = _retained_continuations(result)
+                self.assertTrue(retained)
+                for continuation in retained:
+                    audit = residual_snapshot_frame_audit(continuation.snapshot)
+                    self.assertGreater(audit.resumable_frame_count, 0)
+                    validate_residual_frame_stack(continuation.snapshot.frame_stack)
+
+    def test_all_retained_residual_snapshots_have_no_unknown_frame_payloads(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+
+        for continuation in _retained_continuations(result):
+            audit = residual_snapshot_frame_audit(continuation.snapshot)
+            self.assertEqual(audit.unknown_frame_count, 0)
+
+    def test_retained_snapshot_frame_audit_reports_render_cursor(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertIn(
+            "RenderCursorFrame",
+            residual_snapshot_frame_audit(continuation.snapshot).resumable_frame_kinds,
+        )
+
+    def test_retained_snapshot_frame_audit_reports_prefix_frame(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+
+        self.assertIn(
+            "PrefixEnumerationFrame",
+            residual_snapshot_frame_audit(continuation.snapshot).resumable_frame_kinds,
+        )
+
+    def test_retained_snapshot_frame_audit_reports_direction_frame(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        self.assertIn(
+            "DirectionEnumerationFrame",
+            residual_snapshot_frame_audit(continuation.snapshot).resumable_frame_kinds,
+        )
+
+    def test_retained_snapshot_frame_audit_reports_support_maximal_frame(self) -> None:
+        result = _residual_determinized_decoder(directional_facts()).initial_state().choices_with_stats()
+
+        self.assertTrue(
+            any(
+                "SupportMaximalFrame"
+                in residual_snapshot_frame_audit(continuation.snapshot).resumable_frame_kinds
+                for continuation in _retained_continuations(result)
+            )
+        )
 
     def test_residual_continuation_key_hashes_prefix_enumeration_frame(self) -> None:
         continuation = _first_residual_continuation(tetrahedral_facts())

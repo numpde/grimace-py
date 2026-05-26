@@ -14,6 +14,9 @@ from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
+from grimace._south_star1.online_decoder_api import make_determinized_online_decoder
+from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
+from grimace._south_star1.online_search_vm import validate_residual_frame_stack
 from grimace._south_star1.prepared_bench_matrix import PreparedEnumerationMatrixEntry
 from grimace._south_star1.prepared_bench_matrix import PreparedRuntimeProbe
 from grimace._south_star1.prepared_bench_matrix import collect_prepared_enumeration_matrix_entry
@@ -191,6 +194,22 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
             entry.row.retained_render_cursor_count,
             entry.row.max_retained_continuations,
         )
+
+    def test_prepared_matrix_all_residual_snapshots_pass_frame_stack_audit(
+        self,
+    ) -> None:
+        for fixture in _matrix_fixtures():
+            prepared = prepare_south_star_mol_from_facts(
+                fixture.facts,
+                writer_surface=SouthStarWriterSurface(),
+            )
+
+            with self.subTest(fixture=fixture.name):
+                _assert_prepared_residual_snapshots_pass_frame_stack_audit(
+                    self,
+                    prepared=prepared,
+                    runtime_options=fixture.runtime_options,
+                )
 
     def test_prepared_matrix_observes_prefix_scheduler_frames_on_prefix_branching_fixture(
         self,
@@ -461,6 +480,43 @@ def _assert_matrix_support_maximal_scheduler_evidence(
     test.assertGreater(row.total_retained_support_maximal_selected_count or 0, 0)
     test.assertGreater(row.max_retained_support_maximal_remaining_count or 0, 0)
     test.assertGreater(row.total_retained_support_maximal_remaining_count or 0, 0)
+
+
+def _assert_prepared_residual_snapshots_pass_frame_stack_audit(
+    test: unittest.TestCase,
+    *,
+    prepared,
+    runtime_options: SouthStarRuntimeOptions,
+) -> None:
+    decoder = make_determinized_online_decoder(
+        prepared=prepared,
+        include_eos=True,
+        runtime_options=runtime_options,
+        execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+    )
+    stack = [decoder.initial_state()]
+    seen: set[str] = set()
+    audited = 0
+    while stack:
+        state = stack.pop()
+        if state.prefix in seen:
+            continue
+        seen.add(state.prefix)
+        result = state.choices_with_stats()
+        for choice in result.choices:
+            if choice.is_eos or choice.next_state is None:
+                continue
+            frontier = choice.next_state.raw_state.frontier
+            test.assertIsNotNone(frontier)
+            assert frontier is not None
+            for continuation in frontier.continuations:
+                audit = residual_snapshot_frame_audit(continuation.snapshot)
+                test.assertGreater(audit.resumable_frame_count, 0)
+                test.assertEqual(audit.unknown_frame_count, 0)
+                validate_residual_frame_stack(continuation.snapshot.frame_stack)
+                audited += 1
+            stack.append(choice.next_state)
+    test.assertGreater(audited, 0)
 
 
 def _disconnected_two_bond_components_facts() -> MoleculeFacts:

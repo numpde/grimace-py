@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import unittest
 from collections import Counter
+from dataclasses import dataclass
 from dataclasses import FrozenInstanceError
 from dataclasses import replace
 from pathlib import Path
@@ -23,8 +24,13 @@ from grimace._south_star1.online_search_vm import OnlineSearchFrame
 from grimace._south_star1.online_search_vm import OnlineSearchVM
 from grimace._south_star1.online_search_vm import ParentOrientationFrame
 from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
+from grimace._south_star1.online_search_vm import RESUMABLE_FRAME_PAYLOAD_TYPES
 from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_search_vm import SupportMaximalFrame
+from grimace._south_star1.online_search_vm import dispatcher_resumable_frame_payload_types
+from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
+from grimace._south_star1.online_search_vm import topmost_resumable_frame
+from grimace._south_star1.online_search_vm import validate_residual_frame_stack
 from grimace._south_star1.online_search_vm import capture_residual_continuation
 from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
@@ -236,6 +242,40 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         self.assertIn("vm._iterator = _resume_from_frames(vm.state)", text)
         self.assertNotIn("vm._iterator = _resume_render_cursor", text)
+
+    def test_resumable_frame_type_registry_matches_dispatcher_handlers(self) -> None:
+        self.assertEqual(
+            set(dispatcher_resumable_frame_payload_types()),
+            set(RESUMABLE_FRAME_PAYLOAD_TYPES),
+        )
+
+    def test_context_only_frame_stack_is_rejected_as_residual_continuation(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no resumable frame"):
+            validate_residual_frame_stack(
+                (OnlineSearchFrame(EventLoopFrame(("context",))),)
+            )
+
+    def test_unknown_frame_payload_is_rejected_by_frame_stack_audit(self) -> None:
+        @dataclass(frozen=True, slots=True)
+        class UnknownFrame:
+            value: int
+
+        with self.assertRaisesRegex(ValueError, "unknown frame payload"):
+            validate_residual_frame_stack(
+                (
+                    OnlineSearchFrame(UnknownFrame(1)),  # type: ignore[arg-type]
+                    OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts()))),
+                )
+            )
+
+    def test_topmost_resumable_frame_is_dispatcher_handled(self) -> None:
+        continuation = _first_residual_continuation(directional_facts())
+
+        validate_residual_frame_stack(continuation.snapshot.frame_stack)
+        top = topmost_resumable_frame(continuation.snapshot.frame_stack)
+        self.assertIsNotNone(top)
+        assert top is not None
+        self.assertIn(type(top.payload), dispatcher_resumable_frame_payload_types())
 
     def test_dispatcher_resumes_render_cursor_frame(self) -> None:
         facts = tetrahedral_facts()
@@ -579,6 +619,29 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             _pop_resumable_frame([frame, frame])
+
+    def test_duplicate_active_resumable_frame_rejected_for_each_scheduler_frame_type(
+        self,
+    ) -> None:
+        frames = (
+            OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts()))),
+            OnlineSearchFrame(_complete_prefix_frame(tetrahedral_facts())),
+            OnlineSearchFrame(
+                _direction_frame_from_snapshot(
+                    _first_residual_continuation(directional_facts()).snapshot
+                )
+            ),
+            OnlineSearchFrame(
+                _support_maximal_frame_from_snapshot(
+                    _first_residual_continuation(directional_facts()).snapshot
+                )
+            ),
+        )
+
+        for frame in frames:
+            with self.subTest(frame=type(frame.payload).__name__):
+                with self.assertRaises(AssertionError):
+                    _pop_resumable_frame([frame, frame])
 
     def test_dispatcher_preserves_ring_state_annotation_count_and_frontier(self) -> None:
         facts = ring_directional_facts()

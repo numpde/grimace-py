@@ -6,6 +6,7 @@ import ast
 import unittest
 from pathlib import Path
 
+import grimace._south_star1.online_residual_continuation as residual_module
 from grimace._south_star1.online_continuation import OnlineDecoderExecutionMode
 from grimace._south_star1.online_decoder_api import EOS
 from grimace._south_star1.online_decoder_api import make_branch_preserving_online_decoder
@@ -230,6 +231,20 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         for continuation in _retained_continuations(result):
             audit = residual_snapshot_frame_audit(continuation.snapshot)
             self.assertEqual(audit.unknown_frame_count, 0)
+
+    def test_retained_state_size_still_validates_all_continuations(self) -> None:
+        invalid = OnlineResidualContinuation(
+            prefix="C",
+            snapshot=_snapshot("context-only"),
+            frontier_path=_path("context-only"),
+            token_text="C",
+        )
+
+        with self.assertRaisesRegex(ValueError, "no resumable frame"):
+            residual_module._state_size_from_continuations(  # noqa: SLF001
+                (invalid,),
+                require_resumable=True,
+            )
 
     def test_retained_snapshot_frame_audit_reports_render_cursor(self) -> None:
         continuation = _first_residual_continuation(tetrahedral_facts())

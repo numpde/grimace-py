@@ -391,9 +391,18 @@ enumerator. This VM is the substrate for `RESIDUAL_CONTINUATIONS`: decoder
 states can store an `OnlineSearchSnapshot` at a token boundary and resume from
 it, instead of replaying from the root or replaying cached completions.
 Snapshot resumption is routed through a typed frame dispatcher. The current
-dispatcher resumes `RenderCursorFrame` payloads; future prefix, directional,
-and support-maximal scheduler frames can be added without making
-`OnlineSearchVM.from_snapshot(...)` render-cursor specific again.
+dispatcher resumes `RenderCursorFrame`, `PrefixEnumerationFrame`,
+`DirectionEnumerationFrame`, and `SupportMaximalFrame` payloads through a
+central resumable-frame registry.
+
+### Residual snapshot validation boundary
+
+Any `OnlineResidualContinuation` retained by `RESIDUAL_CONTINUATIONS` must
+contain at least one known dispatcher-handled resumable frame. Context-only
+frame stacks, unknown frame payloads, duplicate active resumable frames, and
+unhandled topmost resumable frames are invalid residual continuations. This
+invariant is checked at continuation capture, retained-state audit, and
+snapshot resume.
 
 `online_serialization_stream.py` exposes a direct serialization stream on top
 of the online decoder facade. It walks decoder states with EOS enabled and

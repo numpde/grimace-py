@@ -388,6 +388,10 @@ def residual_snapshot_frame_audit(
     return frame_stack_audit(snapshot.frame_stack)
 
 
+def validate_residual_snapshot(snapshot: OnlineSearchSnapshot) -> None:
+    validate_residual_frame_stack(snapshot.frame_stack)
+
+
 def frame_stack_audit(
     frames: tuple[OnlineSearchFrame, ...] | list[OnlineSearchFrame],
 ) -> ResidualFrameStackAudit:
@@ -820,6 +824,7 @@ class OnlineSearchVM:
         sink: OnlineRenderSink,
         assume_prepared: bool = False,
     ) -> "OnlineSearchVM":
+        validate_residual_snapshot(snapshot)
         vm = cls(
             facts=facts,
             policy=policy,
@@ -844,7 +849,9 @@ def capture_residual_continuation(
     *,
     prefix: str,
 ) -> OnlineResidualContinuation:
-    return OnlineResidualContinuation(prefix=prefix, snapshot=state.checkpoint())
+    snapshot = state.checkpoint()
+    validate_residual_snapshot(snapshot)
+    return OnlineResidualContinuation(prefix=prefix, snapshot=snapshot)
 
 
 def iter_online_stereo_witness_strings_vm(
@@ -905,26 +912,31 @@ def resume_online_search_from_snapshot(
     snapshot: OnlineSearchSnapshot,
     sink: OnlineRenderSink,
 ) -> Iterator[OnlineWitness]:
-    vm = OnlineSearchVM.from_snapshot(
-        facts=facts,
-        policy=policy,
-        semantics=semantics,
-        templates=templates,
-        rooted_at_atom=rooted_at_atom,
-        graph_index=graph_index,
-        component_root_domains=component_root_domains,
-        snapshot=snapshot,
-        sink=sink,
-    )
-    while True:
-        result = vm.step()
-        if result.kind == "yield_witness":
-            if result.witness is None:
-                raise ValueError("yield_witness result lacks witness")
-            yield result.witness
-            continue
-        if result.kind == "exhausted":
-            return
+    validate_residual_snapshot(snapshot)
+
+    def _iter() -> Iterator[OnlineWitness]:
+        vm = OnlineSearchVM.from_snapshot(
+            facts=facts,
+            policy=policy,
+            semantics=semantics,
+            templates=templates,
+            rooted_at_atom=rooted_at_atom,
+            graph_index=graph_index,
+            component_root_domains=component_root_domains,
+            snapshot=snapshot,
+            sink=sink,
+        )
+        while True:
+            result = vm.step()
+            if result.kind == "yield_witness":
+                if result.witness is None:
+                    raise ValueError("yield_witness result lacks witness")
+                yield result.witness
+                continue
+            if result.kind == "exhausted":
+                return
+
+    return _iter()
 
 
 def render_continuation_payload_shape(
@@ -3072,6 +3084,7 @@ __all__ = (
     "residual_snapshot_frame_audit",
     "resume_online_search_from_snapshot",
     "topmost_resumable_frame",
+    "validate_residual_snapshot",
     "validate_residual_frame_stack",
     "_pop_resumable_frame",
     "_resume_from_frames",

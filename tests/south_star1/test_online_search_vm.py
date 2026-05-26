@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from dataclasses import FrozenInstanceError
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
+import grimace._south_star1.online_search_vm as online_search_vm_module
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -29,6 +31,7 @@ from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_search_vm import SupportMaximalFrame
 from grimace._south_star1.online_search_vm import dispatcher_resumable_frame_payload_types
 from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
+from grimace._south_star1.online_search_vm import resume_online_search_from_snapshot
 from grimace._south_star1.online_search_vm import topmost_resumable_frame
 from grimace._south_star1.online_search_vm import validate_residual_frame_stack
 from grimace._south_star1.online_search_vm import capture_residual_continuation
@@ -193,7 +196,12 @@ class OnlineSearchVmTest(unittest.TestCase):
         var = direction_var(0)
         state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
         self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
-        snapshot = state.checkpoint()
+        snapshot = replace(
+            state.checkpoint(),
+            frame_stack=(
+                OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(facts))),
+            ),
+        )
 
         vm = OnlineSearchVM.from_snapshot(
             facts=facts,
@@ -219,7 +227,12 @@ class OnlineSearchVmTest(unittest.TestCase):
         var = direction_var(0)
         state.residual.add_var(var, (DirectionMark.ABSENT, DirectionMark.FWD))
         self.assertTrue(state.residual.assign(var, DirectionMark.FWD))
-        snapshot = state.checkpoint()
+        snapshot = replace(
+            state.checkpoint(),
+            frame_stack=(
+                OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(facts))),
+            ),
+        )
         extra = VarId("extra", (0,))
 
         vm = OnlineSearchVM.from_snapshot(
@@ -825,13 +838,135 @@ class OnlineSearchVmTest(unittest.TestCase):
 
     def test_capture_residual_continuation_contains_snapshot(self) -> None:
         state = _state(tetrahedral_facts())
-        frame = OnlineSearchFrame(EventLoopFrame(("root",)))
+        frame = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
         state.frames.append(frame)
 
         continuation = capture_residual_continuation(state, prefix="C")
 
         self.assertEqual(continuation.prefix, "C")
         self.assertEqual(continuation.snapshot.frame_stack, (frame,))
+
+    def test_capture_residual_continuation_rejects_context_only_frame_stack(
+        self,
+    ) -> None:
+        state = _state(tetrahedral_facts())
+        state.frames.append(OnlineSearchFrame(EventLoopFrame(("root",))))
+
+        with self.assertRaisesRegex(ValueError, "no resumable frame"):
+            capture_residual_continuation(state, prefix="C")
+
+    def test_capture_residual_continuation_rejects_unknown_frame_payload(
+        self,
+    ) -> None:
+        @dataclass(frozen=True, slots=True)
+        class UnknownFrame:
+            value: int
+
+        state = _state(tetrahedral_facts())
+        state.frames.append(OnlineSearchFrame(UnknownFrame(1)))  # type: ignore[arg-type]
+        state.frames.append(OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts()))))
+
+        with self.assertRaisesRegex(ValueError, "unknown frame payload"):
+            capture_residual_continuation(state, prefix="C")
+
+    def test_capture_residual_continuation_rejects_duplicate_active_resumable_frame(
+        self,
+    ) -> None:
+        state = _state(tetrahedral_facts())
+        frame = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        state.frames.extend((frame, frame))
+
+        with self.assertRaisesRegex(AssertionError, "multiple active render-cursor"):
+            capture_residual_continuation(state, prefix="C")
+
+    def test_capture_residual_continuation_rejects_unhandled_topmost_resumable_frame(
+        self,
+    ) -> None:
+        state = _state(tetrahedral_facts())
+        state.frames.append(OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts()))))
+
+        with patch.object(
+            online_search_vm_module,
+            "dispatcher_resumable_frame_payload_types",
+            return_value=(),
+        ):
+            with self.assertRaisesRegex(ValueError, "not dispatcher-handled"):
+                capture_residual_continuation(state, prefix="C")
+
+    def test_from_snapshot_rejects_context_only_frame_stack_before_iteration(
+        self,
+    ) -> None:
+        snapshot = _snapshot_with_frames(
+            tetrahedral_facts(),
+            (OnlineSearchFrame(EventLoopFrame(("context",))),),
+        )
+
+        with self.assertRaisesRegex(ValueError, "no resumable frame"):
+            _vm_from_snapshot(tetrahedral_facts(), snapshot)
+
+    def test_from_snapshot_rejects_unknown_frame_payload_before_iteration(
+        self,
+    ) -> None:
+        @dataclass(frozen=True, slots=True)
+        class UnknownFrame:
+            value: int
+
+        snapshot = _snapshot_with_frames(
+            tetrahedral_facts(),
+            (
+                OnlineSearchFrame(UnknownFrame(1)),  # type: ignore[arg-type]
+                OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts()))),
+            ),
+        )
+
+        with self.assertRaisesRegex(ValueError, "unknown frame payload"):
+            _vm_from_snapshot(tetrahedral_facts(), snapshot)
+
+    def test_from_snapshot_rejects_duplicate_active_resumable_frame_before_iteration(
+        self,
+    ) -> None:
+        frame = OnlineSearchFrame(RenderCursorFrame(_first_render_cursor(tetrahedral_facts())))
+        snapshot = _snapshot_with_frames(tetrahedral_facts(), (frame, frame))
+
+        with self.assertRaisesRegex(AssertionError, "multiple active render-cursor"):
+            _vm_from_snapshot(tetrahedral_facts(), snapshot)
+
+    def test_resume_online_search_from_snapshot_rejects_invalid_snapshot_before_iteration(
+        self,
+    ) -> None:
+        snapshot = _snapshot_with_frames(
+            tetrahedral_facts(),
+            (OnlineSearchFrame(EventLoopFrame(("context",))),),
+        )
+
+        with self.assertRaisesRegex(ValueError, "no resumable frame"):
+            resume_online_search_from_snapshot(
+                facts=tetrahedral_facts(),
+                policy=ordinary_policy_for_facts(tetrahedral_facts()),
+                semantics=OrdinarySmilesSemantics(),
+                snapshot=snapshot,
+                sink=OnlineStringBuffer(),
+            )
+
+    def test_valid_retained_residual_snapshot_still_resumes(self) -> None:
+        continuation = _first_residual_continuation(tetrahedral_facts())
+        sink = ResidualFrontierSink(required_prefix=continuation.prefix)
+        vm = OnlineSearchVM.from_snapshot(
+            facts=tetrahedral_facts(),
+            policy=ordinary_policy_for_facts(tetrahedral_facts()),
+            semantics=OrdinarySmilesSemantics(),
+            snapshot=continuation.snapshot,
+            sink=sink,
+        )
+        sink.snapshot_provider = vm.checkpoint
+        sink.decision_path_provider = vm.state.decisions.path
+
+        self.assertIsNotNone(vm.run_until_witness_or_exhausted())
+
+    def test_fresh_online_search_vm_run_does_not_require_residual_snapshot_validation(
+        self,
+    ) -> None:
+        self.assertTrue(_vm_counter(tetrahedral_facts()))
 
     def test_directional_candidate_rendering_restores_ring_state_between_candidates(self) -> None:
         facts = ring_directional_facts()
@@ -966,6 +1101,24 @@ def _state(facts: MoleculeFacts):
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),
+        sink=OnlineStringBuffer(),
+    )
+
+
+def _snapshot_with_frames(
+    facts: MoleculeFacts,
+    frames: tuple[OnlineSearchFrame, ...],
+):
+    state = _state(facts)
+    return replace(state.checkpoint(), frame_stack=frames)
+
+
+def _vm_from_snapshot(facts: MoleculeFacts, snapshot):
+    return OnlineSearchVM.from_snapshot(
+        facts=facts,
+        policy=ordinary_policy_for_facts(facts),
+        semantics=OrdinarySmilesSemantics(),
+        snapshot=snapshot,
         sink=OnlineStringBuffer(),
     )
 

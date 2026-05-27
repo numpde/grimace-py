@@ -239,13 +239,14 @@ def enumerate_prepared_writer_shaped_support(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ):
-    require_writer_shaped_runtime_options(runtime_options)
-    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
-    raise SouthStarError(
-        SouthStarErrorKind.UNSUPPORTED_POLICY,
-        "WRITER_SHAPED writer-state kernel is not wired yet",
+    from .writer_support import (
+        enumerate_prepared_writer_shaped_support as enumerate_writer_support,
     )
 
+    return enumerate_writer_support(
+        prepared=prepared,
+        runtime_options=runtime_options,
+    )
 
 def validate_south_star_runtime_options_common(
     options: SouthStarRuntimeOptions,

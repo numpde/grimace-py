@@ -58,6 +58,10 @@ CORE_MODULES: tuple[str, ...] = (
     "support_artifact_schema",
     "support_enumeration",
     "stereo_witness",
+    "writer_frontier",
+    "writer_state",
+    "writer_support",
+    "writer_transitions",
 )
 
 BOUNDARY_MODULES: tuple[str, ...] = (

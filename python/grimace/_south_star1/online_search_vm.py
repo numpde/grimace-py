@@ -31,12 +31,12 @@ from .online_render_sink import OnlineStringBuffer
 from .online_traversal_graph import OnlineTraversalGraph
 from .online_traversal_graph import build_online_traversal_graph_from_facts
 from .online_traversal_graph import build_online_traversal_graph_from_index
-from .online_traversal import OnlineAtomEvent
-from .online_traversal import OnlineBranchClose
-from .online_traversal import OnlineBranchOpen
-from .online_traversal import OnlineDotEvent
-from .online_traversal import OnlineRingEndpointEvent
-from .online_traversal import OnlineTreeBondEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalAtomEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalBranchClose
+from .exhaustive_online_traversal import ExhaustiveTraversalBranchOpen
+from .exhaustive_online_traversal import ExhaustiveTraversalDotEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalRingEndpointEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalTreeBondEvent
 from .policy import AnnotationMode
 from .policy import AtomTextChoice
 from .policy import BondTextChoice
@@ -1192,7 +1192,7 @@ def _iter_local_order_products(
             state.traversal.visited_atoms.clear()
             for root_index, root in enumerate(roots):
                 if root_index:
-                    event_buffer.append(OnlineDotEvent())
+                    event_buffer.append(ExhaustiveTraversalDotEvent())
                 _emit_atom_subtree(state, event_buffer, events_at, root)
             trace = _VmTraversalTrace(
                 roots=roots,
@@ -1947,14 +1947,14 @@ def _render_event_pieces(
         for endpoint in slots.ring_endpoints
     }
     event = program.trace.events[event_index]
-    if isinstance(event, OnlineAtomEvent):
+    if isinstance(event, ExhaustiveTraversalAtomEvent):
         text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
         return (_RenderPiece(text=text, token_text=text),)
-    if isinstance(event, OnlineTreeBondEvent):
+    if isinstance(event, ExhaustiveTraversalTreeBondEvent):
         key = ("tree", event.bond, event.written_from, event.written_to, None)
         text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
         return (_RenderPiece(text=text, token_text=text or None),)
-    if isinstance(event, OnlineRingEndpointEvent):
+    if isinstance(event, ExhaustiveTraversalRingEndpointEvent):
         slot = next(
             item
             for item in slots.bond_slots
@@ -1980,11 +1980,11 @@ def _render_event_pieces(
                 ),
             ),
         )
-    if isinstance(event, OnlineBranchOpen):
+    if isinstance(event, ExhaustiveTraversalBranchOpen):
         return (_RenderPiece(text="(", token_text="("),)
-    if isinstance(event, OnlineBranchClose):
+    if isinstance(event, ExhaustiveTraversalBranchClose):
         return (_RenderPiece(text=")", token_text=")"),)
-    if isinstance(event, OnlineDotEvent):
+    if isinstance(event, ExhaustiveTraversalDotEvent):
         return (_RenderPiece(text=".", token_text="."),)
     raise TypeError(event)
 
@@ -2467,11 +2467,11 @@ def _emit_atom_subtree(
 ) -> None:
     state.traversal.visited_atoms.add(atom)
     state.traversal.active_atom_stack.append(atom)
-    event_buffer.append(OnlineAtomEvent(atom=atom, parent=state.traversal.parent[atom]))
+    event_buffer.append(ExhaustiveTraversalAtomEvent(atom=atom, parent=state.traversal.parent[atom]))
     for event in events_at[atom]:
         if isinstance(event, _RingLocalEvent):
             event_buffer.append(
-                OnlineRingEndpointEvent(
+                ExhaustiveTraversalRingEndpointEvent(
                     bond=event.bond,
                     at=event.atom,
                     other_atom=event.other_atom,
@@ -2483,9 +2483,9 @@ def _emit_atom_subtree(
         if isinstance(event, _ChildLocalEvent):
             role = event.role
             if role is ChildRole.BRANCH:
-                event_buffer.append(OnlineBranchOpen())
+                event_buffer.append(ExhaustiveTraversalBranchOpen())
             event_buffer.append(
-                OnlineTreeBondEvent(
+                ExhaustiveTraversalTreeBondEvent(
                     bond=event.bond,
                     written_from=event.parent,
                     written_to=event.child,
@@ -2495,7 +2495,7 @@ def _emit_atom_subtree(
             state.traversal.syntax_position += 1
             _emit_atom_subtree(state, event_buffer, events_at, event.child)
             if role is ChildRole.BRANCH:
-                event_buffer.append(OnlineBranchClose())
+                event_buffer.append(ExhaustiveTraversalBranchClose())
             continue
         raise TypeError(event)
     state.traversal.active_atom_stack.pop()
@@ -2507,7 +2507,7 @@ def _slot_view_for_trace(trace: _VmTraversalTrace) -> _SlotView:
     ring_endpoints: list[_RingEndpointSlot] = []
     syntax_position = 0
     for event in trace.events:
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             slot_id = len(bond_slots)
             bond_slots.append(
                 _BondSlot(
@@ -2531,7 +2531,7 @@ def _slot_view_for_trace(trace: _VmTraversalTrace) -> _SlotView:
             )
             syntax_position += 1
             continue
-        if isinstance(event, OnlineRingEndpointEvent):
+        if isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             slot_id = len(bond_slots)
             endpoint_id = len(ring_endpoints)
             bond_slots.append(
@@ -2695,9 +2695,9 @@ def _local_tetra_order(
     if parent is not None and parent in occurrence_by_atom:
         order.append(occurrence_by_atom[parent])
     for event in _local_events_for_atom(trace, atom):
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             occurrence = occurrence_by_atom.get(event.written_to)
-        elif isinstance(event, OnlineRingEndpointEvent):
+        elif isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             occurrence = occurrence_by_atom.get(event.other_atom)
         else:
             continue
@@ -2917,9 +2917,9 @@ def _reachable_atoms_on_bonds(
 def _local_events_for_atom(trace: _VmTraversalTrace, atom: AtomId) -> tuple[object, ...]:
     out = []
     for event in trace.events:
-        if isinstance(event, OnlineTreeBondEvent) and event.written_from == atom:
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent) and event.written_from == atom:
             out.append(event)
-        elif isinstance(event, OnlineRingEndpointEvent) and event.at == atom:
+        elif isinstance(event, ExhaustiveTraversalRingEndpointEvent) and event.at == atom:
             out.append(event)
     return tuple(out)
 
@@ -3017,11 +3017,11 @@ def _trace_key(trace: _VmTraversalTrace) -> tuple[object, ...]:
         atom: [] for atom, _ in trace.parent
     }
     for event in trace.events:
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             events_by_atom[event.written_from].append(
                 ("child", int(event.bond), int(event.written_from), int(event.written_to), event.role.value)
             )
-        elif isinstance(event, OnlineRingEndpointEvent):
+        elif isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             events_by_atom[event.at].append(
                 ("ring", int(event.bond), int(event.at), int(event.other_atom))
             )

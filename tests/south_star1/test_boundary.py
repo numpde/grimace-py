@@ -135,7 +135,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
 
     def test_online_traversal_boundary_is_lazy_and_producer_free(self) -> None:
         for path in (
-            SOUTH_STAR1_ROOT / "online_traversal.py",
+            SOUTH_STAR1_ROOT / "exhaustive_online_traversal.py",
             SOUTH_STAR1_ROOT / "online_stereo_witness.py",
             SOUTH_STAR1_ROOT / "online_continuation.py",
             SOUTH_STAR1_ROOT / "online_decoder.py",

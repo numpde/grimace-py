@@ -24,16 +24,16 @@ from .online_decisions import DecisionPathFilter
 from .online_decisions import OnlineDecision
 from .online_decisions import OnlineDecisionPath
 from .online_decisions import OnlineDecisionRecorder
-from .online_traversal import OnlineAtomEvent
-from .online_traversal import OnlineBranchClose
-from .online_traversal import OnlineBranchOpen
-from .online_traversal import OnlineDotEvent
-from .online_traversal import OnlineRingEndpointEvent
-from .online_traversal import OnlineTraversalTrace
-from .online_traversal import OnlineTreeBondEvent
-from .online_traversal import iter_exhaustive_online_traversal_traces
-from .online_traversal import iter_prepared_exhaustive_online_traversal_traces
-from .online_traversal import trace_to_skeleton_like_key
+from .exhaustive_online_traversal import ExhaustiveTraversalAtomEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalBranchClose
+from .exhaustive_online_traversal import ExhaustiveTraversalBranchOpen
+from .exhaustive_online_traversal import ExhaustiveTraversalDotEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalRingEndpointEvent
+from .exhaustive_online_traversal import ExhaustiveTraversalTrace
+from .exhaustive_online_traversal import ExhaustiveTraversalTreeBondEvent
+from .exhaustive_online_traversal import iter_exhaustive_online_traversal_traces
+from .exhaustive_online_traversal import iter_prepared_exhaustive_online_traversal_traces
+from .exhaustive_online_traversal import exhaustive_trace_to_skeleton_like_key
 from .policy import AnnotationMode
 from .policy import AtomTextChoice
 from .policy import BondTextChoice
@@ -203,7 +203,7 @@ def iter_exhaustive_online_stereo_witnesses_with_sink(
         decision_checkpoint = _push_decision(
             decision_recorder,
             decision_filter,
-            OnlineDecision("traversal", (trace_to_skeleton_like_key(trace),)),
+            OnlineDecision("traversal", (exhaustive_trace_to_skeleton_like_key(trace),)),
         )
         if decision_checkpoint is None:
             continue
@@ -226,7 +226,7 @@ def iter_exhaustive_online_stereo_witnesses_with_sink(
 def exhaustive_trace_local_tetra_order(
     *,
     facts: MoleculeFacts,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     atom: AtomId,
     template: TetraTemplate,
 ) -> tuple[OccurrenceId, ...]:
@@ -241,9 +241,9 @@ def exhaustive_trace_local_tetra_order(
     if parent is not None and parent in occurrence_by_atom:
         order.append(occurrence_by_atom[parent])
     for event in _local_events_for_atom(trace, atom):
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             occurrence = occurrence_by_atom.get(event.written_to)
-        elif isinstance(event, OnlineRingEndpointEvent):
+        elif isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             occurrence = occurrence_by_atom.get(event.other_atom)
         else:
             continue
@@ -267,7 +267,7 @@ def exhaustive_trace_directional_templates_for_carrier(
     )
 
 
-def exhaustive_trace_slot_view(trace: OnlineTraversalTrace) -> ExhaustiveTraceSlotView:
+def exhaustive_trace_slot_view(trace: ExhaustiveTraversalTrace) -> ExhaustiveTraceSlotView:
     return _slot_view_for_trace(trace)
 
 
@@ -312,7 +312,7 @@ def exhaustive_trace_slot_key(slots: ExhaustiveTraceSlotView) -> tuple[object, .
 
 def iter_exhaustive_trace_ring_label_assignments(
     *,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     policy: SmilesPolicy,
 ) -> Iterator[dict[int, RingLabel]]:
     slots = _slot_view_for_trace(trace)
@@ -360,7 +360,7 @@ def _iter_witnesses_for_trace(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     templates: StereoTemplateBundle,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     sink_factory: Callable[[], OnlineRenderSink],
     decision_recorder: OnlineDecisionRecorder | None,
     decision_filter: DecisionPathFilter | None,
@@ -463,7 +463,7 @@ def _iter_witnesses_for_trace(
                                     continue
                                 yield ExhaustiveTraceWitness(
                                     rendered=rendered,
-                                    traversal_key=trace_to_skeleton_like_key(trace),
+                                    traversal_key=exhaustive_trace_to_skeleton_like_key(trace),
                                     annotation_count=candidate.annotation_count,
                                 )
                         finally:
@@ -480,7 +480,7 @@ def _iter_directional_candidates(
     policy: SmilesPolicy,
     semantics: ParserSemantics,
     templates: StereoTemplateBundle,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
@@ -569,7 +569,7 @@ def _iter_directional_candidates(
 
 def _render_directional_candidate(
     *,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
@@ -604,13 +604,13 @@ def _render_directional_candidate(
             decision_recorder.restore_path(previous_decision_path)
 
 
-def _slot_view_for_trace(trace: OnlineTraversalTrace) -> ExhaustiveTraceSlotView:
+def _slot_view_for_trace(trace: ExhaustiveTraversalTrace) -> ExhaustiveTraceSlotView:
     bond_slots: list[ExhaustiveTraceBondSlot] = []
     carrier_slots: list[ExhaustiveTraceCarrierSlot] = []
     ring_endpoints: list[ExhaustiveTraceRingEndpointSlot] = []
     syntax_position = 0
     for event in trace.events:
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             slot_id = len(bond_slots)
             bond_slots.append(
                 ExhaustiveTraceBondSlot(
@@ -634,7 +634,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> ExhaustiveTraceSlotView
             )
             syntax_position += 1
             continue
-        if isinstance(event, OnlineRingEndpointEvent):
+        if isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             slot_id = len(bond_slots)
             endpoint_id = len(ring_endpoints)
             if event.syntax_position != syntax_position:
@@ -680,7 +680,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> ExhaustiveTraceSlotView
 def _forced_tetra_tokens(
     *,
     facts: MoleculeFacts,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     templates: StereoTemplateBundle,
     atom_text: dict[AtomId, AtomTextChoice],
 ) -> dict[AtomId, TetraToken] | None:
@@ -708,7 +708,7 @@ def _forced_tetra_tokens(
 def _forced_tetra_token(
     *,
     facts: MoleculeFacts,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     atom: AtomId,
     template: TetraTemplate,
 ) -> TetraToken | None:
@@ -866,7 +866,7 @@ def _bond_decode_ok(
 
 def _render_online_to_sink(
     *,
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
@@ -888,18 +888,18 @@ def _render_online_to_sink(
         for endpoint in slots.ring_endpoints
     }
     for event in trace.events:
-        if isinstance(event, OnlineAtomEvent):
+        if isinstance(event, ExhaustiveTraversalAtomEvent):
             text = prefix.atom_text[event.atom].render(tetra_tokens[event.atom])
             if not sink.append(text, token_text=text):
                 return False
             continue
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             key = ("tree", event.bond, event.written_from, event.written_to, None)
             text = _render_bond_slot(bond_slot_by_event[key], prefix, marks)
             if not sink.append(text, token_text=text or None):
                 return False
             continue
-        if isinstance(event, OnlineRingEndpointEvent):
+        if isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             slot = next(
                 item
                 for item in slots.bond_slots
@@ -918,15 +918,15 @@ def _render_online_to_sink(
             if not sink.append(label_text, token_text=label_text):
                 return False
             continue
-        if isinstance(event, OnlineBranchOpen):
+        if isinstance(event, ExhaustiveTraversalBranchOpen):
             if not sink.append("(", token_text="("):
                 return False
             continue
-        if isinstance(event, OnlineBranchClose):
+        if isinstance(event, ExhaustiveTraversalBranchClose):
             if not sink.append(")", token_text=")"):
                 return False
             continue
-        if isinstance(event, OnlineDotEvent):
+        if isinstance(event, ExhaustiveTraversalDotEvent):
             if not sink.append(".", token_text="."):
                 return False
             continue
@@ -1013,14 +1013,14 @@ def _dict_product(domains):
 
 
 def _local_events_for_atom(
-    trace: OnlineTraversalTrace,
+    trace: ExhaustiveTraversalTrace,
     atom: AtomId,
 ) -> tuple[object, ...]:
     out = []
     for event in trace.events:
-        if isinstance(event, OnlineTreeBondEvent) and event.written_from == atom:
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent) and event.written_from == atom:
             out.append(event)
-        elif isinstance(event, OnlineRingEndpointEvent) and event.at == atom:
+        elif isinstance(event, ExhaustiveTraversalRingEndpointEvent) and event.at == atom:
             out.append(event)
     return tuple(out)
 

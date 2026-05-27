@@ -234,7 +234,7 @@ class PreparedRuntimeProbe:
         from . import online_search_vm as online_search_vm_module
         from . import online_serialization_stream as online_serialization_stream_module
         from . import online_stereo_witness as online_stereo_witness_module
-        from . import online_traversal as online_traversal_module
+        from . import exhaustive_online_traversal as exhaustive_online_traversal_module
         from . import online_traversal_graph as online_traversal_graph_module
         from . import prepared_runtime as prepared_runtime_module
         from . import root_domains as root_domains_module
@@ -265,7 +265,7 @@ class PreparedRuntimeProbe:
             "online_traversal_graph_from_facts_count",
         )
         self._patch_callable(
-            online_traversal_module,
+            exhaustive_online_traversal_module,
             "build_online_traversal_graph_from_facts",
             "online_traversal_graph_from_facts_count",
         )
@@ -280,7 +280,7 @@ class PreparedRuntimeProbe:
             "online_traversal_graph_from_index_count",
         )
         self._patch_callable(
-            online_traversal_module,
+            exhaustive_online_traversal_module,
             "build_online_traversal_graph_from_index",
             "online_traversal_graph_from_index_count",
         )
@@ -325,7 +325,7 @@ class PreparedRuntimeProbe:
             "root_domain_recompute_count",
         )
         self._patch_callable(
-            online_traversal_module,
+            exhaustive_online_traversal_module,
             "component_root_domains_for_facts",
             "root_domain_recompute_count",
         )
@@ -365,7 +365,7 @@ class PreparedRuntimeProbe:
             "stereo_template_rebuild_count",
         )
         self._patch_callable(
-            online_traversal_module,
+            exhaustive_online_traversal_module,
             "_graph_from_facts",
             "online_traversal_graph_view_rebuild_count",
         )

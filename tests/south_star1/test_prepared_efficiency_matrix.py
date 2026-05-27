@@ -396,7 +396,7 @@ def _guarded_matrix_entry(
         "grimace._south_star1.skeleton.component_root_domains_for_facts",
         side_effect=AssertionError("prepared matrix recomputed root domains"),
     ), patch(
-        "grimace._south_star1.online_traversal.component_root_domains_for_facts",
+        "grimace._south_star1.exhaustive_online_traversal.component_root_domains_for_facts",
         side_effect=AssertionError("prepared matrix recomputed root domains"),
     ), patch(
         "grimace._south_star1.online_search_vm.component_root_domains_for_facts",

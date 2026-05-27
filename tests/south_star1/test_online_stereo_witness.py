@@ -22,8 +22,8 @@ from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_st
 from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witnesses
 from grimace._south_star1.online_stereo_witness import exhaustive_trace_slot_key
 from grimace._south_star1.online_stereo_witness import exhaustive_trace_slot_view
-from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
-from grimace._south_star1.online_traversal import trace_to_skeleton_like_key
+from grimace._south_star1.exhaustive_online_traversal import iter_exhaustive_online_traversal_traces
+from grimace._south_star1.exhaustive_online_traversal import exhaustive_trace_to_skeleton_like_key
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.policy import AnnotationMode
@@ -141,7 +141,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
 
         for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy):
             online_key = exhaustive_trace_slot_key(exhaustive_trace_slot_view(trace))
-            offline_key = offline_by_skeleton_key[trace_to_skeleton_like_key(trace)]
+            offline_key = offline_by_skeleton_key[exhaustive_trace_to_skeleton_like_key(trace)]
             self.assertEqual(online_key[1:], offline_key[1:])
 
     def test_online_ring_label_assignments_match_offline_witnesses(self) -> None:
@@ -150,7 +150,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
         trace = next(
             trace
             for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy)
-            if any(event.__class__.__name__ == "OnlineRingEndpointEvent" for event in trace.events)
+            if any(event.__class__.__name__ == "ExhaustiveTraversalRingEndpointEvent" for event in trace.events)
         )
 
         assignments = tuple(

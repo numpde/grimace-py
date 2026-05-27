@@ -18,8 +18,8 @@ from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoder
 from grimace._south_star1.online_decoder_api import online_decode_token_texts_for_policy
 from grimace._south_star1.online_serialization_stream import collect_online_serializations
 from grimace._south_star1.online_serialization_stream import iter_online_serializations
-from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
-from grimace._south_star1.online_traversal import iter_prepared_exhaustive_online_traversal_traces
+from grimace._south_star1.exhaustive_online_traversal import iter_exhaustive_online_traversal_traces
+from grimace._south_star1.exhaustive_online_traversal import iter_prepared_exhaustive_online_traversal_traces
 from grimace._south_star1.online_traversal_graph import OnlineTraversalGraph
 from grimace._south_star1.online_traversal_graph import build_online_traversal_graph_from_index
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -559,7 +559,7 @@ class PreparedRuntimeTest(unittest.TestCase):
         root_domains = tuple(atoms for _, atoms in prepared.all_root_domains)
 
         with patch(
-            "grimace._south_star1.online_traversal._graph_from_facts",
+            "grimace._south_star1.exhaustive_online_traversal._graph_from_facts",
             side_effect=AssertionError("prepared traversal rebuilt graph view"),
         ):
             traces = tuple(
@@ -814,7 +814,7 @@ class PreparedRuntimeTest(unittest.TestCase):
                 execution_mode=mode,
             )
             with self.subTest(mode=mode.value), patch(
-                "grimace._south_star1.online_traversal._graph_from_facts",
+                "grimace._south_star1.exhaustive_online_traversal._graph_from_facts",
                 side_effect=AssertionError("prepared decoder rebuilt graph view"),
             ), patch(
                 "grimace._south_star1.online_search_vm._graph_from_facts",
@@ -832,7 +832,7 @@ class PreparedRuntimeTest(unittest.TestCase):
         )
 
         with patch(
-            "grimace._south_star1.online_traversal._graph_from_facts",
+            "grimace._south_star1.exhaustive_online_traversal._graph_from_facts",
             side_effect=AssertionError("prepared stream rebuilt graph view"),
         ), patch(
             "grimace._south_star1.online_search_vm._graph_from_facts",
@@ -847,7 +847,7 @@ class PreparedRuntimeTest(unittest.TestCase):
         policy = ordinary_policy_for_facts(facts)
 
         with patch(
-            "grimace._south_star1.online_traversal._graph_from_facts",
+            "grimace._south_star1.exhaustive_online_traversal._graph_from_facts",
             side_effect=AssertionError("raw traversal built graph view"),
         ):
             with self.assertRaisesRegex(AssertionError, "built graph view"):
@@ -873,7 +873,7 @@ class PreparedRuntimeTest(unittest.TestCase):
                 runtime_options=SouthStarRuntimeOptions(rooted_at_atom=0),
             )
             with self.subTest(mode=mode.value), patch(
-                "grimace._south_star1.online_traversal.component_root_domains_for_facts",
+                "grimace._south_star1.exhaustive_online_traversal.component_root_domains_for_facts",
                 side_effect=AssertionError("prepared online query recomputed root domains"),
             ), patch(
                 "grimace._south_star1.online_search_vm.component_root_domains_for_facts",

@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import unittest
 from pathlib import Path
 
-import grimace._south_star1.online_traversal as online_traversal_module
+import grimace._south_star1.exhaustive_online_traversal as online_traversal_module
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
-from grimace._south_star1.online_traversal import OnlineDotEvent
-from grimace._south_star1.online_traversal import OnlineRingEndpointEvent
-from grimace._south_star1.online_traversal import _local_event_orders_lazy
-from grimace._south_star1.online_traversal import _ChildLocalEvent
-from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
-from grimace._south_star1.online_traversal import trace_to_skeleton_like_key
+from grimace._south_star1.exhaustive_online_traversal import ExhaustiveTraversalDotEvent
+from grimace._south_star1.exhaustive_online_traversal import ExhaustiveTraversalRingEndpointEvent
+from grimace._south_star1.exhaustive_online_traversal import _local_event_orders_lazy
+from grimace._south_star1.exhaustive_online_traversal import _ChildLocalEvent
+from grimace._south_star1.exhaustive_online_traversal import iter_exhaustive_online_traversal_traces
+from grimace._south_star1.exhaustive_online_traversal import exhaustive_trace_to_skeleton_like_key
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.proof_terms import skeleton_key
 from grimace._south_star1.skeleton import ChildRole
@@ -31,7 +32,7 @@ from tests.south_star1.helpers import single_bond
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ONLINE_TRAVERSAL_PATH = (
-    REPO_ROOT / "python" / "grimace" / "_south_star1" / "online_traversal.py"
+    REPO_ROOT / "python" / "grimace" / "_south_star1" / "exhaustive_online_traversal.py"
 )
 
 
@@ -59,7 +60,7 @@ class OnlineTraversalTest(unittest.TestCase):
             )
         )
 
-        self.assertTrue(any(isinstance(event, OnlineDotEvent) for event in trace.events))
+        self.assertTrue(any(isinstance(event, ExhaustiveTraversalDotEvent) for event in trace.events))
 
     def test_online_traversal_branch_and_continuation_orders_match_skeleton_space(
         self,
@@ -98,7 +99,7 @@ class OnlineTraversalTest(unittest.TestCase):
         for trace in traces:
             counts: dict[int, int] = {}
             for event in trace.events:
-                if isinstance(event, OnlineRingEndpointEvent):
+                if isinstance(event, ExhaustiveTraversalRingEndpointEvent):
                     counts[int(event.bond)] = counts.get(int(event.bond), 0) + 1
             self.assertTrue(counts)
             self.assertTrue(all(count == 2 for count in counts.values()))
@@ -156,6 +157,9 @@ class OnlineTraversalTest(unittest.TestCase):
         self.assertFalse(hasattr(online_traversal_module, generic_key_name))
         self.assertNotIn(generic_key_name, online_traversal_module.__all__)
 
+    def test_generic_online_traversal_module_is_absent(self) -> None:
+        self.assertIsNone(importlib.util.find_spec("grimace._south_star1.online_traversal"))
+
 
 def _online_keys(
     facts: MoleculeFacts,
@@ -165,7 +169,7 @@ def _online_keys(
     if policy is None:
         policy = ordinary_policy_for_facts(facts)
     return {
-        trace_to_skeleton_like_key(trace)
+        exhaustive_trace_to_skeleton_like_key(trace)
         for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy)
     }
 

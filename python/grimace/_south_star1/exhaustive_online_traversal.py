@@ -1,4 +1,4 @@
-"""Lazy online traversal/event streams for South Star runtime work."""
+"""Lazy exhaustive traversal/event streams for South Star runtime work."""
 
 from __future__ import annotations
 
@@ -24,13 +24,13 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineAtomEvent:
+class ExhaustiveTraversalAtomEvent:
     atom: AtomId
     parent: AtomId | None
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineTreeBondEvent:
+class ExhaustiveTraversalTreeBondEvent:
     bond: BondId
     written_from: AtomId
     written_to: AtomId
@@ -38,7 +38,7 @@ class OnlineTreeBondEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineRingEndpointEvent:
+class ExhaustiveTraversalRingEndpointEvent:
     bond: BondId
     at: AtomId
     other_atom: AtomId
@@ -46,37 +46,37 @@ class OnlineRingEndpointEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineBranchOpen:
+class ExhaustiveTraversalBranchOpen:
     pass
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineBranchClose:
+class ExhaustiveTraversalBranchClose:
     pass
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineDotEvent:
+class ExhaustiveTraversalDotEvent:
     pass
 
 
-OnlineTraversalEvent = (
-    OnlineAtomEvent
-    | OnlineTreeBondEvent
-    | OnlineRingEndpointEvent
-    | OnlineBranchOpen
-    | OnlineBranchClose
-    | OnlineDotEvent
+ExhaustiveTraversalEvent = (
+    ExhaustiveTraversalAtomEvent
+    | ExhaustiveTraversalTreeBondEvent
+    | ExhaustiveTraversalRingEndpointEvent
+    | ExhaustiveTraversalBranchOpen
+    | ExhaustiveTraversalBranchClose
+    | ExhaustiveTraversalDotEvent
 )
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineTraversalTrace:
+class ExhaustiveTraversalTrace:
     roots: tuple[AtomId, ...]
     parent: tuple[tuple[AtomId, AtomId | None], ...]
     tree_bonds: frozenset[BondId]
     ring_bonds: frozenset[BondId]
-    events: tuple[OnlineTraversalEvent, ...]
+    events: tuple[ExhaustiveTraversalEvent, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +103,7 @@ class _OnlineTraversalState:
     tree_bonds: frozenset[BondId]
     ring_bonds: frozenset[BondId]
     events_at: dict[AtomId, tuple[_LocalEvent, ...]]
-    event_buffer: list[OnlineTraversalEvent]
+    event_buffer: list[ExhaustiveTraversalEvent]
     syntax_position: int = 0
 
 
@@ -114,7 +114,7 @@ def iter_exhaustive_online_traversal_traces(
     rooted_at_atom: AtomId | None = None,
     index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
-) -> Iterator[OnlineTraversalTrace]:
+) -> Iterator[ExhaustiveTraversalTrace]:
     """Yield exhaustive traversal traces lazily without materializing skeleton space."""
 
     facts.validate()
@@ -133,7 +133,7 @@ def iter_prepared_exhaustive_online_traversal_traces(
     prepared: SouthStarPreparedMol,
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...],
-) -> Iterator[OnlineTraversalTrace]:
+) -> Iterator[ExhaustiveTraversalTrace]:
     """Yield prepared exhaustive traversal traces without replaying raw validation."""
 
     yield from _iter_exhaustive_online_traversal_traces_on_graph(
@@ -150,7 +150,7 @@ def _iter_exhaustive_online_traversal_traces_on_graph(
     graph: OnlineTraversalGraph,
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
-) -> Iterator[OnlineTraversalTrace]:
+) -> Iterator[ExhaustiveTraversalTrace]:
     all_bonds = frozenset(graph.bonds)
 
     for roots in _iter_root_choices(
@@ -189,16 +189,16 @@ def _iter_exhaustive_online_traversal_traces_on_graph(
             )
 
 
-def exhaustive_online_trace_key(trace: OnlineTraversalTrace) -> tuple[object, ...]:
-    return trace_to_skeleton_like_key(trace)
+def exhaustive_online_trace_key(trace: ExhaustiveTraversalTrace) -> tuple[object, ...]:
+    return exhaustive_trace_to_skeleton_like_key(trace)
 
 
-def trace_to_skeleton_like_key(trace: OnlineTraversalTrace) -> tuple[object, ...]:
+def exhaustive_trace_to_skeleton_like_key(trace: ExhaustiveTraversalTrace) -> tuple[object, ...]:
     events_by_atom: dict[AtomId, list[tuple[object, ...]]] = {
         atom: [] for atom, _ in trace.parent
     }
     for event in trace.events:
-        if isinstance(event, OnlineTreeBondEvent):
+        if isinstance(event, ExhaustiveTraversalTreeBondEvent):
             events_by_atom[event.written_from].append(
                 (
                     "child",
@@ -209,7 +209,7 @@ def trace_to_skeleton_like_key(trace: OnlineTraversalTrace) -> tuple[object, ...
                 )
             )
             continue
-        if isinstance(event, OnlineRingEndpointEvent):
+        if isinstance(event, ExhaustiveTraversalRingEndpointEvent):
             events_by_atom[event.at].append(
                 (
                     "ring",
@@ -387,10 +387,10 @@ def _iter_local_order_products(
     tree_bonds: frozenset[BondId],
     ring_bonds: frozenset[BondId],
     local_domains: tuple[tuple[AtomId, tuple[tuple[_LocalEvent, ...], ...]], ...],
-) -> Iterator[OnlineTraversalTrace]:
+) -> Iterator[ExhaustiveTraversalTrace]:
     events_at: dict[AtomId, tuple[_LocalEvent, ...]] = {}
 
-    def rec(index: int) -> Iterator[OnlineTraversalTrace]:
+    def rec(index: int) -> Iterator[ExhaustiveTraversalTrace]:
         if index == len(local_domains):
             state = _OnlineTraversalState(
                 parent=parent,
@@ -401,9 +401,9 @@ def _iter_local_order_products(
             )
             for root_index, root in enumerate(roots):
                 if root_index:
-                    state.event_buffer.append(OnlineDotEvent())
+                    state.event_buffer.append(ExhaustiveTraversalDotEvent())
                 _emit_atom_subtree(state, root)
-            yield OnlineTraversalTrace(
+            yield ExhaustiveTraversalTrace(
                 roots=roots,
                 parent=tuple(sorted(parent.items())),
                 tree_bonds=tree_bonds,
@@ -469,11 +469,11 @@ def _local_event_orders_lazy(
 
 
 def _emit_atom_subtree(state: _OnlineTraversalState, atom: AtomId) -> None:
-    state.event_buffer.append(OnlineAtomEvent(atom=atom, parent=state.parent[atom]))
+    state.event_buffer.append(ExhaustiveTraversalAtomEvent(atom=atom, parent=state.parent[atom]))
     for event in state.events_at[atom]:
         if isinstance(event, _RingLocalEvent):
             state.event_buffer.append(
-                OnlineRingEndpointEvent(
+                ExhaustiveTraversalRingEndpointEvent(
                     bond=event.bond,
                     at=event.atom,
                     other_atom=event.other_atom,
@@ -483,9 +483,9 @@ def _emit_atom_subtree(state: _OnlineTraversalState, atom: AtomId) -> None:
             state.syntax_position += 1
             continue
         if event.role is ChildRole.BRANCH:
-            state.event_buffer.append(OnlineBranchOpen())
+            state.event_buffer.append(ExhaustiveTraversalBranchOpen())
         state.event_buffer.append(
-            OnlineTreeBondEvent(
+            ExhaustiveTraversalTreeBondEvent(
                 bond=event.bond,
                 written_from=event.parent,
                 written_to=event.child,
@@ -495,7 +495,7 @@ def _emit_atom_subtree(state: _OnlineTraversalState, atom: AtomId) -> None:
         state.syntax_position += 1
         _emit_atom_subtree(state, event.child)
         if event.role is ChildRole.BRANCH:
-            state.event_buffer.append(OnlineBranchClose())
+            state.event_buffer.append(ExhaustiveTraversalBranchClose())
 
 
 def _reachable_atoms_on_bonds(
@@ -522,16 +522,16 @@ def _reachable_atoms_on_bonds(
 
 
 __all__ = (
-    "OnlineAtomEvent",
-    "OnlineBranchClose",
-    "OnlineBranchOpen",
-    "OnlineDotEvent",
-    "OnlineRingEndpointEvent",
-    "OnlineTraversalEvent",
-    "OnlineTraversalTrace",
-    "OnlineTreeBondEvent",
+    "ExhaustiveTraversalAtomEvent",
+    "ExhaustiveTraversalBranchClose",
+    "ExhaustiveTraversalBranchOpen",
+    "ExhaustiveTraversalDotEvent",
+    "ExhaustiveTraversalRingEndpointEvent",
+    "ExhaustiveTraversalEvent",
+    "ExhaustiveTraversalTrace",
+    "ExhaustiveTraversalTreeBondEvent",
     "exhaustive_online_trace_key",
     "iter_exhaustive_online_traversal_traces",
     "iter_prepared_exhaustive_online_traversal_traces",
-    "trace_to_skeleton_like_key",
+    "exhaustive_trace_to_skeleton_like_key",
 )

@@ -289,7 +289,7 @@ payloads.
 runtime. Per-query decoder state still owns DFS traversal, output, ring,
 residual trail, and frame-stack state.
 
-`online_traversal.py` provides a lazy exhaustive traversal/event stream. It
+`exhaustive_online_traversal.py` provides a lazy exhaustive traversal/event stream. It
 enumerates roots, spanning forests, parent orientations, ring endpoints,
 branches, continuations, and component dots by DFS without materializing the
 traversal-skeleton space. The first online traversal tests compare yielded

@@ -29,7 +29,7 @@ from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.support_enumeration import TracedCertifiedSupportImage
 from grimace._south_star1.support_enumeration import (
-    enumerate_traced_certified_stereo_support,
+    enumerate_exhaustive_traced_certified_stereo_support,
 )
 from grimace._south_star1.support_enumeration import (
     traced_certified_support_from_jsonable,
@@ -101,7 +101,7 @@ class CompletenessCertificateTest(unittest.TestCase):
             ordinary_policy_for_facts(facts),
             annotation_mode=AnnotationMode.CANONICAL,
         )
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
@@ -132,7 +132,7 @@ class CompletenessCertificateTest(unittest.TestCase):
             ordinary_policy_for_facts(facts),
             annotation_mode=AnnotationMode.CANONICAL,
         )
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
@@ -209,7 +209,7 @@ class CompletenessCertificateTest(unittest.TestCase):
         facts = tetrahedral_facts()
         policy = ordinary_policy_for_facts(facts)
         semantics = OrdinarySmilesSemantics()
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=semantics,
@@ -256,7 +256,7 @@ class CompletenessCertificateTest(unittest.TestCase):
         facts = tetrahedral_facts()
         policy = ordinary_policy_for_facts(facts)
         semantics = OrdinarySmilesSemantics()
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=semantics,
@@ -315,7 +315,7 @@ class CompletenessCertificateTest(unittest.TestCase):
     ) -> None:
         facts = tetrahedral_facts()
         policy = _tetra_rejecting_policy(facts)
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
@@ -339,7 +339,7 @@ class CompletenessCertificateTest(unittest.TestCase):
     ) -> None:
         facts = tetrahedral_facts()
         policy = _tetra_rejecting_policy(facts)
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
@@ -370,7 +370,7 @@ class CompletenessCertificateTest(unittest.TestCase):
             ordinary_policy_for_facts(facts),
             annotation_mode=AnnotationMode.CANONICAL,
         )
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
@@ -485,7 +485,7 @@ class CompletenessCertificateTest(unittest.TestCase):
 
 
 def _traced_result(facts: MoleculeFacts) -> TracedCertifiedSupportImage:
-    return enumerate_traced_certified_stereo_support(
+    return enumerate_exhaustive_traced_certified_stereo_support(
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),

@@ -107,25 +107,6 @@ class _OnlineTraversalState:
     syntax_position: int = 0
 
 
-def iter_online_traversal_traces(
-    *,
-    facts: MoleculeFacts,
-    policy: SmilesPolicy,
-    rooted_at_atom: AtomId | None = None,
-    index: GraphIndex | None = None,
-    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
-) -> Iterator[OnlineTraversalTrace]:
-    """Compatibility wrapper for exhaustive traversal traces."""
-
-    yield from iter_exhaustive_online_traversal_traces(
-        facts=facts,
-        policy=policy,
-        rooted_at_atom=rooted_at_atom,
-        index=index,
-        component_root_domains=component_root_domains,
-    )
-
-
 def iter_exhaustive_online_traversal_traces(
     *,
     facts: MoleculeFacts,
@@ -139,24 +120,9 @@ def iter_exhaustive_online_traversal_traces(
     facts.validate()
     policy.validate_for_facts(facts)
     graph = _graph_from_facts(facts, index=index)
-    yield from _iter_online_traversal_traces_on_graph(
+    yield from _iter_exhaustive_online_traversal_traces_on_graph(
         facts=facts,
         graph=graph,
-        rooted_at_atom=rooted_at_atom,
-        component_root_domains=component_root_domains,
-    )
-
-
-def iter_prepared_online_traversal_traces(
-    *,
-    prepared: SouthStarPreparedMol,
-    rooted_at_atom: AtomId | None,
-    component_root_domains: tuple[tuple[AtomId, ...], ...],
-) -> Iterator[OnlineTraversalTrace]:
-    """Compatibility wrapper for prepared exhaustive traversal traces."""
-
-    yield from iter_prepared_exhaustive_online_traversal_traces(
-        prepared=prepared,
         rooted_at_atom=rooted_at_atom,
         component_root_domains=component_root_domains,
     )
@@ -170,7 +136,7 @@ def iter_prepared_exhaustive_online_traversal_traces(
 ) -> Iterator[OnlineTraversalTrace]:
     """Yield prepared exhaustive traversal traces without replaying raw validation."""
 
-    yield from _iter_online_traversal_traces_on_graph(
+    yield from _iter_exhaustive_online_traversal_traces_on_graph(
         facts=prepared.facts,
         graph=prepared.online_traversal_graph,
         rooted_at_atom=rooted_at_atom,
@@ -178,7 +144,7 @@ def iter_prepared_exhaustive_online_traversal_traces(
     )
 
 
-def _iter_online_traversal_traces_on_graph(
+def _iter_exhaustive_online_traversal_traces_on_graph(
     *,
     facts: MoleculeFacts,
     graph: OnlineTraversalGraph,
@@ -221,10 +187,6 @@ def _iter_online_traversal_traces_on_graph(
                 ring_bonds=ring_bonds,
                 local_domains=local_domains,
             )
-
-
-def online_trace_key(trace: OnlineTraversalTrace) -> tuple[object, ...]:
-    return exhaustive_online_trace_key(trace)
 
 
 def exhaustive_online_trace_key(trace: OnlineTraversalTrace) -> tuple[object, ...]:

@@ -303,14 +303,6 @@ def require_writer_shaped_runtime_options(
         )
 
 
-def validate_south_star_runtime_options(
-    options: SouthStarRuntimeOptions,
-    *,
-    facts: MoleculeFacts | None = None,
-) -> None:
-    require_exhaustive_runtime_options(options, facts=facts)
-
-
 def runtime_root_atom(
     options: SouthStarRuntimeOptions,
     *,
@@ -401,6 +393,5 @@ __all__ = (
     "require_writer_shaped_runtime_options",
     "runtime_root_atom",
     "runtime_root_atom_for_prepared",
-    "validate_south_star_runtime_options",
     "validate_south_star_runtime_options_common",
 )

@@ -142,12 +142,19 @@ class OnlineTraversalTest(unittest.TestCase):
         self.assertEqual(sorted(set(found_calls) & banned_calls), [])
 
     def test_generic_online_traversal_names_are_not_exported(self) -> None:
-        self.assertNotIn("iter_online_traversal_traces", online_traversal_module.__all__)
+        generic_trace_name = "iter_" + "online_traversal_traces"
+        generic_prepared_name = "iter_prepared_" + "online_traversal_traces"
+        generic_key_name = "online_" + "trace_key"
+
+        self.assertFalse(hasattr(online_traversal_module, generic_trace_name))
+        self.assertNotIn(generic_trace_name, online_traversal_module.__all__)
         self.assertNotIn(
-            "iter_prepared_online_traversal_traces",
+            generic_prepared_name,
             online_traversal_module.__all__,
         )
-        self.assertNotIn("online_trace_key", online_traversal_module.__all__)
+        self.assertFalse(hasattr(online_traversal_module, generic_prepared_name))
+        self.assertFalse(hasattr(online_traversal_module, generic_key_name))
+        self.assertNotIn(generic_key_name, online_traversal_module.__all__)
 
 
 def _online_keys(

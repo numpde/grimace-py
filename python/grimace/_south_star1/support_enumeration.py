@@ -783,7 +783,7 @@ def _hash_sequence(values: Iterable[str]) -> str:
     return sequence_hash(values)
 
 
-def enumerate_stereo_support_with_stats(
+def enumerate_exhaustive_stereo_support_with_stats(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -792,7 +792,7 @@ def enumerate_stereo_support_with_stats(
     eligible_marker_carriers: EligibleMarkerCarrierSelector | None = None,
     allow_global_directional_scope: bool = False,
 ) -> StereoSupportResult:
-    """Enumerate stereo support and return small all-skeleton statistics.
+    """Enumerate exhaustive stereo support with small all-skeleton statistics.
 
     This function materializes skeletons if they are not supplied, so it is a
     test/debug convenience rather than the preferred large-enumeration API.
@@ -830,15 +830,6 @@ def enumerate_stereo_support_with_stats(
     )
 
 
-enumerate_stereo_witnesses = enumerate_exhaustive_stereo_witnesses
-enumerate_certified_stereo_witnesses = enumerate_exhaustive_certified_stereo_witnesses
-enumerate_stereo_support = enumerate_exhaustive_stereo_support
-enumerate_certified_stereo_support = enumerate_exhaustive_certified_stereo_support
-enumerate_traced_certified_stereo_support = (
-    enumerate_exhaustive_traced_certified_stereo_support
-)
-
-
 __all__ = (
     "CertifiedSupportImage",
     "EligibleMarkerCarrierSelector",
@@ -848,9 +839,9 @@ __all__ = (
     "enumerate_exhaustive_certified_stereo_support",
     "enumerate_exhaustive_certified_stereo_witnesses",
     "enumerate_exhaustive_stereo_support",
+    "enumerate_exhaustive_stereo_support_with_stats",
     "enumerate_exhaustive_stereo_witnesses",
     "enumerate_exhaustive_traced_certified_stereo_support",
-    "enumerate_stereo_support_with_stats",
     "traced_certified_support_from_jsonable",
     "traced_certified_support_to_jsonable",
 )

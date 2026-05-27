@@ -19,7 +19,7 @@ from grimace._south_star1.stereo_csp import solve_stereo_csp
 from grimace._south_star1.stereo_csp import stereo_solution_canonical_key
 from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
 from grimace._south_star1.support_enumeration import (
-    enumerate_traced_certified_stereo_support,
+    enumerate_exhaustive_traced_certified_stereo_support,
 )
 from tests.south_star1.helpers import tetrahedral_facts
 
@@ -93,7 +93,7 @@ class ProofTermsTest(unittest.TestCase):
 
     def test_generator_and_checker_use_same_witness_node_id(self) -> None:
         facts = tetrahedral_facts()
-        result = enumerate_traced_certified_stereo_support(
+        result = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

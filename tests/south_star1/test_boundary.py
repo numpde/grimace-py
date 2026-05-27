@@ -105,7 +105,7 @@ class SouthStar1BoundaryTest(unittest.TestCase):
             "build_stereo_csp",
             "compile_support_artifact",
             "enumerate_presentation_prefixes",
-            "enumerate_traced_certified_stereo_support",
+            "enumerate_exhaustive_traced_certified_stereo_support",
             "enumerate_traversal_skeletons",
             "ordinary_policy_for_facts",
             "render_stereo_traversal",

@@ -35,7 +35,7 @@ from grimace._south_star1.stereo_csp import select_stereo_solutions_with_certifi
 from grimace._south_star1.stereo_csp import solve_stereo_csp
 from grimace._south_star1.stereo_witness import enumerate_certified_stereo_witnesses_for_skeleton
 from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
-from grimace._south_star1.support_enumeration import enumerate_certified_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_certified_stereo_support
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
@@ -166,7 +166,7 @@ class CertificateTest(unittest.TestCase):
 
     def test_certified_ring_tetra_witness_certificate_validates(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
-        image = enumerate_certified_stereo_support(
+        image = enumerate_exhaustive_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -258,7 +258,7 @@ class CertificateTest(unittest.TestCase):
 
     def test_certified_support_image_has_one_certificate_per_witness(self) -> None:
         facts = tetrahedral_facts()
-        image = enumerate_certified_stereo_support(
+        image = enumerate_exhaustive_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -268,7 +268,7 @@ class CertificateTest(unittest.TestCase):
 
     def test_certified_support_manifest_counts_match_witnesses(self) -> None:
         facts = tetrahedral_facts()
-        image = enumerate_certified_stereo_support(
+        image = enumerate_exhaustive_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -289,15 +289,15 @@ class CertificateTest(unittest.TestCase):
             "semantics": OrdinarySmilesSemantics(),
         }
 
-        first = enumerate_certified_stereo_support(**kwargs).manifest
-        second = enumerate_certified_stereo_support(**kwargs).manifest
+        first = enumerate_exhaustive_certified_stereo_support(**kwargs).manifest
+        second = enumerate_exhaustive_certified_stereo_support(**kwargs).manifest
 
         self.assertEqual(first.support_hash, second.support_hash)
         self.assertEqual(first.witness_hash, second.witness_hash)
 
     def test_certified_support_image_support_strings_are_unique(self) -> None:
         facts = directional_facts()
-        image = enumerate_certified_stereo_support(
+        image = enumerate_exhaustive_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -357,7 +357,7 @@ class CertificateTest(unittest.TestCase):
             "[C@H](F)([C@H](F)Cl)[C@@H](F)Cl",
             options,
         )
-        image = enumerate_certified_stereo_support(
+        image = enumerate_exhaustive_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -378,7 +378,7 @@ class CertificateTest(unittest.TestCase):
 
     def test_manifest_json_roundtrip(self) -> None:
         facts = tetrahedral_facts()
-        image = enumerate_certified_stereo_support(
+        image = enumerate_exhaustive_certified_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

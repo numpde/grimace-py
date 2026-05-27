@@ -242,13 +242,14 @@ validates the JSONable object first, decodes it into artifact dataclasses, and
 then validates dataclass-level cross references and canonical hashes before the
 semantic artifact checker runs.
 
-### Online Runtime Track
+### Exhaustive Online Runtime Track
 
-The proof-artifact track materializes finite certificates. The online runtime
-track uses the same facts, policy, and ordinary semantics, but maintains only a
-DFS traversal state, output buffer, and reversible residual stereo constraints.
-It may emit witness strings with multiplicity and does not deduplicate support
-globally.
+The proof-artifact track materializes finite certificates. The current online
+runtime track is also exhaustive: it uses the same facts, policy, and ordinary
+semantics, but maintains only a DFS traversal state, output buffer, and
+reversible residual stereo constraints. It may emit witness strings with
+multiplicity and does not deduplicate support globally. This track is not the
+future `writer_shaped` writer-state runtime.
 
 `stereo_templates.py` extracts small static tetrahedral and directional stereo
 templates from `MoleculeFacts`. `residual_constraints.py` provides the
@@ -288,9 +289,9 @@ payloads.
 runtime. Per-query decoder state still owns DFS traversal, output, ring,
 residual trail, and frame-stack state.
 
-`online_traversal.py` provides a lazy traversal/event stream. It enumerates
-roots, spanning forests, parent orientations, ring endpoints, branches,
-continuations, and component dots by DFS without materializing the
+`online_traversal.py` provides a lazy exhaustive traversal/event stream. It
+enumerates roots, spanning forests, parent orientations, ring endpoints,
+branches, continuations, and component dots by DFS without materializing the
 traversal-skeleton space. The first online traversal tests compare yielded
 trace keys against the offline finite-space skeleton keys on small molecules.
 
@@ -397,13 +398,14 @@ decision-path length, ring state, output snapshot length, duplicate merge fan-in
 and any render-cursor program payload. They are representation audits, not
 Python byte-size measurements, and keep render-cursor costs explicit.
 
-`online_search_vm.py` is the explicit-stack event-level runtime. It owns
-traversal progression, syntax-slot choices, residual stereo propagation,
+`online_search_vm.py` is the exhaustive explicit-stack event-level runtime. It
+owns traversal progression, syntax-slot choices, residual stereo propagation,
 ring-label state, output buffering, and decision recording. It does not iterate
 prebuilt traversal traces and does not call the recursive online witness
-enumerator. This VM is the substrate for `RESIDUAL_CONTINUATIONS`: decoder
-states can store an `OnlineSearchSnapshot` at a token boundary and resume from
-it, instead of replaying from the root or replaying cached completions.
+enumerator. This VM is the substrate for `RESIDUAL_CONTINUATIONS` in exhaustive
+mode: decoder states can store an `OnlineSearchSnapshot` at a token boundary
+and resume from it, instead of replaying from the root or replaying cached
+completions.
 Snapshot resumption is routed through a typed frame dispatcher. The current
 dispatcher resumes `RenderCursorFrame`, `PrefixEnumerationFrame`,
 `DirectionEnumerationFrame`, and `SupportMaximalFrame` payloads through a

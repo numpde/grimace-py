@@ -14,7 +14,7 @@ from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_witnesses
-from grimace._south_star1.support_enumeration import enumerate_stereo_support_with_stats
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support_with_stats
 
 from tests.south_star1.helpers import tetrahedral_facts
 from tests.south_star1.test_stereo_witness import _TetraOrderSemantics
@@ -41,7 +41,7 @@ class SupportEnumerationTest(unittest.TestCase):
             chiral_center=AtomId(0),
         )
 
-        result = enumerate_stereo_support_with_stats(
+        result = enumerate_exhaustive_stereo_support_with_stats(
             facts=facts,
             policy=policy,
             semantics=_TetraOrderSemantics(),
@@ -153,12 +153,14 @@ class SupportEnumerationTest(unittest.TestCase):
         self.assertFalse(_imports_rdkit(tree))
 
     def test_generic_support_names_are_not_exported(self) -> None:
-        self.assertNotIn("enumerate_stereo_support", support_enumeration_module.__all__)
-        self.assertNotIn("enumerate_stereo_witnesses", support_enumeration_module.__all__)
-        self.assertNotIn(
-            "enumerate_certified_stereo_support",
-            support_enumeration_module.__all__,
+        generic_names = (
+            "enumerate_" + "stereo_support",
+            "enumerate_" + "stereo_witnesses",
+            "enumerate_" + "certified_stereo_support",
         )
+        for name in generic_names:
+            self.assertFalse(hasattr(support_enumeration_module, name))
+            self.assertNotIn(name, support_enumeration_module.__all__)
 
 
 def _imports_rdkit(tree: ast.AST) -> bool:

@@ -850,7 +850,7 @@ class PreparedPrefixWorkloadTest(unittest.TestCase):
             side_effect=AssertionError("prefix workload called prepared support"),
         ), patch.object(
             support_enumeration_module,
-            "enumerate_stereo_support",
+            "enumerate_exhaustive_stereo_support",
             side_effect=AssertionError("prefix workload called offline support"),
         ):
             result = collect_prepared_prefix_workload(

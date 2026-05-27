@@ -1093,7 +1093,7 @@ class OnlineSearchVmTest(unittest.TestCase):
         banned_calls = {
             "iter_online_stereo_witnesses_with_sink",
             "iter_online_stereo_witness_strings",
-            "iter_online_traversal_traces",
+            "iter_" + "online_traversal_traces",
             "online_branch_preserving_choices",
             "online_determinized_choices",
         }

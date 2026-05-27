@@ -13,7 +13,7 @@ from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import SouthStarWriterSurface
 from .prepared_runtime import prepare_south_star_mol_from_facts
-from .prepared_runtime import validate_south_star_runtime_options
+from .prepared_runtime import require_exhaustive_runtime_options
 from .semantics import ParserSemantics
 
 
@@ -61,7 +61,7 @@ def iter_online_serializations(
 ) -> Iterator[OnlineSerialization]:
     """Yield complete determinized support strings from decoder EOS choices."""
 
-    validate_south_star_runtime_options(runtime_options)
+    require_exhaustive_runtime_options(runtime_options)
     prepared = _resolve_prepared(
         prepared=prepared,
         facts=facts,
@@ -112,7 +112,7 @@ def collect_online_serializations(
 ) -> OnlineSerializationSupportResult:
     """Materialize the determinized online serialization support and counts."""
 
-    validate_south_star_runtime_options(runtime_options)
+    require_exhaustive_runtime_options(runtime_options)
     prepared = _resolve_prepared(
         prepared=prepared,
         facts=facts,
@@ -188,7 +188,7 @@ def count_online_serializations(
 ) -> OnlineSerializationCountResult:
     """Count determinized online serialization support without retaining strings."""
 
-    validate_south_star_runtime_options(runtime_options)
+    require_exhaustive_runtime_options(runtime_options)
     prepared = _resolve_prepared(
         prepared=prepared,
         facts=facts,

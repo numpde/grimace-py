@@ -23,7 +23,7 @@ from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.ordinary_stereo_sites import add_ordinary_potential_sites
 from grimace._south_star1.ordinary_stereo_sites import OrdinaryStereoSiteOptions
-from grimace._south_star1.support_enumeration import enumerate_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 
 from tests.south_star1.helpers import deep_directional_endpoint_facts
 from tests.south_star1.helpers import deep_tetra_ligand_facts
@@ -142,7 +142,7 @@ def relabel_molecule_facts(
 
 
 def _support_set(facts: MoleculeFacts) -> frozenset[str]:
-    image = enumerate_stereo_support(
+    image = enumerate_exhaustive_stereo_support(
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),

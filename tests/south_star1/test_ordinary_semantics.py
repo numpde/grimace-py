@@ -39,7 +39,7 @@ from grimace._south_star1.stereo_csp import build_stereo_csp
 from grimace._south_star1.stereo_csp import select_stereo_solutions
 from grimace._south_star1.stereo_csp import solve_stereo_csp
 from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
-from grimace._south_star1.support_enumeration import enumerate_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
@@ -62,7 +62,7 @@ class OrdinarySemanticsTest(unittest.TestCase):
             if skeleton.roots == (AtomId(0),)
         )
 
-        image = enumerate_stereo_support(
+        image = enumerate_exhaustive_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),
@@ -216,7 +216,7 @@ class OrdinarySemanticsTest(unittest.TestCase):
         facts = directional_facts()
         policy = _ordinary_policy(facts)
 
-        image = enumerate_stereo_support(
+        image = enumerate_exhaustive_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),

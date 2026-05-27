@@ -18,8 +18,8 @@ from grimace._south_star1.online_decoder_api import SouthStarOnlineDecoder
 from grimace._south_star1.online_decoder_api import online_decode_token_texts_for_policy
 from grimace._south_star1.online_serialization_stream import collect_online_serializations
 from grimace._south_star1.online_serialization_stream import iter_online_serializations
-from grimace._south_star1.online_traversal import iter_online_traversal_traces
-from grimace._south_star1.online_traversal import iter_prepared_online_traversal_traces
+from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
+from grimace._south_star1.online_traversal import iter_prepared_exhaustive_online_traversal_traces
 from grimace._south_star1.online_traversal_graph import OnlineTraversalGraph
 from grimace._south_star1.online_traversal_graph import build_online_traversal_graph_from_index
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -34,7 +34,7 @@ from grimace._south_star1.prepared_runtime import runtime_root_atom_for_prepared
 from grimace._south_star1.root_domains import component_root_domains_for_facts
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.graph_index import build_graph_index
-from grimace._south_star1.support_enumeration import enumerate_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import single_bond
@@ -487,7 +487,7 @@ class PreparedRuntimeTest(unittest.TestCase):
         )
         online_roots = {
             trace.roots
-            for trace in iter_online_traversal_traces(
+            for trace in iter_exhaustive_online_traversal_traces(
                 facts=prepared.facts,
                 policy=prepared.policy,
                 rooted_at_atom=AtomId(3),
@@ -563,7 +563,7 @@ class PreparedRuntimeTest(unittest.TestCase):
             side_effect=AssertionError("prepared traversal rebuilt graph view"),
         ):
             traces = tuple(
-                iter_prepared_online_traversal_traces(
+                iter_prepared_exhaustive_online_traversal_traces(
                     prepared=prepared,
                     rooted_at_atom=None,
                     component_root_domains=root_domains,
@@ -724,12 +724,12 @@ class PreparedRuntimeTest(unittest.TestCase):
             writer_surface=SouthStarWriterSurface(),
         )
 
-        prepared_support = enumerate_stereo_support(
+        prepared_support = enumerate_exhaustive_stereo_support(
             facts=prepared.facts,
             policy=prepared.policy,
             semantics=prepared.semantics,
         )
-        facts_support = enumerate_stereo_support(
+        facts_support = enumerate_exhaustive_stereo_support(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -851,7 +851,7 @@ class PreparedRuntimeTest(unittest.TestCase):
             side_effect=AssertionError("raw traversal built graph view"),
         ):
             with self.assertRaisesRegex(AssertionError, "built graph view"):
-                next(iter_online_traversal_traces(facts=facts, policy=policy))
+                next(iter_exhaustive_online_traversal_traces(facts=facts, policy=policy))
 
     def test_prepared_online_decoder_does_not_validate_facts_for_root_domains_per_choice_query(
         self,
@@ -971,6 +971,22 @@ class PreparedRuntimeTest(unittest.TestCase):
 
         self.assertEqual(root, AtomId(0))
 
+    def test_prepared_root_resolution_accepts_writer_shaped_language(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        root = runtime_root_atom_for_prepared(
+            SouthStarRuntimeOptions(
+                rooted_at_atom=0,
+                serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+            ),
+            prepared=prepared,
+        )
+
+        self.assertEqual(root, AtomId(0))
+
     def test_raw_online_traversal_still_validates_facts(self) -> None:
         facts = tetrahedral_facts()
         policy = ordinary_policy_for_facts(facts)
@@ -981,7 +997,7 @@ class PreparedRuntimeTest(unittest.TestCase):
             side_effect=AssertionError("raw online traversal validated facts"),
         ):
             with self.assertRaisesRegex(AssertionError, "validated facts"):
-                next(iter_online_traversal_traces(facts=facts, policy=policy))
+                next(iter_exhaustive_online_traversal_traces(facts=facts, policy=policy))
 
     def test_raw_online_traversal_still_validates_policy(self) -> None:
         facts = tetrahedral_facts()
@@ -993,7 +1009,7 @@ class PreparedRuntimeTest(unittest.TestCase):
             side_effect=AssertionError("raw online traversal validated policy"),
         ):
             with self.assertRaisesRegex(AssertionError, "validated policy"):
-                next(iter_online_traversal_traces(facts=facts, policy=policy))
+                next(iter_exhaustive_online_traversal_traces(facts=facts, policy=policy))
 
     def test_prepared_token_inventory_superset_contains_exact_online_inventory(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

@@ -29,7 +29,7 @@ from .stereo_witness import CertifiedWitness
 from .stereo_witness import build_certified_witness_from_selected_solution
 from .stereo_witness import enumerate_presentation_prefixes
 from .support_enumeration import TracedCertifiedSupportImage
-from .support_enumeration import enumerate_traced_certified_stereo_support
+from .support_enumeration import enumerate_exhaustive_traced_certified_stereo_support
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +73,7 @@ def replay_support_completeness_certificate(
     policy.validate_for_facts(facts)
 
     if compare_against_regeneration:
-        expected = enumerate_traced_certified_stereo_support(
+        expected = enumerate_exhaustive_traced_certified_stereo_support(
             facts=facts,
             policy=policy,
             semantics=semantics,

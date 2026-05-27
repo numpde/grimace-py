@@ -51,7 +51,7 @@ The following are internal and experimental:
 
 - `OnlineSearchSnapshot`
 - `OnlineResidualContinuation`
-- `OnlineSearchVM.from_snapshot(...)`
+- `ExhaustiveOnlineSearchVM.from_snapshot(...)`
 - scheduler frame payload classes
 - prepared matrix and workload helper modules
 
@@ -66,7 +66,7 @@ Residual snapshot validity is checked at:
 
 - continuation capture via `capture_residual_continuation(...)`;
 - retained-state audit in residual state-size collection;
-- snapshot resume via `OnlineSearchVM.from_snapshot(...)` and
+- snapshot resume via `ExhaustiveOnlineSearchVM.from_snapshot(...)` and
   `resume_online_search_from_snapshot(...)`.
 
 ## Evidence Suites

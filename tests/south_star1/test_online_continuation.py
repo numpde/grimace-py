@@ -939,7 +939,7 @@ class OnlineContinuationDecoderTest(unittest.TestCase):
         self.assertIn("internal and experimental", text)
         self.assertIn("capture_residual_continuation", text)
         self.assertIn("retained-state audit", text)
-        self.assertIn("OnlineSearchVM.from_snapshot", text)
+        self.assertIn("ExhaustiveOnlineSearchVM.from_snapshot", text)
         self.assertIn("resume_online_search_from_snapshot", text)
         self.assertIn("Direct construction of residual value", text)
         self.assertIn("RenderCursorFrame", text)

@@ -6,6 +6,7 @@ import ast
 import unittest
 from pathlib import Path
 
+import grimace._south_star1.online_traversal as online_traversal_module
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.graph_index import build_graph_index
@@ -16,7 +17,7 @@ from grimace._south_star1.online_traversal import OnlineDotEvent
 from grimace._south_star1.online_traversal import OnlineRingEndpointEvent
 from grimace._south_star1.online_traversal import _local_event_orders_lazy
 from grimace._south_star1.online_traversal import _ChildLocalEvent
-from grimace._south_star1.online_traversal import iter_online_traversal_traces
+from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
 from grimace._south_star1.online_traversal import trace_to_skeleton_like_key
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.proof_terms import skeleton_key
@@ -52,7 +53,7 @@ class OnlineTraversalTest(unittest.TestCase):
 
     def test_online_traversal_disconnected_components_emit_dot_events(self) -> None:
         trace = next(
-            iter_online_traversal_traces(
+            iter_exhaustive_online_traversal_traces(
                 facts=disconnected_facts(),
                 policy=ordinary_policy_for_facts(disconnected_facts()),
             )
@@ -88,7 +89,7 @@ class OnlineTraversalTest(unittest.TestCase):
 
     def test_online_traversal_ring_endpoint_events_have_two_endpoints(self) -> None:
         traces = tuple(
-            iter_online_traversal_traces(
+            iter_exhaustive_online_traversal_traces(
                 facts=cyclopropane_facts(),
                 policy=ordinary_policy_for_facts(cyclopropane_facts()),
             )
@@ -140,6 +141,14 @@ class OnlineTraversalTest(unittest.TestCase):
         self.assertEqual(found_imports, [])
         self.assertEqual(sorted(set(found_calls) & banned_calls), [])
 
+    def test_generic_online_traversal_names_are_not_exported(self) -> None:
+        self.assertNotIn("iter_online_traversal_traces", online_traversal_module.__all__)
+        self.assertNotIn(
+            "iter_prepared_online_traversal_traces",
+            online_traversal_module.__all__,
+        )
+        self.assertNotIn("online_trace_key", online_traversal_module.__all__)
+
 
 def _online_keys(
     facts: MoleculeFacts,
@@ -150,7 +159,7 @@ def _online_keys(
         policy = ordinary_policy_for_facts(facts)
     return {
         trace_to_skeleton_like_key(trace)
-        for trace in iter_online_traversal_traces(facts=facts, policy=policy)
+        for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy)
     }
 
 

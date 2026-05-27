@@ -11,7 +11,7 @@ The v0 support definition is:
 MoleculeFacts
   + ordinary_policy_for_facts(...)
   + OrdinarySmilesSemantics()
-  -> enumerate_stereo_support(...)
+  -> enumerate_exhaustive_stereo_support(...)
 ```
 
 RDKit may appear only at ingestion and audit boundaries. It is not part of

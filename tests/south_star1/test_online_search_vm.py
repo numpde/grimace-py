@@ -24,7 +24,7 @@ from grimace._south_star1.online_residual_continuation import ResidualFrontierSi
 from grimace._south_star1.online_search_vm import EventLoopFrame
 from grimace._south_star1.online_search_vm import DirectionEnumerationFrame
 from grimace._south_star1.online_search_vm import OnlineSearchFrame
-from grimace._south_star1.online_search_vm import OnlineSearchVM
+from grimace._south_star1.online_search_vm import ExhaustiveOnlineSearchVM
 from grimace._south_star1.online_search_vm import ParentOrientationFrame
 from grimace._south_star1.online_search_vm import PrefixEnumerationFrame
 from grimace._south_star1.online_search_vm import RESUMABLE_FRAME_PAYLOAD_TYPES
@@ -36,7 +36,7 @@ from grimace._south_star1.online_search_vm import resume_online_search_from_snap
 from grimace._south_star1.online_search_vm import topmost_resumable_frame
 from grimace._south_star1.online_search_vm import validate_residual_frame_stack
 from grimace._south_star1.online_search_vm import capture_residual_continuation
-from grimace._south_star1.online_search_vm import iter_online_stereo_witness_strings_vm
+from grimace._south_star1.online_search_vm import iter_exhaustive_online_stereo_witness_strings_vm
 from grimace._south_star1.online_search_vm import make_online_search_state
 from grimace._south_star1.online_search_vm import _pop_resumable_frame
 from grimace._south_star1.online_search_vm import _resume_from_frames
@@ -205,7 +205,7 @@ class OnlineSearchVmTest(unittest.TestCase):
             ),
         )
 
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=policy,
             semantics=semantics,
@@ -237,7 +237,7 @@ class OnlineSearchVmTest(unittest.TestCase):
         )
         extra = VarId("extra", (0,))
 
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=policy,
             semantics=semantics,
@@ -298,7 +298,7 @@ class OnlineSearchVmTest(unittest.TestCase):
         semantics = OrdinarySmilesSemantics()
         continuation = _first_residual_continuation(facts)
         sink = ResidualFrontierSink(required_prefix=continuation.prefix)
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=policy,
             semantics=semantics,
@@ -662,7 +662,7 @@ class OnlineSearchVmTest(unittest.TestCase):
         facts = ring_directional_facts()
         continuation = _first_residual_continuation(facts)
         sink = ResidualFrontierSink(required_prefix=continuation.prefix)
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -748,7 +748,7 @@ class OnlineSearchVmTest(unittest.TestCase):
 
         self.assertEqual(
             tuple(
-                iter_online_stereo_witness_strings_vm(
+                iter_exhaustive_online_stereo_witness_strings_vm(
                     facts=facts,
                     policy=policy,
                     semantics=semantics,
@@ -822,7 +822,7 @@ class OnlineSearchVmTest(unittest.TestCase):
         self.assertTrue(all(witness.annotation_count >= 0 for witness in witnesses))
 
     def test_vm_step_interface_yields_witness_then_exhausts(self) -> None:
-        vm = OnlineSearchVM(
+        vm = ExhaustiveOnlineSearchVM(
             facts=disconnected_facts(),
             policy=ordinary_policy_for_facts(disconnected_facts()),
             semantics=OrdinarySmilesSemantics(),
@@ -842,12 +842,34 @@ class OnlineSearchVmTest(unittest.TestCase):
         facts = disconnected_facts()
 
         with self.assertRaises(SouthStarError):
-            OnlineSearchVM(
+            ExhaustiveOnlineSearchVM(
                 facts=facts,
                 policy=ordinary_policy_for_facts(facts),
                 semantics=OrdinarySmilesSemantics(),
                 serialization_language=SerializationLanguageMode.WRITER_SHAPED,
             )
+
+    def test_generic_vm_alias_is_not_exported(self) -> None:
+        self.assertFalse(hasattr(online_search_vm_module, "OnlineSearchVM"))
+        self.assertNotIn("OnlineSearchVM", online_search_vm_module.__all__)
+
+    def test_exhaustive_snapshot_carries_language_mode(self) -> None:
+        state = _state(disconnected_facts())
+
+        self.assertIs(
+            state.checkpoint().serialization_language,
+            SerializationLanguageMode.EXHAUSTIVE,
+        )
+
+    def test_exhaustive_vm_rejects_writer_shaped_snapshot(self) -> None:
+        facts = tetrahedral_facts()
+        snapshot = replace(
+            _first_residual_continuation(facts).snapshot,
+            serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+        )
+
+        with self.assertRaises(SouthStarError):
+            _vm_from_snapshot(facts, snapshot)
 
     def test_capture_residual_continuation_contains_snapshot(self) -> None:
         state = _state(tetrahedral_facts())
@@ -964,7 +986,7 @@ class OnlineSearchVmTest(unittest.TestCase):
     def test_valid_retained_residual_snapshot_still_resumes(self) -> None:
         continuation = _first_residual_continuation(tetrahedral_facts())
         sink = ResidualFrontierSink(required_prefix=continuation.prefix)
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=tetrahedral_facts(),
             policy=ordinary_policy_for_facts(tetrahedral_facts()),
             semantics=OrdinarySmilesSemantics(),
@@ -983,7 +1005,7 @@ class OnlineSearchVmTest(unittest.TestCase):
 
     def test_directional_candidate_rendering_restores_ring_state_between_candidates(self) -> None:
         facts = ring_directional_facts()
-        vm = OnlineSearchVM(
+        vm = ExhaustiveOnlineSearchVM(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -997,7 +1019,7 @@ class OnlineSearchVmTest(unittest.TestCase):
     def test_two_directional_candidates_on_same_ring_label_branch_both_render(self) -> None:
         facts = ring_directional_facts()
         rendered = tuple(
-            iter_online_stereo_witness_strings_vm(
+            iter_exhaustive_online_stereo_witness_strings_vm(
                 facts=facts,
                 policy=ordinary_policy_for_facts(facts),
                 semantics=OrdinarySmilesSemantics(),
@@ -1010,7 +1032,7 @@ class OnlineSearchVmTest(unittest.TestCase):
     def test_residual_continuation_captures_partial_ring_state_but_producer_ring_restores(self) -> None:
         facts = ring_directional_facts()
         sink = ResidualFrontierSink(required_prefix="C")
-        vm = OnlineSearchVM(
+        vm = ExhaustiveOnlineSearchVM(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -1127,7 +1149,7 @@ def _snapshot_with_frames(
 
 
 def _vm_from_snapshot(facts: MoleculeFacts, snapshot):
-    return OnlineSearchVM.from_snapshot(
+    return ExhaustiveOnlineSearchVM.from_snapshot(
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),
@@ -1138,7 +1160,7 @@ def _vm_from_snapshot(facts: MoleculeFacts, snapshot):
 
 def _vm_counter(facts: MoleculeFacts) -> Counter[str]:
     return Counter(
-        iter_online_stereo_witness_strings_vm(
+        iter_exhaustive_online_stereo_witness_strings_vm(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -1173,7 +1195,7 @@ def ring_directional_facts() -> MoleculeFacts:
 
 def _first_residual_continuation(facts: MoleculeFacts):
     sink = ResidualFrontierSink(required_prefix="")
-    vm = OnlineSearchVM(
+    vm = ExhaustiveOnlineSearchVM(
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),

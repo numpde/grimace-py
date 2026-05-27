@@ -30,9 +30,9 @@ from .policy import SmilesPolicy
 from .prepared_runtime import SouthStarPreparedMol
 from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import component_root_domains_for_prepared
+from .prepared_runtime import require_exhaustive_runtime_options
 from .prepared_runtime import runtime_root_atom
 from .prepared_runtime import runtime_root_atom_for_prepared
-from .prepared_runtime import validate_south_star_runtime_options
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
 
@@ -375,9 +375,12 @@ def _runtime_root_atom_for_decoder(
     prepared: SouthStarPreparedMol | None,
     facts: MoleculeFacts,
 ) -> AtomId | None:
+    require_exhaustive_runtime_options(
+        runtime_options,
+        facts=None if prepared is not None else facts,
+    )
     if prepared is not None:
         return runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
-    validate_south_star_runtime_options(runtime_options, facts=facts)
     return runtime_root_atom(runtime_options, facts=facts)
 
 

@@ -571,8 +571,5 @@ __all__ = (
     "exhaustive_online_trace_key",
     "iter_exhaustive_online_traversal_traces",
     "iter_prepared_exhaustive_online_traversal_traces",
-    "iter_prepared_online_traversal_traces",
-    "iter_online_traversal_traces",
-    "online_trace_key",
     "trace_to_skeleton_like_key",
 )

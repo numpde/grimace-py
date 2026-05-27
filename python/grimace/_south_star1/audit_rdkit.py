@@ -41,8 +41,8 @@ from .rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from .rdkit_adapter import ordinary_molecule_facts_from_smiles
 from .semantics import ParserSemantics
 from .skeleton import TraversalSkeleton
-from .support_enumeration import enumerate_stereo_support
-from .support_enumeration import enumerate_stereo_witnesses
+from .support_enumeration import enumerate_exhaustive_stereo_support
+from .support_enumeration import enumerate_exhaustive_stereo_witnesses
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,7 +264,7 @@ def audit_generated_support_with_rdkit(
 
     original = ordinary_molecule_facts_from_rdkit(mol, adapter_options)
     policy = ordinary_policy_for_facts(original, policy_options)
-    image = enumerate_stereo_support(
+    image = enumerate_exhaustive_stereo_support(
         facts=original,
         policy=policy,
         semantics=semantics or OrdinarySmilesSemantics(),
@@ -311,7 +311,7 @@ def audit_generated_support_with_rdkit_smiles_source(
 
     original = ordinary_molecule_facts_from_smiles(smiles, adapter_options)
     policy = ordinary_policy_for_facts(original, policy_options)
-    image = enumerate_stereo_support(
+    image = enumerate_exhaustive_stereo_support(
         facts=original,
         policy=policy,
         semantics=semantics or OrdinarySmilesSemantics(),
@@ -450,7 +450,7 @@ def trace_specified_closure_support_round_trips(
     """Trace every rendered support string from a specified-closure fact object."""
 
     policy = ordinary_policy_for_facts(original_facts, policy_options)
-    image = enumerate_stereo_support(
+    image = enumerate_exhaustive_stereo_support(
         facts=original_facts,
         policy=policy,
         semantics=semantics or OrdinarySmilesSemantics(),
@@ -672,7 +672,7 @@ def audit_generated_witnesses_with_rdkit(
 
     original = ordinary_molecule_facts_from_rdkit(mol, adapter_options)
     policy = ordinary_policy_for_facts(original, policy_options)
-    witness_iter = enumerate_stereo_witnesses(
+    witness_iter = enumerate_exhaustive_stereo_witnesses(
         facts=original,
         policy=policy,
         semantics=semantics or OrdinarySmilesSemantics(),

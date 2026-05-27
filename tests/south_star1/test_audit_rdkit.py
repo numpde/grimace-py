@@ -31,7 +31,7 @@ from grimace._south_star1.rdkit_adapter import RdkitOrdinaryExtractionOptions
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_rdkit
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
-from grimace._south_star1.support_enumeration import enumerate_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 
 
 class RdkitAuditTest(unittest.TestCase):
@@ -315,7 +315,7 @@ def _support_for_smiles(text: str, *, adapter_options=None) -> frozenset[str]:
         facts = ordinary_molecule_facts_from_rdkit(mol)
     else:
         facts = ordinary_molecule_facts_from_rdkit(mol, adapter_options)
-    image = enumerate_stereo_support(
+    image = enumerate_exhaustive_stereo_support(
         facts=facts,
         policy=ordinary_policy_for_facts(facts),
         semantics=OrdinarySmilesSemantics(),

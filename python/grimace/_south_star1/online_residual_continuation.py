@@ -15,7 +15,7 @@ from .online_decisions import OnlineDecisionFrontier
 from .online_decisions import OnlineDecisionPath
 from .online_search_vm import RenderContinuationPayloadShape
 from .online_search_vm import OnlineSearchSnapshot
-from .online_search_vm import OnlineSearchVM
+from .online_search_vm import ExhaustiveOnlineSearchVM
 from .online_search_vm import residual_snapshot_frame_audit
 from .online_search_vm import render_continuation_payload_shape
 from .online_search_vm import validate_residual_frame_stack
@@ -381,7 +381,7 @@ def _root_residual_choice_result(
     prepared: SouthStarPreparedMol | None,
 ) -> OnlineResidualRawChoiceResult:
     sink = ResidualFrontierSink(required_prefix=state.prefix)
-    vm = OnlineSearchVM(
+    vm = ExhaustiveOnlineSearchVM(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -433,7 +433,7 @@ def _resume_residual_choice_result(
         if continuation.prefix != state.prefix:
             raise ValueError("residual continuation prefix does not match decoder state")
         sink = ResidualFrontierSink(required_prefix=state.prefix)
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=policy,
             semantics=semantics,

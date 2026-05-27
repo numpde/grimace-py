@@ -21,7 +21,7 @@ from grimace._south_star1.online_stereo_witness import iter_online_stereo_witnes
 from grimace._south_star1.online_stereo_witness import iter_online_stereo_witnesses
 from grimace._south_star1.online_stereo_witness import online_slot_key
 from grimace._south_star1.online_stereo_witness import online_slot_view_for_trace
-from grimace._south_star1.online_traversal import iter_online_traversal_traces
+from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
 from grimace._south_star1.online_traversal import trace_to_skeleton_like_key
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
@@ -31,7 +31,7 @@ from grimace._south_star1.proof_terms import slot_key
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import allocate_traversal_slots
-from grimace._south_star1.support_enumeration import enumerate_stereo_witnesses
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_witnesses
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
@@ -127,7 +127,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
             )
         }
 
-        for trace in iter_online_traversal_traces(facts=facts, policy=policy):
+        for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy):
             online_key = online_slot_key(online_slot_view_for_trace(trace))
             offline_key = offline_by_skeleton_key[trace_to_skeleton_like_key(trace)]
             self.assertEqual(online_key[1:], offline_key[1:])
@@ -137,7 +137,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
         policy = ordinary_policy_for_facts(facts)
         trace = next(
             trace
-            for trace in iter_online_traversal_traces(facts=facts, policy=policy)
+            for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy)
             if any(event.__class__.__name__ == "OnlineRingEndpointEvent" for event in trace.events)
         )
 
@@ -204,7 +204,7 @@ def _online_counter(facts: MoleculeFacts) -> Counter[str]:
 def _offline_counter(facts: MoleculeFacts) -> Counter[str]:
     return Counter(
         witness.rendered
-        for witness in enumerate_stereo_witnesses(
+        for witness in enumerate_exhaustive_stereo_witnesses(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

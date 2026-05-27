@@ -33,7 +33,7 @@ from grimace._south_star1.skeleton import enumerate_traversal_skeletons
 from grimace._south_star1.slots import allocate_traversal_slots
 from grimace._south_star1.stereo_csp import enumerate_stereo_assignments_for_prefix
 from grimace._south_star1.stereo_witness import enumerate_presentation_prefixes
-from grimace._south_star1.support_enumeration import enumerate_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 
 
 class RdkitAdapterTest(unittest.TestCase):
@@ -288,12 +288,12 @@ class RdkitAdapterTest(unittest.TestCase):
                 self.assertTrue(
                     facts_are_isomorphic(one_pass, two_pass).isomorphic
                 )
-                one_support = enumerate_stereo_support(
+                one_support = enumerate_exhaustive_stereo_support(
                     facts=one_pass,
                     policy=ordinary_policy_for_facts(one_pass),
                     semantics=OrdinarySmilesSemantics(),
                 )
-                two_support = enumerate_stereo_support(
+                two_support = enumerate_exhaustive_stereo_support(
                     facts=two_pass,
                     policy=ordinary_policy_for_facts(two_pass),
                     semantics=OrdinarySmilesSemantics(),
@@ -359,7 +359,7 @@ class RdkitAdapterTest(unittest.TestCase):
             Chem.MolFromSmiles("[C@H](F)(Cl)Br")
         )
         policy = ordinary_policy_for_facts(facts)
-        image = enumerate_stereo_support(
+        image = enumerate_exhaustive_stereo_support(
             facts=facts,
             policy=policy,
             semantics=OrdinarySmilesSemantics(),

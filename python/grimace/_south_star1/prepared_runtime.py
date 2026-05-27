@@ -175,6 +175,7 @@ def enumerate_prepared_stereo_support(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ):
+    validate_south_star_runtime_options_common(runtime_options)
     match runtime_options.serialization_language:
         case SerializationLanguageMode.EXHAUSTIVE:
             return enumerate_prepared_exhaustive_stereo_support(
@@ -204,7 +205,9 @@ def enumerate_prepared_exhaustive_stereo_support(
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ):
     from .skeleton import enumerate_traversal_skeletons
-    from .support_enumeration import enumerate_stereo_support
+    from .support_enumeration import enumerate_exhaustive_stereo_support
+
+    require_exhaustive_runtime_options(runtime_options)
 
     rooted_at_atom = runtime_root_atom_for_prepared(
         runtime_options,
@@ -222,7 +225,7 @@ def enumerate_prepared_exhaustive_stereo_support(
         component_root_domains=tuple(atoms for _, atoms in root_domains),
         validate_inputs=False,
     )
-    return enumerate_stereo_support(
+    return enumerate_exhaustive_stereo_support(
         facts=prepared.facts,
         policy=prepared.policy,
         semantics=prepared.semantics,
@@ -236,14 +239,15 @@ def enumerate_prepared_writer_shaped_support(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ):
-    del prepared, runtime_options
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
     raise SouthStarError(
         SouthStarErrorKind.UNSUPPORTED_POLICY,
         "WRITER_SHAPED writer-state kernel is not wired yet",
     )
 
 
-def validate_south_star_runtime_options(
+def validate_south_star_runtime_options_common(
     options: SouthStarRuntimeOptions,
     *,
     facts: MoleculeFacts | None = None,
@@ -262,12 +266,6 @@ def validate_south_star_runtime_options(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "South Star online runtime currently supports do_random=True",
         )
-    if options.serialization_language is not SerializationLanguageMode.EXHAUSTIVE:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            "South Star online runtime currently supports "
-            "serialization_language=EXHAUSTIVE",
-        )
     if facts is not None and options.rooted_at_atom >= 0:
         atom = AtomId(options.rooted_at_atom)
         if atom not in {item.id for item in facts.atoms}:
@@ -277,12 +275,48 @@ def validate_south_star_runtime_options(
             )
 
 
+def require_exhaustive_runtime_options(
+    options: SouthStarRuntimeOptions,
+    *,
+    facts: MoleculeFacts | None = None,
+) -> None:
+    validate_south_star_runtime_options_common(options, facts=facts)
+    if options.serialization_language is not SerializationLanguageMode.EXHAUSTIVE:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "South Star exhaustive runtime requires "
+            "serialization_language=EXHAUSTIVE",
+        )
+
+
+def require_writer_shaped_runtime_options(
+    options: SouthStarRuntimeOptions,
+    *,
+    facts: MoleculeFacts | None = None,
+) -> None:
+    validate_south_star_runtime_options_common(options, facts=facts)
+    if options.serialization_language is not SerializationLanguageMode.WRITER_SHAPED:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "South Star writer-shaped runtime requires "
+            "serialization_language=WRITER_SHAPED",
+        )
+
+
+def validate_south_star_runtime_options(
+    options: SouthStarRuntimeOptions,
+    *,
+    facts: MoleculeFacts | None = None,
+) -> None:
+    require_exhaustive_runtime_options(options, facts=facts)
+
+
 def runtime_root_atom(
     options: SouthStarRuntimeOptions,
     *,
     facts: MoleculeFacts,
 ) -> AtomId | None:
-    validate_south_star_runtime_options(options, facts=facts)
+    validate_south_star_runtime_options_common(options, facts=facts)
     if options.rooted_at_atom < 0:
         return None
     return AtomId(options.rooted_at_atom)
@@ -293,7 +327,7 @@ def runtime_root_atom_for_prepared(
     *,
     prepared: SouthStarPreparedMol,
 ) -> AtomId | None:
-    validate_south_star_runtime_options(options)
+    validate_south_star_runtime_options_common(options)
     if options.rooted_at_atom < 0:
         return None
     atom = AtomId(options.rooted_at_atom)
@@ -363,7 +397,10 @@ __all__ = (
     "enumerate_prepared_writer_shaped_support",
     "prepare_south_star_mol_from_facts",
     "prepare_south_star_mol_from_rdkit",
+    "require_exhaustive_runtime_options",
+    "require_writer_shaped_runtime_options",
     "runtime_root_atom",
     "runtime_root_atom_for_prepared",
     "validate_south_star_runtime_options",
+    "validate_south_star_runtime_options_common",
 )

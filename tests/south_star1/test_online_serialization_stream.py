@@ -29,7 +29,7 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
-from grimace._south_star1.support_enumeration import enumerate_stereo_support
+from grimace._south_star1.support_enumeration import enumerate_exhaustive_stereo_support
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
@@ -358,7 +358,7 @@ def _online_result(
 def _offline_support(facts, *, policy=None):
     if policy is None:
         policy = ordinary_policy_for_facts(facts)
-    return enumerate_stereo_support(
+    return enumerate_exhaustive_stereo_support(
         facts=facts,
         policy=policy,
         semantics=OrdinarySmilesSemantics(),

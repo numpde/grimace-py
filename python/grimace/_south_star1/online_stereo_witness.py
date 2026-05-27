@@ -31,8 +31,8 @@ from .online_traversal import OnlineDotEvent
 from .online_traversal import OnlineRingEndpointEvent
 from .online_traversal import OnlineTraversalTrace
 from .online_traversal import OnlineTreeBondEvent
-from .online_traversal import iter_online_traversal_traces
-from .online_traversal import iter_prepared_online_traversal_traces
+from .online_traversal import iter_exhaustive_online_traversal_traces
+from .online_traversal import iter_prepared_exhaustive_online_traversal_traces
 from .online_traversal import trace_to_skeleton_like_key
 from .policy import AnnotationMode
 from .policy import AtomTextChoice
@@ -163,7 +163,7 @@ def iter_online_stereo_witnesses_with_sink(
         facts.validate()
         policy.validate_for_facts(facts)
         templates = templates if templates is not None else build_stereo_templates(facts)
-        traces = iter_online_traversal_traces(
+        traces = iter_exhaustive_online_traversal_traces(
             facts=facts,
             policy=policy,
             rooted_at_atom=rooted_at_atom,
@@ -193,7 +193,7 @@ def iter_online_stereo_witnesses_with_sink(
         expected_root_domains = tuple(atoms for _, atoms in prepared_root_domains)
         if component_root_domains != expected_root_domains:
             raise ValueError("prepared online witness traversal requires prepared root domains")
-        traces = iter_prepared_online_traversal_traces(
+        traces = iter_prepared_exhaustive_online_traversal_traces(
             prepared=prepared,
             rooted_at_atom=rooted_at_atom,
             component_root_domains=component_root_domains,

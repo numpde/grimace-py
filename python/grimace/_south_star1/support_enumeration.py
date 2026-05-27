@@ -2,7 +2,7 @@
 
 This module is RDKit-free.
 
-It closes the current proof-kernel path:
+It closes the exhaustive proof-kernel path:
 
     MoleculeFacts
         -> GraphIndex
@@ -122,7 +122,7 @@ class TracedCertifiedSupportImage:
     trace: EnumerationTrace
 
 
-def enumerate_stereo_witnesses(
+def enumerate_exhaustive_stereo_witnesses(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -132,7 +132,7 @@ def enumerate_stereo_witnesses(
     allow_global_directional_scope: bool = False,
     validate_inputs: bool = True,
 ) -> Iterator[ValidWitness]:
-    """Yield stereo-valid witnesses over all traversal skeletons.
+    """Yield exhaustive stereo-valid witnesses over all traversal skeletons.
 
     This is the streaming end-to-end witness API.
 
@@ -205,7 +205,7 @@ def enumerate_stereo_witnesses(
         )
 
 
-def enumerate_certified_stereo_witnesses(
+def enumerate_exhaustive_certified_stereo_witnesses(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -248,7 +248,7 @@ def enumerate_certified_stereo_witnesses(
         )
 
 
-def enumerate_stereo_support(
+def enumerate_exhaustive_stereo_support(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -258,7 +258,7 @@ def enumerate_stereo_support(
     allow_global_directional_scope: bool = False,
     validate_inputs: bool = True,
 ) -> SupportImage:
-    """Enumerate the rendered stereo support image over all skeletons.
+    """Enumerate the exhaustive rendered stereo support image over all skeletons.
 
     This is the convenient end-to-end API:
 
@@ -266,10 +266,10 @@ def enumerate_stereo_support(
         -> render -> support image
 
     The returned ``SupportImage`` stores unique rendered strings. Use
-    ``enumerate_stereo_witnesses`` if witness multiplicity is needed.
+    ``enumerate_exhaustive_stereo_witnesses`` if witness multiplicity is needed.
     """
 
-    witnesses = enumerate_stereo_witnesses(
+    witnesses = enumerate_exhaustive_stereo_witnesses(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -282,7 +282,7 @@ def enumerate_stereo_support(
     return render_image_from_witnesses(witnesses)
 
 
-def enumerate_certified_stereo_support(
+def enumerate_exhaustive_certified_stereo_support(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -352,7 +352,7 @@ def enumerate_certified_stereo_support(
     )
 
 
-def enumerate_traced_certified_stereo_support(
+def enumerate_exhaustive_traced_certified_stereo_support(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -811,7 +811,7 @@ def enumerate_stereo_support_with_stats(
     else:
         skeleton_tuple = tuple(skeletons)
 
-    image = enumerate_stereo_support(
+    image = enumerate_exhaustive_stereo_support(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -830,11 +830,12 @@ def enumerate_stereo_support_with_stats(
     )
 
 
-enumerate_exhaustive_stereo_witnesses = enumerate_stereo_witnesses
-enumerate_exhaustive_stereo_support = enumerate_stereo_support
-enumerate_exhaustive_certified_stereo_support = enumerate_certified_stereo_support
-enumerate_exhaustive_traced_certified_stereo_support = (
-    enumerate_traced_certified_stereo_support
+enumerate_stereo_witnesses = enumerate_exhaustive_stereo_witnesses
+enumerate_certified_stereo_witnesses = enumerate_exhaustive_certified_stereo_witnesses
+enumerate_stereo_support = enumerate_exhaustive_stereo_support
+enumerate_certified_stereo_support = enumerate_exhaustive_certified_stereo_support
+enumerate_traced_certified_stereo_support = (
+    enumerate_exhaustive_traced_certified_stereo_support
 )
 
 
@@ -844,16 +845,12 @@ __all__ = (
     "StereoSupportResult",
     "StereoSupportStats",
     "TracedCertifiedSupportImage",
-    "enumerate_certified_stereo_support",
-    "enumerate_certified_stereo_witnesses",
     "enumerate_exhaustive_certified_stereo_support",
+    "enumerate_exhaustive_certified_stereo_witnesses",
     "enumerate_exhaustive_stereo_support",
     "enumerate_exhaustive_stereo_witnesses",
     "enumerate_exhaustive_traced_certified_stereo_support",
-    "enumerate_stereo_support",
     "enumerate_stereo_support_with_stats",
-    "enumerate_stereo_witnesses",
-    "enumerate_traced_certified_stereo_support",
     "traced_certified_support_from_jsonable",
     "traced_certified_support_to_jsonable",
 )

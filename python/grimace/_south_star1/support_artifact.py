@@ -167,7 +167,7 @@ def compile_support_artifact(
     from .stereo_csp import select_stereo_solutions_with_certificates
     from .stereo_csp import solve_stereo_csp
     from .stereo_witness import enumerate_presentation_prefixes
-    from .support_enumeration import enumerate_traced_certified_stereo_support
+    from .support_enumeration import enumerate_exhaustive_traced_certified_stereo_support
 
     facts.validate()
     policy.validate_for_facts(facts)
@@ -184,7 +184,7 @@ def compile_support_artifact(
     else:
         skeleton_tuple = tuple(skeletons)
 
-    traced = enumerate_traced_certified_stereo_support(
+    traced = enumerate_exhaustive_traced_certified_stereo_support(
         facts=facts,
         policy=policy,
         semantics=semantics,

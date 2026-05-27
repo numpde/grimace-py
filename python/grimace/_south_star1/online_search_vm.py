@@ -320,6 +320,9 @@ class OnlineSearchSnapshot:
     output_snapshot: object
     decision_snapshot: object
     frame_stack: tuple[OnlineSearchFrame, ...]
+    serialization_language: SerializationLanguageMode = (
+        SerializationLanguageMode.EXHAUSTIVE
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,7 +395,16 @@ def residual_snapshot_frame_audit(
 
 
 def validate_residual_snapshot(snapshot: OnlineSearchSnapshot) -> None:
+    _require_exhaustive_snapshot_language(snapshot)
     validate_residual_frame_stack(snapshot.frame_stack)
+
+
+def _require_exhaustive_snapshot_language(snapshot: OnlineSearchSnapshot) -> None:
+    if snapshot.serialization_language is not SerializationLanguageMode.EXHAUSTIVE:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "exhaustive VM cannot resume a non-EXHAUSTIVE snapshot",
+        )
 
 
 def frame_stack_audit(
@@ -575,9 +587,11 @@ class OnlineSearchState:
             output_snapshot=self.output.checkpoint(),
             decision_snapshot=self.decisions.path(),
             frame_stack=tuple(self.frames),
+            serialization_language=SerializationLanguageMode.EXHAUSTIVE,
         )
 
     def rollback(self, snapshot: OnlineSearchSnapshot) -> None:
+        _require_exhaustive_snapshot_language(snapshot)
         self.traversal.rollback(snapshot.traversal_state)
         if isinstance(snapshot.residual_snapshot, ResidualStoreValueSnapshot):
             self.residual = ResidualStore.from_value_snapshot(snapshot.residual_snapshot)
@@ -870,10 +884,6 @@ class ExhaustiveOnlineSearchVM:
         vm._exhausted = False
         return vm
 
-
-OnlineSearchVM = ExhaustiveOnlineSearchVM
-
-
 def capture_residual_continuation(
     state: OnlineSearchState,
     *,
@@ -884,13 +894,13 @@ def capture_residual_continuation(
     return OnlineResidualContinuation(prefix=prefix, snapshot=snapshot)
 
 
-def iter_online_stereo_witness_strings_vm(
+def iter_exhaustive_online_stereo_witness_strings_vm(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
 ) -> Iterator[str]:
-    for witness in iter_online_stereo_witnesses_vm(
+    for witness in iter_exhaustive_online_stereo_witnesses_vm(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -898,7 +908,7 @@ def iter_online_stereo_witness_strings_vm(
         yield witness.rendered
 
 
-def iter_online_stereo_witnesses_vm(
+def iter_exhaustive_online_stereo_witnesses_vm(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -909,7 +919,7 @@ def iter_online_stereo_witnesses_vm(
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
 ) -> Iterator[OnlineWitness]:
-    vm = OnlineSearchVM(
+    vm = ExhaustiveOnlineSearchVM(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -945,7 +955,7 @@ def resume_online_search_from_snapshot(
     validate_residual_snapshot(snapshot)
 
     def _iter() -> Iterator[OnlineWitness]:
-        vm = OnlineSearchVM.from_snapshot(
+        vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=policy,
             semantics=semantics,
@@ -3099,15 +3109,14 @@ __all__ = (
     "OnlineSearchFrame",
     "OnlineSearchSnapshot",
     "OnlineSearchState",
-    "OnlineSearchVM",
     "OnlineStepResult",
     "OnlineWitness",
     "active_resumable_frame_count",
     "capture_residual_continuation",
     "dispatcher_resumable_frame_payload_types",
     "frame_stack_audit",
-    "iter_online_stereo_witness_strings_vm",
-    "iter_online_stereo_witnesses_vm",
+    "iter_exhaustive_online_stereo_witness_strings_vm",
+    "iter_exhaustive_online_stereo_witnesses_vm",
     "is_context_frame",
     "is_resumable_frame",
     "make_online_search_state",

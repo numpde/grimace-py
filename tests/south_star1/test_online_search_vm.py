@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import grimace._south_star1.online_search_vm as online_search_vm_module
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -47,6 +48,7 @@ from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
+from grimace._south_star1.policy import SerializationLanguageMode
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
@@ -835,6 +837,17 @@ class OnlineSearchVmTest(unittest.TestCase):
             if result.kind == "exhausted":
                 break
         self.assertEqual(vm.step().kind, "exhausted")
+
+    def test_writer_shaped_rejects_exhaustive_vm_route(self) -> None:
+        facts = disconnected_facts()
+
+        with self.assertRaises(SouthStarError):
+            OnlineSearchVM(
+                facts=facts,
+                policy=ordinary_policy_for_facts(facts),
+                semantics=OrdinarySmilesSemantics(),
+                serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+            )
 
     def test_capture_residual_continuation_contains_snapshot(self) -> None:
         state = _state(tetrahedral_facts())

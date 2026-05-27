@@ -88,19 +88,19 @@ The audit matrix is a falsifier for this spec, not the source of truth. A
 passing RDKit audit means generated strings parse back to isomorphic facts under
 the declared adapter, not that RDKit defines the support.
 
-### Branch Presentation Policy
+### Serialization Language Boundary
 
-South Star has two explicit traversal/presentation branch grammars.
+South Star keeps the broad proof grammar separate from writer-shaped runtime
+serialization.
 
-`EXHAUSTIVE` preserves the proof-kernel local event grammar and includes
-all-branch local orders. In this grammar, a child can be emitted as a
-parenthesized branch even when it is the only possible continuation child.
+`EXHAUSTIVE` is the skeleton/slots/CSP/render certificate path. It enumerates
+explicit traversal skeletons, tree/ring bond partitions, and local event
+orders as proof objects.
 
-`WRITER_SHAPED` suppresses degenerate all-branch local orders when a
-continuation child exists. Tree children are still permuted, true side children
-remain parenthesized, and ring endpoint decorations may still appear before the
-continuation. This narrows the traversal/presentation language toward ordinary
-writer-shaped SMILES, but it is not a claim of RDKit writer parity.
+`writer_shaped` is a separate serialization-language mode. It must use a live
+writer-state transition system, not the traversal-skeleton proof grammar or
+spanning-tree enumeration. Until that kernel is wired, writer-shaped runtime
+requests fail closed instead of falling back to the exhaustive path.
 
 ## Witness Certificates
 

@@ -19,12 +19,10 @@ from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
 from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import BondTextDomain
-from grimace._south_star1.policy import BranchPresentationMode
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.policy import TetraToken
-from grimace._south_star1.policy import with_branch_presentation_mode
 from grimace._south_star1.render import render_stereo_traversal
 from grimace._south_star1.semantics import INVALID
 from grimace._south_star1.semantics import Invalid
@@ -170,46 +168,6 @@ class StereoCSPTest(unittest.TestCase):
                 for assignment in assignments
             )
         )
-
-    def test_writer_shaped_policy_does_not_change_csp_feasible_selected_counts_for_fixed_prefix(
-        self,
-    ) -> None:
-        facts = directional_facts()
-        skeleton = _first_skeleton(facts)
-        slots = allocate_traversal_slots(facts, skeleton)
-        semantics = _ScopedDirectionalSemantics(
-            scope=tuple(carrier.id for carrier in slots.carrier_slots),
-        )
-        policy = _policy_for_slots(
-            facts,
-            slots,
-            mode=AnnotationMode.SUPPORT_MAXIMAL,
-        )
-        writer_policy = with_branch_presentation_mode(
-            policy,
-            BranchPresentationMode.WRITER_SHAPED,
-        )
-        prefix = _prefix_for_slots(facts, slots)
-
-        self.assertEqual(
-            _csp_solution_counts(
-                facts=facts,
-                skeleton=skeleton,
-                slots=slots,
-                prefix=prefix,
-                policy=writer_policy,
-                semantics=semantics,
-            ),
-            _csp_solution_counts(
-                facts=facts,
-                skeleton=skeleton,
-                slots=slots,
-                prefix=prefix,
-                policy=policy,
-                semantics=semantics,
-            ),
-        )
-
 
 def _first_skeleton(facts: MoleculeFacts):
     return enumerate_traversal_skeletons(

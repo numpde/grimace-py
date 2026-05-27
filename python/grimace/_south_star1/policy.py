@@ -33,7 +33,12 @@ class AnnotationMode(Enum):
 
 class BranchPresentationMode(Enum):
     EXHAUSTIVE = "exhaustive"
+
+
+class SerializationLanguageMode(Enum):
+    EXHAUSTIVE = "exhaustive"
     WRITER_SHAPED = "writer_shaped"
+    RDKIT_PARITY = "rdkit_parity"
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +217,7 @@ __all__ = (
     "BranchPresentationMode",
     "DirectionMark",
     "RingLabel",
+    "SerializationLanguageMode",
     "SmilesPolicy",
     "TetraToken",
     "with_branch_presentation_mode",

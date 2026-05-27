@@ -23,6 +23,7 @@ from .online_traversal_graph import OnlineTraversalGraph
 from .online_traversal_graph import build_online_traversal_graph_from_index
 from .ordinary_policy import ordinary_policy_for_facts
 from .ordinary_semantics import OrdinarySmilesSemantics
+from .policy import SerializationLanguageMode
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
 from .root_domains import component_root_domains_from_metadata
@@ -47,6 +48,9 @@ class SouthStarRuntimeOptions:
     rooted_at_atom: int = -1
     canonical: bool = False
     do_random: bool = True
+    serialization_language: SerializationLanguageMode = (
+        SerializationLanguageMode.EXHAUSTIVE
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +175,34 @@ def enumerate_prepared_stereo_support(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
 ):
+    match runtime_options.serialization_language:
+        case SerializationLanguageMode.EXHAUSTIVE:
+            return enumerate_prepared_exhaustive_stereo_support(
+                prepared=prepared,
+                runtime_options=runtime_options,
+            )
+        case SerializationLanguageMode.WRITER_SHAPED:
+            return enumerate_prepared_writer_shaped_support(
+                prepared=prepared,
+                runtime_options=runtime_options,
+            )
+        case SerializationLanguageMode.RDKIT_PARITY:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "RDKIT_PARITY writer-state runtime is not wired yet",
+            )
+        case _:
+            raise ValueError(
+                "unsupported South Star serialization language: "
+                f"{runtime_options.serialization_language!r}"
+            )
+
+
+def enumerate_prepared_exhaustive_stereo_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions = SouthStarRuntimeOptions(),
+):
     from .skeleton import enumerate_traversal_skeletons
     from .support_enumeration import enumerate_stereo_support
 
@@ -199,11 +231,27 @@ def enumerate_prepared_stereo_support(
     )
 
 
+def enumerate_prepared_writer_shaped_support(
+    *,
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+):
+    del prepared, runtime_options
+    raise SouthStarError(
+        SouthStarErrorKind.UNSUPPORTED_POLICY,
+        "WRITER_SHAPED writer-state kernel is not wired yet",
+    )
+
+
 def validate_south_star_runtime_options(
     options: SouthStarRuntimeOptions,
     *,
     facts: MoleculeFacts | None = None,
 ) -> None:
+    if not isinstance(options.serialization_language, SerializationLanguageMode):
+        raise ValueError(
+            "serialization_language must be a SerializationLanguageMode"
+        )
     if options.canonical:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -213,6 +261,12 @@ def validate_south_star_runtime_options(
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "South Star online runtime currently supports do_random=True",
+        )
+    if options.serialization_language is not SerializationLanguageMode.EXHAUSTIVE:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "South Star online runtime currently supports "
+            "serialization_language=EXHAUSTIVE",
         )
     if facts is not None and options.rooted_at_atom >= 0:
         atom = AtomId(options.rooted_at_atom)
@@ -304,7 +358,9 @@ __all__ = (
     "OnlineTraversalGraph",
     "component_root_domains_for_facts",
     "component_root_domains_for_prepared",
+    "enumerate_prepared_exhaustive_stereo_support",
     "enumerate_prepared_stereo_support",
+    "enumerate_prepared_writer_shaped_support",
     "prepare_south_star_mol_from_facts",
     "prepare_south_star_mol_from_rdkit",
     "runtime_root_atom",

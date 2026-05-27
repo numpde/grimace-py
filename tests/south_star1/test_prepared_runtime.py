@@ -24,6 +24,7 @@ from grimace._south_star1.online_traversal_graph import OnlineTraversalGraph
 from grimace._south_star1.online_traversal_graph import build_online_traversal_graph_from_index
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
+from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import component_root_domains_for_prepared
@@ -174,6 +175,28 @@ class PreparedRuntimeTest(unittest.TestCase):
         self.assertEqual(set(online.strings), set(offline.strings))
         self.assertEqual(online.support_count, offline.distinct_count)
         self.assertEqual(online.witness_completion_count, offline.witness_count)
+
+    def test_prepared_writer_shaped_support_fails_closed_before_skeleton_route(
+        self,
+    ) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            tetrahedral_facts(),
+            writer_surface=SouthStarWriterSurface(),
+        )
+
+        with patch(
+            "grimace._south_star1.skeleton.enumerate_traversal_skeletons",
+            side_effect=AssertionError("writer-shaped called skeleton route"),
+        ):
+            with self.assertRaises(SouthStarError):
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=SouthStarRuntimeOptions(
+                        serialization_language=(
+                            SerializationLanguageMode.WRITER_SHAPED
+                        ),
+                    ),
+                )
 
     def test_rooted_support_equivalent_across_execution_modes(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

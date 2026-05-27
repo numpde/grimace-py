@@ -12,6 +12,8 @@ from itertools import permutations
 from itertools import product
 from typing import Literal
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .facts import DirectionalValue
 from .facts import LigandKind
 from .facts import MoleculeFacts
@@ -38,9 +40,9 @@ from .online_traversal import OnlineTreeBondEvent
 from .policy import AnnotationMode
 from .policy import AtomTextChoice
 from .policy import BondTextChoice
-from .policy import BranchPresentationMode
 from .policy import DirectionMark
 from .policy import RingLabel
+from .policy import SerializationLanguageMode
 from .policy import SmilesPolicy
 from .policy import TetraToken
 from .residual_constraints import DirectionalCarrierResidual
@@ -718,7 +720,11 @@ def make_online_search_state(
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     sink: OnlineRenderSink | None = None,
     assume_prepared: bool = False,
+    serialization_language: SerializationLanguageMode = (
+        SerializationLanguageMode.EXHAUSTIVE
+    ),
 ) -> OnlineSearchState:
+    _require_exhaustive_serialization_language(serialization_language)
     if not assume_prepared:
         facts.validate()
         policy.validate_for_facts(facts)
@@ -749,7 +755,17 @@ def make_online_search_state(
     )
 
 
-class OnlineSearchVM:
+def _require_exhaustive_serialization_language(
+    serialization_language: SerializationLanguageMode,
+) -> None:
+    if serialization_language is not SerializationLanguageMode.EXHAUSTIVE:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED must use writer-state VM, not exhaustive traversal VM",
+        )
+
+
+class ExhaustiveOnlineSearchVM:
     def __init__(
         self,
         *,
@@ -763,7 +779,11 @@ class OnlineSearchVM:
         component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
         assume_prepared: bool = False,
         sink_factory: Callable[[], OnlineRenderSink] | None = None,
+        serialization_language: SerializationLanguageMode = (
+            SerializationLanguageMode.EXHAUSTIVE
+        ),
     ) -> None:
+        _require_exhaustive_serialization_language(serialization_language)
         _validate_annotation_mode(policy)
         self.state = make_online_search_state(
             facts=facts,
@@ -775,6 +795,7 @@ class OnlineSearchVM:
             graph_index=graph_index,
             component_root_domains=component_root_domains,
             assume_prepared=assume_prepared,
+            serialization_language=serialization_language,
         )
         self._sink_factory = sink_factory or OnlineStringBuffer
         self._iterator = self._run()
@@ -824,7 +845,11 @@ class OnlineSearchVM:
         snapshot: OnlineSearchSnapshot,
         sink: OnlineRenderSink,
         assume_prepared: bool = False,
-    ) -> "OnlineSearchVM":
+        serialization_language: SerializationLanguageMode = (
+            SerializationLanguageMode.EXHAUSTIVE
+        ),
+    ) -> "ExhaustiveOnlineSearchVM":
+        _require_exhaustive_serialization_language(serialization_language)
         validate_residual_snapshot(snapshot)
         vm = cls(
             facts=facts,
@@ -837,12 +862,16 @@ class OnlineSearchVM:
             component_root_domains=component_root_domains,
             assume_prepared=assume_prepared,
             sink_factory=lambda: sink,
+            serialization_language=serialization_language,
         )
         vm.state.output = sink
         _restore_resume_snapshot(vm.state, snapshot)
         vm._iterator = _resume_from_frames(vm.state)
         vm._exhausted = False
         return vm
+
+
+OnlineSearchVM = ExhaustiveOnlineSearchVM
 
 
 def capture_residual_continuation(
@@ -1116,9 +1145,6 @@ def _iter_vm_traversals(
                                 atom,
                                 children_by_parent[atom],
                                 ring_events_by_atom[atom],
-                                branch_presentation_mode=(
-                                    state.policy.branch_presentation_mode
-                                ),
                             )
                         ),
                     )
@@ -2386,8 +2412,6 @@ def _local_event_orders(
     parent: AtomId,
     children: list[tuple[BondId, AtomId]],
     rings: list[_RingLocalEvent],
-    *,
-    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE,
 ) -> Iterator[tuple[object, ...]]:
     branch_children = tuple(
         _ChildLocalEvent(bond=bond, parent=parent, child=child, role=ChildRole.BRANCH)
@@ -2396,11 +2420,10 @@ def _local_event_orders(
     ring_tuple = tuple(rings)
     seen: set[tuple[object, ...]] = set()
     base = ring_tuple + branch_children
-    if branch_presentation_mode is BranchPresentationMode.EXHAUSTIVE or not children:
-        for order in permutations(base):
-            if order not in seen:
-                seen.add(order)
-                yield order
+    for order in permutations(base):
+        if order not in seen:
+            seen.add(order)
+            yield order
     for ordered_children in permutations(children):
         if not ordered_children:
             continue
@@ -3059,6 +3082,7 @@ __all__ = (
     "DirectionEnumerationFrame",
     "DirectionMarkChoiceFrame",
     "EventLoopFrame",
+    "ExhaustiveOnlineSearchVM",
     "LocalEventOrderChoiceFrame",
     "OnlineResidualContinuation",
     "OnlineFramePayload",

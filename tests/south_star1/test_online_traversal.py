@@ -19,8 +19,6 @@ from grimace._south_star1.online_traversal import _ChildLocalEvent
 from grimace._south_star1.online_traversal import iter_online_traversal_traces
 from grimace._south_star1.online_traversal import trace_to_skeleton_like_key
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
-from grimace._south_star1.policy import BranchPresentationMode
-from grimace._south_star1.policy import with_branch_presentation_mode
 from grimace._south_star1.proof_terms import skeleton_key
 from grimace._south_star1.skeleton import ChildRole
 from grimace._south_star1.skeleton import enumerate_traversal_skeletons
@@ -70,17 +68,7 @@ class OnlineTraversalTest(unittest.TestCase):
             _offline_keys(branched_facts()),
         )
 
-    def test_offline_and_online_traversal_keys_agree_under_writer_shaped_policy(
-        self,
-    ) -> None:
-        policy = _writer_shaped_policy(cco_facts())
-
-        self.assertEqual(
-            _online_keys(cco_facts(), policy=policy),
-            _offline_keys(cco_facts(), policy=policy),
-        )
-
-    def test_writer_shaped_online_policy_rejects_single_child_all_branch_order(
+    def test_online_traversal_single_child_keeps_exhaustive_branch_order(
         self,
     ) -> None:
         orders = tuple(
@@ -88,13 +76,15 @@ class OnlineTraversalTest(unittest.TestCase):
                 AtomId(0),
                 [(BondId(0), AtomId(1))],
                 [],
-                branch_presentation_mode=BranchPresentationMode.WRITER_SHAPED,
             )
         )
 
-        self.assertEqual(len(orders), 1)
+        self.assertEqual(len(orders), 2)
         self.assertIsInstance(orders[0][0], _ChildLocalEvent)
-        self.assertIs(orders[0][0].role, ChildRole.CONTINUATION)
+        self.assertEqual(
+            {order[0].role for order in orders if isinstance(order[0], _ChildLocalEvent)},
+            {ChildRole.BRANCH, ChildRole.CONTINUATION},
+        )
 
     def test_online_traversal_ring_endpoint_events_have_two_endpoints(self) -> None:
         traces = tuple(
@@ -179,13 +169,6 @@ def _offline_keys(
             policy,
         )
     }
-
-
-def _writer_shaped_policy(facts: MoleculeFacts):
-    return with_branch_presentation_mode(
-        ordinary_policy_for_facts(facts),
-        BranchPresentationMode.WRITER_SHAPED,
-    )
 
 
 def single_atom_facts() -> MoleculeFacts:

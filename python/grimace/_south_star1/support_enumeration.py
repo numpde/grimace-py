@@ -830,6 +830,14 @@ def enumerate_stereo_support_with_stats(
     )
 
 
+enumerate_exhaustive_stereo_witnesses = enumerate_stereo_witnesses
+enumerate_exhaustive_stereo_support = enumerate_stereo_support
+enumerate_exhaustive_certified_stereo_support = enumerate_certified_stereo_support
+enumerate_exhaustive_traced_certified_stereo_support = (
+    enumerate_traced_certified_stereo_support
+)
+
+
 __all__ = (
     "CertifiedSupportImage",
     "EligibleMarkerCarrierSelector",
@@ -838,6 +846,10 @@ __all__ = (
     "TracedCertifiedSupportImage",
     "enumerate_certified_stereo_support",
     "enumerate_certified_stereo_witnesses",
+    "enumerate_exhaustive_certified_stereo_support",
+    "enumerate_exhaustive_stereo_support",
+    "enumerate_exhaustive_stereo_witnesses",
+    "enumerate_exhaustive_traced_certified_stereo_support",
     "enumerate_stereo_support",
     "enumerate_stereo_support_with_stats",
     "enumerate_stereo_witnesses",

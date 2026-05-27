@@ -14,7 +14,6 @@ from .facts import MoleculeFacts
 from .graph_index import GraphIndex
 from .ids import AtomId
 from .ids import BondId
-from .policy import BranchPresentationMode
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
 
@@ -86,7 +85,6 @@ def enumerate_tree_skeletons(
                     _local_child_orders(
                         atom.id,
                         child_bond_by_parent[atom.id],
-                        branch_presentation_mode=policy.branch_presentation_mode,
                     )
                 ),
             )
@@ -181,7 +179,6 @@ def enumerate_traversal_skeletons(
                             atom.id,
                             child_bond_by_parent[atom.id],
                             ring_events_by_atom[atom.id],
-                            branch_presentation_mode=policy.branch_presentation_mode,
                         )
                     ),
                 )
@@ -283,26 +280,23 @@ def _orient_tree_component(
 def _local_child_orders(
     parent: AtomId,
     children: list[tuple[BondId, AtomId]],
-    *,
-    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE,
 ) -> tuple[tuple[ChildEvent, ...], ...]:
     if not children:
         return ((),)
 
     orders: list[tuple[ChildEvent, ...]] = []
     for ordered_children in permutations(children):
-        if branch_presentation_mode is BranchPresentationMode.EXHAUSTIVE:
-            orders.append(
-                tuple(
-                    ChildEvent(
-                        bond=bond_id,
-                        parent=parent,
-                        child=child,
-                        role=ChildRole.BRANCH,
-                    )
-                    for bond_id, child in ordered_children
+        orders.append(
+            tuple(
+                ChildEvent(
+                    bond=bond_id,
+                    parent=parent,
+                    child=child,
+                    role=ChildRole.BRANCH,
                 )
+                for bond_id, child in ordered_children
             )
+        )
         orders.append(
             tuple(
                 ChildEvent(
@@ -325,8 +319,6 @@ def _local_event_orders(
     parent: AtomId,
     children: list[tuple[BondId, AtomId]],
     ring_events: list[RingEvent],
-    *,
-    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE,
 ) -> tuple[tuple[LocalEvent, ...], ...]:
     branch_children = tuple(
         ChildEvent(
@@ -340,8 +332,7 @@ def _local_event_orders(
     ring_event_tuple = tuple(ring_events)
     orders: set[tuple[LocalEvent, ...]] = set()
 
-    if branch_presentation_mode is BranchPresentationMode.EXHAUSTIVE or not children:
-        orders.update(permutations(ring_event_tuple + branch_children))
+    orders.update(permutations(ring_event_tuple + branch_children))
 
     for ordered_children in permutations(children):
         if not ordered_children:

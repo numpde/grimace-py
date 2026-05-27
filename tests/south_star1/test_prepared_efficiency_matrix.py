@@ -8,6 +8,7 @@ from dataclasses import replace
 from unittest.mock import patch
 
 import grimace._south_star1.graph_index as graph_index_module
+from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -18,8 +19,7 @@ from grimace._south_star1.online_decoder_api import make_determinized_online_dec
 from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
 from grimace._south_star1.online_search_vm import validate_residual_frame_stack
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
-from grimace._south_star1.policy import BranchPresentationMode
-from grimace._south_star1.policy import with_branch_presentation_mode
+from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_bench_matrix import PreparedEnumerationMatrixEntry
 from grimace._south_star1.prepared_bench_matrix import PreparedRuntimeProbe
 from grimace._south_star1.prepared_bench_matrix import collect_prepared_enumeration_matrix_entry
@@ -56,28 +56,24 @@ class PreparedEfficiencyMatrixTest(unittest.TestCase):
                     )
                     _assert_entry_conforms(self, entry)
 
-    def test_prepared_offline_online_support_agree_under_writer_shaped_policy(
+    def test_prepared_matrix_rejects_writer_shaped_runtime_before_old_vm(
         self,
     ) -> None:
         facts = ordinary_molecule_facts_from_smiles("CCO")
         prepared = prepare_south_star_mol_from_facts(
             facts,
             writer_surface=SouthStarWriterSurface(),
-            policy=_writer_shaped_policy(facts),
         )
 
-        entry = _guarded_matrix_entry(
-            fixture_name="writer-shaped-chain",
-            prepared=prepared,
-            execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
-        )
-
-        _assert_entry_conforms(self, entry)
-        self.assertEqual(entry.offline_strings, entry.online_strings)
-        self.assertEqual(
-            entry.offline_strings,
-            frozenset({"CCO", "OCC", "C(C)O", "C(O)C"}),
-        )
+        with self.assertRaises(SouthStarError):
+            _guarded_matrix_entry(
+                fixture_name="writer-shaped-chain",
+                prepared=prepared,
+                runtime_options=SouthStarRuntimeOptions(
+                    serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+                ),
+                execution_mode=OnlineDecoderExecutionMode.RESIDUAL_CONTINUATIONS,
+            )
 
     def test_prepared_matrix_probe_reports_zero_graph_index_rebuilds_after_prepare(
         self,
@@ -418,13 +414,6 @@ def _guarded_matrix_entry(
             runtime_options=runtime_options,
             execution_mode=execution_mode,
         )
-
-
-def _writer_shaped_policy(facts):
-    return with_branch_presentation_mode(
-        ordinary_policy_for_facts(facts),
-        BranchPresentationMode.WRITER_SHAPED,
-    )
 
 
 def _assert_entry_conforms(

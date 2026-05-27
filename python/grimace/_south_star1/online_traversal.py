@@ -15,7 +15,6 @@ from .ids import BondId
 from .online_traversal_graph import OnlineTraversalGraph
 from .online_traversal_graph import build_online_traversal_graph_from_facts
 from .online_traversal_graph import build_online_traversal_graph_from_index
-from .policy import BranchPresentationMode
 from .policy import SmilesPolicy
 from .root_domains import component_root_domains_for_facts
 from .skeleton import ChildRole
@@ -116,7 +115,26 @@ def iter_online_traversal_traces(
     index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
 ) -> Iterator[OnlineTraversalTrace]:
-    """Yield traversal traces lazily without materializing skeleton space."""
+    """Compatibility wrapper for exhaustive traversal traces."""
+
+    yield from iter_exhaustive_online_traversal_traces(
+        facts=facts,
+        policy=policy,
+        rooted_at_atom=rooted_at_atom,
+        index=index,
+        component_root_domains=component_root_domains,
+    )
+
+
+def iter_exhaustive_online_traversal_traces(
+    *,
+    facts: MoleculeFacts,
+    policy: SmilesPolicy,
+    rooted_at_atom: AtomId | None = None,
+    index: GraphIndex | None = None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
+) -> Iterator[OnlineTraversalTrace]:
+    """Yield exhaustive traversal traces lazily without materializing skeleton space."""
 
     facts.validate()
     policy.validate_for_facts(facts)
@@ -126,7 +144,6 @@ def iter_online_traversal_traces(
         graph=graph,
         rooted_at_atom=rooted_at_atom,
         component_root_domains=component_root_domains,
-        branch_presentation_mode=policy.branch_presentation_mode,
     )
 
 
@@ -136,14 +153,28 @@ def iter_prepared_online_traversal_traces(
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...],
 ) -> Iterator[OnlineTraversalTrace]:
-    """Yield prepared traversal traces without replaying raw validation."""
+    """Compatibility wrapper for prepared exhaustive traversal traces."""
+
+    yield from iter_prepared_exhaustive_online_traversal_traces(
+        prepared=prepared,
+        rooted_at_atom=rooted_at_atom,
+        component_root_domains=component_root_domains,
+    )
+
+
+def iter_prepared_exhaustive_online_traversal_traces(
+    *,
+    prepared: SouthStarPreparedMol,
+    rooted_at_atom: AtomId | None,
+    component_root_domains: tuple[tuple[AtomId, ...], ...],
+) -> Iterator[OnlineTraversalTrace]:
+    """Yield prepared exhaustive traversal traces without replaying raw validation."""
 
     yield from _iter_online_traversal_traces_on_graph(
         facts=prepared.facts,
         graph=prepared.online_traversal_graph,
         rooted_at_atom=rooted_at_atom,
         component_root_domains=component_root_domains,
-        branch_presentation_mode=prepared.policy.branch_presentation_mode,
     )
 
 
@@ -153,7 +184,6 @@ def _iter_online_traversal_traces_on_graph(
     graph: OnlineTraversalGraph,
     rooted_at_atom: AtomId | None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None,
-    branch_presentation_mode: BranchPresentationMode,
 ) -> Iterator[OnlineTraversalTrace]:
     all_bonds = frozenset(graph.bonds)
 
@@ -179,7 +209,6 @@ def _iter_online_traversal_traces_on_graph(
                             atom,
                             children_by_parent[atom],
                             ring_events_by_atom[atom],
-                            branch_presentation_mode=branch_presentation_mode,
                         )
                     ),
                 )
@@ -195,6 +224,10 @@ def _iter_online_traversal_traces_on_graph(
 
 
 def online_trace_key(trace: OnlineTraversalTrace) -> tuple[object, ...]:
+    return exhaustive_online_trace_key(trace)
+
+
+def exhaustive_online_trace_key(trace: OnlineTraversalTrace) -> tuple[object, ...]:
     return trace_to_skeleton_like_key(trace)
 
 
@@ -430,8 +463,6 @@ def _local_event_orders_lazy(
     parent: AtomId,
     children: list[tuple[BondId, AtomId]],
     ring_events: list[_RingLocalEvent],
-    *,
-    branch_presentation_mode: BranchPresentationMode = BranchPresentationMode.EXHAUSTIVE,
 ) -> Iterator[tuple[_LocalEvent, ...]]:
     branch_children = tuple(
         _ChildLocalEvent(
@@ -445,11 +476,10 @@ def _local_event_orders_lazy(
     ring_event_tuple = tuple(ring_events)
     seen: set[tuple[_LocalEvent, ...]] = set()
 
-    if branch_presentation_mode is BranchPresentationMode.EXHAUSTIVE or not children:
-        for order in permutations(ring_event_tuple + branch_children):
-            if order not in seen:
-                seen.add(order)
-                yield order
+    for order in permutations(ring_event_tuple + branch_children):
+        if order not in seen:
+            seen.add(order)
+            yield order
 
     for ordered_children in permutations(children):
         if not ordered_children:
@@ -538,6 +568,9 @@ __all__ = (
     "OnlineTraversalEvent",
     "OnlineTraversalTrace",
     "OnlineTreeBondEvent",
+    "exhaustive_online_trace_key",
+    "iter_exhaustive_online_traversal_traces",
+    "iter_prepared_exhaustive_online_traversal_traces",
     "iter_prepared_online_traversal_traces",
     "iter_online_traversal_traces",
     "online_trace_key",

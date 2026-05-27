@@ -8,7 +8,7 @@ from typing import Literal
 from .facts import MoleculeFacts
 from .online_render_sink import PrefixFrontierSink
 from .online_render_sink import PrefixConstrainedSink
-from .online_stereo_witness import iter_online_stereo_witnesses_with_sink
+from .online_stereo_witness import iter_exhaustive_online_stereo_witnesses_with_sink
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
 
@@ -43,7 +43,7 @@ def online_prefix_has_completion(
     semantics: ParserSemantics,
     prefix: str,
 ) -> bool:
-    for _ in iter_online_stereo_witnesses_with_sink(
+    for _ in iter_exhaustive_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -100,7 +100,7 @@ def online_allowed_next_characters_one_pass_with_stats(
 ) -> tuple[tuple[str, ...], OnlineFrontierStats]:
     sink = PrefixFrontierSink(required_prefix=prefix)
     stats = OnlineFrontierStats(dfs_runs=1)
-    for _ in iter_online_stereo_witnesses_with_sink(
+    for _ in iter_exhaustive_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -122,7 +122,7 @@ def online_allowed_next_token_texts_one_pass(
     prefix: str,
 ) -> tuple[str, ...]:
     sink = PrefixFrontierSink(required_prefix=prefix)
-    for _ in iter_online_stereo_witnesses_with_sink(
+    for _ in iter_exhaustive_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -147,7 +147,7 @@ def online_allowed_next_tokens_bruteforce(
         if not token.text:
             continue
         sink = PrefixFrontierSink(required_prefix=prefix)
-        for _ in iter_online_stereo_witnesses_with_sink(
+        for _ in iter_exhaustive_online_stereo_witnesses_with_sink(
             facts=facts,
             policy=policy,
             semantics=semantics,

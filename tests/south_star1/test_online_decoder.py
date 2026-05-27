@@ -23,7 +23,7 @@ from grimace._south_star1.online_decoder import online_allowed_next_token_texts_
 from grimace._south_star1.online_decoder import online_prefix_has_completion
 from grimace._south_star1.online_render_sink import PrefixFrontierSink
 from grimace._south_star1.online_render_sink import PrefixConstrainedSink
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
@@ -351,7 +351,7 @@ class OnlineDecoderTest(unittest.TestCase):
 
 def _witnesses(facts) -> tuple[str, ...]:
     return tuple(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

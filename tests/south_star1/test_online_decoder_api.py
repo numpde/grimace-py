@@ -20,7 +20,7 @@ from grimace._south_star1.online_decoder_api import online_decode_token_texts_fo
 from grimace._south_star1.online_decoder_state import OnlineDecoderState
 from grimace._south_star1.online_decoder_state import online_branch_preserving_choices
 from grimace._south_star1.online_decoder_state import online_determinized_choices
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from tests.south_star1.helpers import atom
@@ -252,7 +252,7 @@ class OnlineDecoderApiTest(unittest.TestCase):
 
         self.assertEqual(imports, [])
         self.assertEqual(sorted(set(calls) & banned_calls), [])
-        self.assertNotIn("iter_online_stereo_witness_strings", calls)
+        self.assertNotIn("iter_exhaustive_online_stereo_witness_strings", calls)
 
     def _assert_eos_for_each_witness(self, facts: MoleculeFacts) -> None:
         decoder = _determinized_decoder(facts, include_eos=True)
@@ -338,7 +338,7 @@ def _tokens_for_witness(decoder, witness: str) -> tuple[str, ...]:
 
 def _witnesses(facts: MoleculeFacts) -> tuple[str, ...]:
     return tuple(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

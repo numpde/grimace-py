@@ -21,7 +21,7 @@ from grimace._south_star1.online_decoder_state import OnlineDecoderState
 from grimace._south_star1.online_decoder_state import online_branch_preserving_choices
 from grimace._south_star1.online_decoder_state import online_determinized_choices
 from grimace._south_star1.online_decoder_state import online_determinized_choices_with_stats
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
@@ -393,7 +393,7 @@ def _determinized_choices_with_stats(
 
 def _witnesses(facts: MoleculeFacts) -> tuple[str, ...]:
     return tuple(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

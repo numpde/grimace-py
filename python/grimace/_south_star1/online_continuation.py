@@ -23,7 +23,7 @@ from .online_decisions import OnlineDecisionFrontier
 from .online_decisions import OnlineDecisionPath
 from .online_decisions import OnlineDecisionRecorder
 from .online_decisions import compact_frontier_path
-from .online_stereo_witness import iter_online_stereo_witnesses_with_sink
+from .online_stereo_witness import iter_exhaustive_online_stereo_witnesses_with_sink
 from .policy import SmilesPolicy
 from .semantics import ParserSemantics
 from .stereo_templates import StereoTemplateBundle
@@ -344,7 +344,7 @@ def _root_continuation_choice_result(
         compaction_mode=compaction_mode,
     )
     stats = OnlineContinuationStats(root_dfs_runs=1)
-    for _ in iter_online_stereo_witnesses_with_sink(
+    for _ in iter_exhaustive_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
         semantics=semantics,

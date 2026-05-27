@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
+import grimace._south_star1.online_stereo_witness as online_stereo_witness_module
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import MoleculeFacts
@@ -17,8 +18,8 @@ from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.online_stereo_witness import iter_online_ring_label_assignments
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witnesses
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witnesses
 from grimace._south_star1.online_stereo_witness import online_slot_key
 from grimace._south_star1.online_stereo_witness import online_slot_view_for_trace
 from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
@@ -103,7 +104,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
 
     def test_online_witness_with_counts_does_not_deduplicate(self) -> None:
         witnesses = tuple(
-            iter_online_stereo_witnesses(
+            iter_exhaustive_online_stereo_witnesses(
                 facts=ethane_facts(),
                 policy=ordinary_policy_for_facts(ethane_facts()),
                 semantics=OrdinarySmilesSemantics(),
@@ -114,6 +115,17 @@ class OnlineStereoWitnessTest(unittest.TestCase):
         self.assertGreater(sum(rendered.values()), len(rendered))
         self.assertEqual(rendered["CC"], 2)
         self.assertEqual(rendered["C(C)"], 2)
+
+    def test_generic_online_stereo_witness_names_are_not_exported(self) -> None:
+        prefix = "iter_" + "online_stereo_witness"
+        generic_names = (
+            prefix + "_strings",
+            prefix + "es",
+            prefix + "es_with_sink",
+        )
+        for name in generic_names:
+            self.assertFalse(hasattr(online_stereo_witness_module, name))
+            self.assertNotIn(name, online_stereo_witness_module.__all__)
 
     def test_online_slot_keys_match_offline_slot_bundle_keys(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
@@ -193,7 +205,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
 
 def _online_counter(facts: MoleculeFacts) -> Counter[str]:
     return Counter(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

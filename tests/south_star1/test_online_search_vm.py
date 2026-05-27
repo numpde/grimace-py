@@ -40,7 +40,7 @@ from grimace._south_star1.online_search_vm import iter_exhaustive_online_stereo_
 from grimace._south_star1.online_search_vm import make_online_search_state
 from grimace._south_star1.online_search_vm import _pop_resumable_frame
 from grimace._south_star1.online_search_vm import _resume_from_frames
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
 from grimace._south_star1.rdkit_adapter import ordinary_molecule_facts_from_smiles
@@ -755,7 +755,7 @@ class OnlineSearchVmTest(unittest.TestCase):
                 )
             ),
             tuple(
-                iter_online_stereo_witness_strings(
+                iter_exhaustive_online_stereo_witness_strings(
                     facts=facts,
                     policy=policy,
                     semantics=semantics,
@@ -1091,8 +1091,8 @@ class OnlineSearchVmTest(unittest.TestCase):
             "support_enumeration",
         }
         banned_calls = {
-            "iter_online_stereo_witnesses_with_sink",
-            "iter_online_stereo_witness_strings",
+            "iter_exhaustive_online_stereo_witnesses_with_sink",
+            "iter_exhaustive_online_stereo_witness_strings",
             "iter_" + "online_traversal_traces",
             "online_branch_preserving_choices",
             "online_determinized_choices",
@@ -1170,7 +1170,7 @@ def _vm_counter(facts: MoleculeFacts) -> Counter[str]:
 
 def _recursive_counter(facts: MoleculeFacts) -> Counter[str]:
     return Counter(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),

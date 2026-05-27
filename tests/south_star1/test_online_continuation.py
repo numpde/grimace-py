@@ -31,7 +31,7 @@ from grimace._south_star1.online_search_vm import RenderCursorFrame
 from grimace._south_star1.online_search_vm import SupportMaximalFrame
 from grimace._south_star1.online_search_vm import residual_snapshot_frame_audit
 from grimace._south_star1.online_search_vm import validate_residual_frame_stack
-from grimace._south_star1.online_stereo_witness import iter_online_stereo_witness_strings
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
 from grimace._south_star1.ordinary_policy import OrdinaryPolicyOptions
 from grimace._south_star1.ordinary_semantics import OrdinarySmilesSemantics
@@ -1206,7 +1206,7 @@ def _tokens_for_witness(decoder, witness: str) -> tuple[str, ...]:
 
 def _witnesses(facts) -> tuple[str, ...]:
     return tuple(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=ordinary_policy_for_facts(facts),
             semantics=OrdinarySmilesSemantics(),
@@ -1221,14 +1221,14 @@ def _hard_only_directional_witness(facts) -> str:
     )
     support_policy = ordinary_policy_for_facts(facts)
     hard = set(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=hard_policy,
             semantics=OrdinarySmilesSemantics(),
         )
     )
     support_maximal = set(
-        iter_online_stereo_witness_strings(
+        iter_exhaustive_online_stereo_witness_strings(
             facts=facts,
             policy=support_policy,
             semantics=OrdinarySmilesSemantics(),

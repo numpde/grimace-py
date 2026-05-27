@@ -116,13 +116,13 @@ class _DirectionalCandidate:
     decision_path: OnlineDecisionPath | None
 
 
-def iter_online_stereo_witness_strings(
+def iter_exhaustive_online_stereo_witness_strings(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
 ) -> Iterator[str]:
-    for witness in iter_online_stereo_witnesses(
+    for witness in iter_exhaustive_online_stereo_witnesses(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -130,13 +130,13 @@ def iter_online_stereo_witness_strings(
         yield witness.rendered
 
 
-def iter_online_stereo_witnesses(
+def iter_exhaustive_online_stereo_witnesses(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
 ) -> Iterator[OnlineWitness]:
-    yield from iter_online_stereo_witnesses_with_sink(
+    yield from iter_exhaustive_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
         semantics=semantics,
@@ -144,7 +144,7 @@ def iter_online_stereo_witnesses(
     )
 
 
-def iter_online_stereo_witnesses_with_sink(
+def iter_exhaustive_online_stereo_witnesses_with_sink(
     *,
     facts: MoleculeFacts,
     policy: SmilesPolicy,
@@ -1156,9 +1156,9 @@ __all__ = (
     "OnlineWitness",
     "directional_templates_for_carrier",
     "iter_online_ring_label_assignments",
-    "iter_online_stereo_witness_strings",
-    "iter_online_stereo_witnesses",
-    "iter_online_stereo_witnesses_with_sink",
+    "iter_exhaustive_online_stereo_witness_strings",
+    "iter_exhaustive_online_stereo_witnesses",
+    "iter_exhaustive_online_stereo_witnesses_with_sink",
     "online_local_tetra_order",
     "online_slot_key",
     "online_slot_view_for_trace",

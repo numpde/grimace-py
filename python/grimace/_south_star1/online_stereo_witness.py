@@ -1,4 +1,4 @@
-"""Online stereo witness enumeration for South Star 1."""
+"""Exhaustive online stereo witness enumeration for South Star 1."""
 
 from __future__ import annotations
 
@@ -58,14 +58,14 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineWitness:
+class ExhaustiveTraceWitness:
     rendered: str
     traversal_key: tuple[object, ...]
     annotation_count: int
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineBondSlot:
+class ExhaustiveTraceBondSlot:
     id: int
     bond: BondId
     kind: Literal["tree", "ring_endpoint"]
@@ -76,7 +76,7 @@ class OnlineBondSlot:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineRingEndpointSlot:
+class ExhaustiveTraceRingEndpointSlot:
     id: int
     bond: BondId
     atom: AtomId
@@ -86,7 +86,7 @@ class OnlineRingEndpointSlot:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineCarrierSlot:
+class ExhaustiveTraceCarrierSlot:
     id: int
     bond_slot: int
     bond: BondId
@@ -95,10 +95,10 @@ class OnlineCarrierSlot:
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineSlotView:
-    bond_slots: tuple[OnlineBondSlot, ...]
-    carrier_slots: tuple[OnlineCarrierSlot, ...]
-    ring_endpoints: tuple[OnlineRingEndpointSlot, ...]
+class ExhaustiveTraceSlotView:
+    bond_slots: tuple[ExhaustiveTraceBondSlot, ...]
+    carrier_slots: tuple[ExhaustiveTraceCarrierSlot, ...]
+    ring_endpoints: tuple[ExhaustiveTraceRingEndpointSlot, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +135,7 @@ def iter_exhaustive_online_stereo_witnesses(
     facts: MoleculeFacts,
     policy: SmilesPolicy,
     semantics: ParserSemantics,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveTraceWitness]:
     yield from iter_exhaustive_online_stereo_witnesses_with_sink(
         facts=facts,
         policy=policy,
@@ -157,7 +157,7 @@ def iter_exhaustive_online_stereo_witnesses_with_sink(
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     prepared: SouthStarPreparedMol | None = None,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveTraceWitness]:
     _validate_annotation_mode(policy)
     if prepared is None:
         facts.validate()
@@ -253,11 +253,11 @@ def exhaustive_trace_local_tetra_order(
     return tuple(order)
 
 
-def directional_templates_for_carrier(
+def exhaustive_trace_directional_templates_for_carrier(
     *,
     facts: MoleculeFacts,
     templates: StereoTemplateBundle,
-    carrier: OnlineCarrierSlot,
+    carrier: ExhaustiveTraceCarrierSlot,
 ) -> tuple[DirectionalTemplate, ...]:
     return tuple(
         template
@@ -267,11 +267,11 @@ def directional_templates_for_carrier(
     )
 
 
-def exhaustive_trace_slot_view(trace: OnlineTraversalTrace) -> OnlineSlotView:
+def exhaustive_trace_slot_view(trace: OnlineTraversalTrace) -> ExhaustiveTraceSlotView:
     return _slot_view_for_trace(trace)
 
 
-def exhaustive_trace_slot_key(slots: OnlineSlotView) -> tuple[object, ...]:
+def exhaustive_trace_slot_key(slots: ExhaustiveTraceSlotView) -> tuple[object, ...]:
     return (
         (),
         tuple(
@@ -365,7 +365,7 @@ def _iter_witnesses_for_trace(
     decision_recorder: OnlineDecisionRecorder | None,
     decision_filter: DecisionPathFilter | None,
     assume_prepared: bool = False,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveTraceWitness]:
     slots = _slot_view_for_trace(trace)
     if assume_prepared:
         atom_domains = tuple(
@@ -461,7 +461,7 @@ def _iter_witnesses_for_trace(
                                 )
                                 if rendered is None:
                                     continue
-                                yield OnlineWitness(
+                                yield ExhaustiveTraceWitness(
                                     rendered=rendered,
                                     traversal_key=trace_to_skeleton_like_key(trace),
                                     annotation_count=candidate.annotation_count,
@@ -481,7 +481,7 @@ def _iter_directional_candidates(
     semantics: ParserSemantics,
     templates: StereoTemplateBundle,
     trace: OnlineTraversalTrace,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     sink_factory: Callable[[], OnlineRenderSink],
@@ -570,7 +570,7 @@ def _iter_directional_candidates(
 def _render_directional_candidate(
     *,
     trace: OnlineTraversalTrace,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     candidate: _DirectionalCandidate,
@@ -604,16 +604,16 @@ def _render_directional_candidate(
             decision_recorder.restore_path(previous_decision_path)
 
 
-def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
-    bond_slots: list[OnlineBondSlot] = []
-    carrier_slots: list[OnlineCarrierSlot] = []
-    ring_endpoints: list[OnlineRingEndpointSlot] = []
+def _slot_view_for_trace(trace: OnlineTraversalTrace) -> ExhaustiveTraceSlotView:
+    bond_slots: list[ExhaustiveTraceBondSlot] = []
+    carrier_slots: list[ExhaustiveTraceCarrierSlot] = []
+    ring_endpoints: list[ExhaustiveTraceRingEndpointSlot] = []
     syntax_position = 0
     for event in trace.events:
         if isinstance(event, OnlineTreeBondEvent):
             slot_id = len(bond_slots)
             bond_slots.append(
-                OnlineBondSlot(
+                ExhaustiveTraceBondSlot(
                     id=slot_id,
                     bond=event.bond,
                     kind="tree",
@@ -624,7 +624,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
                 )
             )
             carrier_slots.append(
-                OnlineCarrierSlot(
+                ExhaustiveTraceCarrierSlot(
                     id=len(carrier_slots),
                     bond_slot=slot_id,
                     bond=event.bond,
@@ -640,7 +640,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
             if event.syntax_position != syntax_position:
                 raise ValueError("online ring endpoint syntax position mismatch")
             bond_slots.append(
-                OnlineBondSlot(
+                ExhaustiveTraceBondSlot(
                     id=slot_id,
                     bond=event.bond,
                     kind="ring_endpoint",
@@ -651,7 +651,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
                 )
             )
             ring_endpoints.append(
-                OnlineRingEndpointSlot(
+                ExhaustiveTraceRingEndpointSlot(
                     id=endpoint_id,
                     bond=event.bond,
                     atom=event.at,
@@ -661,7 +661,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
                 )
             )
             carrier_slots.append(
-                OnlineCarrierSlot(
+                ExhaustiveTraceCarrierSlot(
                     id=len(carrier_slots),
                     bond_slot=slot_id,
                     bond=event.bond,
@@ -670,7 +670,7 @@ def _slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
                 )
             )
             syntax_position += 1
-    return OnlineSlotView(
+    return ExhaustiveTraceSlotView(
         bond_slots=tuple(bond_slots),
         carrier_slots=tuple(carrier_slots),
         ring_endpoints=tuple(ring_endpoints),
@@ -738,7 +738,7 @@ def _direction_domains(
     *,
     facts: MoleculeFacts,
     templates: StereoTemplateBundle,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
 ) -> dict[int, tuple[DirectionMark, ...]]:
     eligible = _eligible_marker_carriers(facts=facts, templates=templates, slots=slots)
@@ -760,7 +760,7 @@ def _eligible_marker_carriers(
     *,
     facts: MoleculeFacts,
     templates: StereoTemplateBundle,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
 ) -> frozenset[int]:
     out: set[int] = set()
     for template in templates.directional:
@@ -777,7 +777,7 @@ def _directional_models_by_site(
     *,
     facts: MoleculeFacts,
     templates: StereoTemplateBundle,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
 ) -> dict[object, dict[object, DirectionalCarrierResidual]]:
     occurrence_by_id = {occurrence.id: occurrence for occurrence in facts.ligand_occurrences}
     out: dict[object, dict[object, DirectionalCarrierResidual]] = {}
@@ -827,13 +827,13 @@ def _bond_decode_ok(
     *,
     facts: MoleculeFacts,
     semantics: ParserSemantics,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     marks: dict[int, DirectionMark],
 ) -> bool:
     carriers_by_slot = {carrier.bond_slot: carrier for carrier in slots.carrier_slots}
     tree_slots = tuple(slot for slot in slots.bond_slots if slot.kind == "tree")
-    ring_slots_by_bond: dict[BondId, list[OnlineBondSlot]] = {}
+    ring_slots_by_bond: dict[BondId, list[ExhaustiveTraceBondSlot]] = {}
     for slot in slots.bond_slots:
         if slot.kind == "ring_endpoint":
             ring_slots_by_bond.setdefault(slot.bond, []).append(slot)
@@ -867,13 +867,13 @@ def _bond_decode_ok(
 def _render_online_to_sink(
     *,
     trace: OnlineTraversalTrace,
-    slots: OnlineSlotView,
+    slots: ExhaustiveTraceSlotView,
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     marks: dict[int, DirectionMark],
     sink: OnlineRenderSink,
 ) -> bool:
-    bond_slot_by_event: dict[tuple[object, ...], OnlineBondSlot] = {}
+    bond_slot_by_event: dict[tuple[object, ...], ExhaustiveTraceBondSlot] = {}
     for slot in slots.bond_slots:
         key = (
             slot.kind,
@@ -935,7 +935,7 @@ def _render_online_to_sink(
 
 
 def _render_bond_slot(
-    slot: OnlineBondSlot,
+    slot: ExhaustiveTraceBondSlot,
     prefix: _PrefixChoice,
     marks: dict[int, DirectionMark],
 ) -> str:
@@ -1096,7 +1096,7 @@ def _directional_reference_pair(
     )
 
 
-def _carrier_orientation(carrier: OnlineCarrierSlot, endpoint: AtomId) -> Literal[-1, 1]:
+def _carrier_orientation(carrier: ExhaustiveTraceCarrierSlot, endpoint: AtomId) -> Literal[-1, 1]:
     if carrier.written_from == endpoint:
         return 1
     if carrier.written_to == endpoint:
@@ -1117,8 +1117,8 @@ def _ligand_factor(
     return -1
 
 
-def _ring_intervals(slots: OnlineSlotView) -> tuple[tuple[int, int, int, int], ...]:
-    by_bond: dict[BondId, list[OnlineRingEndpointSlot]] = {}
+def _ring_intervals(slots: ExhaustiveTraceSlotView) -> tuple[tuple[int, int, int, int], ...]:
+    by_bond: dict[BondId, list[ExhaustiveTraceRingEndpointSlot]] = {}
     for endpoint in slots.ring_endpoints:
         by_bond.setdefault(endpoint.bond, []).append(endpoint)
     intervals = []
@@ -1149,12 +1149,12 @@ def _validate_annotation_mode(policy: SmilesPolicy) -> None:
 
 
 __all__ = (
-    "OnlineBondSlot",
-    "OnlineCarrierSlot",
-    "OnlineRingEndpointSlot",
-    "OnlineSlotView",
-    "OnlineWitness",
-    "directional_templates_for_carrier",
+    "ExhaustiveTraceBondSlot",
+    "ExhaustiveTraceCarrierSlot",
+    "ExhaustiveTraceRingEndpointSlot",
+    "ExhaustiveTraceSlotView",
+    "ExhaustiveTraceWitness",
+    "exhaustive_trace_directional_templates_for_carrier",
     "iter_exhaustive_trace_ring_label_assignments",
     "iter_exhaustive_online_stereo_witness_strings",
     "iter_exhaustive_online_stereo_witnesses",

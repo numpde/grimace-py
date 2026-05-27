@@ -213,6 +213,19 @@ class OnlineStereoWitnessTest(unittest.TestCase):
             self.assertFalse(hasattr(online_stereo_witness_module, name))
             self.assertNotIn(name, online_stereo_witness_module.__all__)
 
+    def test_generic_trace_artifact_names_are_absent(self) -> None:
+        names = (
+            "Online" + "Witness",
+            "Online" + "BondSlot",
+            "Online" + "CarrierSlot",
+            "Online" + "RingEndpointSlot",
+            "Online" + "SlotView",
+            "directional_" + "templates_for_carrier",
+        )
+        for name in names:
+            self.assertFalse(hasattr(online_stereo_witness_module, name))
+            self.assertNotIn(name, online_stereo_witness_module.__all__)
+
 
 def _online_counter(facts: MoleculeFacts) -> Counter[str]:
     return Counter(

@@ -454,11 +454,11 @@ def validate_residual_frame_stack(
 @dataclass(frozen=True, slots=True)
 class OnlineStepResult:
     kind: Literal["advanced", "yield_witness", "exhausted", "rejected"]
-    witness: "OnlineWitness | None" = None
+    witness: "ExhaustiveOnlineWitness | None" = None
 
 
 @dataclass(frozen=True, slots=True)
-class OnlineWitness:
+class ExhaustiveOnlineWitness:
     rendered: str
     traversal_key: tuple[object, ...]
     annotation_count: int
@@ -824,7 +824,7 @@ class ExhaustiveOnlineSearchVM:
             self._exhausted = True
             return OnlineStepResult("exhausted")
 
-    def run_until_witness_or_exhausted(self) -> OnlineWitness | None:
+    def run_until_witness_or_exhausted(self) -> ExhaustiveOnlineWitness | None:
         result = self.step()
         if result.kind == "yield_witness":
             return result.witness
@@ -836,7 +836,7 @@ class ExhaustiveOnlineSearchVM:
     def rollback(self, snapshot: OnlineSearchSnapshot) -> None:
         self.state.rollback(snapshot)
 
-    def _run(self) -> Iterator[OnlineWitness]:
+    def _run(self) -> Iterator[ExhaustiveOnlineWitness]:
         graph = (
             self.state.online_traversal_graph
             if self.state.online_traversal_graph is not None
@@ -918,7 +918,7 @@ def iter_exhaustive_online_stereo_witnesses_vm(
     graph_index: GraphIndex | None = None,
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     vm = ExhaustiveOnlineSearchVM(
         facts=facts,
         policy=policy,
@@ -951,10 +951,10 @@ def resume_online_search_from_snapshot(
     component_root_domains: tuple[tuple[AtomId, ...], ...] | None = None,
     snapshot: OnlineSearchSnapshot,
     sink: OnlineRenderSink,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     validate_residual_snapshot(snapshot)
 
-    def _iter() -> Iterator[OnlineWitness]:
+    def _iter() -> Iterator[ExhaustiveOnlineWitness]:
         vm = ExhaustiveOnlineSearchVM.from_snapshot(
             facts=facts,
             policy=policy,
@@ -1128,7 +1128,7 @@ def _iter_vm_traversals(
     state: OnlineSearchState,
     graph: OnlineTraversalGraph,
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     all_bonds = frozenset(graph.bonds)
     for roots in _iter_root_choices(state, graph):
         state.traversal.roots = list(roots)
@@ -1182,10 +1182,10 @@ def _iter_local_order_products(
     ring_bonds: frozenset[BondId],
     local_domains: tuple[tuple[AtomId, tuple[tuple[object, ...], ...]], ...],
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     events_at: dict[AtomId, tuple[object, ...]] = {}
 
-    def rec(index: int) -> Iterator[OnlineWitness]:
+    def rec(index: int) -> Iterator[ExhaustiveOnlineWitness]:
         if index == len(local_domains):
             event_buffer: list[object] = []
             state.traversal.syntax_position = 0
@@ -1234,7 +1234,7 @@ def _iter_witnesses_for_trace(
     state: OnlineSearchState,
     trace: _VmTraversalTrace,
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     traversal_key = _trace_key(trace)
     state.frames.append(OnlineSearchFrame(EventLoopFrame(traversal_key)))
     state.decisions.push(OnlineDecision("traversal", (traversal_key,)))
@@ -1316,7 +1316,7 @@ def _run_prefix_enumeration_frame(
     state: OnlineSearchState,
     frame: PrefixEnumerationFrame,
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     active_index = _active_prefix_frame_index(state.frames)
     if active_index is None:
         state.frames.append(OnlineSearchFrame(frame))
@@ -1354,7 +1354,7 @@ def _resume_prefix_enumeration_frame(
     state: OnlineSearchState,
     frame: PrefixEnumerationFrame,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if sink_factory is None:
         sink_factory = lambda: state.output
     if frame.phase == "ring":
@@ -1386,7 +1386,7 @@ def _resume_prefix_ring_phase(
     state: OnlineSearchState,
     frame: PrefixEnumerationFrame,
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     slots = _slot_view_for_trace(frame.trace)
     intervals = _ring_intervals(slots)
     if frame.index == len(intervals):
@@ -1458,7 +1458,7 @@ def _resume_prefix_atom_phase(
     state: OnlineSearchState,
     frame: PrefixEnumerationFrame,
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if frame.index == len(frame.atom_text_domains):
         atom_text = dict(frame.atom_text)
         state.frames.append(
@@ -1519,7 +1519,7 @@ def _resume_prefix_bond_phase(
     state: OnlineSearchState,
     frame: PrefixEnumerationFrame,
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if frame.index == len(frame.bond_text_domains):
         atom_text = dict(frame.atom_text)
         bond_text = dict(frame.bond_text)
@@ -1604,7 +1604,7 @@ def _emit_witnesses_for_prefix_choice(
     prefix: _PrefixChoice,
     tetra_tokens: dict[AtomId, TetraToken],
     sink_factory: Callable[[], OnlineRenderSink],
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     slots = _slot_view_for_trace(trace)
     candidates = _iter_directional_candidates(
         state=state,
@@ -1638,7 +1638,7 @@ def _emit_witnesses_for_prefix_choice(
         )
         if rendered is None:
             continue
-        yield OnlineWitness(
+        yield ExhaustiveOnlineWitness(
             rendered=rendered,
             traversal_key=_trace_key(trace),
             annotation_count=candidate.annotation_count,
@@ -2032,7 +2032,7 @@ def _restore_resume_snapshot(
     state.rollback(snapshot)
 
 
-def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
+def _resume_from_frames(state: OnlineSearchState) -> Iterator[ExhaustiveOnlineWitness]:
     frame = _pop_resumable_frame(state.frames)
     if frame is None:
         return
@@ -2044,7 +2044,7 @@ def _resume_from_frames(state: OnlineSearchState) -> Iterator[OnlineWitness]:
 
 def _resumable_frame_handlers() -> dict[
     type[object],
-    Callable[[OnlineSearchState, object], Iterator[OnlineWitness]],
+    Callable[[OnlineSearchState, object], Iterator[ExhaustiveOnlineWitness]],
 ]:
     return {
         RenderCursorFrame: _resume_render_cursor_payload,
@@ -2057,7 +2057,7 @@ def _resumable_frame_handlers() -> dict[
 def _resume_render_cursor_payload(
     state: OnlineSearchState,
     payload: object,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if not isinstance(payload, RenderCursorFrame):
         raise TypeError(payload)
     yield from _resume_render_cursor_frame(state, payload.cursor)
@@ -2066,7 +2066,7 @@ def _resume_render_cursor_payload(
 def _resume_prefix_enumeration_payload(
     state: OnlineSearchState,
     payload: object,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if not isinstance(payload, PrefixEnumerationFrame):
         raise TypeError(payload)
     yield from _resume_prefix_enumeration_frame(state=state, frame=payload)
@@ -2075,7 +2075,7 @@ def _resume_prefix_enumeration_payload(
 def _resume_direction_enumeration_payload(
     state: OnlineSearchState,
     payload: object,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if not isinstance(payload, DirectionEnumerationFrame):
         raise TypeError(payload)
     yield from _resume_direction_enumeration_frame(state=state, frame=payload)
@@ -2084,7 +2084,7 @@ def _resume_direction_enumeration_payload(
 def _resume_support_maximal_payload(
     state: OnlineSearchState,
     payload: object,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if not isinstance(payload, SupportMaximalFrame):
         raise TypeError(payload)
     yield from _resume_support_maximal_frame(state=state, frame=payload)
@@ -2093,7 +2093,7 @@ def _resume_support_maximal_payload(
 def _resume_render_cursor_frame(
     state: OnlineSearchState,
     cursor: _RenderCursor,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     checkpoint = state.output.checkpoint()
     slots = _slot_view_for_trace(cursor.program.trace)
     if not _render_program_to_sink(
@@ -2107,7 +2107,7 @@ def _resume_render_cursor_frame(
         state.output.rollback(checkpoint)
         return
     rendered = state.output.value()
-    yield OnlineWitness(
+    yield ExhaustiveOnlineWitness(
         rendered=rendered,
         traversal_key=_trace_key(cursor.program.trace),
         annotation_count=cursor.program.annotation_count,
@@ -2118,7 +2118,7 @@ def _resume_direction_enumeration_frame(
     state: OnlineSearchState,
     frame: DirectionEnumerationFrame,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if sink_factory is None:
         sink_factory = lambda: state.output
     candidates = _iter_directional_candidates_from_frame(state=state, frame=frame)
@@ -2150,7 +2150,7 @@ def _resume_direction_enumeration_frame(
         )
         if rendered is None:
             continue
-        yield OnlineWitness(
+        yield ExhaustiveOnlineWitness(
             rendered=rendered,
             traversal_key=_trace_key(frame.trace),
             annotation_count=candidate.annotation_count,
@@ -2179,7 +2179,7 @@ def _resume_support_maximal_frame(
     state: OnlineSearchState,
     frame: SupportMaximalFrame,
     sink_factory: Callable[[], OnlineRenderSink] | None = None,
-) -> Iterator[OnlineWitness]:
+) -> Iterator[ExhaustiveOnlineWitness]:
     if sink_factory is None:
         sink_factory = lambda: state.output
     prefix = _thaw_prefix_choice(frame.prefix)
@@ -2209,7 +2209,7 @@ def _resume_support_maximal_frame(
         )
         if rendered is None:
             continue
-        yield OnlineWitness(
+        yield ExhaustiveOnlineWitness(
             rendered=rendered,
             traversal_key=_trace_key(frame.trace),
             annotation_count=candidate.annotation_count,
@@ -3110,7 +3110,7 @@ __all__ = (
     "OnlineSearchSnapshot",
     "OnlineSearchState",
     "OnlineStepResult",
-    "OnlineWitness",
+    "ExhaustiveOnlineWitness",
     "active_resumable_frame_count",
     "capture_residual_continuation",
     "dispatcher_resumable_frame_payload_types",

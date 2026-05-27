@@ -223,7 +223,7 @@ def iter_exhaustive_online_stereo_witnesses_with_sink(
             _rollback_decision(decision_recorder, decision_checkpoint)
 
 
-def online_local_tetra_order(
+def exhaustive_trace_local_tetra_order(
     *,
     facts: MoleculeFacts,
     trace: OnlineTraversalTrace,
@@ -267,11 +267,11 @@ def directional_templates_for_carrier(
     )
 
 
-def online_slot_view_for_trace(trace: OnlineTraversalTrace) -> OnlineSlotView:
+def exhaustive_trace_slot_view(trace: OnlineTraversalTrace) -> OnlineSlotView:
     return _slot_view_for_trace(trace)
 
 
-def online_slot_key(slots: OnlineSlotView) -> tuple[object, ...]:
+def exhaustive_trace_slot_key(slots: OnlineSlotView) -> tuple[object, ...]:
     return (
         (),
         tuple(
@@ -310,7 +310,7 @@ def online_slot_key(slots: OnlineSlotView) -> tuple[object, ...]:
     )
 
 
-def iter_online_ring_label_assignments(
+def iter_exhaustive_trace_ring_label_assignments(
     *,
     trace: OnlineTraversalTrace,
     policy: SmilesPolicy,
@@ -392,7 +392,7 @@ def _iter_witnesses_for_trace(
             for slot in slots.bond_slots
         )
 
-    for ring_labels in iter_online_ring_label_assignments(trace=trace, policy=policy):
+    for ring_labels in iter_exhaustive_trace_ring_label_assignments(trace=trace, policy=policy):
         decision_checkpoint = _push_decision(
             decision_recorder,
             decision_filter,
@@ -714,7 +714,7 @@ def _forced_tetra_token(
 ) -> TetraToken | None:
     if template.status is SiteStatus.UNSPECIFIED:
         return TetraToken.NONE
-    local_order = online_local_tetra_order(
+    local_order = exhaustive_trace_local_tetra_order(
         facts=facts,
         trace=trace,
         atom=atom,
@@ -1155,11 +1155,11 @@ __all__ = (
     "OnlineSlotView",
     "OnlineWitness",
     "directional_templates_for_carrier",
-    "iter_online_ring_label_assignments",
+    "iter_exhaustive_trace_ring_label_assignments",
     "iter_exhaustive_online_stereo_witness_strings",
     "iter_exhaustive_online_stereo_witnesses",
     "iter_exhaustive_online_stereo_witnesses_with_sink",
-    "online_local_tetra_order",
-    "online_slot_key",
-    "online_slot_view_for_trace",
+    "exhaustive_trace_local_tetra_order",
+    "exhaustive_trace_slot_key",
+    "exhaustive_trace_slot_view",
 )

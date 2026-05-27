@@ -17,11 +17,11 @@ from grimace._south_star1.graph_index import build_graph_index
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
-from grimace._south_star1.online_stereo_witness import iter_online_ring_label_assignments
+from grimace._south_star1.online_stereo_witness import iter_exhaustive_trace_ring_label_assignments
 from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witness_strings
 from grimace._south_star1.online_stereo_witness import iter_exhaustive_online_stereo_witnesses
-from grimace._south_star1.online_stereo_witness import online_slot_key
-from grimace._south_star1.online_stereo_witness import online_slot_view_for_trace
+from grimace._south_star1.online_stereo_witness import exhaustive_trace_slot_key
+from grimace._south_star1.online_stereo_witness import exhaustive_trace_slot_view
 from grimace._south_star1.online_traversal import iter_exhaustive_online_traversal_traces
 from grimace._south_star1.online_traversal import trace_to_skeleton_like_key
 from grimace._south_star1.ordinary_policy import ordinary_policy_for_facts
@@ -127,7 +127,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
             self.assertFalse(hasattr(online_stereo_witness_module, name))
             self.assertNotIn(name, online_stereo_witness_module.__all__)
 
-    def test_online_slot_keys_match_offline_slot_bundle_keys(self) -> None:
+    def test_exhaustive_trace_slot_keys_match_offline_slot_bundle_keys(self) -> None:
         facts = ordinary_molecule_facts_from_smiles("[C@H]1(F)CO1")
         policy = ordinary_policy_for_facts(facts)
         offline_by_skeleton_key = {
@@ -140,7 +140,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
         }
 
         for trace in iter_exhaustive_online_traversal_traces(facts=facts, policy=policy):
-            online_key = online_slot_key(online_slot_view_for_trace(trace))
+            online_key = exhaustive_trace_slot_key(exhaustive_trace_slot_view(trace))
             offline_key = offline_by_skeleton_key[trace_to_skeleton_like_key(trace)]
             self.assertEqual(online_key[1:], offline_key[1:])
 
@@ -154,7 +154,7 @@ class OnlineStereoWitnessTest(unittest.TestCase):
         )
 
         assignments = tuple(
-            iter_online_ring_label_assignments(trace=trace, policy=policy)
+            iter_exhaustive_trace_ring_label_assignments(trace=trace, policy=policy)
         )
 
         self.assertTrue(assignments)
@@ -201,6 +201,17 @@ class OnlineStereoWitnessTest(unittest.TestCase):
 
         self.assertEqual(imports, [])
         self.assertEqual(sorted(set(calls) & banned_calls), [])
+
+    def test_generic_trace_helper_names_are_absent(self) -> None:
+        names = (
+            "online_" + "slot_view_for_trace",
+            "online_" + "slot_key",
+            "iter_" + "online_ring_label_assignments",
+            "online_" + "local_tetra_order",
+        )
+        for name in names:
+            self.assertFalse(hasattr(online_stereo_witness_module, name))
+            self.assertNotIn(name, online_stereo_witness_module.__all__)
 
 
 def _online_counter(facts: MoleculeFacts) -> Counter[str]:

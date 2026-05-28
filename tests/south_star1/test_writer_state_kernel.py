@@ -21,6 +21,7 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
+from grimace._south_star1.writer_frontier import count_writer_witness_completions
 from grimace._south_star1.writer_frontier import initial_writer_frontier
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_state import WriterState
@@ -62,8 +63,27 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertFalse(choices.eos_available)
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
-        self.assertEqual(choices.choices[0].multiplicity, 2)
+        self.assertEqual(choices.choices[0].immediate_multiplicity, 2)
         self.assertEqual(len(choices.choices[0].successor.states), 2)
+
+    def test_writer_support_image_keeps_witness_count_separate(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+
+        support = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=_writer_options(),
+        )
+
+        self.assertEqual(support.strings, ("CC",))
+        self.assertEqual(support.distinct_count, 1)
+        self.assertEqual(support.witness_count, 2)
+
+    def test_writer_witness_completions_can_exceed_support_count(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C", "C")))
+        frontier = initial_writer_frontier(prepared, _writer_options())
+
+        self.assertEqual(count_writer_frontier_support(prepared, frontier), 2)
+        self.assertEqual(count_writer_witness_completions(prepared, frontier), 4)
 
     def test_writer_support_count_does_not_call_streaming_support(self) -> None:
         prepared = _prepare(cco_facts())

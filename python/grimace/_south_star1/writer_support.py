@@ -8,6 +8,7 @@ from .prepared_runtime import SouthStarRuntimeOptions
 from .prepared_runtime import require_writer_shaped_runtime_options
 from .prepared_runtime import runtime_root_atom_for_prepared
 from .writer_frontier import count_writer_frontier_support
+from .writer_frontier import count_writer_witness_completions
 from .writer_frontier import initial_writer_frontier
 from .writer_frontier import iter_writer_frontier_support
 
@@ -21,11 +22,12 @@ def enumerate_prepared_writer_shaped_support(
     runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
     frontier = initial_writer_frontier(prepared, runtime_options)
     support_count = count_writer_frontier_support(prepared, frontier)
+    completion_count = count_writer_witness_completions(prepared, frontier)
     strings = tuple(iter_writer_frontier_support(prepared, frontier))
     if len(strings) != support_count:
         raise AssertionError("writer frontier support stream/count mismatch")
     return SupportImage(
-        witness_count=support_count,
+        witness_count=completion_count,
         distinct_count=support_count,
         strings=strings,
     )

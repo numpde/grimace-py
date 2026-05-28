@@ -36,7 +36,7 @@ class WriterFrontierState:
 class WriterFrontierChoice:
     emitted_text: str
     successor: WriterFrontierState
-    multiplicity: int
+    immediate_multiplicity: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +105,7 @@ def writer_frontier_choices(
             WriterFrontierChoice(
                 emitted_text=text,
                 successor=WriterFrontierState(states=frozenset(grouped[text])),
-                multiplicity=raw_counts[text],
+                immediate_multiplicity=raw_counts[text],
             )
             for text in sorted(grouped)
         ),
@@ -130,6 +130,26 @@ def count_writer_frontier_support(
         return total
 
     return rec(frontier)
+
+
+def count_writer_witness_completions(
+    prepared: SouthStarPreparedMol,
+    frontier: WriterFrontierState,
+) -> int:
+    memo: dict[WriterStateKey, int] = {}
+
+    def rec(key: WriterStateKey) -> int:
+        cached = memo.get(key)
+        if cached is not None:
+            return cached
+        state = writer_state_from_key(key)
+        total = 1 if writer_state_is_eos(prepared, state) else 0
+        for transition in legal_writer_transitions(prepared, state):
+            total += rec(writer_state_key(transition.successor))
+        memo[key] = total
+        return total
+
+    return sum(rec(key) for key in frontier.states)
 
 
 def iter_writer_frontier_support(
@@ -166,6 +186,7 @@ __all__ = (
     "WriterFrontierChoices",
     "WriterFrontierState",
     "count_writer_frontier_support",
+    "count_writer_witness_completions",
     "initial_writer_frontier",
     "iter_writer_frontier_support",
     "writer_frontier_choices",

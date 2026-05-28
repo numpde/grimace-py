@@ -26,6 +26,8 @@ from grimace._south_star1.writer_frontier import count_writer_witness_completion
 from grimace._south_star1.writer_frontier import initial_writer_frontier
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_state import WriterState
+from grimace._south_star1.writer_state import WriterStateKey
+from grimace._south_star1.writer_state import writer_state_from_key
 from grimace._south_star1.writer_state import writer_state_key
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
@@ -217,8 +219,17 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertNotIn("rendered", fields)
         self.assertNotIn("prefix", fields)
         self.assertNotIn("suffix", fields)
-        state = next(iter(initial_writer_frontier(_prepare(cco_facts()), _writer_options()).states))
-        self.assertIs(writer_state_key(state), state)
+        key = next(iter(initial_writer_frontier(_prepare(cco_facts()), _writer_options()).states))
+        self.assertIsInstance(key, WriterStateKey)
+        self.assertEqual(writer_state_key(writer_state_from_key(key)), key)
+
+    def test_initial_writer_frontier_rejects_exhaustive_options(self) -> None:
+        prepared = _prepare(cco_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            initial_writer_frontier(prepared, SouthStarRuntimeOptions())
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
     def test_writer_modules_do_not_import_exhaustive_routes(self) -> None:
         forbidden = {

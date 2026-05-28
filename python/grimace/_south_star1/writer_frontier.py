@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from itertools import product
 from typing import TYPE_CHECKING
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .ids import AtomId
+from .policy import SerializationLanguageMode
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -49,6 +52,11 @@ def initial_writer_frontier(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ) -> WriterFrontierState:
+    if runtime_options.serialization_language is not SerializationLanguageMode.WRITER_SHAPED:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "writer frontier requires serialization_language=WRITER_SHAPED",
+        )
     validate_writer_supported_prepared(prepared)
     root_domains = _root_domains_for_runtime(prepared, runtime_options)
     states = []

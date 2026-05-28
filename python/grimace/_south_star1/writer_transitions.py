@@ -171,7 +171,7 @@ def _enter_child_transitions(
         branch_stack = (*branch_stack, WriterBranchFrame(return_atom=parent_frame))
 
     transitions: list[WriterTransition] = []
-    for bond_text in _tree_bond_texts(prepared, pending.bond):
+    for bond_text in _writer_bond_texts(prepared, pending.bond):
         if bond_text:
             transitions.append(
                 WriterTransition(
@@ -412,14 +412,24 @@ def _atom_texts(prepared: SouthStarPreparedMol, atom: AtomId) -> tuple[str, ...]
     return tuple(texts)
 
 
-def _tree_bond_texts(prepared: SouthStarPreparedMol, bond: BondId) -> tuple[str, ...]:
-    return tuple(
-        choice.base_text
-        for choice in prepared.policy.bond_text_domain_unchecked(
+def _writer_bond_texts(prepared: SouthStarPreparedMol, bond: BondId) -> tuple[str, ...]:
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
             bond,
             slot_kind="tree",
         )
-    )
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            f"WRITER_SHAPED has no acyclic writer bond text for {bond!r}",
+        ) from exc
+    texts = tuple(choice.base_text for choice in choices)
+    if not texts:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            f"WRITER_SHAPED has empty acyclic writer bond text domain for {bond!r}",
+        )
+    return texts
 
 
 __all__ = (

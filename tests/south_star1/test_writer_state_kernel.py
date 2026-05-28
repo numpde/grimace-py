@@ -16,7 +16,13 @@ from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.policy import AnnotationMode
+from grimace._south_star1.policy import AtomTextChoice
+from grimace._south_star1.policy import AtomTextDomain
+from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SerializationLanguageMode
+from grimace._south_star1.policy import SmilesPolicy
+from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
@@ -68,7 +74,26 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertFalse(choices.eos_available)
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
         self.assertEqual(choices.choices[0].immediate_multiplicity, 2)
+        self.assertEqual(choices.choices[0].support_count, 1)
+        self.assertEqual(choices.choices[0].completion_count, 2)
         self.assertEqual(len(choices.choices[0].successor.states), 2)
+
+    def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
+        prepared = prepare_south_star_mol_from_facts(
+            chain_facts(("C",)),
+            writer_surface=SouthStarWriterSurface(),
+            policy=duplicate_single_atom_policy(),
+        )
+        frontier = initial_writer_frontier(prepared, _writer_options())
+
+        choices = writer_frontier_choices(prepared, frontier)
+
+        self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
+        choice = choices.choices[0]
+        self.assertEqual(choice.immediate_multiplicity, 2)
+        self.assertEqual(len(choice.successor.states), 1)
+        self.assertEqual(choice.support_count, 1)
+        self.assertEqual(choice.completion_count, 2)
 
     def test_writer_support_image_keeps_witness_count_separate(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -231,6 +256,30 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_initial_writer_frontier_invalid_root_raises_typed_error(self) -> None:
+        prepared = _prepare(cco_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            initial_writer_frontier(prepared, _writer_options(rooted_at_atom=99))
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
+
+    def test_missing_writer_bond_domain_fails_closed(self) -> None:
+        facts = chain_facts(("C", "C"))
+        prepared = prepare_south_star_mol_from_facts(
+            facts,
+            writer_surface=SouthStarWriterSurface(),
+            policy=missing_bond_domain_policy(facts),
+        )
+
+        with self.assertRaises(SouthStarError) as caught:
+            enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=_writer_options(),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
     def test_writer_modules_do_not_import_exhaustive_routes(self) -> None:
         forbidden = {
             "skeleton",
@@ -326,6 +375,49 @@ def disconnected_co_facts() -> MoleculeFacts:
             ComponentFacts(id=ComponentId(0), atoms=(AtomId(0),), bonds=()),
             ComponentFacts(id=ComponentId(1), atoms=(AtomId(1),), bonds=()),
         ),
+    )
+
+
+def duplicate_single_atom_policy() -> SmilesPolicy:
+    return SmilesPolicy(
+        ring_labels=(RingLabel(1),),
+        annotation_mode=AnnotationMode.HARD,
+        atom_text_domains=(
+            AtomTextDomain(
+                atom=AtomId(0),
+                choices=(
+                    AtomTextChoice(
+                        name="carbon_a",
+                        text_by_tetra=((TetraToken.NONE, "C"),),
+                    ),
+                    AtomTextChoice(
+                        name="carbon_b",
+                        text_by_tetra=((TetraToken.NONE, "C"),),
+                    ),
+                ),
+            ),
+        ),
+        bond_text_domains=(),
+    )
+
+
+def missing_bond_domain_policy(facts: MoleculeFacts) -> SmilesPolicy:
+    return SmilesPolicy(
+        ring_labels=(RingLabel(1),),
+        annotation_mode=AnnotationMode.HARD,
+        atom_text_domains=tuple(
+            AtomTextDomain(
+                atom=item.id,
+                choices=(
+                    AtomTextChoice(
+                        name=f"atom_{int(item.id)}",
+                        text_by_tetra=((TetraToken.NONE, item.symbol),),
+                    ),
+                ),
+            )
+            for item in facts.atoms
+        ),
+        bond_text_domains=(),
     )
 
 

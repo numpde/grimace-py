@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
@@ -10,7 +11,6 @@ from typing import TYPE_CHECKING
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
-from .policy import SerializationLanguageMode
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import WriterAtomFrame
@@ -40,6 +40,8 @@ class WriterFrontierChoice:
     emitted_text: str
     successor: WriterFrontierState
     immediate_multiplicity: int
+    support_count: int | None = None
+    completion_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,15 +50,22 @@ class WriterFrontierChoices:
     choices: tuple[WriterFrontierChoice, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _GroupedWriterFrontierTransitions:
+    eos_available: bool
+    grouped_by_text: dict[str, set[WriterStateKey]]
+    weighted_by_text: dict[str, Counter[WriterStateKey]]
+
+
 def initial_writer_frontier(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ) -> WriterFrontierState:
-    if runtime_options.serialization_language is not SerializationLanguageMode.WRITER_SHAPED:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            "writer frontier requires serialization_language=WRITER_SHAPED",
-        )
+    from .prepared_runtime import require_writer_shaped_runtime_options
+    from .prepared_runtime import runtime_root_atom_for_prepared
+
+    require_writer_shaped_runtime_options(runtime_options)
+    runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
     validate_writer_supported_prepared(prepared)
     root_domains = _root_domains_for_runtime(prepared, runtime_options)
     states = []
@@ -94,29 +103,57 @@ def writer_frontier_choices(
     prepared: SouthStarPreparedMol,
     frontier: WriterFrontierState,
 ) -> WriterFrontierChoices:
+    grouped = _group_writer_frontier_transitions(prepared, frontier)
+    support_memo: dict[WriterFrontierState, int] = {}
+    completion_memo: dict[WriterStateKey, int] = {}
+    choices = []
+    for text in sorted(grouped.grouped_by_text):
+        successor = WriterFrontierState(
+            states=frozenset(grouped.grouped_by_text[text])
+        )
+        weighted_successors = grouped.weighted_by_text[text]
+        choices.append(
+            WriterFrontierChoice(
+                emitted_text=text,
+                successor=successor,
+                immediate_multiplicity=sum(weighted_successors.values()),
+                support_count=_count_writer_frontier_support(
+                    prepared,
+                    successor,
+                    support_memo,
+                ),
+                completion_count=_count_weighted_successor_completions(
+                    prepared,
+                    weighted_successors,
+                    completion_memo,
+                ),
+            )
+        )
+    return WriterFrontierChoices(
+        eos_available=grouped.eos_available,
+        choices=tuple(choices),
+    )
+
+
+def _group_writer_frontier_transitions(
+    prepared: SouthStarPreparedMol,
+    frontier: WriterFrontierState,
+) -> _GroupedWriterFrontierTransitions:
     grouped: dict[str, set[WriterStateKey]] = {}
-    raw_counts: dict[str, int] = {}
+    weighted: dict[str, Counter[WriterStateKey]] = {}
     eos_available = False
     for key in frontier.states:
         state = writer_state_from_key(key)
         if writer_state_is_eos(prepared, state):
             eos_available = True
         for transition in legal_writer_transitions(prepared, state):
-            grouped.setdefault(transition.emitted_text, set()).add(
-                writer_state_key(transition.successor)
-            )
-            raw_counts[transition.emitted_text] = raw_counts.get(transition.emitted_text, 0) + 1
-
-    return WriterFrontierChoices(
+            successor_key = writer_state_key(transition.successor)
+            grouped.setdefault(transition.emitted_text, set()).add(successor_key)
+            weighted.setdefault(transition.emitted_text, Counter())[successor_key] += 1
+    return _GroupedWriterFrontierTransitions(
         eos_available=eos_available,
-        choices=tuple(
-            WriterFrontierChoice(
-                emitted_text=text,
-                successor=WriterFrontierState(states=frozenset(grouped[text])),
-                immediate_multiplicity=raw_counts[text],
-            )
-            for text in sorted(grouped)
-        ),
+        grouped_by_text=grouped,
+        weighted_by_text=weighted,
     )
 
 
@@ -124,20 +161,24 @@ def count_writer_frontier_support(
     prepared: SouthStarPreparedMol,
     frontier: WriterFrontierState,
 ) -> int:
-    memo: dict[WriterFrontierState, int] = {}
+    return _count_writer_frontier_support(prepared, frontier, {})
 
-    def rec(current: WriterFrontierState) -> int:
-        cached = memo.get(current)
-        if cached is not None:
-            return cached
-        choices = writer_frontier_choices(prepared, current)
-        total = 1 if choices.eos_available else 0
-        for choice in choices.choices:
-            total += rec(choice.successor)
-        memo[current] = total
-        return total
 
-    return rec(frontier)
+def _count_writer_frontier_support(
+    prepared: SouthStarPreparedMol,
+    frontier: WriterFrontierState,
+    memo: dict[WriterFrontierState, int],
+) -> int:
+    cached = memo.get(frontier)
+    if cached is not None:
+        return cached
+    grouped = _group_writer_frontier_transitions(prepared, frontier)
+    total = 1 if grouped.eos_available else 0
+    for text, successor_keys in grouped.grouped_by_text.items():
+        successor = WriterFrontierState(states=frozenset(successor_keys))
+        total += _count_writer_frontier_support(prepared, successor, memo)
+    memo[frontier] = total
+    return total
 
 
 def count_writer_witness_completions(
@@ -146,18 +187,41 @@ def count_writer_witness_completions(
 ) -> int:
     memo: dict[WriterStateKey, int] = {}
 
-    def rec(key: WriterStateKey) -> int:
-        cached = memo.get(key)
-        if cached is not None:
-            return cached
-        state = writer_state_from_key(key)
-        total = 1 if writer_state_is_eos(prepared, state) else 0
-        for transition in legal_writer_transitions(prepared, state):
-            total += rec(writer_state_key(transition.successor))
-        memo[key] = total
-        return total
+    return sum(
+        _count_writer_state_completions(prepared, key, memo)
+        for key in frontier.states
+    )
 
-    return sum(rec(key) for key in frontier.states)
+
+def _count_weighted_successor_completions(
+    prepared: SouthStarPreparedMol,
+    weighted_successors: Counter[WriterStateKey],
+    memo: dict[WriterStateKey, int],
+) -> int:
+    return sum(
+        multiplicity * _count_writer_state_completions(prepared, key, memo)
+        for key, multiplicity in weighted_successors.items()
+    )
+
+
+def _count_writer_state_completions(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    memo: dict[WriterStateKey, int],
+) -> int:
+    cached = memo.get(key)
+    if cached is not None:
+        return cached
+    state = writer_state_from_key(key)
+    total = 1 if writer_state_is_eos(prepared, state) else 0
+    for transition in legal_writer_transitions(prepared, state):
+        total += _count_writer_state_completions(
+            prepared,
+            writer_state_key(transition.successor),
+            memo,
+        )
+    memo[key] = total
+    return total
 
 
 def iter_writer_frontier_support(
@@ -184,8 +248,9 @@ def _root_domains_for_runtime(
     try:
         return prepared.component_root_domains_by_explicit_root[atom]
     except KeyError as exc:
-        raise ValueError(
-            f"rooted atom is not present in prepared molecule: {atom!r}"
+        raise SouthStarError(
+            SouthStarErrorKind.INVALID_FACTS,
+            f"rooted_at_atom is not present in prepared molecule: {int(atom)}",
         ) from exc
 
 

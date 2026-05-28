@@ -27,9 +27,13 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.writer_frontier import WriterFrontierCursor
+from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import count_writer_witness_completions
 from grimace._south_star1.writer_frontier import initial_writer_frontier
+from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import WriterStateKey
@@ -67,16 +71,20 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_writer_frontier_groups_same_emitted_text(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
-        frontier = initial_writer_frontier(prepared, _writer_options())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        choices = writer_frontier_choices(prepared, frontier)
+        choices = writer_frontier_choices(prepared, cursor)
 
-        self.assertFalse(choices.eos_available)
+        self.assertIsNone(choices.terminal)
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
         self.assertEqual(choices.choices[0].immediate_multiplicity, 2)
         self.assertEqual(choices.choices[0].support_count, 1)
         self.assertEqual(choices.choices[0].completion_count, 2)
-        self.assertEqual(len(choices.choices[0].successor.states), 2)
+        self.assertEqual(len(choices.choices[0].successor.support_state.states), 2)
+        self.assertEqual(
+            sum(weight for _, weight in choices.choices[0].successor.weighted_states),
+            2,
+        )
 
     def test_writer_frontier_counts_duplicate_token_paths_to_same_state(self) -> None:
         prepared = prepare_south_star_mol_from_facts(
@@ -84,16 +92,35 @@ class WriterStateKernelTest(unittest.TestCase):
             writer_surface=SouthStarWriterSurface(),
             policy=duplicate_single_atom_policy(),
         )
-        frontier = initial_writer_frontier(prepared, _writer_options())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        choices = writer_frontier_choices(prepared, frontier)
+        choices = writer_frontier_choices(prepared, cursor)
 
         self.assertEqual(tuple(choice.emitted_text for choice in choices.choices), ("C",))
         choice = choices.choices[0]
         self.assertEqual(choice.immediate_multiplicity, 2)
-        self.assertEqual(len(choice.successor.states), 1)
+        self.assertEqual(len(choice.successor.support_state.states), 1)
+        self.assertEqual(choice.successor.weighted_states[0][1], 2)
         self.assertEqual(choice.support_count, 1)
         self.assertEqual(choice.completion_count, 2)
+
+    def test_writer_frontier_terminal_counts_weighted_cursor(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        after_atom = writer_frontier_choices(prepared, cursor).choices[0].successor
+        terminal_key = after_atom.weighted_states[0][0]
+        weighted_terminal = WriterFrontierCursor(
+            weighted_states=((terminal_key, 3),)
+        )
+
+        choices = writer_frontier_choices(prepared, weighted_terminal)
+
+        self.assertIsNotNone(choices.terminal)
+        assert choices.terminal is not None
+        self.assertEqual(choices.terminal.support_count, 1)
+        self.assertEqual(choices.terminal.completion_count, 3)
+        self.assertEqual(choices.terminal.multiplicity, 3)
+        self.assertEqual(choices.choices, ())
 
     def test_writer_support_image_keeps_witness_count_separate(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
@@ -109,20 +136,43 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_writer_witness_completions_can_exceed_support_count(self) -> None:
         prepared = _prepare(chain_facts(("C", "C", "C")))
-        frontier = initial_writer_frontier(prepared, _writer_options())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
-        self.assertEqual(count_writer_frontier_support(prepared, frontier), 2)
-        self.assertEqual(count_writer_witness_completions(prepared, frontier), 4)
+        self.assertEqual(count_writer_frontier_support(prepared, cursor.support_state), 2)
+        self.assertEqual(count_writer_cursor_completions(prepared, cursor), 4)
+        self.assertEqual(
+            count_writer_witness_completions(prepared, cursor.support_state),
+            4,
+        )
 
     def test_writer_support_count_does_not_call_streaming_support(self) -> None:
         prepared = _prepare(cco_facts())
-        frontier = initial_writer_frontier(prepared, _writer_options())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
 
         with patch(
             "grimace._south_star1.writer_frontier.iter_writer_frontier_support",
             side_effect=AssertionError("count-only path streamed support strings"),
         ):
-            self.assertEqual(count_writer_frontier_support(prepared, frontier), 4)
+            self.assertEqual(count_writer_frontier_support(prepared, cursor.support_state), 4)
+
+    def test_streaming_support_does_not_compute_counted_choices(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+
+        with patch(
+            "grimace._south_star1.writer_frontier.writer_frontier_choices",
+            side_effect=AssertionError("streaming used counted choices"),
+        ), patch(
+            "grimace._south_star1.writer_frontier.count_writer_frontier_support",
+            side_effect=AssertionError("streaming computed support count"),
+        ), patch(
+            "grimace._south_star1.writer_frontier.count_writer_cursor_completions",
+            side_effect=AssertionError("streaming computed completion count"),
+        ):
+            self.assertEqual(
+                tuple(iter_writer_frontier_support(prepared, cursor)),
+                ("C(C)O", "C(O)C", "CCO", "OCC"),
+            )
 
     def test_unique_child_is_inline_for_rooted_chain(self) -> None:
         prepared = _prepare(chain_facts(("C", "C", "C")))
@@ -147,12 +197,12 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_double_bond_child_entry_is_token_granular(self) -> None:
         prepared = _prepare(two_atom_facts("C", "O", BondOrder.DOUBLE))
-        frontier = initial_writer_frontier(
+        cursor = initial_writer_frontier_cursor(
             prepared,
             _writer_options(rooted_at_atom=0),
         )
 
-        first = writer_frontier_choices(prepared, frontier).choices[0]
+        first = writer_frontier_choices(prepared, cursor).choices[0]
         second = writer_frontier_choices(prepared, first.successor).choices[0]
         third = writer_frontier_choices(prepared, second.successor).choices[0]
         support = enumerate_prepared_stereo_support(
@@ -167,12 +217,12 @@ class WriterStateKernelTest(unittest.TestCase):
 
     def test_triple_bond_child_entry_is_token_granular(self) -> None:
         prepared = _prepare(two_atom_facts("C", "C", BondOrder.TRIPLE))
-        frontier = initial_writer_frontier(
+        cursor = initial_writer_frontier_cursor(
             prepared,
             _writer_options(rooted_at_atom=0),
         )
 
-        first = writer_frontier_choices(prepared, frontier).choices[0]
+        first = writer_frontier_choices(prepared, cursor).choices[0]
         second = writer_frontier_choices(prepared, first.successor).choices[0]
         third = writer_frontier_choices(prepared, second.successor).choices[0]
 
@@ -189,6 +239,21 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         self.assertEqual(support.strings, ("C.O",))
+
+    def test_writer_cursor_after_cc_exposes_weighted_terminal(self) -> None:
+        prepared = _prepare(chain_facts(("C", "C")))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        first = writer_frontier_choices(prepared, cursor).choices[0]
+        second = writer_frontier_choices(prepared, first.successor).choices[0]
+
+        choices = writer_frontier_choices(prepared, second.successor)
+
+        self.assertIsNotNone(choices.terminal)
+        assert choices.terminal is not None
+        self.assertEqual(choices.terminal.support_count, 1)
+        self.assertEqual(choices.terminal.completion_count, 2)
+        self.assertEqual(choices.terminal.multiplicity, 2)
+        self.assertEqual(choices.choices, ())
 
     def test_writer_root_restricts_initial_frontier_without_plan_route(self) -> None:
         prepared = _prepare(cco_facts())
@@ -244,7 +309,14 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertNotIn("rendered", fields)
         self.assertNotIn("prefix", fields)
         self.assertNotIn("suffix", fields)
-        key = next(iter(initial_writer_frontier(_prepare(cco_facts()), _writer_options()).states))
+        key = next(
+            iter(
+                initial_writer_frontier(
+                    _prepare(cco_facts()),
+                    _writer_options(),
+                ).states
+            )
+        )
         self.assertIsInstance(key, WriterStateKey)
         self.assertEqual(writer_state_key(writer_state_from_key(key)), key)
 

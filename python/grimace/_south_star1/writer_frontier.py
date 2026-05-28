@@ -36,9 +36,45 @@ class WriterFrontierState:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterFrontierCursor:
+    weighted_states: tuple[tuple[WriterStateKey, int], ...]
+
+    def __post_init__(self) -> None:
+        merged: Counter[WriterStateKey] = Counter()
+        for key, weight in self.weighted_states:
+            if weight < 0:
+                raise ValueError("writer frontier cursor weights must be nonnegative")
+            if weight:
+                merged[key] += weight
+        object.__setattr__(
+            self,
+            "weighted_states",
+            tuple(
+                sorted(
+                    merged.items(),
+                    key=lambda item: repr(item[0]),
+                )
+            ),
+        )
+
+    @property
+    def support_state(self) -> WriterFrontierState:
+        return WriterFrontierState(
+            states=frozenset(key for key, _ in self.weighted_states)
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WriterFrontierTerminal:
+    support_count: int
+    completion_count: int
+    multiplicity: int
+
+
+@dataclass(frozen=True, slots=True)
 class WriterFrontierChoice:
     emitted_text: str
-    successor: WriterFrontierState
+    successor: WriterFrontierCursor
     immediate_multiplicity: int
     support_count: int | None = None
     completion_count: int | None = None
@@ -46,13 +82,13 @@ class WriterFrontierChoice:
 
 @dataclass(frozen=True, slots=True)
 class WriterFrontierChoices:
-    eos_available: bool
+    terminal: WriterFrontierTerminal | None
     choices: tuple[WriterFrontierChoice, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class _GroupedWriterFrontierTransitions:
-    eos_available: bool
+    terminal_weight: int
     grouped_by_text: dict[str, set[WriterStateKey]]
     weighted_by_text: dict[str, Counter[WriterStateKey]]
 
@@ -61,6 +97,16 @@ def initial_writer_frontier(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ) -> WriterFrontierState:
+    return initial_writer_frontier_cursor(
+        prepared,
+        runtime_options,
+    ).support_state
+
+
+def initial_writer_frontier_cursor(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterFrontierCursor:
     from .prepared_runtime import require_writer_shaped_runtime_options
     from .prepared_runtime import runtime_root_atom_for_prepared
 
@@ -68,48 +114,57 @@ def initial_writer_frontier(
     runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
     validate_writer_supported_prepared(prepared)
     root_domains = _root_domains_for_runtime(prepared, runtime_options)
-    states = []
+    weighted_states = []
     for roots in product(*(atoms for _, atoms in root_domains)):
         root_tuple = tuple(roots)
         if not root_tuple:
             continue
-        states.append(
-            writer_state_key(
-                WriterState(
-                    component_cursor=ComponentCursor(
-                        component_index=0,
-                        component_roots=root_tuple,
-                    ),
-                    active=WriterAtomFrame(
-                        atom=root_tuple[0],
-                        parent=None,
-                        incoming_bond=None,
-                        atom_emitted=False,
-                    ),
-                    branch_stack=(),
-                    visited_atoms=frozenset(),
-                    written_bonds=frozenset(),
-                    obligations=ObligationState(),
-                    ring_state=WriterRingState(),
-                    stereo_state=WriterStereoState(),
-                    policy_state=WriterPolicyState(),
-                )
+        weighted_states.append(
+            (
+                writer_state_key(
+                    WriterState(
+                        component_cursor=ComponentCursor(
+                            component_index=0,
+                            component_roots=root_tuple,
+                        ),
+                        active=WriterAtomFrame(
+                            atom=root_tuple[0],
+                            parent=None,
+                            incoming_bond=None,
+                            atom_emitted=False,
+                        ),
+                        branch_stack=(),
+                        visited_atoms=frozenset(),
+                        written_bonds=frozenset(),
+                        obligations=ObligationState(),
+                        ring_state=WriterRingState(),
+                        stereo_state=WriterStereoState(),
+                        policy_state=WriterPolicyState(),
+                    )
+                ),
+                1,
             )
         )
-    return WriterFrontierState(states=frozenset(states))
+    return WriterFrontierCursor(weighted_states=tuple(weighted_states))
+
+
+def _cursor_from_support_state(frontier: WriterFrontierState) -> WriterFrontierCursor:
+    return WriterFrontierCursor(
+        weighted_states=tuple((key, 1) for key in frontier.states)
+    )
 
 
 def writer_frontier_choices(
     prepared: SouthStarPreparedMol,
-    frontier: WriterFrontierState,
+    cursor: WriterFrontierCursor,
 ) -> WriterFrontierChoices:
-    grouped = _group_writer_frontier_transitions(prepared, frontier)
+    grouped = _group_writer_frontier_transitions(prepared, cursor)
     support_memo: dict[WriterFrontierState, int] = {}
     completion_memo: dict[WriterStateKey, int] = {}
     choices = []
     for text in sorted(grouped.grouped_by_text):
-        successor = WriterFrontierState(
-            states=frozenset(grouped.grouped_by_text[text])
+        successor = WriterFrontierCursor(
+            weighted_states=tuple(grouped.weighted_by_text[text].items())
         )
         weighted_successors = grouped.weighted_by_text[text]
         choices.append(
@@ -119,7 +174,7 @@ def writer_frontier_choices(
                 immediate_multiplicity=sum(weighted_successors.values()),
                 support_count=_count_writer_frontier_support(
                     prepared,
-                    successor,
+                    successor.support_state,
                     support_memo,
                 ),
                 completion_count=_count_weighted_successor_completions(
@@ -129,29 +184,55 @@ def writer_frontier_choices(
                 ),
             )
         )
+    terminal = None
+    if grouped.terminal_weight:
+        terminal = WriterFrontierTerminal(
+            support_count=1,
+            completion_count=grouped.terminal_weight,
+            multiplicity=grouped.terminal_weight,
+        )
     return WriterFrontierChoices(
-        eos_available=grouped.eos_available,
+        terminal=terminal,
         choices=tuple(choices),
+    )
+
+
+def writer_frontier_successors(
+    prepared: SouthStarPreparedMol,
+    cursor: WriterFrontierCursor,
+) -> tuple[tuple[str, WriterFrontierCursor], ...]:
+    grouped = _group_writer_frontier_transitions(prepared, cursor)
+    return tuple(
+        (
+            text,
+            WriterFrontierCursor(
+                weighted_states=tuple(grouped.weighted_by_text[text].items())
+            ),
+        )
+        for text in sorted(grouped.grouped_by_text)
     )
 
 
 def _group_writer_frontier_transitions(
     prepared: SouthStarPreparedMol,
-    frontier: WriterFrontierState,
+    cursor: WriterFrontierCursor,
 ) -> _GroupedWriterFrontierTransitions:
     grouped: dict[str, set[WriterStateKey]] = {}
     weighted: dict[str, Counter[WriterStateKey]] = {}
-    eos_available = False
-    for key in frontier.states:
+    terminal_weight = 0
+    for key, parent_weight in cursor.weighted_states:
         state = writer_state_from_key(key)
         if writer_state_is_eos(prepared, state):
-            eos_available = True
+            terminal_weight += parent_weight
         for transition in legal_writer_transitions(prepared, state):
             successor_key = writer_state_key(transition.successor)
             grouped.setdefault(transition.emitted_text, set()).add(successor_key)
-            weighted.setdefault(transition.emitted_text, Counter())[successor_key] += 1
+            weighted.setdefault(
+                transition.emitted_text,
+                Counter(),
+            )[successor_key] += parent_weight
     return _GroupedWriterFrontierTransitions(
-        eos_available=eos_available,
+        terminal_weight=terminal_weight,
         grouped_by_text=grouped,
         weighted_by_text=weighted,
     )
@@ -172,8 +253,11 @@ def _count_writer_frontier_support(
     cached = memo.get(frontier)
     if cached is not None:
         return cached
-    grouped = _group_writer_frontier_transitions(prepared, frontier)
-    total = 1 if grouped.eos_available else 0
+    grouped = _group_writer_frontier_transitions(
+        prepared,
+        _cursor_from_support_state(frontier),
+    )
+    total = 1 if grouped.terminal_weight else 0
     for text, successor_keys in grouped.grouped_by_text.items():
         successor = WriterFrontierState(states=frozenset(successor_keys))
         total += _count_writer_frontier_support(prepared, successor, memo)
@@ -181,15 +265,25 @@ def _count_writer_frontier_support(
     return total
 
 
-def count_writer_witness_completions(
+def count_writer_cursor_completions(
     prepared: SouthStarPreparedMol,
-    frontier: WriterFrontierState,
+    cursor: WriterFrontierCursor,
 ) -> int:
     memo: dict[WriterStateKey, int] = {}
 
     return sum(
-        _count_writer_state_completions(prepared, key, memo)
-        for key in frontier.states
+        weight * _count_writer_state_completions(prepared, key, memo)
+        for key, weight in cursor.weighted_states
+    )
+
+
+def count_writer_witness_completions(
+    prepared: SouthStarPreparedMol,
+    frontier: WriterFrontierState,
+) -> int:
+    return count_writer_cursor_completions(
+        prepared,
+        _cursor_from_support_state(frontier),
     )
 
 
@@ -226,16 +320,16 @@ def _count_writer_state_completions(
 
 def iter_writer_frontier_support(
     prepared: SouthStarPreparedMol,
-    frontier: WriterFrontierState,
+    cursor: WriterFrontierCursor,
 ) -> Iterator[str]:
-    def rec(current: WriterFrontierState, prefix: str) -> Iterator[str]:
-        choices = writer_frontier_choices(prepared, current)
-        if choices.eos_available:
+    def rec(current: WriterFrontierCursor, prefix: str) -> Iterator[str]:
+        grouped = _group_writer_frontier_transitions(prepared, current)
+        if grouped.terminal_weight:
             yield prefix
-        for choice in choices.choices:
-            yield from rec(choice.successor, prefix + choice.emitted_text)
+        for text, successor in writer_frontier_successors(prepared, current):
+            yield from rec(successor, prefix + text)
 
-    yield from rec(frontier, "")
+    yield from rec(cursor, "")
 
 
 def _root_domains_for_runtime(
@@ -257,10 +351,15 @@ def _root_domains_for_runtime(
 __all__ = (
     "WriterFrontierChoice",
     "WriterFrontierChoices",
+    "WriterFrontierCursor",
     "WriterFrontierState",
+    "WriterFrontierTerminal",
+    "count_writer_cursor_completions",
     "count_writer_frontier_support",
     "count_writer_witness_completions",
     "initial_writer_frontier",
+    "initial_writer_frontier_cursor",
     "iter_writer_frontier_support",
     "writer_frontier_choices",
+    "writer_frontier_successors",
 )

@@ -121,6 +121,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices.terminal.support_count, 1)
         self.assertEqual(choices.terminal.completion_count, 3)
         self.assertEqual(choices.terminal.multiplicity, 3)
+        self.assertEqual(
+            sum(weight for _, weight in choices.terminal.finalized_cursor.weighted_states),
+            3,
+        )
         self.assertEqual(choices.choices, ())
 
     def test_writer_support_image_keeps_witness_count_separate(self) -> None:
@@ -159,9 +163,6 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             "grimace._south_star1.writer_frontier.writer_frontier_choices",
             side_effect=AssertionError("streaming used counted choices"),
-        ), patch(
-            "grimace._south_star1.writer_frontier.writer_frontier_successors",
-            side_effect=AssertionError("streaming used public successor helper"),
         ), patch(
             "grimace._south_star1.writer_frontier.count_writer_frontier_support",
             side_effect=AssertionError("streaming computed support count"),
@@ -253,6 +254,10 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertEqual(choices.terminal.support_count, 1)
         self.assertEqual(choices.terminal.completion_count, 2)
         self.assertEqual(choices.terminal.multiplicity, 2)
+        self.assertEqual(
+            sum(weight for _, weight in choices.terminal.finalized_cursor.weighted_states),
+            2,
+        )
         self.assertEqual(choices.choices, ())
 
     def test_writer_root_restricts_initial_frontier_without_plan_route(self) -> None:
@@ -323,8 +328,10 @@ class WriterStateKernelTest(unittest.TestCase):
     def test_writer_frontier_cursor_api_deletes_unweighted_entry_points(self) -> None:
         self.assertFalse(hasattr(writer_frontier_module, "initial_writer_frontier"))
         self.assertFalse(hasattr(writer_frontier_module, "count_writer_witness_completions"))
+        self.assertFalse(hasattr(writer_frontier_module, "writer_frontier_successors"))
         self.assertNotIn("initial_writer_frontier", writer_frontier_module.__all__)
         self.assertNotIn("count_writer_witness_completions", writer_frontier_module.__all__)
+        self.assertNotIn("writer_frontier_successors", writer_frontier_module.__all__)
 
     def test_writer_frontier_cursor_uses_structural_key_ordering(self) -> None:
         cursor = initial_writer_frontier_cursor(

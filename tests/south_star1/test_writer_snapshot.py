@@ -15,11 +15,13 @@ from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
+from grimace._south_star1.writer_snapshot import WriterFrontierFrame
 from grimace._south_star1.writer_snapshot import WriterStereoResidualFrame
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
 from grimace._south_star1.writer_snapshot import validate_writer_search_snapshot
 from grimace._south_star1.writer_snapshot import writer_frontier_cursor_from_snapshot
+from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import tetrahedral_facts
 
@@ -60,20 +62,14 @@ class WriterSnapshotTest(unittest.TestCase):
         after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
         after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
         key = after_center.weighted_states[0][0]
-        residual_frame = WriterStereoResidualFrame(
-            key.stereo_state.residual_snapshot,
-        )
         snapshot = capture_writer_frontier_snapshot(
             prepared=prepared,
             runtime_options=options,
             cursor=after_center,
         )
-        snapshot = replace(
-            snapshot,
-            frame_stack=snapshot.frame_stack + (residual_frame,),
-        )
 
         validate_writer_search_snapshot(snapshot, prepared=prepared)
+        self.assertNotEqual(key.stereo_state.residual_snapshot.domains, ())
         self.assertEqual(
             writer_frontier_cursor_from_snapshot(snapshot, prepared=prepared),
             after_center,
@@ -96,6 +92,24 @@ class WriterSnapshotTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             validate_writer_search_snapshot(tampered, prepared=prepared)
 
+    def test_structural_prepared_identity_mismatch_is_rejected(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        changed_facts = replace(
+            cco_facts(),
+            atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
+        )
+        changed_prepared = _prepare(changed_facts)
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(snapshot, prepared=changed_prepared)
+
     def test_unknown_frame_payload_is_rejected(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options()
@@ -106,6 +120,45 @@ class WriterSnapshotTest(unittest.TestCase):
             cursor=cursor,
         )
         tampered = replace(snapshot, frame_stack=snapshot.frame_stack + (object(),))
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(tampered, prepared=prepared)
+
+    def test_extra_valid_frame_payload_is_rejected_until_stack_resume_exists(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+        after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
+        key = after_center.weighted_states[0][0]
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=after_center,
+        )
+        tampered = replace(
+            snapshot,
+            frame_stack=snapshot.frame_stack
+            + (WriterStereoResidualFrame(key.stereo_state.residual_snapshot),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(tampered, prepared=prepared)
+
+    def test_frontier_frame_cursor_must_match_snapshot_cursor(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        choices = writer_frontier_choices(prepared, cursor)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        tampered = replace(
+            snapshot,
+            frame_stack=(WriterFrontierFrame(choices.choices[0].successor),),
+        )
 
         with self.assertRaises(SouthStarError):
             validate_writer_search_snapshot(tampered, prepared=prepared)

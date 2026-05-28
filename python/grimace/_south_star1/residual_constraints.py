@@ -87,13 +87,15 @@ class ResidualStore:
         self._domains[var] = domain
 
     def add_factor(self, factor: ResidualFactor) -> int:
+        for var in factor.scope:
+            if var not in self._domains:
+                raise ValueError(f"factor references unknown variable: {var!r}")
         factor_id = len(self._factors)
         self._factors.append(factor)
         self._factor_by_id[factor_id] = factor
         for var in factor.scope:
-            if var not in self._domains:
-                raise ValueError(f"factor references unknown variable: {var!r}")
             self._factors_by_var.setdefault(var, []).append(factor)
+        self._trail.append(("factor_add", factor_id, factor))
         return factor_id
 
     def assign(self, var: VarId, value: object) -> bool:
@@ -131,6 +133,10 @@ class ResidualStore:
             if entry[0] == "factor":
                 _, factor, token = entry
                 factor.rollback(token)
+                continue
+            if entry[0] == "factor_add":
+                _, factor_id, factor = entry
+                _remove_factor(self, factor, factor_id)
                 continue
             raise AssertionError(f"unknown residual trail entry: {entry!r}")
 
@@ -184,8 +190,7 @@ class ResidualStore:
 
 
 def add_factor_checked(store: ResidualStore, factor: ResidualFactor) -> bool:
-    factor_token = factor.checkpoint()
-    factor_id = len(store._factors)
+    checkpoint = store.checkpoint()
     try:
         store.add_factor(factor)
         for var in factor.scope:
@@ -193,24 +198,24 @@ def add_factor_checked(store: ResidualStore, factor: ResidualFactor) -> bool:
             if assigned is _UNASSIGNED:
                 continue
             if not factor.assign(var, assigned):
-                _remove_checked_factor(store, factor, factor_id, factor_token)
+                store.rollback(checkpoint)
                 return False
         return True
     except Exception:
-        _remove_checked_factor(store, factor, factor_id, factor_token)
+        store.rollback(checkpoint)
         raise
 
 
-def _remove_checked_factor(
+def _remove_factor(
     store: ResidualStore,
     factor: ResidualFactor,
     factor_id: int,
-    factor_token: object,
 ) -> None:
-    factor.rollback(factor_token)
     if factor_id in store._factor_by_id:
         del store._factor_by_id[factor_id]
-    if factor in store._factors:
+    if factor_id == len(store._factors) - 1 and store._factors[factor_id] is factor:
+        store._factors.pop()
+    elif factor in store._factors:
         store._factors.remove(factor)
     for var in factor.scope:
         factors = store._factors_by_var.get(var)

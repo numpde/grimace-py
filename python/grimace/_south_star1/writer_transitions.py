@@ -415,22 +415,33 @@ def writer_state_is_eos(
     prepared: SouthStarPreparedMol,
     state: WriterState,
 ) -> bool:
+    return finalize_writer_terminal_state(prepared, state) is not None
+
+
+def finalize_writer_terminal_state(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> WriterState | None:
     if state.active is None:
-        return True
+        return state
     if state.obligations.pending_entry is not None or state.branch_stack:
-        return False
+        return None
     if not state.active.atom_emitted:
-        return False
+        return None
     if _child_obligations(prepared, state, state.active.atom):
-        return False
+        return None
     if state.component_cursor.component_index + 1 < len(
         state.component_cursor.component_roots
     ):
-        return False
-    return (
-        terminal_writer_stereo_state(prepared, state.stereo_state, state.active.atom)
-        is not None
+        return None
+    stereo_state = terminal_writer_stereo_state(
+        prepared,
+        state.stereo_state,
+        state.active.atom,
     )
+    if stereo_state is None:
+        return None
+    return replace(state, stereo_state=stereo_state)
 
 
 def _transition(
@@ -532,6 +543,7 @@ __all__ = (
     "WriterTransition",
     "WriterTransitionEvidence",
     "WriterTransitionKind",
+    "finalize_writer_terminal_state",
     "legal_writer_transitions",
     "validate_writer_supported_prepared",
     "writer_state_is_eos",

@@ -21,9 +21,14 @@ from .writer_stereo import WriterDelayedStereoFactor
 
 @dataclass(frozen=True, slots=True)
 class WriterPreparedIdentity:
-    atom_ids: tuple[int, ...]
-    component_ids: tuple[int, ...]
-    bond_ids: tuple[int, ...]
+    runtime: tuple[object, ...]
+    atoms: tuple[tuple[object, ...], ...]
+    bonds: tuple[tuple[object, ...], ...]
+    components: tuple[tuple[object, ...], ...]
+    ligand_occurrences: tuple[tuple[object, ...], ...]
+    tetra_templates: tuple[tuple[object, ...], ...]
+    directional_templates: tuple[tuple[object, ...], ...]
+    policy: tuple[object, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +84,7 @@ def capture_writer_frontier_snapshot(
     require_writer_shaped_runtime_options(runtime_options)
     snapshot = WriterSearchSnapshot(
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
-        prepared_identity=_prepared_identity(prepared),
+        prepared_identity=_prepared_identity(prepared, runtime_options),
         runtime_options=runtime_options,
         cursor=cursor,
         decoder_boundary=decoder_boundary,
@@ -118,7 +123,10 @@ def validate_writer_search_snapshot(
             "writer snapshot requires serialization_language=WRITER_SHAPED",
         )
     require_writer_shaped_runtime_options(snapshot.runtime_options)
-    if snapshot.prepared_identity != _prepared_identity(prepared):
+    if snapshot.prepared_identity != _prepared_identity(
+        prepared,
+        snapshot.runtime_options,
+    ):
         raise SouthStarError(
             SouthStarErrorKind.INVALID_FACTS,
             "writer snapshot prepared identity does not match prepared molecule",
@@ -128,41 +136,29 @@ def validate_writer_search_snapshot(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer snapshot cursor is not canonical",
         )
-    _validate_frames(snapshot.frame_stack)
+    _validate_frames(snapshot.frame_stack, snapshot.cursor)
     _validate_cursor_residual_snapshots(snapshot.cursor)
 
 
-def _validate_frames(frame_stack: tuple[object, ...]) -> None:
-    if not frame_stack:
+def _validate_frames(
+    frame_stack: tuple[object, ...],
+    cursor: WriterFrontierCursor,
+) -> None:
+    if len(frame_stack) != 1:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer snapshot frame stack must include a frontier frame",
+            "writer snapshot currently requires exactly one frontier frame",
         )
-    has_frontier = False
-    for frame in frame_stack:
-        if isinstance(frame, WriterFrontierFrame):
-            has_frontier = True
-            continue
-        if isinstance(frame, WriterTransitionFrame):
-            if not frame.events:
-                raise SouthStarError(
-                    SouthStarErrorKind.INTERNAL_INVARIANT,
-                    "writer transition snapshot frame must carry events",
-                )
-            continue
-        if isinstance(frame, WriterStereoResidualFrame):
-            _round_trip_residual_snapshot(frame.residual_snapshot)
-            continue
-        if isinstance(frame, WriterDelayedFactorFrame):
-            continue
+    frame = frame_stack[0]
+    if not isinstance(frame, WriterFrontierFrame):
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
-            f"unknown writer snapshot frame payload: {type(frame).__name__}",
+            "writer snapshot top frame must be a frontier frame",
         )
-    if not has_frontier:
+    if frame.cursor != cursor:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer snapshot cannot contain only context frames",
+            "writer snapshot frontier frame cursor must match snapshot cursor",
         )
 
 
@@ -180,11 +176,117 @@ def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
         )
 
 
-def _prepared_identity(prepared: SouthStarPreparedMol) -> WriterPreparedIdentity:
+def _prepared_identity(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterPreparedIdentity:
     return WriterPreparedIdentity(
-        atom_ids=tuple(int(atom) for atom in prepared.atom_ids),
-        component_ids=tuple(int(component) for component in prepared.component_ids),
-        bond_ids=tuple(int(bond.id) for bond in prepared.facts.bonds),
+        runtime=(
+            runtime_options.serialization_language.value,
+            runtime_options.rooted_at_atom,
+            runtime_options.canonical,
+            runtime_options.do_random,
+        ),
+        atoms=tuple(
+            (
+                int(atom.id),
+                atom.atomic_num,
+                atom.symbol,
+                atom.isotope,
+                atom.formal_charge,
+                atom.is_aromatic,
+                atom.explicit_h_count,
+                atom.implicit_h_count,
+                atom.no_implicit,
+            )
+            for atom in prepared.facts.atoms
+        ),
+        bonds=tuple(
+            (
+                int(bond.id),
+                int(bond.a),
+                int(bond.b),
+                bond.order.value,
+                bond.is_aromatic,
+                bond.is_conjugated,
+            )
+            for bond in prepared.facts.bonds
+        ),
+        components=tuple(
+            (
+                int(component.id),
+                tuple(int(atom) for atom in component.atoms),
+                tuple(int(bond) for bond in component.bonds),
+            )
+            for component in prepared.facts.components
+        ),
+        ligand_occurrences=tuple(
+            (
+                int(occurrence.id),
+                int(occurrence.site),
+                occurrence.kind.value,
+                None if occurrence.atom is None else int(occurrence.atom),
+                None if occurrence.bond is None else int(occurrence.bond),
+                occurrence.ordinal,
+            )
+            for occurrence in prepared.facts.ligand_occurrences
+        ),
+        tetra_templates=tuple(
+            (
+                int(template.site),
+                int(template.center),
+                template.status.value,
+                template.target.value,
+                tuple(int(item) for item in template.reference_order),
+                tuple(int(item) for item in template.ligand_occurrences),
+            )
+            for template in prepared.tetra_templates
+        ),
+        directional_templates=tuple(
+            (
+                int(template.site),
+                int(template.center_bond),
+                int(template.left_endpoint),
+                int(template.right_endpoint),
+                template.status.value,
+                template.target.value,
+                tuple(int(item) for item in template.left_ligands),
+                tuple(int(item) for item in template.right_ligands),
+                None
+                if template.reference_pair is None
+                else tuple(int(item) for item in template.reference_pair),
+            )
+            for template in prepared.directional_templates
+        ),
+        policy=(
+            tuple(int(label.value) for label in prepared.policy.ring_labels),
+            prepared.policy.annotation_mode.value,
+            prepared.policy.least_free_ring_labels,
+            tuple(
+                (
+                    int(domain.atom),
+                    tuple(
+                        (
+                            choice.name,
+                            tuple((token.value, text) for token, text in choice.text_by_tetra),
+                        )
+                        for choice in domain.choices
+                    ),
+                )
+                for domain in prepared.policy.atom_text_domains
+            ),
+            tuple(
+                (
+                    int(domain.bond),
+                    domain.slot_kind,
+                    tuple(
+                        (choice.name, choice.base_text, choice.permits_direction)
+                        for choice in domain.choices
+                    ),
+                )
+                for domain in prepared.policy.bond_text_domains
+            ),
+        ),
     )
 
 

@@ -311,7 +311,11 @@ Every writer transition emits typed semantic events; those events update a
 writer-owned residual stereo snapshot that is part of the canonical writer
 state key. Support counting, EOS evidence, next emitted-text choices,
 completion counts, cursor snapshots, and support streaming all route through
-the same determinized weighted frontier. Cyclic traversal, ring endpoint
+the same determinized weighted frontier. EOS is represented by finalized
+terminal cursor evidence, so terminal local-order and residual stereo closure
+are persisted rather than recomputed as a discarded viability check. Writer
+snapshots currently use a strict single-frontier-frame shape and validate a
+structural prepared identity before resume. Cyclic traversal, ring endpoint
 emission, ring-pair stereo factors, residual suffix storage, RDKit parity, and
 exhaustive traversal fallback still fail closed in `writer_shaped`.
 

@@ -22,9 +22,9 @@ from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
 from .writer_stereo import empty_writer_stereo_state
+from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import legal_writer_transitions
 from .writer_transitions import validate_writer_supported_prepared
-from .writer_transitions import writer_state_is_eos
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
@@ -70,6 +70,7 @@ class WriterFrontierTerminal:
     support_count: int
     completion_count: int
     multiplicity: int
+    finalized_cursor: WriterFrontierCursor
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +90,7 @@ class WriterFrontierChoices:
 
 @dataclass(frozen=True, slots=True)
 class _GroupedWriterFrontierTransitions:
-    terminal_weight: int
+    terminal_by_key: Counter[WriterStateKey]
     grouped_by_text: dict[str, set[WriterStateKey]]
     weighted_by_text: dict[str, Counter[WriterStateKey]]
 
@@ -180,11 +181,16 @@ def writer_frontier_choices(
             )
         )
     terminal = None
-    if grouped.terminal_weight:
+    if grouped.terminal_by_key:
+        finalized_cursor = WriterFrontierCursor(
+            weighted_states=tuple(grouped.terminal_by_key.items())
+        )
+        terminal_weight = sum(grouped.terminal_by_key.values())
         terminal = WriterFrontierTerminal(
             support_count=1,
-            completion_count=grouped.terminal_weight,
-            multiplicity=grouped.terminal_weight,
+            completion_count=terminal_weight,
+            multiplicity=terminal_weight,
+            finalized_cursor=finalized_cursor,
         )
     return WriterFrontierChoices(
         terminal=terminal,
@@ -192,7 +198,7 @@ def writer_frontier_choices(
     )
 
 
-def writer_frontier_successors(
+def _writer_frontier_raw_successors_for_streaming(
     prepared: SouthStarPreparedMol,
     cursor: WriterFrontierCursor,
 ) -> tuple[tuple[str, WriterFrontierCursor], ...]:
@@ -220,11 +226,12 @@ def _group_writer_frontier_transitions(
 ) -> _GroupedWriterFrontierTransitions:
     grouped: dict[str, set[WriterStateKey]] = {}
     weighted: dict[str, Counter[WriterStateKey]] = {}
-    terminal_weight = 0
+    terminal_by_key: Counter[WriterStateKey] = Counter()
     for key, parent_weight in cursor.weighted_states:
         state = writer_state_from_key(key)
-        if writer_state_is_eos(prepared, state):
-            terminal_weight += parent_weight
+        finalized = finalize_writer_terminal_state(prepared, state)
+        if finalized is not None:
+            terminal_by_key[writer_state_key(finalized)] += parent_weight
         for transition in legal_writer_transitions(prepared, state):
             successor_key = writer_state_key(transition.successor)
             grouped.setdefault(transition.emitted_text, set()).add(successor_key)
@@ -233,7 +240,7 @@ def _group_writer_frontier_transitions(
                 Counter(),
             )[successor_key] += parent_weight
     return _GroupedWriterFrontierTransitions(
-        terminal_weight=terminal_weight,
+        terminal_by_key=terminal_by_key,
         grouped_by_text=grouped,
         weighted_by_text=weighted,
     )
@@ -258,7 +265,7 @@ def _count_writer_frontier_support(
         prepared,
         _cursor_from_support_state(frontier),
     )
-    total = 1 if grouped.terminal_weight else 0
+    total = 1 if grouped.terminal_by_key else 0
     for text, successor_keys in grouped.grouped_by_text.items():
         successor = WriterFrontierState(states=frozenset(successor_keys))
         total += _count_writer_frontier_support(prepared, successor, memo)
@@ -298,7 +305,7 @@ def _count_writer_state_completions(
     if cached is not None:
         return cached
     state = writer_state_from_key(key)
-    total = 1 if writer_state_is_eos(prepared, state) else 0
+    total = 1 if finalize_writer_terminal_state(prepared, state) is not None else 0
     for transition in legal_writer_transitions(prepared, state):
         total += _count_writer_state_completions(
             prepared,
@@ -315,7 +322,7 @@ def iter_writer_frontier_support(
 ) -> Iterator[str]:
     def rec(current: WriterFrontierCursor, prefix: str) -> Iterator[str]:
         grouped = _group_writer_frontier_transitions(prepared, current)
-        if grouped.terminal_weight:
+        if grouped.terminal_by_key:
             yield prefix
         for text, successor in _successors_from_grouped(grouped):
             yield from rec(successor, prefix + text)
@@ -350,5 +357,4 @@ __all__ = (
     "initial_writer_frontier_cursor",
     "iter_writer_frontier_support",
     "writer_frontier_choices",
-    "writer_frontier_successors",
 )

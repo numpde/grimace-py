@@ -69,6 +69,8 @@ class WriterLocalOrderRecord:
 class WriterDelayedStereoFactor:
     kind: Literal["tetra", "directional"]
     site: SiteId
+    scope: tuple[VarId, ...] = ()
+    evidence: tuple[tuple[str, int], ...] = ()
     closed: bool = False
 
 
@@ -252,12 +254,23 @@ def _on_atom_emitted(
     )
     template = _tetra_template_by_center(prepared).get(event.atom)
     var = None
+    delayed = stereo_state.delayed_factors
     if template is not None:
         var = tetra_var(("writer", int(template.site)))
         if store.assignment(var) is None:
             store.add_var(var, _tetra_domain(template))
         if not store.assign(var, event.tetra_token):
             return None
+        delayed = _mark_factor_pending(
+            delayed,
+            WriterDelayedStereoFactor(
+                kind="tetra",
+                site=template.site,
+                scope=(var,),
+                evidence=(("atom", int(event.atom)),),
+                closed=False,
+            ),
+        )
     elif event.tetra_token is not TetraToken.NONE:
         return None
     return WriterStereoState(
@@ -266,7 +279,7 @@ def _on_atom_emitted(
         + (WriterAtomOccurrenceRecord(event.atom, event.tetra_token, var),),
         bond_occurrences=stereo_state.bond_occurrences,
         local_orders=local_orders,
-        delayed_factors=stereo_state.delayed_factors,
+        delayed_factors=delayed,
     )
 
 
@@ -280,12 +293,23 @@ def _on_bond_emitted(
     store = ResidualStore.from_value_snapshot(stereo_state.residual_snapshot)
     eligible = _directional_sites_for_carrier_bond(prepared, event.bond)
     var = None
+    delayed = stereo_state.delayed_factors
     if eligible:
         var = direction_var(("writer", int(event.bond)))
         if store.assignment(var) is None:
             store.add_var(var, _direction_domain(prepared, eligible))
         if not store.assign(var, event.direction_mark):
             return None
+        for site in eligible:
+            delayed = _mark_factor_pending(
+                delayed,
+                _updated_directional_pending(
+                    delayed,
+                    site=site,
+                    var=var,
+                    bond=event.bond,
+                ),
+            )
     elif event.direction_mark is not DirectionMark.ABSENT:
         return None
     next_state = WriterStereoState(
@@ -302,7 +326,7 @@ def _on_bond_emitted(
             ),
         ),
         local_orders=stereo_state.local_orders,
-        delayed_factors=stereo_state.delayed_factors,
+        delayed_factors=delayed,
     )
     return _close_ready_directional_factors(prepared, next_state)
 
@@ -339,7 +363,13 @@ def _on_local_order_closed(
             return None
         delayed = _mark_factor_closed(
             delayed,
-            WriterDelayedStereoFactor("tetra", template.site, closed=True),
+            WriterDelayedStereoFactor(
+                kind="tetra",
+                site=template.site,
+                scope=(var,),
+                evidence=(("atom", int(atom)),),
+                closed=True,
+            ),
         )
     return WriterStereoState(
         residual_snapshot=store.value_snapshot(),
@@ -379,7 +409,18 @@ def _close_ready_directional_factors(
             return None
         delayed = _mark_factor_closed(
             delayed,
-            WriterDelayedStereoFactor("directional", template.site, closed=True),
+            WriterDelayedStereoFactor(
+                kind="directional",
+                site=template.site,
+                scope=tuple(sorted(models, key=_var_sort_tuple)),
+                evidence=tuple(
+                    sorted(
+                        ("bond", int(bond))
+                        for bond in carrier_bonds
+                    )
+                ),
+                closed=True,
+            ),
         )
         changed = True
     if not changed:
@@ -676,6 +717,50 @@ def _mark_factor_closed(
     return tuple(sorted(out + (replacement,), key=_delayed_factor_sort_tuple))
 
 
+def _mark_factor_pending(
+    factors: tuple[WriterDelayedStereoFactor, ...],
+    replacement: WriterDelayedStereoFactor,
+) -> tuple[WriterDelayedStereoFactor, ...]:
+    if _factor_already_closed(factors, replacement.kind, replacement.site):
+        return factors
+    out = tuple(
+        factor
+        for factor in factors
+        if not (factor.kind == replacement.kind and factor.site == replacement.site)
+    )
+    return tuple(sorted(out + (replacement,), key=_delayed_factor_sort_tuple))
+
+
+def _updated_directional_pending(
+    factors: tuple[WriterDelayedStereoFactor, ...],
+    *,
+    site: SiteId,
+    var: VarId,
+    bond: BondId,
+) -> WriterDelayedStereoFactor:
+    existing = next(
+        (
+            factor
+            for factor in factors
+            if factor.kind == "directional" and factor.site == site
+        ),
+        None,
+    )
+    scope = (var,) if existing is None else existing.scope + (var,)
+    evidence = (
+        (("bond", int(bond)),)
+        if existing is None
+        else existing.evidence + (("bond", int(bond)),)
+    )
+    return WriterDelayedStereoFactor(
+        kind="directional",
+        site=site,
+        scope=tuple(sorted(set(scope), key=_var_sort_tuple)),
+        evidence=tuple(sorted(set(evidence))),
+        closed=False,
+    )
+
+
 def _factor_already_closed(
     factors: tuple[WriterDelayedStereoFactor, ...],
     kind: Literal["tetra", "directional"],
@@ -777,7 +862,13 @@ def _local_order_sort_tuple(record: WriterLocalOrderRecord) -> tuple[object, ...
 
 
 def _delayed_factor_sort_tuple(factor: WriterDelayedStereoFactor) -> tuple[object, ...]:
-    return (factor.kind, int(factor.site), factor.closed)
+    return (
+        factor.kind,
+        int(factor.site),
+        tuple(_var_sort_tuple(var) for var in factor.scope),
+        factor.evidence,
+        factor.closed,
+    )
 
 
 __all__ = (

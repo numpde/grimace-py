@@ -2,23 +2,44 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unittest
 
+from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import LigandKind
+from grimace._south_star1.facts import LigandOccurrence
+from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import enumerate_prepared_stereo_support
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.policy import AnnotationMode
+from grimace._south_star1.policy import AtomTextChoice
+from grimace._south_star1.policy import AtomTextDomain
+from grimace._south_star1.policy import BondTextChoice
+from grimace._south_star1.policy import BondTextDomain
+from grimace._south_star1.policy import RingLabel
+from grimace._south_star1.policy import SmilesPolicy
 from grimace._south_star1.residual_constraints import ResidualStore
 from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import add_factor_checked
 from grimace._south_star1.residual_constraints import tetra_var
 from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import StereoFacts
 from grimace._south_star1.facts import TetraValue
+from grimace._south_star1.facts import TetrahedralSiteFacts
+from grimace._south_star1.ids import AtomId
+from grimace._south_star1.ids import BondId
+from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
+from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
 
 
@@ -53,6 +74,9 @@ class WriterStereoResidualTest(unittest.TestCase):
             ),
             (("[C@@H]", 1, 1), ("[C@H]", 1, 1)),
         )
+        successor_key = choices.choices[0].successor.weighted_states[0][0]
+        pending = successor_key.stereo_state.delayed_factors
+        self.assertTrue(any(factor.kind == "tetra" and not factor.closed for factor in pending))
 
     def test_directional_stereo_prunes_invalid_carrier_marks(self) -> None:
         prepared = _prepare(directional_facts())
@@ -82,6 +106,46 @@ class WriterStereoResidualTest(unittest.TestCase):
             tuple(choice.completion_count for choice in choices.choices),
             (1, 1),
         )
+        successor_key = choices.choices[0].successor.weighted_states[0][0]
+        pending = successor_key.stereo_state.delayed_factors
+        self.assertTrue(
+            any(factor.kind == "directional" and not factor.closed for factor in pending)
+        )
+
+    def test_terminal_eos_persists_final_stereo_closure(self) -> None:
+        facts = terminal_tetra_center_facts()
+        prepared = prepare_south_star_mol_from_facts(
+            facts,
+            writer_surface=SouthStarWriterSurface(),
+            policy=terminal_tetra_center_policy(),
+        )
+        cursor = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+        center_choice = writer_frontier_choices(prepared, after_f).choices[0]
+        pre_terminal_key = center_choice.successor.weighted_states[0][0]
+        self.assertEqual(pre_terminal_key.stereo_state.residual_snapshot.factors, ())
+        self.assertTrue(
+            any(
+                factor.kind == "tetra" and not factor.closed
+                for factor in pre_terminal_key.stereo_state.delayed_factors
+            )
+        )
+
+        terminal = writer_frontier_choices(prepared, center_choice.successor).terminal
+
+        self.assertIsNotNone(terminal)
+        assert terminal is not None
+        finalized_key = terminal.finalized_cursor.weighted_states[0][0]
+        self.assertEqual(len(finalized_key.stereo_state.residual_snapshot.factors), 1)
+        self.assertTrue(
+            any(
+                factor.kind == "tetra" and factor.closed
+                for factor in finalized_key.stereo_state.delayed_factors
+            )
+        )
 
     def test_add_factor_checked_rolls_back_rejected_factor(self) -> None:
         store = ResidualStore()
@@ -103,6 +167,26 @@ class WriterStereoResidualTest(unittest.TestCase):
             store.value_snapshot(),
         )
 
+    def test_add_factor_checked_accepted_factor_rolls_back_to_checkpoint(self) -> None:
+        store = ResidualStore()
+        var = tetra_var(("test", 1))
+        store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
+        self.assertTrue(store.assign(var, TetraToken.AT))
+        checkpoint = store.checkpoint()
+        factor = TetraResidualFactor(
+            scope=(var,),
+            status=SiteStatus.SPECIFIED,
+            target=TetraValue.PLUS,
+            reference_order=(0, 1, 2, 3),
+            local_order=(0, 1, 2, 3),
+        )
+
+        self.assertTrue(add_factor_checked(store, factor))
+        self.assertEqual(len(store.value_snapshot().factors), 1)
+        store.rollback(checkpoint)
+
+        self.assertEqual(store.value_snapshot().factors, ())
+
 
 def _prepare(facts):
     return prepare_south_star_mol_from_facts(
@@ -115,6 +199,98 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+    )
+
+
+def terminal_tetra_center_facts() -> MoleculeFacts:
+    site = SiteId(0)
+    return MoleculeFacts(
+        atoms=(
+            atom(0, "F"),
+            replace(atom(1, "C"), implicit_h_count=3),
+        ),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+        stereo=StereoFacts(
+            tetrahedral=(
+                TetrahedralSiteFacts(
+                    id=site,
+                    center=AtomId(1),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    ligand_occurrences=tuple(OccurrenceId(index) for index in range(4)),
+                    reference_order=tuple(OccurrenceId(index) for index in range(4)),
+                ),
+            ),
+        ),
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=site,
+                kind=LigandKind.NEIGHBOR_ATOM,
+                atom=AtomId(0),
+                bond=BondId(0),
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(1),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(1),
+                bond=None,
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(2),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(1),
+                bond=None,
+            ),
+            LigandOccurrence(
+                id=OccurrenceId(3),
+                site=site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(1),
+                bond=None,
+            ),
+        ),
+    )
+
+
+def terminal_tetra_center_policy() -> SmilesPolicy:
+    return SmilesPolicy(
+        ring_labels=(RingLabel(1),),
+        annotation_mode=AnnotationMode.HARD,
+        atom_text_domains=(
+            AtomTextDomain(
+                atom=AtomId(0),
+                choices=(AtomTextChoice("fluorine", ((TetraToken.NONE, "F"),)),),
+            ),
+            AtomTextDomain(
+                atom=AtomId(1),
+                choices=(
+                    AtomTextChoice(
+                        "terminal_tetra_carbon",
+                        (
+                            (TetraToken.AT, "[C@H3]"),
+                            (TetraToken.ATAT, "[C@@H3]"),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        bond_text_domains=(
+            BondTextDomain(
+                bond=BondId(0),
+                slot_kind="tree",
+                choices=(BondTextChoice("single_elided", "", False),),
+            ),
+        ),
     )
 
 

@@ -315,7 +315,11 @@ the same determinized weighted frontier. EOS is represented by finalized
 terminal cursor evidence, so terminal local-order and residual stereo closure
 are persisted rather than recomputed as a discarded viability check. Writer
 snapshots currently use a strict single-frontier-frame shape and validate a
-structural prepared identity before resume. Cyclic traversal, ring endpoint
+structural prepared identity before resume. Snapshot validation also audits
+each retained writer state against the prepared graph, runtime root domains,
+empty pre-cyclic ring state, local-order occurrence records, delayed stereo
+factor records, and residual-store factor snapshots before exposing a resumed
+cursor. Cyclic traversal, ring endpoint
 emission, ring-pair stereo factors, residual suffix storage, RDKit parity, and
 exhaustive traversal fallback still fail closed in `writer_shaped`.
 

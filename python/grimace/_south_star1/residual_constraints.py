@@ -90,12 +90,13 @@ class ResidualStore:
         for var in factor.scope:
             if var not in self._domains:
                 raise ValueError(f"factor references unknown variable: {var!r}")
+        factor_token = factor.checkpoint()
         factor_id = len(self._factors)
         self._factors.append(factor)
         self._factor_by_id[factor_id] = factor
         for var in factor.scope:
             self._factors_by_var.setdefault(var, []).append(factor)
-        self._trail.append(("factor_add", factor_id, factor))
+        self._trail.append(("factor_add", factor_id, factor, factor_token))
         return factor_id
 
     def assign(self, var: VarId, value: object) -> bool:
@@ -135,7 +136,8 @@ class ResidualStore:
                 factor.rollback(token)
                 continue
             if entry[0] == "factor_add":
-                _, factor_id, factor = entry
+                _, factor_id, factor, factor_token = entry
+                factor.rollback(factor_token)
                 _remove_factor(self, factor, factor_id)
                 continue
             raise AssertionError(f"unknown residual trail entry: {entry!r}")

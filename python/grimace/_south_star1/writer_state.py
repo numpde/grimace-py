@@ -182,6 +182,64 @@ def writer_state_from_key(key: WriterStateKey) -> WriterState:
     )
 
 
+def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
+    if key.ring_state.open_endpoints or key.ring_state.active_spines:
+        raise AssertionError(
+            "writer_state_key_sort_tuple must be extended before nonempty ring state"
+        )
+    if key.stereo_state.residual_key is not EMPTY_WRITER_STEREO_KEY:
+        raise AssertionError(
+            "writer_state_key_sort_tuple must be extended before nonempty stereo state"
+        )
+    return (
+        int(key.component_cursor.component_index),
+        tuple(int(atom) for atom in key.component_cursor.component_roots),
+        _atom_frame_sort_tuple(key.active),
+        tuple(_branch_frame_sort_tuple(frame) for frame in key.branch_stack),
+        tuple(sorted(int(atom) for atom in key.visited_atoms)),
+        tuple(sorted(int(bond) for bond in key.written_bonds)),
+        _obligation_sort_tuple(key.obligations),
+        (
+            tuple(sorted(int(bond) for bond in key.ring_state.closed_bonds)),
+        ),
+        ("empty_stereo",),
+        (
+            tuple((int(atom), text) for atom, text in key.policy_state.atom_text),
+            tuple((int(bond), text) for bond, text in key.policy_state.bond_text),
+        ),
+    )
+
+
+def _atom_frame_sort_tuple(frame: WriterAtomFrame | None) -> tuple[object, ...]:
+    if frame is None:
+        return ("none",)
+    return (
+        "atom",
+        int(frame.atom),
+        None if frame.parent is None else int(frame.parent),
+        None if frame.incoming_bond is None else int(frame.incoming_bond),
+        bool(frame.atom_emitted),
+    )
+
+
+def _branch_frame_sort_tuple(frame: WriterBranchFrame) -> tuple[object, ...]:
+    return (_atom_frame_sort_tuple(frame.return_atom),)
+
+
+def _obligation_sort_tuple(obligations: ObligationStateKey) -> tuple[object, ...]:
+    pending = obligations.pending_entry
+    if pending is None:
+        return ("none",)
+    return (
+        "pending",
+        int(pending.parent),
+        int(pending.child),
+        int(pending.bond),
+        bool(pending.branch),
+        pending.phase.value,
+    )
+
+
 __all__ = (
     "ComponentCursor",
     "EMPTY_WRITER_STEREO_KEY",
@@ -204,4 +262,5 @@ __all__ = (
     "WriterStereoState",
     "writer_state_from_key",
     "writer_state_key",
+    "writer_state_key_sort_tuple",
 )

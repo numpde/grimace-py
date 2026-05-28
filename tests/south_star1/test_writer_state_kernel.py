@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import inspect
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import grimace._south_star1.writer_frontier as writer_frontier_module
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
@@ -30,8 +32,6 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
-from grimace._south_star1.writer_frontier import count_writer_witness_completions
-from grimace._south_star1.writer_frontier import initial_writer_frontier
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
@@ -39,6 +39,7 @@ from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import WriterStateKey
 from grimace._south_star1.writer_state import writer_state_from_key
 from grimace._south_star1.writer_state import writer_state_key
+from grimace._south_star1.writer_state import writer_state_key_sort_tuple
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
@@ -140,10 +141,6 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(count_writer_frontier_support(prepared, cursor.support_state), 2)
         self.assertEqual(count_writer_cursor_completions(prepared, cursor), 4)
-        self.assertEqual(
-            count_writer_witness_completions(prepared, cursor.support_state),
-            4,
-        )
 
     def test_writer_support_count_does_not_call_streaming_support(self) -> None:
         prepared = _prepare(cco_facts())
@@ -162,6 +159,9 @@ class WriterStateKernelTest(unittest.TestCase):
         with patch(
             "grimace._south_star1.writer_frontier.writer_frontier_choices",
             side_effect=AssertionError("streaming used counted choices"),
+        ), patch(
+            "grimace._south_star1.writer_frontier.writer_frontier_successors",
+            side_effect=AssertionError("streaming used public successor helper"),
         ), patch(
             "grimace._south_star1.writer_frontier.count_writer_frontier_support",
             side_effect=AssertionError("streaming computed support count"),
@@ -311,28 +311,53 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertNotIn("suffix", fields)
         key = next(
             iter(
-                initial_writer_frontier(
+                initial_writer_frontier_cursor(
                     _prepare(cco_facts()),
                     _writer_options(),
-                ).states
+                ).support_state.states
             )
         )
         self.assertIsInstance(key, WriterStateKey)
         self.assertEqual(writer_state_key(writer_state_from_key(key)), key)
 
-    def test_initial_writer_frontier_rejects_exhaustive_options(self) -> None:
+    def test_writer_frontier_cursor_api_deletes_unweighted_entry_points(self) -> None:
+        self.assertFalse(hasattr(writer_frontier_module, "initial_writer_frontier"))
+        self.assertFalse(hasattr(writer_frontier_module, "count_writer_witness_completions"))
+        self.assertNotIn("initial_writer_frontier", writer_frontier_module.__all__)
+        self.assertNotIn("count_writer_witness_completions", writer_frontier_module.__all__)
+
+    def test_writer_frontier_cursor_uses_structural_key_ordering(self) -> None:
+        cursor = initial_writer_frontier_cursor(
+            _prepare(cco_facts()),
+            _writer_options(),
+        )
+        keys = tuple(key for key, _ in reversed(cursor.weighted_states))
+        reordered = WriterFrontierCursor(
+            weighted_states=tuple((key, 1) for key in keys),
+        )
+
+        self.assertEqual(
+            tuple(key for key, _ in reordered.weighted_states),
+            tuple(sorted(keys, key=writer_state_key_sort_tuple)),
+        )
+        self.assertNotIn(
+            "repr(",
+            inspect.getsource(WriterFrontierCursor.__post_init__),
+        )
+
+    def test_initial_writer_frontier_cursor_rejects_exhaustive_options(self) -> None:
         prepared = _prepare(cco_facts())
 
         with self.assertRaises(SouthStarError) as caught:
-            initial_writer_frontier(prepared, SouthStarRuntimeOptions())
+            initial_writer_frontier_cursor(prepared, SouthStarRuntimeOptions())
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
-    def test_initial_writer_frontier_invalid_root_raises_typed_error(self) -> None:
+    def test_initial_writer_frontier_cursor_invalid_root_raises_typed_error(self) -> None:
         prepared = _prepare(cco_facts())
 
         with self.assertRaises(SouthStarError) as caught:
-            initial_writer_frontier(prepared, _writer_options(rooted_at_atom=99))
+            initial_writer_frontier_cursor(prepared, _writer_options(rooted_at_atom=99))
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.INVALID_FACTS)
 

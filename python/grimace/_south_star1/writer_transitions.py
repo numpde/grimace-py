@@ -9,10 +9,8 @@ from typing import TYPE_CHECKING
 
 from .errors import SouthStarError
 from .errors import SouthStarErrorKind
-from .facts import MoleculeFacts
 from .ids import AtomId
 from .ids import BondId
-from .policy import TetraToken
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -20,6 +18,20 @@ from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
 from .writer_state import WriterState
+from .writer_events import WriterAtomEmitted
+from .writer_events import WriterBondEmitted
+from .writer_events import WriterBranchClosed
+from .writer_events import WriterBranchOpened
+from .writer_events import WriterComponentBoundaryEmitted
+from .writer_events import WriterEvent
+from .writer_events import WriterLocalOrderClosed
+from .writer_stereo import WriterAtomTextChoice
+from .writer_stereo import WriterBondTextChoice
+from .writer_stereo import advance_writer_stereo_state
+from .writer_stereo import terminal_writer_stereo_state
+from .writer_stereo import validate_writer_stereo_supported_prepared
+from .writer_stereo import writer_atom_text_choices
+from .writer_stereo import writer_bond_text_choices
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
@@ -48,11 +60,14 @@ class WriterTransition:
     emitted_text: str
     successor: WriterState
     kind: WriterTransitionKind
+    events: tuple[WriterEvent, ...]
     evidence: WriterTransitionEvidence
 
     def __post_init__(self) -> None:
         if not self.emitted_text:
             raise ValueError("writer transitions must emit nonempty text")
+        if not self.events:
+            raise ValueError("writer transitions must carry semantic events")
 
 
 def legal_writer_transitions(
@@ -70,7 +85,7 @@ def legal_writer_transitions(
 
     children = _child_obligations(prepared, state, active.atom)
     if not children:
-        return _finish_active_transitions(state)
+        return _finish_active_transitions(prepared, state)
     if len(children) == 1:
         bond, child = children[0]
         return _enter_child_transitions(
@@ -85,8 +100,11 @@ def legal_writer_transitions(
             kind=WriterTransitionKind.ENTER_INLINE_CHILD,
         )
 
-    return tuple(
-        WriterTransition(
+    transitions = []
+    for bond, child in children:
+        transition = _transition(
+            prepared,
+            state,
             emitted_text="(",
             successor=replace(
                 state,
@@ -100,14 +118,22 @@ def legal_writer_transitions(
                 ),
             ),
             kind=WriterTransitionKind.OPEN_BRANCH,
+            events=(
+                WriterBranchOpened(
+                    parent=active.atom,
+                    child=child,
+                    bond=bond,
+                ),
+            ),
             evidence=WriterTransitionEvidence(
                 bond=bond,
                 parent=active.atom,
                 child=child,
             ),
         )
-        for bond, child in children
-    )
+        if transition is not None:
+            transitions.append(transition)
+    return tuple(transitions)
 
 
 def _root_atom_transitions(
@@ -115,19 +141,30 @@ def _root_atom_transitions(
     state: WriterState,
     active: WriterAtomFrame,
 ) -> tuple[WriterTransition, ...]:
-    return tuple(
-        WriterTransition(
-            emitted_text=text,
+    transitions = []
+    for choice in writer_atom_text_choices(prepared, active.atom):
+        transition = _transition(
+            prepared,
+            state,
+            emitted_text=choice.text,
             successor=replace(
                 state,
                 active=replace(active, atom_emitted=True),
                 visited_atoms=frozenset((*state.visited_atoms, active.atom)),
             ),
             kind=WriterTransitionKind.ATOM,
+            events=(
+                WriterAtomEmitted(
+                    atom=active.atom,
+                    text=choice.text,
+                    tetra_token=choice.tetra_token,
+                ),
+            ),
             evidence=WriterTransitionEvidence(atom=active.atom),
         )
-        for text in _atom_texts(prepared, active.atom)
-    )
+        if transition is not None:
+            transitions.append(transition)
+    return tuple(transitions)
 
 
 def _pending_entry_transitions(
@@ -171,40 +208,53 @@ def _enter_child_transitions(
         branch_stack = (*branch_stack, WriterBranchFrame(return_atom=parent_frame))
 
     transitions: list[WriterTransition] = []
-    for bond_text in _writer_bond_texts(prepared, pending.bond):
-        if bond_text:
-            transitions.append(
-                WriterTransition(
-                    emitted_text=bond_text,
-                    successor=replace(
-                        state,
-                        obligations=ObligationState(
-                            pending_entry=replace(
-                                pending,
-                                phase=PendingEntryPhase.NEEDS_ATOM_AFTER_BOND,
-                            )
-                        ),
+    for bond_choice in writer_bond_text_choices(prepared, pending.bond):
+        if bond_choice.text:
+            transition = _transition(
+                prepared,
+                state,
+                emitted_text=bond_choice.text,
+                successor=replace(
+                    state,
+                    obligations=ObligationState(
+                        pending_entry=replace(
+                            pending,
+                            phase=PendingEntryPhase.NEEDS_ATOM_AFTER_BOND,
+                        )
                     ),
-                    kind=WriterTransitionKind.ENTER_CHILD_BOND,
-                    evidence=WriterTransitionEvidence(
+                ),
+                kind=WriterTransitionKind.ENTER_CHILD_BOND,
+                events=(
+                    WriterBondEmitted(
                         bond=pending.bond,
                         parent=pending.parent,
                         child=pending.child,
+                        text=bond_choice.text,
+                        direction_mark=bond_choice.direction_mark,
                     ),
-                )
+                ),
+                evidence=WriterTransitionEvidence(
+                    bond=pending.bond,
+                    parent=pending.parent,
+                    child=pending.child,
+                ),
             )
+            if transition is not None:
+                transitions.append(transition)
             continue
-        for atom_text in _atom_texts(prepared, pending.child):
-            transitions.append(
-                _enter_child_atom_transition(
-                    state,
-                    pending,
-                    atom_text=atom_text,
-                    child_frame=child_frame,
-                    branch_stack=branch_stack,
-                    kind=kind,
-                )
+        for atom_choice in writer_atom_text_choices(prepared, pending.child):
+            transition = _enter_child_atom_transition(
+                prepared,
+                state,
+                pending,
+                atom_choice=atom_choice,
+                bond_choice=bond_choice,
+                child_frame=child_frame,
+                branch_stack=branch_stack,
+                kind=kind,
             )
+            if transition is not None:
+                transitions.append(transition)
     return tuple(transitions)
 
 
@@ -230,30 +280,60 @@ def _enter_child_atom_transitions(
     branch_stack = state.branch_stack
     if pending.branch:
         branch_stack = (*branch_stack, WriterBranchFrame(return_atom=parent_frame))
-    return tuple(
-        _enter_child_atom_transition(
+    transitions = []
+    for atom_choice in writer_atom_text_choices(prepared, pending.child):
+        transition = _enter_child_atom_transition(
+            prepared,
             state,
             pending,
-            atom_text=atom_text,
+            atom_choice=atom_choice,
+            bond_choice=None,
             child_frame=child_frame,
             branch_stack=branch_stack,
             kind=kind,
         )
-        for atom_text in _atom_texts(prepared, pending.child)
-    )
+        if transition is not None:
+            transitions.append(transition)
+    return tuple(transitions)
 
 
 def _enter_child_atom_transition(
+    prepared: SouthStarPreparedMol,
     state: WriterState,
     pending: PendingWriterEntry,
     *,
-    atom_text: str,
+    atom_choice: WriterAtomTextChoice,
+    bond_choice: WriterBondTextChoice | None,
     child_frame: WriterAtomFrame,
     branch_stack: tuple[WriterBranchFrame, ...],
     kind: WriterTransitionKind,
-) -> WriterTransition:
-    return WriterTransition(
-        emitted_text=atom_text,
+) -> WriterTransition | None:
+    events: list[WriterEvent] = []
+    if bond_choice is not None:
+        events.append(
+            WriterBondEmitted(
+                bond=pending.bond,
+                parent=pending.parent,
+                child=pending.child,
+                text=bond_choice.text,
+                direction_mark=bond_choice.direction_mark,
+            )
+        )
+    events.append(
+        WriterAtomEmitted(
+            atom=pending.child,
+            text=atom_choice.text,
+            tetra_token=atom_choice.tetra_token,
+            parent=pending.parent,
+            incoming_bond=pending.bond,
+        )
+    )
+    if not pending.branch and _is_final_child_for_parent(prepared, state, pending):
+        events.append(WriterLocalOrderClosed(atom=pending.parent))
+    return _transition(
+        prepared,
+        state,
+        emitted_text=atom_choice.text,
         successor=replace(
             state,
             active=child_frame,
@@ -263,6 +343,7 @@ def _enter_child_atom_transition(
             obligations=ObligationState(),
         ),
         kind=kind,
+        events=tuple(events),
         evidence=WriterTransitionEvidence(
             atom=pending.child,
             bond=pending.bond,
@@ -272,46 +353,62 @@ def _enter_child_atom_transition(
     )
 
 
-def _finish_active_transitions(state: WriterState) -> tuple[WriterTransition, ...]:
+def _finish_active_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> tuple[WriterTransition, ...]:
+    active_atom = state.active.atom if state.active else None
+    if active_atom is None:
+        return ()
     if state.branch_stack:
         frame = state.branch_stack[-1]
-        return (
-            WriterTransition(
-                emitted_text=")",
-                successor=replace(
-                    state,
-                    active=frame.return_atom,
-                    branch_stack=state.branch_stack[:-1],
-                ),
-                kind=WriterTransitionKind.CLOSE_BRANCH,
-                evidence=WriterTransitionEvidence(atom=state.active.atom if state.active else None),
+        transition = _transition(
+            prepared,
+            state,
+            emitted_text=")",
+            successor=replace(
+                state,
+                active=frame.return_atom,
+                branch_stack=state.branch_stack[:-1],
             ),
+            kind=WriterTransitionKind.CLOSE_BRANCH,
+            events=(
+                WriterLocalOrderClosed(atom=active_atom),
+                WriterBranchClosed(atom=active_atom),
+            ),
+            evidence=WriterTransitionEvidence(atom=active_atom),
         )
+        return (() if transition is None else (transition,))
 
     next_component_index = state.component_cursor.component_index + 1
     if next_component_index >= len(state.component_cursor.component_roots):
         return ()
     root = state.component_cursor.component_roots[next_component_index]
-    return (
-        WriterTransition(
-            emitted_text=".",
-            successor=replace(
-                state,
-                component_cursor=ComponentCursor(
-                    component_index=next_component_index,
-                    component_roots=state.component_cursor.component_roots,
-                ),
-                active=WriterAtomFrame(
-                    atom=root,
-                    parent=None,
-                    incoming_bond=None,
-                    atom_emitted=False,
-                ),
+    transition = _transition(
+        prepared,
+        state,
+        emitted_text=".",
+        successor=replace(
+            state,
+            component_cursor=ComponentCursor(
+                component_index=next_component_index,
+                component_roots=state.component_cursor.component_roots,
             ),
-            kind=WriterTransitionKind.DOT,
-            evidence=WriterTransitionEvidence(atom=root),
+            active=WriterAtomFrame(
+                atom=root,
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=False,
+            ),
         ),
+        kind=WriterTransitionKind.DOT,
+        events=(
+            WriterLocalOrderClosed(atom=active_atom),
+            WriterComponentBoundaryEmitted(next_root=root),
+        ),
+        evidence=WriterTransitionEvidence(atom=root),
     )
+    return (() if transition is None else (transition,))
 
 
 def writer_state_is_eos(
@@ -324,24 +421,47 @@ def writer_state_is_eos(
         return False
     if not state.active.atom_emitted:
         return False
+    if _child_obligations(prepared, state, state.active.atom):
+        return False
+    if state.component_cursor.component_index + 1 < len(
+        state.component_cursor.component_roots
+    ):
+        return False
     return (
-        not _child_obligations(prepared, state, state.active.atom)
-        and state.component_cursor.component_index + 1
-        >= len(state.component_cursor.component_roots)
+        terminal_writer_stereo_state(prepared, state.stereo_state, state.active.atom)
+        is not None
+    )
+
+
+def _transition(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    *,
+    emitted_text: str,
+    successor: WriterState,
+    kind: WriterTransitionKind,
+    events: tuple[WriterEvent, ...],
+    evidence: WriterTransitionEvidence,
+) -> WriterTransition | None:
+    stereo_state = advance_writer_stereo_state(
+        prepared,
+        state.stereo_state,
+        events,
+    )
+    if stereo_state is None:
+        return None
+    return WriterTransition(
+        emitted_text=emitted_text,
+        successor=replace(successor, stereo_state=stereo_state),
+        kind=kind,
+        events=events,
+        evidence=evidence,
     )
 
 
 def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
-    _reject_stereo(prepared.facts)
     _reject_non_tree_components(prepared)
-
-
-def _reject_stereo(facts: MoleculeFacts) -> None:
-    if facts.stereo.tetrahedral or facts.stereo.directional or facts.ligand_occurrences:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_STEREO,
-            "WRITER_SHAPED writer-state MVP does not support stereo facts yet",
-        )
+    validate_writer_stereo_supported_prepared(prepared)
 
 
 def _reject_non_tree_components(prepared: SouthStarPreparedMol) -> None:
@@ -399,37 +519,13 @@ def _child_obligations_from_facts(
     return tuple(children)
 
 
-def _atom_texts(prepared: SouthStarPreparedMol, atom: AtomId) -> tuple[str, ...]:
-    texts = []
-    for choice in prepared.policy.atom_text_domain_unchecked(atom):
-        if choice.permits(TetraToken.NONE):
-            texts.append(choice.render(TetraToken.NONE))
-    if not texts:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            f"WRITER_SHAPED has no non-stereo atom text for {atom!r}",
-        )
-    return tuple(texts)
-
-
-def _writer_bond_texts(prepared: SouthStarPreparedMol, bond: BondId) -> tuple[str, ...]:
-    try:
-        choices = prepared.policy.bond_text_domain_unchecked(
-            bond,
-            slot_kind="tree",
-        )
-    except KeyError as exc:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            f"WRITER_SHAPED has no acyclic writer bond text for {bond!r}",
-        ) from exc
-    texts = tuple(choice.base_text for choice in choices)
-    if not texts:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            f"WRITER_SHAPED has empty acyclic writer bond text domain for {bond!r}",
-        )
-    return texts
+def _is_final_child_for_parent(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    pending: PendingWriterEntry,
+) -> bool:
+    children = _child_obligations(prepared, state, pending.parent)
+    return children == ((pending.bond, pending.child),)
 
 
 __all__ = (

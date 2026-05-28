@@ -176,7 +176,7 @@ class PreparedRuntimeTest(unittest.TestCase):
         self.assertEqual(online.support_count, offline.distinct_count)
         self.assertEqual(online.witness_completion_count, offline.witness_count)
 
-    def test_prepared_writer_shaped_support_fails_closed_before_skeleton_route(
+    def test_prepared_writer_shaped_support_bypasses_skeleton_route(
         self,
     ) -> None:
         prepared = prepare_south_star_mol_from_facts(
@@ -188,15 +188,16 @@ class PreparedRuntimeTest(unittest.TestCase):
             "grimace._south_star1.skeleton.enumerate_traversal_skeletons",
             side_effect=AssertionError("writer-shaped called skeleton route"),
         ):
-            with self.assertRaises(SouthStarError):
-                enumerate_prepared_stereo_support(
-                    prepared=prepared,
-                    runtime_options=SouthStarRuntimeOptions(
-                        serialization_language=(
-                            SerializationLanguageMode.WRITER_SHAPED
-                        ),
+            support = enumerate_prepared_stereo_support(
+                prepared=prepared,
+                runtime_options=SouthStarRuntimeOptions(
+                    serialization_language=(
+                        SerializationLanguageMode.WRITER_SHAPED
                     ),
-                )
+                ),
+            )
+
+        self.assertGreater(support.distinct_count, 0)
 
     def test_rooted_support_equivalent_across_execution_modes(self) -> None:
         prepared = prepare_south_star_mol_from_facts(

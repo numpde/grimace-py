@@ -18,10 +18,10 @@ from .writer_state import WriterPolicyState
 from .writer_state import WriterRingState
 from .writer_state import WriterState
 from .writer_state import WriterStateKey
-from .writer_state import WriterStereoState
 from .writer_state import writer_state_from_key
 from .writer_state import writer_state_key
 from .writer_state import writer_state_key_sort_tuple
+from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import legal_writer_transitions
 from .writer_transitions import validate_writer_supported_prepared
 from .writer_transitions import writer_state_is_eos
@@ -129,7 +129,7 @@ def initial_writer_frontier_cursor(
                         written_bonds=frozenset(),
                         obligations=ObligationState(),
                         ring_state=WriterRingState(),
-                        stereo_state=WriterStereoState(),
+                        stereo_state=empty_writer_stereo_state(),
                         policy_state=WriterPolicyState(),
                     )
                 ),
@@ -158,21 +158,25 @@ def writer_frontier_choices(
             weighted_states=tuple(grouped.weighted_by_text[text].items())
         )
         weighted_successors = grouped.weighted_by_text[text]
+        support_count = _count_writer_frontier_support(
+            prepared,
+            successor.support_state,
+            support_memo,
+        )
+        completion_count = _count_weighted_successor_completions(
+            prepared,
+            weighted_successors,
+            completion_memo,
+        )
+        if support_count == 0 and completion_count == 0:
+            continue
         choices.append(
             WriterFrontierChoice(
                 emitted_text=text,
                 successor=successor,
                 immediate_multiplicity=sum(weighted_successors.values()),
-                support_count=_count_writer_frontier_support(
-                    prepared,
-                    successor.support_state,
-                    support_memo,
-                ),
-                completion_count=_count_weighted_successor_completions(
-                    prepared,
-                    weighted_successors,
-                    completion_memo,
-                ),
+                support_count=support_count,
+                completion_count=completion_count,
             )
         )
     terminal = None

@@ -183,6 +183,44 @@ class ResidualStore:
         return store
 
 
+def add_factor_checked(store: ResidualStore, factor: ResidualFactor) -> bool:
+    factor_token = factor.checkpoint()
+    factor_id = len(store._factors)
+    try:
+        store.add_factor(factor)
+        for var in factor.scope:
+            assigned = store._assignments.get(var, _UNASSIGNED)
+            if assigned is _UNASSIGNED:
+                continue
+            if not factor.assign(var, assigned):
+                _remove_checked_factor(store, factor, factor_id, factor_token)
+                return False
+        return True
+    except Exception:
+        _remove_checked_factor(store, factor, factor_id, factor_token)
+        raise
+
+
+def _remove_checked_factor(
+    store: ResidualStore,
+    factor: ResidualFactor,
+    factor_id: int,
+    factor_token: object,
+) -> None:
+    factor.rollback(factor_token)
+    if factor_id in store._factor_by_id:
+        del store._factor_by_id[factor_id]
+    if factor in store._factors:
+        store._factors.remove(factor)
+    for var in factor.scope:
+        factors = store._factors_by_var.get(var)
+        if factors is None:
+            continue
+        store._factors_by_var[var] = [item for item in factors if item is not factor]
+        if not store._factors_by_var[var]:
+            del store._factors_by_var[var]
+
+
 @dataclass(frozen=True, slots=True)
 class TetraResidualFactor:
     scope: tuple[VarId, ...]
@@ -416,6 +454,7 @@ __all__ = (
     "TetraResidualFactor",
     "TetraResidualFactorValueSnapshot",
     "VarId",
+    "add_factor_checked",
     "direction_var",
     "tetra_var",
 )

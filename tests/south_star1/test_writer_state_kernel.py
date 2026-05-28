@@ -290,18 +290,18 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
-    def test_writer_shaped_stereo_fails_closed_before_forbidden_routes(self) -> None:
+    def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):
                 prepared = _prepare(facts)
                 with _forbidden_exhaustive_routes():
-                    with self.assertRaises(SouthStarError) as caught:
-                        enumerate_prepared_stereo_support(
-                            prepared=prepared,
-                            runtime_options=_writer_options(),
-                        )
+                    support = enumerate_prepared_stereo_support(
+                        prepared=prepared,
+                        runtime_options=_writer_options(),
+                    )
 
-                self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+                self.assertGreater(support.distinct_count, 0)
+                self.assertEqual(len(support.strings), support.distinct_count)
 
     def test_writer_state_key_excludes_rendered_payloads(self) -> None:
         fields = set(WriterState.__dataclass_fields__)
@@ -386,9 +386,12 @@ class WriterStateKernelTest(unittest.TestCase):
         }
 
         for module_name in (
+            "writer_events.py",
             "writer_state.py",
             "writer_transitions.py",
             "writer_frontier.py",
+            "writer_stereo.py",
+            "writer_snapshot.py",
             "writer_support.py",
         ):
             with self.subTest(module=module_name):

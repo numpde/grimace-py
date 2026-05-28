@@ -7,6 +7,13 @@ from enum import Enum
 
 from .ids import AtomId
 from .ids import BondId
+from .residual_constraints import ResidualStoreValueSnapshot
+from .writer_stereo import EMPTY_RESIDUAL_SNAPSHOT
+from .writer_stereo import WriterAtomOccurrenceRecord
+from .writer_stereo import WriterBondOccurrenceRecord
+from .writer_stereo import WriterDelayedStereoFactor
+from .writer_stereo import WriterLocalOrderRecord
+from .writer_stereo import writer_stereo_state_sort_tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,16 +72,12 @@ class WriterRingState:
 
 
 @dataclass(frozen=True, slots=True)
-class WriterStereoResidualKey:
-    pass
-
-
-EMPTY_WRITER_STEREO_KEY = WriterStereoResidualKey()
-
-
-@dataclass(frozen=True, slots=True)
 class WriterStereoState:
-    residual_key: WriterStereoResidualKey = EMPTY_WRITER_STEREO_KEY
+    residual_snapshot: ResidualStoreValueSnapshot = EMPTY_RESIDUAL_SNAPSHOT
+    atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...] = ()
+    bond_occurrences: tuple[WriterBondOccurrenceRecord, ...] = ()
+    local_orders: tuple[WriterLocalOrderRecord, ...] = ()
+    delayed_factors: tuple[WriterDelayedStereoFactor, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +113,11 @@ class WriterRingStateKey:
 
 @dataclass(frozen=True, slots=True)
 class WriterStereoStateKey:
-    residual_key: WriterStereoResidualKey = EMPTY_WRITER_STEREO_KEY
+    residual_snapshot: ResidualStoreValueSnapshot = EMPTY_RESIDUAL_SNAPSHOT
+    atom_occurrences: tuple[WriterAtomOccurrenceRecord, ...] = ()
+    bond_occurrences: tuple[WriterBondOccurrenceRecord, ...] = ()
+    local_orders: tuple[WriterLocalOrderRecord, ...] = ()
+    delayed_factors: tuple[WriterDelayedStereoFactor, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +155,11 @@ def writer_state_key(state: WriterState) -> WriterStateKey:
             closed_bonds=state.ring_state.closed_bonds,
         ),
         stereo_state=WriterStereoStateKey(
-            residual_key=state.stereo_state.residual_key,
+            residual_snapshot=state.stereo_state.residual_snapshot,
+            atom_occurrences=state.stereo_state.atom_occurrences,
+            bond_occurrences=state.stereo_state.bond_occurrences,
+            local_orders=state.stereo_state.local_orders,
+            delayed_factors=state.stereo_state.delayed_factors,
         ),
         policy_state=WriterPolicyStateKey(
             atom_text=state.policy_state.atom_text,
@@ -173,7 +184,11 @@ def writer_state_from_key(key: WriterStateKey) -> WriterState:
             closed_bonds=key.ring_state.closed_bonds,
         ),
         stereo_state=WriterStereoState(
-            residual_key=key.stereo_state.residual_key,
+            residual_snapshot=key.stereo_state.residual_snapshot,
+            atom_occurrences=key.stereo_state.atom_occurrences,
+            bond_occurrences=key.stereo_state.bond_occurrences,
+            local_orders=key.stereo_state.local_orders,
+            delayed_factors=key.stereo_state.delayed_factors,
         ),
         policy_state=WriterPolicyState(
             atom_text=key.policy_state.atom_text,
@@ -187,10 +202,6 @@ def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
         raise AssertionError(
             "writer_state_key_sort_tuple must be extended before nonempty ring state"
         )
-    if key.stereo_state.residual_key is not EMPTY_WRITER_STEREO_KEY:
-        raise AssertionError(
-            "writer_state_key_sort_tuple must be extended before nonempty stereo state"
-        )
     return (
         int(key.component_cursor.component_index),
         tuple(int(atom) for atom in key.component_cursor.component_roots),
@@ -202,7 +213,15 @@ def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
         (
             tuple(sorted(int(bond) for bond in key.ring_state.closed_bonds)),
         ),
-        ("empty_stereo",),
+        writer_stereo_state_sort_tuple(
+            WriterStereoState(
+                residual_snapshot=key.stereo_state.residual_snapshot,
+                atom_occurrences=key.stereo_state.atom_occurrences,
+                bond_occurrences=key.stereo_state.bond_occurrences,
+                local_orders=key.stereo_state.local_orders,
+                delayed_factors=key.stereo_state.delayed_factors,
+            )
+        ),
         (
             tuple((int(atom), text) for atom, text in key.policy_state.atom_text),
             tuple((int(bond), text) for bond, text in key.policy_state.bond_text),
@@ -242,7 +261,6 @@ def _obligation_sort_tuple(obligations: ObligationStateKey) -> tuple[object, ...
 
 __all__ = (
     "ComponentCursor",
-    "EMPTY_WRITER_STEREO_KEY",
     "ObligationState",
     "ObligationStateKey",
     "PendingEntryPhase",
@@ -255,7 +273,6 @@ __all__ = (
     "WriterRingSpineFrame",
     "WriterRingStateKey",
     "WriterRingState",
-    "WriterStereoResidualKey",
     "WriterStereoStateKey",
     "WriterState",
     "WriterStateKey",

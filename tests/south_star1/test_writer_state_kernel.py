@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
+from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -27,6 +28,7 @@ from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import writer_state_key
 from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import cyclopropane_facts
 from tests.south_star1.helpers import directional_facts
@@ -115,6 +117,41 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         self.assertEqual(support.strings, ("C(C)O", "C(O)C"))
+
+    def test_double_bond_child_entry_is_token_granular(self) -> None:
+        prepared = _prepare(two_atom_facts("C", "O", BondOrder.DOUBLE))
+        frontier = initial_writer_frontier(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        first = writer_frontier_choices(prepared, frontier).choices[0]
+        second = writer_frontier_choices(prepared, first.successor).choices[0]
+        third = writer_frontier_choices(prepared, second.successor).choices[0]
+        support = enumerate_prepared_stereo_support(
+            prepared=prepared,
+            runtime_options=_writer_options(rooted_at_atom=0),
+        )
+
+        self.assertEqual(first.emitted_text, "C")
+        self.assertEqual(second.emitted_text, "=")
+        self.assertEqual(third.emitted_text, "O")
+        self.assertEqual(support.strings, ("C=O",))
+
+    def test_triple_bond_child_entry_is_token_granular(self) -> None:
+        prepared = _prepare(two_atom_facts("C", "C", BondOrder.TRIPLE))
+        frontier = initial_writer_frontier(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        first = writer_frontier_choices(prepared, frontier).choices[0]
+        second = writer_frontier_choices(prepared, first.successor).choices[0]
+        third = writer_frontier_choices(prepared, second.successor).choices[0]
+
+        self.assertEqual(first.emitted_text, "C")
+        self.assertEqual(second.emitted_text, "#")
+        self.assertEqual(third.emitted_text, "C")
 
     def test_writer_shaped_disconnected_components_emit_dot(self) -> None:
         prepared = _prepare(disconnected_co_facts())
@@ -265,6 +302,24 @@ def disconnected_co_facts() -> MoleculeFacts:
         components=(
             ComponentFacts(id=ComponentId(0), atoms=(AtomId(0),), bonds=()),
             ComponentFacts(id=ComponentId(1), atoms=(AtomId(1),), bonds=()),
+        ),
+    )
+
+
+def two_atom_facts(
+    left: str,
+    right: str,
+    order: BondOrder,
+) -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, left), atom(1, right)),
+        bonds=(bond(0, 0, 1, order),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
         ),
     )
 

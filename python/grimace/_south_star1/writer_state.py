@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from .ids import AtomId
 from .ids import BondId
@@ -27,12 +28,18 @@ class WriterBranchFrame:
     return_atom: WriterAtomFrame
 
 
+class PendingEntryPhase(Enum):
+    NEEDS_BOND_OR_ATOM = "needs_bond_or_atom"
+    NEEDS_ATOM_AFTER_BOND = "needs_atom_after_bond"
+
+
 @dataclass(frozen=True, slots=True)
 class PendingWriterEntry:
     parent: AtomId
     child: AtomId
     bond: BondId
     branch: bool
+    phase: PendingEntryPhase = PendingEntryPhase.NEEDS_BOND_OR_ATOM
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +92,7 @@ def writer_state_from_key(key: WriterStateKey) -> WriterState:
 __all__ = (
     "ComponentCursor",
     "ObligationState",
+    "PendingEntryPhase",
     "PendingWriterEntry",
     "WriterAtomFrame",
     "WriterBranchFrame",

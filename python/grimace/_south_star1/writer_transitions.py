@@ -15,6 +15,7 @@ from .ids import BondId
 from .policy import TetraToken
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
+from .writer_state import PendingEntryPhase
 from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 
 class WriterTransitionKind(Enum):
     ATOM = "atom"
+    ENTER_CHILD_BOND = "enter_child_bond"
     ENTER_INLINE_CHILD = "enter_inline_child"
     OPEN_BRANCH = "open_branch"
     ENTER_BRANCH_CHILD = "enter_branch_child"
@@ -140,6 +142,8 @@ def _pending_entry_transitions(
         if pending.branch
         else WriterTransitionKind.ENTER_INLINE_CHILD
     )
+    if pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+        return _enter_child_atom_transitions(prepared, state, pending, kind=kind)
     return _enter_child_transitions(prepared, state, pending, kind=kind)
 
 
@@ -168,28 +172,104 @@ def _enter_child_transitions(
 
     transitions: list[WriterTransition] = []
     for bond_text in _tree_bond_texts(prepared, pending.bond):
-        for atom_text in _atom_texts(prepared, pending.child):
+        if bond_text:
             transitions.append(
                 WriterTransition(
-                    emitted_text=bond_text + atom_text,
+                    emitted_text=bond_text,
                     successor=replace(
                         state,
-                        active=child_frame,
-                        branch_stack=branch_stack,
-                        visited_atoms=frozenset((*state.visited_atoms, pending.child)),
-                        written_bonds=frozenset((*state.written_bonds, pending.bond)),
-                        obligations=ObligationState(),
+                        obligations=ObligationState(
+                            pending_entry=replace(
+                                pending,
+                                phase=PendingEntryPhase.NEEDS_ATOM_AFTER_BOND,
+                            )
+                        ),
                     ),
-                    kind=kind,
+                    kind=WriterTransitionKind.ENTER_CHILD_BOND,
                     evidence=WriterTransitionEvidence(
-                        atom=pending.child,
                         bond=pending.bond,
                         parent=pending.parent,
                         child=pending.child,
                     ),
                 )
             )
+            continue
+        for atom_text in _atom_texts(prepared, pending.child):
+            transitions.append(
+                _enter_child_atom_transition(
+                    state,
+                    pending,
+                    atom_text=atom_text,
+                    child_frame=child_frame,
+                    branch_stack=branch_stack,
+                    kind=kind,
+                )
+            )
     return tuple(transitions)
+
+
+def _enter_child_atom_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    pending: PendingWriterEntry,
+    *,
+    kind: WriterTransitionKind,
+) -> tuple[WriterTransition, ...]:
+    parent_frame = state.active
+    if parent_frame is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer child atom transition requires an active parent frame",
+        )
+    child_frame = WriterAtomFrame(
+        atom=pending.child,
+        parent=pending.parent,
+        incoming_bond=pending.bond,
+        atom_emitted=True,
+    )
+    branch_stack = state.branch_stack
+    if pending.branch:
+        branch_stack = (*branch_stack, WriterBranchFrame(return_atom=parent_frame))
+    return tuple(
+        _enter_child_atom_transition(
+            state,
+            pending,
+            atom_text=atom_text,
+            child_frame=child_frame,
+            branch_stack=branch_stack,
+            kind=kind,
+        )
+        for atom_text in _atom_texts(prepared, pending.child)
+    )
+
+
+def _enter_child_atom_transition(
+    state: WriterState,
+    pending: PendingWriterEntry,
+    *,
+    atom_text: str,
+    child_frame: WriterAtomFrame,
+    branch_stack: tuple[WriterBranchFrame, ...],
+    kind: WriterTransitionKind,
+) -> WriterTransition:
+    return WriterTransition(
+        emitted_text=atom_text,
+        successor=replace(
+            state,
+            active=child_frame,
+            branch_stack=branch_stack,
+            visited_atoms=frozenset((*state.visited_atoms, pending.child)),
+            written_bonds=frozenset((*state.written_bonds, pending.bond)),
+            obligations=ObligationState(),
+        ),
+        kind=kind,
+        evidence=WriterTransitionEvidence(
+            atom=pending.child,
+            bond=pending.bond,
+            parent=pending.parent,
+            child=pending.child,
+        ),
+    )
 
 
 def _finish_active_transitions(state: WriterState) -> tuple[WriterTransition, ...]:

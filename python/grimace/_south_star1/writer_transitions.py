@@ -333,7 +333,7 @@ def writer_state_is_eos(
 
 def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
     _reject_stereo(prepared.facts)
-    _reject_cyclic_components(prepared.facts)
+    _reject_non_tree_components(prepared)
 
 
 def _reject_stereo(facts: MoleculeFacts) -> None:
@@ -344,12 +344,35 @@ def _reject_stereo(facts: MoleculeFacts) -> None:
         )
 
 
-def _reject_cyclic_components(facts: MoleculeFacts) -> None:
-    for component in facts.components:
-        if len(component.bonds) != len(component.atoms) - 1:
+def _reject_non_tree_components(prepared: SouthStarPreparedMol) -> None:
+    graph = prepared.graph_index
+    for component in prepared.facts.components:
+        component_atoms = frozenset(component.atoms)
+        component_bonds = frozenset(component.bonds)
+        if not component_atoms or len(component_bonds) != len(component_atoms) - 1:
             raise SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_POLICY,
-                "WRITER_SHAPED writer-state MVP supports acyclic components only",
+                "WRITER_SHAPED writer-state MVP supports tree components only",
+            )
+
+        start = component.atoms[0]
+        seen = {start}
+        stack = [start]
+        while stack:
+            atom = stack.pop()
+            for neighbor in graph.neighbors[atom]:
+                if neighbor not in component_atoms:
+                    continue
+                bond = graph.bond_between[(min(atom, neighbor), max(atom, neighbor))]
+                if bond not in component_bonds or neighbor in seen:
+                    continue
+                seen.add(neighbor)
+                stack.append(neighbor)
+
+        if frozenset(seen) != component_atoms:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "WRITER_SHAPED writer-state MVP supports connected tree components only",
             )
 
 

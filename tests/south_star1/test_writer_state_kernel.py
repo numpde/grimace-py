@@ -186,6 +186,18 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_writer_shaped_cycle_plus_isolate_component_fails_closed(self) -> None:
+        prepared = _prepare(cycle_plus_isolate_component_facts())
+
+        with _forbidden_exhaustive_routes():
+            with self.assertRaises(SouthStarError) as caught:
+                enumerate_prepared_stereo_support(
+                    prepared=prepared,
+                    runtime_options=_writer_options(),
+                )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
     def test_writer_shaped_stereo_fails_closed_before_forbidden_routes(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):
@@ -319,6 +331,24 @@ def two_atom_facts(
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1)),
                 bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
+def cycle_plus_isolate_component_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C"), atom(3, "C")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
             ),
         ),
     )

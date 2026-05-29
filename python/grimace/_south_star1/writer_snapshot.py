@@ -167,7 +167,8 @@ def validate_writer_cursor_against_prepared(
         _validate_known_atoms("visited_atoms", key.visited_atoms, atom_ids)
         _validate_known_bonds("written_bonds", key.written_bonds, bond_ids)
         _validate_active_coherence(key)
-        _validate_component_membership(key, atom_component, bond_component)
+        _validate_component_membership(prepared, key, atom_component, bond_component)
+        _validate_current_component_tree_fragment(prepared, key)
         _validate_written_bond_coherence(prepared, key)
         _validate_obligations(key.obligations, key, atom_ids, bond_ids, prepared)
         _validate_ring_state_empty(key.ring_state)
@@ -318,6 +319,7 @@ def _validate_active_coherence(key: WriterStateKey) -> None:
 
 
 def _validate_component_membership(
+    prepared: SouthStarPreparedMol,
     key: WriterStateKey,
     atom_component: dict[AtomId, int],
     bond_component: dict[BondId, int],
@@ -344,6 +346,72 @@ def _validate_component_membership(
     for frame in key.branch_stack:
         if atom_component[frame.return_atom.atom] != current:
             _invalid_snapshot("writer branch return atom is outside current component")
+    for index, component in enumerate(prepared.facts.components):
+        if index >= current:
+            break
+        if not frozenset(component.atoms).issubset(key.visited_atoms):
+            _invalid_snapshot("writer completed component has unvisited atoms")
+        if not frozenset(component.bonds).issubset(key.written_bonds):
+            _invalid_snapshot("writer completed component has unwritten bonds")
+
+
+def _validate_current_component_tree_fragment(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    current = key.component_cursor.component_index
+    component = prepared.facts.components[current]
+    component_atoms = frozenset(component.atoms)
+    component_bonds = frozenset(component.bonds)
+    root = key.component_cursor.component_roots[current]
+    visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
+    written = frozenset(bond for bond in key.written_bonds if bond in component_bonds)
+    if not visited:
+        if written:
+            _invalid_snapshot("writer current component has written bonds before root")
+        return
+    if root not in visited:
+        _invalid_snapshot("writer current component visited atoms do not include root")
+    if len(written) != len(visited) - 1:
+        _invalid_snapshot("writer current component written graph is not a tree fragment")
+    reachable = _reachable_written_atoms(prepared, root, written)
+    if reachable != visited:
+        _invalid_snapshot("writer current component visited atoms are not root-reachable")
+    active = key.active
+    if active is not None and active.atom_emitted and active.atom not in reachable:
+        _invalid_snapshot("writer active atom is not in reachable written graph")
+    for frame in key.branch_stack:
+        if frame.return_atom.atom not in reachable:
+            _invalid_snapshot("writer branch return atom is not in reachable written graph")
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        if pending.parent not in reachable:
+            _invalid_snapshot("writer pending parent is not in reachable written graph")
+        if pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+            if pending.bond in written or pending.child in visited:
+                _invalid_snapshot("writer pending post-bond edge is already materialized")
+
+
+def _reachable_written_atoms(
+    prepared: SouthStarPreparedMol,
+    root: AtomId,
+    written_bonds: frozenset[BondId],
+) -> frozenset[AtomId]:
+    adjacency: dict[AtomId, set[AtomId]] = {}
+    for bond in written_bonds:
+        fact = prepared.graph_index.bond_by_id[bond]
+        adjacency.setdefault(fact.a, set()).add(fact.b)
+        adjacency.setdefault(fact.b, set()).add(fact.a)
+    seen = {root}
+    stack = [root]
+    while stack:
+        atom = stack.pop()
+        for neighbor in adjacency.get(atom, ()):
+            if neighbor in seen:
+                continue
+            seen.add(neighbor)
+            stack.append(neighbor)
+    return frozenset(seen)
 
 
 def _validate_written_bond_coherence(
@@ -430,6 +498,7 @@ def _validate_stereo_state(
     stereo_state: WriterStereoStateKey,
 ) -> None:
     _round_trip_residual_snapshot(stereo_state.residual_snapshot)
+    _validate_unique_stereo_records(stereo_state)
     occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
     atom_ids = frozenset(prepared.atom_ids)
     bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
@@ -458,6 +527,55 @@ def _validate_stereo_state(
         tetra_by_center,
     )
     _validate_delayed_factor_records(prepared, stereo_state)
+    _validate_reverse_stereo_coverage(
+        prepared,
+        stereo_state,
+        tetra_by_center,
+        directional_sites_by_bond,
+    )
+
+
+def _validate_unique_stereo_records(stereo_state: WriterStereoStateKey) -> None:
+    _reject_duplicate_items(
+        (
+            ("tetra", record.var)
+            if record.var is not None
+            else ("atom", record.atom)
+            for record in stereo_state.atom_occurrences
+        ),
+        "writer atom occurrence records contain duplicates",
+    )
+    _reject_duplicate_items(
+        ((record.bond, record.parent, record.child) for record in stereo_state.bond_occurrences),
+        "writer bond occurrence records contain duplicate orientations",
+    )
+    _reject_duplicate_items(
+        (record.bond for record in stereo_state.bond_occurrences),
+        "writer bond occurrence records contain duplicate bonds",
+    )
+    _reject_duplicate_items(
+        (record.atom for record in stereo_state.local_orders),
+        "writer local-order records contain duplicate atoms",
+    )
+    _reject_duplicate_items(
+        (
+            (factor.kind, factor.site, factor.closed)
+            for factor in stereo_state.delayed_factors
+        ),
+        "writer delayed factors contain duplicates",
+    )
+    _reject_duplicate_items(
+        stereo_state.residual_snapshot.factors,
+        "writer residual factor snapshots contain duplicates",
+    )
+    _reject_duplicate_items(
+        (var for var, _ in stereo_state.residual_snapshot.domains),
+        "writer residual domains contain duplicate variables",
+    )
+    _reject_duplicate_items(
+        (var for var, _ in stereo_state.residual_snapshot.assignments),
+        "writer residual assignments contain duplicate variables",
+    )
 
 
 def _validate_atom_occurrence_records(
@@ -607,6 +725,83 @@ def _has_matching_closed_delayed_factor(
         if _expected_residual_factor_snapshot(prepared, stereo_state, factor) == snapshot:
             return True
     return False
+
+
+def _validate_reverse_stereo_coverage(
+    prepared: SouthStarPreparedMol,
+    stereo_state: WriterStereoStateKey,
+    tetra_by_center,
+    directional_sites_by_bond: dict[BondId, tuple[SiteId, ...]],
+) -> None:
+    occurrence_vars: set[VarId] = set()
+    delayed_vars: set[VarId] = set()
+    for record in stereo_state.atom_occurrences:
+        if record.var is None:
+            continue
+        occurrence_vars.add(record.var)
+        template = tetra_by_center.get(record.atom)
+        if template is None:
+            _invalid_snapshot("writer tetra occurrence lacks prepared template")
+        if not _has_delayed_factor(
+            stereo_state,
+            kind="tetra",
+            site=template.site,
+            var=record.var,
+        ):
+            _invalid_snapshot("writer tetra occurrence lacks delayed factor")
+    for record in stereo_state.bond_occurrences:
+        if record.var is None:
+            continue
+        occurrence_vars.add(record.var)
+        for site in directional_sites_by_bond.get(record.bond, ()):
+            if not _has_delayed_factor(
+                stereo_state,
+                kind="directional",
+                site=site,
+                var=record.var,
+            ):
+                _invalid_snapshot("writer directional occurrence lacks delayed factor")
+    for factor in stereo_state.delayed_factors:
+        for var in factor.scope:
+            delayed_vars.add(var)
+            if var not in occurrence_vars:
+                _invalid_snapshot("writer delayed factor variable lacks occurrence record")
+    assignment_vars = _residual_assignment_vars(stereo_state)
+    domain_vars = _residual_domain_vars(stereo_state)
+    if not assignment_vars.issubset(occurrence_vars):
+        _invalid_snapshot("writer residual assignment lacks occurrence record")
+    if not domain_vars.issubset(occurrence_vars):
+        _invalid_snapshot("writer residual domain lacks occurrence record")
+    if not occurrence_vars.issubset(delayed_vars):
+        _invalid_snapshot("writer occurrence variable lacks delayed factor")
+    factor_vars = frozenset(
+        var
+        for snapshot in stereo_state.residual_snapshot.factors
+        for var in snapshot.scope
+    )
+    closed_delayed_vars = frozenset(
+        var
+        for factor in stereo_state.delayed_factors
+        if factor.closed
+        for var in factor.scope
+    )
+    if not factor_vars.issubset(closed_delayed_vars):
+        _invalid_snapshot("writer residual factor variable lacks closed delayed factor")
+
+
+def _has_delayed_factor(
+    stereo_state: WriterStereoStateKey,
+    *,
+    kind: str,
+    site: SiteId,
+    var: VarId,
+) -> bool:
+    return any(
+        factor.kind == kind
+        and factor.site == site
+        and var in factor.scope
+        for factor in stereo_state.delayed_factors
+    )
 
 
 def _validate_delayed_factor_shape(
@@ -872,6 +1067,14 @@ def _has_bond_occurrence_record(
         and record.child == child
         for record in stereo_state.bond_occurrences
     )
+
+
+def _reject_duplicate_items(items, message: str) -> None:
+    seen = set()
+    for item in items:
+        if item in seen:
+            _invalid_snapshot(message)
+        seen.add(item)
 
 
 def _var_sort_tuple(var: VarId) -> tuple[object, ...]:

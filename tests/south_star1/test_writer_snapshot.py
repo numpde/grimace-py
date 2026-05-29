@@ -6,6 +6,9 @@ from dataclasses import replace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import MoleculeFacts
+from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import OccurrenceId
@@ -16,6 +19,7 @@ from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import tetra_var
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
@@ -36,6 +40,7 @@ from grimace._south_star1.writer_stereo import WriterLocalOrderRecord
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import directional_facts
+from tests.south_star1.helpers import single_bond
 from tests.south_star1.helpers import tetrahedral_facts
 
 
@@ -296,6 +301,41 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=_writer_options(),
             )
 
+    def test_cursor_audit_rejects_incomplete_completed_component(self) -> None:
+        prepared = _prepare(chain_plus_singleton_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_c = writer_frontier_choices(prepared, cursor).choices[0].successor
+        after_second_c = writer_frontier_choices(prepared, after_c).choices[0].successor
+        after_dot = writer_frontier_choices(prepared, after_second_c).choices[0].successor
+        key = after_dot.weighted_states[0][0]
+        tampered_key = replace(key, visited_atoms=frozenset((AtomId(0),)))
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_unreachable_current_component_atom(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        key = after_root.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            visited_atoms=frozenset((*key.visited_atoms, AtomId(2))),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_invalid_local_order_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -400,6 +440,89 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_duplicate_atom_occurrence(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                atom_occurrences=key.stereo_state.atom_occurrences
+                + (key.stereo_state.atom_occurrences[-1],),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_duplicate_bond_occurrence(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=2)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+        after_slash = writer_frontier_choices(prepared, after_f).choices[0].successor
+        key = after_slash.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                bond_occurrences=key.stereo_state.bond_occurrences
+                + (key.stereo_state.bond_occurrences[-1],),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_duplicate_local_order(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=key.stereo_state.local_orders
+                + (key.stereo_state.local_orders[-1],),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_duplicate_delayed_factor(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=key.stereo_state.delayed_factors
+                + (key.stereo_state.delayed_factors[-1],),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_closed_delay_without_residual_factor(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
         from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
@@ -431,22 +554,30 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    def test_cursor_audit_rejects_closed_factor_semantic_mismatch(self) -> None:
-        from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
-        from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
-
-        prepared = prepare_south_star_mol_from_facts(
-            terminal_tetra_center_facts(),
-            writer_surface=SouthStarWriterSurface(),
-            policy=terminal_tetra_center_policy(),
+    def test_cursor_audit_rejects_duplicate_residual_factor_snapshot(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
+        factor = key.stereo_state.residual_snapshot.factors[0]
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            factors=key.stereo_state.residual_snapshot.factors + (factor,),
         )
-        options = _writer_options(rooted_at_atom=0)
-        cursor = initial_writer_frontier_cursor(prepared, options)
-        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
-        after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
-        terminal = writer_frontier_choices(prepared, after_center).terminal
-        assert terminal is not None
-        key = terminal.finalized_cursor.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_closed_factor_semantic_mismatch(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
         factor = key.stereo_state.residual_snapshot.factors[0]
         tampered_snapshot = replace(
             key.stereo_state.residual_snapshot,
@@ -458,6 +589,49 @@ class WriterSnapshotTest(unittest.TestCase):
                 key.stereo_state,
                 residual_snapshot=tampered_snapshot,
             ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_residual_assignment_without_occurrence(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        extra_var = tetra_var(("writer", 999))
+        tampered_snapshot = replace(
+            key.stereo_state.residual_snapshot,
+            domains=key.stereo_state.residual_snapshot.domains
+            + ((extra_var, (TetraToken.AT, TetraToken.ATAT)),),
+            assignments=key.stereo_state.residual_snapshot.assignments
+            + ((extra_var, TetraToken.AT),),
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=tampered_snapshot,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_occurrence_without_delayed_factor(self) -> None:
+        prepared = _prepare(tetrahedral_facts())
+        options = _writer_options(rooted_at_atom=1)
+        key = _tetra_center_key(prepared, options)
+        tampered_key = replace(
+            key,
+            stereo_state=replace(key.stereo_state, delayed_factors=()),
         )
 
         with self.assertRaises(SouthStarError):
@@ -502,6 +676,50 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
 
 def _cursor_with_key(key) -> WriterFrontierCursor:
     return WriterFrontierCursor(weighted_states=((key, 1),))
+
+
+def _tetra_center_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
+    return after_center.weighted_states[0][0]
+
+
+def _terminal_tetra_key():
+    from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
+    from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
+
+    prepared = prepare_south_star_mol_from_facts(
+        terminal_tetra_center_facts(),
+        writer_surface=SouthStarWriterSurface(),
+        policy=terminal_tetra_center_policy(),
+    )
+    options = _writer_options(rooted_at_atom=0)
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
+    terminal = writer_frontier_choices(prepared, after_center).terminal
+    assert terminal is not None
+    return prepared, options, terminal.finalized_cursor.weighted_states[0][0]
+
+
+def chain_plus_singleton_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "O")),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(2),),
+                bonds=(),
+            ),
+        ),
+    )
 
 
 if __name__ == "__main__":

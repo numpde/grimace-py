@@ -171,7 +171,7 @@ def validate_writer_cursor_against_prepared(
         _validate_current_component_tree_fragment(prepared, key)
         _validate_written_bond_coherence(prepared, key)
         _validate_obligations(key.obligations, key, atom_ids, bond_ids, prepared)
-        _validate_stereo_occurrences_bound_to_graph_state(key)
+        _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(prepared, key.stereo_state)
@@ -474,25 +474,44 @@ def _validate_pending_entry(
     _require_graph_bond(prepared, pending.parent, pending.child, pending.bond)
 
 
-def _validate_stereo_occurrences_bound_to_graph_state(key: WriterStateKey) -> None:
+def _validate_stereo_occurrences_bound_to_graph_state(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    atom_occurrence_atoms = frozenset(
+        record.atom for record in key.stereo_state.atom_occurrences
+    )
+    if atom_occurrence_atoms != key.visited_atoms:
+        _invalid_snapshot("writer atom occurrences do not cover visited atoms")
+    pending_bond = _pending_post_bond_edge(key)
+    expected_bonds = set(key.written_bonds)
+    if pending_bond is not None:
+        expected_bonds.add(pending_bond.bond)
+    bond_occurrence_bonds = frozenset(
+        record.bond for record in key.stereo_state.bond_occurrences
+    )
+    if bond_occurrence_bonds != frozenset(expected_bonds):
+        _invalid_snapshot("writer bond occurrences do not cover emitted bonds")
+    parent_by_child = _written_tree_parent_links(prepared, key)
     for record in key.stereo_state.atom_occurrences:
         if record.atom not in key.visited_atoms:
             _invalid_snapshot("writer atom occurrence is not backed by visited atom")
     for record in key.stereo_state.local_orders:
         if record.atom not in key.visited_atoms:
             _invalid_snapshot("writer local-order record is not backed by visited atom")
-    pending = key.obligations.pending_entry
     for record in key.stereo_state.bond_occurrences:
         if record.bond in key.written_bonds:
             if record.parent not in key.visited_atoms or record.child not in key.visited_atoms:
                 _invalid_snapshot("writer bond occurrence has unvisited written endpoint")
+            expected = parent_by_child.get(record.child)
+            if expected != (record.parent, record.bond):
+                _invalid_snapshot("writer bond occurrence has wrong writer orientation")
             continue
         if (
-            pending is not None
-            and pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND
-            and pending.bond == record.bond
-            and pending.parent == record.parent
-            and pending.child == record.child
+            pending_bond is not None
+            and pending_bond.bond == record.bond
+            and pending_bond.parent == record.parent
+            and pending_bond.child == record.child
         ):
             if record.parent not in key.visited_atoms:
                 _invalid_snapshot("writer pending bond occurrence has unvisited parent")
@@ -500,6 +519,41 @@ def _validate_stereo_occurrences_bound_to_graph_state(key: WriterStateKey) -> No
                 _invalid_snapshot("writer pending bond occurrence is already materialized")
             continue
         _invalid_snapshot("writer bond occurrence is not backed by emitted graph state")
+
+
+def _pending_post_bond_edge(key: WriterStateKey) -> PendingWriterEntry | None:
+    pending = key.obligations.pending_entry
+    if pending is None or pending.phase is not PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
+        return None
+    return pending
+
+
+def _written_tree_parent_links(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> dict[AtomId, tuple[AtomId, BondId]]:
+    parent_by_child: dict[AtomId, tuple[AtomId, BondId]] = {}
+    for index in range(key.component_cursor.component_index + 1):
+        component = prepared.facts.components[index]
+        component_bonds = frozenset(component.bonds)
+        written = frozenset(bond for bond in key.written_bonds if bond in component_bonds)
+        root = key.component_cursor.component_roots[index]
+        adjacency: dict[AtomId, list[tuple[AtomId, BondId]]] = {}
+        for bond in written:
+            fact = prepared.graph_index.bond_by_id[bond]
+            adjacency.setdefault(fact.a, []).append((fact.b, bond))
+            adjacency.setdefault(fact.b, []).append((fact.a, bond))
+        seen = {root}
+        stack = [root]
+        while stack:
+            parent = stack.pop()
+            for child, bond in adjacency.get(parent, ()):
+                if child in seen:
+                    continue
+                seen.add(child)
+                parent_by_child[child] = (parent, bond)
+                stack.append(child)
+    return parent_by_child
 
 
 def _validate_ring_state_empty(ring_state: WriterRingStateKey) -> None:

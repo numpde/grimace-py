@@ -437,6 +437,63 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_missing_visited_atom_occurrence(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_second_atom_key(prepared, options)
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                atom_occurrences=key.stereo_state.atom_occurrences[:-1],
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_missing_written_bond_occurrence(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_second_atom_key(prepared, options)
+        tampered_key = replace(
+            key,
+            stereo_state=replace(key.stereo_state, bond_occurrences=()),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_reversed_written_bond_occurrence(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_second_atom_key(prepared, options)
+        record = key.stereo_state.bond_occurrences[0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                bond_occurrences=(
+                    replace(record, parent=record.child, child=record.parent),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_invalid_local_order_occurrence(self) -> None:
         prepared = _prepare(tetrahedral_facts())
         options = _writer_options(rooted_at_atom=1)
@@ -854,6 +911,13 @@ def _tetra_center_key(prepared, options):
     after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
     after_center = writer_frontier_choices(prepared, after_f).choices[0].successor
     return after_center.weighted_states[0][0]
+
+
+def _cco_after_second_atom_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_second = writer_frontier_choices(prepared, after_root).choices[0].successor
+    return after_second.weighted_states[0][0]
 
 
 def _terminal_tetra_key():

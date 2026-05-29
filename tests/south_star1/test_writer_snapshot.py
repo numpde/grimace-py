@@ -36,6 +36,7 @@ from grimace._south_star1.writer_state import ObligationStateKey
 from grimace._south_star1.writer_state import PendingEntryPhase
 from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterRingStateKey
+from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
 from grimace._south_star1.writer_stereo import WriterLocalOrderRecord
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import cco_facts
@@ -522,6 +523,39 @@ class WriterSnapshotTest(unittest.TestCase):
                 _cursor_with_key(tampered_key),
                 runtime_options=options,
             )
+
+    def test_snapshot_rejects_pending_and_closed_delayed_factor_for_same_site(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
+        closed_factor = key.stereo_state.delayed_factors[0]
+        pending_factor = WriterDelayedStereoFactor(
+            kind=closed_factor.kind,
+            site=closed_factor.site,
+            scope=closed_factor.scope,
+            evidence=closed_factor.evidence,
+            closed=False,
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=key.stereo_state.delayed_factors + (pending_factor,),
+            ),
+        )
+        valid_cursor = _cursor_with_key(key)
+        tampered_cursor = _cursor_with_key(tampered_key)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=valid_cursor,
+        )
+        tampered_snapshot = replace(
+            snapshot,
+            cursor=tampered_cursor,
+            frame_stack=(WriterFrontierFrame(tampered_cursor),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
     def test_cursor_audit_rejects_closed_delay_without_residual_factor(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts

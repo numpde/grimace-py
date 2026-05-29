@@ -559,7 +559,7 @@ def _validate_unique_stereo_records(stereo_state: WriterStereoStateKey) -> None:
     )
     _reject_duplicate_items(
         (
-            (factor.kind, factor.site, factor.closed)
+            (factor.kind, factor.site)
             for factor in stereo_state.delayed_factors
         ),
         "writer delayed factors contain duplicates",

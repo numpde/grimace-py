@@ -171,6 +171,7 @@ def validate_writer_cursor_against_prepared(
         _validate_current_component_tree_fragment(prepared, key)
         _validate_written_bond_coherence(prepared, key)
         _validate_obligations(key.obligations, key, atom_ids, bond_ids, prepared)
+        _validate_stereo_occurrences_bound_to_graph_state(key)
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(prepared, key.stereo_state)
@@ -471,6 +472,34 @@ def _validate_pending_entry(
     if pending.bond not in bond_ids:
         _invalid_snapshot("writer pending entry references unknown bond")
     _require_graph_bond(prepared, pending.parent, pending.child, pending.bond)
+
+
+def _validate_stereo_occurrences_bound_to_graph_state(key: WriterStateKey) -> None:
+    for record in key.stereo_state.atom_occurrences:
+        if record.atom not in key.visited_atoms:
+            _invalid_snapshot("writer atom occurrence is not backed by visited atom")
+    for record in key.stereo_state.local_orders:
+        if record.atom not in key.visited_atoms:
+            _invalid_snapshot("writer local-order record is not backed by visited atom")
+    pending = key.obligations.pending_entry
+    for record in key.stereo_state.bond_occurrences:
+        if record.bond in key.written_bonds:
+            if record.parent not in key.visited_atoms or record.child not in key.visited_atoms:
+                _invalid_snapshot("writer bond occurrence has unvisited written endpoint")
+            continue
+        if (
+            pending is not None
+            and pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND
+            and pending.bond == record.bond
+            and pending.parent == record.parent
+            and pending.child == record.child
+        ):
+            if record.parent not in key.visited_atoms:
+                _invalid_snapshot("writer pending bond occurrence has unvisited parent")
+            if record.child in key.visited_atoms or record.bond in key.written_bonds:
+                _invalid_snapshot("writer pending bond occurrence is already materialized")
+            continue
+        _invalid_snapshot("writer bond occurrence is not backed by emitted graph state")
 
 
 def _validate_ring_state_empty(ring_state: WriterRingStateKey) -> None:

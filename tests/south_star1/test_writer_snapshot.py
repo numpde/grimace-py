@@ -36,6 +36,8 @@ from grimace._south_star1.writer_state import ObligationStateKey
 from grimace._south_star1.writer_state import PendingEntryPhase
 from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterRingStateKey
+from grimace._south_star1.writer_stereo import WriterAtomOccurrenceRecord
+from grimace._south_star1.writer_stereo import WriterBondOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
 from grimace._south_star1.writer_stereo import WriterLocalOrderRecord
 from tests.south_star1.helpers import atom
@@ -286,6 +288,19 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_accepts_post_bond_pending_with_matching_bond_record(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=2)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
+        post_bond = writer_frontier_choices(prepared, after_f).choices[0].successor
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            post_bond,
+            runtime_options=options,
+        )
+
     def test_cursor_audit_rejects_nonempty_ring_state(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -328,6 +343,91 @@ class WriterSnapshotTest(unittest.TestCase):
         tampered_key = replace(
             key,
             visited_atoms=frozenset((*key.visited_atoms, AtomId(2))),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_future_unemitted_bond_occurrence(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        key = after_root.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                bond_occurrences=key.stereo_state.bond_occurrences
+                + (
+                    WriterBondOccurrenceRecord(
+                        bond=BondId(1),
+                        parent=AtomId(1),
+                        child=AtomId(2),
+                        mark=DirectionMark.ABSENT,
+                        var=None,
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_future_unvisited_atom_occurrence(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        key = after_root.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                atom_occurrences=key.stereo_state.atom_occurrences
+                + (
+                    WriterAtomOccurrenceRecord(
+                        atom=AtomId(2),
+                        token=TetraToken.NONE,
+                        var=None,
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_future_unvisited_local_order(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        key = after_root.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                local_orders=key.stereo_state.local_orders
+                + (
+                    WriterLocalOrderRecord(
+                        atom=AtomId(2),
+                        order=(),
+                    ),
+                ),
+            ),
         )
 
         with self.assertRaises(SouthStarError):

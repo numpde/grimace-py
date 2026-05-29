@@ -824,6 +824,10 @@ def _validate_delayed_factor_shape(
             record = _local_order_record(stereo_state, template.center)
             if record is None or not record.closed:
                 _invalid_snapshot("writer closed tetra delayed factor lacks closed local order")
+        else:
+            record = _local_order_record(stereo_state, template.center)
+            if record is not None and record.closed:
+                _invalid_snapshot("writer pending tetra delayed factor is already complete")
         return
     if factor.kind == "directional":
         template = directional_by_site.get(factor.site)

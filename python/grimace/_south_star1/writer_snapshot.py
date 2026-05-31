@@ -133,6 +133,7 @@ def validate_writer_search_snapshot(
             "writer snapshot requires serialization_language=WRITER_SHAPED",
         )
     require_writer_shaped_runtime_options(snapshot.runtime_options)
+    validate_writer_snapshot_supported_graph_surface(prepared)
     if snapshot.prepared_identity != _prepared_identity(
         prepared,
         snapshot.runtime_options,
@@ -160,6 +161,7 @@ def validate_writer_cursor_against_prepared(
     *,
     runtime_options: SouthStarRuntimeOptions | None = None,
 ) -> None:
+    validate_writer_snapshot_supported_graph_surface(prepared)
     atom_ids = frozenset(prepared.atom_ids)
     bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
     allowed_roots = _allowed_component_roots(prepared, runtime_options)
@@ -197,6 +199,23 @@ def validate_writer_cursor_against_prepared(
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(prepared, key.stereo_state)
+
+
+def validate_writer_snapshot_supported_graph_surface(
+    prepared: SouthStarPreparedMol,
+) -> None:
+    block_cut = build_writer_block_cut_metadata(prepared)
+    if block_cut.cyclic_blocks:
+        _invalid_snapshot("writer snapshot prepared graph has unsupported cyclic block")
+    for component in prepared.facts.components:
+        component_atoms = frozenset(component.atoms)
+        component_bonds = frozenset(component.bonds)
+        if not component_atoms:
+            _invalid_snapshot("writer snapshot prepared component has no atoms")
+        if len(component_bonds) != len(component_atoms) - 1:
+            _invalid_snapshot("writer snapshot prepared component is not a tree")
+        if _reachable_component_atoms(prepared, component_atoms, component_bonds) != component_atoms:
+            _invalid_snapshot("writer snapshot prepared component is disconnected")
 
 
 def _validate_frames(
@@ -464,6 +483,31 @@ def _reachable_written_atoms(
         adjacency.setdefault(fact.b, set()).add(fact.a)
     seen = {root}
     stack = [root]
+    while stack:
+        atom = stack.pop()
+        for neighbor in adjacency.get(atom, ()):
+            if neighbor in seen:
+                continue
+            seen.add(neighbor)
+            stack.append(neighbor)
+    return frozenset(seen)
+
+
+def _reachable_component_atoms(
+    prepared: SouthStarPreparedMol,
+    component_atoms: frozenset[AtomId],
+    component_bonds: frozenset[BondId],
+) -> frozenset[AtomId]:
+    start = min(component_atoms)
+    adjacency: dict[AtomId, set[AtomId]] = {atom: set() for atom in component_atoms}
+    for bond in component_bonds:
+        fact = prepared.graph_index.bond_by_id[bond]
+        if fact.a not in component_atoms or fact.b not in component_atoms:
+            _invalid_snapshot("writer snapshot component bond is outside component atoms")
+        adjacency[fact.a].add(fact.b)
+        adjacency[fact.b].add(fact.a)
+    seen = {start}
+    stack = [start]
     while stack:
         atom = stack.pop()
         for neighbor in adjacency.get(atom, ()):
@@ -1585,5 +1629,6 @@ __all__ = (
     "resume_writer_frontier_choices_from_snapshot",
     "validate_writer_cursor_against_prepared",
     "validate_writer_search_snapshot",
+    "validate_writer_snapshot_supported_graph_surface",
     "writer_frontier_cursor_from_snapshot",
 )

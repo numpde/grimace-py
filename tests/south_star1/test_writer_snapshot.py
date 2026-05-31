@@ -27,6 +27,8 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import WriterFrontierFrame
+from grimace._south_star1.writer_snapshot import WriterSearchSnapshot
+from grimace._south_star1.writer_snapshot import _prepared_identity
 from grimace._south_star1.writer_snapshot import capture_writer_frontier_snapshot
 from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_from_snapshot
 from grimace._south_star1.writer_snapshot import validate_writer_cursor_against_prepared
@@ -508,6 +510,51 @@ class WriterSnapshotTest(unittest.TestCase):
                 _cursor_with_key(key),
                 runtime_options=options,
             )
+
+    def test_snapshot_rejects_completed_cyclic_component_outside_current_component(self) -> None:
+        prepared = _prepare(triangle_plus_singleton_facts())
+        options = _writer_options(rooted_at_atom=3)
+        key = _manual_emitted_root_key(
+            AtomId(3),
+            component_index=1,
+            component_roots=(AtomId(0), AtomId(3)),
+            visited_atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+            written_bonds=(BondId(0), BondId(1), BondId(2)),
+        )
+        cursor = _cursor_with_key(key)
+        snapshot = _snapshot_for_cursor(prepared, options, cursor)
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(snapshot, prepared=prepared)
+
+    def test_cursor_audit_rejects_future_cyclic_component_outside_current_component(self) -> None:
+        prepared = _prepare(singleton_plus_triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _manual_emitted_root_key(
+            AtomId(0),
+            component_roots=(AtomId(0), AtomId(1)),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_all_acyclic_multi_component_surface(self) -> None:
+        prepared = _prepare(chain_plus_singleton_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_c = writer_frontier_choices(prepared, cursor).choices[0].successor
+        after_second_c = writer_frontier_choices(prepared, after_c).choices[0].successor
+        after_dot = writer_frontier_choices(prepared, after_second_c).choices[0].successor
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            after_dot,
+            runtime_options=options,
+        )
 
     def test_cursor_audit_accepts_acyclic_residual_attachment(self) -> None:
         prepared = _prepare(cco_facts())
@@ -1244,12 +1291,38 @@ def _cursor_with_key(key) -> WriterFrontierCursor:
     return WriterFrontierCursor(weighted_states=((key, 1),))
 
 
-def _manual_emitted_root_key(root: AtomId):
+def _snapshot_for_cursor(
+    prepared,
+    options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+) -> WriterSearchSnapshot:
+    return WriterSearchSnapshot(
+        serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+        prepared_identity=_prepared_identity(prepared, options),
+        runtime_options=options,
+        cursor=cursor,
+        decoder_boundary=WriterDecoderBoundary(),
+        frame_stack=(WriterFrontierFrame(cursor),),
+    )
+
+
+def _manual_emitted_root_key(
+    root: AtomId,
+    *,
+    component_index: int = 0,
+    component_roots: tuple[AtomId, ...] | None = None,
+    visited_atoms: tuple[AtomId, ...] | None = None,
+    written_bonds: tuple[BondId, ...] = (),
+):
+    if component_roots is None:
+        component_roots = (root,)
+    if visited_atoms is None:
+        visited_atoms = (root,)
     return writer_state_key(
         WriterState(
             component_cursor=ComponentCursor(
-                component_index=0,
-                component_roots=(root,),
+                component_index=component_index,
+                component_roots=component_roots,
             ),
             active=WriterAtomFrame(
                 atom=root,
@@ -1258,18 +1331,19 @@ def _manual_emitted_root_key(root: AtomId):
                 atom_emitted=True,
             ),
             branch_stack=(),
-            visited_atoms=frozenset((root,)),
-            written_bonds=frozenset(),
+            visited_atoms=frozenset(visited_atoms),
+            written_bonds=frozenset(written_bonds),
             obligations=ObligationState(),
             ring_state=WriterRingState(),
             stereo_state=replace(
                 empty_writer_stereo_state(),
-                atom_occurrences=(
+                atom_occurrences=tuple(
                     WriterAtomOccurrenceRecord(
-                        atom=root,
+                        atom=atom_id,
                         token=TetraToken.NONE,
                         var=None,
-                    ),
+                    )
+                    for atom_id in visited_atoms
                 ),
             ),
             policy_state=WriterPolicyState(),
@@ -1415,6 +1489,52 @@ def triangle_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def singleton_plus_triangle_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "O"), atom(1, "C"), atom(2, "C"), atom(3, "C")),
+        bonds=(
+            single_bond(0, 1, 2),
+            single_bond(1, 2, 3),
+            single_bond(2, 3, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0),),
+                bonds=(),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def triangle_plus_singleton_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C"), atom(3, "O")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(3),),
+                bonds=(),
             ),
         ),
     )

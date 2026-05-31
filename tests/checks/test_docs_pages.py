@@ -1,4 +1,5 @@
 from pathlib import Path
+import csv
 import re
 import unittest
 from urllib.parse import unquote, urlparse
@@ -16,7 +17,7 @@ def markdown_files() -> tuple[Path, ...]:
         *(
             path
             for path in sorted((ROOT / "docs").rglob("*.md"))
-            if path.relative_to(ROOT) != Path("docs/timings.md")
+            if path.relative_to(ROOT) != Path("docs/timings-enum.md")
         ),
     )
 
@@ -98,14 +99,14 @@ class DocsPagesTests(unittest.TestCase):
         self.assertIn("@media (prefers-color-scheme: dark)", text)
 
     def test_timings_tables_are_scrollable(self) -> None:
-        timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
+        timings = (ROOT / "docs" / "timings-enum.md").read_text(encoding="utf-8")
         self.assertIn("table.timings-table", timings)
         self.assertIn("overflow-x: auto;", timings)
         self.assertIn("white-space: nowrap;", timings)
         self.assertEqual(2, timings.count("{: .timings-table}"))
 
     def test_timings_environment_is_present_and_public(self) -> None:
-        timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
+        timings = (ROOT / "docs" / "timings-enum.md").read_text(encoding="utf-8")
         self.assertIn("## Benchmark environment", timings)
         for field in (
             "| Recorded |",
@@ -118,8 +119,43 @@ class DocsPagesTests(unittest.TestCase):
             self.assertIn(field, timings)
         self.assertNotIn("hostname", timings.lower())
 
-    def test_timings_plots_are_captioned_and_present(self) -> None:
+    def test_timing_tsv_metadata_is_self_contained(self) -> None:
+        for path in (
+            ROOT / "docs" / "timings-enum.tsv",
+            ROOT / "docs" / "timings-prepared-mol-zstd.tsv",
+        ):
+            with self.subTest(path=path.name):
+                with path.open("r", encoding="utf-8", newline="") as handle:
+                    rows = tuple(csv.DictReader(handle, delimiter="\t"))
+                self.assertTrue(rows)
+                for field in (
+                    "recorded_at_utc",
+                    "git_commit",
+                    "git_change",
+                    "git_dirty",
+                    "platform",
+                    "python",
+                    "rdkit",
+                    "cpu_model",
+                    "visible_cpus",
+                    "cgroup_memory_limit_bytes",
+                    "container",
+                ):
+                    values = {row[field] for row in rows}
+                    self.assertEqual(1, len(values), field)
+                    self.assertNotEqual("", next(iter(values)), field)
+
+    def test_timings_overview_links_benchmark_pages(self) -> None:
         timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
+        self.assertIn("[Enum/support timings](timings-enum.md)", timings)
+        self.assertIn(
+            "[PreparedMol zstd timings](timings-prepared-mol-zstd.md)",
+            timings,
+        )
+        self.assertNotIn("## Benchmark environment", timings)
+
+    def test_timings_plots_are_captioned_and_present(self) -> None:
+        timings = (ROOT / "docs" / "timings-enum.md").read_text(encoding="utf-8")
         self.assertEqual(18, timings.count('<figure class="timing-plot">'))
         self.assertEqual(18, timings.count("</code>:</figcaption>"))
 

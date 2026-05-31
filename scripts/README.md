@@ -14,9 +14,9 @@ bounded correctness checks; heavier profiling runs should be explicit.
 
 ## Performance Tooling
 
-- `tests/perf/test_readme_timings.py`
-  - measures the public timing table and writes `docs/timings.tsv` plus
-    `docs/timings.md`
+- `timings_enum_measure.py`
+  - measures the public timing table and writes `docs/timings-enum.tsv` plus
+    `docs/timings-enum.md`
 - `record_perf_hotspots.py`
   - records focused whole-process `perf` hotspots and appends them to
     `notes/004_perf_history.jsonl`
@@ -38,16 +38,16 @@ bounded correctness checks; heavier profiling runs should be explicit.
   - validates the written manifest, dictionary ID, dictionary hash, and zstd
     round trip before returning success
   - requires the pinned `zstandard` development dependency
-- `prepared_mol_zstd_timings_measure.py`
+- `timings_prepared_mol_zstd_measure.py`
   - measures per-molecule `PreparedMol` compression and decompression with and
     without the shipped dictionary
   - uses a deterministic random sample from the checked-in `top_100000`
     fixture and records the sample seed and sample hashes in the TSV
-  - writes `docs/prepared-mol-zstd-timings.tsv`
-- `prepared_mol_zstd_timings_plot.py`
+  - writes `docs/timings-prepared-mol-zstd.tsv`
+- `timings_prepared_mol_zstd_plot.py`
   - renders compression-ratio tradeoff plots from
-    `docs/prepared-mol-zstd-timings.tsv`
-  - writes `docs/prepared-mol-zstd-timings-plots/`
+    `docs/timings-prepared-mol-zstd.tsv`
+  - writes `docs/timings-prepared-mol-zstd-plots/`
 
 ## `mine_rdkit_regressions.py`
 

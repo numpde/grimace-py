@@ -19,14 +19,14 @@ The test suite is organized by intent first, then by feature.
 - Container checks: `make checks`
 - Container installed-artifact correctness: `make test`
 - Container package validation: `make package`
-- Container perf artifacts: `make perf`
+- Container enum timing artifacts: `make timings-enum`
 - Default suite: `PYTHONPATH=python:. python3 -m unittest discover -s tests -t .`
 - Exact public invariants: `PYTHONPATH=python:. python3 -m unittest tests.run_exact_public_invariants -q`
 - Installed-artifact correctness subset: `python3 -m unittest tests.run_installed_package_correctness -q`
 - Pinned RDKit parity subset: `PYTHONPATH=python:. python3 -m unittest tests.run_pinned_rdkit_parity -q`
 - Known stereo-gap diagnostics, expected to fail until the pinned gaps are fixed:
   `PYTHONPATH=python:. python3 -m unittest tests.run_known_stereo_gaps -q`
-- Perf suite: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
+- Perf suite wrapper: `RUN_PERF_TESTS=1 PYTHONPATH=python:. python3 -m unittest discover -s tests/perf -t .`
 
 CI runs the exact public invariants and pinned RDKit parity layers as separate
 source-tree jobs, and reuses them inside the installed-artifact correctness

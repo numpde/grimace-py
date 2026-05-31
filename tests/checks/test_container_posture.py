@@ -117,10 +117,10 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
-    def test_perf_compose_is_explicit_write_enabled_lane(self) -> None:
-        compose = read_text("compose/perf.yml")
-        self.assertRegex(compose, r"(?m)^  perf:$")
-        self.assertIn("dockerfile: containers/perf/Dockerfile", compose)
+    def test_timings_enum_compose_is_explicit_write_enabled_lane(self) -> None:
+        compose = read_text("compose/timings-enum.yml")
+        self.assertRegex(compose, r"(?m)^  timings-enum:$")
+        self.assertIn("dockerfile: containers/timings-enum/Dockerfile", compose)
         self.assertIn(REQUIRED_WRITE_USER, compose)
         self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
         self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
@@ -129,14 +129,13 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
             r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
         )
-        self.assertIn('RUN_PERF_TESTS: "1"', compose)
         self.assertIn("MPLCONFIGDIR: /tmp/matplotlib", compose)
-        self.assertIn("source: ../docs/timings.tsv", compose)
-        self.assertIn("target: /build-src/docs/timings.tsv", compose)
-        self.assertIn("source: ../docs/timings.md", compose)
-        self.assertIn("target: /build-src/docs/timings.md", compose)
-        self.assertIn("source: ../docs/timing-plots", compose)
-        self.assertIn("target: /build-src/docs/timing-plots", compose)
+        self.assertIn("source: ../docs/timings-enum.tsv", compose)
+        self.assertIn("target: /build-src/docs/timings-enum.tsv", compose)
+        self.assertIn("source: ../docs/timings-enum.md", compose)
+        self.assertIn("target: /build-src/docs/timings-enum.md", compose)
+        self.assertIn("source: ../docs/timings-enum-plots", compose)
+        self.assertIn("target: /build-src/docs/timings-enum-plots", compose)
         self.assertIn("source: ../notes/004_perf_history.jsonl", compose)
         self.assertIn("target: /build-src/notes/004_perf_history.jsonl", compose)
         self.assertEqual(4, compose.count("create_host_path: false"))
@@ -198,11 +197,11 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
-    def test_prepared_mol_zstd_timings_compose_writes_only_timing_artifacts(self) -> None:
-        compose = read_text("compose/prepared-mol-zstd-timings.yml")
-        self.assertRegex(compose, r"(?m)^  prepared-mol-zstd-timings:$")
+    def test_timings_prepared_mol_zstd_compose_writes_only_timing_artifacts(self) -> None:
+        compose = read_text("compose/timings-prepared-mol-zstd.yml")
+        self.assertRegex(compose, r"(?m)^  timings-prepared-mol-zstd:$")
         self.assertIn(
-            "dockerfile: containers/prepared-mol-zstd-timings/Dockerfile",
+            "dockerfile: containers/timings-prepared-mol-zstd/Dockerfile",
             compose,
         )
         self.assertIn(REQUIRED_WRITE_USER, compose)
@@ -226,27 +225,27 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn("MPLCONFIGDIR: /tmp/matplotlib", compose)
-        self.assertIn("source: ../docs/prepared-mol-zstd-timings.tsv", compose)
+        self.assertIn("source: ../docs/timings-prepared-mol-zstd.tsv", compose)
         self.assertIn(
-            "target: /build-src/docs/prepared-mol-zstd-timings.tsv",
+            "target: /build-src/docs/timings-prepared-mol-zstd.tsv",
             compose,
         )
         self.assertIn(
-            "source: ../docs/prepared-mol-zstd-timings-plots",
+            "source: ../docs/timings-prepared-mol-zstd-plots",
             compose,
         )
         self.assertIn(
-            "target: /build-src/docs/prepared-mol-zstd-timings-plots",
+            "target: /build-src/docs/timings-prepared-mol-zstd-plots",
             compose,
         )
         self.assertIn(
-            "python scripts/prepared_mol_zstd_timings_measure.py",
+            "python scripts/timings_prepared_mol_zstd_measure.py",
             compose,
         )
-        self.assertIn("python scripts/prepared_mol_zstd_timings_plot.py", compose)
+        self.assertIn("python scripts/timings_prepared_mol_zstd_plot.py", compose)
         self.assertLess(
-            compose.index("python scripts/prepared_mol_zstd_timings_measure.py"),
-            compose.index("python scripts/prepared_mol_zstd_timings_plot.py"),
+            compose.index("python scripts/timings_prepared_mol_zstd_measure.py"),
+            compose.index("python scripts/timings_prepared_mol_zstd_plot.py"),
         )
         self.assertEqual(2, compose.count("create_host_path: false"))
         self.assertNotIn("source: ..\n", compose)
@@ -355,9 +354,9 @@ class ContainerPostureTests(unittest.TestCase):
     def test_build_dockerfiles_disable_pip_network_notice_and_root_warning(self) -> None:
         for relative_path in (
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
-            "containers/prepared-mol-zstd-timings/Dockerfile",
+            "containers/timings-prepared-mol-zstd/Dockerfile",
             "containers/package/Dockerfile",
-            "containers/perf/Dockerfile",
+            "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         ):
             dockerfile = read_text(relative_path)
@@ -369,9 +368,9 @@ class ContainerPostureTests(unittest.TestCase):
     def test_build_dockerfiles_use_pip_constraints(self) -> None:
         for relative_path in (
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
-            "containers/prepared-mol-zstd-timings/Dockerfile",
+            "containers/timings-prepared-mol-zstd/Dockerfile",
             "containers/package/Dockerfile",
-            "containers/perf/Dockerfile",
+            "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         ):
             dockerfile = read_text(relative_path)
@@ -408,8 +407,8 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("USER 65532:65532", dockerfile)
 
-    def test_perf_dockerfile_builds_installed_package_image(self) -> None:
-        dockerfile = read_text("containers/perf/Dockerfile")
+    def test_timings_enum_dockerfile_builds_installed_package_image(self) -> None:
+        dockerfile = read_text("containers/timings-enum/Dockerfile")
         self.assertRegex(dockerfile, r"(?m)^FROM python:.+@sha256:")
         self.assertRegex(dockerfile, r"(?m)^FROM rust:.+@sha256:")
         self.assertNotIn("apt-get", dockerfile)
@@ -422,7 +421,7 @@ class ContainerPostureTests(unittest.TestCase):
             "python -m pip install --no-deps /tmp/grimace-dist/*.whl",
             dockerfile,
         )
-        self.assertIn('"discover", "-s", "tests/perf"', dockerfile)
+        self.assertIn('CMD ["scripts/timings_enum_measure.py"]', dockerfile)
         self.assertIn("USER 65532:65532", dockerfile)
 
     def test_prepared_mol_zstd_dictionary_dockerfile_builds_installed_package_image(
@@ -448,10 +447,10 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("USER 65532:65532", dockerfile)
 
-    def test_prepared_mol_zstd_timings_dockerfile_builds_installed_package_image(
+    def test_timings_prepared_mol_zstd_dockerfile_builds_installed_package_image(
         self,
     ) -> None:
-        dockerfile = read_text("containers/prepared-mol-zstd-timings/Dockerfile")
+        dockerfile = read_text("containers/timings-prepared-mol-zstd/Dockerfile")
         self.assertRegex(dockerfile, r"(?m)^FROM python:.+@sha256:")
         self.assertRegex(dockerfile, r"(?m)^FROM rust:.+@sha256:")
         self.assertNotIn("apt-get", dockerfile)
@@ -480,12 +479,12 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("override LOCAL_GID := $(ACTUAL_GID)", makefile)
         self.assertIn("override REPO_ROOT := $(shell pwd -P)", makefile)
         self.assertIn(
-            "override PERF_ARTIFACT_FILES := docs/timings.tsv docs/timings.md notes/004_perf_history.jsonl",
+            "override TIMINGS_ENUM_ARTIFACT_FILES := docs/timings-enum.tsv docs/timings-enum.md notes/004_perf_history.jsonl",
             makefile,
         )
-        self.assertIn("override PERF_ARTIFACT_DIRS := docs/timing-plots", makefile)
+        self.assertIn("override TIMINGS_ENUM_ARTIFACT_DIRS := docs/timings-enum-plots", makefile)
         self.assertIn(
-            "override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)",
+            "override TIMINGS_ENUM_ARTIFACTS := $(TIMINGS_ENUM_ARTIFACT_FILES) $(TIMINGS_ENUM_ARTIFACT_DIRS)",
             makefile,
         )
         self.assertIn("override DOCS_SOURCE_DIR := docs", makefile)
@@ -495,15 +494,15 @@ class ContainerPostureTests(unittest.TestCase):
             makefile,
         )
         self.assertIn(
-            "override PREPARED_MOL_ZSTD_TIMING_ARTIFACT_FILES := docs/prepared-mol-zstd-timings.tsv",
+            "override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := docs/timings-prepared-mol-zstd.tsv",
             makefile,
         )
         self.assertIn(
-            "override PREPARED_MOL_ZSTD_TIMING_ARTIFACT_DIRS := docs/prepared-mol-zstd-timings-plots",
+            "override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS := docs/timings-prepared-mol-zstd-plots",
             makefile,
         )
         self.assertIn(
-            "override PREPARED_MOL_ZSTD_TIMING_ARTIFACTS := $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_FILES) $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_DIRS)",
+            "override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS := $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES) $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS)",
             makefile,
         )
         self.assertIn("DOCS_PORT ?= 8000", makefile)
@@ -515,9 +514,12 @@ class ContainerPostureTests(unittest.TestCase):
             makefile,
         )
         self.assertIn(
-            "make prepared-mol-zstd-timings  Measure PreparedMol zstd timing tradeoffs",
+            "make timings-prepared-mol-zstd  Measure PreparedMol zstd timing tradeoffs",
             makefile,
         )
+        self.assertIn("make timings-enum  Measure enum/support timing tradeoffs", makefile)
+        self.assertNotIn("make perf", makefile)
+        self.assertNotIn("prepared-mol-zstd-timings", makefile)
         self.assertIn(
             "DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535",
             makefile,
@@ -543,16 +545,16 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("positive numeric UID and GID", makefile)
         self.assertIn("DOCS_PORT outside 1..65535", makefile)
         self.assertIn("DIST_GUARD := if [[ -L dist ]]", makefile)
-        self.assertIn('PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
+        self.assertIn('TIMINGS_ENUM_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
         self.assertIn(
-            'PREPARED_MOL_ZSTD_TIMING_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"',
+            'TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"',
             makefile,
         )
         self.assertIn('DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
         self.assertIn('resolved="$$(realpath -e -- "$$path"', makefile)
         self.assertIn('expected="$$repo_root/$$path"', makefile)
         self.assertIn("missing, a symlink, or outside the repository", makefile)
-        self.assertIn("perf artifact directory", makefile)
+        self.assertIn("enum timing artifact directory", makefile)
         self.assertIn("PreparedMol zstd timing artifact directory", makefile)
         self.assertIn("docs path", makefile)
         self.assertLess(
@@ -572,13 +574,13 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", makefile)
         self.assertIn("outside the repository", makefile)
         self.assertIn("prepared-mol-zstd-dictionary.yml", makefile)
-        self.assertIn("prepared-mol-zstd-timings.yml", makefile)
+        self.assertIn("timings-prepared-mol-zstd.yml", makefile)
         self.assertNotIn("LOCAL_UID:-", read_text("compose/package.yml"))
         self.assertNotIn("LOCAL_GID:-", read_text("compose/package.yml"))
-        self.assertNotIn("LOCAL_UID:-", read_text("compose/perf.yml"))
-        self.assertNotIn("LOCAL_GID:-", read_text("compose/perf.yml"))
-        self.assertNotIn("LOCAL_UID:-", read_text("compose/prepared-mol-zstd-timings.yml"))
-        self.assertNotIn("LOCAL_GID:-", read_text("compose/prepared-mol-zstd-timings.yml"))
+        self.assertNotIn("LOCAL_UID:-", read_text("compose/timings-enum.yml"))
+        self.assertNotIn("LOCAL_GID:-", read_text("compose/timings-enum.yml"))
+        self.assertNotIn("LOCAL_UID:-", read_text("compose/timings-prepared-mol-zstd.yml"))
+        self.assertNotIn("LOCAL_GID:-", read_text("compose/timings-prepared-mol-zstd.yml"))
         expected_targets = {
             "checks": "checks.yml,checks",
             "rust": "test.yml,rust",
@@ -596,15 +598,16 @@ class ContainerPostureTests(unittest.TestCase):
             "$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml",
             makefile,
         )
-        self.assertRegex(makefile, r"(?m)^prepared-mol-zstd-timings:")
+        self.assertRegex(makefile, r"(?m)^timings-prepared-mol-zstd:")
         self.assertIn(
-            "$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-timings.yml",
+            "$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/timings-prepared-mol-zstd.yml",
             makefile,
         )
-        self.assertIn("run --build --rm prepared-mol-zstd-timings", makefile)
-        self.assertRegex(makefile, r"(?m)^perf:")
-        self.assertIn("$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/perf.yml", makefile)
-        self.assertIn("run --build --rm perf", makefile)
+        self.assertIn("run --build --rm timings-prepared-mol-zstd", makefile)
+        self.assertRegex(makefile, r"(?m)^timings-enum:")
+        self.assertIn("$(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/timings-enum.yml", makefile)
+        self.assertIn("run --build --rm timings-enum", makefile)
+        self.assertNotRegex(makefile, r"(?m)^perf:")
         self.assertRegex(makefile, r"(?m)^docs:")
         self.assertIn("docs:\n\t@$(NON_ROOT_GUARD)\n\t@$(DOCS_PORT_GUARD)", makefile)
         self.assertIn("mkdir -p $(DOCS_OUTPUT_DIR)", makefile)

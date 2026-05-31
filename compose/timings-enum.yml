@@ -1,0 +1,44 @@
+services:
+  timings-enum:
+    build:
+      context: ..
+      dockerfile: containers/timings-enum/Dockerfile
+    image: grimace-py-timings-enum:local
+    working_dir: /build-src
+    user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 2g
+    tmpfs:
+      - /tmp:size=1024m,mode=1777
+    environment:
+      GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"
+      GRIMACE_PERF_GIT_CHANGE: "${GRIMACE_PERF_GIT_CHANGE:-}"
+      GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"
+      MPLCONFIGDIR: /tmp/matplotlib
+    volumes:
+      - type: bind
+        source: ../docs/timings-enum.tsv
+        target: /build-src/docs/timings-enum.tsv
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../docs/timings-enum.md
+        target: /build-src/docs/timings-enum.md
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../docs/timings-enum-plots
+        target: /build-src/docs/timings-enum-plots
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../notes/004_perf_history.jsonl
+        target: /build-src/notes/004_perf_history.jsonl
+        bind:
+          create_host_path: false

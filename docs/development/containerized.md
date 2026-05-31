@@ -15,9 +15,9 @@ and avoid the host Python environment for routine checks.
 | `make parity` | `parity` service in `compose/test.yml`; pinned RDKit parity | Container-local test output only |
 | `make exact-public-invariants` | `exact-public-invariants` service in `compose/test.yml` | Container-local test output only |
 | `make package` | `package` service in `compose/package.yml` | `dist/` |
-| `make perf` | `perf` service in `compose/perf.yml` | Timing docs and timing history |
+| `make timings-enum` | `timings-enum` service in `compose/timings-enum.yml` | Enum/support timing docs and timing history |
 | `make prepared-mol-zstd-dictionary` | `prepared-mol-zstd-dictionary` service in `compose/prepared-mol-zstd-dictionary.yml` | `python/grimace/data/prepared_mol_zstd/` |
-| `make prepared-mol-zstd-timings` | `prepared-mol-zstd-timings` service in `compose/prepared-mol-zstd-timings.yml` | PreparedMol zstd timing TSV and plots |
+| `make timings-prepared-mol-zstd` | `timings-prepared-mol-zstd` service in `compose/timings-prepared-mol-zstd.yml` | PreparedMol zstd timing TSV and plots |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
 | `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, performance, or docs artifacts |
@@ -37,11 +37,11 @@ make exact-public-invariants
 `make package` writes release artifacts under `dist/`. The Makefile refuses a
 symlinked `dist/` and clears direct children before building.
 
-`make perf` is opt-in and write-enabled for:
+`make timings-enum` is opt-in and write-enabled for:
 
-- `docs/timings.tsv`
-- `docs/timings.md`
-- `docs/timing-plots/`
+- `docs/timings-enum.tsv`
+- `docs/timings-enum.md`
+- `docs/timings-enum-plots/`
 - `notes/004_perf_history.jsonl`
 
 `make prepared-mol-zstd-dictionary` builds an installed-package image with the
@@ -56,12 +56,12 @@ make prepared-mol-zstd-dictionary \
   PREPARED_MOL_ZSTD_FORCE=1
 ```
 
-`make prepared-mol-zstd-timings` builds an installed-package image with the
+`make timings-prepared-mol-zstd` builds an installed-package image with the
 shipped dictionary, measures per-molecule compression and decompression with and
 without the dictionary, then renders tradeoff plots. It writes only to:
 
-- `docs/prepared-mol-zstd-timings.tsv`
-- `docs/prepared-mol-zstd-timings-plots/`
+- `docs/timings-prepared-mol-zstd.tsv`
+- `docs/timings-prepared-mol-zstd-plots/`
 
 `make docs` reads `docs/` read-only and writes the local Pages build to
 `build/docs-site/`. `build/` is ignored by git, so `git status build` reports

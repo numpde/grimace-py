@@ -13,10 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.perf._history import (
+from scripts.timing_environment import current_run_metadata
+from scripts.timing_history import (
     REPORT_DIR,
     append_history_record,
-    current_run_metadata,
     parse_perf_report_top_symbols,
     sanitize_label,
 )

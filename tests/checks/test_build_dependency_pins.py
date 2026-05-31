@@ -50,8 +50,8 @@ class BuildDependencyPinTests(unittest.TestCase):
             ".github/workflows/release.yml",
             "compose/package.yml",
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
-            "containers/prepared-mol-zstd-timings/Dockerfile",
-            "containers/perf/Dockerfile",
+            "containers/timings-prepared-mol-zstd/Dockerfile",
+            "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         )
         for relative_path in checked_files:
@@ -68,9 +68,9 @@ class BuildDependencyPinTests(unittest.TestCase):
         checked_files = (
             ".github/workflows/release.yml",
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
-            "containers/prepared-mol-zstd-timings/Dockerfile",
+            "containers/timings-prepared-mol-zstd/Dockerfile",
             "containers/package/Dockerfile",
-            "containers/perf/Dockerfile",
+            "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         )
         for relative_path in checked_files:
@@ -96,7 +96,7 @@ class BuildDependencyPinTests(unittest.TestCase):
                         self.assertRegex(text, rf"\btwine=={re.escape(TWINE_VERSION)}\b")
                     if relative_path in {
                         "containers/prepared-mol-zstd-dictionary/Dockerfile",
-                        "containers/prepared-mol-zstd-timings/Dockerfile",
+                        "containers/timings-prepared-mol-zstd/Dockerfile",
                     }:
                         self.assertRegex(
                             text,

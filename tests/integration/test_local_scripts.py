@@ -12,10 +12,10 @@ PREPARED_ZSTD_DICT_SCRIPT = (
     REPO_ROOT / "scripts" / "prepared_mol_zstd_dictionary_generate.py"
 )
 MEASURE_PREPARED_ZSTD_TIMINGS_SCRIPT = (
-    REPO_ROOT / "scripts" / "prepared_mol_zstd_timings_measure.py"
+    REPO_ROOT / "scripts" / "timings_prepared_mol_zstd_measure.py"
 )
 PLOT_PREPARED_ZSTD_TIMINGS_SCRIPT = (
-    REPO_ROOT / "scripts" / "prepared_mol_zstd_timings_plot.py"
+    REPO_ROOT / "scripts" / "timings_prepared_mol_zstd_plot.py"
 )
 
 

@@ -36,7 +36,7 @@ Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py)
 | Choose supported flags and root behavior | [Runtime](runtime.md) |
 | Check current gaps and supported release assets | [Limitations](current-limitations.md) |
 | Use prepared molecules, deviation diagnostics, or token inventories | [Guides](guides.md) |
-| Compare measured enumeration/decoder timings | [Timings](timings.md) |
+| Compare measured benchmark snapshots | [Timings](timings.md) |
 | Look up signatures and return objects | [API](api/python.md) |
 | Inspect checked-in RDKit evidence and counts | [Testing fixtures](testing-fixtures.md) |
 | Trace upstream RDKit serializer coverage | [RDKit serializer coverage](rdkit-serializer-coverage.md) |

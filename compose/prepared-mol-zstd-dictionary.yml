@@ -42,5 +42,5 @@ services:
         if [ "$${PREPARED_MOL_ZSTD_FORCE}" = "1" ]; then
           set -- "$$@" --force
         fi
-        python scripts/generate_prepared_mol_zstd_dictionary.py "$$@"
+        python scripts/prepared_mol_zstd_dictionary_generate.py "$$@"
         python -m unittest tests.prepared_mol_zstd_dictionary_rates -q

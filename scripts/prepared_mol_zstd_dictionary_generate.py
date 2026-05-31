@@ -346,7 +346,7 @@ def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any
         "dictionary_id_derivation_rule": DICT_ID_DERIVATION_RULE,
         "training_parameters": ZSTD_TRAINING_PARAMETERS,
         "generator": {
-            "script": "scripts/generate_prepared_mol_zstd_dictionary.py",
+            "script": str(Path(__file__).resolve().relative_to(ROOT)),
             "version": GENERATOR_VERSION,
             "python_package": "zstandard",
             "python_package_version": zstd.__version__,

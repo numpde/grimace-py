@@ -10,7 +10,7 @@ from rdkit import Chem
 import zstandard as zstd
 
 import grimace
-from scripts import generate_prepared_mol_zstd_dictionary as generator
+from scripts import prepared_mol_zstd_dictionary_generate as generator
 
 
 SAMPLE_COUNT = 1024

@@ -15,6 +15,9 @@ override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)
 override DOCS_SOURCE_DIR := docs
 override DOCS_OUTPUT_DIR := build/docs-site
 override PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR := python/grimace/data/prepared_mol_zstd
+override PREPARED_MOL_ZSTD_TIMING_ARTIFACT_FILES := docs/prepared-mol-zstd-timings.tsv
+override PREPARED_MOL_ZSTD_TIMING_ARTIFACT_DIRS := docs/prepared-mol-zstd-timings-plots
+override PREPARED_MOL_ZSTD_TIMING_ARTIFACTS := $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_FILES) $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_DIRS)
 DOCS_PORT ?= 8000
 PREPARED_MOL_ZSTD_CREATED_DATE ?=
 PREPARED_MOL_ZSTD_FORCE ?= 0
@@ -23,6 +26,7 @@ NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)"
 DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_PORT}" -gt 65535 ]]; then printf '%s\n' 'Refusing to run docs lane with DOCS_PORT outside 1..65535.' >&2; exit 2; fi
 DIST_GUARD := if [[ -L dist ]]; then printf '%s\n' 'Refusing to use dist because it is a symlink.' >&2; exit 2; fi
 PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PERF_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(PERF_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
+PREPARED_MOL_ZSTD_TIMING_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(DOCS_SOURCE_DIR) $(DOCS_OUTPUT_DIR); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind docs path %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
@@ -31,7 +35,7 @@ define compose_run
 $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test parity exact-public-invariants package perf prepared-mol-zstd-dictionary docs docs-serve ci
+.PHONY: help checks rust test parity exact-public-invariants package perf prepared-mol-zstd-dictionary prepared-mol-zstd-timings docs docs-serve ci
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
@@ -48,6 +52,7 @@ help:
 	  '  make package  Build and validate wheel/sdist artifacts under dist/' \
 	  '  make perf     Update opt-in timing docs and timing history' \
 	  '  make prepared-mol-zstd-dictionary  Generate the PreparedMol zstd dictionary artifact' \
+	  '  make prepared-mol-zstd-timings  Measure PreparedMol zstd timing tradeoffs' \
 	  '  make docs     Build the documentation site under build/docs-site/' \
 	  '  make docs-serve  Serve the documentation site on DOCS_PORT' \
 	  '  make ci      Run checks, rust, test, parity, and exact invariants' \
@@ -117,6 +122,11 @@ prepared-mol-zstd-dictionary:
 	PREPARED_MOL_ZSTD_CREATED_DATE="$${PREPARED_MOL_ZSTD_CREATED_DATE}" \
 	PREPARED_MOL_ZSTD_FORCE="$${PREPARED_MOL_ZSTD_FORCE}" \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml run --build --rm prepared-mol-zstd-dictionary
+
+prepared-mol-zstd-timings:
+	@$(NON_ROOT_GUARD); \
+	$(PREPARED_MOL_ZSTD_TIMING_ARTIFACTS_GUARD); \
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-timings.yml run --build --rm prepared-mol-zstd-timings
 
 docs:
 	@$(NON_ROOT_GUARD)

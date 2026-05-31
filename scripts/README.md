@@ -30,7 +30,7 @@ bounded correctness checks; heavier profiling runs should be explicit.
 
 ## PreparedMol Storage Tooling
 
-- `generate_prepared_mol_zstd_dictionary.py`
+- `prepared_mol_zstd_dictionary_generate.py`
   - generates the production `PreparedMol` zstd dictionary artifact from the
     checked-in `top_100000` fixture
   - writes a versioned artifact directory containing `default_v1.zstdict` and
@@ -38,6 +38,14 @@ bounded correctness checks; heavier profiling runs should be explicit.
   - validates the written manifest, dictionary ID, dictionary hash, and zstd
     round trip before returning success
   - requires the pinned `zstandard` development dependency
+- `prepared_mol_zstd_timings_measure.py`
+  - measures per-molecule `PreparedMol` compression and decompression with and
+    without the shipped dictionary
+  - writes `docs/prepared-mol-zstd-timings.tsv`
+- `prepared_mol_zstd_timings_plot.py`
+  - renders compression-ratio tradeoff plots from
+    `docs/prepared-mol-zstd-timings.tsv`
+  - writes `docs/prepared-mol-zstd-timings-plots/`
 
 ## `mine_rdkit_regressions.py`
 

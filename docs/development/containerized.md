@@ -17,6 +17,7 @@ and avoid the host Python environment for routine checks.
 | `make package` | `package` service in `compose/package.yml` | `dist/` |
 | `make perf` | `perf` service in `compose/perf.yml` | Timing docs and timing history |
 | `make prepared-mol-zstd-dictionary` | `prepared-mol-zstd-dictionary` service in `compose/prepared-mol-zstd-dictionary.yml` | `python/grimace/data/prepared_mol_zstd/` |
+| `make prepared-mol-zstd-timings` | `prepared-mol-zstd-timings` service in `compose/prepared-mol-zstd-timings.yml` | PreparedMol zstd timing TSV and plots |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
 | `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, performance, or docs artifacts |
@@ -54,6 +55,13 @@ make prepared-mol-zstd-dictionary \
   PREPARED_MOL_ZSTD_CREATED_DATE=20260531 \
   PREPARED_MOL_ZSTD_FORCE=1
 ```
+
+`make prepared-mol-zstd-timings` builds an installed-package image with the
+shipped dictionary, measures per-molecule compression and decompression with and
+without the dictionary, then renders tradeoff plots. It writes only to:
+
+- `docs/prepared-mol-zstd-timings.tsv`
+- `docs/prepared-mol-zstd-timings-plots/`
 
 `make docs` reads `docs/` read-only and writes the local Pages build to
 `build/docs-site/`. `build/` is ignored by git, so `git status build` reports

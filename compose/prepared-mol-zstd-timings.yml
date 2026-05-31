@@ -1,0 +1,37 @@
+services:
+  prepared-mol-zstd-timings:
+    build:
+      context: ..
+      dockerfile: containers/prepared-mol-zstd-timings/Dockerfile
+    image: grimace-py-prepared-mol-zstd-timings:local
+    working_dir: /build-src
+    user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 2g
+    tmpfs:
+      - /tmp:size=1024m,mode=1777
+    environment:
+      MPLCONFIGDIR: /tmp/matplotlib
+    volumes:
+      - type: bind
+        source: ../docs/prepared-mol-zstd-timings.tsv
+        target: /build-src/docs/prepared-mol-zstd-timings.tsv
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../docs/prepared-mol-zstd-timings-plots
+        target: /build-src/docs/prepared-mol-zstd-timings-plots
+        bind:
+          create_host_path: false
+    entrypoint:
+      - /bin/sh
+      - -euc
+      - |
+        python scripts/prepared_mol_zstd_timings_measure.py
+        python scripts/prepared_mol_zstd_timings_plot.py

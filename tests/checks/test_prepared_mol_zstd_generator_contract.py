@@ -11,7 +11,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GENERATOR_PATH = ROOT / "scripts" / "generate_prepared_mol_zstd_dictionary.py"
+GENERATOR_PATH = ROOT / "scripts" / "prepared_mol_zstd_dictionary_generate.py"
 
 
 def generator_constants() -> dict[str, ast.AST]:
@@ -60,7 +60,7 @@ def literal_constant(name: str) -> object:
 
 def load_generator_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location(
-        "generate_prepared_mol_zstd_dictionary",
+        "prepared_mol_zstd_dictionary_generate",
         GENERATOR_PATH,
     )
     if spec is None or spec.loader is None:

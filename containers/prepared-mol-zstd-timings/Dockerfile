@@ -14,18 +14,17 @@ ENV CARGO_HOME=/usr/local/cargo \
 COPY --from=python /usr/local /usr/local
 COPY requirements/container-build-constraints.txt /tmp/container-build-constraints.txt
 
+WORKDIR /build-src
+COPY . /build-src
+
 RUN python --version \
     && rustc --version \
     && cargo --version \
-    && python -m pip install --constraint /tmp/container-build-constraints.txt maturin==1.13.1 rdkit==2026.3.1 zstandard==0.25.0
-
-WORKDIR /src
-COPY . /src
-
-RUN python -m maturin build --release --out /tmp/grimace-dist -i python3.12 \
+    && python -m pip install --constraint /tmp/container-build-constraints.txt maturin==1.13.1 plox==0.0.3 rdkit==2026.3.1 zstandard==0.25.0 \
+    && python -m maturin build --release --out /tmp/grimace-dist -i python3.12 \
     && python -m pip install --no-deps /tmp/grimace-dist/*.whl \
     && rm -rf /tmp/grimace-dist
 
 USER 65532:65532
 
-ENTRYPOINT ["python", "scripts/prepared_mol_zstd_dictionary_generate.py"]
+ENTRYPOINT ["python"]

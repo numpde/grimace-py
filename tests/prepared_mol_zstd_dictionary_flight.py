@@ -8,7 +8,7 @@ from rdkit import Chem, rdBase
 import zstandard as zstd
 
 import grimace
-from scripts import generate_prepared_mol_zstd_dictionary as generator
+from scripts import prepared_mol_zstd_dictionary_generate as generator
 
 TEST_CREATED_YYYYMMDD = "20000102"
 

@@ -45,8 +45,13 @@ import grimace
 
 SEMANTIC_ID = "prepared-mol-default-v1"
 ARTIFACT_STEM = "default_v1"
+# Bump for any output-affecting generator change. Refactors that preserve the
+# training identity and dictionary bytes do not need a new artifact identity.
 GENERATOR_VERSION = 1
 EXPECTED_RDKIT_VERSION = "2026.03.1"
+EXPECTED_ZSTANDARD_VERSION = "0.25.0"
+EXPECTED_ZSTANDARD_BACKEND = "cext"
+EXPECTED_ZSTD_LIBRARY_VERSION = (1, 5, 7)
 FIXTURE_RELATIVE_PATH = Path("tests/fixtures/top_100000_CIDs.tsv.gz")
 PACKAGE_DICTIONARY_ROOT = Path("python/grimace/data/prepared_mol_zstd")
 EXPECTED_FIXTURE_GZIP_SHA256 = (
@@ -114,7 +119,7 @@ class Candidate:
 
 @dataclass(frozen=True, slots=True)
 class Corpus:
-    candidates_seen: int
+    candidate_success_count: int
     parse_failure_count: int
     preparation_failure_count: int
     selected: tuple[Candidate, ...]
@@ -149,10 +154,6 @@ def gzip_uncompressed_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def script_sha256() -> str:
-    return file_sha256(Path(__file__).resolve())
-
-
 def digest_length_prefixed_bytes(values: tuple[bytes, ...]) -> str:
     digest = hashlib.sha256()
     for value in values:
@@ -184,6 +185,21 @@ def require_expected_environment(fixture_path: Path) -> None:
     if rdBase.rdkitVersion != EXPECTED_RDKIT_VERSION:
         raise RuntimeError(
             f"RDKit version must be {EXPECTED_RDKIT_VERSION}, got {rdBase.rdkitVersion}"
+        )
+    if zstd.__version__ != EXPECTED_ZSTANDARD_VERSION:
+        raise RuntimeError(
+            "python-zstandard version must be "
+            f"{EXPECTED_ZSTANDARD_VERSION}, got {zstd.__version__}"
+        )
+    if zstd.backend != EXPECTED_ZSTANDARD_BACKEND:
+        raise RuntimeError(
+            "python-zstandard backend must be "
+            f"{EXPECTED_ZSTANDARD_BACKEND}, got {zstd.backend}"
+        )
+    if zstd.ZSTD_VERSION != EXPECTED_ZSTD_LIBRARY_VERSION:
+        raise RuntimeError(
+            "zstd library version must be "
+            f"{EXPECTED_ZSTD_LIBRARY_VERSION}, got {zstd.ZSTD_VERSION}"
         )
 
     gzip_hash = file_sha256(fixture_path)
@@ -256,7 +272,7 @@ def build_candidates(fixture_path: Path) -> Corpus:
         raise RuntimeError("Selection rule produced duplicate source rows")
 
     return Corpus(
-        candidates_seen=len(candidates),
+        candidate_success_count=len(candidates),
         parse_failure_count=parse_failure_count,
         preparation_failure_count=preparation_failure_count,
         selected=selected,
@@ -284,9 +300,16 @@ def existing_shipped_dictionary_ids() -> set[int]:
 def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any]:
     raw_payloads = tuple(candidate.raw_payload for candidate in corpus.selected)
     selected_cids = tuple(candidate.cid for candidate in corpus.selected)
+    selected_source_rows = tuple(
+        str(candidate.row_number) for candidate in corpus.selected
+    )
     first_version = prepared_mol_format_version(raw_payloads[0])
-    if any(prepared_mol_format_version(payload) != first_version for payload in raw_payloads):
-        raise RuntimeError("Selected PreparedMol payloads do not share one raw format version")
+    if any(
+        prepared_mol_format_version(payload) != first_version for payload in raw_payloads
+    ):
+        raise RuntimeError(
+            "Selected PreparedMol payloads do not share one raw format version"
+        )
 
     return {
         "semantic_id": SEMANTIC_ID,
@@ -308,12 +331,12 @@ def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any
         },
         "writer_options": WRITER_OPTIONS,
         "selection_rule": SELECTION_RULE,
-        "candidate_success_count": corpus.candidates_seen,
+        "candidate_success_count": corpus.candidate_success_count,
         "parse_failure_count": corpus.parse_failure_count,
         "preparation_failure_count": corpus.preparation_failure_count,
         "sample_count": len(corpus.selected),
-        "selected_cids": list(selected_cids),
         "selected_cids_sha256": digest_text_lines(selected_cids),
+        "selected_source_rows_sha256": digest_text_lines(selected_source_rows),
         "raw_sample_digest": {
             "algorithm": "sha256",
             "encoding": "8-byte little-endian length prefix followed by raw payload bytes",
@@ -323,13 +346,12 @@ def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any
         "dictionary_size": ZSTD_DICTIONARY_SIZE,
         "dictionary_id_derivation_rule": DICT_ID_DERIVATION_RULE,
         "training_parameters": ZSTD_TRAINING_PARAMETERS,
-        "manifest_hash_canonicalization": MANIFEST_HASH_CANONICALIZATION,
         "generator": {
             "script": "scripts/generate_prepared_mol_zstd_dictionary.py",
-            "script_sha256": script_sha256(),
             "version": GENERATOR_VERSION,
             "python_package": "zstandard",
             "python_package_version": zstd.__version__,
+            "python_package_backend": zstd.backend,
             "zstd_library_version": zstandard_library_version(),
         },
     }
@@ -431,6 +453,18 @@ def write_artifact(
             "Artifact with same manifest hash already exists under a different "
             f"date: {[str(path) for path in existing_same_hash]}"
         )
+    if artifact_dir.exists():
+        existing_manifest_path = artifact_dir / f"{ARTIFACT_STEM}.json"
+        if existing_manifest_path.exists():
+            existing_manifest = json.loads(
+                existing_manifest_path.read_text(encoding="utf-8")
+            )
+            existing_manifest_sha = existing_manifest.get("manifest_sha256")
+            if existing_manifest_sha != manifest_sha:
+                raise FileExistsError(
+                    "Artifact directory exists with a different manifest hash: "
+                    f"{artifact_dir}"
+                )
     manifest = build_manifest(
         created_yyyymmdd=created_yyyymmdd,
         artifact_dir=artifact_dir_name,

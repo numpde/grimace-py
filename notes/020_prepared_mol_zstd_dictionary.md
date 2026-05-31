@@ -263,10 +263,11 @@ separators=(",", ":")
 Use two hashes to avoid circular identity:
 
 1. `training_identity_sha256`: recipe identity. It includes source fixture
-   hashes, RDKit version, writer options, exact selection rule, selected CIDs,
-   raw sample digest, generator implementation/version, zstd library version,
-   dictionary size, dictionary ID derivation rule, and training parameters. It
-   excludes generated artifact bytes.
+   hashes, RDKit version, writer options, exact selection rule, selected
+   CID/source-row digests, raw sample digest, generator version,
+   `python-zstandard` version/backend, zstd library version, dictionary size,
+   dictionary ID derivation rule, and training parameters. It excludes
+   generated artifact bytes.
 2. `manifest_sha256`: artifact identity. It includes the training identity,
    dictionary SHA-256, zstd dictionary ID, and shipped file names. This is the
    hash used in the artifact directory name.
@@ -292,8 +293,8 @@ It includes:
 - `PreparedMol` raw format magic and version
 - writer options
 - selection rule
-- selected CIDs or a selected-CID digest plus an auditable sidecar if the full
-  list is too large for the manifest
+- selected CID digest and selected source-row digest; the fixture and
+  deterministic generator rule are the auditable source of the full list
 - parse failure count
 - preparation failure count
 - sample count
@@ -306,11 +307,11 @@ must not collide with any shipped built-in dictionary. Do not derive it from
 `manifest_sha256`; that would be circular because the manifest includes the
 dictionary ID.
 
-Define the integer derivation exactly before generating the artifact, including
-byte order and the zero-ID escape rule. For example: take the first four bytes
-of `training_identity_sha256` as little-endian `u32`; if that value is zero,
-use the next four bytes; fail generation if all candidates are zero or collide
-with an existing shipped dictionary.
+Derive the integer exactly as the generator does: scan
+`training_identity_sha256` in four-byte chunks, interpret each chunk as a
+little-endian `u32`, clear the top bit, and choose the first value in
+`32768..2147483647` that does not collide with an existing shipped dictionary.
+Fail generation if no candidate satisfies those rules.
 
 Training reproducibility is not enough by itself. The shipped dictionary bytes
 are the artifact of record. Use a Python generator with pinned
@@ -318,6 +319,12 @@ are the artifact of record. Use a Python generator with pinned
 `dict_id`, and its dictionary object exposes the resulting ID and bytes. Tests
 should validate the checked-in dictionary hash rather than assuming every zstd
 implementation will train byte-identical dictionaries.
+
+The generator must fail unless the Python package version, Python package
+backend, and underlying zstd library version match the pinned recipe. For
+`python-zstandard==0.25.0`, the pinned CPython wheel reports backend `cext` and
+zstd `1.5.7`; source-built or downstream wheels with a different backend or
+library version should not generate the production `default_v1` artifact.
 
 Dictionary lifecycle matters because each shipped built-in dictionary becomes
 read debt. Before adding `default_v2`, measure wheel-size impact and update the

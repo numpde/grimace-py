@@ -9,6 +9,9 @@ MATURIN_VERSION = "1.13.1"
 MATURIN_ACTION_VERSION = f"v{MATURIN_VERSION}"
 RDKIT_VERSION = "2026.3.1"
 TWINE_VERSION = "6.2.0"
+ZSTANDARD_VERSION = "0.25.0"
+ZSTANDARD_BACKEND = "cext"
+ZSTD_LIBRARY_VERSION = (1, 5, 7)
 
 
 def read_text(relative_path: str) -> str:
@@ -60,6 +63,7 @@ class BuildDependencyPinTests(unittest.TestCase):
         self.assertEqual(MATURIN_VERSION, constraints["maturin"])
         self.assertEqual(RDKIT_VERSION, constraints["rdkit"])
         self.assertEqual(TWINE_VERSION, constraints["twine"])
+        self.assertEqual(ZSTANDARD_VERSION, constraints["zstandard"])
 
         checked_files = (
             ".github/workflows/release.yml",
@@ -93,6 +97,27 @@ class BuildDependencyPinTests(unittest.TestCase):
         constraints = pinned_constraints()
         self.assertEqual(RDKIT_VERSION, constraints["rdkit"])
         self.assertEqual(TWINE_VERSION, constraints["twine"])
+        self.assertEqual(ZSTANDARD_VERSION, constraints["zstandard"])
+
+    def test_prepared_mol_dictionary_generator_uses_pinned_zstandard(self) -> None:
+        pyproject = tomllib.loads(read_text("pyproject.toml"))
+        self.assertIn(
+            f"zstandard=={ZSTANDARD_VERSION}",
+            pyproject["dependency-groups"]["dev"],
+        )
+        self.assertRegex(
+            read_text("scripts/generate_prepared_mol_zstd_dictionary.py"),
+            rf'(?m)^EXPECTED_ZSTANDARD_VERSION = "{re.escape(ZSTANDARD_VERSION)}"$',
+        )
+        self.assertRegex(
+            read_text("scripts/generate_prepared_mol_zstd_dictionary.py"),
+            rf'(?m)^EXPECTED_ZSTANDARD_BACKEND = "{re.escape(ZSTANDARD_BACKEND)}"$',
+        )
+        self.assertRegex(
+            read_text("scripts/generate_prepared_mol_zstd_dictionary.py"),
+            rf"(?m)^EXPECTED_ZSTD_LIBRARY_VERSION = "
+            rf"{re.escape(str(ZSTD_LIBRARY_VERSION))}$",
+        )
 
     def test_container_constraints_are_exact_and_sorted(self) -> None:
         lines = constraint_lines()

@@ -352,6 +352,72 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_stranded_unvisited_child_obligation(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_second_atom_key(prepared, options)
+        tampered_key = replace(
+            key,
+            active=replace(
+                key.active,
+                atom=AtomId(0),
+                parent=None,
+                incoming_bond=None,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_branch_stack_owned_sibling_obligation(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        branch_key = _cco_branch_child_key(prepared, options)
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(branch_key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_rejects_branch_state_missing_return_owner(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        branch_key = _cco_branch_child_key(prepared, options)
+        tampered_key = replace(branch_key, branch_stack=())
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_completed_component_with_nonterminal_active(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_third_atom_key(prepared, options)
+        tampered_key = replace(
+            key,
+            active=replace(
+                key.active,
+                atom=AtomId(0),
+                parent=None,
+                incoming_bond=None,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_future_unemitted_bond_occurrence(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -918,6 +984,25 @@ def _cco_after_second_atom_key(prepared, options):
     after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
     after_second = writer_frontier_choices(prepared, after_root).choices[0].successor
     return after_second.weighted_states[0][0]
+
+
+def _cco_after_third_atom_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_second = writer_frontier_choices(prepared, after_root).choices[0].successor
+    after_third = writer_frontier_choices(prepared, after_second).choices[0].successor
+    return after_third.weighted_states[0][0]
+
+
+def _cco_branch_child_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+    after_branch_open = writer_frontier_choices(prepared, after_root).choices[0].successor
+    after_branch_child = writer_frontier_choices(
+        prepared,
+        after_branch_open,
+    ).choices[0].successor
+    return after_branch_child.weighted_states[0][0]
 
 
 def _terminal_tetra_key():

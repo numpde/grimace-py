@@ -171,6 +171,7 @@ def validate_writer_cursor_against_prepared(
         _validate_current_component_tree_fragment(prepared, key)
         _validate_written_bond_coherence(prepared, key)
         _validate_obligations(key.obligations, key, atom_ids, bond_ids, prepared)
+        _validate_live_frontier_ownership(prepared, key)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
@@ -472,6 +473,71 @@ def _validate_pending_entry(
     if pending.bond not in bond_ids:
         _invalid_snapshot("writer pending entry references unknown bond")
     _require_graph_bond(prepared, pending.parent, pending.child, pending.bond)
+
+
+def _validate_live_frontier_ownership(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    current = key.component_cursor.component_index
+    component = prepared.facts.components[current]
+    component_atoms = frozenset(component.atoms)
+    visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
+    unvisited = component_atoms - visited
+    if not visited:
+        return
+    owner_atoms = _live_owner_atoms(key)
+    boundary_edges = []
+    for bond in component.bonds:
+        fact = prepared.graph_index.bond_by_id[bond]
+        left_visited = fact.a in visited
+        right_visited = fact.b in visited
+        if left_visited == right_visited:
+            continue
+        visited_endpoint = fact.a if left_visited else fact.b
+        boundary_edges.append((bond, visited_endpoint))
+        if visited_endpoint not in owner_atoms:
+            _invalid_snapshot("writer live frontier does not own unvisited obligation")
+    if unvisited and not boundary_edges:
+        _invalid_snapshot("writer current component has unvisited atoms without frontier")
+    if (
+        not unvisited
+        and key.obligations.pending_entry is None
+        and not key.branch_stack
+        and not _active_is_terminal_leaf(prepared, key)
+    ):
+        _invalid_snapshot("writer completed component active frame is not terminal")
+
+
+def _live_owner_atoms(key: WriterStateKey) -> frozenset[AtomId]:
+    owners = set()
+    if key.active is not None:
+        owners.add(key.active.atom)
+    owners.update(frame.return_atom.atom for frame in key.branch_stack)
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        owners.add(pending.parent)
+    return frozenset(owners)
+
+
+def _active_is_terminal_leaf(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> bool:
+    active = key.active
+    if active is None or not active.atom_emitted:
+        return False
+    current = key.component_cursor.component_index
+    component = prepared.facts.components[current]
+    if len(component.atoms) == 1:
+        return active.atom == key.component_cursor.component_roots[current]
+    parent_links = _written_tree_parent_links(prepared, key)
+    children = {
+        child
+        for child, (parent, _) in parent_links.items()
+        if parent == active.atom
+    }
+    return not children
 
 
 def _validate_stereo_occurrences_bound_to_graph_state(

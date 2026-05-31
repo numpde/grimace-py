@@ -264,9 +264,9 @@ Use two hashes to avoid circular identity:
 
 1. `training_identity_sha256`: recipe identity. It includes source fixture
    hashes, RDKit version, writer options, exact selection rule, selected CIDs,
-   raw sample digest, zstd implementation/version, dictionary size, dictionary
-   ID derivation rule, and training parameters. It excludes generated artifact
-   bytes.
+   raw sample digest, generator implementation/version, zstd library version,
+   dictionary size, dictionary ID derivation rule, and training parameters. It
+   excludes generated artifact bytes.
 2. `manifest_sha256`: artifact identity. It includes the training identity,
    dictionary SHA-256, zstd dictionary ID, and shipped file names. This is the
    hash used in the artifact directory name.
@@ -313,9 +313,11 @@ use the next four bytes; fail generation if all candidates are zero or collide
 with an existing shipped dictionary.
 
 Training reproducibility is not enough by itself. The shipped dictionary bytes
-are the artifact of record. The generator should be deterministic with pinned
-tooling, but tests should validate the checked-in dictionary hash rather than
-assuming every zstd implementation will train byte-identical dictionaries.
+are the artifact of record. Use a Python generator with pinned
+`python-zstandard` for `default_v1`; its training API accepts an explicit
+`dict_id`, and its dictionary object exposes the resulting ID and bytes. Tests
+should validate the checked-in dictionary hash rather than assuming every zstd
+implementation will train byte-identical dictionaries.
 
 Dictionary lifecycle matters because each shipped built-in dictionary becomes
 read debt. Before adding `default_v2`, measure wheel-size impact and update the
@@ -380,6 +382,30 @@ container. For 100M-molecule stores, benchmark per-record zstd frames against
 outer bulk compression and indexed container designs before claiming an
 end-to-end storage recommendation.
 
+## Generator boundary
+
+Dictionary generation is an offline build/development step. For `default_v1`,
+write it in Python using `python-zstandard`. Do not require the runtime to
+train dictionaries, and do not make runtime reads depend on the generator's
+implementation language.
+
+The generator must:
+
+- derive the deterministic dictionary ID from `training_identity_sha256`
+- create a zstd dictionary that carries that dictionary ID
+- write the dictionary bytes and canonical manifest
+- fail if the selected generation library cannot force or verify the dictionary
+  ID
+- record the generator dependency/version and underlying zstd version
+
+Rust generation remains viable later through lower-level zstd bindings, but the
+safe high-level Rust training wrapper does not expose explicit dictionary ID
+control. That makes Python the smaller first implementation while still keeping
+runtime reading Rust-owned.
+
+The Rust runtime must read and validate the shipped dictionary regardless of
+how it was generated.
+
 ## Security and malformed inputs
 
 Compressed reads add new failure modes that raw `GPM\0` parsing does not have:
@@ -402,8 +428,8 @@ errors, not as panics or partial reads.
 Unknown non-raw, non-zstd prefixes should fail as malformed `PreparedMol`
 payloads without invoking the zstd decoder.
 
-If the chosen Rust zstd API cannot force dictionary IDs, content size, and
-checksum on write, and inspect dictionary ID, content size, checksum flag,
+If the chosen Rust zstd API cannot write frames with dictionary IDs, content
+size, and checksum, and inspect dictionary ID, content size, checksum flag,
 single-frame consumption, and trailing bytes on read, do not paper over that in
 Python. Use lower-level zstd bindings or revisit a Grimace envelope.
 
@@ -476,7 +502,8 @@ Add tests before exposing compression as public API:
 
 ## Implementation order
 
-1. Add a generator script that writes candidate artifacts to `~/tmp`.
+1. Add a Python `python-zstandard` generator that writes candidate artifacts to
+   `~/tmp`.
 2. Train head-only and head-plus-hash-stratified dictionaries.
 3. Measure raw size, zstd without dictionary, zstd with dictionary, write time,
    read time, parse time, first-use dictionary load cost, and steady-state

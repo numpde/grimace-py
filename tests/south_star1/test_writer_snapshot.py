@@ -32,11 +32,19 @@ from grimace._south_star1.writer_snapshot import resume_writer_frontier_choices_
 from grimace._south_star1.writer_snapshot import validate_writer_cursor_against_prepared
 from grimace._south_star1.writer_snapshot import validate_writer_search_snapshot
 from grimace._south_star1.writer_snapshot import writer_frontier_cursor_from_snapshot
+from grimace._south_star1.writer_state import ComponentCursor
+from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import ObligationStateKey
 from grimace._south_star1.writer_state import PendingEntryPhase
 from grimace._south_star1.writer_state import PendingWriterEntry
+from grimace._south_star1.writer_state import WriterAtomFrame
 from grimace._south_star1.writer_state import WriterBranchFrame
+from grimace._south_star1.writer_state import WriterPolicyState
 from grimace._south_star1.writer_state import WriterRingStateKey
+from grimace._south_star1.writer_state import WriterRingState
+from grimace._south_star1.writer_state import WriterState
+from grimace._south_star1.writer_state import writer_state_key
+from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_stereo import WriterAtomOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterBondOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
@@ -211,6 +219,57 @@ class WriterSnapshotTest(unittest.TestCase):
                 _cursor_with_key(tampered_key),
                 runtime_options=options,
             )
+
+    def test_snapshot_rejects_negative_component_index_without_index_error(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        key = cursor.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            component_cursor=replace(key.component_cursor, component_index=-1),
+        )
+        tampered_cursor = _cursor_with_key(tampered_key)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        tampered_snapshot = replace(
+            snapshot,
+            cursor=tampered_cursor,
+            frame_stack=(WriterFrontierFrame(tampered_cursor),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
+
+    def test_snapshot_rejects_out_of_range_component_index_without_index_error(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        key = cursor.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            component_cursor=replace(
+                key.component_cursor,
+                component_index=len(prepared.facts.components),
+            ),
+        )
+        tampered_cursor = _cursor_with_key(tampered_key)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        tampered_snapshot = replace(
+            snapshot,
+            cursor=tampered_cursor,
+            frame_stack=(WriterFrontierFrame(tampered_cursor),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
     def test_cursor_audit_rejects_invalid_pending_graph_triple(self) -> None:
         prepared = _prepare(cco_facts())
@@ -411,6 +470,18 @@ class WriterSnapshotTest(unittest.TestCase):
             validate_writer_cursor_against_prepared(
                 prepared,
                 _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_orphan_residual_attachment(self) -> None:
+        prepared = _prepare(chain_plus_isolate_same_component_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _manual_emitted_root_key(AtomId(0))
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
                 runtime_options=options,
             )
 
@@ -1138,6 +1209,39 @@ def _cursor_with_key(key) -> WriterFrontierCursor:
     return WriterFrontierCursor(weighted_states=((key, 1),))
 
 
+def _manual_emitted_root_key(root: AtomId):
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(root,),
+            ),
+            active=WriterAtomFrame(
+                atom=root,
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((root,)),
+            written_bonds=frozenset(),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(
+                        atom=root,
+                        token=TetraToken.NONE,
+                        var=None,
+                    ),
+                ),
+            ),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
 def _tetra_center_key(prepared, options):
     cursor = initial_writer_frontier_cursor(prepared, options)
     after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
@@ -1220,6 +1324,20 @@ def chain_plus_singleton_facts() -> MoleculeFacts:
                 id=ComponentId(1),
                 atoms=(AtomId(2),),
                 bonds=(),
+            ),
+        ),
+    )
+
+
+def chain_plus_isolate_same_component_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "O")),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0),),
             ),
         ),
     )

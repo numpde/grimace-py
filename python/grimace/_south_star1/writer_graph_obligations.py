@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from .errors import SouthStarError
+from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
 from .writer_state import WriterStateKey
@@ -132,6 +134,11 @@ def classify_writer_residual_attachments(
     block_cut: WriterBlockCutMetadata,
 ) -> WriterGraphObligationSummary:
     current = key.component_cursor.component_index
+    if current < 0 or current >= len(prepared.facts.components):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer component index is outside prepared components",
+        )
     component = prepared.facts.components[current]
     component_atoms = frozenset(component.atoms)
     component_bonds = frozenset(component.bonds)

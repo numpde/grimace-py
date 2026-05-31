@@ -164,8 +164,8 @@ def validate_writer_cursor_against_prepared(
     for key, weight in cursor.weighted_states:
         if weight <= 0:
             _invalid_snapshot("writer cursor contains nonpositive weight")
-        summary = _writer_obligation_summary(prepared, key)
         _validate_component_cursor(key.component_cursor, allowed_roots)
+        summary = _writer_obligation_summary(prepared, key)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
         for frame in key.branch_stack:
             _validate_branch_frame(frame, atom_ids, bond_ids, prepared)
@@ -595,6 +595,8 @@ def _validate_live_frontier_ownership(
         for attachment in summary.attachments.attachments
         for incidence in attachment.boundary
     ]
+    if any(not attachment.boundary for attachment in summary.attachments.attachments):
+        _invalid_snapshot("writer residual attachment has no boundary incidence")
     branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
     branch_owned_atoms = {
         incidence.written_atom

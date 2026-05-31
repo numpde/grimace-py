@@ -40,6 +40,8 @@ def _draw_scatter(
     std_field: str,
     ylabel: str,
     note: str,
+    log_time: bool,
+    note_location: str,
     output: Path,
 ) -> None:
     from plox import Plox
@@ -62,7 +64,7 @@ def _draw_scatter(
             x = [float(row["compression_ratio"]) * 100 for row in mode_rows]
             y = [float(row[time_field]) * 1_000 for row in mode_rows]
             yerr = [float(row[std_field]) * 1_000 for row in mode_rows]
-            if any(value - error <= 0 for value, error in zip(y, yerr)):
+            if log_time and any(value - error <= 0 for value, error in zip(y, yerr)):
                 raise SystemExit(
                     f"{mode!r} {time_field} has a non-positive lower error bound; "
                     "log-scale additive error bars need fresh timing samples or a "
@@ -100,17 +102,22 @@ def _draw_scatter(
 
         ax.set_xlabel("Compression ratio, %")
         ax.set_ylabel(ylabel)
-        ax.set_xlim(4, 14)
-        ax.set_yscale("log")
+        ax.set_xlim(3.5, 14.5)
+        if log_time:
+            ax.set_yscale("log")
         ax.grid(color="#dddddd", linewidth=0.8)
         ax.set_axisbelow(True)
+        note_x, note_y, note_va = {
+            "lower-left": (0.02, 0.02, "bottom"),
+            "upper-left": (0.02, 0.98, "top"),
+        }[note_location]
         ax.text(
-            0.02,
-            0.02,
+            note_x,
+            note_y,
             note,
             transform=ax.transAxes,
             fontsize="small",
-            va="bottom",
+            va=note_va,
             ha="left",
             bbox={
                 "boxstyle": "round,pad=0.25",
@@ -176,6 +183,8 @@ def main(argv: list[str]) -> int:
         std_field="compression_std_s",
         ylabel=f"Compression time for {sample_count} payloads, ms",
         note=note,
+        log_time=True,
+        note_location="lower-left",
         output=compression_output,
     )
     _draw_scatter(
@@ -184,6 +193,8 @@ def main(argv: list[str]) -> int:
         std_field="decompression_std_s",
         ylabel=f"Decompression time for {sample_count} payloads, ms",
         note=note,
+        log_time=False,
+        note_location="upper-left",
         output=decompression_output,
     )
     print(f"Wrote {compression_output}")

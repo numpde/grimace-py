@@ -437,7 +437,9 @@ def _on_ring_endpoint_paired(
         len(first_evidence) != 9
         or first_evidence[0] != "ring_endpoint"
         or first_evidence[1] != int(event.bond)
+        or first_evidence[2] != "open"
         or first_evidence[3] != int(event.partner_atom)
+        or first_evidence[4] != int(event.endpoint_atom)
         or first_evidence[5] != event.label.value
         or first_evidence[6] != event.label.text
     ):

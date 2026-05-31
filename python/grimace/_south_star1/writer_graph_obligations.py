@@ -580,6 +580,7 @@ def _validate_closure_state_supported_for_snapshot(
             _invalid_edge_partition("writer open closure endpoint has wrong endpoints")
         if endpoint.first_atom not in key.visited_atoms:
             _invalid_edge_partition("writer open closure endpoint first atom is not visited")
+        _validate_open_endpoint_text(prepared, endpoint)
         _validate_open_endpoint_partner_liveness(key, endpoint, context)
     for closure in key.ring_state.closed_closures:
         if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
@@ -591,6 +592,7 @@ def _validate_closure_state_supported_for_snapshot(
             _invalid_edge_partition("writer closed closure has wrong endpoints")
         if closure.first_atom not in key.visited_atoms or closure.second_atom not in key.visited_atoms:
             _invalid_edge_partition("writer closed closure endpoint is not visited")
+        _validate_closed_closure_text(prepared, closure)
 
 
 def _validate_ring_label_state(key: WriterStateKey) -> None:
@@ -641,6 +643,50 @@ def _open_writer_atoms(key: WriterStateKey) -> frozenset[AtomId]:
     if pending is not None:
         atoms.add(pending.parent)
     return frozenset(atoms)
+
+
+def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> None:
+    if endpoint.first_endpoint_text != endpoint.label.text:
+        _invalid_edge_partition("writer open closure endpoint text does not match label")
+    if endpoint.first_endpoint_bond_text not in _closure_bond_texts(
+        prepared,
+        endpoint.bond,
+    ):
+        _invalid_edge_partition("writer open closure bond text is outside policy domain")
+
+
+def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> None:
+    if closure.first_endpoint_text != closure.label.text:
+        _invalid_edge_partition("writer closed closure first endpoint text does not match label")
+    if closure.second_endpoint_text != closure.label.text:
+        _invalid_edge_partition("writer closed closure second endpoint text does not match label")
+    choices = _closure_bond_texts(prepared, closure.bond)
+    if closure.first_endpoint_bond_text not in choices:
+        _invalid_edge_partition("writer closed closure first bond text is outside policy domain")
+    if closure.second_endpoint_bond_text not in choices:
+        _invalid_edge_partition("writer closed closure second bond text is outside policy domain")
+
+
+def _closure_bond_texts(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> frozenset[str]:
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"writer closure bond lacks ring-endpoint policy domain: {bond!r}",
+        ) from exc
+    texts = {choice.base_text for choice in choices}
+    if any(choice.permits_direction for choice in choices):
+        texts.update(("/", "\\"))
+    if not texts:
+        _invalid_edge_partition("writer closure bond text policy domain is empty")
+    return frozenset(texts)
 
 
 def _validate_closure_obligation(

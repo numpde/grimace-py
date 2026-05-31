@@ -201,6 +201,70 @@ class WriterStereoResidualTest(unittest.TestCase):
             )
         )
 
+    def test_ring_endpoint_pair_rejects_pending_evidence_with_wrong_side(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        pending = replace(
+            empty_writer_stereo_state(),
+            delayed_factors=(
+                WriterDelayedStereoFactor(
+                    kind="ring_pair",
+                    site=SiteId(2),
+                    evidence=(("ring_endpoint", 2, "close", 0, 2, 1, "1", "1", ""),),
+                    closed=False,
+                ),
+            ),
+        )
+
+        closed = advance_writer_stereo_state(
+            prepared,
+            pending,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNone(closed)
+
+    def test_ring_endpoint_pair_rejects_pending_evidence_with_wrong_partner(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        pending = replace(
+            empty_writer_stereo_state(),
+            delayed_factors=(
+                WriterDelayedStereoFactor(
+                    kind="ring_pair",
+                    site=SiteId(2),
+                    evidence=(("ring_endpoint", 2, "open", 0, 1, 1, "1", "1", ""),),
+                    closed=False,
+                ),
+            ),
+        )
+
+        closed = advance_writer_stereo_state(
+            prepared,
+            pending,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNone(closed)
+
     def test_ring_endpoint_event_on_directional_carrier_fails_closed(self) -> None:
         prepared = _prepare(directional_facts())
         label = WriterClosureLabel(value=1, text="1")

@@ -31,6 +31,27 @@ grimace: Any | None = None
 
 
 @dataclass(frozen=True, slots=True)
+class BenchmarkEnvironment:
+    recorded_at_utc: str
+    git_commit: str
+    git_change: str
+    git_dirty: bool
+    platform: str
+    python: str
+    rdkit: str
+    zstandard: str
+    zstd_library: str
+    cpu_model: str | None
+    visible_cpus: int | None
+    cgroup_memory_limit_bytes: int | None
+    container: str
+
+    @classmethod
+    def fieldnames(cls) -> tuple[str, ...]:
+        return tuple(cls.__dataclass_fields__.keys())
+
+
+@dataclass(frozen=True, slots=True)
 class TimingRow:
     sample_count: int
     sample_policy: str
@@ -156,6 +177,33 @@ def _dictionary() -> DictionaryArtifact:
         artifact=artifact_dir.name,
         dictionary_id=manifest["zstd_dictionary_id"],
         dictionary_sha256=manifest["zstd_dictionary_sha256"],
+    )
+
+
+def _benchmark_environment() -> BenchmarkEnvironment:
+    assert zstd is not None
+
+    from tests.perf._history import current_run_metadata
+
+    run = current_run_metadata()
+    machine = run["machine"]
+    return BenchmarkEnvironment(
+        recorded_at_utc=run["recorded_at_utc"],
+        git_commit=run["git_commit"],
+        git_change=run["git_change"],
+        git_dirty=run["git_dirty"],
+        platform=run["platform"],
+        python=run["python"],
+        rdkit=run["rdkit"],
+        zstandard=zstd.__version__,
+        zstd_library=".".join(str(part) for part in zstd.ZSTD_VERSION),
+        cpu_model=machine["cpu_model"],
+        visible_cpus=machine["visible_cpus"],
+        cgroup_memory_limit_bytes=machine["cgroup_memory_limit_bytes"],
+        container=(
+            "compose/prepared-mol-zstd-timings.yml "
+            "prepared-mol-zstd-timings service, network disabled"
+        ),
     )
 
 
@@ -327,6 +375,7 @@ def main(argv: list[str]) -> int:
     sample_source_rows_sha256 = sample.source_rows_sha256
     sample_cids_sha256 = sample.cids_sha256
     dictionary = _dictionary()
+    environment = _benchmark_environment()
 
     rows: list[TimingRow] = []
     for level in args.levels:
@@ -360,13 +409,14 @@ def main(argv: list[str]) -> int:
     with args.output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=TimingRow.fieldnames(),
+            fieldnames=BenchmarkEnvironment.fieldnames() + TimingRow.fieldnames(),
             dialect="excel-tab",
             lineterminator="\n",
         )
         writer.writeheader()
+        environment_payload = asdict(environment)
         for row in rows:
-            writer.writerow(asdict(row))
+            writer.writerow({**environment_payload, **asdict(row)})
     print(f"Wrote {args.output}")
     return 0
 

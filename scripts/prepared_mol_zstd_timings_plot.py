@@ -149,6 +149,19 @@ def main(argv: list[str]) -> int:
         raise SystemExit("Timing input must use one sample_count")
     sample_count = next(iter(sample_counts))
     for field in (
+        "recorded_at_utc",
+        "git_commit",
+        "git_change",
+        "git_dirty",
+        "platform",
+        "python",
+        "rdkit",
+        "zstandard",
+        "zstd_library",
+        "cpu_model",
+        "visible_cpus",
+        "cgroup_memory_limit_bytes",
+        "container",
         "sample_policy",
         "sample_seed",
         "sample_source_rows_sha256",

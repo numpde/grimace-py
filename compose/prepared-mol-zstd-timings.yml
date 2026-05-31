@@ -17,6 +17,9 @@ services:
     tmpfs:
       - /tmp:size=1024m,mode=1777
     environment:
+      GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"
+      GRIMACE_PERF_GIT_CHANGE: "${GRIMACE_PERF_GIT_CHANGE:-}"
+      GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"
       MPLCONFIGDIR: /tmp/matplotlib
     volumes:
       - type: bind

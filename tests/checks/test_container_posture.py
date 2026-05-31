@@ -213,6 +213,18 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
             r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
         )
+        self.assertIn(
+            'GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"',
+            compose,
+        )
+        self.assertIn(
+            'GRIMACE_PERF_GIT_CHANGE: "${GRIMACE_PERF_GIT_CHANGE:-}"',
+            compose,
+        )
+        self.assertIn(
+            'GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"',
+            compose,
+        )
         self.assertIn("MPLCONFIGDIR: /tmp/matplotlib", compose)
         self.assertIn("source: ../docs/prepared-mol-zstd-timings.tsv", compose)
         self.assertIn(

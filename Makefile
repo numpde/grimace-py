@@ -28,6 +28,7 @@ DIST_GUARD := if [[ -L dist ]]; then printf '%s\n' 'Refusing to use dist because
 PERF_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PERF_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(PERF_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind perf artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 PREPARED_MOL_ZSTD_TIMING_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(PREPARED_MOL_ZSTD_TIMING_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(DOCS_SOURCE_DIR) $(DOCS_OUTPUT_DIR); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind docs path %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
+PERF_GIT_METADATA_ENV := GRIMACE_PERF_GIT_COMMIT="$$(git rev-parse --short=12 HEAD)"; GRIMACE_PERF_GIT_CHANGE="$$(git log -1 --format=%s HEAD)"; if [[ -n "$$(git status --short)" ]]; then GRIMACE_PERF_GIT_DIRTY=1; else GRIMACE_PERF_GIT_DIRTY=0; fi; export GRIMACE_PERF_GIT_COMMIT GRIMACE_PERF_GIT_CHANGE GRIMACE_PERF_GIT_DIRTY
 COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run
@@ -91,14 +92,7 @@ package:
 perf:
 	@$(NON_ROOT_GUARD); \
 	$(PERF_ARTIFACTS_GUARD); \
-	GRIMACE_PERF_GIT_COMMIT="$$(git rev-parse --short=12 HEAD)"; \
-	GRIMACE_PERF_GIT_CHANGE="$$(git log -1 --format=%s HEAD)"; \
-	if [[ -n "$$(git status --short)" ]]; then \
-	  GRIMACE_PERF_GIT_DIRTY=1; \
-	else \
-	  GRIMACE_PERF_GIT_DIRTY=0; \
-	fi; \
-	export GRIMACE_PERF_GIT_COMMIT GRIMACE_PERF_GIT_CHANGE GRIMACE_PERF_GIT_DIRTY; \
+	$(PERF_GIT_METADATA_ENV); \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/perf.yml run --build --rm perf
 
 prepared-mol-zstd-dictionary:
@@ -126,6 +120,7 @@ prepared-mol-zstd-dictionary:
 prepared-mol-zstd-timings:
 	@$(NON_ROOT_GUARD); \
 	$(PREPARED_MOL_ZSTD_TIMING_ARTIFACTS_GUARD); \
+	$(PERF_GIT_METADATA_ENV); \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-timings.yml run --build --rm prepared-mol-zstd-timings
 
 docs:

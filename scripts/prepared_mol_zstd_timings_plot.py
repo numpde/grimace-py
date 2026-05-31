@@ -109,6 +109,15 @@ def main(argv: list[str]) -> int:
     if len(sample_counts) != 1:
         raise SystemExit("Timing input must use one sample_count")
     sample_count = next(iter(sample_counts))
+    for field in (
+        "sample_policy",
+        "sample_seed",
+        "sample_source_rows_sha256",
+        "sample_cids_sha256",
+    ):
+        values = {row[field] for row in rows}
+        if len(values) != 1:
+            raise SystemExit(f"Timing input must use one {field}")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for path in args.output_dir.glob("*.png"):

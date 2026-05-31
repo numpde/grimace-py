@@ -41,6 +41,8 @@ bounded correctness checks; heavier profiling runs should be explicit.
 - `prepared_mol_zstd_timings_measure.py`
   - measures per-molecule `PreparedMol` compression and decompression with and
     without the shipped dictionary
+  - uses a deterministic random sample from the checked-in `top_100000`
+    fixture and records the sample seed and sample hashes in the TSV
   - writes `docs/prepared-mol-zstd-timings.tsv`
 - `prepared_mol_zstd_timings_plot.py`
   - renders compression-ratio tradeoff plots from

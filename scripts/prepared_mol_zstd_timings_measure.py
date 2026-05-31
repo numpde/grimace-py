@@ -5,6 +5,7 @@ import argparse
 import csv
 import gzip
 import json
+import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import statistics
@@ -21,15 +22,21 @@ from scripts import prepared_mol_zstd_dictionary_generate as generator
 
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "prepared-mol-zstd-timings.tsv"
 DEFAULT_LEVELS = (1, 3, 6, 9, 12, 15, 19)
+DEFAULT_SAMPLE_SEED = 20260531
 
 zstd: Any | None = None
 Chem: Any | None = None
+RDLogger: Any | None = None
 grimace: Any | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class TimingRow:
     sample_count: int
+    sample_policy: str
+    sample_seed: int
+    sample_source_rows_sha256: str
+    sample_cids_sha256: str
     raw_bytes: int
     level: int
     mode: str
@@ -45,6 +52,39 @@ class TimingRow:
         return tuple(cls.__dataclass_fields__.keys())
 
 
+@dataclass(frozen=True, slots=True)
+class Sample:
+    source_row: int
+    cid: str
+    payload: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class ParseableRow:
+    source_row: int
+    cid: str
+    smiles: str
+
+
+@dataclass(frozen=True, slots=True)
+class SampleBatch:
+    samples: tuple[Sample, ...]
+
+    @property
+    def payloads(self) -> tuple[bytes, ...]:
+        return tuple(sample.payload for sample in self.samples)
+
+    @property
+    def source_rows_sha256(self) -> str:
+        return generator.digest_text_lines(
+            tuple(str(sample.source_row) for sample in self.samples),
+        )
+
+    @property
+    def cids_sha256(self) -> str:
+        return generator.digest_text_lines(tuple(sample.cid for sample in self.samples))
+
+
 def _runtime_trials(fn, *, repeats: int) -> list[float]:
     fn()
     timings: list[float] = []
@@ -56,16 +96,18 @@ def _runtime_trials(fn, *, repeats: int) -> list[float]:
 
 
 def load_runtime_dependencies() -> None:
-    global zstd, Chem, grimace
+    global zstd, Chem, RDLogger, grimace
     if zstd is not None:
         return
 
     import grimace as loaded_grimace
     import zstandard as loaded_zstd
     from rdkit import Chem as loaded_Chem
+    from rdkit import RDLogger as loaded_RDLogger
 
     zstd = loaded_zstd
     Chem = loaded_Chem
+    RDLogger = loaded_RDLogger
     grimace = loaded_grimace
 
 
@@ -101,24 +143,59 @@ def _dictionary() -> zstd.ZstdCompressionDict:
     return dictionary
 
 
-def _prepared_payloads(limit: int) -> tuple[bytes, ...]:
+def _prepared_sample(limit: int, *, seed: int) -> SampleBatch:
     assert Chem is not None
+    assert RDLogger is not None
     assert grimace is not None
 
-    payloads: list[bytes] = []
+    candidates: list[ParseableRow] = []
     fixture_path = generator.ROOT / generator.FIXTURE_RELATIVE_PATH
-    with gzip.open(fixture_path, "rt", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle, delimiter="\t")
-        for row in reader:
-            mol = Chem.MolFromSmiles(row["SMILES"])
+    RDLogger.DisableLog("rdApp.*")
+    try:
+        with gzip.open(fixture_path, "rt", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            for row_number, row in enumerate(reader, start=2):
+                mol = Chem.MolFromSmiles(row["SMILES"])
+                if mol is None:
+                    continue
+                candidates.append(
+                    ParseableRow(
+                        source_row=row_number,
+                        cid=row["CID"],
+                        smiles=row["SMILES"],
+                    ),
+                )
+    finally:
+        RDLogger.EnableLog("rdApp.*")
+    if len(candidates) < limit:
+        raise RuntimeError(
+            f"Fixture yielded {len(candidates)} prepared payloads, "
+            f"fewer than requested sample count {limit}"
+        )
+    rows = sorted(
+        random.Random(seed).sample(candidates, limit),
+        key=lambda row: row.source_row,
+    )
+    samples: list[Sample] = []
+    RDLogger.DisableLog("rdApp.*")
+    try:
+        for row in rows:
+            mol = Chem.MolFromSmiles(row.smiles)
             if mol is None:
-                continue
-            payloads.append(
-                grimace.PrepareMol(mol, **generator.WRITER_OPTIONS).to_bytes(),
+                raise RuntimeError(f"Selected parseable row no longer parses: {row.cid}")
+            samples.append(
+                Sample(
+                    source_row=row.source_row,
+                    cid=row.cid,
+                    payload=grimace.PrepareMol(
+                        mol,
+                        **generator.WRITER_OPTIONS,
+                    ).to_bytes(),
+                ),
             )
-            if len(payloads) == limit:
-                return tuple(payloads)
-    raise RuntimeError(f"Fixture did not yield {limit} prepared payloads")
+    finally:
+        RDLogger.EnableLog("rdApp.*")
+    return SampleBatch(tuple(samples))
 
 
 def _compress_payloads(
@@ -141,6 +218,9 @@ def _timing_row(
     payloads: tuple[bytes, ...],
     *,
     raw_bytes: int,
+    sample_seed: int,
+    sample_source_rows_sha256: str,
+    sample_cids_sha256: str,
     level: int,
     mode: str,
     repeats: int,
@@ -173,6 +253,10 @@ def _timing_row(
     )
     return TimingRow(
         sample_count=len(payloads),
+        sample_policy="random-parseable-preparable-v1",
+        sample_seed=sample_seed,
+        sample_source_rows_sha256=sample_source_rows_sha256,
+        sample_cids_sha256=sample_cids_sha256,
         raw_bytes=raw_bytes,
         level=level,
         mode=mode,
@@ -191,6 +275,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--sample-count", type=int, default=1024)
+    parser.add_argument("--sample-seed", type=int, default=DEFAULT_SAMPLE_SEED)
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument(
         "--levels",
@@ -206,14 +291,19 @@ def main(argv: list[str]) -> int:
     args = parse_args(argv)
     if args.sample_count <= 0:
         raise SystemExit("--sample-count must be positive")
+    if args.sample_seed < 0:
+        raise SystemExit("--sample-seed must be non-negative")
     if args.repeats < 2:
         raise SystemExit("--repeats must be at least 2")
     if any(level < 1 or level > 22 for level in args.levels):
         raise SystemExit("--levels must be in zstd range 1..22")
 
     load_runtime_dependencies()
-    payloads = _prepared_payloads(args.sample_count)
+    sample = _prepared_sample(args.sample_count, seed=args.sample_seed)
+    payloads = sample.payloads
     raw_bytes = sum(len(payload) for payload in payloads)
+    sample_source_rows_sha256 = sample.source_rows_sha256
+    sample_cids_sha256 = sample.cids_sha256
     dictionary = _dictionary()
 
     rows: list[TimingRow] = []
@@ -225,6 +315,9 @@ def main(argv: list[str]) -> int:
             row = _timing_row(
                 payloads,
                 raw_bytes=raw_bytes,
+                sample_seed=args.sample_seed,
+                sample_source_rows_sha256=sample_source_rows_sha256,
+                sample_cids_sha256=sample_cids_sha256,
                 level=level,
                 mode=mode,
                 repeats=args.repeats,

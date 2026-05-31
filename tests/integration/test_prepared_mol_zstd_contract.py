@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import unittest
 
 import grimace
@@ -19,6 +20,73 @@ from tests.helpers.public_runtime import (
 RAW_PREPARED_MOL_MAGIC = b"GPM\0"
 ZSTD_FRAME_MAGIC = b"\x28\xb5\x2f\xfd"
 ZSTD_SKIPPABLE_FRAME_MAGIC = b"\x50\x2a\x4d\x18"
+ZSTD_DICT_ID_SIZE_BY_FLAG = (0, 1, 2, 4)
+
+
+@dataclass(frozen=True, slots=True)
+class ZstdFrameHeader:
+    dictionary_id: int | None
+    dictionary_id_offset: int | None
+    dictionary_id_size: int
+    has_content_size: bool
+    has_checksum: bool
+
+
+def _read_zstd_frame_header(payload: bytes) -> ZstdFrameHeader:
+    """Read only the stable zstd frame fields Grimace promises to set."""
+
+    if not payload.startswith(ZSTD_FRAME_MAGIC):
+        raise AssertionError("payload is not a zstd frame")
+    if len(payload) < len(ZSTD_FRAME_MAGIC) + 1:
+        raise AssertionError("payload is too short for a zstd frame header")
+
+    descriptor = payload[len(ZSTD_FRAME_MAGIC)]
+    dictionary_id_flag = descriptor & 0b11
+    checksum_flag = bool(descriptor & 0b100)
+    single_segment_flag = bool(descriptor & 0b0010_0000)
+    content_size_flag = descriptor >> 6
+    content_size_present = bool(content_size_flag or single_segment_flag)
+
+    offset = len(ZSTD_FRAME_MAGIC) + 1
+    if not single_segment_flag:
+        # Window Descriptor is one byte in the zstd frame format.
+        offset += 1
+
+    dictionary_id_size = ZSTD_DICT_ID_SIZE_BY_FLAG[dictionary_id_flag]
+    dictionary_id_offset: int | None = None
+    dictionary_id: int | None = None
+    if dictionary_id_size:
+        dictionary_id_offset = offset
+        if len(payload) < offset + dictionary_id_size:
+            raise AssertionError("payload is too short for zstd dictionary ID")
+        dictionary_id = int.from_bytes(
+            payload[offset : offset + dictionary_id_size],
+            "little",
+        )
+
+    return ZstdFrameHeader(
+        dictionary_id=dictionary_id,
+        dictionary_id_offset=dictionary_id_offset,
+        dictionary_id_size=dictionary_id_size,
+        has_content_size=content_size_present,
+        has_checksum=checksum_flag,
+    )
+
+
+def _with_zstd_dictionary_id(payload: bytes, dictionary_id: int) -> bytes:
+    header = _read_zstd_frame_header(payload)
+    if header.dictionary_id_offset is None:
+        raise AssertionError("zstd payload does not carry a dictionary ID")
+    if not 0 <= dictionary_id < (1 << (8 * header.dictionary_id_size)):
+        raise AssertionError("replacement dictionary ID does not fit header")
+
+    mutated = bytearray(payload)
+    offset = header.dictionary_id_offset
+    mutated[offset : offset + header.dictionary_id_size] = dictionary_id.to_bytes(
+        header.dictionary_id_size,
+        "little",
+    )
+    return bytes(mutated)
 
 
 class PreparedMolZstdContractTests(unittest.TestCase):
@@ -114,6 +182,32 @@ class PreparedMolZstdContractTests(unittest.TestCase):
                     restored,
                     kwargs=kwargs,
                 )
+
+    def test_default_zstd_write_embeds_builtin_dictionary_selector(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+
+        zstd_payload = prepared.to_bytes(compression="zstd")
+        header = _read_zstd_frame_header(zstd_payload)
+
+        self.assertIsNotNone(header.dictionary_id)
+        self.assertNotEqual(0, header.dictionary_id)
+        self.assertTrue(header.has_content_size)
+        self.assertTrue(header.has_checksum)
+
+    def test_from_bytes_selects_builtin_dictionary_from_frame_id(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd")
+
+        restored = grimace.PreparedMol.from_bytes(zstd_payload)
+
+        self.assertEqual(prepared.to_bytes(), restored.to_bytes())
+
+    def test_zero_dictionary_id_is_rejected(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd")
+
+        with self.assertRaises(ValueError):
+            grimace.PreparedMol.from_bytes(_with_zstd_dictionary_id(zstd_payload, 0))
 
     def test_zstd_requested_for_tiny_payloads_never_silently_falls_back_to_raw(
         self,

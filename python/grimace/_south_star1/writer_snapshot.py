@@ -27,6 +27,10 @@ from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import VarId
 from .residual_constraints import direction_var
 from .residual_constraints import tetra_var
+from .writer_graph_obligations import WriterBoundaryOwnerKind
+from .writer_graph_obligations import WriterGraphObligationSummary
+from .writer_graph_obligations import build_writer_block_cut_metadata
+from .writer_graph_obligations import classify_writer_residual_attachments
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import writer_frontier_choices
@@ -160,6 +164,7 @@ def validate_writer_cursor_against_prepared(
     for key, weight in cursor.weighted_states:
         if weight <= 0:
             _invalid_snapshot("writer cursor contains nonpositive weight")
+        summary = _writer_obligation_summary(prepared, key)
         _validate_component_cursor(key.component_cursor, allowed_roots)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
         for frame in key.branch_stack:
@@ -171,8 +176,15 @@ def validate_writer_cursor_against_prepared(
         _validate_current_component_tree_fragment(prepared, key)
         _validate_writer_frame_tree_path(prepared, key)
         _validate_written_bond_coherence(prepared, key)
-        _validate_obligations(key.obligations, key, atom_ids, bond_ids, prepared)
-        _validate_live_frontier_ownership(prepared, key)
+        _validate_obligations(
+            key.obligations,
+            key,
+            atom_ids,
+            bond_ids,
+            prepared,
+            summary,
+        )
+        _validate_live_frontier_ownership(prepared, key, summary)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
@@ -208,6 +220,17 @@ def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer residual snapshot does not round-trip",
         )
+
+
+def _writer_obligation_summary(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> WriterGraphObligationSummary:
+    return classify_writer_residual_attachments(
+        prepared,
+        key,
+        build_writer_block_cut_metadata(prepared),
+    )
 
 
 def _allowed_component_roots(
@@ -497,12 +520,13 @@ def _validate_obligations(
     atom_ids: frozenset[AtomId],
     bond_ids: frozenset[BondId],
     prepared: SouthStarPreparedMol,
+    summary: WriterGraphObligationSummary,
 ) -> None:
     pending = obligations.pending_entry
     if pending is None:
         return
     _validate_pending_entry(pending, atom_ids, bond_ids, prepared)
-    _validate_pending_entry_role(prepared, key, pending)
+    _validate_pending_entry_role(summary, pending)
     if key.active is None or key.active.atom != pending.parent:
         _invalid_snapshot("writer pending entry parent is not active")
     if not key.active.atom_emitted:
@@ -541,11 +565,10 @@ def _validate_pending_entry(
 
 
 def _validate_pending_entry_role(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
+    summary: WriterGraphObligationSummary,
     pending: PendingWriterEntry,
 ) -> None:
-    children = _child_obligations_for_key(prepared, key, pending.parent)
+    children = _boundary_children_for_atom(summary, pending.parent)
     if (pending.bond, pending.child) not in children:
         _invalid_snapshot("writer pending entry is not a live child obligation")
     if pending.branch:
@@ -558,6 +581,7 @@ def _validate_pending_entry_role(
 def _validate_live_frontier_ownership(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
+    summary: WriterGraphObligationSummary,
 ) -> None:
     current = key.component_cursor.component_index
     component = prepared.facts.components[current]
@@ -566,22 +590,22 @@ def _validate_live_frontier_ownership(
     unvisited = component_atoms - visited
     if not visited:
         return
-    owner_atoms = _live_owner_atoms(key)
-    boundary_edges = []
+    boundary_edges = [
+        incidence
+        for attachment in summary.attachments.attachments
+        for incidence in attachment.boundary
+    ]
     branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
-    branch_owned_atoms = set()
-    for bond in component.bonds:
-        fact = prepared.graph_index.bond_by_id[bond]
-        left_visited = fact.a in visited
-        right_visited = fact.b in visited
-        if left_visited == right_visited:
-            continue
-        visited_endpoint = fact.a if left_visited else fact.b
-        boundary_edges.append((bond, visited_endpoint))
-        if visited_endpoint not in owner_atoms:
-            _invalid_snapshot("writer live frontier does not own unvisited obligation")
-        if visited_endpoint in branch_return_atoms:
-            branch_owned_atoms.add(visited_endpoint)
+    branch_owned_atoms = {
+        incidence.written_atom
+        for incidence in boundary_edges
+        if incidence.owner_kind is WriterBoundaryOwnerKind.BRANCH_RETURN
+    }
+    if any(
+        incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
+        for incidence in boundary_edges
+    ):
+        _invalid_snapshot("writer live frontier does not own unvisited obligation")
     if unvisited and not boundary_edges:
         _invalid_snapshot("writer current component has unvisited atoms without frontier")
     if key.branch_stack and not unvisited:
@@ -597,30 +621,24 @@ def _validate_live_frontier_ownership(
         _invalid_snapshot("writer completed component active frame is not terminal")
 
 
-def _live_owner_atoms(key: WriterStateKey) -> frozenset[AtomId]:
-    owners = set()
-    if key.active is not None:
-        owners.add(key.active.atom)
-    owners.update(frame.return_atom.atom for frame in key.branch_stack)
-    pending = key.obligations.pending_entry
-    if pending is not None:
-        owners.add(pending.parent)
-    return frozenset(owners)
-
-
-def _child_obligations_for_key(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
+def _boundary_children_for_atom(
+    summary: WriterGraphObligationSummary,
     atom: AtomId,
 ) -> tuple[tuple[BondId, AtomId], ...]:
-    graph = prepared.graph_index
     children = []
-    for neighbor in graph.neighbors[atom]:
-        bond = graph.bond_between[(min(atom, neighbor), max(atom, neighbor))]
-        if bond in key.written_bonds or neighbor in key.visited_atoms:
+    for attachment in summary.attachments.attachments:
+        boundary = tuple(
+            incidence
+            for incidence in attachment.boundary
+            if incidence.written_atom == atom
+        )
+        if not boundary:
             continue
-        children.append((bond, neighbor))
-    return tuple(children)
+        if len(boundary) != 1:
+            _invalid_snapshot("writer residual attachment has multiple incidences")
+        incidence = boundary[0]
+        children.append((incidence.bond, incidence.residual_atom))
+    return tuple(sorted(children, key=lambda item: (int(item[0]), int(item[1]))))
 
 
 def _active_is_terminal_leaf(

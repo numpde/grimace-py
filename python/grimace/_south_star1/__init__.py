@@ -60,6 +60,7 @@ CORE_MODULES: tuple[str, ...] = (
     "stereo_witness",
     "writer_events",
     "writer_frontier",
+    "writer_graph_obligations",
     "writer_snapshot",
     "writer_state",
     "writer_stereo",

@@ -394,6 +394,7 @@ class WriterStateKernelTest(unittest.TestCase):
 
         for module_name in (
             "writer_events.py",
+            "writer_graph_obligations.py",
             "writer_state.py",
             "writer_transitions.py",
             "writer_frontier.py",

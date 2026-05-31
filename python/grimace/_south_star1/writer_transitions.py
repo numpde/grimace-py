@@ -11,6 +11,8 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
+from .writer_graph_obligations import build_writer_block_cut_metadata
+from .writer_graph_obligations import classify_writer_residual_attachments
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -18,6 +20,7 @@ from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
 from .writer_state import WriterState
+from .writer_state import writer_state_key
 from .writer_events import WriterAtomEmitted
 from .writer_events import WriterBondEmitted
 from .writer_events import WriterBranchClosed
@@ -512,22 +515,38 @@ def _child_obligations(
     state: WriterState,
     atom: AtomId,
 ) -> tuple[tuple[BondId, AtomId], ...]:
-    return _child_obligations_from_facts(state, atom, prepared)
-
-
-def _child_obligations_from_facts(
-    state: WriterState,
-    atom: AtomId,
-    prepared: SouthStarPreparedMol,
-) -> tuple[tuple[BondId, AtomId], ...]:
-    graph = prepared.graph_index
+    summary = classify_writer_residual_attachments(
+        prepared,
+        writer_state_key(state),
+        build_writer_block_cut_metadata(prepared),
+    )
+    if summary.has_cyclic_attachment:
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED cyclic residual attachments are not supported yet",
+        )
     children = []
-    for neighbor in graph.neighbors[atom]:
-        bond = graph.bond_between[(min(atom, neighbor), max(atom, neighbor))]
-        if bond in state.written_bonds or neighbor in state.visited_atoms:
+    for attachment in summary.attachments.attachments:
+        boundary = tuple(
+            incidence
+            for incidence in attachment.boundary
+            if incidence.written_atom == atom
+        )
+        if not boundary:
             continue
-        children.append((bond, neighbor))
-    return tuple(children)
+        if len(boundary) != 1:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+            )
+        incidence = boundary[0]
+        children.append((incidence.bond, incidence.residual_atom))
+    return tuple(
+        sorted(
+            children,
+            key=lambda item: (int(item[0]), int(atom), int(item[1])),
+        )
+    )
 
 
 def _is_final_child_for_parent(

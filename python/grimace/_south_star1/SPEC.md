@@ -302,26 +302,34 @@ supports the ordinary bounded tetrahedral and directional semantics, bounded
 ring labels, and support-wise maximal marker selection within the current
 traversal/prefix branch.
 
-`writer_state.py`, `writer_events.py`, `writer_transitions.py`,
-`writer_stereo.py`, `writer_frontier.py`, `writer_snapshot.py`, and
-`writer_support.py` are the initial `writer_shaped` writer-state kernel. The
-MVP supports ordinary acyclic prepared molecules, including tetrahedral and
-directional stereo when the required carriers are emitted by tree traversal.
-Every writer transition emits typed semantic events; those events update a
-writer-owned residual stereo snapshot that is part of the canonical writer
-state key. Support counting, EOS evidence, next emitted-text choices,
-completion counts, cursor snapshots, and support streaming all route through
-the same determinized weighted frontier. EOS is represented by finalized
-terminal cursor evidence, so terminal local-order and residual stereo closure
-are persisted rather than recomputed as a discarded viability check. Writer
-snapshots currently use a strict single-frontier-frame shape and validate a
-structural prepared identity before resume. Snapshot validation also audits
-each retained writer state against the prepared graph, runtime root domains,
-empty pre-cyclic ring state, local-order occurrence records, delayed stereo
-factor records, and residual-store factor snapshots before exposing a resumed
-cursor. Cyclic traversal, ring endpoint
-emission, ring-pair stereo factors, residual suffix storage, RDKit parity, and
-exhaustive traversal fallback still fail closed in `writer_shaped`.
+`writer_state.py`, `writer_events.py`, `writer_graph_obligations.py`,
+`writer_transitions.py`, `writer_stereo.py`, `writer_frontier.py`,
+`writer_snapshot.py`, and `writer_support.py` are the initial `writer_shaped`
+writer-state kernel. The MVP supports ordinary acyclic prepared molecules,
+including tetrahedral and directional stereo when the required carriers are
+emitted by tree traversal. `writer_graph_obligations.py` provides the derived
+residual-attachment view over the current writer prefix: residual components of
+unwritten graph work, boundary incidences into syntactically open writer atoms,
+and structural block-cut metadata. Branch and inline decisions consume those
+residual attachment classes for the acyclic surface; they do not preselect a
+spanning tree, cycle basis, ring cut, or render program. Cyclic residual
+attachments can be classified structurally, but transition consumption of those
+attachments still fails closed. Every writer transition emits typed semantic
+events; those events update a writer-owned residual stereo snapshot that is
+part of the canonical writer state key. Support counting, EOS evidence, next
+emitted-text choices, completion counts, cursor snapshots, and support
+streaming all route through the same determinized weighted frontier. EOS is
+represented by finalized terminal cursor evidence, so terminal local-order and
+residual stereo closure are persisted rather than recomputed as a discarded
+viability check. Writer snapshots currently use a strict single-frontier-frame
+shape and validate a structural prepared identity before resume. Snapshot
+validation also audits each retained writer state against the prepared graph,
+runtime root domains, residual attachment ownership, empty pre-cyclic ring
+state, local-order occurrence records, delayed stereo factor records, and
+residual-store factor snapshots before exposing a resumed cursor. Cyclic
+traversal, ring endpoint emission, ring-pair stereo factors, residual suffix
+storage, RDKit parity, and exhaustive traversal fallback still fail closed in
+`writer_shaped`.
 
 `online_decoder.py` provides exact prefix feasibility and determinized token
 frontier queries by running the online DFS with prefix-constrained render sinks.

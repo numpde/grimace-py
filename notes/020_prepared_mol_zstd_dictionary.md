@@ -326,6 +326,13 @@ backend, and underlying zstd library version match the pinned recipe. For
 zstd `1.5.7`; source-built or downstream wheels with a different backend or
 library version should not generate the production `default_v1` artifact.
 
+Do not rely on zstd's zero-valued training defaults for the production recipe.
+Record the intended values explicitly. For `default_v1`, `k=0` means optimize
+the segment size, while `d=8`, `f=20`, `split_point=0.75`, `accel=1`,
+`level=3`, `steps=4`, and `threads=0` name the actual fast-cover recipe used
+by the generator. In `python-zstandard`, `threads=0` is the documented
+single-thread mode for dictionary training.
+
 Dictionary lifecycle matters because each shipped built-in dictionary becomes
 read debt. Before adding `default_v2`, measure wheel-size impact and update the
 compatibility tests so both `default_v1` and `default_v2` payloads are readable.

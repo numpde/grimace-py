@@ -24,24 +24,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PYTHON_SOURCE = ROOT / "python"
-if str(PYTHON_SOURCE) not in sys.path:
-    sys.path.insert(0, str(PYTHON_SOURCE))
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-try:
-    import zstandard as zstd
-except ImportError as exc:  # pragma: no cover - environment guard
-    raise SystemExit(
-        "Missing generator dependency: install zstandard==0.25.0 in the "
-        "development environment."
-    ) from exc
-
-from rdkit import Chem, rdBase
-
-import grimace
-
+EXPECTED_ZSTANDARD_VERSION = "0.25.0"
 
 SEMANTIC_ID = "prepared-mol-default-v1"
 ARTIFACT_STEM = "default_v1"
@@ -49,7 +32,6 @@ ARTIFACT_STEM = "default_v1"
 # training identity and dictionary bytes do not need a new artifact identity.
 GENERATOR_VERSION = 1
 EXPECTED_RDKIT_VERSION = "2026.03.1"
-EXPECTED_ZSTANDARD_VERSION = "0.25.0"
 EXPECTED_ZSTANDARD_BACKEND = "cext"
 EXPECTED_ZSTD_LIBRARY_VERSION = (1, 5, 7)
 FIXTURE_RELATIVE_PATH = Path("tests/fixtures/top_100000_CIDs.tsv.gz")
@@ -68,13 +50,13 @@ ZSTD_TRAINING_PARAMETERS = {
     "dict_size": ZSTD_DICTIONARY_SIZE,
     "dict_id": "derived-from-training-identity-sha256",
     "k": 0,
-    "d": 0,
-    "f": 0,
-    "split_point": 0.0,
-    "accel": 0,
+    "d": 8,
+    "f": 20,
+    "split_point": 0.75,
+    "accel": 1,
     "notifications": 0,
     "level": 3,
-    "steps": 0,
+    "steps": 4,
     "threads": 0,
 }
 WRITER_OPTIONS = {
@@ -108,6 +90,11 @@ MANIFEST_HASH_CANONICALIZATION = {
     ],
 }
 
+zstd: Any | None = None
+Chem: Any | None = None
+rdBase: Any | None = None
+grimace: Any | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
@@ -123,6 +110,31 @@ class Corpus:
     parse_failure_count: int
     preparation_failure_count: int
     selected: tuple[Candidate, ...]
+
+
+def load_runtime_dependencies() -> None:
+    global zstd, Chem, rdBase, grimace
+    if zstd is not None:
+        return
+
+    try:
+        import zstandard as loaded_zstd
+    except ImportError as exc:  # pragma: no cover - environment guard
+        raise SystemExit(
+            "Missing generator dependency: install "
+            f"zstandard=={EXPECTED_ZSTANDARD_VERSION} in the development "
+            "environment."
+        ) from exc
+
+    from rdkit import Chem as loaded_Chem
+    from rdkit import rdBase as loaded_rdBase
+
+    import grimace as loaded_grimace
+
+    zstd = loaded_zstd
+    Chem = loaded_Chem
+    rdBase = loaded_rdBase
+    grimace = loaded_grimace
 
 
 def canonical_json_bytes(value: object) -> bytes:
@@ -284,17 +296,27 @@ def zstandard_library_version() -> object:
 
 
 def existing_shipped_dictionary_ids() -> set[int]:
-    dictionary_ids: set[int] = set()
+    dictionary_ids: dict[int, Path] = {}
     dictionary_root = ROOT / PACKAGE_DICTIONARY_ROOT
     if not dictionary_root.exists():
-        return dictionary_ids
+        return set()
 
     for manifest_path in dictionary_root.glob("*/*.json"):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         dictionary_id = manifest.get("zstd_dictionary_id")
-        if isinstance(dictionary_id, int):
-            dictionary_ids.add(dictionary_id)
-    return dictionary_ids
+        if not isinstance(dictionary_id, int):
+            raise RuntimeError(
+                "Shipped dictionary manifest lacks an integer "
+                f"zstd_dictionary_id: {manifest_path}"
+            )
+        if dictionary_id in dictionary_ids:
+            raise RuntimeError(
+                "Duplicate shipped zstd dictionary ID "
+                f"{dictionary_id}: {dictionary_ids[dictionary_id]} and "
+                f"{manifest_path}"
+            )
+        dictionary_ids[dictionary_id] = manifest_path
+    return set(dictionary_ids)
 
 
 def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any]:
@@ -520,6 +542,7 @@ def main(argv: list[str]) -> int:
     fixture_path = (ROOT / FIXTURE_RELATIVE_PATH).resolve()
     output_root = args.output_root.expanduser().resolve()
 
+    load_runtime_dependencies()
     require_expected_environment(fixture_path)
     corpus = build_candidates(fixture_path)
     training_identity = build_training_identity(corpus, fixture_path)

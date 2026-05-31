@@ -89,7 +89,7 @@ class WriterPolicyState:
 @dataclass(frozen=True, slots=True)
 class WriterState:
     component_cursor: ComponentCursor
-    active: WriterAtomFrame | None
+    active: WriterAtomFrame
     branch_stack: tuple[WriterBranchFrame, ...]
     visited_atoms: frozenset[AtomId]
     written_bonds: frozenset[BondId]
@@ -129,7 +129,7 @@ class WriterPolicyStateKey:
 @dataclass(frozen=True, slots=True)
 class WriterStateKey:
     component_cursor: ComponentCursor
-    active: WriterAtomFrame | None
+    active: WriterAtomFrame
     branch_stack: tuple[WriterBranchFrame, ...]
     visited_atoms: frozenset[AtomId]
     written_bonds: frozenset[BondId]
@@ -229,9 +229,7 @@ def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
     )
 
 
-def _atom_frame_sort_tuple(frame: WriterAtomFrame | None) -> tuple[object, ...]:
-    if frame is None:
-        return ("none",)
+def _atom_frame_sort_tuple(frame: WriterAtomFrame) -> tuple[object, ...]:
     return (
         "atom",
         int(frame.atom),
@@ -248,7 +246,7 @@ def _branch_frame_sort_tuple(frame: WriterBranchFrame) -> tuple[object, ...]:
 def _obligation_sort_tuple(obligations: ObligationStateKey) -> tuple[object, ...]:
     pending = obligations.pending_entry
     if pending is None:
-        return ("none",)
+        return ("no_pending",)
     return (
         "pending",
         int(pending.parent),

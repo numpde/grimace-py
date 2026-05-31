@@ -6,10 +6,12 @@ import ast
 import contextlib
 import inspect
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_state as writer_state_module
 import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
@@ -313,6 +315,27 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_raw_legal_transitions_reject_missing_active_frame(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.legal_writer_transitions(
+                prepared,
+                replace(_raw_initial_state(AtomId(0)), active=None),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_raw_initial_state_still_emits_atom_transition(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+
+        transitions = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )
+
+        self.assertEqual(tuple(transition.emitted_text for transition in transitions), ("C",))
+
     def test_raw_terminal_finalization_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
@@ -324,6 +347,29 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_raw_terminal_finalization_rejects_missing_active_frame(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.finalize_writer_terminal_state(
+                prepared,
+                replace(_raw_emitted_root_state(AtomId(0)), active=None),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
+
+    def test_terminal_finalization_retains_active_final_atom(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+
+        terminal = writer_transitions.finalize_writer_terminal_state(
+            prepared,
+            _raw_emitted_root_state(AtomId(0)),
+        )
+
+        self.assertIsNotNone(terminal)
+        assert terminal is not None
+        self.assertEqual(terminal.active.atom, AtomId(0))
+
     def test_raw_eos_query_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
@@ -334,6 +380,17 @@ class WriterStateKernelTest(unittest.TestCase):
             )
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_raw_eos_query_rejects_missing_active_frame(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.writer_state_is_eos(
+                prepared,
+                replace(_raw_emitted_root_state(AtomId(0)), active=None),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.INTERNAL_INVARIANT)
 
     def test_legal_transition_expansion_builds_one_graph_context(self) -> None:
         prepared = _prepare(cco_facts())
@@ -419,6 +476,12 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIsInstance(key, WriterStateKey)
         self.assertEqual(writer_state_key(writer_state_from_key(key)), key)
+
+    def test_writer_state_active_frame_is_non_nullable_in_datamodel(self) -> None:
+        source = inspect.getsource(writer_state_module)
+
+        self.assertNotIn("active: WriterAtomFrame | None", source)
+        self.assertNotIn('return ("none",)', source)
 
     def test_writer_frontier_cursor_api_deletes_unweighted_entry_points(self) -> None:
         self.assertFalse(hasattr(writer_frontier_module, "initial_writer_frontier"))

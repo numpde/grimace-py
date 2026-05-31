@@ -671,7 +671,7 @@ def _owner_kind_for_boundary(
     if pending is not None and pending.parent == written_atom:
         return WriterBoundaryOwnerKind.PENDING_PARENT
     active = key.active
-    if active is not None and active.atom == written_atom:
+    if active.atom == written_atom:
         return WriterBoundaryOwnerKind.ACTIVE_ATOM
     if any(frame.return_atom.atom == written_atom for frame in key.branch_stack):
         return WriterBoundaryOwnerKind.BRANCH_RETURN

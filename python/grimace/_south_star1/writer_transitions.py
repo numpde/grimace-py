@@ -86,6 +86,11 @@ def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
 ) -> WriterTransitionExpansionContext:
+    if state.active is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer state requires an active writer frame",
+        )
     validate_writer_supported_prepared(prepared)
     key = writer_state_key(state)
     graph = build_writer_graph_obligation_context(prepared, key)
@@ -101,8 +106,6 @@ def legal_writer_transitions(
         return _pending_entry_transitions(prepared, state, context)
 
     active = state.active
-    if active is None:
-        return ()
     if not active.atom_emitted:
         return _root_atom_transitions(prepared, state, active)
 
@@ -230,11 +233,6 @@ def _enter_child_transitions(
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     parent_frame = state.active
-    if parent_frame is None:
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer child transition requires an active parent frame",
-        )
     child_frame = WriterAtomFrame(
         atom=pending.child,
         parent=pending.parent,
@@ -306,11 +304,6 @@ def _enter_child_atom_transitions(
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     parent_frame = state.active
-    if parent_frame is None:
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer child atom transition requires an active parent frame",
-        )
     child_frame = WriterAtomFrame(
         atom=pending.child,
         parent=pending.parent,
@@ -400,9 +393,7 @@ def _finish_active_transitions(
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
-    active_atom = state.active.atom if state.active else None
-    if active_atom is None:
-        return ()
+    active_atom = state.active.atom
     if state.branch_stack:
         frame = state.branch_stack[-1]
         transition = _transition(
@@ -466,8 +457,6 @@ def finalize_writer_terminal_state(
     state: WriterState,
 ) -> WriterState | None:
     context = build_writer_transition_expansion_context(prepared, state)
-    if state.active is None:
-        return state
     if state.obligations.pending_entry is not None or state.branch_stack:
         return None
     if not state.active.atom_emitted:

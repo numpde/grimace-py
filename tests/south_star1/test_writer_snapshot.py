@@ -204,9 +204,29 @@ class WriterSnapshotTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             validate_writer_cursor_against_prepared(
                 prepared,
-                _cursor_with_key(tampered_key),
+                _unchecked_cursor_with_key(tampered_key),
                 runtime_options=_writer_options(),
             )
+
+    def test_snapshot_rejects_missing_active_frame_before_resume(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        key = cursor.weighted_states[0][0]
+        tampered_cursor = _unchecked_cursor_with_key(replace(key, active=None))
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        tampered_snapshot = replace(
+            snapshot,
+            cursor=tampered_cursor,
+            frame_stack=(WriterFrontierFrame(tampered_cursor),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
     def test_cursor_audit_rejects_root_frame_mismatch(self) -> None:
         prepared = _prepare(cco_facts())
@@ -1136,6 +1156,19 @@ class WriterSnapshotTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             validate_writer_search_snapshot(tampered_snapshot, prepared=prepared)
 
+    def test_terminal_snapshot_retains_active_final_atom(self) -> None:
+        prepared, options, key = _terminal_tetra_key()
+        cursor = _cursor_with_key(key)
+        snapshot = capture_writer_frontier_snapshot(
+            prepared=prepared,
+            runtime_options=options,
+            cursor=cursor,
+        )
+        retained = snapshot.cursor.weighted_states[0][0]
+
+        self.assertIsNotNone(retained.active)
+        self.assertEqual(retained.active.atom, key.active.atom)
+
     def test_cursor_audit_rejects_closed_delay_without_residual_factor(self) -> None:
         from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_facts
         from tests.south_star1.test_writer_stereo_residual import terminal_tetra_center_policy
@@ -1289,6 +1322,12 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
 
 def _cursor_with_key(key) -> WriterFrontierCursor:
     return WriterFrontierCursor(weighted_states=((key, 1),))
+
+
+def _unchecked_cursor_with_key(key) -> WriterFrontierCursor:
+    cursor = object.__new__(WriterFrontierCursor)
+    object.__setattr__(cursor, "weighted_states", ((key, 1),))
+    return cursor
 
 
 def _snapshot_for_cursor(

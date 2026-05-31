@@ -140,6 +140,7 @@ def validate_writer_search_snapshot(
             SouthStarErrorKind.INVALID_FACTS,
             "writer snapshot prepared identity does not match prepared molecule",
         )
+    _validate_cursor_active_frames(snapshot.cursor)
     if snapshot.cursor != WriterFrontierCursor(snapshot.cursor.weighted_states):
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
@@ -160,6 +161,7 @@ def validate_writer_cursor_against_prepared(
     runtime_options: SouthStarRuntimeOptions | None = None,
 ) -> None:
     validate_writer_supported_graph_surface(prepared)
+    _validate_cursor_active_frames(cursor)
     atom_ids = frozenset(prepared.atom_ids)
     bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
     allowed_roots = _allowed_component_roots(prepared, runtime_options)
@@ -195,6 +197,12 @@ def validate_writer_cursor_against_prepared(
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(prepared, key.stereo_state)
+
+
+def _validate_cursor_active_frames(cursor: WriterFrontierCursor) -> None:
+    for key, _ in cursor.weighted_states:
+        if key.active is None:
+            _invalid_snapshot("writer snapshot state missing active frame")
 
 
 def _validate_frames(
@@ -283,13 +291,11 @@ def _validate_component_cursor(
 
 
 def _validate_atom_frame(
-    frame: WriterAtomFrame | None,
+    frame: WriterAtomFrame,
     atom_ids: frozenset[AtomId],
     bond_ids: frozenset[BondId],
     prepared: SouthStarPreparedMol,
 ) -> None:
-    if frame is None:
-        return
     if frame.atom not in atom_ids:
         _invalid_snapshot("writer atom frame references unknown atom")
     if frame.parent is None or frame.incoming_bond is None:
@@ -332,8 +338,6 @@ def _validate_known_bonds(
 
 def _validate_active_coherence(key: WriterStateKey) -> None:
     active = key.active
-    if active is None:
-        _invalid_snapshot("writer snapshot cannot use active=None before terminal-state support")
     if active.parent is None:
         if active.atom != key.component_cursor.component_roots[
             key.component_cursor.component_index
@@ -370,7 +374,7 @@ def _validate_component_membership(
     current = key.component_cursor.component_index
     allowed_components = set(range(current + 1))
     active = key.active
-    if active is not None and atom_component[active.atom] != current:
+    if atom_component[active.atom] != current:
         _invalid_snapshot("writer active atom is outside current component")
     for atom in key.visited_atoms:
         if atom_component[atom] not in allowed_components:
@@ -421,7 +425,7 @@ def _validate_current_component_tree_fragment(
     if reachable != visited:
         _invalid_snapshot("writer current component visited atoms are not root-reachable")
     active = key.active
-    if active is not None and active.atom_emitted and active.atom not in reachable:
+    if active.atom_emitted and active.atom not in reachable:
         _invalid_snapshot("writer active atom is not in reachable written graph")
     for frame in key.branch_stack:
         if frame.return_atom.atom not in reachable:
@@ -466,7 +470,7 @@ def _validate_writer_frame_tree_path(
     _validate_atom_frame_tree_edge(key.active, root, parent_links)
     for frame in key.branch_stack:
         _validate_atom_frame_tree_edge(frame.return_atom, root, parent_links)
-    if key.active is None or not key.active.atom_emitted:
+    if not key.active.atom_emitted:
         if key.branch_stack:
             _invalid_snapshot("writer branch stack requires emitted active atom")
         return
@@ -483,11 +487,11 @@ def _validate_writer_frame_tree_path(
 
 
 def _validate_atom_frame_tree_edge(
-    frame: WriterAtomFrame | None,
+    frame: WriterAtomFrame,
     root: AtomId,
     parent_links: dict[AtomId, tuple[AtomId, BondId]],
 ) -> None:
-    if frame is None or not frame.atom_emitted:
+    if not frame.atom_emitted:
         return
     if frame.atom == root:
         if frame.parent is not None or frame.incoming_bond is not None:
@@ -544,7 +548,7 @@ def _validate_obligations(
         return
     _validate_pending_entry(pending, atom_ids, bond_ids, prepared)
     _validate_pending_entry_role(context, pending)
-    if key.active is None or key.active.atom != pending.parent:
+    if key.active.atom != pending.parent:
         _invalid_snapshot("writer pending entry parent is not active")
     if not key.active.atom_emitted:
         _invalid_snapshot("writer pending entry parent is not emitted")
@@ -688,7 +692,7 @@ def _active_is_terminal_leaf(
     key: WriterStateKey,
 ) -> bool:
     active = key.active
-    if active is None or not active.atom_emitted:
+    if not active.atom_emitted:
         return False
     current = key.component_cursor.component_index
     component = prepared.facts.components[current]

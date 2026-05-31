@@ -615,7 +615,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path.home() / "tmp/grimace-prepared-mol-zstd",
+        default=ROOT / PACKAGE_DICTIONARY_ROOT,
         help="Directory under which the versioned artifact directory is written.",
     )
     parser.add_argument(

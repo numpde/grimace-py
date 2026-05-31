@@ -14,8 +14,8 @@ override PERF_ARTIFACT_DIRS := docs/timing-plots
 override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)
 override DOCS_SOURCE_DIR := docs
 override DOCS_OUTPUT_DIR := build/docs-site
+override PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR := python/grimace/data/prepared_mol_zstd
 DOCS_PORT ?= 8000
-PREPARED_MOL_ZSTD_OUTPUT_DIR ?= $(HOME)/tmp/grimace-prepared-mol-zstd
 PREPARED_MOL_ZSTD_CREATED_DATE ?=
 PREPARED_MOL_ZSTD_FORCE ?= 0
 
@@ -34,7 +34,6 @@ endef
 .PHONY: help checks rust test parity exact-public-invariants package perf prepared-mol-zstd-dictionary docs docs-serve ci
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
-prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_OUTPUT_DIR := $(PREPARED_MOL_ZSTD_OUTPUT_DIR)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_FORCE := $(value PREPARED_MOL_ZSTD_FORCE)
 
@@ -56,7 +55,6 @@ help:
 	  'Variables:' \
 	  '  DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535' \
 	  '  Example: make docs-serve DOCS_PORT=8010' \
-	  '  PREPARED_MOL_ZSTD_OUTPUT_DIR=$$HOME/tmp/grimace-prepared-mol-zstd' \
 	  '  PREPARED_MOL_ZSTD_CREATED_DATE=YYYYMMDD  Optional artifact date override' \
 	  '  PREPARED_MOL_ZSTD_FORCE=1  Replace the computed artifact directory' \
 	  '' \
@@ -100,7 +98,7 @@ perf:
 
 prepared-mol-zstd-dictionary:
 	@$(NON_ROOT_GUARD); \
-	output_dir="$${PREPARED_MOL_ZSTD_OUTPUT_DIR:?Set PREPARED_MOL_ZSTD_OUTPUT_DIR}"; \
+	output_dir="$(PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR)"; \
 	if [[ ! "$${PREPARED_MOL_ZSTD_FORCE}" =~ ^(0|1)$$ ]]; then \
 	  printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; \
 	  exit 2; \
@@ -111,11 +109,11 @@ prepared-mol-zstd-dictionary:
 	fi; \
 	mkdir -p -- "$$output_dir"; \
 	resolved="$$(realpath -e -- "$$output_dir")"; \
-	if [[ ! -d "$$resolved" || -L "$$output_dir" || -L "$$resolved" ]]; then \
-	  printf '%s\n' 'Refusing to bind PREPARED_MOL_ZSTD_OUTPUT_DIR because it is missing, a symlink, or not a directory.' >&2; \
+	expected="$(REPO_ROOT)/$(PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR)"; \
+	if [[ ! -d "$$resolved" || "$$resolved" != "$$expected" || -L "$$output_dir" || -L "$$resolved" ]]; then \
+	  printf '%s\n' 'Refusing to bind PreparedMol zstd package data directory because it is missing, a symlink, or outside the repository.' >&2; \
 	  exit 2; \
 	fi; \
-	PREPARED_MOL_ZSTD_OUTPUT_DIR="$$resolved" \
 	PREPARED_MOL_ZSTD_CREATED_DATE="$${PREPARED_MOL_ZSTD_CREATED_DATE}" \
 	PREPARED_MOL_ZSTD_FORCE="$${PREPARED_MOL_ZSTD_FORCE}" \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml run --build --rm prepared-mol-zstd-dictionary

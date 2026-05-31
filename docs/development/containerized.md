@@ -16,7 +16,7 @@ and avoid the host Python environment for routine checks.
 | `make exact-public-invariants` | `exact-public-invariants` service in `compose/test.yml` | Container-local test output only |
 | `make package` | `package` service in `compose/package.yml` | `dist/` |
 | `make perf` | `perf` service in `compose/perf.yml` | Timing docs and timing history |
-| `make prepared-mol-zstd-dictionary` | `prepared-mol-zstd-dictionary` service in `compose/prepared-mol-zstd-dictionary.yml` | PreparedMol zstd dictionary artifact output directory |
+| `make prepared-mol-zstd-dictionary` | `prepared-mol-zstd-dictionary` service in `compose/prepared-mol-zstd-dictionary.yml` | `python/grimace/data/prepared_mol_zstd/` |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
 | `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, performance, or docs artifacts |
@@ -45,11 +45,9 @@ symlinked `dist/` and clears direct children before building.
 
 `make prepared-mol-zstd-dictionary` builds an installed-package image with the
 pinned generator dependencies, runs the generator contract and environment
-preflight tests, then writes only to `PREPARED_MOL_ZSTD_OUTPUT_DIR`. The
-generator runs a post-flight check on the written artifact before exiting
-successfully.
-`PREPARED_MOL_ZSTD_OUTPUT_DIR` defaults to
-`$HOME/tmp/grimace-prepared-mol-zstd`. Optional controls:
+preflight tests, then writes only to
+`python/grimace/data/prepared_mol_zstd/`. The generator runs a post-flight
+check on the written artifact before exiting successfully. Optional controls:
 
 ```bash
 make prepared-mol-zstd-dictionary \

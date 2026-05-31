@@ -146,7 +146,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
-    def test_prepared_mol_zstd_dictionary_compose_writes_only_output_dir(self) -> None:
+    def test_prepared_mol_zstd_dictionary_compose_writes_only_package_data(self) -> None:
         compose = read_text("compose/prepared-mol-zstd-dictionary.yml")
         self.assertRegex(compose, r"(?m)^  prepared-mol-zstd-dictionary:$")
         self.assertIn(
@@ -163,9 +163,10 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE", compose)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE", compose)
+        self.assertNotIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", compose)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE must be 0 or 1.", compose)
-        self.assertIn("source: \"${PREPARED_MOL_ZSTD_OUTPUT_DIR:?", compose)
-        self.assertIn("target: /out", compose)
+        self.assertIn("source: ../python/grimace/data/prepared_mol_zstd", compose)
+        self.assertIn("target: /src/python/grimace/data/prepared_mol_zstd", compose)
         self.assertIn("create_host_path: false", compose)
         self.assertIn(
             "python -m unittest tests.checks.test_prepared_mol_zstd_generator_contract -q",
@@ -175,14 +176,16 @@ class ContainerPostureTests(unittest.TestCase):
             "python -m unittest tests.prepared_mol_zstd_dictionary_flight -q",
             compose,
         )
-        self.assertIn("set -- --output-root /out", compose)
+        self.assertIn(
+            "set -- --output-root /src/python/grimace/data/prepared_mol_zstd",
+            compose,
+        )
         self.assertIn(
             "exec python scripts/generate_prepared_mol_zstd_dictionary.py \"$$@\"",
             compose,
         )
         self.assertEqual(1, compose.count("type: bind"))
         self.assertNotIn("source: ..\n", compose)
-        self.assertNotIn("target: /src", compose)
         self.assertNotIn(".venv", compose)
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
@@ -399,11 +402,11 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("override DOCS_SOURCE_DIR := docs", makefile)
         self.assertIn("override DOCS_OUTPUT_DIR := build/docs-site", makefile)
-        self.assertIn("DOCS_PORT ?= 8000", makefile)
         self.assertIn(
-            "PREPARED_MOL_ZSTD_OUTPUT_DIR ?= $(HOME)/tmp/grimace-prepared-mol-zstd",
+            "override PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR := python/grimace/data/prepared_mol_zstd",
             makefile,
         )
+        self.assertIn("DOCS_PORT ?= 8000", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE ?=", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE ?= 0", makefile)
         self.assertIn("make docs-serve  Serve the documentation site on DOCS_PORT", makefile)
@@ -418,10 +421,6 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("Example: make docs-serve DOCS_PORT=8010", makefile)
         self.assertNotIn("override DOCS_PORT", makefile)
         self.assertIn("docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)", makefile)
-        self.assertIn(
-            "prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_OUTPUT_DIR := $(PREPARED_MOL_ZSTD_OUTPUT_DIR)",
-            makefile,
-        )
         self.assertIn(
             "prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)",
             makefile,
@@ -460,7 +459,9 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("GRIMACE_PERF_GIT_DIRTY", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE must be 0 or 1", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE must be YYYYMMDD", makefile)
-        self.assertIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", makefile)
+        self.assertIn("PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR", makefile)
+        self.assertNotIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", makefile)
+        self.assertIn("outside the repository", makefile)
         self.assertIn("prepared-mol-zstd-dictionary.yml", makefile)
         self.assertNotIn("LOCAL_UID:-", read_text("compose/package.yml"))
         self.assertNotIn("LOCAL_GID:-", read_text("compose/package.yml"))

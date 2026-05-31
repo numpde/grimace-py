@@ -167,6 +167,14 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("source: \"${PREPARED_MOL_ZSTD_OUTPUT_DIR:?", compose)
         self.assertIn("target: /out", compose)
         self.assertIn("create_host_path: false", compose)
+        self.assertIn(
+            "python -m unittest tests.checks.test_prepared_mol_zstd_generator_contract -q",
+            compose,
+        )
+        self.assertIn(
+            "python -m unittest tests.prepared_mol_zstd_dictionary_preflight -q",
+            compose,
+        )
         self.assertIn("set -- --output-root /out", compose)
         self.assertIn(
             "exec python scripts/generate_prepared_mol_zstd_dictionary.py \"$$@\"",

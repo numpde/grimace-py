@@ -41,9 +41,13 @@ from grimace._south_star1.writer_state import PendingEntryPhase
 from grimace._south_star1.writer_state import PendingWriterEntry
 from grimace._south_star1.writer_state import WriterAtomFrame
 from grimace._south_star1.writer_state import WriterBranchFrame
+from grimace._south_star1.writer_state import WriterClosedClosure
+from grimace._south_star1.writer_state import WriterClosureLabel
+from grimace._south_star1.writer_state import WriterOpenClosureEndpoint
 from grimace._south_star1.writer_state import WriterPolicyState
-from grimace._south_star1.writer_state import WriterRingStateKey
+from grimace._south_star1.writer_state import WriterRingLabelState
 from grimace._south_star1.writer_state import WriterRingState
+from grimace._south_star1.writer_state import WriterRingStateKey
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
@@ -444,13 +448,26 @@ class WriterSnapshotTest(unittest.TestCase):
             runtime_options=options,
         )
 
-    def test_cursor_audit_rejects_nonempty_ring_state(self) -> None:
+    def test_cursor_audit_rejects_incoherent_open_closure_state(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
         key = cursor.weighted_states[0][0]
+        label = _closure_label()
         tampered_key = replace(
             key,
-            ring_state=WriterRingStateKey(closed_bonds=frozenset((BondId(0),))),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(
+                    WriterOpenClosureEndpoint(
+                        bond=BondId(0),
+                        first_atom=AtomId(1),
+                        second_atom=AtomId(0),
+                        label=label,
+                        first_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                    ),
+                ),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
         )
 
         with self.assertRaises(SouthStarError):
@@ -458,6 +475,76 @@ class WriterSnapshotTest(unittest.TestCase):
                 prepared,
                 _cursor_with_key(tampered_key),
                 runtime_options=_writer_options(),
+            )
+
+    def test_cursor_audit_accepts_coherent_open_closure_state(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_accepts_coherent_closed_closure_state(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_closed_closure_key()
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_rejects_terminal_open_closure_state(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_terminal_open_closure_key()
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_duplicate_open_closure_labels(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        label = _closure_label()
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(
+                    WriterOpenClosureEndpoint(
+                        bond=BondId(0),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(1),
+                        label=label,
+                        first_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                    ),
+                    WriterOpenClosureEndpoint(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=label,
+                        first_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                    ),
+                ),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
             )
 
     def test_cursor_audit_rejects_incomplete_completed_component(self) -> None:
@@ -1411,6 +1498,96 @@ def _triangle_closure_candidate_key():
             stereo_state=empty_writer_stereo_state(),
             policy_state=WriterPolicyState(),
         )
+    )
+
+
+def _closure_label() -> WriterClosureLabel:
+    return WriterClosureLabel(value=1, text="1")
+
+
+def _triangle_root_with_open_closure_key():
+    label = _closure_label()
+    return replace(
+        _manual_emitted_root_key(AtomId(0)),
+        ring_state=WriterRingStateKey(
+            open_endpoints=(
+                WriterOpenClosureEndpoint(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(allocated=(label,)),
+        ),
+    )
+
+
+def _triangle_closed_closure_key():
+    label = _closure_label()
+    return replace(
+        _triangle_closure_candidate_key(),
+        ring_state=WriterRingStateKey(
+            closed_closures=(
+                WriterClosedClosure(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    second_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                    second_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(reusable=(label,)),
+        ),
+        stereo_state=replace(
+            empty_writer_stereo_state(),
+            atom_occurrences=(
+                WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE, None),
+            ),
+            bond_occurrences=(
+                WriterBondOccurrenceRecord(
+                    BondId(0),
+                    AtomId(0),
+                    AtomId(1),
+                    DirectionMark.ABSENT,
+                    None,
+                ),
+                WriterBondOccurrenceRecord(
+                    BondId(1),
+                    AtomId(1),
+                    AtomId(2),
+                    DirectionMark.ABSENT,
+                    None,
+                ),
+            ),
+        ),
+    )
+
+
+def _triangle_terminal_open_closure_key():
+    label = _closure_label()
+    return replace(
+        _triangle_closed_closure_key(),
+        ring_state=WriterRingStateKey(
+            open_endpoints=(
+                WriterOpenClosureEndpoint(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(allocated=(label,)),
+        ),
     )
 
 

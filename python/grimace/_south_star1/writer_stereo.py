@@ -33,6 +33,8 @@ from .writer_events import WriterAtomEmitted
 from .writer_events import WriterBondEmitted
 from .writer_events import WriterEvent
 from .writer_events import WriterLocalOrderClosed
+from .writer_events import WriterRingEndpointEmitted
+from .writer_events import WriterRingEndpointPaired
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
@@ -67,7 +69,7 @@ class WriterLocalOrderRecord:
 
 @dataclass(frozen=True, slots=True)
 class WriterDelayedStereoFactor:
-    kind: Literal["tetra", "directional"]
+    kind: Literal["tetra", "directional", "ring_pair"]
     site: SiteId
     scope: tuple[VarId, ...] = ()
     evidence: tuple[tuple[str, int], ...] = ()
@@ -115,6 +117,10 @@ def advance_writer_stereo_state(
             state = _on_bond_emitted(prepared, state, event)
         elif isinstance(event, WriterLocalOrderClosed):
             state = _on_local_order_closed(prepared, state, event.atom)
+        elif isinstance(event, WriterRingEndpointEmitted):
+            state = _on_ring_endpoint_emitted(prepared, state, event)
+        elif isinstance(event, WriterRingEndpointPaired):
+            state = _on_ring_endpoint_paired(prepared, state, event)
         else:
             continue
         if state is None:
@@ -378,6 +384,72 @@ def _on_local_order_closed(
         local_orders=local_orders,
         delayed_factors=delayed,
     )
+
+
+def _on_ring_endpoint_emitted(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    event: WriterRingEndpointEmitted,
+) -> "WriterStereoState | None":
+    _reject_supported_ring_pair_stereo(prepared, event.bond)
+    from .writer_state import WriterStereoState
+
+    return WriterStereoState(
+        residual_snapshot=stereo_state.residual_snapshot,
+        atom_occurrences=stereo_state.atom_occurrences,
+        bond_occurrences=stereo_state.bond_occurrences,
+        local_orders=stereo_state.local_orders,
+        delayed_factors=_mark_factor_pending(
+            stereo_state.delayed_factors,
+            WriterDelayedStereoFactor(
+                kind="ring_pair",
+                site=SiteId(int(event.bond)),
+                scope=(),
+                evidence=(("ring_endpoint", int(event.bond)),),
+                closed=False,
+            ),
+        ),
+    )
+
+
+def _on_ring_endpoint_paired(
+    prepared: SouthStarPreparedMol,
+    stereo_state: "WriterStereoState",
+    event: WriterRingEndpointPaired,
+) -> "WriterStereoState | None":
+    _reject_supported_ring_pair_stereo(prepared, event.bond)
+    from .writer_state import WriterStereoState
+
+    return WriterStereoState(
+        residual_snapshot=stereo_state.residual_snapshot,
+        atom_occurrences=stereo_state.atom_occurrences,
+        bond_occurrences=stereo_state.bond_occurrences,
+        local_orders=stereo_state.local_orders,
+        delayed_factors=_mark_factor_closed(
+            stereo_state.delayed_factors,
+            WriterDelayedStereoFactor(
+                kind="ring_pair",
+                site=SiteId(int(event.bond)),
+                scope=(),
+                evidence=(
+                    ("ring_endpoint", int(event.bond)),
+                    ("ring_pair", int(event.bond)),
+                ),
+                closed=True,
+            ),
+        ),
+    )
+
+
+def _reject_supported_ring_pair_stereo(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> None:
+    if _directional_sites_for_carrier_bond(prepared, bond):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_STEREO,
+            "WRITER_SHAPED ring-pair directional stereo is not supported yet",
+        )
 
 
 def _close_ready_directional_factors(
@@ -763,7 +835,7 @@ def _updated_directional_pending(
 
 def _factor_already_closed(
     factors: tuple[WriterDelayedStereoFactor, ...],
-    kind: Literal["tetra", "directional"],
+    kind: Literal["tetra", "directional", "ring_pair"],
     site: SiteId,
 ) -> bool:
     return any(

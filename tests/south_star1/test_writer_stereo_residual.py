@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 import unittest
 
+from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
@@ -37,6 +39,12 @@ from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_events import WriterRingEndpointEmitted
+from grimace._south_star1.writer_events import WriterRingEndpointPaired
+from grimace._south_star1.writer_state import WriterClosureLabel
+from grimace._south_star1.writer_stereo import advance_writer_stereo_state
+from grimace._south_star1.writer_stereo import empty_writer_stereo_state
+from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
 from tests.south_star1.helpers import single_bond
@@ -111,6 +119,103 @@ class WriterStereoResidualTest(unittest.TestCase):
         self.assertTrue(
             any(factor.kind == "directional" and not factor.closed for factor in pending)
         )
+
+    def test_ring_endpoint_event_creates_pending_ring_pair_factor(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=1, text="1")
+
+        state = advance_writer_stereo_state(
+            prepared,
+            empty_writer_stereo_state(),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(state)
+        assert state is not None
+        self.assertEqual(
+            state.delayed_factors,
+            (
+                WriterDelayedStereoFactor(
+                    kind="ring_pair",
+                    site=SiteId(2),
+                    evidence=(("ring_endpoint", 2),),
+                    closed=False,
+                ),
+            ),
+        )
+
+    def test_ring_endpoint_pair_closes_ring_pair_factor(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        pending = advance_writer_stereo_state(
+            prepared,
+            empty_writer_stereo_state(),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+        assert pending is not None
+
+        closed = advance_writer_stereo_state(
+            prepared,
+            pending,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNotNone(closed)
+        assert closed is not None
+        self.assertTrue(
+            any(
+                factor.kind == "ring_pair" and factor.closed
+                for factor in closed.delayed_factors
+            )
+        )
+
+    def test_ring_endpoint_event_on_directional_carrier_fails_closed(self) -> None:
+        prepared = _prepare(directional_facts())
+        label = WriterClosureLabel(value=1, text="1")
+
+        with self.assertRaises(SouthStarError) as caught:
+            advance_writer_stereo_state(
+                prepared,
+                empty_writer_stereo_state(),
+                (
+                    WriterRingEndpointEmitted(
+                        bond=BondId(1),
+                        endpoint_atom=AtomId(0),
+                        partner_atom=AtomId(2),
+                        label=label,
+                        endpoint_text="1",
+                        bond_text="",
+                    ),
+                ),
+            )
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
 
     def test_terminal_eos_persists_final_stereo_closure(self) -> None:
         facts = terminal_tetra_center_facts()
@@ -199,6 +304,24 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+    )
+
+
+def triangle_no_stereo_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
     )
 
 

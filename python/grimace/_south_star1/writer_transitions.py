@@ -14,7 +14,8 @@ from .ids import BondId
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import build_writer_graph_obligation_context
-from .writer_graph_obligations import validate_writer_supported_graph_surface
+from .writer_graph_obligations import validate_writer_initial_support_graph_surface
+from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -91,9 +92,15 @@ def build_writer_transition_expansion_context(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer state requires an active writer frame",
         )
-    validate_writer_supported_prepared(prepared)
+    if (
+        not state.ring_state.open_endpoints
+        and not state.ring_state.closed_closures
+    ):
+        validate_writer_initial_support_graph_surface(prepared)
     key = writer_state_key(state)
     graph = build_writer_graph_obligation_context(prepared, key)
+    validate_writer_stereo_supported_prepared(prepared)
+    validate_writer_snapshot_graph_surface(prepared, key, graph)
     return WriterTransitionExpansionContext(state_key=key, graph=graph)
 
 
@@ -504,7 +511,7 @@ def _transition(
 
 
 def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
-    validate_writer_supported_graph_surface(prepared)
+    validate_writer_initial_support_graph_surface(prepared)
     validate_writer_stereo_supported_prepared(prepared)
 
 

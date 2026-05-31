@@ -32,7 +32,7 @@ from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import build_writer_graph_obligation_context
-from .writer_graph_obligations import validate_writer_supported_graph_surface
+from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import writer_frontier_choices
@@ -42,7 +42,6 @@ from .writer_state import PendingEntryPhase
 from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
-from .writer_state import WriterRingStateKey
 from .writer_state import WriterStateKey
 from .writer_state import WriterStereoStateKey
 
@@ -131,7 +130,6 @@ def validate_writer_search_snapshot(
             "writer snapshot requires serialization_language=WRITER_SHAPED",
         )
     require_writer_shaped_runtime_options(snapshot.runtime_options)
-    validate_writer_supported_graph_surface(prepared)
     if snapshot.prepared_identity != _prepared_identity(
         prepared,
         snapshot.runtime_options,
@@ -160,7 +158,6 @@ def validate_writer_cursor_against_prepared(
     *,
     runtime_options: SouthStarRuntimeOptions | None = None,
 ) -> None:
-    validate_writer_supported_graph_surface(prepared)
     _validate_cursor_active_frames(cursor)
     atom_ids = frozenset(prepared.atom_ids)
     bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
@@ -172,6 +169,7 @@ def validate_writer_cursor_against_prepared(
             _invalid_snapshot("writer cursor contains nonpositive weight")
         _validate_component_cursor(key.component_cursor, allowed_roots)
         context = build_writer_graph_obligation_context(prepared, key)
+        validate_writer_snapshot_graph_surface(prepared, key, context)
         _validate_edge_partition_supported_for_snapshot(context)
         _validate_residual_attachments_supported_for_snapshot(context)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
@@ -194,7 +192,7 @@ def validate_writer_cursor_against_prepared(
         )
         _validate_live_frontier_ownership(prepared, key, context)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
-        _validate_ring_state_empty(key.ring_state)
+        _validate_ring_state(prepared, key, context)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(prepared, key.stereo_state)
 
@@ -239,13 +237,8 @@ def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
 def _validate_edge_partition_supported_for_snapshot(
     context: WriterGraphObligationContext,
 ) -> None:
-    unsupported = {
-        WriterEdgeObligationKind.CLOSURE_CANDIDATE,
-        WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
-        WriterEdgeObligationKind.CLOSED_CLOSURE,
-    }
     if any(
-        obligation.kind in unsupported
+        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
         for obligation in context.edge_partition.obligations
     ):
         _invalid_snapshot("writer snapshot has unsupported cyclic edge obligation")
@@ -789,13 +782,54 @@ def _written_tree_parent_links(
     return parent_by_child
 
 
-def _validate_ring_state_empty(ring_state: WriterRingStateKey) -> None:
-    if (
-        ring_state.open_endpoints
-        or ring_state.active_spines
-        or ring_state.closed_bonds
-    ):
-        _invalid_snapshot("writer snapshot has nonempty ring state before cyclic support")
+def _validate_ring_state(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    partition_by_bond = {
+        obligation.bond: obligation.kind
+        for obligation in context.edge_partition.obligations
+    }
+    open_labels = tuple(endpoint.label for endpoint in key.ring_state.open_endpoints)
+    if len(set(open_labels)) != len(open_labels):
+        _invalid_snapshot("writer open closure labels contain duplicates")
+    for endpoint in key.ring_state.open_endpoints:
+        if partition_by_bond.get(endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+            _invalid_snapshot("writer open closure endpoint lacks edge obligation")
+        fact = prepared.graph_index.bond_by_id.get(endpoint.bond)
+        if fact is None:
+            _invalid_snapshot("writer open closure endpoint references unknown bond")
+        if {endpoint.first_atom, endpoint.second_atom} != {fact.a, fact.b}:
+            _invalid_snapshot("writer open closure endpoint has wrong atoms")
+        if endpoint.first_atom not in key.visited_atoms:
+            _invalid_snapshot("writer open closure first atom is not visited")
+    for closure in key.ring_state.closed_closures:
+        if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
+            _invalid_snapshot("writer closed closure lacks edge obligation")
+        fact = prepared.graph_index.bond_by_id.get(closure.bond)
+        if fact is None:
+            _invalid_snapshot("writer closed closure references unknown bond")
+        if {closure.first_atom, closure.second_atom} != {fact.a, fact.b}:
+            _invalid_snapshot("writer closed closure has wrong atoms")
+        if closure.first_atom not in key.visited_atoms or closure.second_atom not in key.visited_atoms:
+            _invalid_snapshot("writer closed closure endpoint is not visited")
+    if key.ring_state.open_endpoints and _state_is_terminal_shape(prepared, key, context):
+        _invalid_snapshot("writer terminal snapshot has open closure endpoints")
+
+
+def _state_is_terminal_shape(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> bool:
+    if key.obligations.pending_entry is not None or key.branch_stack:
+        return False
+    if context.residual_summary.attachments.attachments:
+        return False
+    if key.component_cursor.component_index + 1 < len(key.component_cursor.component_roots):
+        return False
+    return _active_is_terminal_leaf(prepared, key)
 
 
 def _validate_policy_state(
@@ -995,7 +1029,7 @@ def _validate_delayed_factor_records(
         template.site: template for template in prepared.directional_templates
     }
     for factor in stereo_state.delayed_factors:
-        if not factor.scope:
+        if not factor.scope and factor.kind != "ring_pair":
             _invalid_snapshot("writer delayed factor has empty scope")
         for var in factor.scope:
             if var not in domain_vars:
@@ -1009,7 +1043,7 @@ def _validate_delayed_factor_records(
             tetra_by_site,
             directional_by_site,
         )
-        if factor.closed:
+        if factor.closed and factor.kind != "ring_pair":
             expected = _expected_residual_factor_snapshot(prepared, stereo_state, factor)
             if expected not in factor_snapshots:
                 _invalid_snapshot("writer closed delayed factor lacks matching residual factor")
@@ -1164,6 +1198,23 @@ def _validate_delayed_factor_shape(
         elif emitted_bonds == carrier_bonds:
             _invalid_snapshot("writer pending directional delayed factor is already complete")
         return
+    if factor.kind == "ring_pair":
+        bond = BondId(int(factor.site))
+        if bond not in prepared.graph_index.bond_by_id:
+            _invalid_snapshot("writer ring-pair delayed factor references unknown bond")
+        expected_pending = (("ring_endpoint", int(bond)),)
+        expected_closed = (
+            ("ring_endpoint", int(bond)),
+            ("ring_pair", int(bond)),
+        )
+        if factor.scope:
+            _invalid_snapshot("writer ring-pair delayed factor has unexpected scope")
+        if factor.closed:
+            if factor.evidence != expected_closed:
+                _invalid_snapshot("writer closed ring-pair delayed factor has unexpected evidence")
+        elif factor.evidence != expected_pending:
+            _invalid_snapshot("writer pending ring-pair delayed factor has unexpected evidence")
+        return
     _invalid_snapshot("writer delayed factor has unknown kind")
 
 
@@ -1212,6 +1263,8 @@ def _expected_residual_factor_snapshot(
         if not expected.close():
             _invalid_snapshot("writer directional residual factor is not closed")
         return expected.value_snapshot()
+    if factor.kind == "ring_pair":
+        _invalid_snapshot("writer ring-pair delayed factor has no residual factor yet")
     _invalid_snapshot("writer delayed factor has unknown kind")
 
 

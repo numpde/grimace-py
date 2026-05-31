@@ -14,7 +14,11 @@ from grimace._south_star1.writer_events import WriterBranchClosed
 from grimace._south_star1.writer_events import WriterBranchOpened
 from grimace._south_star1.writer_events import WriterComponentBoundaryEmitted
 from grimace._south_star1.writer_events import WriterLocalOrderClosed
+from grimace._south_star1.writer_events import WriterRingEndpointEmitted
+from grimace._south_star1.writer_events import WriterRingEndpointPaired
+from grimace._south_star1.writer_events import writer_event_sort_tuple
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_state import WriterClosureLabel
 from grimace._south_star1.writer_state import writer_state_from_key
 from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_transitions import legal_writer_transitions
@@ -70,6 +74,39 @@ class WriterEventsTest(unittest.TestCase):
                 stack.append(writer_state_key(transition.successor))
 
         self.assertIn(WriterComponentBoundaryEmitted, seen_types)
+
+    def test_ring_endpoint_events_carry_closure_payloads(self) -> None:
+        from grimace._south_star1.ids import AtomId
+        from grimace._south_star1.ids import BondId
+
+        label = WriterClosureLabel(value=1, text="1")
+
+        self.assertEqual(
+            writer_event_sort_tuple(
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                )
+            ),
+            ("ring_endpoint", 2, 0, 2, 1, "1", "1", "", "open"),
+        )
+        self.assertEqual(
+            writer_event_sort_tuple(
+                WriterRingEndpointPaired(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                )
+            ),
+            ("ring_pair", 2, 2, 0, 1, "1", "1", "", "close"),
+        )
 
 
 def _prepare(facts):

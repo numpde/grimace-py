@@ -225,7 +225,7 @@ def build_writer_graph_obligation_context(
     )
 
 
-def validate_writer_supported_graph_surface(
+def validate_writer_initial_support_graph_surface(
     prepared: SouthStarPreparedMol,
 ) -> None:
     for surface in prepared.writer_graph_metadata.component_surfaces:
@@ -234,6 +234,34 @@ def validate_writer_supported_graph_surface(
                 SouthStarErrorKind.UNSUPPORTED_POLICY,
                 surface.unsupported_reason,
             )
+
+
+def validate_writer_snapshot_graph_surface(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    current = key.component_cursor.component_index
+    for surface in prepared.writer_graph_metadata.component_surfaces:
+        if surface.component_index != current and surface.unsupported_reason is not None:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer snapshot has unsupported non-current graph component",
+            )
+    _validate_closure_state_supported_for_snapshot(prepared, key, context)
+    if any(
+        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        for obligation in context.edge_partition.obligations
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot has unsupported cyclic edge obligation",
+        )
+    if context.residual_summary.has_cyclic_attachment:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer snapshot has unsupported cyclic residual attachment",
+        )
 
 
 def classify_writer_residual_attachments(
@@ -330,7 +358,6 @@ def classify_writer_residual_attachments(
     has_cyclic_attachment = any(
         attachment.cyclic_rank > 0
         or len(attachment.boundary) > 1
-        or bool(attachment.block_ids & block_cut.cyclic_blocks)
         for attachment in sorted_attachments
     ) or has_closure_candidate
     return WriterGraphObligationSummary(
@@ -349,10 +376,16 @@ def classify_writer_edge_obligations(
 ) -> WriterEdgeObligationPartition:
     component = _current_component(prepared, key)
     pending = key.obligations.pending_entry
+    open_bonds = {endpoint.bond for endpoint in key.ring_state.open_endpoints}
+    closed_bonds = {closure.bond for closure in key.ring_state.closed_closures}
     obligations = []
     for bond in sorted(component.bonds, key=int):
         fact = prepared.graph_index.bond_by_id[bond]
-        if bond in key.written_bonds:
+        if bond in closed_bonds:
+            kind = WriterEdgeObligationKind.CLOSED_CLOSURE
+        elif bond in open_bonds:
+            kind = WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT
+        elif bond in key.written_bonds:
             kind = WriterEdgeObligationKind.TREE_ENTRY
         elif pending is not None and pending.bond == bond:
             kind = WriterEdgeObligationKind.PENDING_ENTRY
@@ -395,6 +428,16 @@ def validate_writer_edge_obligation_partition(
             "writer edge obligation partition does not cover current component bonds",
         )
     pending = key.obligations.pending_entry
+    open_by_bond = {endpoint.bond: endpoint for endpoint in key.ring_state.open_endpoints}
+    closed_by_bond = {closure.bond: closure for closure in key.ring_state.closed_closures}
+    ring_bonds = set(open_by_bond) | set(closed_by_bond)
+    if set(open_by_bond) & set(closed_by_bond):
+        _invalid_edge_partition("writer closure bond cannot be both open and closed")
+    if ring_bonds & key.written_bonds:
+        _invalid_edge_partition("writer closure bond cannot also be a tree-entry bond")
+    if pending is not None and pending.bond in ring_bonds:
+        _invalid_edge_partition("writer closure bond cannot also be pending")
+    _validate_ring_label_state(key)
     if pending is not None and pending.bond in key.written_bonds:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
@@ -463,10 +506,7 @@ def validate_writer_edge_obligation_partition(
             WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
             WriterEdgeObligationKind.CLOSED_CLOSURE,
         ):
-            raise SouthStarError(
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
-                "WRITER_SHAPED ring closure edge obligations are not supported yet",
-            )
+            _validate_closure_obligation(prepared, key, obligation, left_visited, right_visited)
         else:
             _invalid_edge_partition("unknown writer edge obligation kind")
 
@@ -512,6 +552,106 @@ def writer_edge_obligation_partition_sort_tuple(
         writer_edge_obligation_sort_tuple(obligation)
         for obligation in partition.obligations
     )
+
+
+def _validate_closure_state_supported_for_snapshot(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    _validate_ring_label_state(key)
+    partition_by_bond = {
+        obligation.bond: obligation.kind
+        for obligation in context.edge_partition.obligations
+    }
+    for endpoint in key.ring_state.open_endpoints:
+        if partition_by_bond.get(endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+            _invalid_edge_partition("writer open closure endpoint lacks open edge obligation")
+        fact = prepared.graph_index.bond_by_id.get(endpoint.bond)
+        if fact is None:
+            _invalid_edge_partition("writer open closure endpoint references unknown bond")
+        if {endpoint.first_atom, endpoint.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("writer open closure endpoint has wrong endpoints")
+        if endpoint.first_atom not in key.visited_atoms:
+            _invalid_edge_partition("writer open closure endpoint first atom is not visited")
+    for closure in key.ring_state.closed_closures:
+        if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
+            _invalid_edge_partition("writer closed closure lacks closed edge obligation")
+        fact = prepared.graph_index.bond_by_id.get(closure.bond)
+        if fact is None:
+            _invalid_edge_partition("writer closed closure references unknown bond")
+        if {closure.first_atom, closure.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("writer closed closure has wrong endpoints")
+        if closure.first_atom not in key.visited_atoms or closure.second_atom not in key.visited_atoms:
+            _invalid_edge_partition("writer closed closure endpoint is not visited")
+
+
+def _validate_ring_label_state(key: WriterStateKey) -> None:
+    open_labels = tuple(endpoint.label for endpoint in key.ring_state.open_endpoints)
+    closed_labels = tuple(closure.label for closure in key.ring_state.closed_closures)
+    allocated = key.ring_state.label_state.allocated
+    reusable = key.ring_state.label_state.reusable
+    if len(set(open_labels)) != len(open_labels):
+        _invalid_edge_partition("writer open closure labels contain duplicates")
+    if len(set(allocated)) != len(allocated) or len(set(reusable)) != len(reusable):
+        _invalid_edge_partition("writer ring label state contains duplicate labels")
+    if set(allocated) & set(reusable):
+        _invalid_edge_partition("writer ring label is both allocated and reusable")
+    for label in open_labels:
+        if label not in allocated:
+            _invalid_edge_partition("writer open closure label is not allocated")
+        if label in reusable:
+            _invalid_edge_partition("writer open closure label is reusable")
+    for label in closed_labels:
+        if label not in allocated and label not in reusable:
+            _invalid_edge_partition("writer closed closure label is not tracked")
+
+
+def _validate_closure_obligation(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    obligation: WriterEdgeObligation,
+    left_visited: bool,
+    right_visited: bool,
+) -> None:
+    open_endpoint = next(
+        (
+            endpoint
+            for endpoint in key.ring_state.open_endpoints
+            if endpoint.bond == obligation.bond
+        ),
+        None,
+    )
+    closed_closure = next(
+        (
+            closure
+            for closure in key.ring_state.closed_closures
+            if closure.bond == obligation.bond
+        ),
+        None,
+    )
+    fact = prepared.graph_index.bond_by_id[obligation.bond]
+    if obligation.kind is WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+        if open_endpoint is None:
+            _invalid_edge_partition("open closure obligation lacks endpoint state")
+        if closed_closure is not None:
+            _invalid_edge_partition("open closure obligation is also closed")
+        if {open_endpoint.first_atom, open_endpoint.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("open closure endpoint has wrong endpoints")
+        if open_endpoint.first_atom not in key.visited_atoms:
+            _invalid_edge_partition("open closure first endpoint is not visited")
+        return
+    if obligation.kind is WriterEdgeObligationKind.CLOSED_CLOSURE:
+        if closed_closure is None:
+            _invalid_edge_partition("closed closure obligation lacks closure state")
+        if open_endpoint is not None:
+            _invalid_edge_partition("closed closure obligation is also open")
+        if {closed_closure.first_atom, closed_closure.second_atom} != {fact.a, fact.b}:
+            _invalid_edge_partition("closed closure has wrong endpoints")
+        if not left_visited or not right_visited:
+            _invalid_edge_partition("closed closure must have visited endpoints")
+        return
+    _invalid_edge_partition("unknown closure obligation kind")
 
 
 def _component_graph_surfaces(
@@ -715,7 +855,8 @@ __all__ = (
     "build_writer_block_cut_metadata",
     "classify_writer_edge_obligations",
     "classify_writer_residual_attachments",
-    "validate_writer_supported_graph_surface",
+    "validate_writer_initial_support_graph_surface",
+    "validate_writer_snapshot_graph_surface",
     "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",
     "writer_edge_obligation_partition_sort_tuple",

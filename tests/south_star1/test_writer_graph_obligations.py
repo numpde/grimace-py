@@ -27,7 +27,7 @@ from grimace._south_star1.writer_graph_obligations import build_writer_graph_obl
 from grimace._south_star1.writer_graph_obligations import build_writer_block_cut_metadata
 from grimace._south_star1.writer_graph_obligations import classify_writer_edge_obligations
 from grimace._south_star1.writer_graph_obligations import classify_writer_residual_attachments
-from grimace._south_star1.writer_graph_obligations import validate_writer_supported_graph_surface
+from grimace._south_star1.writer_graph_obligations import validate_writer_initial_support_graph_surface
 from grimace._south_star1.writer_graph_obligations import validate_writer_edge_obligation_partition
 from grimace._south_star1.writer_graph_obligations import writer_boundary_incidence_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_edge_obligation_partition_sort_tuple
@@ -35,11 +35,17 @@ from grimace._south_star1.writer_graph_obligations import writer_residual_attach
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import WriterAtomFrame
+from grimace._south_star1.writer_state import WriterClosedClosure
+from grimace._south_star1.writer_state import WriterClosureLabel
+from grimace._south_star1.writer_state import WriterOpenClosureEndpoint
 from grimace._south_star1.writer_state import WriterPolicyState
+from grimace._south_star1.writer_state import WriterRingLabelState
 from grimace._south_star1.writer_state import WriterRingState
+from grimace._south_star1.writer_state import WriterRingStateKey
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import writer_state_from_key
 from grimace._south_star1.writer_state import writer_state_key
+from grimace._south_star1.writer_state import writer_state_key_sort_tuple
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_transitions import legal_writer_transitions
 from tests.south_star1.helpers import atom
@@ -132,7 +138,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertTrue(context.residual_summary.has_cyclic_attachment)
 
     def test_supported_graph_surface_accepts_all_acyclic_components(self) -> None:
-        validate_writer_supported_graph_surface(_prepare(chain_plus_singleton_facts()))
+        validate_writer_initial_support_graph_surface(_prepare(chain_plus_singleton_facts()))
 
     def test_supported_graph_surface_rejects_cyclic_and_malformed_components(self) -> None:
         for facts in (
@@ -142,7 +148,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             cycle_plus_isolate_component_facts(),
         ):
             with self.assertRaises(SouthStarError):
-                validate_writer_supported_graph_surface(_prepare(facts))
+                validate_writer_initial_support_graph_surface(_prepare(facts))
 
     def test_production_paths_use_cached_writer_graph_context(self) -> None:
         child_source = inspect.getsource(
@@ -299,6 +305,74 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertTrue(summary.has_cyclic_attachment)
         with self.assertRaises(SouthStarError):
             legal_writer_transitions(prepared, writer_state_from_key(key))
+
+    def test_open_closure_endpoint_is_partitioned_and_cuts_residual_attachment(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_root_with_open_closure_key()
+
+        partition = classify_writer_edge_obligations(prepared, key)
+        summary = _summary(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.BOUNDARY_INCIDENCE),
+                (BondId(1), WriterEdgeObligationKind.LATENT_RESIDUAL),
+                (BondId(2), WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT),
+            ),
+        )
+        self.assertFalse(summary.has_cyclic_attachment)
+        self.assertEqual(len(summary.attachments.attachments), 1)
+        self.assertEqual(
+            summary.attachments.attachments[0].boundary[0].bond,
+            BondId(0),
+        )
+
+    def test_closed_closure_endpoint_is_partitioned_and_excluded_from_residuals(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_closed_closure_key()
+
+        partition = classify_writer_edge_obligations(prepared, key)
+        summary = _summary(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(1), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(2), WriterEdgeObligationKind.CLOSED_CLOSURE),
+            ),
+        )
+        self.assertFalse(summary.has_cyclic_attachment)
+        self.assertEqual(summary.attachments.attachments, ())
+
+    def test_open_closure_bond_cannot_also_be_tree_entry(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            written_bonds=frozenset((BondId(2),)),
+        )
+        partition = classify_writer_edge_obligations(prepared, key)
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_edge_obligation_partition(prepared, key, partition)
+
+    def test_nonempty_ring_state_key_round_trips_and_sorts_structurally(self) -> None:
+        key = _triangle_closed_closure_key()
+
+        round_tripped = writer_state_key(writer_state_from_key(key))
+
+        self.assertEqual(round_tripped, key)
+        self.assertEqual(
+            writer_state_key_sort_tuple(key)[7],
+            (
+                (),
+                ((2, 0, 2, (1, "1"), "1", "1", "", ""),),
+                ((), ((1, "1"),)),
+            ),
+        )
 
     def test_cycle_plus_isolate_classifier_exposes_non_tree_shape(self) -> None:
         prepared = _prepare(cycle_plus_isolate_component_facts())
@@ -487,6 +561,52 @@ def _triangle_all_visited_two_written_key():
             stereo_state=empty_writer_stereo_state(),
             policy_state=WriterPolicyState(),
         )
+    )
+
+
+def _closure_label() -> WriterClosureLabel:
+    return WriterClosureLabel(value=1, text="1")
+
+
+def _triangle_root_with_open_closure_key():
+    label = _closure_label()
+    return replace(
+        _emitted_root_key(_prepare(triangle_facts()), root=AtomId(0)),
+        ring_state=WriterRingStateKey(
+            open_endpoints=(
+                WriterOpenClosureEndpoint(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(allocated=(label,)),
+        ),
+    )
+
+
+def _triangle_closed_closure_key():
+    label = _closure_label()
+    return replace(
+        _triangle_all_visited_two_written_key(),
+        ring_state=WriterRingStateKey(
+            closed_closures=(
+                WriterClosedClosure(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    second_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                    second_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(reusable=(label,)),
+        ),
     )
 
 

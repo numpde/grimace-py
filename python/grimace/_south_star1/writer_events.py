@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from typing import Literal
 from typing import TypeAlias
 
 from .ids import AtomId
 from .ids import BondId
 from .policy import DirectionMark
 from .policy import TetraToken
+
+if TYPE_CHECKING:
+    from .writer_state import WriterClosureLabel
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,18 +58,24 @@ class WriterLocalOrderClosed:
 
 @dataclass(frozen=True, slots=True)
 class WriterRingEndpointEmitted:
-    atom: AtomId
-    other_atom: AtomId
     bond: BondId
-    label: int
+    endpoint_atom: AtomId
+    partner_atom: AtomId
+    label: "WriterClosureLabel"
+    endpoint_text: str
+    bond_text: str
+    side: Literal["open", "close"] = "open"
 
 
 @dataclass(frozen=True, slots=True)
 class WriterRingEndpointPaired:
     bond: BondId
-    left_atom: AtomId
-    right_atom: AtomId
-    label: int
+    endpoint_atom: AtomId
+    partner_atom: AtomId
+    label: "WriterClosureLabel"
+    endpoint_text: str
+    bond_text: str
+    side: Literal["close"] = "close"
 
 
 WriterEvent: TypeAlias = (
@@ -109,18 +120,26 @@ def writer_event_sort_tuple(event: WriterEvent) -> tuple[object, ...]:
     if isinstance(event, WriterRingEndpointEmitted):
         return (
             "ring_endpoint",
-            int(event.atom),
-            int(event.other_atom),
             int(event.bond),
-            int(event.label),
+            int(event.endpoint_atom),
+            int(event.partner_atom),
+            event.label.value,
+            event.label.text,
+            event.endpoint_text,
+            event.bond_text,
+            event.side,
         )
     if isinstance(event, WriterRingEndpointPaired):
         return (
             "ring_pair",
             int(event.bond),
-            int(event.left_atom),
-            int(event.right_atom),
-            int(event.label),
+            int(event.endpoint_atom),
+            int(event.partner_atom),
+            event.label.value,
+            event.label.text,
+            event.endpoint_text,
+            event.bond_text,
+            event.side,
         )
     raise TypeError(f"unknown writer event: {event!r}")
 

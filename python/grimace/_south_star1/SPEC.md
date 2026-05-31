@@ -319,9 +319,14 @@ and residual attachments are built through a single
 classes derived from the edge partition for the acyclic surface; they do not
 preselect a spanning tree, cycle basis, ring cut, or render program. Cyclic
 residual attachments and closure-candidate edges can be classified
-structurally, but transition consumption of those obligations still fails
-closed. A single writer graph-surface policy currently requires every prepared
-component to be a connected tree before writer runtime or snapshot resume.
+structurally, but transition creation of closure endpoints still fails closed.
+`WriterRingState` now owns explicit open and closed closure records plus ring
+label state, and the edge partition classifies open and closed closure bonds
+before residual attachments are derived. Initial writer support still requires
+every prepared component to be a connected tree. Snapshot validation has a
+separate graph-surface policy: it may audit internally coherent retained
+closure state, but unaccounted cyclic residual attachments and closure
+candidate edges remain invalid.
 Every writer transition emits typed semantic events; those events update a
 writer-owned residual stereo snapshot that is part of the canonical writer
 state key. Support counting, EOS evidence, next emitted-text choices,
@@ -332,11 +337,14 @@ are persisted rather than recomputed as a discarded viability check. Writer
 snapshots currently use a strict single-frontier-frame shape and validate a
 structural prepared identity before resume. Snapshot validation also audits
 each retained writer state against the prepared graph, runtime root domains,
-residual attachment ownership, empty pre-cyclic ring state, local-order
+residual attachment ownership, closure-state lifecycle records, local-order
 occurrence records, delayed stereo factor records, and residual-store factor
-snapshots before exposing a resumed cursor. Cyclic traversal, ring endpoint
-emission, ring-pair stereo factors, residual suffix storage, RDKit parity, and
-exhaustive traversal fallback still fail closed in `writer_shaped`.
+snapshots before exposing a resumed cursor. Ring endpoint events have concrete
+payloads for future closure transitions and are consumed by writer stereo as
+ring-pair delayed-factor hooks. Cyclic traversal, transition-produced ring
+endpoint emission, supported ring-pair stereo factors, residual suffix storage,
+RDKit parity, and exhaustive traversal fallback still fail closed in
+`writer_shaped`.
 
 `online_decoder.py` provides exact prefix feasibility and determinized token
 frontier queries by running the online DFS with prefix-constrained render sinks.

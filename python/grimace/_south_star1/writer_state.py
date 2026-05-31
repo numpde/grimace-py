@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
 
 from .ids import AtomId
@@ -55,20 +56,44 @@ class ObligationState:
 
 
 @dataclass(frozen=True, slots=True)
-class WriterRingEndpoint:
-    pass
+class WriterClosureLabel:
+    value: int
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
-class WriterRingSpineFrame:
-    pass
+class WriterOpenClosureEndpoint:
+    bond: BondId
+    first_atom: AtomId
+    second_atom: AtomId
+    label: WriterClosureLabel
+    first_endpoint_text: str
+    first_endpoint_bond_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class WriterClosedClosure:
+    bond: BondId
+    first_atom: AtomId
+    second_atom: AtomId
+    label: WriterClosureLabel
+    first_endpoint_text: str
+    second_endpoint_text: str
+    first_endpoint_bond_text: str
+    second_endpoint_bond_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class WriterRingLabelState:
+    allocated: tuple[WriterClosureLabel, ...] = ()
+    reusable: tuple[WriterClosureLabel, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class WriterRingState:
-    open_endpoints: tuple[WriterRingEndpoint, ...] = ()
-    active_spines: tuple[WriterRingSpineFrame, ...] = ()
-    closed_bonds: frozenset[BondId] = frozenset()
+    open_endpoints: tuple[WriterOpenClosureEndpoint, ...] = ()
+    closed_closures: tuple[WriterClosedClosure, ...] = ()
+    label_state: WriterRingLabelState = field(default_factory=WriterRingLabelState)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,9 +131,9 @@ class ObligationStateKey:
 
 @dataclass(frozen=True, slots=True)
 class WriterRingStateKey:
-    open_endpoints: tuple[WriterRingEndpoint, ...] = ()
-    active_spines: tuple[WriterRingSpineFrame, ...] = ()
-    closed_bonds: frozenset[BondId] = frozenset()
+    open_endpoints: tuple[WriterOpenClosureEndpoint, ...] = ()
+    closed_closures: tuple[WriterClosedClosure, ...] = ()
+    label_state: WriterRingLabelState = field(default_factory=WriterRingLabelState)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,8 +176,8 @@ def writer_state_key(state: WriterState) -> WriterStateKey:
         ),
         ring_state=WriterRingStateKey(
             open_endpoints=state.ring_state.open_endpoints,
-            active_spines=state.ring_state.active_spines,
-            closed_bonds=state.ring_state.closed_bonds,
+            closed_closures=state.ring_state.closed_closures,
+            label_state=state.ring_state.label_state,
         ),
         stereo_state=WriterStereoStateKey(
             residual_snapshot=state.stereo_state.residual_snapshot,
@@ -180,8 +205,8 @@ def writer_state_from_key(key: WriterStateKey) -> WriterState:
         ),
         ring_state=WriterRingState(
             open_endpoints=key.ring_state.open_endpoints,
-            active_spines=key.ring_state.active_spines,
-            closed_bonds=key.ring_state.closed_bonds,
+            closed_closures=key.ring_state.closed_closures,
+            label_state=key.ring_state.label_state,
         ),
         stereo_state=WriterStereoState(
             residual_snapshot=key.stereo_state.residual_snapshot,
@@ -198,10 +223,6 @@ def writer_state_from_key(key: WriterStateKey) -> WriterState:
 
 
 def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
-    if key.ring_state.open_endpoints or key.ring_state.active_spines:
-        raise AssertionError(
-            "writer_state_key_sort_tuple must be extended before nonempty ring state"
-        )
     return (
         int(key.component_cursor.component_index),
         tuple(int(atom) for atom in key.component_cursor.component_roots),
@@ -210,9 +231,7 @@ def writer_state_key_sort_tuple(key: WriterStateKey) -> tuple[object, ...]:
         tuple(sorted(int(atom) for atom in key.visited_atoms)),
         tuple(sorted(int(bond) for bond in key.written_bonds)),
         _obligation_sort_tuple(key.obligations),
-        (
-            tuple(sorted(int(bond) for bond in key.ring_state.closed_bonds)),
-        ),
+        _ring_state_sort_tuple(key.ring_state),
         writer_stereo_state_sort_tuple(
             WriterStereoState(
                 residual_snapshot=key.stereo_state.residual_snapshot,
@@ -243,6 +262,49 @@ def _branch_frame_sort_tuple(frame: WriterBranchFrame) -> tuple[object, ...]:
     return (_atom_frame_sort_tuple(frame.return_atom),)
 
 
+def _ring_state_sort_tuple(ring_state: WriterRingStateKey) -> tuple[object, ...]:
+    return (
+        tuple(_open_closure_sort_tuple(item) for item in ring_state.open_endpoints),
+        tuple(_closed_closure_sort_tuple(item) for item in ring_state.closed_closures),
+        _ring_label_state_sort_tuple(ring_state.label_state),
+    )
+
+
+def _open_closure_sort_tuple(endpoint: WriterOpenClosureEndpoint) -> tuple[object, ...]:
+    return (
+        int(endpoint.bond),
+        int(endpoint.first_atom),
+        int(endpoint.second_atom),
+        _closure_label_sort_tuple(endpoint.label),
+        endpoint.first_endpoint_text,
+        endpoint.first_endpoint_bond_text,
+    )
+
+
+def _closed_closure_sort_tuple(closure: WriterClosedClosure) -> tuple[object, ...]:
+    return (
+        int(closure.bond),
+        int(closure.first_atom),
+        int(closure.second_atom),
+        _closure_label_sort_tuple(closure.label),
+        closure.first_endpoint_text,
+        closure.second_endpoint_text,
+        closure.first_endpoint_bond_text,
+        closure.second_endpoint_bond_text,
+    )
+
+
+def _ring_label_state_sort_tuple(label_state: WriterRingLabelState) -> tuple[object, ...]:
+    return (
+        tuple(_closure_label_sort_tuple(label) for label in label_state.allocated),
+        tuple(_closure_label_sort_tuple(label) for label in label_state.reusable),
+    )
+
+
+def _closure_label_sort_tuple(label: WriterClosureLabel) -> tuple[object, ...]:
+    return (int(label.value), label.text)
+
+
 def _obligation_sort_tuple(obligations: ObligationStateKey) -> tuple[object, ...]:
     pending = obligations.pending_entry
     if pending is None:
@@ -265,10 +327,12 @@ __all__ = (
     "PendingWriterEntry",
     "WriterAtomFrame",
     "WriterBranchFrame",
+    "WriterClosedClosure",
+    "WriterClosureLabel",
+    "WriterOpenClosureEndpoint",
     "WriterPolicyStateKey",
     "WriterPolicyState",
-    "WriterRingEndpoint",
-    "WriterRingSpineFrame",
+    "WriterRingLabelState",
     "WriterRingStateKey",
     "WriterRingState",
     "WriterStereoStateKey",

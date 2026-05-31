@@ -38,7 +38,7 @@ def _draw_scatter(
     *,
     time_field: str,
     std_field: str,
-    xlabel: str,
+    ylabel: str,
     output: Path,
 ) -> None:
     from plox import Plox
@@ -58,13 +58,21 @@ def _draw_scatter(
             if not mode_rows:
                 raise SystemExit(f"No {mode!r} rows in timing input")
             levels = [int(row["level"]) for row in mode_rows]
-            x = [float(row[time_field]) * 1_000 for row in mode_rows]
-            xerr = [float(row[std_field]) * 1_000 for row in mode_rows]
-            y = [float(row["compression_ratio"]) for row in mode_rows]
+            x = [float(row["compression_ratio"]) for row in mode_rows]
+            y = [float(row[time_field]) * 1_000 for row in mode_rows]
+            yerr = [float(row[std_field]) * 1_000 for row in mode_rows]
+            ax.plot(
+                x,
+                y,
+                linestyle="--",
+                linewidth=1.0,
+                color=style["color"],
+                alpha=0.7,
+            )
             ax.errorbar(
                 x,
                 y,
-                xerr=xerr,
+                yerr=yerr,
                 fmt=style["marker"],
                 color=style["color"],
                 ecolor=style["color"],
@@ -83,8 +91,8 @@ def _draw_scatter(
                     color=style["color"],
                 )
 
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel("Compression ratio (compressed / raw)")
+        ax.set_xlabel("Compression ratio (compressed / raw)")
+        ax.set_ylabel(ylabel)
         ax.grid(color="#dddddd", linewidth=0.8)
         ax.set_axisbelow(True)
         ax.legend(frameon=True, edgecolor="#dddddd")
@@ -131,14 +139,14 @@ def main(argv: list[str]) -> int:
         rows,
         time_field="compression_mean_s",
         std_field="compression_std_s",
-        xlabel=f"Compression time for {sample_count} payloads, ms",
+        ylabel=f"Compression time for {sample_count} payloads, ms",
         output=compression_output,
     )
     _draw_scatter(
         rows,
         time_field="decompression_mean_s",
         std_field="decompression_std_s",
-        xlabel=f"Decompression time for {sample_count} payloads, ms",
+        ylabel=f"Decompression time for {sample_count} payloads, ms",
         output=decompression_output,
     )
     print(f"Wrote {compression_output}")

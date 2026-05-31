@@ -21,7 +21,7 @@ from scripts import prepared_mol_zstd_dictionary_generate as generator
 
 
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "prepared-mol-zstd-timings.tsv"
-DEFAULT_LEVELS = (1, 3, 6, 9, 12, 15, 19)
+DEFAULT_LEVELS = (1, 3, 6, 9, 10, 11, 12, 15, 19)
 DEFAULT_SAMPLE_SEED = 20260531
 
 zstd: Any | None = None

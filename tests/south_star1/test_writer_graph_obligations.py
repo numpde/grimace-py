@@ -119,8 +119,13 @@ class WriterGraphObligationsTest(unittest.TestCase):
         prepared = _prepare(six_ring_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
 
+        partition = classify_writer_edge_obligations(prepared, key)
         summary = _summary(prepared, key)
 
+        self.assertNotIn(
+            WriterEdgeObligationKind.CLOSURE_CANDIDATE,
+            {item.kind for item in partition.obligations},
+        )
         self.assertTrue(summary.has_cyclic_attachment)
         self.assertEqual(len(summary.attachments.attachments), 1)
         attachment = summary.attachments.attachments[0]

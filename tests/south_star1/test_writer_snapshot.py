@@ -497,6 +497,29 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_cyclic_residual_attachment_without_closure_candidate(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _manual_emitted_root_key(AtomId(0))
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_acyclic_residual_attachment(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_second_atom_key(prepared, options)
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
     def test_cursor_audit_rejects_stranded_unvisited_child_obligation(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=0)

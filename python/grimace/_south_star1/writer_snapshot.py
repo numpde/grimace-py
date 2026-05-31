@@ -173,6 +173,7 @@ def validate_writer_cursor_against_prepared(
         validate_writer_edge_obligation_partition(prepared, key, partition)
         _validate_edge_partition_supported_for_snapshot(partition)
         summary = _writer_obligation_summary(prepared, key)
+        _validate_residual_attachments_supported_for_snapshot(summary)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
         for frame in key.branch_stack:
             _validate_branch_frame(frame, atom_ids, bond_ids, prepared)
@@ -257,6 +258,13 @@ def _validate_edge_partition_supported_for_snapshot(
     }
     if any(obligation.kind in unsupported for obligation in partition.obligations):
         _invalid_snapshot("writer snapshot has unsupported cyclic edge obligation")
+
+
+def _validate_residual_attachments_supported_for_snapshot(
+    summary: WriterGraphObligationSummary,
+) -> None:
+    if summary.has_cyclic_attachment:
+        _invalid_snapshot("writer snapshot has unsupported cyclic residual attachment")
 
 
 def _allowed_component_roots(

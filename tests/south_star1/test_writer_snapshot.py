@@ -446,11 +446,71 @@ class WriterSnapshotTest(unittest.TestCase):
             runtime_options=options,
         )
 
+    def test_cursor_audit_rejects_branch_stack_without_sibling_obligation(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        branch_key = _cco_branch_child_key(prepared, options)
+        tampered_key = replace(
+            branch_key,
+            visited_atoms=frozenset((*branch_key.visited_atoms, AtomId(2))),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_branch_state_missing_return_owner(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=1)
         branch_key = _cco_branch_child_key(prepared, options)
         tampered_key = replace(branch_key, branch_stack=())
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_terminal_state_with_stale_branch_stack(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_third_atom_key(prepared, options)
+        root_frame = replace(
+            key.active,
+            atom=AtomId(0),
+            parent=None,
+            incoming_bond=None,
+        )
+        tampered_key = replace(
+            key,
+            branch_stack=(WriterBranchFrame(return_atom=root_frame),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_linear_prefix_with_stale_branch_stack(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_second_atom_key(prepared, options)
+        root_frame = replace(
+            key.active,
+            atom=AtomId(0),
+            parent=None,
+            incoming_bond=None,
+        )
+        tampered_key = replace(
+            key,
+            branch_stack=(WriterBranchFrame(return_atom=root_frame),),
+        )
 
         with self.assertRaises(SouthStarError):
             validate_writer_cursor_against_prepared(

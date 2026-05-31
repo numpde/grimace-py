@@ -568,6 +568,8 @@ def _validate_live_frontier_ownership(
         return
     owner_atoms = _live_owner_atoms(key)
     boundary_edges = []
+    branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
+    branch_owned_atoms = set()
     for bond in component.bonds:
         fact = prepared.graph_index.bond_by_id[bond]
         left_visited = fact.a in visited
@@ -578,8 +580,14 @@ def _validate_live_frontier_ownership(
         boundary_edges.append((bond, visited_endpoint))
         if visited_endpoint not in owner_atoms:
             _invalid_snapshot("writer live frontier does not own unvisited obligation")
+        if visited_endpoint in branch_return_atoms:
+            branch_owned_atoms.add(visited_endpoint)
     if unvisited and not boundary_edges:
         _invalid_snapshot("writer current component has unvisited atoms without frontier")
+    if key.branch_stack and not unvisited:
+        _invalid_snapshot("writer branch stack has no unresolved return obligation")
+    if any(atom not in branch_owned_atoms for atom in branch_return_atoms):
+        _invalid_snapshot("writer branch return frame owns no unresolved obligation")
     if (
         not unvisited
         and key.obligations.pending_entry is None

@@ -30,7 +30,7 @@ SEMANTIC_ID = "prepared-mol-default-v1"
 ARTIFACT_STEM = "default_v1"
 # Bump for any output-affecting generator change. Refactors that preserve the
 # training identity and dictionary bytes do not need a new artifact identity.
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 EXPECTED_RDKIT_VERSION = "2026.03.1"
 EXPECTED_ZSTANDARD_BACKEND = "cext"
 EXPECTED_ZSTD_LIBRARY_VERSION = (1, 5, 7)
@@ -43,8 +43,7 @@ EXPECTED_FIXTURE_UNCOMPRESSED_SHA256 = (
     "605cbbd10e69225ccfb47e05594aa01b338df7238f2ba3da76d7f5060c08f1bf"
 )
 RAW_PREPARED_MOL_MAGIC = b"GPM\0"
-HEAD_SAMPLE_COUNT = 10_000
-HASH_STRATIFIED_SAMPLE_COUNT = 10_000
+# zstd CLI `--train --maxdict` default: 110 KiB.
 ZSTD_DICTIONARY_SIZE = 112_640
 ZSTD_TRAINING_PARAMETERS = {
     "dict_size": ZSTD_DICTIONARY_SIZE,
@@ -67,13 +66,12 @@ WRITER_OPTIONS = {
     "ignoreAtomMapNumbers": False,
 }
 SELECTION_RULE = {
-    "name": "head-plus-cid-hash-stratified-v1",
-    "head_parseable_prepared_rows": HEAD_SAMPLE_COUNT,
-    "hash_stratified_parseable_prepared_rows": HASH_STRATIFIED_SAMPLE_COUNT,
-    "hash_input": "ASCII decimal CID text",
-    "hash": "sha256",
-    "hash_order": "ascending digest bytes, then source row number",
-    "final_sample_order": "source row order",
+    "name": "all-parseable-preparable-v1",
+    "included_rows": (
+        "all fixture rows that RDKit parses and grimace.PrepareMol prepares "
+        "successfully"
+    ),
+    "sample_order": "source row order",
     "deduplication": "none",
 }
 DICT_ID_DERIVATION_RULE = (
@@ -259,35 +257,14 @@ def build_candidates(fixture_path: Path) -> Corpus:
                 )
             )
 
-    if len(candidates) < HEAD_SAMPLE_COUNT + HASH_STRATIFIED_SAMPLE_COUNT:
-        raise RuntimeError(
-            "Not enough parseable/preparable fixture rows for dictionary training: "
-            f"need {HEAD_SAMPLE_COUNT + HASH_STRATIFIED_SAMPLE_COUNT}, "
-            f"got {len(candidates)}"
-        )
-
-    head = candidates[:HEAD_SAMPLE_COUNT]
-    remaining = candidates[HEAD_SAMPLE_COUNT:]
-    stratified = sorted(
-        remaining,
-        key=lambda candidate: (
-            hashlib.sha256(candidate.cid.encode("ascii")).digest(),
-            candidate.row_number,
-        ),
-    )[:HASH_STRATIFIED_SAMPLE_COUNT]
-    selected_rows = {candidate.row_number for candidate in (*head, *stratified)}
-    selected = tuple(
-        candidate for candidate in candidates if candidate.row_number in selected_rows
-    )
-
-    if len(selected) != HEAD_SAMPLE_COUNT + HASH_STRATIFIED_SAMPLE_COUNT:
-        raise RuntimeError("Selection rule produced duplicate source rows")
+    if not candidates:
+        raise RuntimeError("No parseable/preparable fixture rows for dictionary training")
 
     return Corpus(
         candidate_success_count=len(candidates),
         parse_failure_count=parse_failure_count,
         preparation_failure_count=preparation_failure_count,
-        selected=selected,
+        selected=tuple(candidates),
     )
 
 

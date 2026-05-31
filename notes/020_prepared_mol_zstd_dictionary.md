@@ -210,35 +210,32 @@ The training corpus must be selected deterministically:
 - skipped row counts must be recorded separately for parse failures and
   `PrepareMol(...)` failures
 
-First candidate selection rule:
+`default_v1` candidate selection rule:
 
 ```text
-head 10,000 parseable rows
-+ hash-stratified 10,000 parseable rows by CID
+all parseable/preparable fixture rows, in source row order
 ```
 
-This covers common simple molecules and a stable spread through the checked-in
-fixture without making dictionary training depend on every row.
+This uses the whole checked-in fixture as the stable training source. The
+manifest records the successful sample count plus skipped parse/preparation
+counts, so a fixture or RDKit behavior change changes the artifact identity.
 
 `default_v1` is a compression dictionary, not a semantic compatibility layer.
 It may be used to compress any raw `PreparedMol` payload, even if the payload
 was prepared with different writer options; the writer options below describe
 the training samples, not a runtime validity check.
 
-Make the hash-stratified part exact:
+Make the selection exact:
 
-1. Build the parseable/successful candidate list in source row order.
-2. Take the first 10,000 candidates as the head sample.
-3. From the remaining candidates, sort by `sha256(CID)`, where `CID` is the
-   ASCII decimal CID text from the fixture, then by source row number to break
-   impossible hash ties.
-4. Take the first 10,000 not already selected.
-5. Preserve source row order when writing training samples, so training input is
-   stable and human-auditable.
+1. Read the fixture in source row order.
+2. Keep every row whose SMILES RDKit parses and whose molecule
+   `grimace.PrepareMol(...)` prepares successfully.
+3. Preserve source row order when writing training samples, so training input
+   is stable and human-auditable.
 
-Selection is by source row/CID. Do not add hidden deduplication. If a later
-dictionary deduplicates by SMILES or raw `PreparedMol` bytes, that policy must
-be named in the manifest because it changes the training distribution.
+Selection is by source row. Do not add hidden deduplication. If a later
+dictionary deduplicates by CID, SMILES, or raw `PreparedMol` bytes, that policy
+must be named in the manifest because it changes the training distribution.
 
 Default writer options for `default_v1`:
 
@@ -521,7 +518,7 @@ Add tests before exposing compression as public API:
 
 1. Add a Python `python-zstandard` generator that writes candidate artifacts to
    `~/tmp`.
-2. Train head-only and head-plus-hash-stratified dictionaries.
+2. Train the all-parseable/preparable dictionary.
 3. Measure raw size, zstd without dictionary, zstd with dictionary, write time,
    read time, parse time, first-use dictionary load cost, and steady-state
    cached-read throughput. Include tiny molecules, typical molecules, larger

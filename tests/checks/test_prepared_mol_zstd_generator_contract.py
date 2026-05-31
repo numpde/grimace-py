@@ -103,8 +103,6 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
             Path("tests/fixtures/top_100000_CIDs.tsv.gz"),
             literal_constant("FIXTURE_RELATIVE_PATH"),
         )
-        self.assertEqual(10_000, literal_constant("HEAD_SAMPLE_COUNT"))
-        self.assertEqual(10_000, literal_constant("HASH_STRATIFIED_SAMPLE_COUNT"))
         self.assertEqual(
             "67d1d31c3eb27da5ae5a8b8c1a3369531061113464c0dbfaf46e274493acc1ea",
             literal_constant("EXPECTED_FIXTURE_GZIP_SHA256"),
@@ -125,13 +123,12 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "name": "head-plus-cid-hash-stratified-v1",
-                "head_parseable_prepared_rows": 10_000,
-                "hash_stratified_parseable_prepared_rows": 10_000,
-                "hash_input": "ASCII decimal CID text",
-                "hash": "sha256",
-                "hash_order": "ascending digest bytes, then source row number",
-                "final_sample_order": "source row order",
+                "name": "all-parseable-preparable-v1",
+                "included_rows": (
+                    "all fixture rows that RDKit parses and grimace.PrepareMol "
+                    "prepares successfully"
+                ),
+                "sample_order": "source row order",
                 "deduplication": "none",
             },
             literal_constant("SELECTION_RULE"),

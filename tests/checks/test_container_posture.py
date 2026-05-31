@@ -177,12 +177,20 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn(
+            "python -m unittest tests.prepared_mol_zstd_dictionary_rates -q",
+            compose,
+        )
+        self.assertIn(
             "set -- --output-root /src/python/grimace/data/prepared_mol_zstd",
             compose,
         )
         self.assertIn(
-            "exec python scripts/generate_prepared_mol_zstd_dictionary.py \"$$@\"",
+            "python scripts/generate_prepared_mol_zstd_dictionary.py \"$$@\"",
             compose,
+        )
+        self.assertLess(
+            compose.index("python scripts/generate_prepared_mol_zstd_dictionary.py"),
+            compose.index("python -m unittest tests.prepared_mol_zstd_dictionary_rates"),
         )
         self.assertEqual(1, compose.count("type: bind"))
         self.assertNotIn("source: ..\n", compose)

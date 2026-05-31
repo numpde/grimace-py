@@ -169,6 +169,7 @@ def validate_writer_cursor_against_prepared(
         _validate_active_coherence(key)
         _validate_component_membership(prepared, key, atom_component, bond_component)
         _validate_current_component_tree_fragment(prepared, key)
+        _validate_writer_frame_tree_path(prepared, key)
         _validate_written_bond_coherence(prepared, key)
         _validate_obligations(key.obligations, key, atom_ids, bond_ids, prepared)
         _validate_live_frontier_ownership(prepared, key)
@@ -416,6 +417,69 @@ def _reachable_written_atoms(
     return frozenset(seen)
 
 
+def _validate_writer_frame_tree_path(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> None:
+    parent_links = _written_tree_parent_links(prepared, key)
+    root = key.component_cursor.component_roots[key.component_cursor.component_index]
+    _validate_atom_frame_tree_edge(key.active, root, parent_links)
+    for frame in key.branch_stack:
+        _validate_atom_frame_tree_edge(frame.return_atom, root, parent_links)
+    if key.active is None or not key.active.atom_emitted:
+        if key.branch_stack:
+            _invalid_snapshot("writer branch stack requires emitted active atom")
+        return
+    active_path = _root_to_atom_path(root, key.active.atom, parent_links)
+    ancestor_positions = {atom: index for index, atom in enumerate(active_path[:-1])}
+    previous_position = -1
+    for frame in key.branch_stack:
+        position = ancestor_positions.get(frame.return_atom.atom)
+        if position is None:
+            _invalid_snapshot("writer branch return atom is not an active ancestor")
+        if position <= previous_position:
+            _invalid_snapshot("writer branch stack does not follow root-to-active path")
+        previous_position = position
+
+
+def _validate_atom_frame_tree_edge(
+    frame: WriterAtomFrame | None,
+    root: AtomId,
+    parent_links: dict[AtomId, tuple[AtomId, BondId]],
+) -> None:
+    if frame is None or not frame.atom_emitted:
+        return
+    if frame.atom == root:
+        if frame.parent is not None or frame.incoming_bond is not None:
+            _invalid_snapshot("writer root frame disagrees with written-tree root")
+        return
+    expected = parent_links.get(frame.atom)
+    if expected is None:
+        _invalid_snapshot("writer atom frame is missing from written-tree parent links")
+    if (frame.parent, frame.incoming_bond) != expected:
+        _invalid_snapshot("writer atom frame disagrees with written-tree orientation")
+
+
+def _root_to_atom_path(
+    root: AtomId,
+    atom: AtomId,
+    parent_links: dict[AtomId, tuple[AtomId, BondId]],
+) -> tuple[AtomId, ...]:
+    reversed_path = [atom]
+    current = atom
+    seen = {atom}
+    while current != root:
+        parent = parent_links.get(current)
+        if parent is None:
+            _invalid_snapshot("writer active atom is not connected to written-tree root")
+        current = parent[0]
+        if current in seen:
+            _invalid_snapshot("writer written-tree parent links contain a cycle")
+        seen.add(current)
+        reversed_path.append(current)
+    return tuple(reversed(reversed_path))
+
+
 def _validate_written_bond_coherence(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
@@ -438,6 +502,7 @@ def _validate_obligations(
     if pending is None:
         return
     _validate_pending_entry(pending, atom_ids, bond_ids, prepared)
+    _validate_pending_entry_role(prepared, key, pending)
     if key.active is None or key.active.atom != pending.parent:
         _invalid_snapshot("writer pending entry parent is not active")
     if not key.active.atom_emitted:
@@ -473,6 +538,21 @@ def _validate_pending_entry(
     if pending.bond not in bond_ids:
         _invalid_snapshot("writer pending entry references unknown bond")
     _require_graph_bond(prepared, pending.parent, pending.child, pending.bond)
+
+
+def _validate_pending_entry_role(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    pending: PendingWriterEntry,
+) -> None:
+    children = _child_obligations_for_key(prepared, key, pending.parent)
+    if (pending.bond, pending.child) not in children:
+        _invalid_snapshot("writer pending entry is not a live child obligation")
+    if pending.branch:
+        if len(children) <= 1:
+            _invalid_snapshot("writer pending branch entry has no sibling obligations")
+    elif children != ((pending.bond, pending.child),):
+        _invalid_snapshot("writer pending inline entry is not the final child")
 
 
 def _validate_live_frontier_ownership(
@@ -518,6 +598,21 @@ def _live_owner_atoms(key: WriterStateKey) -> frozenset[AtomId]:
     if pending is not None:
         owners.add(pending.parent)
     return frozenset(owners)
+
+
+def _child_obligations_for_key(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    atom: AtomId,
+) -> tuple[tuple[BondId, AtomId], ...]:
+    graph = prepared.graph_index
+    children = []
+    for neighbor in graph.neighbors[atom]:
+        bond = graph.bond_between[(min(atom, neighbor), max(atom, neighbor))]
+        if bond in key.written_bonds or neighbor in key.visited_atoms:
+            continue
+        children.append((bond, neighbor))
+    return tuple(children)
 
 
 def _active_is_terminal_leaf(

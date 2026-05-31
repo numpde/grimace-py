@@ -35,6 +35,7 @@ from grimace._south_star1.writer_snapshot import writer_frontier_cursor_from_sna
 from grimace._south_star1.writer_state import ObligationStateKey
 from grimace._south_star1.writer_state import PendingEntryPhase
 from grimace._south_star1.writer_state import PendingWriterEntry
+from grimace._south_star1.writer_state import WriterBranchFrame
 from grimace._south_star1.writer_state import WriterRingStateKey
 from grimace._south_star1.writer_stereo import WriterAtomOccurrenceRecord
 from grimace._south_star1.writer_stereo import WriterBondOccurrenceRecord
@@ -301,6 +302,67 @@ class WriterSnapshotTest(unittest.TestCase):
             runtime_options=options,
         )
 
+    def test_cursor_audit_rejects_branch_pending_for_unique_child(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        key = after_root.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            obligations=ObligationStateKey(
+                pending_entry=PendingWriterEntry(
+                    parent=AtomId(0),
+                    child=AtomId(1),
+                    bond=BondId(0),
+                    branch=True,
+                )
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_inline_pending_with_unresolved_sibling(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=1)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        key = after_root.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            obligations=ObligationStateKey(
+                pending_entry=PendingWriterEntry(
+                    parent=AtomId(1),
+                    child=AtomId(0),
+                    bond=BondId(0),
+                    branch=False,
+                )
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_accepts_branch_post_bond_pending_with_sibling(self) -> None:
+        prepared = _prepare(directional_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _directional_double_branch_post_bond_key(prepared, options)
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
     def test_cursor_audit_rejects_nonempty_ring_state(self) -> None:
         prepared = _prepare(cco_facts())
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -389,6 +451,50 @@ class WriterSnapshotTest(unittest.TestCase):
         options = _writer_options(rooted_at_atom=1)
         branch_key = _cco_branch_child_key(prepared, options)
         tampered_key = replace(branch_key, branch_stack=())
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_branch_return_not_active_ancestor(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_third_atom_key(prepared, options)
+        tampered_key = replace(
+            key,
+            branch_stack=(WriterBranchFrame(return_atom=key.active),),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_active_frame_tree_orientation_mismatch(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_after_third_atom_key(prepared, options)
+        root_frame = replace(
+            key.active,
+            atom=AtomId(0),
+            parent=None,
+            incoming_bond=None,
+        )
+        tampered_key = replace(
+            key,
+            active=replace(
+                key.active,
+                atom=AtomId(1),
+                parent=AtomId(2),
+                incoming_bond=BondId(1),
+            ),
+            branch_stack=(WriterBranchFrame(return_atom=root_frame),),
+        )
 
         with self.assertRaises(SouthStarError):
             validate_writer_cursor_against_prepared(
@@ -1003,6 +1109,23 @@ def _cco_branch_child_key(prepared, options):
         after_branch_open,
     ).choices[0].successor
     return after_branch_child.weighted_states[0][0]
+
+
+def _directional_double_branch_post_bond_key(prepared, options):
+    cursor = initial_writer_frontier_cursor(prepared, options)
+    after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+    branch_open = writer_frontier_choices(prepared, after_root).choices[0].successor
+    double_branch_key = next(
+        key
+        for key, _ in branch_open.weighted_states
+        if key.obligations.pending_entry is not None
+        and key.obligations.pending_entry.bond == BondId(0)
+    )
+    post_bond = writer_frontier_choices(
+        prepared,
+        _cursor_with_key(double_branch_key),
+    ).choices[0].successor
+    return post_bond.weighted_states[0][0]
 
 
 def _terminal_tetra_key():

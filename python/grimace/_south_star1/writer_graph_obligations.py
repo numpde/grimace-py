@@ -85,10 +85,63 @@ class WriterBlockCutMetadata:
     cyclic_blocks: frozenset[int]
 
 
+@dataclass(frozen=True, slots=True)
+class WriterComponentGraphSurface:
+    component_index: int
+    atoms: frozenset[AtomId]
+    bonds: frozenset[BondId]
+    connected: bool
+    tree: bool
+    cyclic_rank: int
+    cyclic_block_ids: frozenset[int]
+    unsupported_reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphPreparedMetadata:
+    block_cut: WriterBlockCutMetadata
+    component_surfaces: tuple[WriterComponentGraphSurface, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class WriterGraphObligationContext:
+    edge_partition: WriterEdgeObligationPartition
+    residual_summary: WriterGraphObligationSummary
+    prepared_metadata: WriterGraphPreparedMetadata
+
+
 def build_writer_block_cut_metadata(
     prepared: SouthStarPreparedMol,
 ) -> WriterBlockCutMetadata:
-    graph = prepared.graph_index
+    return _build_writer_block_cut_metadata_from_graph(prepared.atom_ids, prepared.graph_index)
+
+
+def build_writer_graph_prepared_metadata(
+    prepared: SouthStarPreparedMol,
+) -> WriterGraphPreparedMetadata:
+    return build_writer_graph_prepared_metadata_from_facts(
+        prepared.facts,
+        prepared.graph_index,
+        prepared.atom_ids,
+    )
+
+
+def build_writer_graph_prepared_metadata_from_facts(
+    facts,
+    graph_index,
+    atom_ids: tuple[AtomId, ...],
+) -> WriterGraphPreparedMetadata:
+    block_cut = _build_writer_block_cut_metadata_from_graph(atom_ids, graph_index)
+    return WriterGraphPreparedMetadata(
+        block_cut=block_cut,
+        component_surfaces=_component_graph_surfaces(facts, graph_index, block_cut),
+    )
+
+
+def _build_writer_block_cut_metadata_from_graph(
+    atom_ids: tuple[AtomId, ...],
+    graph,
+) -> WriterBlockCutMetadata:
     time = 0
     seen: set[AtomId] = set()
     discovery: dict[AtomId, int] = {}
@@ -122,7 +175,7 @@ def build_writer_block_cut_metadata(
                 edge_stack.append(bond)
                 low[atom] = min(low[atom], discovery[neighbor])
 
-    for atom in prepared.atom_ids:
+    for atom in atom_ids:
         if atom in seen:
             continue
         dfs(atom, None)
@@ -151,18 +204,53 @@ def build_writer_block_cut_metadata(
     )
 
 
+def build_writer_graph_obligation_context(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> WriterGraphObligationContext:
+    _current_component(prepared, key)
+    partition = classify_writer_edge_obligations(prepared, key)
+    validate_writer_edge_obligation_partition(prepared, key, partition)
+    metadata = prepared.writer_graph_metadata
+    summary = classify_writer_residual_attachments(
+        prepared,
+        key,
+        metadata.block_cut,
+        partition=partition,
+    )
+    return WriterGraphObligationContext(
+        edge_partition=partition,
+        residual_summary=summary,
+        prepared_metadata=metadata,
+    )
+
+
+def validate_writer_supported_graph_surface(
+    prepared: SouthStarPreparedMol,
+) -> None:
+    for surface in prepared.writer_graph_metadata.component_surfaces:
+        if surface.unsupported_reason is not None:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                surface.unsupported_reason,
+            )
+
+
 def classify_writer_residual_attachments(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
     block_cut: WriterBlockCutMetadata,
+    *,
+    partition: WriterEdgeObligationPartition | None = None,
 ) -> WriterGraphObligationSummary:
     component = _current_component(prepared, key)
     component_atoms = frozenset(component.atoms)
     visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
     residual_atoms = component_atoms - visited
     block_by_bond = dict(block_cut.biconnected_block_by_bond)
-    partition = classify_writer_edge_obligations(prepared, key)
-    validate_writer_edge_obligation_partition(prepared, key, partition)
+    if partition is None:
+        partition = classify_writer_edge_obligations(prepared, key)
+        validate_writer_edge_obligation_partition(prepared, key, partition)
     latent_obligations = tuple(
         obligation
         for obligation in partition.obligations
@@ -426,6 +514,75 @@ def writer_edge_obligation_partition_sort_tuple(
     )
 
 
+def _component_graph_surfaces(
+    facts,
+    graph_index,
+    block_cut: WriterBlockCutMetadata,
+) -> tuple[WriterComponentGraphSurface, ...]:
+    block_by_bond = dict(block_cut.biconnected_block_by_bond)
+    surfaces = []
+    for index, component in enumerate(facts.components):
+        atoms = frozenset(component.atoms)
+        bonds = frozenset(component.bonds)
+        connected_components = _component_connected_count(atoms, bonds, graph_index)
+        connected = connected_components == 1
+        cyclic_rank = len(bonds) - len(atoms) + connected_components
+        cyclic_block_ids = frozenset(
+            block_by_bond[bond]
+            for bond in bonds
+            if bond in block_by_bond and block_by_bond[bond] in block_cut.cyclic_blocks
+        )
+        tree = (
+            bool(atoms)
+            and connected
+            and len(bonds) == len(atoms) - 1
+            and cyclic_rank == 0
+            and not cyclic_block_ids
+        )
+        surfaces.append(
+            WriterComponentGraphSurface(
+                component_index=index,
+                atoms=atoms,
+                bonds=bonds,
+                connected=connected,
+                tree=tree,
+                cyclic_rank=cyclic_rank,
+                cyclic_block_ids=cyclic_block_ids,
+                unsupported_reason=(
+                    None
+                    if tree
+                    else "WRITER_SHAPED writer-state runtime supports connected tree components only"
+                ),
+            )
+        )
+    return tuple(surfaces)
+
+
+def _component_connected_count(
+    atoms: frozenset[AtomId],
+    bonds: frozenset[BondId],
+    graph_index,
+) -> int:
+    remaining = set(atoms)
+    count = 0
+    while remaining:
+        count += 1
+        start = min(remaining)
+        remaining.remove(start)
+        stack = [start]
+        while stack:
+            atom = stack.pop()
+            for neighbor in graph_index.neighbors[atom]:
+                if neighbor not in remaining:
+                    continue
+                bond = graph_index.bond_between[(min(atom, neighbor), max(atom, neighbor))]
+                if bond not in bonds:
+                    continue
+                remaining.remove(neighbor)
+                stack.append(neighbor)
+    return count
+
+
 def _residual_atom_components(
     prepared: SouthStarPreparedMol,
     residual_atoms: frozenset[AtomId],
@@ -543,15 +700,22 @@ __all__ = (
     "WriterBlockCutMetadata",
     "WriterBoundaryIncidence",
     "WriterBoundaryOwnerKind",
+    "WriterComponentGraphSurface",
     "WriterEdgeObligation",
     "WriterEdgeObligationKind",
     "WriterEdgeObligationPartition",
+    "WriterGraphObligationContext",
     "WriterGraphObligationSummary",
+    "WriterGraphPreparedMetadata",
     "WriterResidualAttachment",
     "WriterResidualAttachmentState",
+    "build_writer_graph_obligation_context",
+    "build_writer_graph_prepared_metadata",
+    "build_writer_graph_prepared_metadata_from_facts",
     "build_writer_block_cut_metadata",
     "classify_writer_edge_obligations",
     "classify_writer_residual_attachments",
+    "validate_writer_supported_graph_surface",
     "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",
     "writer_edge_obligation_partition_sort_tuple",

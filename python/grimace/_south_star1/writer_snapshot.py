@@ -29,11 +29,10 @@ from .residual_constraints import direction_var
 from .residual_constraints import tetra_var
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
-from .writer_graph_obligations import WriterEdgeObligationPartition
+from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterGraphObligationSummary
-from .writer_graph_obligations import build_writer_block_cut_metadata
-from .writer_graph_obligations import classify_writer_edge_obligations
-from .writer_graph_obligations import classify_writer_residual_attachments
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import validate_writer_supported_graph_surface
 from .writer_graph_obligations import validate_writer_edge_obligation_partition
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
@@ -133,7 +132,7 @@ def validate_writer_search_snapshot(
             "writer snapshot requires serialization_language=WRITER_SHAPED",
         )
     require_writer_shaped_runtime_options(snapshot.runtime_options)
-    validate_writer_snapshot_supported_graph_surface(prepared)
+    validate_writer_supported_graph_surface(prepared)
     if snapshot.prepared_identity != _prepared_identity(
         prepared,
         snapshot.runtime_options,
@@ -161,7 +160,7 @@ def validate_writer_cursor_against_prepared(
     *,
     runtime_options: SouthStarRuntimeOptions | None = None,
 ) -> None:
-    validate_writer_snapshot_supported_graph_surface(prepared)
+    validate_writer_supported_graph_surface(prepared)
     atom_ids = frozenset(prepared.atom_ids)
     bond_ids = frozenset(bond.id for bond in prepared.facts.bonds)
     allowed_roots = _allowed_component_roots(prepared, runtime_options)
@@ -171,11 +170,10 @@ def validate_writer_cursor_against_prepared(
         if weight <= 0:
             _invalid_snapshot("writer cursor contains nonpositive weight")
         _validate_component_cursor(key.component_cursor, allowed_roots)
-        partition = _writer_edge_partition(prepared, key)
-        validate_writer_edge_obligation_partition(prepared, key, partition)
-        _validate_edge_partition_supported_for_snapshot(partition)
-        summary = _writer_obligation_summary(prepared, key)
-        _validate_residual_attachments_supported_for_snapshot(summary)
+        context = build_writer_graph_obligation_context(prepared, key)
+        validate_writer_edge_obligation_partition(prepared, key, context.edge_partition)
+        _validate_edge_partition_supported_for_snapshot(context)
+        _validate_residual_attachments_supported_for_snapshot(context)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
         for frame in key.branch_stack:
             _validate_branch_frame(frame, atom_ids, bond_ids, prepared)
@@ -192,30 +190,13 @@ def validate_writer_cursor_against_prepared(
             atom_ids,
             bond_ids,
             prepared,
-            summary,
+            context,
         )
-        _validate_live_frontier_ownership(prepared, key, summary)
+        _validate_live_frontier_ownership(prepared, key, context)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
         _validate_ring_state_empty(key.ring_state)
         _validate_policy_state(key, atom_ids, bond_ids)
         _validate_stereo_state(prepared, key.stereo_state)
-
-
-def validate_writer_snapshot_supported_graph_surface(
-    prepared: SouthStarPreparedMol,
-) -> None:
-    block_cut = build_writer_block_cut_metadata(prepared)
-    if block_cut.cyclic_blocks:
-        _invalid_snapshot("writer snapshot prepared graph has unsupported cyclic block")
-    for component in prepared.facts.components:
-        component_atoms = frozenset(component.atoms)
-        component_bonds = frozenset(component.bonds)
-        if not component_atoms:
-            _invalid_snapshot("writer snapshot prepared component has no atoms")
-        if len(component_bonds) != len(component_atoms) - 1:
-            _invalid_snapshot("writer snapshot prepared component is not a tree")
-        if _reachable_component_atoms(prepared, component_atoms, component_bonds) != component_atoms:
-            _invalid_snapshot("writer snapshot prepared component is disconnected")
 
 
 def _validate_frames(
@@ -249,40 +230,25 @@ def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
         )
 
 
-def _writer_obligation_summary(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
-) -> WriterGraphObligationSummary:
-    return classify_writer_residual_attachments(
-        prepared,
-        key,
-        build_writer_block_cut_metadata(prepared),
-    )
-
-
-def _writer_edge_partition(
-    prepared: SouthStarPreparedMol,
-    key: WriterStateKey,
-) -> WriterEdgeObligationPartition:
-    return classify_writer_edge_obligations(prepared, key)
-
-
 def _validate_edge_partition_supported_for_snapshot(
-    partition: WriterEdgeObligationPartition,
+    context: WriterGraphObligationContext,
 ) -> None:
     unsupported = {
         WriterEdgeObligationKind.CLOSURE_CANDIDATE,
         WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
         WriterEdgeObligationKind.CLOSED_CLOSURE,
     }
-    if any(obligation.kind in unsupported for obligation in partition.obligations):
+    if any(
+        obligation.kind in unsupported
+        for obligation in context.edge_partition.obligations
+    ):
         _invalid_snapshot("writer snapshot has unsupported cyclic edge obligation")
 
 
 def _validate_residual_attachments_supported_for_snapshot(
-    summary: WriterGraphObligationSummary,
+    context: WriterGraphObligationContext,
 ) -> None:
-    if summary.has_cyclic_attachment:
+    if context.residual_summary.has_cyclic_attachment:
         _invalid_snapshot("writer snapshot has unsupported cyclic residual attachment")
 
 
@@ -493,31 +459,6 @@ def _reachable_written_atoms(
     return frozenset(seen)
 
 
-def _reachable_component_atoms(
-    prepared: SouthStarPreparedMol,
-    component_atoms: frozenset[AtomId],
-    component_bonds: frozenset[BondId],
-) -> frozenset[AtomId]:
-    start = min(component_atoms)
-    adjacency: dict[AtomId, set[AtomId]] = {atom: set() for atom in component_atoms}
-    for bond in component_bonds:
-        fact = prepared.graph_index.bond_by_id[bond]
-        if fact.a not in component_atoms or fact.b not in component_atoms:
-            _invalid_snapshot("writer snapshot component bond is outside component atoms")
-        adjacency[fact.a].add(fact.b)
-        adjacency[fact.b].add(fact.a)
-    seen = {start}
-    stack = [start]
-    while stack:
-        atom = stack.pop()
-        for neighbor in adjacency.get(atom, ()):
-            if neighbor in seen:
-                continue
-            seen.add(neighbor)
-            stack.append(neighbor)
-    return frozenset(seen)
-
-
 def _validate_writer_frame_tree_path(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
@@ -598,13 +539,13 @@ def _validate_obligations(
     atom_ids: frozenset[AtomId],
     bond_ids: frozenset[BondId],
     prepared: SouthStarPreparedMol,
-    summary: WriterGraphObligationSummary,
+    context: WriterGraphObligationContext,
 ) -> None:
     pending = obligations.pending_entry
     if pending is None:
         return
     _validate_pending_entry(pending, atom_ids, bond_ids, prepared)
-    _validate_pending_entry_role(summary, pending)
+    _validate_pending_entry_role(context, pending)
     if key.active is None or key.active.atom != pending.parent:
         _invalid_snapshot("writer pending entry parent is not active")
     if not key.active.atom_emitted:
@@ -643,9 +584,10 @@ def _validate_pending_entry(
 
 
 def _validate_pending_entry_role(
-    summary: WriterGraphObligationSummary,
+    context: WriterGraphObligationContext,
     pending: PendingWriterEntry,
 ) -> None:
+    summary = context.residual_summary
     children = tuple(
         sorted(
             (*_boundary_children_for_atom(summary, pending.parent), (pending.bond, pending.child)),
@@ -664,8 +606,9 @@ def _validate_pending_entry_role(
 def _validate_live_frontier_ownership(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
-    summary: WriterGraphObligationSummary,
+    context: WriterGraphObligationContext,
 ) -> None:
+    summary = context.residual_summary
     current = key.component_cursor.component_index
     component = prepared.facts.components[current]
     component_atoms = frozenset(component.atoms)
@@ -1629,6 +1572,5 @@ __all__ = (
     "resume_writer_frontier_choices_from_snapshot",
     "validate_writer_cursor_against_prepared",
     "validate_writer_search_snapshot",
-    "validate_writer_snapshot_supported_graph_surface",
     "writer_frontier_cursor_from_snapshot",
 )

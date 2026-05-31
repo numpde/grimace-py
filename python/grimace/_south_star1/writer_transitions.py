@@ -11,8 +11,8 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
-from .writer_graph_obligations import build_writer_block_cut_metadata
-from .writer_graph_obligations import classify_writer_residual_attachments
+from .writer_graph_obligations import build_writer_graph_obligation_context
+from .writer_graph_obligations import validate_writer_supported_graph_surface
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -474,40 +474,8 @@ def _transition(
 
 
 def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
-    _reject_non_tree_components(prepared)
+    validate_writer_supported_graph_surface(prepared)
     validate_writer_stereo_supported_prepared(prepared)
-
-
-def _reject_non_tree_components(prepared: SouthStarPreparedMol) -> None:
-    graph = prepared.graph_index
-    for component in prepared.facts.components:
-        component_atoms = frozenset(component.atoms)
-        component_bonds = frozenset(component.bonds)
-        if not component_atoms or len(component_bonds) != len(component_atoms) - 1:
-            raise SouthStarError(
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
-                "WRITER_SHAPED writer-state MVP supports tree components only",
-            )
-
-        start = component.atoms[0]
-        seen = {start}
-        stack = [start]
-        while stack:
-            atom = stack.pop()
-            for neighbor in graph.neighbors[atom]:
-                if neighbor not in component_atoms:
-                    continue
-                bond = graph.bond_between[(min(atom, neighbor), max(atom, neighbor))]
-                if bond not in component_bonds or neighbor in seen:
-                    continue
-                seen.add(neighbor)
-                stack.append(neighbor)
-
-        if frozenset(seen) != component_atoms:
-            raise SouthStarError(
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
-                "WRITER_SHAPED writer-state MVP supports connected tree components only",
-            )
 
 
 def _child_obligations(
@@ -515,11 +483,8 @@ def _child_obligations(
     state: WriterState,
     atom: AtomId,
 ) -> tuple[tuple[BondId, AtomId], ...]:
-    summary = classify_writer_residual_attachments(
-        prepared,
-        writer_state_key(state),
-        build_writer_block_cut_metadata(prepared),
-    )
+    context = build_writer_graph_obligation_context(prepared, writer_state_key(state))
+    summary = context.residual_summary
     if summary.has_cyclic_attachment:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,

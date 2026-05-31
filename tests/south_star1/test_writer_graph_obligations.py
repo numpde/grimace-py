@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import inspect
 import unittest
 
+import grimace._south_star1.writer_snapshot as writer_snapshot
+import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
@@ -20,9 +23,11 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
+from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
 from grimace._south_star1.writer_graph_obligations import build_writer_block_cut_metadata
 from grimace._south_star1.writer_graph_obligations import classify_writer_edge_obligations
 from grimace._south_star1.writer_graph_obligations import classify_writer_residual_attachments
+from grimace._south_star1.writer_graph_obligations import validate_writer_supported_graph_surface
 from grimace._south_star1.writer_graph_obligations import validate_writer_edge_obligation_partition
 from grimace._south_star1.writer_graph_obligations import writer_boundary_incidence_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_edge_obligation_partition_sort_tuple
@@ -44,6 +49,112 @@ from tests.south_star1.helpers import single_bond
 
 
 class WriterGraphObligationsTest(unittest.TestCase):
+    def test_prepared_metadata_caches_block_cut_and_component_surfaces(self) -> None:
+        prepared = _prepare(cco_facts())
+
+        self.assertEqual(
+            prepared.writer_graph_metadata.block_cut,
+            build_writer_block_cut_metadata(prepared),
+        )
+        self.assertEqual(len(prepared.writer_graph_metadata.component_surfaces), 1)
+        surface = prepared.writer_graph_metadata.component_surfaces[0]
+        self.assertEqual(surface.component_index, 0)
+        self.assertEqual(surface.atoms, frozenset((AtomId(0), AtomId(1), AtomId(2))))
+        self.assertEqual(surface.bonds, frozenset((BondId(0), BondId(1))))
+        self.assertTrue(surface.connected)
+        self.assertTrue(surface.tree)
+        self.assertEqual(surface.cyclic_rank, 0)
+        self.assertEqual(surface.cyclic_block_ids, frozenset())
+        self.assertIsNone(surface.unsupported_reason)
+
+    def test_cached_block_cut_matches_fresh_metadata_for_cyclic_shapes(self) -> None:
+        for facts in (triangle_facts(), six_ring_facts()):
+            prepared = _prepare(facts)
+            self.assertEqual(
+                prepared.writer_graph_metadata.block_cut,
+                build_writer_block_cut_metadata(prepared),
+            )
+
+    def test_component_surface_marks_cyclic_and_malformed_components_unsupported(self) -> None:
+        triangle = _prepare(triangle_facts()).writer_graph_metadata.component_surfaces[0]
+        malformed = _prepare(
+            cycle_plus_isolate_component_facts()
+        ).writer_graph_metadata.component_surfaces[0]
+
+        self.assertTrue(triangle.connected)
+        self.assertFalse(triangle.tree)
+        self.assertEqual(triangle.cyclic_rank, 1)
+        self.assertIsNotNone(triangle.unsupported_reason)
+        self.assertFalse(malformed.connected)
+        self.assertFalse(malformed.tree)
+        self.assertEqual(malformed.cyclic_rank, 1)
+        self.assertIsNotNone(malformed.unsupported_reason)
+
+    def test_context_builder_returns_partition_and_residual_summary(self) -> None:
+        prepared = _prepare(cco_facts())
+        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        self.assertIs(context.prepared_metadata, prepared.writer_graph_metadata)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in context.edge_partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(1), WriterEdgeObligationKind.BOUNDARY_INCIDENCE),
+            ),
+        )
+        self.assertFalse(context.residual_summary.has_cyclic_attachment)
+        self.assertEqual(len(context.residual_summary.attachments.attachments), 1)
+
+    def test_context_builder_exposes_cyclic_summary_without_closure_candidate(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _emitted_root_key(prepared, root=AtomId(0))
+
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        self.assertNotIn(
+            WriterEdgeObligationKind.CLOSURE_CANDIDATE,
+            {item.kind for item in context.edge_partition.obligations},
+        )
+        self.assertTrue(context.residual_summary.has_cyclic_attachment)
+
+    def test_context_builder_exposes_closure_candidate_partition(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_all_visited_two_written_key()
+
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        self.assertIn(
+            WriterEdgeObligationKind.CLOSURE_CANDIDATE,
+            {item.kind for item in context.edge_partition.obligations},
+        )
+        self.assertTrue(context.residual_summary.has_cyclic_attachment)
+
+    def test_supported_graph_surface_accepts_all_acyclic_components(self) -> None:
+        validate_writer_supported_graph_surface(_prepare(chain_plus_singleton_facts()))
+
+    def test_supported_graph_surface_rejects_cyclic_and_malformed_components(self) -> None:
+        for facts in (
+            triangle_facts(),
+            singleton_plus_triangle_facts(),
+            triangle_plus_singleton_facts(),
+            cycle_plus_isolate_component_facts(),
+        ):
+            with self.assertRaises(SouthStarError):
+                validate_writer_supported_graph_surface(_prepare(facts))
+
+    def test_production_paths_use_cached_writer_graph_context(self) -> None:
+        child_source = inspect.getsource(writer_transitions._child_obligations)
+        cursor_source = inspect.getsource(
+            writer_snapshot.validate_writer_cursor_against_prepared
+        )
+
+        self.assertIn("build_writer_graph_obligation_context", child_source)
+        self.assertNotIn("build_writer_block_cut_metadata", child_source)
+        self.assertEqual(cursor_source.count("build_writer_graph_obligation_context"), 1)
+        self.assertNotIn("build_writer_block_cut_metadata", cursor_source)
+
     def test_cco_prefix_edge_partition_tracks_tree_and_boundary(self) -> None:
         prepared = _prepare(cco_facts())
         key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
@@ -266,7 +377,7 @@ def _summary(prepared, key):
     return classify_writer_residual_attachments(
         prepared,
         key,
-        build_writer_block_cut_metadata(prepared),
+        prepared.writer_graph_metadata.block_cut,
     )
 
 
@@ -436,6 +547,71 @@ def cycle_plus_isolate_component_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def chain_plus_singleton_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "O")),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(2),),
+                bonds=(),
+            ),
+        ),
+    )
+
+
+def singleton_plus_triangle_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "O"), atom(1, "C"), atom(2, "C"), atom(3, "C")),
+        bonds=(
+            single_bond(0, 1, 2),
+            single_bond(1, 2, 3),
+            single_bond(2, 3, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0),),
+                bonds=(),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def triangle_plus_singleton_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C"), atom(3, "O")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(3),),
+                bonds=(),
             ),
         ),
     )

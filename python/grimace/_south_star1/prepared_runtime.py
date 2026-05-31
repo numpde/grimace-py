@@ -18,6 +18,8 @@ from .graph_index import GraphIndex
 from .graph_index import build_graph_index
 from .ids import AtomId
 from .ids import ComponentId
+from .writer_graph_obligations import WriterGraphPreparedMetadata
+from .writer_graph_obligations import build_writer_graph_prepared_metadata_from_facts
 from .online_decoder import online_decode_tokens
 from .online_traversal_graph import OnlineTraversalGraph
 from .online_traversal_graph import build_online_traversal_graph_from_index
@@ -69,6 +71,7 @@ class SouthStarPreparedMol:
     component_atom_ids: tuple[tuple[AtomId, ...], ...]
     atom_component: tuple[tuple[AtomId, ComponentId], ...]
     graph_index: GraphIndex
+    writer_graph_metadata: WriterGraphPreparedMetadata
     online_traversal_graph: OnlineTraversalGraph
     all_root_domains: tuple[tuple[ComponentId, tuple[AtomId, ...]], ...]
     atom_component_map: Mapping[AtomId, ComponentId]
@@ -98,6 +101,11 @@ def prepare_south_star_mol_from_facts(
     resolved_semantics = semantics if semantics is not None else OrdinarySmilesSemantics()
     templates = build_stereo_templates(facts)
     graph_index = build_graph_index(facts)
+    writer_graph_metadata = build_writer_graph_prepared_metadata_from_facts(
+        facts,
+        graph_index,
+        tuple(atom.id for atom in facts.atoms),
+    )
     online_traversal_graph = build_online_traversal_graph_from_index(
         facts,
         graph_index,
@@ -134,6 +142,7 @@ def prepare_south_star_mol_from_facts(
         component_atom_ids=tuple(component.atoms for component in facts.components),
         atom_component=atom_component,
         graph_index=graph_index,
+        writer_graph_metadata=writer_graph_metadata,
         online_traversal_graph=online_traversal_graph,
         all_root_domains=all_root_domains,
         atom_component_map=atom_component_map,

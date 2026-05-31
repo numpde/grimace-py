@@ -311,27 +311,32 @@ emitted by tree traversal. `writer_graph_obligations.py` provides the derived
 graph-obligation view over the current writer prefix: a deterministic
 current-component edge partition, residual components of unwritten graph work,
 boundary incidences into syntactically open writer atoms, visited-visited
-closure candidates, and structural block-cut metadata. Branch and inline
-decisions consume residual attachment classes derived from the edge partition
-for the acyclic surface; they do not preselect a spanning tree, cycle basis,
-ring cut, or render program. Cyclic residual attachments and closure-candidate
-edges can be classified structurally, but transition consumption of those
-obligations still fails closed. Every writer transition emits typed semantic
-events; those events update a writer-owned residual stereo snapshot that is
-part of the canonical writer state key. Support counting, EOS evidence, next
-emitted-text choices, completion counts, cursor snapshots, and support
-streaming all route through the same determinized weighted frontier. EOS is
-represented by finalized terminal cursor evidence, so terminal local-order and
-residual stereo closure are persisted rather than recomputed as a discarded
-viability check. Writer snapshots currently use a strict single-frontier-frame
-shape and validate a structural prepared identity before resume. Snapshot
-validation also audits each retained writer state against the prepared graph,
-runtime root domains, residual attachment ownership, empty pre-cyclic ring
-state, local-order occurrence records, delayed stereo factor records, and
-residual-store factor snapshots before exposing a resumed cursor. Cyclic
-traversal, ring endpoint emission, ring-pair stereo factors, residual suffix
-storage, RDKit parity, and exhaustive traversal fallback still fail closed in
-`writer_shaped`.
+closure candidates, and structural block-cut metadata. Static writer graph
+metadata is cached on the prepared molecule, while per-prefix edge partitions
+and residual attachments are built through a single
+`WriterGraphObligationContext`; the derived context is not stored in
+`WriterStateKey`. Branch and inline decisions consume residual attachment
+classes derived from the edge partition for the acyclic surface; they do not
+preselect a spanning tree, cycle basis, ring cut, or render program. Cyclic
+residual attachments and closure-candidate edges can be classified
+structurally, but transition consumption of those obligations still fails
+closed. A single writer graph-surface policy currently requires every prepared
+component to be a connected tree before writer runtime or snapshot resume.
+Every writer transition emits typed semantic events; those events update a
+writer-owned residual stereo snapshot that is part of the canonical writer
+state key. Support counting, EOS evidence, next emitted-text choices,
+completion counts, cursor snapshots, and support streaming all route through
+the same determinized weighted frontier. EOS is represented by finalized
+terminal cursor evidence, so terminal local-order and residual stereo closure
+are persisted rather than recomputed as a discarded viability check. Writer
+snapshots currently use a strict single-frontier-frame shape and validate a
+structural prepared identity before resume. Snapshot validation also audits
+each retained writer state against the prepared graph, runtime root domains,
+residual attachment ownership, empty pre-cyclic ring state, local-order
+occurrence records, delayed stereo factor records, and residual-store factor
+snapshots before exposing a resumed cursor. Cyclic traversal, ring endpoint
+emission, ring-pair stereo factors, residual suffix storage, RDKit parity, and
+exhaustive traversal fallback still fail closed in `writer_shaped`.
 
 `online_decoder.py` provides exact prefix feasibility and determinized token
 frontier queries by running the online DFS with prefix-constrained render sinks.

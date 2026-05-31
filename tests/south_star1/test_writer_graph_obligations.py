@@ -145,15 +145,20 @@ class WriterGraphObligationsTest(unittest.TestCase):
                 validate_writer_supported_graph_surface(_prepare(facts))
 
     def test_production_paths_use_cached_writer_graph_context(self) -> None:
-        child_source = inspect.getsource(writer_transitions._child_obligations)
+        child_source = inspect.getsource(
+            writer_transitions._child_obligations_from_context
+        )
+        legal_source = inspect.getsource(writer_transitions.legal_writer_transitions)
         cursor_source = inspect.getsource(
             writer_snapshot.validate_writer_cursor_against_prepared
         )
 
-        self.assertIn("build_writer_graph_obligation_context", child_source)
+        self.assertIn("build_writer_transition_expansion_context", legal_source)
+        self.assertNotIn("build_writer_graph_obligation_context", child_source)
         self.assertNotIn("build_writer_block_cut_metadata", child_source)
         self.assertEqual(cursor_source.count("build_writer_graph_obligation_context"), 1)
         self.assertNotIn("build_writer_block_cut_metadata", cursor_source)
+        self.assertNotIn("validate_writer_edge_obligation_partition", cursor_source)
 
     def test_cco_prefix_edge_partition_tracks_tree_and_boundary(self) -> None:
         prepared = _prepare(cco_facts())

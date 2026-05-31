@@ -33,7 +33,6 @@ from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_supported_graph_surface
-from .writer_graph_obligations import validate_writer_edge_obligation_partition
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import writer_frontier_choices
@@ -171,7 +170,6 @@ def validate_writer_cursor_against_prepared(
             _invalid_snapshot("writer cursor contains nonpositive weight")
         _validate_component_cursor(key.component_cursor, allowed_roots)
         context = build_writer_graph_obligation_context(prepared, key)
-        validate_writer_edge_obligation_partition(prepared, key, context.edge_partition)
         _validate_edge_partition_supported_for_snapshot(context)
         _validate_residual_attachments_supported_for_snapshot(context)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)

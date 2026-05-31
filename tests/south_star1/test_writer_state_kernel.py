@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
+import grimace._south_star1.writer_transitions as writer_transitions
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
@@ -35,11 +36,17 @@ from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_state import ComponentCursor
+from grimace._south_star1.writer_state import ObligationState
+from grimace._south_star1.writer_state import WriterAtomFrame
+from grimace._south_star1.writer_state import WriterPolicyState
+from grimace._south_star1.writer_state import WriterRingState
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import WriterStateKey
 from grimace._south_star1.writer_state import writer_state_from_key
 from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_state import writer_state_key_sort_tuple
+from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
@@ -295,6 +302,94 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_raw_legal_transitions_reject_cyclic_prepared_before_root_emission(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.legal_writer_transitions(
+                prepared,
+                _raw_initial_state(AtomId(0)),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_raw_terminal_finalization_rejects_cyclic_prepared(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.finalize_writer_terminal_state(
+                prepared,
+                _raw_emitted_root_state(AtomId(0)),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_raw_eos_query_rejects_cyclic_prepared(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.writer_state_is_eos(
+                prepared,
+                _raw_emitted_root_state(AtomId(0)),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_legal_transition_expansion_builds_one_graph_context(self) -> None:
+        prepared = _prepare(cco_facts())
+
+        with patch(
+            "grimace._south_star1.writer_transitions.build_writer_graph_obligation_context",
+            wraps=writer_transitions.build_writer_graph_obligation_context,
+        ) as mocked:
+            transitions = writer_transitions.legal_writer_transitions(
+                prepared,
+                _raw_initial_state(AtomId(0)),
+            )
+
+        self.assertEqual(mocked.call_count, 1)
+        self.assertTrue(transitions)
+
+    def test_terminal_finalization_builds_one_graph_context(self) -> None:
+        prepared = _prepare(chain_facts(("C",)))
+        cursor = initial_writer_frontier_cursor(prepared, _writer_options())
+        emitted = writer_frontier_choices(prepared, cursor).choices[0].successor
+        state = writer_state_from_key(emitted.weighted_states[0][0])
+
+        with patch(
+            "grimace._south_star1.writer_transitions.build_writer_graph_obligation_context",
+            wraps=writer_transitions.build_writer_graph_obligation_context,
+        ) as mocked:
+            terminal = writer_transitions.finalize_writer_terminal_state(prepared, state)
+
+        self.assertEqual(mocked.call_count, 1)
+        self.assertIsNotNone(terminal)
+
+    def test_child_obligations_from_context_does_not_build_graph_context(self) -> None:
+        prepared = _prepare(cco_facts())
+        cursor = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        after_root = writer_frontier_choices(prepared, cursor).choices[0].successor
+        state = writer_state_from_key(after_root.weighted_states[0][0])
+        context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            state,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions.build_writer_graph_obligation_context",
+            side_effect=AssertionError("child obligations rebuilt graph context"),
+        ):
+            children = writer_transitions._child_obligations_from_context(
+                context,
+                state,
+                AtomId(0),
+            )
+
+        self.assertEqual(children, ((BondId(0), AtomId(1)),))
+
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):
@@ -431,6 +526,50 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
     return SouthStarRuntimeOptions(
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
+    )
+
+
+def _raw_initial_state(root: AtomId) -> WriterState:
+    return WriterState(
+        component_cursor=ComponentCursor(
+            component_index=0,
+            component_roots=(root,),
+        ),
+        active=WriterAtomFrame(
+            atom=root,
+            parent=None,
+            incoming_bond=None,
+            atom_emitted=False,
+        ),
+        branch_stack=(),
+        visited_atoms=frozenset(),
+        written_bonds=frozenset(),
+        obligations=ObligationState(),
+        ring_state=WriterRingState(),
+        stereo_state=empty_writer_stereo_state(),
+        policy_state=WriterPolicyState(),
+    )
+
+
+def _raw_emitted_root_state(root: AtomId) -> WriterState:
+    return WriterState(
+        component_cursor=ComponentCursor(
+            component_index=0,
+            component_roots=(root,),
+        ),
+        active=WriterAtomFrame(
+            atom=root,
+            parent=None,
+            incoming_bond=None,
+            atom_emitted=True,
+        ),
+        branch_stack=(),
+        visited_atoms=frozenset((root,)),
+        written_bonds=frozenset(),
+        obligations=ObligationState(),
+        ring_state=WriterRingState(),
+        stereo_state=empty_writer_stereo_state(),
+        policy_state=WriterPolicyState(),
     )
 
 

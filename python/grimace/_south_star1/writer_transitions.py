@@ -11,6 +11,8 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
+from .writer_graph_obligations import WriterEdgeObligationKind
+from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_supported_graph_surface
 from .writer_state import ComponentCursor
@@ -20,6 +22,7 @@ from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
 from .writer_state import WriterState
+from .writer_state import WriterStateKey
 from .writer_state import writer_state_key
 from .writer_events import WriterAtomEmitted
 from .writer_events import WriterBondEmitted
@@ -73,12 +76,29 @@ class WriterTransition:
             raise ValueError("writer transitions must carry semantic events")
 
 
+@dataclass(frozen=True, slots=True)
+class WriterTransitionExpansionContext:
+    state_key: WriterStateKey
+    graph: WriterGraphObligationContext
+
+
+def build_writer_transition_expansion_context(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> WriterTransitionExpansionContext:
+    validate_writer_supported_prepared(prepared)
+    key = writer_state_key(state)
+    graph = build_writer_graph_obligation_context(prepared, key)
+    return WriterTransitionExpansionContext(state_key=key, graph=graph)
+
+
 def legal_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
 ) -> tuple[WriterTransition, ...]:
+    context = build_writer_transition_expansion_context(prepared, state)
     if state.obligations.pending_entry is not None:
-        return _pending_entry_transitions(prepared, state)
+        return _pending_entry_transitions(prepared, state, context)
 
     active = state.active
     if active is None:
@@ -86,9 +106,9 @@ def legal_writer_transitions(
     if not active.atom_emitted:
         return _root_atom_transitions(prepared, state, active)
 
-    children = _child_obligations(prepared, state, active.atom)
+    children = _child_obligations_from_context(context, state, active.atom)
     if not children:
-        return _finish_active_transitions(prepared, state)
+        return _finish_active_transitions(prepared, state, context)
     if len(children) == 1:
         bond, child = children[0]
         return _enter_child_transitions(
@@ -101,6 +121,7 @@ def legal_writer_transitions(
                 branch=False,
             ),
             kind=WriterTransitionKind.ENTER_INLINE_CHILD,
+            context=context,
         )
 
     transitions = []
@@ -173,6 +194,7 @@ def _root_atom_transitions(
 def _pending_entry_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
+    context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     pending = state.obligations.pending_entry
     if pending is None:
@@ -183,8 +205,20 @@ def _pending_entry_transitions(
         else WriterTransitionKind.ENTER_INLINE_CHILD
     )
     if pending.phase is PendingEntryPhase.NEEDS_ATOM_AFTER_BOND:
-        return _enter_child_atom_transitions(prepared, state, pending, kind=kind)
-    return _enter_child_transitions(prepared, state, pending, kind=kind)
+        return _enter_child_atom_transitions(
+            prepared,
+            state,
+            pending,
+            kind=kind,
+            context=context,
+        )
+    return _enter_child_transitions(
+        prepared,
+        state,
+        pending,
+        kind=kind,
+        context=context,
+    )
 
 
 def _enter_child_transitions(
@@ -193,6 +227,7 @@ def _enter_child_transitions(
     pending: PendingWriterEntry,
     *,
     kind: WriterTransitionKind,
+    context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     parent_frame = state.active
     if parent_frame is None:
@@ -255,6 +290,7 @@ def _enter_child_transitions(
                 child_frame=child_frame,
                 branch_stack=branch_stack,
                 kind=kind,
+                context=context,
             )
             if transition is not None:
                 transitions.append(transition)
@@ -267,6 +303,7 @@ def _enter_child_atom_transitions(
     pending: PendingWriterEntry,
     *,
     kind: WriterTransitionKind,
+    context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     parent_frame = state.active
     if parent_frame is None:
@@ -294,6 +331,7 @@ def _enter_child_atom_transitions(
             child_frame=child_frame,
             branch_stack=branch_stack,
             kind=kind,
+            context=context,
         )
         if transition is not None:
             transitions.append(transition)
@@ -310,6 +348,7 @@ def _enter_child_atom_transition(
     child_frame: WriterAtomFrame,
     branch_stack: tuple[WriterBranchFrame, ...],
     kind: WriterTransitionKind,
+    context: WriterTransitionExpansionContext,
 ) -> WriterTransition | None:
     events: list[WriterEvent] = []
     if bond_choice is not None:
@@ -331,7 +370,7 @@ def _enter_child_atom_transition(
             incoming_bond=pending.bond,
         )
     )
-    if not pending.branch and _is_final_child_for_parent(prepared, state, pending):
+    if not pending.branch and _is_final_child_for_parent(context, state, pending):
         events.append(WriterLocalOrderClosed(atom=pending.parent))
     return _transition(
         prepared,
@@ -359,6 +398,7 @@ def _enter_child_atom_transition(
 def _finish_active_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
+    context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     active_atom = state.active.atom if state.active else None
     if active_atom is None:
@@ -425,13 +465,14 @@ def finalize_writer_terminal_state(
     prepared: SouthStarPreparedMol,
     state: WriterState,
 ) -> WriterState | None:
+    context = build_writer_transition_expansion_context(prepared, state)
     if state.active is None:
         return state
     if state.obligations.pending_entry is not None or state.branch_stack:
         return None
     if not state.active.atom_emitted:
         return None
-    if _child_obligations(prepared, state, state.active.atom):
+    if _child_obligations_from_context(context, state, state.active.atom):
         return None
     if state.component_cursor.component_index + 1 < len(
         state.component_cursor.component_roots
@@ -478,13 +519,21 @@ def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
     validate_writer_stereo_supported_prepared(prepared)
 
 
-def _child_obligations(
-    prepared: SouthStarPreparedMol,
+def _child_obligations_from_context(
+    context: WriterTransitionExpansionContext,
     state: WriterState,
     atom: AtomId,
 ) -> tuple[tuple[BondId, AtomId], ...]:
-    context = build_writer_graph_obligation_context(prepared, writer_state_key(state))
-    summary = context.residual_summary
+    partition = context.graph.edge_partition
+    if any(
+        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        for obligation in partition.obligations
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
+        )
+    summary = context.graph.residual_summary
     if summary.has_cyclic_attachment:
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
@@ -518,18 +567,20 @@ def _child_obligations(
 
 
 def _is_final_child_for_parent(
-    prepared: SouthStarPreparedMol,
+    context: WriterTransitionExpansionContext,
     state: WriterState,
     pending: PendingWriterEntry,
 ) -> bool:
-    children = _child_obligations(prepared, state, pending.parent)
+    children = _child_obligations_from_context(context, state, pending.parent)
     return children == ((pending.bond, pending.child),)
 
 
 __all__ = (
     "WriterTransition",
     "WriterTransitionEvidence",
+    "WriterTransitionExpansionContext",
     "WriterTransitionKind",
+    "build_writer_transition_expansion_context",
     "finalize_writer_terminal_state",
     "legal_writer_transitions",
     "validate_writer_supported_prepared",

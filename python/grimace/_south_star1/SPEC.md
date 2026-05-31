@@ -308,13 +308,15 @@ traversal/prefix branch.
 writer-state kernel. The MVP supports ordinary acyclic prepared molecules,
 including tetrahedral and directional stereo when the required carriers are
 emitted by tree traversal. `writer_graph_obligations.py` provides the derived
-residual-attachment view over the current writer prefix: residual components of
-unwritten graph work, boundary incidences into syntactically open writer atoms,
-and structural block-cut metadata. Branch and inline decisions consume those
-residual attachment classes for the acyclic surface; they do not preselect a
-spanning tree, cycle basis, ring cut, or render program. Cyclic residual
-attachments can be classified structurally, but transition consumption of those
-attachments still fails closed. Every writer transition emits typed semantic
+graph-obligation view over the current writer prefix: a deterministic
+current-component edge partition, residual components of unwritten graph work,
+boundary incidences into syntactically open writer atoms, visited-visited
+closure candidates, and structural block-cut metadata. Branch and inline
+decisions consume residual attachment classes derived from the edge partition
+for the acyclic surface; they do not preselect a spanning tree, cycle basis,
+ring cut, or render program. Cyclic residual attachments and closure-candidate
+edges can be classified structurally, but transition consumption of those
+obligations still fails closed. Every writer transition emits typed semantic
 events; those events update a writer-owned residual stereo snapshot that is
 part of the canonical writer state key. Support counting, EOS evidence, next
 emitted-text choices, completion counts, cursor snapshots, and support

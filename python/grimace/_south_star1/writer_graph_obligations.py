@@ -24,6 +24,29 @@ class WriterBoundaryOwnerKind(Enum):
     UNOWNED = "unowned"
 
 
+class WriterEdgeObligationKind(Enum):
+    TREE_ENTRY = "tree_entry"
+    PENDING_ENTRY = "pending_entry"
+    LATENT_RESIDUAL = "latent_residual"
+    BOUNDARY_INCIDENCE = "boundary_incidence"
+    CLOSURE_CANDIDATE = "closure_candidate"
+    OPEN_CLOSURE_ENDPOINT = "open_closure_endpoint"
+    CLOSED_CLOSURE = "closed_closure"
+
+
+@dataclass(frozen=True, slots=True)
+class WriterEdgeObligation:
+    bond: BondId
+    kind: WriterEdgeObligationKind
+    a: AtomId
+    b: AtomId
+
+
+@dataclass(frozen=True, slots=True)
+class WriterEdgeObligationPartition:
+    obligations: tuple[WriterEdgeObligation, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class WriterBoundaryIncidence:
     bond: BondId
@@ -133,29 +156,38 @@ def classify_writer_residual_attachments(
     key: WriterStateKey,
     block_cut: WriterBlockCutMetadata,
 ) -> WriterGraphObligationSummary:
-    current = key.component_cursor.component_index
-    if current < 0 or current >= len(prepared.facts.components):
-        raise SouthStarError(
-            SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer component index is outside prepared components",
-        )
-    component = prepared.facts.components[current]
+    component = _current_component(prepared, key)
     component_atoms = frozenset(component.atoms)
-    component_bonds = frozenset(component.bonds)
     visited = frozenset(atom for atom in key.visited_atoms if atom in component_atoms)
     residual_atoms = component_atoms - visited
     block_by_bond = dict(block_cut.biconnected_block_by_bond)
+    partition = classify_writer_edge_obligations(prepared, key)
+    validate_writer_edge_obligation_partition(prepared, key, partition)
+    latent_obligations = tuple(
+        obligation
+        for obligation in partition.obligations
+        if obligation.kind is WriterEdgeObligationKind.LATENT_RESIDUAL
+    )
+    boundary_obligations = tuple(
+        obligation
+        for obligation in partition.obligations
+        if obligation.kind is WriterEdgeObligationKind.BOUNDARY_INCIDENCE
+    )
+    has_closure_candidate = any(
+        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        for obligation in partition.obligations
+    )
     attachments: list[WriterResidualAttachment] = []
 
-    for atoms in _residual_atom_components(prepared, residual_atoms, component_bonds):
+    for atoms in _residual_atom_components(prepared, residual_atoms, latent_obligations):
         latent_bonds = frozenset(
-            bond
-            for bond in component_bonds
-            if _bond_endpoints_in(prepared, bond, atoms)
+            obligation.bond
+            for obligation in latent_obligations
+            if obligation.a in atoms and obligation.b in atoms
         )
         boundary = tuple(
             sorted(
-                _boundary_incidences(prepared, key, atoms, visited, component_bonds),
+                _boundary_incidences(prepared, key, atoms, boundary_obligations),
                 key=writer_boundary_incidence_sort_tuple,
             )
         )
@@ -212,7 +244,7 @@ def classify_writer_residual_attachments(
         or len(attachment.boundary) > 1
         or bool(attachment.block_ids & block_cut.cyclic_blocks)
         for attachment in sorted_attachments
-    )
+    ) or has_closure_candidate
     return WriterGraphObligationSummary(
         attachments=WriterResidualAttachmentState(
             attachments=tuple(sorted_attachments)
@@ -221,6 +253,134 @@ def classify_writer_residual_attachments(
         boundary_by_pending_parent=_canonical_boundary_index(boundary_by_pending),
         has_cyclic_attachment=has_cyclic_attachment,
     )
+
+
+def classify_writer_edge_obligations(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> WriterEdgeObligationPartition:
+    component = _current_component(prepared, key)
+    pending = key.obligations.pending_entry
+    obligations = []
+    for bond in sorted(component.bonds, key=int):
+        fact = prepared.graph_index.bond_by_id[bond]
+        if bond in key.written_bonds:
+            kind = WriterEdgeObligationKind.TREE_ENTRY
+        elif pending is not None and pending.bond == bond:
+            kind = WriterEdgeObligationKind.PENDING_ENTRY
+        else:
+            left_visited = fact.a in key.visited_atoms
+            right_visited = fact.b in key.visited_atoms
+            if left_visited and right_visited:
+                kind = WriterEdgeObligationKind.CLOSURE_CANDIDATE
+            elif left_visited or right_visited:
+                kind = WriterEdgeObligationKind.BOUNDARY_INCIDENCE
+            else:
+                kind = WriterEdgeObligationKind.LATENT_RESIDUAL
+        obligations.append(
+            WriterEdgeObligation(
+                bond=bond,
+                kind=kind,
+                a=fact.a,
+                b=fact.b,
+            )
+        )
+    return WriterEdgeObligationPartition(obligations=tuple(obligations))
+
+
+def validate_writer_edge_obligation_partition(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    partition: WriterEdgeObligationPartition,
+) -> None:
+    component = _current_component(prepared, key)
+    component_bonds = frozenset(component.bonds)
+    seen_bonds = [obligation.bond for obligation in partition.obligations]
+    if len(set(seen_bonds)) != len(seen_bonds):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer edge obligation partition contains duplicate bonds",
+        )
+    if frozenset(seen_bonds) != component_bonds:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer edge obligation partition does not cover current component bonds",
+        )
+    pending = key.obligations.pending_entry
+    if pending is not None and pending.bond in key.written_bonds:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer pending bond is already written",
+        )
+    pending_entries = [
+        obligation
+        for obligation in partition.obligations
+        if obligation.kind is WriterEdgeObligationKind.PENDING_ENTRY
+    ]
+    if pending is None:
+        if pending_entries:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer edge partition has pending entry without pending state",
+            )
+    elif len(pending_entries) != 1 or pending_entries[0].bond != pending.bond:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer edge partition does not match pending entry",
+        )
+    for obligation in partition.obligations:
+        fact = prepared.graph_index.bond_by_id[obligation.bond]
+        if (obligation.a, obligation.b) != (fact.a, fact.b):
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "writer edge obligation endpoints do not match prepared bond",
+            )
+        left_visited = obligation.a in key.visited_atoms
+        right_visited = obligation.b in key.visited_atoms
+        if obligation.kind is WriterEdgeObligationKind.TREE_ENTRY:
+            if obligation.bond not in key.written_bonds:
+                _invalid_edge_partition("tree-entry obligation is not written")
+            if not left_visited or not right_visited:
+                _invalid_edge_partition("tree-entry obligation has unvisited endpoint")
+        elif obligation.kind is WriterEdgeObligationKind.PENDING_ENTRY:
+            if pending is None or obligation.bond != pending.bond:
+                _invalid_edge_partition("pending obligation does not match pending state")
+            _require_pending_orientation(pending, obligation)
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("pending obligation is already written")
+            if pending.parent not in key.visited_atoms or pending.child in key.visited_atoms:
+                _invalid_edge_partition("pending obligation has invalid visited endpoints")
+        elif obligation.kind is WriterEdgeObligationKind.BOUNDARY_INCIDENCE:
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("boundary obligation is already written")
+            if pending is not None and obligation.bond == pending.bond:
+                _invalid_edge_partition("boundary obligation is also pending")
+            if left_visited == right_visited:
+                _invalid_edge_partition("boundary obligation must have one visited endpoint")
+        elif obligation.kind is WriterEdgeObligationKind.LATENT_RESIDUAL:
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("latent obligation is already written")
+            if pending is not None and obligation.bond == pending.bond:
+                _invalid_edge_partition("latent obligation is also pending")
+            if left_visited or right_visited:
+                _invalid_edge_partition("latent obligation has visited endpoint")
+        elif obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            if obligation.bond in key.written_bonds:
+                _invalid_edge_partition("closure candidate is already written")
+            if pending is not None and obligation.bond == pending.bond:
+                _invalid_edge_partition("closure candidate is also pending")
+            if not left_visited or not right_visited:
+                _invalid_edge_partition("closure candidate must have visited endpoints")
+        elif obligation.kind in (
+            WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
+            WriterEdgeObligationKind.CLOSED_CLOSURE,
+        ):
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "WRITER_SHAPED ring closure edge obligations are not supported yet",
+            )
+        else:
+            _invalid_edge_partition("unknown writer edge obligation kind")
 
 
 def writer_residual_attachment_sort_tuple(
@@ -246,11 +406,35 @@ def writer_boundary_incidence_sort_tuple(
     )
 
 
+def writer_edge_obligation_sort_tuple(
+    obligation: WriterEdgeObligation,
+) -> tuple[object, ...]:
+    return (
+        int(obligation.bond),
+        obligation.kind.value,
+        int(obligation.a),
+        int(obligation.b),
+    )
+
+
+def writer_edge_obligation_partition_sort_tuple(
+    partition: WriterEdgeObligationPartition,
+) -> tuple[object, ...]:
+    return tuple(
+        writer_edge_obligation_sort_tuple(obligation)
+        for obligation in partition.obligations
+    )
+
+
 def _residual_atom_components(
     prepared: SouthStarPreparedMol,
     residual_atoms: frozenset[AtomId],
-    component_bonds: frozenset[BondId],
+    latent_obligations: tuple[WriterEdgeObligation, ...],
 ) -> tuple[frozenset[AtomId], ...]:
+    adjacency: dict[AtomId, list[AtomId]] = {}
+    for obligation in latent_obligations:
+        adjacency.setdefault(obligation.a, []).append(obligation.b)
+        adjacency.setdefault(obligation.b, []).append(obligation.a)
     remaining = set(residual_atoms)
     components = []
     while remaining:
@@ -260,13 +444,8 @@ def _residual_atom_components(
         remaining.remove(start)
         while stack:
             atom = stack.pop()
-            for neighbor in prepared.graph_index.neighbors[atom]:
+            for neighbor in adjacency.get(atom, ()):
                 if neighbor not in remaining:
-                    continue
-                bond = prepared.graph_index.bond_between[
-                    (min(atom, neighbor), max(atom, neighbor))
-                ]
-                if bond not in component_bonds:
                     continue
                 remaining.remove(neighbor)
                 seen.add(neighbor)
@@ -279,27 +458,52 @@ def _boundary_incidences(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
     residual_atoms: frozenset[AtomId],
-    visited: frozenset[AtomId],
-    component_bonds: frozenset[BondId],
+    boundary_obligations: tuple[WriterEdgeObligation, ...],
 ) -> tuple[WriterBoundaryIncidence, ...]:
     incidences = []
-    for bond in component_bonds:
-        fact = prepared.graph_index.bond_by_id[bond]
-        if fact.a in visited and fact.b in residual_atoms:
-            written_atom, residual_atom = fact.a, fact.b
-        elif fact.b in visited and fact.a in residual_atoms:
-            written_atom, residual_atom = fact.b, fact.a
+    for obligation in boundary_obligations:
+        if obligation.a in residual_atoms:
+            written_atom, residual_atom = obligation.b, obligation.a
+        elif obligation.b in residual_atoms:
+            written_atom, residual_atom = obligation.a, obligation.b
         else:
             continue
         incidences.append(
             WriterBoundaryIncidence(
-                bond=bond,
+                bond=obligation.bond,
                 written_atom=written_atom,
                 residual_atom=residual_atom,
                 owner_kind=_owner_kind_for_boundary(key, written_atom),
             )
         )
     return tuple(incidences)
+
+
+def _current_component(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+):
+    current = key.component_cursor.component_index
+    if current < 0 or current >= len(prepared.facts.components):
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer component index is outside prepared components",
+        )
+    return prepared.facts.components[current]
+
+
+def _require_pending_orientation(
+    pending,
+    obligation: WriterEdgeObligation,
+) -> None:
+    if pending.bond != obligation.bond:
+        _invalid_edge_partition("pending obligation has wrong bond")
+    if {pending.parent, pending.child} != {obligation.a, obligation.b}:
+        _invalid_edge_partition("pending obligation has wrong endpoints")
+
+
+def _invalid_edge_partition(message: str) -> None:
+    raise SouthStarError(SouthStarErrorKind.INTERNAL_INVARIANT, message)
 
 
 def _owner_kind_for_boundary(
@@ -339,11 +543,18 @@ __all__ = (
     "WriterBlockCutMetadata",
     "WriterBoundaryIncidence",
     "WriterBoundaryOwnerKind",
+    "WriterEdgeObligation",
+    "WriterEdgeObligationKind",
+    "WriterEdgeObligationPartition",
     "WriterGraphObligationSummary",
     "WriterResidualAttachment",
     "WriterResidualAttachmentState",
     "build_writer_block_cut_metadata",
+    "classify_writer_edge_obligations",
     "classify_writer_residual_attachments",
+    "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",
+    "writer_edge_obligation_partition_sort_tuple",
+    "writer_edge_obligation_sort_tuple",
     "writer_residual_attachment_sort_tuple",
 )

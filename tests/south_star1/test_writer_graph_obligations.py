@@ -6,6 +6,7 @@ from dataclasses import replace
 import unittest
 
 from grimace._south_star1.errors import SouthStarError
+from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
@@ -18,9 +19,13 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
+from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
 from grimace._south_star1.writer_graph_obligations import build_writer_block_cut_metadata
+from grimace._south_star1.writer_graph_obligations import classify_writer_edge_obligations
 from grimace._south_star1.writer_graph_obligations import classify_writer_residual_attachments
+from grimace._south_star1.writer_graph_obligations import validate_writer_edge_obligation_partition
 from grimace._south_star1.writer_graph_obligations import writer_boundary_incidence_sort_tuple
+from grimace._south_star1.writer_graph_obligations import writer_edge_obligation_partition_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_residual_attachment_sort_tuple
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
@@ -33,11 +38,34 @@ from grimace._south_star1.writer_state import writer_state_key
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_transitions import legal_writer_transitions
 from tests.south_star1.helpers import atom
+from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import single_bond
 
 
 class WriterGraphObligationsTest(unittest.TestCase):
+    def test_cco_prefix_edge_partition_tracks_tree_and_boundary(self) -> None:
+        prepared = _prepare(cco_facts())
+        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+
+        partition = classify_writer_edge_obligations(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(1), WriterEdgeObligationKind.BOUNDARY_INCIDENCE),
+            ),
+        )
+        self.assertEqual(
+            writer_edge_obligation_partition_sort_tuple(partition),
+            tuple(
+                (int(item.bond), item.kind.value, int(item.a), int(item.b))
+                for item in partition.obligations
+            ),
+        )
+
     def test_cco_prefix_classifies_active_residual_attachment(self) -> None:
         prepared = _prepare(cco_facts())
         key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
@@ -69,6 +97,24 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertIs(incidence.owner_kind, WriterBoundaryOwnerKind.BRANCH_RETURN)
         self.assertEqual(summary.boundary_by_owner_atom, ((AtomId(1), (0,)),))
 
+    def test_post_bond_pending_state_partitions_pending_entry(self) -> None:
+        prepared = _prepare(carbonyl_facts())
+        cursor = initial_writer_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+        after_c = writer_frontier_choices(prepared, cursor).choices[0].successor
+        after_bond = writer_frontier_choices(prepared, after_c).choices[0].successor
+        key = after_bond.weighted_states[0][0]
+
+        partition = classify_writer_edge_obligations(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            ((BondId(0), WriterEdgeObligationKind.PENDING_ENTRY),),
+        )
+
     def test_ring_entry_classifies_one_cyclic_attachment_not_two_children(self) -> None:
         prepared = _prepare(six_ring_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
@@ -93,6 +139,46 @@ class WriterGraphObligationsTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             legal_writer_transitions(prepared, writer_state_from_key(key))
 
+    def test_triangle_partial_state_has_boundary_edges_to_one_attachment(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_two_visited_key()
+
+        partition = classify_writer_edge_obligations(prepared, key)
+        summary = _summary(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(1), WriterEdgeObligationKind.BOUNDARY_INCIDENCE),
+                (BondId(2), WriterEdgeObligationKind.BOUNDARY_INCIDENCE),
+            ),
+        )
+        self.assertTrue(summary.has_cyclic_attachment)
+        self.assertEqual(len(summary.attachments.attachments), 1)
+        self.assertEqual(len(summary.attachments.attachments[0].boundary), 2)
+
+    def test_triangle_closure_candidate_is_explicit_and_fails_closed(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_all_visited_two_written_key()
+
+        partition = classify_writer_edge_obligations(prepared, key)
+        summary = _summary(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(1), WriterEdgeObligationKind.TREE_ENTRY),
+                (BondId(2), WriterEdgeObligationKind.CLOSURE_CANDIDATE),
+            ),
+        )
+        self.assertTrue(summary.has_cyclic_attachment)
+        with self.assertRaises(SouthStarError):
+            legal_writer_transitions(prepared, writer_state_from_key(key))
+
     def test_cycle_plus_isolate_classifier_exposes_non_tree_shape(self) -> None:
         prepared = _prepare(cycle_plus_isolate_component_facts())
         key = _emitted_root_key(prepared, root=AtomId(0))
@@ -109,6 +195,32 @@ class WriterGraphObligationsTest(unittest.TestCase):
                 )
             ),
             (0, 2),
+        )
+
+    def test_orphan_residual_bond_is_latent_with_empty_boundary_attachment(self) -> None:
+        prepared = _prepare(chain_plus_orphan_chain_same_component_facts())
+        key = _emitted_root_key(prepared, root=AtomId(0))
+
+        partition = classify_writer_edge_obligations(prepared, key)
+        summary = _summary(prepared, key)
+
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        self.assertEqual(
+            tuple((item.bond, item.kind) for item in partition.obligations),
+            (
+                (BondId(0), WriterEdgeObligationKind.BOUNDARY_INCIDENCE),
+                (BondId(1), WriterEdgeObligationKind.LATENT_RESIDUAL),
+            ),
+        )
+        self.assertEqual(len(summary.attachments.attachments), 2)
+        self.assertEqual(
+            tuple(
+                sorted(
+                    len(attachment.boundary)
+                    for attachment in summary.attachments.attachments
+                )
+            ),
+            (0, 1),
         )
 
     def test_boundary_incidences_to_same_written_atom_remain_distinct(self) -> None:
@@ -209,6 +321,68 @@ def _emitted_root_key(prepared, *, root: AtomId):
     )
 
 
+def _triangle_two_visited_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(1),
+                parent=AtomId(0),
+                incoming_bond=BondId(0),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1))),
+            written_bonds=frozenset((BondId(0),)),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def _triangle_all_visited_two_written_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(2),
+                parent=AtomId(1),
+                incoming_bond=BondId(1),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2))),
+            written_bonds=frozenset((BondId(0), BondId(1))),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def carbonyl_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "O")),
+        bonds=(bond(0, 0, 1, BondOrder.DOUBLE),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
 def six_ring_facts() -> MoleculeFacts:
     return MoleculeFacts(
         atoms=tuple(atom(index, "C") for index in range(6)),
@@ -257,6 +431,23 @@ def cycle_plus_isolate_component_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def chain_plus_orphan_chain_same_component_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 2, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1)),
             ),
         ),
     )

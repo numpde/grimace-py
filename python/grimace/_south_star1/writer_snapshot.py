@@ -28,9 +28,13 @@ from .residual_constraints import VarId
 from .residual_constraints import direction_var
 from .residual_constraints import tetra_var
 from .writer_graph_obligations import WriterBoundaryOwnerKind
+from .writer_graph_obligations import WriterEdgeObligationKind
+from .writer_graph_obligations import WriterEdgeObligationPartition
 from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import build_writer_block_cut_metadata
+from .writer_graph_obligations import classify_writer_edge_obligations
 from .writer_graph_obligations import classify_writer_residual_attachments
+from .writer_graph_obligations import validate_writer_edge_obligation_partition
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import writer_frontier_choices
@@ -165,6 +169,9 @@ def validate_writer_cursor_against_prepared(
         if weight <= 0:
             _invalid_snapshot("writer cursor contains nonpositive weight")
         _validate_component_cursor(key.component_cursor, allowed_roots)
+        partition = _writer_edge_partition(prepared, key)
+        validate_writer_edge_obligation_partition(prepared, key, partition)
+        _validate_edge_partition_supported_for_snapshot(partition)
         summary = _writer_obligation_summary(prepared, key)
         _validate_atom_frame(key.active, atom_ids, bond_ids, prepared)
         for frame in key.branch_stack:
@@ -231,6 +238,25 @@ def _writer_obligation_summary(
         key,
         build_writer_block_cut_metadata(prepared),
     )
+
+
+def _writer_edge_partition(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+) -> WriterEdgeObligationPartition:
+    return classify_writer_edge_obligations(prepared, key)
+
+
+def _validate_edge_partition_supported_for_snapshot(
+    partition: WriterEdgeObligationPartition,
+) -> None:
+    unsupported = {
+        WriterEdgeObligationKind.CLOSURE_CANDIDATE,
+        WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
+        WriterEdgeObligationKind.CLOSED_CLOSURE,
+    }
+    if any(obligation.kind in unsupported for obligation in partition.obligations):
+        _invalid_snapshot("writer snapshot has unsupported cyclic edge obligation")
 
 
 def _allowed_component_roots(
@@ -568,7 +594,12 @@ def _validate_pending_entry_role(
     summary: WriterGraphObligationSummary,
     pending: PendingWriterEntry,
 ) -> None:
-    children = _boundary_children_for_atom(summary, pending.parent)
+    children = tuple(
+        sorted(
+            (*_boundary_children_for_atom(summary, pending.parent), (pending.bond, pending.child)),
+            key=lambda item: (int(item[0]), int(item[1])),
+        )
+    )
     if (pending.bond, pending.child) not in children:
         _invalid_snapshot("writer pending entry is not a live child obligation")
     if pending.branch:
@@ -595,7 +626,11 @@ def _validate_live_frontier_ownership(
         for attachment in summary.attachments.attachments
         for incidence in attachment.boundary
     ]
-    if any(not attachment.boundary for attachment in summary.attachments.attachments):
+    if any(
+        not attachment.boundary
+        and not _attachment_is_owned_by_pending_entry(key, attachment.atoms)
+        for attachment in summary.attachments.attachments
+    ):
         _invalid_snapshot("writer residual attachment has no boundary incidence")
     branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
     branch_owned_atoms = {
@@ -608,7 +643,11 @@ def _validate_live_frontier_ownership(
         for incidence in boundary_edges
     ):
         _invalid_snapshot("writer live frontier does not own unvisited obligation")
-    if unvisited and not boundary_edges:
+    pending_owned_attachment = any(
+        _attachment_is_owned_by_pending_entry(key, attachment.atoms)
+        for attachment in summary.attachments.attachments
+    )
+    if unvisited and not boundary_edges and not pending_owned_attachment:
         _invalid_snapshot("writer current component has unvisited atoms without frontier")
     if key.branch_stack and not unvisited:
         _invalid_snapshot("writer branch stack has no unresolved return obligation")
@@ -641,6 +680,14 @@ def _boundary_children_for_atom(
         incidence = boundary[0]
         children.append((incidence.bond, incidence.residual_atom))
     return tuple(sorted(children, key=lambda item: (int(item[0]), int(item[1]))))
+
+
+def _attachment_is_owned_by_pending_entry(
+    key: WriterStateKey,
+    atoms: frozenset[AtomId],
+) -> bool:
+    pending = key.obligations.pending_entry
+    return pending is not None and pending.child in atoms
 
 
 def _active_is_terminal_leaf(

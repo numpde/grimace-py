@@ -485,6 +485,18 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_closure_candidate_edge_obligation(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_closure_candidate_key()
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_stranded_unvisited_child_obligation(self) -> None:
         prepared = _prepare(cco_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -1242,6 +1254,30 @@ def _manual_emitted_root_key(root: AtomId):
     )
 
 
+def _triangle_closure_candidate_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(2),
+                parent=AtomId(1),
+                incoming_bond=BondId(1),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2))),
+            written_bonds=frozenset((BondId(0), BondId(1))),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
 def _tetra_center_key(prepared, options):
     cursor = initial_writer_frontier_cursor(prepared, options)
     after_f = writer_frontier_choices(prepared, cursor).choices[0].successor
@@ -1338,6 +1374,24 @@ def chain_plus_isolate_same_component_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
+def triangle_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
             ),
         ),
     )

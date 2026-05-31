@@ -541,6 +541,9 @@ def _child_obligations(
             )
         incidence = boundary[0]
         children.append((incidence.bond, incidence.residual_atom))
+    pending = state.obligations.pending_entry
+    if pending is not None and pending.parent == atom:
+        children.append((pending.bond, pending.child))
     return tuple(
         sorted(
             children,

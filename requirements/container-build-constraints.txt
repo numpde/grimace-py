@@ -39,3 +39,4 @@ secretstorage==3.5.0
 six==1.17.0
 twine==6.2.0
 urllib3==2.7.0
+zstandard==0.25.0

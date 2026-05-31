@@ -28,6 +28,15 @@ bounded correctness checks; heavier profiling runs should be explicit.
   - checks that tag-triggered release jobs publish exactly the expected wheel
     and sdist filenames
 
+## PreparedMol Storage Tooling
+
+- `generate_prepared_mol_zstd_dictionary.py`
+  - generates the production `PreparedMol` zstd dictionary artifact from the
+    checked-in `top_100000` fixture
+  - writes a versioned artifact directory containing `default_v1.zstdict` and
+    `default_v1.json`
+  - requires the pinned `zstandard` development dependency
+
 ## `mine_rdkit_regressions.py`
 
 Local dataset miner for RDKit-derived writer regressions.

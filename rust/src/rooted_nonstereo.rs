@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -61,10 +62,69 @@ enum Action {
     AfterAtom(AfterAtomAction),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct AtomBitSet {
+    atom_count: usize,
+    words: Vec<u64>,
+}
+
+impl AtomBitSet {
+    const WORD_BITS: usize = u64::BITS as usize;
+
+    fn new(atom_count: usize) -> Self {
+        Self {
+            atom_count,
+            words: vec![0; atom_count.div_ceil(Self::WORD_BITS)],
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.atom_count
+    }
+
+    fn bit_mask(atom_idx: usize) -> u64 {
+        1_u64 << (Self::WORD_BITS - 1 - (atom_idx % Self::WORD_BITS))
+    }
+
+    fn contains(&self, atom_idx: usize) -> bool {
+        debug_assert!(atom_idx < self.atom_count);
+        let word_idx = atom_idx / Self::WORD_BITS;
+        (self.words[word_idx] & Self::bit_mask(atom_idx)) != 0
+    }
+
+    fn insert(&mut self, atom_idx: usize) {
+        debug_assert!(atom_idx < self.atom_count);
+        let word_idx = atom_idx / Self::WORD_BITS;
+        self.words[word_idx] |= Self::bit_mask(atom_idx);
+    }
+}
+
+impl Ord for AtomBitSet {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.atom_count == other.atom_count {
+            return self.words.cmp(&other.words);
+        }
+        let common_atom_count = self.atom_count.min(other.atom_count);
+        for atom_idx in 0..common_atom_count {
+            match self.contains(atom_idx).cmp(&other.contains(atom_idx)) {
+                Ordering::Equal => {}
+                ordering => return ordering,
+            }
+        }
+        self.atom_count.cmp(&other.atom_count)
+    }
+}
+
+impl PartialOrd for AtomBitSet {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct RootedConnectedNonStereoWalkerStateData {
     prefix: String,
-    visited: Vec<bool>,
+    visited: AtomBitSet,
     visited_count: usize,
     pending: Vec<(usize, Vec<PendingRing>)>,
     free_labels: Vec<usize>,
@@ -187,13 +247,13 @@ fn validate_state_shape(
 fn ordered_neighbor_groups(
     graph: &PreparedSmilesGraphData,
     atom_idx: usize,
-    visited: &[bool],
+    visited: &AtomBitSet,
 ) -> Vec<Vec<usize>> {
     let mut seeds = graph
         .neighbors_of(atom_idx)
         .iter()
         .copied()
-        .filter(|&neighbor_idx| !visited[neighbor_idx])
+        .filter(|&neighbor_idx| !visited.contains(neighbor_idx))
         .collect::<Vec<_>>();
     if seeds.is_empty() {
         return Vec::new();
@@ -219,7 +279,8 @@ fn ordered_neighbor_groups(
                 component_min = current;
             }
             for &neighbor_idx in graph.neighbors_of(current) {
-                if neighbor_idx == atom_idx || visited[neighbor_idx] || seen[neighbor_idx] {
+                if neighbor_idx == atom_idx || visited.contains(neighbor_idx) || seen[neighbor_idx]
+                {
                     continue;
                 }
                 seen[neighbor_idx] = true;
@@ -400,7 +461,7 @@ fn initial_state_for_root(
     }
     RootedConnectedNonStereoWalkerStateData {
         prefix: String::new(),
-        visited: vec![false; graph.atom_count()],
+        visited: AtomBitSet::new(graph.atom_count()),
         visited_count: 0,
         pending: Vec::new(),
         free_labels: Vec::new(),
@@ -545,8 +606,8 @@ fn consume_enter_atom(
     state: &mut RootedConnectedNonStereoWalkerStateData,
     atom_idx: usize,
 ) {
-    debug_assert!(!state.visited[atom_idx]);
-    state.visited[atom_idx] = true;
+    debug_assert!(!state.visited.contains(atom_idx));
+    state.visited.insert(atom_idx);
     state.visited_count += 1;
     let closures_here = take_pending_for_atom(&mut state.pending, atom_idx);
     let neighbor_groups = ordered_neighbor_groups(graph, atom_idx, &state.visited);
@@ -1568,9 +1629,9 @@ mod tests {
 
     use super::{
         advance_token_state, enumerate_rooted_connected_nonstereo_smiles_support,
-        enumerate_support_from_state, for_each_cartesian_choice, initial_state_for_root,
-        is_terminal_state, next_token_support_for_state, permutations_py_order,
-        permutations_py_order_copy, validate_root_idx,
+        enumerate_support_from_state, for_each_cartesian_choice, initial_frontier_for_root_spec,
+        initial_state_for_root, is_terminal_state, next_token_support_for_state,
+        permutations_py_order, permutations_py_order_copy, validate_root_idx, Action, AtomBitSet,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_NONSTEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -1593,6 +1654,59 @@ mod tests {
             .expect("nonstereo enumeration should succeed")
             .into_iter()
             .collect()
+    }
+
+    #[test]
+    fn atom_bit_set_tracks_membership_without_cross_word_leakage() {
+        let mut visited = AtomBitSet::new(130);
+        assert_eq!(130, visited.len());
+        for atom_idx in [0, 1, 63, 64, 65, 129] {
+            assert!(!visited.contains(atom_idx));
+            visited.insert(atom_idx);
+            assert!(visited.contains(atom_idx));
+        }
+        assert!(!visited.contains(2));
+        assert!(!visited.contains(62));
+        assert!(!visited.contains(66));
+        assert!(!visited.contains(128));
+    }
+
+    #[test]
+    fn atom_bit_set_clone_is_independent_after_insert() {
+        let mut left = AtomBitSet::new(8);
+        left.insert(3);
+        let mut right = left.clone();
+        right.insert(4);
+
+        assert!(left.contains(3));
+        assert!(!left.contains(4));
+        assert!(right.contains(3));
+        assert!(right.contains(4));
+        assert_ne!(left, right);
+    }
+
+    #[test]
+    fn atom_bit_set_order_matches_logical_bool_vector_order() {
+        fn with_visited(atom_count: usize, atom_idx: usize) -> AtomBitSet {
+            let mut visited = AtomBitSet::new(atom_count);
+            visited.insert(atom_idx);
+            visited
+        }
+
+        assert_eq!(
+            vec![true, false].cmp(&vec![false, true]),
+            with_visited(2, 0).cmp(&with_visited(2, 1))
+        );
+        assert_eq!(
+            {
+                let mut left = vec![false; 130];
+                left[63] = true;
+                let mut right = vec![false; 130];
+                right[64] = true;
+                left.cmp(&right)
+            },
+            with_visited(130, 63).cmp(&with_visited(130, 64))
+        );
     }
 
     fn collect_exact_frontier_stats(
@@ -1917,6 +2031,26 @@ mod tests {
         let graph = linear_ccc_graph();
         assert!(validate_root_idx(&graph, -1).is_err());
         assert!(validate_root_idx(&graph, 3).is_err());
+    }
+
+    #[test]
+    fn all_roots_initial_frontier_keeps_one_empty_state_per_atom() {
+        let graph = linear_ccc_graph();
+        let frontier =
+            initial_frontier_for_root_spec(&graph, -1).expect("all-roots frontier should build");
+
+        assert_eq!(graph.atom_count(), frontier.len());
+        for (root_idx, state) in frontier.iter().enumerate() {
+            assert_eq!(graph.atom_count(), state.visited.len());
+            assert_eq!(0, state.visited_count);
+            for atom_idx in 0..graph.atom_count() {
+                assert!(!state.visited.contains(atom_idx));
+            }
+            assert_eq!(
+                &[Action::EnterAtom(root_idx)],
+                state.action_stack.as_slice()
+            );
+        }
     }
 
     #[test]

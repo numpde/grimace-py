@@ -39,6 +39,7 @@ def _draw_scatter(
     time_field: str,
     std_field: str,
     ylabel: str,
+    note: str,
     output: Path,
 ) -> None:
     from plox import Plox
@@ -99,10 +100,25 @@ def _draw_scatter(
 
         ax.set_xlabel("Compression ratio, %")
         ax.set_ylabel(ylabel)
-        ax.set_xlim(0, 15)
+        ax.set_xlim(4, 14)
         ax.set_yscale("log")
         ax.grid(color="#dddddd", linewidth=0.8)
         ax.set_axisbelow(True)
+        ax.text(
+            0.02,
+            0.02,
+            note,
+            transform=ax.transAxes,
+            fontsize="small",
+            va="bottom",
+            ha="left",
+            bbox={
+                "boxstyle": "round,pad=0.25",
+                "facecolor": "white",
+                "edgecolor": "#dddddd",
+                "alpha": 0.9,
+            },
+        )
         ax.legend(frameon=True, edgecolor="#dddddd")
         px.f.savefig(output)
 
@@ -130,10 +146,21 @@ def main(argv: list[str]) -> int:
         "sample_seed",
         "sample_source_rows_sha256",
         "sample_cids_sha256",
+        "dictionary_artifact",
+        "dictionary_id",
+        "dictionary_sha256",
     ):
         values = {row[field] for row in rows}
         if len(values) != 1:
             raise SystemExit(f"Timing input must use one {field}")
+    dictionary_artifact = rows[0]["dictionary_artifact"]
+    dictionary_id = rows[0]["dictionary_id"]
+    dictionary_sha = rows[0]["dictionary_sha256"][:12]
+    note = (
+        f"molecules: {sample_count}\n"
+        f"dictionary: {dictionary_artifact}\n"
+        f"id: {dictionary_id}; sha256: {dictionary_sha}..."
+    )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for path in args.output_dir.glob("*.png"):
@@ -148,6 +175,7 @@ def main(argv: list[str]) -> int:
         time_field="compression_mean_s",
         std_field="compression_std_s",
         ylabel=f"Compression time for {sample_count} payloads, ms",
+        note=note,
         output=compression_output,
     )
     _draw_scatter(
@@ -155,6 +183,7 @@ def main(argv: list[str]) -> int:
         time_field="decompression_mean_s",
         std_field="decompression_std_s",
         ylabel=f"Decompression time for {sample_count} payloads, ms",
+        note=note,
         output=decompression_output,
     )
     print(f"Wrote {compression_output}")

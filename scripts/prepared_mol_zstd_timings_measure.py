@@ -21,7 +21,7 @@ from scripts import prepared_mol_zstd_dictionary_generate as generator
 
 
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "prepared-mol-zstd-timings.tsv"
-DEFAULT_LEVELS = (1, 3, 6, 9, 10, 11, 12, 15, 19)
+DEFAULT_LEVELS = tuple(range(1, 20))
 DEFAULT_SAMPLE_SEED = 20260531
 
 zstd: Any | None = None
@@ -37,6 +37,9 @@ class TimingRow:
     sample_seed: int
     sample_source_rows_sha256: str
     sample_cids_sha256: str
+    dictionary_artifact: str
+    dictionary_id: int
+    dictionary_sha256: str
     raw_bytes: int
     level: int
     mode: str
@@ -85,6 +88,14 @@ class SampleBatch:
         return generator.digest_text_lines(tuple(sample.cid for sample in self.samples))
 
 
+@dataclass(frozen=True, slots=True)
+class DictionaryArtifact:
+    dictionary: Any
+    artifact: str
+    dictionary_id: int
+    dictionary_sha256: str
+
+
 def _runtime_trials(fn, *, repeats: int) -> list[float]:
     fn()
     timings: list[float] = []
@@ -127,7 +138,7 @@ def _artifact_dir() -> Path:
     return manifests[0].parent
 
 
-def _dictionary() -> zstd.ZstdCompressionDict:
+def _dictionary() -> DictionaryArtifact:
     assert zstd is not None
     artifact_dir = _artifact_dir()
     manifest = json.loads(
@@ -140,7 +151,12 @@ def _dictionary() -> zstd.ZstdCompressionDict:
     )
     if dictionary.dict_id() != manifest["zstd_dictionary_id"]:
         raise RuntimeError("Dictionary ID does not match shipped manifest")
-    return dictionary
+    return DictionaryArtifact(
+        dictionary=dictionary,
+        artifact=artifact_dir.name,
+        dictionary_id=manifest["zstd_dictionary_id"],
+        dictionary_sha256=manifest["zstd_dictionary_sha256"],
+    )
 
 
 def _prepared_sample(limit: int, *, seed: int) -> SampleBatch:
@@ -221,6 +237,9 @@ def _timing_row(
     sample_seed: int,
     sample_source_rows_sha256: str,
     sample_cids_sha256: str,
+    dictionary_artifact: str,
+    dictionary_id: int,
+    dictionary_sha256: str,
     level: int,
     mode: str,
     repeats: int,
@@ -257,6 +276,9 @@ def _timing_row(
         sample_seed=sample_seed,
         sample_source_rows_sha256=sample_source_rows_sha256,
         sample_cids_sha256=sample_cids_sha256,
+        dictionary_artifact=dictionary_artifact,
+        dictionary_id=dictionary_id,
+        dictionary_sha256=dictionary_sha256,
         raw_bytes=raw_bytes,
         level=level,
         mode=mode,
@@ -310,7 +332,7 @@ def main(argv: list[str]) -> int:
     for level in args.levels:
         for mode, mode_dictionary in (
             ("no-dictionary", None),
-            ("dictionary", dictionary),
+            ("dictionary", dictionary.dictionary),
         ):
             row = _timing_row(
                 payloads,
@@ -318,6 +340,9 @@ def main(argv: list[str]) -> int:
                 sample_seed=args.sample_seed,
                 sample_source_rows_sha256=sample_source_rows_sha256,
                 sample_cids_sha256=sample_cids_sha256,
+                dictionary_artifact=dictionary.artifact,
+                dictionary_id=dictionary.dictionary_id,
+                dictionary_sha256=dictionary.dictionary_sha256,
                 level=level,
                 mode=mode,
                 repeats=args.repeats,

@@ -458,6 +458,124 @@ def build_manifest(
     }
 
 
+def validate_zstd_dictionary(
+    dictionary_bytes: bytes,
+    *,
+    dictionary_id: int,
+    smoke_payload: bytes,
+) -> None:
+    if zstd is None:
+        raise RuntimeError("zstd dependency is not loaded")
+    if not smoke_payload.startswith(RAW_PREPARED_MOL_MAGIC):
+        raise RuntimeError("postflight smoke payload lacks raw PreparedMol magic")
+
+    try:
+        compression_dictionary = zstd.ZstdCompressionDict(dictionary_bytes)
+        actual_dictionary_id = compression_dictionary.dict_id()
+    except Exception as exc:
+        raise RuntimeError("zstd dictionary bytes are not a valid dictionary") from exc
+
+    if actual_dictionary_id != dictionary_id:
+        raise RuntimeError(
+            "Dictionary ID mismatch: "
+            f"manifest has {dictionary_id}, dictionary has {actual_dictionary_id}"
+        )
+
+    try:
+        compressed = zstd.ZstdCompressor(
+            dict_data=compression_dictionary,
+            write_checksum=True,
+            write_content_size=True,
+        ).compress(smoke_payload)
+        parameters = zstd.get_frame_parameters(compressed)
+        restored = zstd.ZstdDecompressor(
+            dict_data=compression_dictionary,
+        ).decompress(compressed)
+    except Exception as exc:
+        raise RuntimeError("zstd dictionary cannot round-trip a payload") from exc
+
+    if parameters.dict_id != dictionary_id:
+        raise RuntimeError(
+            "Compressed smoke frame dictionary ID mismatch: "
+            f"expected {dictionary_id}, got {parameters.dict_id}"
+        )
+    if parameters.content_size != len(smoke_payload):
+        raise RuntimeError("Compressed smoke frame does not record content size")
+    if not parameters.has_checksum:
+        raise RuntimeError("Compressed smoke frame does not record a checksum")
+    if restored != smoke_payload:
+        raise RuntimeError("zstd dictionary smoke round trip changed the payload")
+
+
+def validate_artifact(
+    artifact_dir: Path,
+    *,
+    smoke_payload: bytes,
+) -> None:
+    if not artifact_dir.is_dir():
+        raise RuntimeError(f"Artifact directory is missing: {artifact_dir}")
+
+    manifest_path = artifact_dir / f"{ARTIFACT_STEM}.json"
+    dictionary_path = artifact_dir / f"{ARTIFACT_STEM}.zstdict"
+    if not manifest_path.is_file():
+        raise RuntimeError(f"Artifact manifest is missing: {manifest_path}")
+    if not dictionary_path.is_file():
+        raise RuntimeError(f"Artifact dictionary is missing: {dictionary_path}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise RuntimeError(f"Artifact manifest is not a JSON object: {manifest_path}")
+
+    expected_files = {
+        "dictionary": dictionary_path.name,
+        "manifest": manifest_path.name,
+    }
+    if manifest.get("files") != expected_files:
+        raise RuntimeError("Artifact manifest file names do not match the artifact")
+    if manifest.get("artifact_dir") != artifact_dir.name:
+        raise RuntimeError("Artifact manifest artifact_dir does not match the path")
+
+    dictionary_bytes = dictionary_path.read_bytes()
+    dictionary_sha = sha256_hex(dictionary_bytes)
+    if manifest.get("zstd_dictionary_sha256") != dictionary_sha:
+        raise RuntimeError("Dictionary SHA-256 mismatch")
+    if manifest.get("zstd_dictionary_size_bytes") != len(dictionary_bytes):
+        raise RuntimeError("Dictionary size mismatch")
+
+    dictionary_id = manifest.get("zstd_dictionary_id")
+    if not isinstance(dictionary_id, int):
+        raise RuntimeError("Artifact manifest lacks an integer zstd_dictionary_id")
+    if dictionary_id == 0:
+        raise RuntimeError("Artifact manifest zstd_dictionary_id must be nonzero")
+    validate_zstd_dictionary(
+        dictionary_bytes,
+        dictionary_id=dictionary_id,
+        smoke_payload=smoke_payload,
+    )
+
+    created_yyyymmdd = manifest.get("created_yyyymmdd")
+    if not isinstance(created_yyyymmdd, str):
+        raise RuntimeError("Artifact manifest lacks created_yyyymmdd")
+    validate_created_date(created_yyyymmdd)
+
+    excluded_fields = MANIFEST_HASH_CANONICALIZATION["excluded_fields"]
+    identity = {
+        key: value for key, value in manifest.items() if key not in excluded_fields
+    }
+    manifest_sha = sha256_hex(canonical_json_bytes(identity))
+    if manifest.get("manifest_sha256") != manifest_sha:
+        raise RuntimeError("Manifest SHA-256 mismatch")
+    if artifact_dir.name != f"{created_yyyymmdd}_{manifest_sha[:8]}":
+        raise RuntimeError("Artifact directory name does not match the manifest hash")
+
+    training_identity = manifest.get("training_identity")
+    if not isinstance(training_identity, dict):
+        raise RuntimeError("Artifact manifest lacks a training_identity object")
+    training_identity_sha = sha256_hex(canonical_json_bytes(training_identity))
+    if manifest.get("training_identity_sha256") != training_identity_sha:
+        raise RuntimeError("Training identity SHA-256 mismatch")
+
+
 def write_artifact(
     *,
     output_root: Path,
@@ -465,6 +583,7 @@ def write_artifact(
     dictionary_bytes: bytes,
     identity: dict[str, Any],
     force: bool,
+    postflight_payload: bytes,
 ) -> Path:
     manifest_sha = sha256_hex(canonical_json_bytes(identity))
     artifact_dir_name = f"{created_yyyymmdd}_{manifest_sha[:8]}"
@@ -504,6 +623,11 @@ def write_artifact(
         json.dumps(manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        validate_artifact(artifact_dir, smoke_payload=postflight_payload)
+    except Exception:
+        shutil.rmtree(artifact_dir, ignore_errors=True)
+        raise
     return artifact_dir
 
 
@@ -564,6 +688,7 @@ def main(argv: list[str]) -> int:
         dictionary_bytes=dictionary_bytes,
         identity=identity,
         force=args.force,
+        postflight_payload=corpus.selected[0].raw_payload,
     )
 
     print(f"Wrote {artifact_dir}")

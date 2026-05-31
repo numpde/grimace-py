@@ -45,8 +45,11 @@ symlinked `dist/` and clears direct children before building.
 
 `make prepared-mol-zstd-dictionary` builds an installed-package image with the
 pinned generator dependencies, runs the generator contract and environment
-preflight tests, then writes only to `PREPARED_MOL_ZSTD_OUTPUT_DIR`, which
-defaults to `$HOME/tmp/grimace-prepared-mol-zstd`. Optional controls:
+preflight tests, then writes only to `PREPARED_MOL_ZSTD_OUTPUT_DIR`. The
+generator runs a post-flight check on the written artifact before exiting
+successfully.
+`PREPARED_MOL_ZSTD_OUTPUT_DIR` defaults to
+`$HOME/tmp/grimace-prepared-mol-zstd`. Optional controls:
 
 ```bash
 make prepared-mol-zstd-dictionary \

@@ -408,6 +408,9 @@ The generator must:
 - derive the deterministic dictionary ID from `training_identity_sha256`
 - create a zstd dictionary that carries that dictionary ID
 - write the dictionary bytes and canonical manifest
+- run a post-flight check on the exact written artifact: recompute hashes,
+  verify the dictionary ID from the dictionary bytes, and prove the dictionary
+  can round-trip a raw PreparedMol payload through zstd
 - fail if the selected generation library cannot force or verify the dictionary
   ID
 - record the generator dependency/version and underlying zstd version

@@ -34,7 +34,7 @@ services:
           *) printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; exit 2 ;;
         esac
         python -m unittest tests.checks.test_prepared_mol_zstd_generator_contract -q
-        python -m unittest tests.prepared_mol_zstd_dictionary_preflight -q
+        python -m unittest tests.prepared_mol_zstd_dictionary_flight -q
         set -- --output-root /out
         if [ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" ]; then
           set -- "$$@" --created-date "$${PREPARED_MOL_ZSTD_CREATED_DATE}"

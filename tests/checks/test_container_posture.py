@@ -172,7 +172,7 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn(
-            "python -m unittest tests.prepared_mol_zstd_dictionary_preflight -q",
+            "python -m unittest tests.prepared_mol_zstd_dictionary_flight -q",
             compose,
         )
         self.assertIn("set -- --output-root /out", compose)

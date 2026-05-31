@@ -35,6 +35,8 @@ bounded correctness checks; heavier profiling runs should be explicit.
     checked-in `top_100000` fixture
   - writes a versioned artifact directory containing `default_v1.zstdict` and
     `default_v1.json`
+  - validates the written manifest, dictionary ID, dictionary hash, and zstd
+    round trip before returning success
   - requires the pinned `zstandard` development dependency
 
 ## `mine_rdkit_regressions.py`

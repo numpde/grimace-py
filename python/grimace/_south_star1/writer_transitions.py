@@ -466,6 +466,8 @@ def finalize_writer_terminal_state(
     context = build_writer_transition_expansion_context(prepared, state)
     if state.obligations.pending_entry is not None or state.branch_stack:
         return None
+    if state.ring_state.open_endpoints:
+        return None
     if not state.active.atom_emitted:
         return None
     if _child_obligations_from_context(context, state, state.active.atom):

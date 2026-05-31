@@ -72,7 +72,7 @@ class WriterDelayedStereoFactor:
     kind: Literal["tetra", "directional", "ring_pair"]
     site: SiteId
     scope: tuple[VarId, ...] = ()
-    evidence: tuple[tuple[str, int], ...] = ()
+    evidence: tuple[tuple[object, ...], ...] = ()
     closed: bool = False
 
 
@@ -405,7 +405,7 @@ def _on_ring_endpoint_emitted(
                 kind="ring_pair",
                 site=SiteId(int(event.bond)),
                 scope=(),
-                evidence=(("ring_endpoint", int(event.bond)),),
+                evidence=(_ring_endpoint_evidence(event),),
                 closed=False,
             ),
         ),
@@ -420,6 +420,28 @@ def _on_ring_endpoint_paired(
     _reject_supported_ring_pair_stereo(prepared, event.bond)
     from .writer_state import WriterStereoState
 
+    pending = next(
+        (
+            factor
+            for factor in stereo_state.delayed_factors
+            if factor.kind == "ring_pair"
+            and factor.site == SiteId(int(event.bond))
+            and not factor.closed
+        ),
+        None,
+    )
+    if pending is None or len(pending.evidence) != 1:
+        return None
+    first_evidence = pending.evidence[0]
+    if (
+        len(first_evidence) != 9
+        or first_evidence[0] != "ring_endpoint"
+        or first_evidence[1] != int(event.bond)
+        or first_evidence[3] != int(event.partner_atom)
+        or first_evidence[5] != event.label.value
+        or first_evidence[6] != event.label.text
+    ):
+        return None
     return WriterStereoState(
         residual_snapshot=stereo_state.residual_snapshot,
         atom_occurrences=stereo_state.atom_occurrences,
@@ -431,10 +453,7 @@ def _on_ring_endpoint_paired(
                 kind="ring_pair",
                 site=SiteId(int(event.bond)),
                 scope=(),
-                evidence=(
-                    ("ring_endpoint", int(event.bond)),
-                    ("ring_pair", int(event.bond)),
-                ),
+                evidence=(_ring_pair_evidence(first_evidence, event),),
                 closed=True,
             ),
         ),
@@ -450,6 +469,38 @@ def _reject_supported_ring_pair_stereo(
             SouthStarErrorKind.UNSUPPORTED_STEREO,
             "WRITER_SHAPED ring-pair directional stereo is not supported yet",
         )
+
+
+def _ring_endpoint_evidence(event: WriterRingEndpointEmitted) -> tuple[object, ...]:
+    return (
+        "ring_endpoint",
+        int(event.bond),
+        event.side,
+        int(event.endpoint_atom),
+        int(event.partner_atom),
+        event.label.value,
+        event.label.text,
+        event.endpoint_text,
+        event.bond_text,
+    )
+
+
+def _ring_pair_evidence(
+    first_evidence: tuple[object, ...],
+    event: WriterRingEndpointPaired,
+) -> tuple[object, ...]:
+    return (
+        "ring_pair",
+        int(event.bond),
+        int(event.partner_atom),
+        int(event.endpoint_atom),
+        event.label.value,
+        event.label.text,
+        first_evidence[7],
+        event.endpoint_text,
+        first_evidence[8],
+        event.bond_text,
+    )
 
 
 def _close_ready_directional_factors(

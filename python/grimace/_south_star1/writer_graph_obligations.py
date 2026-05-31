@@ -428,6 +428,12 @@ def validate_writer_edge_obligation_partition(
             "writer edge obligation partition does not cover current component bonds",
         )
     pending = key.obligations.pending_entry
+    open_bond_records = tuple(endpoint.bond for endpoint in key.ring_state.open_endpoints)
+    closed_bond_records = tuple(closure.bond for closure in key.ring_state.closed_closures)
+    if len(set(open_bond_records)) != len(open_bond_records):
+        _invalid_edge_partition("writer open closure endpoint bonds contain duplicates")
+    if len(set(closed_bond_records)) != len(closed_bond_records):
+        _invalid_edge_partition("writer closed closure bonds contain duplicates")
     open_by_bond = {endpoint.bond: endpoint for endpoint in key.ring_state.open_endpoints}
     closed_by_bond = {closure.bond: closure for closure in key.ring_state.closed_closures}
     ring_bonds = set(open_by_bond) | set(closed_by_bond)
@@ -574,6 +580,7 @@ def _validate_closure_state_supported_for_snapshot(
             _invalid_edge_partition("writer open closure endpoint has wrong endpoints")
         if endpoint.first_atom not in key.visited_atoms:
             _invalid_edge_partition("writer open closure endpoint first atom is not visited")
+        _validate_open_endpoint_partner_liveness(key, endpoint, context)
     for closure in key.ring_state.closed_closures:
         if partition_by_bond.get(closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
             _invalid_edge_partition("writer closed closure lacks closed edge obligation")
@@ -597,6 +604,10 @@ def _validate_ring_label_state(key: WriterStateKey) -> None:
         _invalid_edge_partition("writer ring label state contains duplicate labels")
     if set(allocated) & set(reusable):
         _invalid_edge_partition("writer ring label is both allocated and reusable")
+    if set(allocated) != set(open_labels):
+        _invalid_edge_partition("writer allocated ring labels must match open closures")
+    if not set(reusable).issubset(set(closed_labels)):
+        _invalid_edge_partition("writer reusable ring label lacks closed closure")
     for label in open_labels:
         if label not in allocated:
             _invalid_edge_partition("writer open closure label is not allocated")
@@ -605,6 +616,31 @@ def _validate_ring_label_state(key: WriterStateKey) -> None:
     for label in closed_labels:
         if label not in allocated and label not in reusable:
             _invalid_edge_partition("writer closed closure label is not tracked")
+
+
+def _validate_open_endpoint_partner_liveness(
+    key: WriterStateKey,
+    endpoint,
+    context: WriterGraphObligationContext,
+) -> None:
+    if endpoint.second_atom in key.visited_atoms:
+        if endpoint.second_atom not in _open_writer_atoms(key):
+            _invalid_edge_partition("writer open closure partner atom is frozen")
+        return
+    if not any(
+        endpoint.second_atom in attachment.atoms and attachment.boundary
+        for attachment in context.residual_summary.attachments.attachments
+    ):
+        _invalid_edge_partition("writer open closure partner atom is unreachable")
+
+
+def _open_writer_atoms(key: WriterStateKey) -> frozenset[AtomId]:
+    atoms = {key.active.atom}
+    atoms.update(frame.return_atom.atom for frame in key.branch_stack)
+    pending = key.obligations.pending_entry
+    if pending is not None:
+        atoms.add(pending.parent)
+    return frozenset(atoms)
 
 
 def _validate_closure_obligation(

@@ -41,7 +41,11 @@ from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import WriterAtomFrame
+from grimace._south_star1.writer_state import WriterClosedClosure
+from grimace._south_star1.writer_state import WriterClosureLabel
+from grimace._south_star1.writer_state import WriterOpenClosureEndpoint
 from grimace._south_star1.writer_state import WriterPolicyState
+from grimace._south_star1.writer_state import WriterRingLabelState
 from grimace._south_star1.writer_state import WriterRingState
 from grimace._south_star1.writer_state import WriterState
 from grimace._south_star1.writer_state import WriterStateKey
@@ -370,6 +374,30 @@ class WriterStateKernelTest(unittest.TestCase):
         assert terminal is not None
         self.assertEqual(terminal.active.atom, AtomId(0))
 
+    def test_terminal_finalization_rejects_open_closure_endpoint(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        state = _cyclopropane_terminal_open_closure_state()
+
+        terminal = writer_transitions.finalize_writer_terminal_state(prepared, state)
+
+        self.assertIsNone(terminal)
+        self.assertFalse(writer_transitions.writer_state_is_eos(prepared, state))
+        choices = writer_frontier_choices(
+            prepared,
+            WriterFrontierCursor(
+                weighted_states=((writer_state_key(state), 1),),
+            ),
+        )
+        self.assertIsNone(choices.terminal)
+
+    def test_closed_closure_terminal_state_can_finalize(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        state = _cyclopropane_terminal_closed_closure_state()
+
+        terminal = writer_transitions.finalize_writer_terminal_state(prepared, state)
+
+        self.assertIsNotNone(terminal)
+
     def test_raw_eos_query_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
@@ -633,6 +661,63 @@ def _raw_emitted_root_state(root: AtomId) -> WriterState:
         ring_state=WriterRingState(),
         stereo_state=empty_writer_stereo_state(),
         policy_state=WriterPolicyState(),
+    )
+
+
+def _cyclopropane_terminal_open_closure_state() -> WriterState:
+    label = WriterClosureLabel(value=1, text="1")
+    return WriterState(
+        component_cursor=ComponentCursor(
+            component_index=0,
+            component_roots=(AtomId(0),),
+        ),
+        active=WriterAtomFrame(
+            atom=AtomId(2),
+            parent=AtomId(1),
+            incoming_bond=BondId(1),
+            atom_emitted=True,
+        ),
+        branch_stack=(),
+        visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2))),
+        written_bonds=frozenset((BondId(0), BondId(1))),
+        obligations=ObligationState(),
+        ring_state=WriterRingState(
+            open_endpoints=(
+                WriterOpenClosureEndpoint(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(allocated=(label,)),
+        ),
+        stereo_state=empty_writer_stereo_state(),
+        policy_state=WriterPolicyState(),
+    )
+
+
+def _cyclopropane_terminal_closed_closure_state() -> WriterState:
+    label = WriterClosureLabel(value=1, text="1")
+    return replace(
+        _cyclopropane_terminal_open_closure_state(),
+        ring_state=WriterRingState(
+            closed_closures=(
+                WriterClosedClosure(
+                    bond=BondId(2),
+                    first_atom=AtomId(0),
+                    second_atom=AtomId(2),
+                    label=label,
+                    first_endpoint_text="1",
+                    second_endpoint_text="1",
+                    first_endpoint_bond_text="",
+                    second_endpoint_bond_text="",
+                ),
+            ),
+            label_state=WriterRingLabelState(reusable=(label,)),
+        ),
     )
 
 

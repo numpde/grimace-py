@@ -147,7 +147,9 @@ class WriterStereoResidualTest(unittest.TestCase):
                 WriterDelayedStereoFactor(
                     kind="ring_pair",
                     site=SiteId(2),
-                    evidence=(("ring_endpoint", 2),),
+                    evidence=(
+                        ("ring_endpoint", 2, "open", 0, 2, 1, "1", "1", ""),
+                    ),
                     closed=False,
                 ),
             ),
@@ -191,7 +193,10 @@ class WriterStereoResidualTest(unittest.TestCase):
         assert closed is not None
         self.assertTrue(
             any(
-                factor.kind == "ring_pair" and factor.closed
+                factor.kind == "ring_pair"
+                and factor.closed
+                and factor.evidence
+                == (("ring_pair", 2, 0, 2, 1, "1", "1", "1", "", ""),)
                 for factor in closed.delayed_factors
             )
         )

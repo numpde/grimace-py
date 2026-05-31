@@ -12,6 +12,7 @@ from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import OccurrenceId
+from grimace._south_star1.ids import SiteId
 from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import SerializationLanguageMode
 from grimace._south_star1.policy import TetraToken
@@ -488,6 +489,89 @@ class WriterSnapshotTest(unittest.TestCase):
             runtime_options=options,
         )
 
+    def test_cursor_audit_accepts_open_closure_partner_at_active_atom(self) -> None:
+        prepared = _prepare(triangle_tail_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_tail_open_to_active_key()
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_rejects_open_closure_partner_at_frozen_atom(self) -> None:
+        prepared = _prepare(triangle_tail_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_tail_open_to_active_key()
+        endpoint = key.ring_state.open_endpoints[0]
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(
+                    replace(
+                        endpoint,
+                        first_atom=endpoint.second_atom,
+                        second_atom=endpoint.first_atom,
+                    ),
+                ),
+                label_state=key.ring_state.label_state,
+            ),
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(
+                    _pending_ring_pair_factor(
+                        replace(
+                            endpoint,
+                            first_atom=endpoint.second_atom,
+                            second_atom=endpoint.first_atom,
+                        )
+                    ),
+                ),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_open_closure_unreachable_unvisited_partner(self) -> None:
+        prepared = _prepare(two_atom_facts())
+        options = _writer_options(rooted_at_atom=0)
+        label = _closure_label()
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(0),
+            first_atom=AtomId(0),
+            second_atom=AtomId(1),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        key = replace(
+            _manual_emitted_root_key(AtomId(0)),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                ),
+                delayed_factors=(_pending_ring_pair_factor(endpoint),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_accepts_coherent_closed_closure_state(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -503,6 +587,149 @@ class WriterSnapshotTest(unittest.TestCase):
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
         key = _triangle_terminal_open_closure_key()
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_open_endpoint_without_ring_pair_factor(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            stereo_state=replace(
+                _triangle_root_with_open_closure_key().stereo_state,
+                delayed_factors=(),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_wrong_pending_ring_pair_evidence(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        factor = key.stereo_state.delayed_factors[0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(replace(factor, evidence=(("ring_endpoint", 2, "open", 0, 2, 9, "9", "1", ""),)),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_closed_closure_without_ring_pair_factor(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = replace(
+            _triangle_closed_closure_key(),
+            stereo_state=replace(
+                _triangle_closed_closure_key().stereo_state,
+                delayed_factors=(),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_wrong_closed_ring_pair_evidence(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_closed_closure_key()
+        factor = key.stereo_state.delayed_factors[0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(replace(factor, evidence=(("ring_pair", 2, 0, 2, 9, "9", "1", "1", "", ""),)),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_ring_pair_factor_without_closure_state(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        key = cursor.weighted_states[0][0]
+        label = _closure_label()
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(0),
+            first_atom=AtomId(0),
+            second_atom=AtomId(1),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(_pending_ring_pair_factor(endpoint),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_orphan_allocated_ring_label(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        label = _closure_label()
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_orphan_reusable_ring_label(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        label = _closure_label()
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(),
+                label_state=WriterRingLabelState(reusable=(label,)),
+            ),
+        )
 
         with self.assertRaises(SouthStarError):
             validate_writer_cursor_against_prepared(
@@ -1507,41 +1734,46 @@ def _closure_label() -> WriterClosureLabel:
 
 def _triangle_root_with_open_closure_key():
     label = _closure_label()
+    endpoint = WriterOpenClosureEndpoint(
+        bond=BondId(2),
+        first_atom=AtomId(0),
+        second_atom=AtomId(2),
+        label=label,
+        first_endpoint_text="1",
+        first_endpoint_bond_text="",
+    )
     return replace(
         _manual_emitted_root_key(AtomId(0)),
         ring_state=WriterRingStateKey(
-            open_endpoints=(
-                WriterOpenClosureEndpoint(
-                    bond=BondId(2),
-                    first_atom=AtomId(0),
-                    second_atom=AtomId(2),
-                    label=label,
-                    first_endpoint_text="1",
-                    first_endpoint_bond_text="",
-                ),
-            ),
+            open_endpoints=(endpoint,),
             label_state=WriterRingLabelState(allocated=(label,)),
+        ),
+        stereo_state=replace(
+            empty_writer_stereo_state(),
+            atom_occurrences=(
+                WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+            ),
+            delayed_factors=(_pending_ring_pair_factor(endpoint),),
         ),
     )
 
 
 def _triangle_closed_closure_key():
     label = _closure_label()
+    closure = WriterClosedClosure(
+        bond=BondId(2),
+        first_atom=AtomId(0),
+        second_atom=AtomId(2),
+        label=label,
+        first_endpoint_text="1",
+        second_endpoint_text="1",
+        first_endpoint_bond_text="",
+        second_endpoint_bond_text="",
+    )
     return replace(
         _triangle_closure_candidate_key(),
         ring_state=WriterRingStateKey(
-            closed_closures=(
-                WriterClosedClosure(
-                    bond=BondId(2),
-                    first_atom=AtomId(0),
-                    second_atom=AtomId(2),
-                    label=label,
-                    first_endpoint_text="1",
-                    second_endpoint_text="1",
-                    first_endpoint_bond_text="",
-                    second_endpoint_bond_text="",
-                ),
-            ),
+            closed_closures=(closure,),
             label_state=WriterRingLabelState(reusable=(label,)),
         ),
         stereo_state=replace(
@@ -1567,27 +1799,134 @@ def _triangle_closed_closure_key():
                     None,
                 ),
             ),
+            delayed_factors=(_closed_ring_pair_factor(closure),),
         ),
     )
 
 
 def _triangle_terminal_open_closure_key():
     label = _closure_label()
+    endpoint = WriterOpenClosureEndpoint(
+        bond=BondId(2),
+        first_atom=AtomId(0),
+        second_atom=AtomId(2),
+        label=label,
+        first_endpoint_text="1",
+        first_endpoint_bond_text="",
+    )
     return replace(
         _triangle_closed_closure_key(),
         ring_state=WriterRingStateKey(
-            open_endpoints=(
-                WriterOpenClosureEndpoint(
-                    bond=BondId(2),
-                    first_atom=AtomId(0),
-                    second_atom=AtomId(2),
-                    label=label,
-                    first_endpoint_text="1",
-                    first_endpoint_bond_text="",
-                ),
-            ),
+            open_endpoints=(endpoint,),
             label_state=WriterRingLabelState(allocated=(label,)),
         ),
+        stereo_state=replace(
+            _triangle_closed_closure_key().stereo_state,
+            delayed_factors=(_pending_ring_pair_factor(endpoint),),
+        ),
+    )
+
+
+def _triangle_tail_open_to_active_key():
+    label = _closure_label()
+    endpoint = WriterOpenClosureEndpoint(
+        bond=BondId(2),
+        first_atom=AtomId(0),
+        second_atom=AtomId(2),
+        label=label,
+        first_endpoint_text="1",
+        first_endpoint_bond_text="",
+    )
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(2),
+                parent=AtomId(1),
+                incoming_bond=BondId(1),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2))),
+            written_bonds=frozenset((BondId(0), BondId(1))),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(
+                open_endpoints=(endpoint,),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(2), TetraToken.NONE, None),
+                ),
+                bond_occurrences=(
+                    WriterBondOccurrenceRecord(
+                        BondId(0),
+                        AtomId(0),
+                        AtomId(1),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                    WriterBondOccurrenceRecord(
+                        BondId(1),
+                        AtomId(1),
+                        AtomId(2),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                ),
+                delayed_factors=(_pending_ring_pair_factor(endpoint),),
+            ),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def _pending_ring_pair_factor(endpoint: WriterOpenClosureEndpoint) -> WriterDelayedStereoFactor:
+    return WriterDelayedStereoFactor(
+        kind="ring_pair",
+        site=SiteId(int(endpoint.bond)),
+        evidence=(
+            (
+                "ring_endpoint",
+                int(endpoint.bond),
+                "open",
+                int(endpoint.first_atom),
+                int(endpoint.second_atom),
+                endpoint.label.value,
+                endpoint.label.text,
+                endpoint.first_endpoint_text,
+                endpoint.first_endpoint_bond_text,
+            ),
+        ),
+        closed=False,
+    )
+
+
+def _closed_ring_pair_factor(closure: WriterClosedClosure) -> WriterDelayedStereoFactor:
+    return WriterDelayedStereoFactor(
+        kind="ring_pair",
+        site=SiteId(int(closure.bond)),
+        evidence=(
+            (
+                "ring_pair",
+                int(closure.bond),
+                int(closure.first_atom),
+                int(closure.second_atom),
+                closure.label.value,
+                closure.label.text,
+                closure.first_endpoint_text,
+                closure.second_endpoint_text,
+                closure.first_endpoint_bond_text,
+                closure.second_endpoint_bond_text,
+            ),
+        ),
+        closed=True,
     )
 
 
@@ -1705,6 +2044,39 @@ def triangle_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def two_atom_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C")),
+        bonds=(single_bond(0, 0, 1),),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1)),
+                bonds=(BondId(0),),
+            ),
+        ),
+    )
+
+
+def triangle_tail_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C"), atom(3, "O")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 2, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
             ),
         ),
     )

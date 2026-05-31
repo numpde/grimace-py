@@ -359,6 +359,112 @@ class WriterGraphObligationsTest(unittest.TestCase):
         with self.assertRaises(SouthStarError):
             validate_writer_edge_obligation_partition(prepared, key, partition)
 
+    def test_duplicate_open_closure_bond_records_reject(self) -> None:
+        prepared = _prepare(triangle_facts())
+        first = _closure_label()
+        second = WriterClosureLabel(value=2, text="2")
+        key = replace(
+            _triangle_root_with_open_closure_key(),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(
+                    WriterOpenClosureEndpoint(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=first,
+                        first_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                    ),
+                    WriterOpenClosureEndpoint(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=second,
+                        first_endpoint_text="2",
+                        first_endpoint_bond_text="",
+                    ),
+                ),
+                label_state=WriterRingLabelState(allocated=(first, second)),
+            ),
+        )
+        partition = classify_writer_edge_obligations(prepared, key)
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_edge_obligation_partition(prepared, key, partition)
+
+    def test_duplicate_closed_closure_bond_records_reject(self) -> None:
+        prepared = _prepare(triangle_facts())
+        first = _closure_label()
+        second = WriterClosureLabel(value=2, text="2")
+        key = replace(
+            _triangle_closed_closure_key(),
+            ring_state=WriterRingStateKey(
+                closed_closures=(
+                    WriterClosedClosure(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=first,
+                        first_endpoint_text="1",
+                        second_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                        second_endpoint_bond_text="",
+                    ),
+                    WriterClosedClosure(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=second,
+                        first_endpoint_text="2",
+                        second_endpoint_text="2",
+                        first_endpoint_bond_text="",
+                        second_endpoint_bond_text="",
+                    ),
+                ),
+                label_state=WriterRingLabelState(reusable=(first, second)),
+            ),
+        )
+        partition = classify_writer_edge_obligations(prepared, key)
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_edge_obligation_partition(prepared, key, partition)
+
+    def test_open_and_closed_closure_same_bond_rejects(self) -> None:
+        prepared = _prepare(triangle_facts())
+        label = _closure_label()
+        key = replace(
+            _triangle_closed_closure_key(),
+            ring_state=WriterRingStateKey(
+                open_endpoints=(
+                    WriterOpenClosureEndpoint(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=label,
+                        first_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                    ),
+                ),
+                closed_closures=(
+                    WriterClosedClosure(
+                        bond=BondId(2),
+                        first_atom=AtomId(0),
+                        second_atom=AtomId(2),
+                        label=label,
+                        first_endpoint_text="1",
+                        second_endpoint_text="1",
+                        first_endpoint_bond_text="",
+                        second_endpoint_bond_text="",
+                    ),
+                ),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+        )
+        partition = classify_writer_edge_obligations(prepared, key)
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_edge_obligation_partition(prepared, key, partition)
+
     def test_nonempty_ring_state_key_round_trips_and_sorts_structurally(self) -> None:
         key = _triangle_closed_closure_key()
 

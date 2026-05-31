@@ -816,6 +816,83 @@ def _validate_ring_state(
             _invalid_snapshot("writer closed closure endpoint is not visited")
     if key.ring_state.open_endpoints and _state_is_terminal_shape(prepared, key, context):
         _invalid_snapshot("writer terminal snapshot has open closure endpoints")
+    _validate_ring_pair_delayed_factors(key)
+
+
+def _validate_ring_pair_delayed_factors(key: WriterStateKey) -> None:
+    factors = tuple(
+        factor
+        for factor in key.stereo_state.delayed_factors
+        if factor.kind == "ring_pair"
+    )
+    expected_pending = {
+        _pending_ring_pair_evidence(endpoint): endpoint
+        for endpoint in key.ring_state.open_endpoints
+    }
+    expected_closed = {
+        _closed_ring_pair_evidence(closure): closure
+        for closure in key.ring_state.closed_closures
+    }
+    for endpoint in key.ring_state.open_endpoints:
+        expected = _pending_ring_pair_evidence(endpoint)
+        matches = tuple(
+            factor
+            for factor in factors
+            if not factor.closed
+            and factor.site == SiteId(int(endpoint.bond))
+            and factor.evidence == (expected,)
+        )
+        if len(matches) != 1:
+            _invalid_snapshot("writer open closure lacks matching pending ring-pair factor")
+    for closure in key.ring_state.closed_closures:
+        expected = _closed_ring_pair_evidence(closure)
+        matches = tuple(
+            factor
+            for factor in factors
+            if factor.closed
+            and factor.site == SiteId(int(closure.bond))
+            and factor.evidence == (expected,)
+        )
+        if len(matches) != 1:
+            _invalid_snapshot("writer closed closure lacks matching closed ring-pair factor")
+    for factor in factors:
+        if len(factor.evidence) != 1:
+            _invalid_snapshot("writer ring-pair factor has unexpected evidence shape")
+        evidence = factor.evidence[0]
+        if factor.closed:
+            if evidence not in expected_closed:
+                _invalid_snapshot("writer closed ring-pair factor lacks closure state")
+        elif evidence not in expected_pending:
+            _invalid_snapshot("writer pending ring-pair factor lacks open closure state")
+
+
+def _pending_ring_pair_evidence(endpoint) -> tuple[object, ...]:
+    return (
+        "ring_endpoint",
+        int(endpoint.bond),
+        "open",
+        int(endpoint.first_atom),
+        int(endpoint.second_atom),
+        endpoint.label.value,
+        endpoint.label.text,
+        endpoint.first_endpoint_text,
+        endpoint.first_endpoint_bond_text,
+    )
+
+
+def _closed_ring_pair_evidence(closure) -> tuple[object, ...]:
+    return (
+        "ring_pair",
+        int(closure.bond),
+        int(closure.first_atom),
+        int(closure.second_atom),
+        closure.label.value,
+        closure.label.text,
+        closure.first_endpoint_text,
+        closure.second_endpoint_text,
+        closure.first_endpoint_bond_text,
+        closure.second_endpoint_bond_text,
+    )
 
 
 def _state_is_terminal_shape(
@@ -1202,17 +1279,20 @@ def _validate_delayed_factor_shape(
         bond = BondId(int(factor.site))
         if bond not in prepared.graph_index.bond_by_id:
             _invalid_snapshot("writer ring-pair delayed factor references unknown bond")
-        expected_pending = (("ring_endpoint", int(bond)),)
-        expected_closed = (
-            ("ring_endpoint", int(bond)),
-            ("ring_pair", int(bond)),
-        )
         if factor.scope:
             _invalid_snapshot("writer ring-pair delayed factor has unexpected scope")
+        if len(factor.evidence) != 1:
+            _invalid_snapshot("writer ring-pair delayed factor has unexpected evidence")
+        evidence = factor.evidence[0]
         if factor.closed:
-            if factor.evidence != expected_closed:
+            if len(evidence) != 10 or evidence[0] != "ring_pair" or evidence[1] != int(bond):
                 _invalid_snapshot("writer closed ring-pair delayed factor has unexpected evidence")
-        elif factor.evidence != expected_pending:
+        elif (
+            len(evidence) != 9
+            or evidence[0] != "ring_endpoint"
+            or evidence[1] != int(bond)
+            or evidence[2] != "open"
+        ):
             _invalid_snapshot("writer pending ring-pair delayed factor has unexpected evidence")
         return
     _invalid_snapshot("writer delayed factor has unknown kind")

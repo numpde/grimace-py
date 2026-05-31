@@ -58,9 +58,15 @@ def _draw_scatter(
             if not mode_rows:
                 raise SystemExit(f"No {mode!r} rows in timing input")
             levels = [int(row["level"]) for row in mode_rows]
-            x = [float(row["compression_ratio"]) for row in mode_rows]
+            x = [float(row["compression_ratio"]) * 100 for row in mode_rows]
             y = [float(row[time_field]) * 1_000 for row in mode_rows]
             yerr = [float(row[std_field]) * 1_000 for row in mode_rows]
+            if any(value - error <= 0 for value, error in zip(y, yerr)):
+                raise SystemExit(
+                    f"{mode!r} {time_field} has a non-positive lower error bound; "
+                    "log-scale additive error bars need fresh timing samples or a "
+                    "different uncertainty statistic."
+                )
             ax.plot(
                 x,
                 y,
@@ -91,8 +97,10 @@ def _draw_scatter(
                     color=style["color"],
                 )
 
-        ax.set_xlabel("Compression ratio (compressed / raw)")
+        ax.set_xlabel("Compression ratio, %")
         ax.set_ylabel(ylabel)
+        ax.set_xlim(0, 15)
+        ax.set_yscale("log")
         ax.grid(color="#dddddd", linewidth=0.8)
         ax.set_axisbelow(True)
         ax.legend(frameon=True, edgecolor="#dddddd")

@@ -10,6 +10,8 @@ import zstandard as zstd
 import grimace
 from scripts import generate_prepared_mol_zstd_dictionary as generator
 
+TEST_CREATED_YYYYMMDD = "20000102"
+
 generator.zstd = zstd
 
 
@@ -72,7 +74,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_dir = generator.write_artifact(
                 output_root=Path(tmpdir),
-                created_yyyymmdd="20260531",
+                created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                 dictionary_bytes=dictionary_bytes,
                 identity=identity,
                 force=False,
@@ -96,7 +98,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Dictionary ID mismatch"):
                 generator.write_artifact(
                     output_root=output_root,
-                    created_yyyymmdd="20260531",
+                    created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                     dictionary_bytes=dictionary_bytes,
                     identity=identity,
                     force=False,
@@ -117,7 +119,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "must be nonzero"):
                 generator.write_artifact(
                     output_root=output_root,
-                    created_yyyymmdd="20260531",
+                    created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                     dictionary_bytes=dictionary_bytes,
                     identity=identity,
                     force=False,
@@ -137,7 +139,7 @@ class PreparedMolZstdDictionaryFlightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_dir = generator.write_artifact(
                 output_root=Path(tmpdir),
-                created_yyyymmdd="20260531",
+                created_yyyymmdd=TEST_CREATED_YYYYMMDD,
                 dictionary_bytes=dictionary_bytes,
                 identity=identity,
                 force=False,

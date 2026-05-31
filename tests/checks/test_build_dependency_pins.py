@@ -49,6 +49,7 @@ class BuildDependencyPinTests(unittest.TestCase):
         checked_files = (
             ".github/workflows/release.yml",
             "compose/package.yml",
+            "containers/prepared-mol-zstd-dictionary/Dockerfile",
             "containers/perf/Dockerfile",
             "containers/test/Dockerfile",
         )
@@ -65,6 +66,7 @@ class BuildDependencyPinTests(unittest.TestCase):
 
         checked_files = (
             ".github/workflows/release.yml",
+            "containers/prepared-mol-zstd-dictionary/Dockerfile",
             "containers/package/Dockerfile",
             "containers/perf/Dockerfile",
             "containers/test/Dockerfile",
@@ -90,6 +92,11 @@ class BuildDependencyPinTests(unittest.TestCase):
                     self.assertRegex(text, rf"\brdkit=={re.escape(RDKIT_VERSION)}\b")
                     if relative_path == "containers/package/Dockerfile":
                         self.assertRegex(text, rf"\btwine=={re.escape(TWINE_VERSION)}\b")
+                    if relative_path == "containers/prepared-mol-zstd-dictionary/Dockerfile":
+                        self.assertRegex(
+                            text,
+                            rf"\bzstandard=={re.escape(ZSTANDARD_VERSION)}\b",
+                        )
 
     def test_container_constraints_pin_direct_fixture_tools(self) -> None:
         constraints = pinned_constraints()

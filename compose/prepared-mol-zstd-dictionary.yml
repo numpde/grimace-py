@@ -1,0 +1,43 @@
+services:
+  prepared-mol-zstd-dictionary:
+    build:
+      context: ..
+      dockerfile: containers/prepared-mol-zstd-dictionary/Dockerfile
+    image: grimace-py-prepared-mol-zstd-dictionary:local
+    working_dir: /src
+    user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
+    network_mode: "none"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 3g
+    tmpfs:
+      - /tmp:size=1024m,mode=1777
+    environment:
+      PREPARED_MOL_ZSTD_CREATED_DATE: "${PREPARED_MOL_ZSTD_CREATED_DATE:-}"
+      PREPARED_MOL_ZSTD_FORCE: "${PREPARED_MOL_ZSTD_FORCE:-0}"
+    volumes:
+      - type: bind
+        source: "${PREPARED_MOL_ZSTD_OUTPUT_DIR:?Set PREPARED_MOL_ZSTD_OUTPUT_DIR through Makefile}"
+        target: /out
+        bind:
+          create_host_path: false
+    entrypoint:
+      - /bin/sh
+      - -euc
+      - |
+        case "$${PREPARED_MOL_ZSTD_FORCE}" in
+          0|1) ;;
+          *) printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; exit 2 ;;
+        esac
+        set -- --output-root /out
+        if [ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" ]; then
+          set -- "$$@" --created-date "$${PREPARED_MOL_ZSTD_CREATED_DATE}"
+        fi
+        if [ "$${PREPARED_MOL_ZSTD_FORCE}" = "1" ]; then
+          set -- "$$@" --force
+        fi
+        exec python scripts/generate_prepared_mol_zstd_dictionary.py "$$@"

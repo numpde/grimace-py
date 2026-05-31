@@ -15,6 +15,9 @@ override PERF_ARTIFACTS := $(PERF_ARTIFACT_FILES) $(PERF_ARTIFACT_DIRS)
 override DOCS_SOURCE_DIR := docs
 override DOCS_OUTPUT_DIR := build/docs-site
 DOCS_PORT ?= 8000
+PREPARED_MOL_ZSTD_OUTPUT_DIR ?= $(HOME)/tmp/grimace-prepared-mol-zstd
+PREPARED_MOL_ZSTD_CREATED_DATE ?=
+PREPARED_MOL_ZSTD_FORCE ?= 0
 
 NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$ ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user with positive numeric UID and GID.' >&2; exit 2; fi
 DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_PORT}" -gt 65535 ]]; then printf '%s\n' 'Refusing to run docs lane with DOCS_PORT outside 1..65535.' >&2; exit 2; fi
@@ -28,9 +31,12 @@ define compose_run
 $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test parity exact-public-invariants package perf docs docs-serve ci
+.PHONY: help checks rust test parity exact-public-invariants package perf prepared-mol-zstd-dictionary docs docs-serve ci
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
+prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_OUTPUT_DIR := $(PREPARED_MOL_ZSTD_OUTPUT_DIR)
+prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
+prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_FORCE := $(value PREPARED_MOL_ZSTD_FORCE)
 
 help:
 	@printf '%s\n' \
@@ -42,6 +48,7 @@ help:
 	  '  make exact-public-invariants  Run exact public invariant tests' \
 	  '  make package  Build and validate wheel/sdist artifacts under dist/' \
 	  '  make perf     Update opt-in timing docs and timing history' \
+	  '  make prepared-mol-zstd-dictionary  Generate the PreparedMol zstd dictionary artifact' \
 	  '  make docs     Build the documentation site under build/docs-site/' \
 	  '  make docs-serve  Serve the documentation site on DOCS_PORT' \
 	  '  make ci      Run checks, rust, test, parity, and exact invariants' \
@@ -49,6 +56,9 @@ help:
 	  'Variables:' \
 	  '  DOCS_PORT=8000  Local docs URL and docs-serve host port; must be 1..65535' \
 	  '  Example: make docs-serve DOCS_PORT=8010' \
+	  '  PREPARED_MOL_ZSTD_OUTPUT_DIR=$$HOME/tmp/grimace-prepared-mol-zstd' \
+	  '  PREPARED_MOL_ZSTD_CREATED_DATE=YYYYMMDD  Optional artifact date override' \
+	  '  PREPARED_MOL_ZSTD_FORCE=1  Replace the computed artifact directory' \
 	  '' \
 	  'Docker-backed lanes refuse root execution and use strict Compose posture.'
 
@@ -87,6 +97,28 @@ perf:
 	fi; \
 	export GRIMACE_PERF_GIT_COMMIT GRIMACE_PERF_GIT_CHANGE GRIMACE_PERF_GIT_DIRTY; \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/perf.yml run --build --rm perf
+
+prepared-mol-zstd-dictionary:
+	@$(NON_ROOT_GUARD); \
+	output_dir="$${PREPARED_MOL_ZSTD_OUTPUT_DIR:?Set PREPARED_MOL_ZSTD_OUTPUT_DIR}"; \
+	if [[ ! "$${PREPARED_MOL_ZSTD_FORCE}" =~ ^(0|1)$$ ]]; then \
+	  printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; \
+	  exit 2; \
+	fi; \
+	if [[ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" && ! "$${PREPARED_MOL_ZSTD_CREATED_DATE}" =~ ^[0-9]{8}$$ ]]; then \
+	  printf '%s\n' 'PREPARED_MOL_ZSTD_CREATED_DATE must be YYYYMMDD when set.' >&2; \
+	  exit 2; \
+	fi; \
+	mkdir -p -- "$$output_dir"; \
+	resolved="$$(realpath -e -- "$$output_dir")"; \
+	if [[ ! -d "$$resolved" || -L "$$output_dir" || -L "$$resolved" ]]; then \
+	  printf '%s\n' 'Refusing to bind PREPARED_MOL_ZSTD_OUTPUT_DIR because it is missing, a symlink, or not a directory.' >&2; \
+	  exit 2; \
+	fi; \
+	PREPARED_MOL_ZSTD_OUTPUT_DIR="$$resolved" \
+	PREPARED_MOL_ZSTD_CREATED_DATE="$${PREPARED_MOL_ZSTD_CREATED_DATE}" \
+	PREPARED_MOL_ZSTD_FORCE="$${PREPARED_MOL_ZSTD_FORCE}" \
+	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml run --build --rm prepared-mol-zstd-dictionary
 
 docs:
 	@$(NON_ROOT_GUARD)

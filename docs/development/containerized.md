@@ -16,6 +16,7 @@ and avoid the host Python environment for routine checks.
 | `make exact-public-invariants` | `exact-public-invariants` service in `compose/test.yml` | Container-local test output only |
 | `make package` | `package` service in `compose/package.yml` | `dist/` |
 | `make perf` | `perf` service in `compose/perf.yml` | Timing docs and timing history |
+| `make prepared-mol-zstd-dictionary` | `prepared-mol-zstd-dictionary` service in `compose/prepared-mol-zstd-dictionary.yml` | PreparedMol zstd dictionary artifact output directory |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
 | `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, performance, or docs artifacts |
@@ -41,6 +42,16 @@ symlinked `dist/` and clears direct children before building.
 - `docs/timings.md`
 - `docs/timing-plots/`
 - `notes/004_perf_history.jsonl`
+
+`make prepared-mol-zstd-dictionary` builds an installed-package image with the
+pinned generator dependencies and writes only to `PREPARED_MOL_ZSTD_OUTPUT_DIR`,
+which defaults to `$HOME/tmp/grimace-prepared-mol-zstd`. Optional controls:
+
+```bash
+make prepared-mol-zstd-dictionary \
+  PREPARED_MOL_ZSTD_CREATED_DATE=20260531 \
+  PREPARED_MOL_ZSTD_FORCE=1
+```
 
 `make docs` reads `docs/` read-only and writes the local Pages build to
 `build/docs-site/`. `build/` is ignored by git, so `git status build` reports

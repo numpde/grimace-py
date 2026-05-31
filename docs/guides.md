@@ -14,7 +14,7 @@ title: Guides
 
 | Task | Guide |
 |---|---|
-| Run checks, tests, docs, packaging, and timings through Docker-backed `make` lanes. | [Containerized development](development/containerized.md) |
+| Run checks, tests, docs, packaging, timings, and artifact generation through Docker-backed `make` lanes. | [Containerized development](development/containerized.md) |
 | Read fixture-family counts, provenance counts, promotion rules, and fixture maintenance rules. | [Testing fixtures](testing-fixtures.md) |
 | Trace reviewed upstream RDKit serializer tests to executable Grimace fixture evidence. | [RDKit serializer coverage](rdkit-serializer-coverage.md) |
 

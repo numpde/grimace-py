@@ -197,6 +197,27 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNone(state)
 
+    def test_ring_endpoint_event_rejects_non_least_free_label(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=2, text="2")
+
+        state = advance_writer_stereo_state(
+            prepared,
+            empty_writer_stereo_state(),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="2",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNone(state)
+
     def test_ring_endpoint_event_rejects_endpoint_text_mismatch(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
@@ -415,6 +436,38 @@ class WriterStereoResidualTest(unittest.TestCase):
                     partner_atom=AtomId(0),
                     label=outside,
                     endpoint_text="%10",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNone(closed)
+
+    def test_ring_endpoint_pair_rejects_non_least_free_label(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=2, text="2")
+        pending = replace(
+            empty_writer_stereo_state(),
+            delayed_factors=(
+                WriterDelayedStereoFactor(
+                    kind="ring_pair",
+                    site=SiteId(2),
+                    evidence=(("ring_endpoint", 2, "open", 0, 2, 2, "2", "2", ""),),
+                    closed=False,
+                ),
+            ),
+        )
+
+        closed = advance_writer_stereo_state(
+            prepared,
+            pending,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=label,
+                    endpoint_text="2",
                     bond_text="",
                 ),
             ),

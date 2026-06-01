@@ -571,6 +571,35 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_non_least_free_open_closure_label(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        label = WriterClosureLabel(value=2, text="2")
+        endpoint = replace(
+            key.ring_state.open_endpoints[0],
+            label=label,
+            first_endpoint_text="2",
+        )
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(_pending_ring_pair_factor(endpoint),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_open_closure_bond_text_outside_policy(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)

@@ -475,6 +475,8 @@ def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
         return False
     if policy_label not in prepared.policy.ring_labels:
         return False
+    if prepared.policy.least_free_ring_labels and policy_label != _least_policy_label(prepared):
+        return False
     if event.label.text != expected_label:
         return False
     if event.endpoint_text != event.label.text:
@@ -498,6 +500,10 @@ def _ring_endpoint_bond_texts(
         for choice in choices
         if choice.base_text not in {"/", "\\"}
     )
+
+
+def _least_policy_label(prepared: SouthStarPreparedMol) -> RingLabel:
+    return min(prepared.policy.ring_labels, key=lambda label: label.value)
 
 
 def _reject_supported_ring_pair_stereo(

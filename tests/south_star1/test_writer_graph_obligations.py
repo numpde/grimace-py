@@ -319,7 +319,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             {writer_transitions.WriterTransitionKind.ENTER_INLINE_CHILD},
         )
 
-    def test_triangle_partial_state_has_boundary_edges_to_one_attachment(self) -> None:
+    def test_triangle_partial_state_with_mixed_boundary_ownership_is_blocked(self) -> None:
         prepared = _prepare(triangle_facts())
         key = _triangle_two_visited_key()
 
@@ -340,7 +340,32 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual(len(summary.attachments.attachments[0].boundary), 2)
         self.assertEqual(
             tuple(action.kind for action in summary.attachment_actions),
-            (WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,),
+            (WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,),
+        )
+        transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
+
+        self.assertNotIn(
+            writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+            {transition.kind for transition in transitions},
+        )
+
+    def test_frozen_single_boundary_residual_is_blocked_unowned(self) -> None:
+        prepared = _prepare(cco_facts())
+        key = _cco_frozen_single_boundary_key()
+
+        summary = _summary(prepared, key)
+
+        self.assertEqual(len(summary.attachments.attachments), 1)
+        self.assertEqual(len(summary.attachments.attachments[0].boundary), 1)
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,),
+        )
+        transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
+
+        self.assertNotIn(
+            writer_transitions.WriterTransitionKind.ENTER_INLINE_CHILD,
+            {transition.kind for transition in transitions},
         )
 
     def test_triangle_closure_candidate_is_explicit_and_fails_closed(self) -> None:
@@ -716,6 +741,30 @@ def _triangle_two_visited_key():
                 atom=AtomId(1),
                 parent=AtomId(0),
                 incoming_bond=BondId(0),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1))),
+            written_bonds=frozenset((BondId(0),)),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def _cco_frozen_single_boundary_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(0),
+                parent=None,
+                incoming_bond=None,
                 atom_emitted=True,
             ),
             branch_stack=(),

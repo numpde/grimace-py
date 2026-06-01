@@ -1157,6 +1157,30 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_mixed_owned_unowned_boundary_attachment(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_two_visited_key()
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_frozen_single_boundary_attachment(self) -> None:
+        prepared = _prepare(cco_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _cco_frozen_single_boundary_key()
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
     def test_snapshot_rejects_completed_cyclic_component_outside_current_component(self) -> None:
         prepared = _prepare(triangle_plus_singleton_facts())
         options = _writer_options(rooted_at_atom=3)
@@ -2035,6 +2059,84 @@ def _triangle_closure_candidate_key():
             obligations=ObligationState(),
             ring_state=WriterRingState(),
             stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def _triangle_two_visited_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(1),
+                parent=AtomId(0),
+                incoming_bond=BondId(0),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1))),
+            written_bonds=frozenset((BondId(0),)),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                ),
+                bond_occurrences=(
+                    WriterBondOccurrenceRecord(
+                        BondId(0),
+                        AtomId(0),
+                        AtomId(1),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                ),
+            ),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def _cco_frozen_single_boundary_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(0),
+                parent=None,
+                incoming_bond=None,
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1))),
+            written_bonds=frozenset((BondId(0),)),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                ),
+                bond_occurrences=(
+                    WriterBondOccurrenceRecord(
+                        BondId(0),
+                        AtomId(0),
+                        AtomId(1),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                ),
+            ),
             policy_state=WriterPolicyState(),
         )
     )

@@ -510,11 +510,19 @@ def _residual_attachment_action(
         else:
             kind = WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
     elif boundary_count == 1:
-        kind = (
-            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
-            if cyclic_backed
-            else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
-        )
+        if owner_atoms:
+            kind = (
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                if cyclic_backed
+                else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            )
+        else:
+            kind = WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
+    elif any(
+        incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
+        for incidence in attachment.boundary
+    ):
+        kind = WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
     elif owner_atoms:
         kind = WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
     else:

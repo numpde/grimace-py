@@ -151,3 +151,10 @@ are evidence discovery, not evidence acceptance.
 
 Both scripts refuse to overwrite an existing output path unless `--force` is
 passed. Use `--force` only when intentionally replacing a local review artifact.
+
+The checked-in `top_100000` molecule fixture has no atom-map labels. Do not add
+a dataset-mined `ignore_atom_maps` support-count shard from that source: it
+would exercise a flag value on molecules where the flag has no semantic effect.
+Mapped-atom behavior belongs in the existing exact-support and writer-flag
+fixtures unless a deliberately constructed large mapped case justifies a
+count-only shard.

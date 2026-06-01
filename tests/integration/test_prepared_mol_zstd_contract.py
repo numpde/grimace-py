@@ -167,6 +167,16 @@ def _compress_with_shipped_dictionary(
     ).compress(raw_payload)
 
 
+def _compress_without_dictionary(raw_payload: bytes) -> bytes:
+    import zstandard as zstd
+
+    return zstd.ZstdCompressor(
+        level=3,
+        write_checksum=True,
+        write_content_size=True,
+    ).compress(raw_payload)
+
+
 class PreparedMolZstdContractTests(unittest.TestCase):
     def _prepare(self, smiles: str, **kwargs: object) -> grimace.PreparedMol:
         return grimace.PrepareMol(parse_smiles(smiles), **kwargs)
@@ -395,6 +405,17 @@ with mock.patch("importlib.resources.files", wraps=real_files) as files:
             grimace.PreparedMol.from_bytes(
                 _with_zstd_dictionary_id(zstd_payload, unknown_dictionary_id),
             )
+
+    def test_compressed_payload_without_dictionary_id_is_rejected(self) -> None:
+        raw_payload = self._prepare("CCO", isomericSmiles=False).to_bytes()
+        zstd_payload = _compress_without_dictionary(raw_payload)
+        header = _read_zstd_frame_header(zstd_payload)
+        self.assertIsNone(header.dictionary_id)
+        self.assertTrue(header.has_content_size)
+        self.assertTrue(header.has_checksum)
+
+        with self.assertRaises(ValueError):
+            grimace.PreparedMol.from_bytes(zstd_payload)
 
     def test_compressed_payload_without_checksum_is_rejected(self) -> None:
         raw_payload = self._prepare("CCO", isomericSmiles=False).to_bytes()

@@ -1,0 +1,47 @@
+{
+  "rdkit_version": "2026.03.1",
+  "surface": "nonisomeric__random",
+  "flags": {
+    "isomericSmiles": false,
+    "canonical": false,
+    "doRandom": true,
+    "kekuleSmiles": false,
+    "allBondsExplicit": false,
+    "allHsExplicit": false,
+    "ignoreAtomMapNumbers": false
+  },
+  "selection": {
+    "purpose": "Cover global rootedAtAtom values that point into a nonfirst disconnected fragment.",
+    "source": "Manual selection from dataset-derived disconnected support-count candidates."
+  },
+  "accepted": [
+    {
+      "id": "pubchem_23681059_nonisomeric_random_root17_counterion",
+      "cid": "23681059",
+      "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)[O-].[Na+]",
+      "rooted_at_atom": 17,
+      "support_count": 1504,
+      "root_fragment": "[Na+]"
+    },
+    {
+      "id": "pubchem_66259_nonisomeric_random_root19_chloride",
+      "cid": "66259",
+      "smiles": "CC1=CC(=C(C(=C1CC2=NCCN2)C)O)C(C)(C)C.Cl",
+      "rooted_at_atom": 19,
+      "support_count": 1248,
+      "root_fragment": "Cl"
+    }
+  ],
+  "not_promoted": [
+    {
+      "id": "pubchem_17730_nonisomeric_random_root27_counterion",
+      "cid": "17730",
+      "reason": "Too large for this runtime fixture lane at the current budget.",
+      "observed_seed_counts": [
+        16911,
+        16912
+      ],
+      "max_draws": 300000
+    }
+  ]
+}

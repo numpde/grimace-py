@@ -369,6 +369,78 @@
           }
         ]
       }
+    },
+    {
+      "id": "pubchem_23681059_nonisomeric_random_root17_counterion",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 23681059, rooted in nonfirst counterion fragment)",
+      "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)[O-].[Na+]",
+      "rooted_at_atom": 17,
+      "support_count": 1504,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 55760,
+            "support_count": 1504,
+            "consecutive_draws_without_new_variant": 30080,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 45864,
+            "support_count": 1504,
+            "consecutive_draws_without_new_variant": 30080,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_66259_nonisomeric_random_root19_chloride",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 66259, rooted in nonfirst chloride fragment)",
+      "smiles": "CC1=CC(=C(C(=C1CC2=NCCN2)C)O)C(C)(C)C.Cl",
+      "rooted_at_atom": 19,
+      "support_count": 1248,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 50581,
+            "support_count": 1248,
+            "consecutive_draws_without_new_variant": 24960,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 52182,
+            "support_count": 1248,
+            "consecutive_draws_without_new_variant": 24960,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
     }
   ]
 }

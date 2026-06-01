@@ -84,7 +84,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
-    def test_package_compose_uses_container_local_artifacts(self) -> None:
+    def test_test_package_compose_uses_container_local_artifacts(self) -> None:
         compose = read_text("compose/test-package.yml")
         self.assertRegex(compose, r"(?m)^  test-package:$")
         self.assertIn("dockerfile: containers/test-package/Dockerfile", compose)
@@ -419,7 +419,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("tests.run_installed_package_correctness", dockerfile)
         self.assertIn("USER 65532:65532", dockerfile)
 
-    def test_package_dockerfile_builds_release_artifact_image(self) -> None:
+    def test_test_package_dockerfile_builds_artifact_test_image(self) -> None:
         dockerfile = read_text("containers/test-package/Dockerfile")
         self.assertRegex(dockerfile, r"(?m)^FROM python:.+@sha256:")
         self.assertRegex(dockerfile, r"(?m)^FROM rust:.+@sha256:")

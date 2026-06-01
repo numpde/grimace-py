@@ -20,7 +20,7 @@ and avoid the host Python environment for routine checks.
 | `make timings-prepared-mol-zstd` | `timings-prepared-mol-zstd` service in `compose/timings-prepared-mol-zstd.yml` | PreparedMol zstd timing TSV and plots |
 | `make docs` | `docs` service in `compose/docs.yml`; GitHub Pages Jekyll image | `build/docs-site/` |
 | `make docs-serve` | `make docs`, then `docs-serve` service in `compose/docs.yml` | Rebuilds `build/docs-site/`; publishes a local HTTP port |
-| `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, performance, or docs artifacts |
+| `make ci` | `checks`, `rust`, `test`, `parity`, and `exact-public-invariants` | No package, timing, or docs artifacts |
 
 ## Details
 
@@ -35,7 +35,7 @@ make exact-public-invariants
 ```
 
 `make test-package` builds release-shaped wheel and source distribution
-artifacts inside the package-validation container, validates them, installs
+artifacts inside the `test-package` container, validates them, installs
 them into fresh container-local virtual environments, runs installed-package
 correctness tests, and exits without writing package artifacts to the checkout.
 

@@ -1,15 +1,15 @@
 # Strict Containerization Plan
 
-This note plans Docker-backed development, test, package, and release-support
-lanes for `grimace-py`. The goal is a strict, auditable boundary similar in
-spirit to `vote-mcp` and `dapp32`: routine checks should not depend on the host
-Python environment, and every container lane should declare its filesystem,
-network, user, and write posture.
+This note plans Docker-backed development, test, package-test, and
+release-support lanes for `grimace-py`. The goal is a strict, auditable
+boundary similar in spirit to `vote-mcp` and `dapp32`: routine checks should
+not depend on the host Python environment, and every container lane should
+declare its filesystem, network, user, and write posture.
 
 ## Goal
 
-Make Docker-backed lanes the normal way to run local checks, package
-validation, and release-support commands. The checklist below is the contract:
+Make Docker-backed lanes the normal way to run local checks, package tests, and
+release-support commands. The checklist below is the contract:
 each item should be independently reviewable, runnable, and testable before the
 next heavier lane is added.
 
@@ -22,12 +22,14 @@ compose/
   checks.yml
   test.yml
   test-package.yml
-  perf.yml
+  timings-enum.yml
+  timings-prepared-mol-zstd.yml
 containers/
   checks/Dockerfile
   test/Dockerfile
   test-package/Dockerfile
-  perf/Dockerfile
+  timings-enum/Dockerfile
+  timings-prepared-mol-zstd/Dockerfile
 tests/checks/
   test_container_posture.py
   test_release_notes.py
@@ -80,7 +82,7 @@ until the dependency surface is large enough to justify the extra object.
   - Copied build context for build, test, and package-test lanes.
   - Read-write repo mounts only for lanes whose purpose is to update checked-in
     artifacts.
-  - Controlled write locations only for build artifacts and perf output.
+  - Controlled write locations only for build artifacts and timing output.
   - Pinned base images by digest.
   - Pinned Rust `1.83.0`, RDKit `2026.3.1`, `maturin`, and `twine`.
 
@@ -216,45 +218,45 @@ until the dependency surface is large enough to justify the extra object.
   - Keep artifacts container-local unless a release workflow explicitly uploads
     them.
 
-  Added a separate package image because package validation needs `twine` and
-  release-shaped artifacts. The package-test lane uses copied source context,
+  Added a separate test-package image because artifact validation needs `twine`
+  and release-shaped artifacts. The package-test lane uses copied source context,
   writes artifacts under a container-local temporary directory, builds wheel and
   sdist, runs `twine check`, and validates both installed artifacts. Validated
   with `make test-package` and `make checks`.
 
-- [x] Add the perf lane last.
-  - `make perf`.
-  - Keep it clearly opt-in.
-  - Mount only the timing artifacts read-write because it updates
-    `docs/timings.*` and `notes/004_perf_history.jsonl`.
+- [x] Add timing lanes last.
+  - `make timings-enum`.
+  - `make timings-prepared-mol-zstd`.
+  - Keep them clearly opt-in.
+  - Mount only the timing artifacts read-write.
   - Keep every other routine lane write-free with respect to the source tree.
-  - Keep it out of default `make ci`.
+  - Keep them out of default `make ci`.
 
-  Added a separate perf image so the normal test image remains correctness-only.
-  The Make target captures Git metadata before the benchmark writes timing
-  artifacts, then the perf image builds and installs the package from copied
-  context and runs the opt-in performance suite with only the timing outputs
-  and timing plot directory mounted read-write. Runtime network is disabled.
-  Validated with `docker compose -f compose/perf.yml config`, `make checks`,
-  and a targeted perf-container writable-artifact check.
+  Added separate timing images so the normal test image remains
+  correctness-only. The Make targets capture Git metadata before benchmarks
+  write timing artifacts. Each timing image builds and installs the package from
+  copied context, then updates only its declared timing outputs. Runtime network
+  is disabled. Validated with `make checks` and targeted timing-container
+  writable-artifact checks.
 
 - [x] Document minimally.
   - Add a short README section for containerized development.
-  - Mention `make checks`, `make test`, `make test-package`, and `make perf`.
+  - Mention `make checks`, `make test`, `make test-package`, and timing lanes.
   - State that default lanes avoid host Python and host build artifacts.
 
   Added a short README section for Docker-backed local lanes and updated the
-  timing-regeneration command to `make perf`. Added matching command pointers
-  to `tests/README.md`. Validated with `make checks` and `git diff --check`.
+  timing-regeneration commands. Added matching command pointers to
+  `tests/README.md`. Validated with `make checks` and `git diff --check`.
 
 - [x] Only then revise GitHub CI.
   - Switch CI to Make targets after local container lanes are stable.
   - Keep release workflow separate.
-  - Do not make perf part of default CI.
+  - Do not make timing lanes part of default CI.
 
   Replaced host-venv CI jobs with Docker-backed `make ci` and `make test-package`
-  jobs. Kept perf out of default CI. Added offline posture checks for CI and
-  release workflow token permissions and non-persistent checkout credentials.
+  jobs. Kept timing lanes out of default CI. Added offline posture checks for
+  CI and release workflow token permissions and non-persistent checkout
+  credentials.
   The `make ci` checkout fetches tag metadata because release-note checks need
   local `v0.1.*` tags.
   Added release artifact allowlist validation before GitHub release and PyPI
@@ -305,15 +307,16 @@ the tag-triggered GitHub workflow. The package-test service builds into a
 container-local temporary directory, installs the wheel and sdist into fresh
 container-local virtual environments, and exits without a host artifact mount.
 
-### Perf
+### Timings
 
-`make perf` is intentionally not strict in the same way as default checks: it is
-write-enabled and long-running. Its strictness comes from being explicit,
-opt-in, and limited to the timing output files it owns.
-It refuses to bind perf output files that are missing, symlinks, or resolved
-outside the physical repository path. The physical repository path and artifact
-list are Makefile facts, not command-line overrides. Perf bind mounts also
-disable implicit host-path creation.
+`make timings-enum` and `make timings-prepared-mol-zstd` are intentionally not
+strict in the same way as default checks: they are write-enabled and
+long-running. Their strictness comes from being explicit, opt-in, and limited
+to the timing output files they own.
+They refuse to bind timing output files or directories that are missing,
+symlinks, or resolved outside the physical repository path. The physical
+repository path and artifact lists are Makefile facts, not command-line
+overrides. Timing bind mounts also disable implicit host-path creation.
 
 ### Rust Dependency Lock
 
@@ -351,7 +354,7 @@ tool and fixture dependencies.
 
 Release artifact install checks follow the same principle: install the pinned
 test fixtures first, then install the built wheel or sdist with `--no-deps`.
-Copied-context test and perf images also install the locally built wheel with
+Copied-context test and timing images also install the locally built wheel with
 `--no-deps`; dependency resolution belongs to the explicit fixture install
 step.
 

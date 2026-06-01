@@ -97,7 +97,19 @@ Use writer support-count fixtures only when storing every support string is not
 worth the noise. These fixtures retain the count plus the RDKit sampling
 evidence: per-seed draw counts, no-new-variant streaks, singleton/doubleton
 counts, and unseen-mass estimates. They are saturation-backed evidence, not a
-mathematical exhaustive proof.
+mathematical exhaustive proof. Prefer `rdkit_exact_small_support` whenever the
+full support set is small enough to keep.
+
+Some count cases need a larger draw budget before independent RDKit seeds agree.
+For example, `pubchem_17730_nonisomeric_random_root27_counterion` first stopped
+at nearby counts and was promoted only after a higher-budget retry saturated at
+`16920`.
+
+Do not mine `ignore_atom_maps` count evidence from the checked-in `top_100000`
+dataset: that fixture has no atom-map labels, so the flag has no semantic
+effect there. Atom-map behavior is covered by exact-support and writer-flag
+fixtures unless a deliberately constructed large mapped case justifies
+count-only evidence.
 
 ## Maintenance checklist
 

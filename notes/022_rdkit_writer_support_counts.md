@@ -98,6 +98,12 @@ A run is accepted only when:
 These fields are recorded so the strength of the count evidence is visible
 without re-running RDKit.
 
+Large cases may require higher `max_draws` before independent RDKit seeds
+converge. For example,
+`pubchem_17730_nonisomeric_random_root27_counterion` first stopped at nearby
+counts (`16911` and `16912`) with `max_draws=300000`, then saturated at
+`16920` with `max_draws=1000000`.
+
 ## Test Contract
 
 The fixture loader validates schema, flags, filename/flag consistency, evidence

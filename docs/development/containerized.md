@@ -14,7 +14,7 @@ and avoid the host Python environment for routine checks.
 | `make test` | `test` service in `compose/test.yml`; installed package | Container-local test output only |
 | `make parity` | `parity` service in `compose/test.yml`; pinned RDKit parity | Container-local test output only |
 | `make exact-public-invariants` | `exact-public-invariants` service in `compose/test.yml` | Container-local test output only |
-| `make package` | `package` service in `compose/package.yml` | `dist/` |
+| `make test-package` | `test-package` service in `compose/test-package.yml` | Container-local temporary directory only |
 | `make timings-enum` | `timings-enum` service in `compose/timings-enum.yml` | Enum/support timing docs and timing history |
 | `make prepared-mol-zstd-dictionary` | `prepared-mol-zstd-dictionary` service in `compose/prepared-mol-zstd-dictionary.yml` | `python/grimace/data/prepared_mol_zstd/` |
 | `make timings-prepared-mol-zstd` | `timings-prepared-mol-zstd` service in `compose/timings-prepared-mol-zstd.yml` | PreparedMol zstd timing TSV and plots |
@@ -34,8 +34,10 @@ make parity
 make exact-public-invariants
 ```
 
-`make package` writes release artifacts under `dist/`. The Makefile refuses a
-symlinked `dist/` and clears direct children before building.
+`make test-package` builds release-shaped wheel and source distribution
+artifacts inside the package-validation container, validates them, installs
+them into fresh container-local virtual environments, runs installed-package
+correctness tests, and exits without writing package artifacts to the checkout.
 
 `make timings-enum` is opt-in and write-enabled for:
 

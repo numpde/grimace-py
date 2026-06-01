@@ -1,5 +1,5 @@
 services:
-  package:
+  test-package:
     build:
       context: ..
       dockerfile: containers/package/Dockerfile
@@ -20,24 +20,19 @@ services:
       - /venv:size=1024m,mode=1777,exec
     environment:
       CARGO_TARGET_DIR: /cargo-target
-    volumes:
-      - type: bind
-        source: ../dist
-        target: /dist
-        bind:
-          create_host_path: false
     entrypoint:
       - /bin/sh
       - -euxc
       - |
-        python -m maturin build --release --out /dist -i python3.12
-        python -m maturin build --release --sdist --out /dist -i python3.12
-        python -m twine check /dist/*
-        python scripts/validate_release_artifacts.py /dist/*.whl --wheel-only
-        python scripts/validate_release_artifacts.py /dist/*.tar.gz --sdist-only
+        dist_dir="$$(mktemp -d /tmp/grimace-dist.XXXXXX)"
+        python -m maturin build --release --out "$$dist_dir" -i python3.12
+        python -m maturin build --release --sdist --out "$$dist_dir" -i python3.12
+        python -m twine check "$$dist_dir"/*
+        python scripts/validate_release_artifacts.py "$$dist_dir"/*.whl --wheel-only
+        python scripts/validate_release_artifacts.py "$$dist_dir"/*.tar.gz --sdist-only
         python -m venv --system-site-packages /venv/wheel
-        /venv/wheel/bin/python -m pip install --no-deps /dist/*.whl
+        /venv/wheel/bin/python -m pip install --no-deps "$$dist_dir"/*.whl
         /venv/wheel/bin/python -m unittest tests.run_installed_package_correctness -q
         python -m venv --system-site-packages /venv/sdist
-        /venv/sdist/bin/python -m pip install --no-deps --no-build-isolation /dist/*.tar.gz
+        /venv/sdist/bin/python -m pip install --no-deps --no-build-isolation "$$dist_dir"/*.tar.gz
         /venv/sdist/bin/python -m unittest tests.run_installed_package_correctness -q

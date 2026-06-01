@@ -93,7 +93,7 @@ Routine local checks are Docker-backed:
 ```bash
 make checks
 make ci
-make package
+make test-package
 make docs
 make docs-serve
 ```

@@ -59,7 +59,7 @@ class WorkflowPostureTests(unittest.TestCase):
     def test_ci_checks_job_fetches_tags_for_release_note_checks(self) -> None:
         workflow = read_text(".github/workflows/ci.yml")
         checks_job = job_section(workflow, "container-ci")
-        package_job = job_section(workflow, "package")
+        package_job = job_section(workflow, "test-package")
         self.assertIn("fetch-depth: 0", checks_job)
         self.assertNotIn("fetch-depth: 0", package_job)
 

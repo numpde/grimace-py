@@ -21,7 +21,7 @@ Makefile
 compose/
   checks.yml
   test.yml
-  package.yml
+  test-package.yml
   perf.yml
 containers/
   checks/Dockerfile
@@ -206,19 +206,21 @@ until the dependency surface is large enough to justify the extra object.
   Added all correctness Make targets and `ci` dependency expansion. Validated
   with `make help`, posture tests, and `make ci`.
 
-- [x] Add the package lane.
+- [x] Add the package-test lane.
   - Create `containers/package/Dockerfile` only if the test image becomes too
     broad.
   - Copy the repository into the image as the build context.
   - Build wheel and sdist.
   - Run `twine check`.
   - Install built wheel/sdist and run installed-package correctness.
-  - Write artifacts only to `dist/` or a named output path.
+  - Keep artifacts container-local unless a release workflow explicitly uploads
+    them.
 
   Added a separate package image because package validation needs `twine` and
-  writes artifacts. The package lane uses copied source context, writes only to
-  host `dist/`, builds wheel and sdist, runs `twine check`, and validates both
-  installed artifacts. Validated with `make package` and `make checks`.
+  release-shaped artifacts. The package-test lane uses copied source context,
+  writes artifacts under a container-local temporary directory, builds wheel and
+  sdist, runs `twine check`, and validates both installed artifacts. Validated
+  with `make test-package` and `make checks`.
 
 - [x] Add the perf lane last.
   - `make perf`.
@@ -238,7 +240,7 @@ until the dependency surface is large enough to justify the extra object.
 
 - [x] Document minimally.
   - Add a short README section for containerized development.
-  - Mention `make checks`, `make test`, `make package`, and `make perf`.
+  - Mention `make checks`, `make test`, `make test-package`, and `make perf`.
   - State that default lanes avoid host Python and host build artifacts.
 
   Added a short README section for Docker-backed local lanes and updated the
@@ -250,7 +252,7 @@ until the dependency surface is large enough to justify the extra object.
   - Keep release workflow separate.
   - Do not make perf part of default CI.
 
-  Replaced host-venv CI jobs with Docker-backed `make ci` and `make package`
+  Replaced host-venv CI jobs with Docker-backed `make ci` and `make test-package`
   jobs. Kept perf out of default CI. Added offline posture checks for CI and
   release workflow token permissions and non-persistent checkout credentials.
   The `make ci` checkout fetches tag metadata because release-note checks need
@@ -272,13 +274,13 @@ until the dependency surface is large enough to justify the extra object.
   - `make test`.
   - `make parity`.
   - `make exact-public-invariants`.
-  - `make package`.
+  - `make test-package`.
   - `git diff --check`.
   - Confirm no generated/cache artifacts are tracked.
 
-  Final validation passed on 2026-05-23. `make package` regenerated ignored
-  artifacts under `dist/`; no generated or cache artifacts were untracked or
-  staged for commit.
+  Final validation passed on 2026-05-23. `make test-package` validates
+  release-shaped artifacts in a container-local temporary directory; no
+  generated or cache artifacts are tracked.
 
 ## Lane Notes
 
@@ -297,12 +299,11 @@ checked-in fixtures.
 
 ### Package
 
-`make package` should produce and validate release-shaped artifacts, but it
-should not publish. Publishing remains the tag-triggered GitHub workflow.
-It derives the container write UID/GID from the current host user, refuses root
-execution, and refuses to clean or bind-mount `dist/` when `dist/` is a symlink.
-The write-enabled Compose service requires that UID/GID input explicitly, and
-the Compose bind mount disables implicit host-path creation.
+`make test-package` should produce and validate release-shaped artifacts, but
+it should not publish or leave artifacts in the checkout. Publishing remains
+the tag-triggered GitHub workflow. The package-test service builds into a
+container-local temporary directory, installs the wheel and sdist into fresh
+container-local virtual environments, and exits without a host artifact mount.
 
 ### Perf
 
@@ -329,8 +330,8 @@ Release archives are not blind upload blobs. Package and release validation
 reject unsafe archive paths, links, special archive members, local credential
 filenames, build outputs, `tmp/`, and raw `notes/perf_reports/` captures. Wheel
 archives are also constrained to the expected `grimace/` package tree and
-matching `.dist-info` tree. The local package lane runs the same archive safety
-checks on its locally tagged wheel and sdist, and the release workflow validates
+matching `.dist-info` tree. The local package-test lane runs the same archive
+safety checks on its locally tagged wheel and sdist, and the release workflow validates
 archives before upload and again before GitHub release or PyPI publication.
 
 ### Docker Build Context Secrets
@@ -365,7 +366,7 @@ Use three explicit repository boundary modes:
 - Explicit read-write artifact mounts: opt-in lanes whose purpose is to update
   checked-in generated artifacts, currently timing docs and timing history.
 
-The long-term default for `test` and `package` is copied build context. It is
+The long-term default for `test` and `test-package` is copied build context. It is
 stricter than a bind mount because `.dockerignore` controls the source snapshot,
 host `.venv`, `target`, `dist`, local extension modules, and caches cannot leak
 in, and the container cannot accidentally write into the working tree. This also

@@ -29,7 +29,7 @@ jobs:
       - name: Run checks and correctness lanes
         run: make ci
 
-  package:
+  test-package:
     name: Container package validation
     runs-on: ubuntu-24.04
     steps:
@@ -37,4 +37,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Build and validate package artifacts
-        run: make package
+        run: make test-package

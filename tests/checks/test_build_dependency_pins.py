@@ -48,7 +48,7 @@ class BuildDependencyPinTests(unittest.TestCase):
 
         checked_files = (
             ".github/workflows/release.yml",
-            "compose/package.yml",
+            "compose/test-package.yml",
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
             "containers/timings-prepared-mol-zstd/Dockerfile",
             "containers/timings-enum/Dockerfile",

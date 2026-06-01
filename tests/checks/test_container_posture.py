@@ -84,9 +84,9 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertNotIn("docker.sock", compose)
         self.assertNotIn("privileged: true", compose)
 
-    def test_package_compose_writes_only_dist(self) -> None:
-        compose = read_text("compose/package.yml")
-        self.assertRegex(compose, r"(?m)^  package:$")
+    def test_package_compose_uses_container_local_artifacts(self) -> None:
+        compose = read_text("compose/test-package.yml")
+        self.assertRegex(compose, r"(?m)^  test-package:$")
         self.assertIn("dockerfile: containers/package/Dockerfile", compose)
         self.assertIn(REQUIRED_WRITE_USER, compose)
         self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
@@ -96,20 +96,19 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
             r"(?ms)^\s+security_opt:\n\s+- no-new-privileges:true\s*$",
         )
-        self.assertIn("source: ../dist", compose)
-        self.assertIn("target: /dist", compose)
-        self.assertIn("create_host_path: false", compose)
-        self.assertIn("python -m maturin build --release --out /dist", compose)
+        self.assertNotIn("volumes:", compose)
+        self.assertIn('dist_dir="$$(mktemp -d /tmp/grimace-dist.XXXXXX)"', compose)
+        self.assertIn('python -m maturin build --release --out "$$dist_dir"', compose)
         self.assertIn(
-            "python -m maturin build --release --sdist --out /dist",
+            'python -m maturin build --release --sdist --out "$$dist_dir"',
             compose,
         )
         self.assertIn(
-            "python scripts/validate_release_artifacts.py /dist/*.tar.gz --sdist-only",
+            'python scripts/validate_release_artifacts.py "$$dist_dir"/*.tar.gz --sdist-only',
             compose,
         )
         self.assertIn(
-            "python scripts/validate_release_artifacts.py /dist/*.whl --wheel-only",
+            'python scripts/validate_release_artifacts.py "$$dist_dir"/*.whl --wheel-only',
             compose,
         )
         self.assertNotIn("source: ..\n", compose)
@@ -588,7 +587,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn('"$${DOCS_PORT}" -gt 65535', makefile)
         self.assertIn("positive numeric UID and GID", makefile)
         self.assertIn("DOCS_PORT outside 1..65535", makefile)
-        self.assertIn("DIST_GUARD := if [[ -L dist ]]", makefile)
+        self.assertNotIn("DIST_GUARD", makefile)
         self.assertIn('TIMINGS_ENUM_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"', makefile)
         self.assertIn(
             'TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"',
@@ -601,14 +600,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("enum timing artifact directory", makefile)
         self.assertIn("PreparedMol zstd timing artifact directory", makefile)
         self.assertIn("docs path", makefile)
-        self.assertLess(
-            makefile.index("package:\n\t@$(NON_ROOT_GUARD)"),
-            makefile.index("\t@find dist"),
-        )
-        self.assertLess(
-            makefile.index("\t@$(DIST_GUARD)"),
-            makefile.index("\t@find dist"),
-        )
+        self.assertNotIn("\t@find dist", makefile)
         self.assertIn("GRIMACE_PERF_GIT_COMMIT", makefile)
         self.assertIn("GRIMACE_PERF_GIT_CHANGE", makefile)
         self.assertIn("GRIMACE_PERF_GIT_DIRTY", makefile)
@@ -619,8 +611,8 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("outside the repository", makefile)
         self.assertIn("prepared-mol-zstd-dictionary.yml", makefile)
         self.assertIn("timings-prepared-mol-zstd.yml", makefile)
-        self.assertNotIn("LOCAL_UID:-", read_text("compose/package.yml"))
-        self.assertNotIn("LOCAL_GID:-", read_text("compose/package.yml"))
+        self.assertNotIn("LOCAL_UID:-", read_text("compose/test-package.yml"))
+        self.assertNotIn("LOCAL_GID:-", read_text("compose/test-package.yml"))
         self.assertNotIn("LOCAL_UID:-", read_text("compose/timings-enum.yml"))
         self.assertNotIn("LOCAL_GID:-", read_text("compose/timings-enum.yml"))
         self.assertNotIn("LOCAL_UID:-", read_text("compose/timings-prepared-mol-zstd.yml"))
@@ -631,7 +623,7 @@ class ContainerPostureTests(unittest.TestCase):
             "test": "test.yml,test",
             "parity": "test.yml,parity",
             "exact-public-invariants": "test.yml,exact-public-invariants",
-            "package": "package.yml,package",
+            "test-package": "test-package.yml,test-package",
         }
         for target, compose_call in expected_targets.items():
             with self.subTest(target=target):
@@ -673,7 +665,7 @@ class ContainerPostureTests(unittest.TestCase):
     def test_ci_workflow_uses_container_make_lanes(self) -> None:
         workflow = read_text(".github/workflows/ci.yml")
         self.assertIn("run: make ci", workflow)
-        self.assertIn("run: make package", workflow)
+        self.assertIn("run: make test-package", workflow)
         self.assertNotIn("actions/setup-python", workflow)
         self.assertNotIn("dtolnay/rust-toolchain", workflow)
         self.assertNotIn("maturin", workflow)

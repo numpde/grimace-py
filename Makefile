@@ -27,7 +27,6 @@ TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=
 
 NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$ ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user with positive numeric UID and GID.' >&2; exit 2; fi
 DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_PORT}" -gt 65535 ]]; then printf '%s\n' 'Refusing to run docs lane with DOCS_PORT outside 1..65535.' >&2; exit 2; fi
-DIST_GUARD := if [[ -L dist ]]; then printf '%s\n' 'Refusing to use dist because it is a symlink.' >&2; exit 2; fi
 TIMINGS_ENUM_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(TIMINGS_ENUM_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind enum timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(TIMINGS_ENUM_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind enum timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(DOCS_SOURCE_DIR) $(DOCS_OUTPUT_DIR); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind docs path %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
@@ -39,7 +38,7 @@ define compose_run
 $(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/$(1) run --build --rm $(2)
 endef
 
-.PHONY: help checks rust test parity exact-public-invariants package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve ci
+.PHONY: help checks rust test parity exact-public-invariants test-package timings-enum prepared-mol-zstd-dictionary timings-prepared-mol-zstd docs docs-serve ci
 
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
@@ -56,7 +55,7 @@ help:
 	  '  make test    Run installed-package correctness in the test image' \
 	  '  make parity  Run pinned RDKit parity in the test image' \
 	  '  make exact-public-invariants  Run exact public invariant tests' \
-	  '  make package  Build and validate wheel/sdist artifacts under dist/' \
+	  '  make test-package  Build and validate wheel/sdist artifacts in a container temp directory' \
 	  '  make timings-enum  Measure enum/support timing tradeoffs' \
 	  '  make prepared-mol-zstd-dictionary  Generate the PreparedMol zstd dictionary artifact' \
 	  '  make timings-prepared-mol-zstd  Measure PreparedMol zstd timing tradeoffs' \
@@ -90,13 +89,8 @@ parity:
 exact-public-invariants:
 	$(call compose_run,test.yml,exact-public-invariants)
 
-package:
-	@$(NON_ROOT_GUARD)
-	@$(DIST_GUARD)
-	@mkdir -p dist
-	@$(DIST_GUARD)
-	@find dist -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-	$(call compose_run,package.yml,package)
+test-package:
+	$(call compose_run,test-package.yml,test-package)
 
 timings-enum:
 	@$(NON_ROOT_GUARD); \

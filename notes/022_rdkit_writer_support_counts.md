@@ -1,0 +1,112 @@
+# RDKit Writer Support Counts
+
+This note defines a count-only RDKit writer fixture lane.
+
+## Purpose
+
+`rdkit_writer_support_counts` records the cardinality of RDKit's random-writer
+support for selected molecules under a pinned RDKit version and one exact
+serializer flag surface.
+
+It is not a replacement for `rdkit_exact_small_support`. When full support
+strings are cheap to store and compare, keep the stronger full-support fixture.
+This lane is for larger supports where retaining every string is noisy but a
+checked support count is still useful.
+
+## Fixture Layout
+
+```text
+tests/fixtures/rdkit_writer_support_counts/
+  2026.03.1/
+    nonisomeric__random.json
+    isomeric__random.json
+    nonisomeric__random_kekule.json
+```
+
+Each shard owns one complete flag surface:
+
+```json
+{
+  "rdkit_version": "2026.03.1",
+  "flags": {
+    "isomericSmiles": false,
+    "canonical": false,
+    "doRandom": true,
+    "kekuleSmiles": false,
+    "allBondsExplicit": false,
+    "allHsExplicit": false,
+    "ignoreAtomMapNumbers": false
+  },
+  "cases": []
+}
+```
+
+No flag defaults are inferred. The shard filename must match the flag surface.
+Case-level flag overrides are not allowed.
+
+## Evidence
+
+The first supported evidence method is
+`rdkit_random_adaptive_saturation`. It is saturation-backed count evidence, not
+a mathematical exhaustive proof.
+
+Each case records:
+
+- `support_count`: the count claim
+- `evidence.method`
+- `evidence.criterion_version`
+- `evidence.min_draws`
+- `evidence.unseen_mass_threshold`
+- `evidence.allowed_missing_variants`
+- at least two independent seed runs
+
+Each seed run records:
+
+- `seed`
+- `draw_count`
+- `support_count`
+- `consecutive_draws_without_new_variant`
+- `singleton_count`
+- `doubleton_count`
+- `estimated_unseen_mass`
+- `estimated_missing_variants`
+
+Every seed run must independently satisfy the adaptive criterion and agree on
+the same `support_count`.
+
+## Adaptive Criterion
+
+For a run with `n` draws, `k` observed variants, singleton count `f1`, and
+doubleton count `f2`:
+
+- unseen mass estimate: `f1 / n`
+- missing variant estimate:
+  - `0` when `f1 == 0`
+  - `f1 * f1 / (2 * f2)` when `f2 > 0`
+  - unstable otherwise
+- no-new-variant patience: `max(10000, 20 * k)`
+
+A run is accepted only when:
+
+- `n >= min_draws`
+- `consecutive_draws_without_new_variant >= max(10000, 20 * k)`
+- `estimated_unseen_mass <= unseen_mass_threshold`
+- `estimated_missing_variants <= allowed_missing_variants`
+
+These fields are recorded so the strength of the count evidence is visible
+without re-running RDKit.
+
+## Test Contract
+
+The fixture loader validates schema, flags, filename/flag consistency, evidence
+method, criterion version, per-seed saturation, seed uniqueness, and multi-seed
+count agreement.
+
+The runtime test checks:
+
+```text
+len(grimace.MolToSmilesEnum(...)) == support_count
+```
+
+This lane starts outside the default pinned RDKit parity runner. It can be
+promoted only after the fixture set and runtime cost are stable.

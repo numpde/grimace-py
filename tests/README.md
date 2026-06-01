@@ -49,6 +49,9 @@ subset.
   for each case.
 - Deterministic RDKit writer-output membership cases belong in version-keyed
   fixtures under `tests/fixtures/rdkit_writer_membership/`.
+- RDKit random-writer support-count evidence belongs in version-keyed shards
+  under `tests/fixtures/rdkit_writer_support_counts/`; keep its adaptive
+  saturation evidence explicit.
 - Deterministic RDKit rooted random-writer cases belong in version-keyed
   fixtures under `tests/fixtures/rdkit_rooted_random/`.
 - Isolated RDKit behaviors that are unusual but still may need to be mirrored

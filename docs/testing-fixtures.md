@@ -31,6 +31,7 @@ python scripts/report_correctness_coverage.py
 | `rdkit_exact_small_support` | 76 | Exact support and token-inventory equality for small saturable cases. |
 | `rdkit_serializer_regressions` | 130 | Exact support and inventory regressions for serializer edge cases. |
 | `rdkit_writer_membership` | 56 | Deterministic RDKit writer outputs must be in Grimace support. |
+| `rdkit_writer_support_counts` | 2 | Count-only RDKit random-writer support evidence. |
 | `rdkit_rooted_random` | 1 | Version-pinned rooted random-writer output. |
 | `rdkit_known_stereo_gaps` | 16 | Executable parity debt, outside the passing parity lane. |
 | `rdkit_known_quirks` | 1 | Isolated RDKit behavior observation. |
@@ -41,7 +42,7 @@ By source class:
 |---|---:|---|
 | `upstream-rdkit` | 171 | Case came from RDKit's own tests or source blocks. |
 | `random-writer-observation` | 31 | Case was observed from RDKit's random writer. |
-| `local-probe` | 28 | Case was designed in Grimace to probe a specific behavior. |
+| `local-probe` | 30 | Case was designed in Grimace to probe a specific behavior. |
 | `dataset-derived` | 33 | Case came from a molecule dataset and was promoted after review. |
 | `known-rdkit-gap` | 16 | Case records a known current parity gap. |
 | `rdkit-quirk` | 1 | Case records isolated RDKit behavior worth pinning. |
@@ -70,6 +71,7 @@ Documentation explains intent; loaders and tests enforce it.
 | `tests/fixtures/rdkit_exact_small_support/` | Passing exact support and inventory parity. |
 | `tests/fixtures/rdkit_serializer_regressions/` | Passing serializer edge-case support and inventory parity. |
 | `tests/fixtures/rdkit_writer_membership/` | Passing deterministic RDKit writer-membership parity. |
+| `tests/fixtures/rdkit_writer_support_counts/` | Count-only RDKit random-writer support evidence. |
 | `tests/fixtures/rdkit_rooted_random/` | Passing rooted random-writer observations. |
 | `tests/fixtures/rdkit_known_stereo_gaps/` | Failing opt-in diagnostics for known stereo gaps. |
 | `tests/fixtures/rdkit_known_quirks/` | Isolated RDKit behavior observations. |
@@ -90,6 +92,12 @@ Mining output is candidate data only. Promote a mined case only when it has:
 Prefer exact support and inventory equality for small cases. Use deterministic
 writer membership when exact support is too large. Keep `rdkit_only` cases as
 known gaps while they fail. Do not promote `uncertain` mined cases.
+
+Use writer support-count fixtures only when storing every support string is not
+worth the noise. These fixtures retain the count plus the RDKit sampling
+evidence: per-seed draw counts, no-new-variant streaks, singleton/doubleton
+counts, and unseen-mass estimates. They are saturation-backed evidence, not a
+mathematical exhaustive proof.
 
 ## Maintenance checklist
 

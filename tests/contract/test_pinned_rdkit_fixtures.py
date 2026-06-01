@@ -13,6 +13,7 @@ from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_ROOTED_RANDOM,
     PINNED_RDKIT_SERIALIZER_REGRESSIONS,
     PINNED_RDKIT_WRITER_MEMBERSHIP,
+    PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_root,
     pinned_rdkit_fixture_versions,
@@ -34,6 +35,9 @@ from tests.helpers.rdkit_stereo_regressions import (
     load_steroid_ring_coupled_component_regression,
 )
 from tests.helpers.rdkit_writer_membership import load_pinned_writer_membership_cases
+from tests.helpers.rdkit_writer_support_counts import (
+    load_pinned_writer_support_count_cases,
+)
 
 
 RDKIT_VERSION = "2099.01.1"
@@ -85,6 +89,72 @@ def _known_gap_case(case_id: str, **overrides: object) -> dict[str, object]:
         "rooted_at_atom": None,
         "isomeric_smiles": True,
         "rdkit_canonical": True,
+    }
+    case.update(overrides)
+    return case
+
+
+def _writer_support_count_flags(**overrides: object) -> dict[str, object]:
+    flags = {
+        "isomericSmiles": False,
+        "canonical": False,
+        "doRandom": True,
+        "kekuleSmiles": False,
+        "allBondsExplicit": False,
+        "allHsExplicit": False,
+        "ignoreAtomMapNumbers": False,
+    }
+    flags.update(overrides)
+    return flags
+
+
+def _writer_support_count_payload(
+    *cases: dict[str, object],
+    flags: dict[str, object] | None = None,
+    rdkit_version: str = RDKIT_VERSION,
+) -> dict[str, object]:
+    return {
+        "rdkit_version": rdkit_version,
+        "flags": flags if flags is not None else _writer_support_count_flags(),
+        "cases": list(cases),
+    }
+
+
+def _writer_support_count_case(case_id: str, **overrides: object) -> dict[str, object]:
+    case = {
+        **_base_case(case_id),
+        "smiles": "CC(=O)Oc1ccccc1C(=O)O",
+        "rooted_at_atom": -1,
+        "support_count": 304,
+        "evidence": {
+            "method": "rdkit_random_adaptive_saturation",
+            "criterion_version": 1,
+            "min_draws": 10000,
+            "unseen_mass_threshold": 0.001,
+            "allowed_missing_variants": 1.0,
+            "runs": [
+                {
+                    "seed": 12345,
+                    "draw_count": 11000,
+                    "support_count": 304,
+                    "consecutive_draws_without_new_variant": 10000,
+                    "singleton_count": 0,
+                    "doubleton_count": 0,
+                    "estimated_unseen_mass": 0.0,
+                    "estimated_missing_variants": 0.0,
+                },
+                {
+                    "seed": 54321,
+                    "draw_count": 12000,
+                    "support_count": 304,
+                    "consecutive_draws_without_new_variant": 10000,
+                    "singleton_count": 0,
+                    "doubleton_count": 0,
+                    "estimated_unseen_mass": 0.0,
+                    "estimated_missing_variants": 0.0,
+                },
+            ],
+        },
     }
     case.update(overrides)
     return case
@@ -332,6 +402,131 @@ class KnownStereoGapFixtureLoaderTest(unittest.TestCase):
                             fixture_root=root,
                         )
 
+
+class WriterSupportCountFixtureLoaderTest(unittest.TestCase):
+    def test_writer_support_count_fixture_loads_directory_shards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            fixture_dir = root / RDKIT_VERSION
+            _write_json(
+                fixture_dir / "nonisomeric__random.json",
+                _writer_support_count_payload(
+                    _writer_support_count_case("aspirin_count")
+                ),
+            )
+
+            cases = load_pinned_writer_support_count_cases(
+                RDKIT_VERSION,
+                fixture_root=root,
+            )
+
+        self.assertEqual(["aspirin_count"], [case.case_id for case in cases])
+        self.assertEqual(304, cases[0].support_count)
+        self.assertFalse(cases[0].isomeric_smiles)
+        self.assertEqual(-1, cases[0].rooted_at_atom)
+        self.assertEqual(
+            "rdkit_random_adaptive_saturation",
+            cases[0].evidence.method,
+        )
+        self.assertEqual([12345, 54321], [run.seed for run in cases[0].evidence.runs])
+
+    def test_writer_support_count_fixture_rejects_bad_flag_surface(self) -> None:
+        invalid_payloads = (
+            _writer_support_count_payload(
+                _writer_support_count_case("missing_flag"),
+                flags={
+                    key: value
+                    for key, value in _writer_support_count_flags().items()
+                    if key != "canonical"
+                },
+            ),
+            _writer_support_count_payload(
+                _writer_support_count_case("canonical_true"),
+                flags=_writer_support_count_flags(canonical=True),
+            ),
+            _writer_support_count_payload(
+                _writer_support_count_case("random_false"),
+                flags=_writer_support_count_flags(doRandom=False),
+            ),
+        )
+        for payload in invalid_payloads:
+            with self.subTest(flags=payload["flags"]):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    _write_json(root / RDKIT_VERSION / "nonisomeric__random.json", payload)
+
+                    with self.assertRaises(ValueError):
+                        load_pinned_writer_support_count_cases(
+                            RDKIT_VERSION,
+                            fixture_root=root,
+                        )
+
+    def test_writer_support_count_fixture_rejects_filename_flag_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _write_json(
+                root / RDKIT_VERSION / "isomeric__random.json",
+                _writer_support_count_payload(
+                    _writer_support_count_case("aspirin_count")
+                ),
+            )
+
+            with self.assertRaisesRegex(ValueError, "filename must match"):
+                load_pinned_writer_support_count_cases(
+                    RDKIT_VERSION,
+                    fixture_root=root,
+                )
+
+    def test_writer_support_count_fixture_rejects_bad_adaptive_evidence(self) -> None:
+        bad_evidence_cases = (
+            _writer_support_count_case("one_run"),
+            _writer_support_count_case("mismatched_count"),
+            _writer_support_count_case("same_seed"),
+            _writer_support_count_case("high_unseen_mass"),
+            _writer_support_count_case("high_missing"),
+            _writer_support_count_case("short_run"),
+            _writer_support_count_case("low_patience"),
+            _writer_support_count_case("wrong_unseen_estimate"),
+            _writer_support_count_case("wrong_missing_estimate"),
+            _writer_support_count_case("unstable_missing_estimate"),
+        )
+        bad_evidence_cases[0]["evidence"]["runs"] = bad_evidence_cases[0]["evidence"][
+            "runs"
+        ][:1]
+        bad_evidence_cases[1]["evidence"]["runs"][0]["support_count"] = 303
+        bad_evidence_cases[2]["evidence"]["runs"][1]["seed"] = 12345
+        bad_evidence_cases[3]["evidence"]["runs"][0]["estimated_unseen_mass"] = 0.01
+        bad_evidence_cases[4]["evidence"]["runs"][0]["estimated_missing_variants"] = 2.0
+        bad_evidence_cases[5]["evidence"]["runs"][0]["draw_count"] = 50
+        bad_evidence_cases[6]["evidence"]["runs"][0][
+            "consecutive_draws_without_new_variant"
+        ] = 9999
+        bad_evidence_cases[7]["evidence"]["runs"][0]["singleton_count"] = 1
+        bad_evidence_cases[8]["evidence"]["runs"][0]["singleton_count"] = 2
+        bad_evidence_cases[8]["evidence"]["runs"][0]["doubleton_count"] = 1
+        bad_evidence_cases[8]["evidence"]["runs"][0][
+            "estimated_unseen_mass"
+        ] = 2 / 11000
+        bad_evidence_cases[9]["evidence"]["runs"][0]["singleton_count"] = 1
+        bad_evidence_cases[9]["evidence"]["runs"][0][
+            "estimated_unseen_mass"
+        ] = 1 / 11000
+
+        for case in bad_evidence_cases:
+            with self.subTest(case_id=case["id"]):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    root = Path(tmpdir)
+                    _write_json(
+                        root / RDKIT_VERSION / "nonisomeric__random.json",
+                        _writer_support_count_payload(case),
+                    )
+
+                    with self.assertRaises(ValueError):
+                        load_pinned_writer_support_count_cases(
+                            RDKIT_VERSION,
+                            fixture_root=root,
+                        )
+
     def test_known_gap_fixture_rejects_unpaired_random_vector_fields(self) -> None:
         invalid_cases = (
             _known_gap_case("seed_only", rdkit_random_vector_seed=1),
@@ -425,6 +620,21 @@ class CheckedInRdkitCompatibilityFixtureTest(unittest.TestCase):
 
                 self.assertTrue(cases)
                 self.assertTrue(all(case.expected for case in cases))
+
+    def test_writer_support_count_fixture_loads(self) -> None:
+        fixture_root = pinned_rdkit_fixture_root(PINNED_RDKIT_WRITER_SUPPORT_COUNTS)
+        versions = pinned_rdkit_fixture_versions(fixture_root)
+
+        self.assertTrue(versions)
+        for rdkit_version in versions:
+            with self.subTest(rdkit_version=rdkit_version):
+                cases = load_pinned_writer_support_count_cases(
+                    rdkit_version,
+                    fixture_root=fixture_root,
+                )
+
+                self.assertTrue(cases)
+                self.assertTrue(all(case.support_count > 0 for case in cases))
 
     def test_disconnected_root_zero_fixture_loads(self) -> None:
         cases = load_disconnected_root_zero_smiles()

@@ -1,0 +1,86 @@
+{
+  "rdkit_version": "2026.03.1",
+  "flags": {
+    "isomericSmiles": false,
+    "canonical": false,
+    "doRandom": true,
+    "kekuleSmiles": false,
+    "allBondsExplicit": false,
+    "allHsExplicit": false,
+    "ignoreAtomMapNumbers": false
+  },
+  "cases": [
+    {
+      "id": "aspirin_nonisomeric_unrooted",
+      "source": "Local RDKit random adaptive-saturation support-count probe",
+      "smiles": "CC(=O)Oc1ccccc1C(=O)O",
+      "rooted_at_atom": -1,
+      "support_count": 304,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 20000,
+            "support_count": 304,
+            "consecutive_draws_without_new_variant": 17536,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 20000,
+            "support_count": 304,
+            "consecutive_draws_without_new_variant": 17377,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "ldopa_nonisomeric_unrooted",
+      "source": "Local RDKit random adaptive-saturation support-count probe",
+      "smiles": "N[C@@H](Cc1ccc(O)c(O)c1)C(=O)O",
+      "rooted_at_atom": -1,
+      "support_count": 688,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 23123,
+            "support_count": 688,
+            "consecutive_draws_without_new_variant": 13760,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 22345,
+            "support_count": 688,
+            "consecutive_draws_without_new_variant": 13760,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    }
+  ]
+}

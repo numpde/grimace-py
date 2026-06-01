@@ -13,6 +13,7 @@ PINNED_RDKIT_KNOWN_STEREO_GAPS = "rdkit_known_stereo_gaps"
 PINNED_RDKIT_ROOTED_RANDOM = "rdkit_rooted_random"
 PINNED_RDKIT_SERIALIZER_REGRESSIONS = "rdkit_serializer_regressions"
 PINNED_RDKIT_WRITER_MEMBERSHIP = "rdkit_writer_membership"
+PINNED_RDKIT_WRITER_SUPPORT_COUNTS = "rdkit_writer_support_counts"
 PINNED_RDKIT_PARITY_TARGETS: tuple[tuple[str, str], ...] = (
     (
         PINNED_RDKIT_EXACT_SMALL_SUPPORT,

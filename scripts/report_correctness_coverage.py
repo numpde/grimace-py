@@ -24,6 +24,7 @@ from tests.helpers.pinned_rdkit_fixtures import (  # noqa: E402
     PINNED_RDKIT_KNOWN_STEREO_GAPS,
     PINNED_RDKIT_PARITY_FIXTURE_FAMILIES,
     PINNED_RDKIT_ROOTED_RANDOM,
+    PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
     PinnedFixtureCase,
     load_pinned_rdkit_fixture_cases,
     pinned_rdkit_fixture_versions,
@@ -36,6 +37,7 @@ from tests.helpers.rdkit_serializer_coverage import (  # noqa: E402
 
 _PINNED_RDKIT_REPORT_FIXTURE_FAMILIES = (
     *PINNED_RDKIT_PARITY_FIXTURE_FAMILIES,
+    PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
     PINNED_RDKIT_KNOWN_QUIRKS,
     PINNED_RDKIT_KNOWN_STEREO_GAPS,
 )

@@ -16,6 +16,7 @@ from tests.helpers.pinned_rdkit_fixtures import (
     PINNED_RDKIT_ROOTED_RANDOM,
     PINNED_RDKIT_SERIALIZER_REGRESSIONS,
     PINNED_RDKIT_WRITER_MEMBERSHIP,
+    PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
 )
 from tests.helpers.rdkit_serializer_coverage import (
     COVERAGE_STATUS_COVERED,
@@ -33,6 +34,7 @@ SERIALIZER_REPORT_SCRIPT = (
 RDKIT_VERSION = DEFAULT_RDKIT_SERIALIZER_VERSION
 REPORT_FIXTURE_FAMILIES = (
     *PINNED_RDKIT_PARITY_FIXTURE_FAMILIES,
+    PINNED_RDKIT_WRITER_SUPPORT_COUNTS,
     PINNED_RDKIT_KNOWN_QUIRKS,
     PINNED_RDKIT_KNOWN_STEREO_GAPS,
 )
@@ -298,6 +300,7 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
                 PINNED_RDKIT_ROOTED_RANDOM: {RDKIT_VERSION: 1},
                 PINNED_RDKIT_SERIALIZER_REGRESSIONS: {RDKIT_VERSION: 130},
                 PINNED_RDKIT_WRITER_MEMBERSHIP: {RDKIT_VERSION: 56},
+                PINNED_RDKIT_WRITER_SUPPORT_COUNTS: {RDKIT_VERSION: 2},
                 PINNED_RDKIT_KNOWN_QUIRKS: {RDKIT_VERSION: 1},
                 PINNED_RDKIT_KNOWN_STEREO_GAPS: {RDKIT_VERSION: 16},
             },
@@ -306,7 +309,7 @@ class CorrectnessCoverageReportTests(unittest.TestCase):
         self.assertEqual(
             {
                 "upstream-rdkit": 171,
-                "local-probe": 28,
+                "local-probe": 30,
                 "dataset-derived": 33,
                 "random-writer-observation": 31,
                 "known-rdkit-gap": 16,

@@ -469,8 +469,11 @@ def _on_ring_endpoint_paired(
 
 def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
     try:
-        expected_label = RingLabel(event.label.value).text()
+        policy_label = RingLabel(event.label.value)
+        expected_label = policy_label.text()
     except ValueError:
+        return False
+    if policy_label not in prepared.policy.ring_labels:
         return False
     if event.label.text != expected_label:
         return False

@@ -444,7 +444,7 @@ def validate_writer_edge_obligation_partition(
         _invalid_edge_partition("writer closure bond cannot also be a tree-entry bond")
     if pending is not None and pending.bond in ring_bonds:
         _invalid_edge_partition("writer closure bond cannot also be pending")
-    _validate_ring_label_state(key)
+    _validate_ring_label_state(prepared, key)
     if pending is not None and pending.bond in key.written_bonds:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
@@ -566,7 +566,7 @@ def _validate_closure_state_supported_for_snapshot(
     key: WriterStateKey,
     context: WriterGraphObligationContext,
 ) -> None:
-    _validate_ring_label_state(key)
+    _validate_ring_label_state(prepared, key)
     partition_by_bond = {
         obligation.bond: obligation.kind
         for obligation in context.edge_partition.obligations
@@ -596,7 +596,7 @@ def _validate_closure_state_supported_for_snapshot(
         _validate_closed_closure_text(prepared, closure)
 
 
-def _validate_ring_label_state(key: WriterStateKey) -> None:
+def _validate_ring_label_state(prepared: SouthStarPreparedMol, key: WriterStateKey) -> None:
     open_labels = tuple(endpoint.label for endpoint in key.ring_state.open_endpoints)
     closed_labels = tuple(closure.label for closure in key.ring_state.closed_closures)
     allocated = key.ring_state.label_state.allocated
@@ -612,17 +612,17 @@ def _validate_ring_label_state(key: WriterStateKey) -> None:
     if not set(reusable).issubset(set(closed_labels)):
         _invalid_edge_partition("writer reusable ring label lacks closed closure")
     for label in open_labels:
-        _validate_closure_label_text(label)
+        _validate_closure_label(prepared, label)
         if label not in allocated:
             _invalid_edge_partition("writer open closure label is not allocated")
         if label in reusable:
             _invalid_edge_partition("writer open closure label is reusable")
     for label in closed_labels:
-        _validate_closure_label_text(label)
+        _validate_closure_label(prepared, label)
         if label not in allocated and label not in reusable:
             _invalid_edge_partition("writer closed closure label is not tracked")
     for label in (*allocated, *reusable):
-        _validate_closure_label_text(label)
+        _validate_closure_label(prepared, label)
 
 
 def _validate_open_endpoint_partner_liveness(
@@ -651,7 +651,7 @@ def _open_writer_atoms(key: WriterStateKey) -> frozenset[AtomId]:
 
 
 def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> None:
-    _validate_closure_label_text(endpoint.label)
+    _validate_closure_label(prepared, endpoint.label)
     if endpoint.first_endpoint_text != endpoint.label.text:
         _invalid_edge_partition("writer open closure endpoint text does not match label")
     if endpoint.first_endpoint_bond_text not in _closure_bond_texts(
@@ -662,7 +662,7 @@ def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> No
 
 
 def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> None:
-    _validate_closure_label_text(closure.label)
+    _validate_closure_label(prepared, closure.label)
     if closure.first_endpoint_text != closure.label.text:
         _invalid_edge_partition("writer closed closure first endpoint text does not match label")
     if closure.second_endpoint_text != closure.label.text:
@@ -696,14 +696,17 @@ def _closure_bond_texts(
     return frozenset(texts)
 
 
-def _validate_closure_label_text(label) -> None:
+def _validate_closure_label(prepared: SouthStarPreparedMol, label) -> None:
     try:
-        expected = RingLabel(label.value).text()
+        policy_label = RingLabel(label.value)
+        expected = policy_label.text()
     except ValueError as exc:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer closure label has invalid value",
         ) from exc
+    if policy_label not in prepared.policy.ring_labels:
+        _invalid_edge_partition("writer closure label is outside policy domain")
     if label.text != expected:
         _invalid_edge_partition("writer closure label text does not match label value")
 

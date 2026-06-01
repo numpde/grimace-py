@@ -176,6 +176,27 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNone(state)
 
+    def test_ring_endpoint_event_rejects_label_outside_policy(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=10, text="%10")
+
+        state = advance_writer_stereo_state(
+            prepared,
+            empty_writer_stereo_state(),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="%10",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNone(state)
+
     def test_ring_endpoint_event_rejects_endpoint_text_mismatch(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=1, text="1")
@@ -357,6 +378,43 @@ class WriterStereoResidualTest(unittest.TestCase):
                     partner_atom=AtomId(0),
                     label=label,
                     endpoint_text="9",
+                    bond_text="",
+                ),
+            ),
+        )
+
+        self.assertIsNone(closed)
+
+    def test_ring_endpoint_pair_rejects_label_outside_policy(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        label = WriterClosureLabel(value=1, text="1")
+        pending = advance_writer_stereo_state(
+            prepared,
+            empty_writer_stereo_state(),
+            (
+                WriterRingEndpointEmitted(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(0),
+                    partner_atom=AtomId(2),
+                    label=label,
+                    endpoint_text="1",
+                    bond_text="",
+                ),
+            ),
+        )
+        assert pending is not None
+        outside = WriterClosureLabel(value=10, text="%10")
+
+        closed = advance_writer_stereo_state(
+            prepared,
+            pending,
+            (
+                WriterRingEndpointPaired(
+                    bond=BondId(2),
+                    endpoint_atom=AtomId(2),
+                    partner_atom=AtomId(0),
+                    label=outside,
+                    endpoint_text="%10",
                     bond_text="",
                 ),
             ),

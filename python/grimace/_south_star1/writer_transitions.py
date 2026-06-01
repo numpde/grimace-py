@@ -596,34 +596,15 @@ def _available_closure_labels_for_open(
     prepared: SouthStarPreparedMol,
     ring_state: WriterRingState,
 ) -> tuple[WriterClosureLabel, ...]:
-    reusable = tuple(
-        sorted(
-            ring_state.label_state.reusable,
-            key=lambda item: _policy_label_sort_index(prepared, item),
-        )
-    )
-    if prepared.policy.least_free_ring_labels and reusable:
-        return (reusable[0],)
-
     allocated = set(ring_state.label_state.allocated)
-    unused = []
+    available = []
     for label in prepared.policy.ring_labels:
         candidate = WriterClosureLabel(value=label.value, text=label.text())
-        if candidate not in allocated and candidate not in reusable:
-            unused.append(candidate)
+        if candidate not in allocated:
+            available.append(candidate)
     if prepared.policy.least_free_ring_labels:
-        return tuple(unused[:1])
-    return (*reusable, *unused)
-
-
-def _policy_label_sort_index(
-    prepared: SouthStarPreparedMol,
-    label: WriterClosureLabel,
-) -> tuple[int, int, str]:
-    for index, policy_label in enumerate(prepared.policy.ring_labels):
-        if policy_label.value == label.value:
-            return (index, label.value, label.text)
-    return (len(prepared.policy.ring_labels), label.value, label.text)
+        return tuple(available[:1])
+    return tuple(available)
 
 
 def _ring_state_after_open_endpoint(

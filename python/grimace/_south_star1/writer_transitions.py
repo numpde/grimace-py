@@ -440,6 +440,9 @@ def _finish_active_transitions(
     next_component_index = state.component_cursor.component_index + 1
     if next_component_index >= len(state.component_cursor.component_roots):
         return ()
+    completion = writer_graph_completion_status(prepared, context.state_key, context.graph)
+    if not completion.complete:
+        return ()
     root = state.component_cursor.component_roots[next_component_index]
     transition = _transition(
         prepared,

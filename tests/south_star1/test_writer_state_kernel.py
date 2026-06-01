@@ -258,6 +258,63 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(support.strings, ("C.O",))
 
+    def test_component_boundary_emits_for_graph_complete_component(self) -> None:
+        prepared = _prepare(cyclopropane_plus_singleton_facts())
+        state = _with_next_component_root(_cyclopropane_terminal_closed_closure_state())
+        context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            state,
+        )
+
+        transitions = writer_transitions._finish_active_transitions(
+            prepared,
+            state,
+            context,
+        )
+
+        self.assertEqual(
+            tuple(transition.kind for transition in transitions),
+            (writer_transitions.WriterTransitionKind.DOT,),
+        )
+        self.assertEqual(transitions[0].emitted_text, ".")
+
+    def test_component_boundary_rejects_open_closure_endpoint(self) -> None:
+        prepared = _prepare(cyclopropane_plus_singleton_facts())
+        state = _with_next_component_root(_cyclopropane_terminal_open_closure_state())
+        context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            state,
+        )
+
+        transitions = writer_transitions._finish_active_transitions(
+            prepared,
+            state,
+            context,
+        )
+
+        self.assertEqual(transitions, ())
+
+    def test_component_boundary_rejects_closure_candidate(self) -> None:
+        prepared = _prepare(cyclopropane_plus_singleton_facts())
+        state = _with_next_component_root(
+            replace(
+                _cyclopropane_terminal_closed_closure_state(),
+                ring_state=WriterRingState(),
+            )
+        )
+        context = writer_transitions.build_writer_transition_expansion_context(
+            prepared,
+            state,
+        )
+
+        transitions = writer_transitions._finish_active_transitions(
+            prepared,
+            state,
+            context,
+        )
+
+        self.assertEqual(transitions, ())
+
     def test_writer_cursor_after_cc_exposes_weighted_terminal(self) -> None:
         prepared = _prepare(chain_facts(("C", "C")))
         cursor = initial_writer_frontier_cursor(prepared, _writer_options())
@@ -1146,6 +1203,16 @@ def _cyclopropane_terminal_closed_closure_state() -> WriterState:
     )
 
 
+def _with_next_component_root(state: WriterState) -> WriterState:
+    return replace(
+        state,
+        component_cursor=ComponentCursor(
+            component_index=0,
+            component_roots=(AtomId(0), AtomId(3)),
+        ),
+    )
+
+
 @contextlib.contextmanager
 def _forbidden_exhaustive_routes():
     paths = (
@@ -1194,6 +1261,29 @@ def disconnected_co_facts() -> MoleculeFacts:
         components=(
             ComponentFacts(id=ComponentId(0), atoms=(AtomId(0),), bonds=()),
             ComponentFacts(id=ComponentId(1), atoms=(AtomId(1),), bonds=()),
+        ),
+    )
+
+
+def cyclopropane_plus_singleton_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "C"), atom(3, "O")),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2)),
+                bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+            ComponentFacts(
+                id=ComponentId(1),
+                atoms=(AtomId(3),),
+                bonds=(),
+            ),
         ),
     )
 

@@ -7,6 +7,7 @@ import unittest
 from unittest import mock
 
 import grimace
+import grimace._prepared_mol as prepared_mol_module
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
@@ -303,20 +304,22 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         raw_payload = prepared.to_bytes()
         real_files = resources.files
 
-        grimace.PreparedMol.from_bytes(zstd_payload)
+        prepared_mol_module._ZSTD_DICTIONARY_BY_ID.clear()
+        prepared_mol_module._ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.clear()
 
         with mock.patch("importlib.resources.files", wraps=real_files) as files:
             self.assertEqual(
                 raw_payload,
                 grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
             )
-            self.assertEqual(0, files.call_count)
+            first_lookup_count = files.call_count
+            self.assertGreater(first_lookup_count, 0)
 
             self.assertEqual(
                 raw_payload,
                 grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
             )
-            self.assertEqual(0, files.call_count)
+            self.assertEqual(first_lookup_count, files.call_count)
 
     def test_zero_dictionary_id_is_rejected(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)

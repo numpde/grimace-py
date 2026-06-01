@@ -603,7 +603,9 @@ def _available_closure_labels_for_open(
         if candidate not in allocated:
             available.append(candidate)
     if prepared.policy.least_free_ring_labels:
-        return tuple(available[:1])
+        if not available:
+            return ()
+        return (min(available, key=lambda label: label.value),)
     return tuple(available)
 
 

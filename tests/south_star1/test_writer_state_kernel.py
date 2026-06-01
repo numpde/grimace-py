@@ -449,6 +449,20 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(labels, (WriterClosureLabel(value=2, text="2"),))
 
+    def test_raw_closure_label_allocator_least_free_uses_label_value_not_policy_order(self) -> None:
+        prepared = _prepare_with_policy(
+            cyclopropane_facts(),
+            least_free_ring_labels=True,
+            ring_labels=(RingLabel(2), RingLabel(1)),
+        )
+
+        labels = writer_transitions._available_closure_labels_for_open(
+            prepared,
+            WriterRingState(),
+        )
+
+        self.assertEqual(labels, (WriterClosureLabel(value=1, text="1"),))
+
     def test_raw_closure_label_allocator_enumerates_labels_without_least_free(self) -> None:
         prepared = _prepare_with_policy(
             cyclopropane_facts(),
@@ -465,6 +479,26 @@ class WriterStateKernelTest(unittest.TestCase):
             (
                 WriterClosureLabel(value=1, text="1"),
                 WriterClosureLabel(value=2, text="2"),
+            ),
+        )
+
+    def test_raw_closure_label_allocator_nonleast_free_preserves_policy_order(self) -> None:
+        prepared = _prepare_with_policy(
+            cyclopropane_facts(),
+            least_free_ring_labels=False,
+            ring_labels=(RingLabel(2), RingLabel(1)),
+        )
+
+        labels = writer_transitions._available_closure_labels_for_open(
+            prepared,
+            WriterRingState(),
+        )
+
+        self.assertEqual(
+            labels,
+            (
+                WriterClosureLabel(value=2, text="2"),
+                WriterClosureLabel(value=1, text="1"),
             ),
         )
 
@@ -826,6 +860,7 @@ def _prepare_with_policy(
     facts: MoleculeFacts,
     *,
     least_free_ring_labels: bool,
+    ring_labels: tuple[RingLabel, ...] = (RingLabel(1), RingLabel(2)),
 ):
     prepared = _prepare(facts)
     return prepare_south_star_mol_from_facts(
@@ -833,7 +868,7 @@ def _prepare_with_policy(
         writer_surface=SouthStarWriterSurface(),
         policy=replace(
             prepared.policy,
-            ring_labels=(RingLabel(1), RingLabel(2)),
+            ring_labels=ring_labels,
             least_free_ring_labels=least_free_ring_labels,
         ),
     )

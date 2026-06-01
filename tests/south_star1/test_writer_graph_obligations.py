@@ -263,8 +263,13 @@ class WriterGraphObligationsTest(unittest.TestCase):
                 (BondId(5), AtomId(0), AtomId(5), WriterBoundaryOwnerKind.ACTIVE_ATOM),
             ),
         )
-        with self.assertRaises(SouthStarError):
-            legal_writer_transitions(prepared, writer_state_from_key(key))
+        transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
+
+        self.assertEqual(
+            {transition.kind for transition in transitions},
+            {writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT},
+        )
+        self.assertEqual({transition.emitted_text for transition in transitions}, {"1"})
 
     def test_triangle_partial_state_has_boundary_edges_to_one_attachment(self) -> None:
         prepared = _prepare(triangle_facts())

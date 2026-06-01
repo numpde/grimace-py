@@ -319,7 +319,10 @@ and residual attachments are built through a single
 classes derived from the edge partition for the acyclic surface; they do not
 preselect a spanning tree, cycle basis, ring cut, or render program. Cyclic
 residual attachments and closure-candidate edges can be classified
-structurally, but transition creation of closure endpoints still fails closed.
+structurally. Raw writer transitions can now open and pair closure endpoints
+for internally constructed cyclic states when doing so reduces the residual
+graph to the currently supported acyclic attachment surface, but public initial
+writer support still fails closed for cyclic prepared graphs.
 `WriterRingState` now owns explicit open and closed closure records plus ring
 label state, and the edge partition classifies open and closed closure bonds
 before residual attachments are derived. Initial writer support still requires

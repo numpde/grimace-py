@@ -237,6 +237,17 @@ def validate_writer_initial_support_graph_surface(
             )
 
 
+def validate_writer_transition_graph_surface(
+    prepared: SouthStarPreparedMol,
+) -> None:
+    for surface in prepared.writer_graph_metadata.component_surfaces:
+        if not surface.connected:
+            raise SouthStarError(
+                SouthStarErrorKind.UNSUPPORTED_POLICY,
+                "WRITER_SHAPED raw transitions require connected components",
+            )
+
+
 def validate_writer_snapshot_graph_surface(
     prepared: SouthStarPreparedMol,
     key: WriterStateKey,
@@ -961,6 +972,7 @@ __all__ = (
     "classify_writer_residual_attachments",
     "validate_writer_initial_support_graph_surface",
     "validate_writer_snapshot_graph_surface",
+    "validate_writer_transition_graph_surface",
     "validate_writer_edge_obligation_partition",
     "writer_boundary_incidence_sort_tuple",
     "writer_edge_obligation_partition_sort_tuple",

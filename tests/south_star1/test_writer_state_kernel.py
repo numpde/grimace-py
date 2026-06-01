@@ -308,16 +308,19 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
-    def test_raw_legal_transitions_reject_cyclic_prepared_before_root_emission(self) -> None:
+    def test_raw_legal_transitions_allow_cyclic_root_emission(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
-        with self.assertRaises(SouthStarError) as caught:
-            writer_transitions.legal_writer_transitions(
-                prepared,
-                _raw_initial_state(AtomId(0)),
-            )
+        transitions = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertEqual(tuple(transition.emitted_text for transition in transitions), ("C",))
+        self.assertEqual(
+            tuple(transition.kind for transition in transitions),
+            (writer_transitions.WriterTransitionKind.ATOM,),
+        )
 
     def test_raw_legal_transitions_reject_missing_active_frame(self) -> None:
         prepared = _prepare(chain_facts(("C",)))
@@ -339,6 +342,122 @@ class WriterStateKernelTest(unittest.TestCase):
         )
 
         self.assertEqual(tuple(transition.emitted_text for transition in transitions), ("C",))
+
+    def test_raw_closure_endpoint_transition_opens_ring_label(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        root = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )[0].successor
+
+        transitions = writer_transitions.legal_writer_transitions(prepared, root)
+
+        self.assertTrue(transitions)
+        self.assertEqual(
+            {transition.kind for transition in transitions},
+            {writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT},
+        )
+        self.assertEqual({transition.emitted_text for transition in transitions}, {"1"})
+        opened = transitions[0].successor
+        self.assertEqual(len(opened.ring_state.open_endpoints), 1)
+        endpoint = opened.ring_state.open_endpoints[0]
+        self.assertEqual(endpoint.label, WriterClosureLabel(value=1, text="1"))
+        self.assertEqual(endpoint.first_endpoint_text, "1")
+        self.assertEqual(endpoint.first_endpoint_bond_text, "")
+        self.assertTrue(
+            any(
+                factor.kind == "ring_pair" and not factor.closed
+                for factor in opened.stereo_state.delayed_factors
+            )
+        )
+
+    def test_raw_closure_endpoint_transition_pairs_ring_label(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        root = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )[0].successor
+        opened = next(
+            transition.successor
+            for transition in writer_transitions.legal_writer_transitions(prepared, root)
+            if transition.successor.ring_state.open_endpoints[0].second_atom == AtomId(2)
+        )
+        after_first_child = writer_transitions.legal_writer_transitions(
+            prepared,
+            opened,
+        )[0].successor
+        at_partner = writer_transitions.legal_writer_transitions(
+            prepared,
+            after_first_child,
+        )[0].successor
+
+        transitions = writer_transitions.legal_writer_transitions(prepared, at_partner)
+
+        self.assertEqual(
+            tuple(transition.kind for transition in transitions),
+            (writer_transitions.WriterTransitionKind.PAIR_CLOSURE_ENDPOINT,),
+        )
+        self.assertEqual(tuple(transition.emitted_text for transition in transitions), ("1",))
+        closed = transitions[0].successor
+        self.assertEqual(closed.ring_state.open_endpoints, ())
+        self.assertEqual(len(closed.ring_state.closed_closures), 1)
+        self.assertEqual(
+            closed.ring_state.closed_closures[0].label,
+            WriterClosureLabel(value=1, text="1"),
+        )
+        self.assertEqual(
+            closed.ring_state.label_state.reusable,
+            (WriterClosureLabel(value=1, text="1"),),
+        )
+        self.assertTrue(
+            any(
+                factor.kind == "ring_pair" and factor.closed
+                for factor in closed.stereo_state.delayed_factors
+            )
+        )
+
+    def test_raw_closure_label_allocator_prefers_reusable_labels(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        reusable = WriterClosureLabel(value=2, text="2")
+
+        label = writer_transitions._least_available_closure_label(
+            prepared,
+            WriterRingState(
+                label_state=WriterRingLabelState(reusable=(reusable,)),
+            ),
+        )
+
+        self.assertEqual(label, reusable)
+
+    def test_raw_closure_label_allocator_uses_least_unused_label(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        label = writer_transitions._least_available_closure_label(
+            prepared,
+            WriterRingState(
+                label_state=WriterRingLabelState(
+                    allocated=(WriterClosureLabel(value=1, text="1"),),
+                ),
+            ),
+        )
+
+        self.assertEqual(label, WriterClosureLabel(value=2, text="2"))
+
+    def test_raw_closure_label_allocator_returns_none_when_exhausted(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        labels = tuple(
+            WriterClosureLabel(value=label.value, text=label.text())
+            for label in prepared.policy.ring_labels
+        )
+
+        label = writer_transitions._least_available_closure_label(
+            prepared,
+            WriterRingState(
+                label_state=WriterRingLabelState(allocated=labels),
+            ),
+        )
+
+        self.assertIsNone(label)
 
     def test_raw_terminal_finalization_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())

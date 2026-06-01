@@ -13,15 +13,23 @@ from .ids import AtomId
 from .ids import BondId
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
+from .writer_graph_obligations import WriterGraphObligationSummary
+from .writer_graph_obligations import WriterResidualAttachment
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_initial_support_graph_surface
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
+from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
 from .writer_state import PendingWriterEntry
 from .writer_state import WriterAtomFrame
 from .writer_state import WriterBranchFrame
+from .writer_state import WriterClosedClosure
+from .writer_state import WriterClosureLabel
+from .writer_state import WriterOpenClosureEndpoint
+from .writer_state import WriterRingLabelState
+from .writer_state import WriterRingState
 from .writer_state import WriterState
 from .writer_state import WriterStateKey
 from .writer_state import writer_state_key
@@ -32,6 +40,8 @@ from .writer_events import WriterBranchOpened
 from .writer_events import WriterComponentBoundaryEmitted
 from .writer_events import WriterEvent
 from .writer_events import WriterLocalOrderClosed
+from .writer_events import WriterRingEndpointEmitted
+from .writer_events import WriterRingEndpointPaired
 from .writer_stereo import WriterAtomTextChoice
 from .writer_stereo import WriterBondTextChoice
 from .writer_stereo import advance_writer_stereo_state
@@ -52,6 +62,8 @@ class WriterTransitionKind(Enum):
     ENTER_BRANCH_CHILD = "enter_branch_child"
     CLOSE_BRANCH = "close_branch"
     DOT = "dot"
+    OPEN_CLOSURE_ENDPOINT = "open_closure_endpoint"
+    PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,15 +104,10 @@ def build_writer_transition_expansion_context(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer state requires an active writer frame",
         )
-    if (
-        not state.ring_state.open_endpoints
-        and not state.ring_state.closed_closures
-    ):
-        validate_writer_initial_support_graph_surface(prepared)
+    validate_writer_transition_graph_surface(prepared)
     key = writer_state_key(state)
     graph = build_writer_graph_obligation_context(prepared, key)
     validate_writer_stereo_supported_prepared(prepared)
-    validate_writer_snapshot_graph_surface(prepared, key, graph)
     return WriterTransitionExpansionContext(state_key=key, graph=graph)
 
 
@@ -115,6 +122,10 @@ def legal_writer_transitions(
     active = state.active
     if not active.atom_emitted:
         return _root_atom_transitions(prepared, state, active)
+
+    closure_transitions = _closure_endpoint_transitions(prepared, state, context)
+    if closure_transitions:
+        return closure_transitions
 
     children = _child_obligations_from_context(context, state, active.atom)
     if not children:
@@ -450,6 +461,287 @@ def _finish_active_transitions(
         evidence=WriterTransitionEvidence(atom=root),
     )
     return (() if transition is None else (transition,))
+
+
+def _closure_endpoint_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    return (
+        *_pair_closure_endpoint_transitions(prepared, state, context),
+        *_open_closure_endpoint_transitions(prepared, state, context),
+    )
+
+
+def _open_closure_endpoint_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    label = _least_available_closure_label(prepared, state.ring_state)
+    if label is None:
+        return ()
+    active_atom = state.active.atom
+    transitions = []
+    for attachment in context.graph.residual_summary.attachments.attachments:
+        if not _attachment_requires_closure_endpoint(attachment):
+            continue
+        for incidence in attachment.boundary:
+            if incidence.written_atom != active_atom:
+                continue
+            endpoint = WriterOpenClosureEndpoint(
+                bond=incidence.bond,
+                first_atom=active_atom,
+                second_atom=incidence.residual_atom,
+                label=label,
+                first_endpoint_text=label.text,
+                first_endpoint_bond_text="",
+            )
+            transition = _transition(
+                prepared,
+                state,
+                emitted_text=label.text,
+                successor=replace(
+                    state,
+                    ring_state=_ring_state_after_open_endpoint(
+                        state.ring_state,
+                        endpoint,
+                    ),
+                ),
+                kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+                events=(
+                    WriterRingEndpointEmitted(
+                        bond=endpoint.bond,
+                        endpoint_atom=endpoint.first_atom,
+                        partner_atom=endpoint.second_atom,
+                        label=endpoint.label,
+                        endpoint_text=endpoint.first_endpoint_text,
+                        bond_text=endpoint.first_endpoint_bond_text,
+                    ),
+                ),
+                evidence=WriterTransitionEvidence(
+                    bond=endpoint.bond,
+                    parent=endpoint.first_atom,
+                    child=endpoint.second_atom,
+                ),
+            )
+            if transition is None:
+                continue
+            if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
+                transitions.append(transition)
+    return tuple(transitions)
+
+
+def _pair_closure_endpoint_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    active_atom = state.active.atom
+    transitions = []
+    for endpoint in state.ring_state.open_endpoints:
+        if endpoint.second_atom != active_atom:
+            continue
+        closure = WriterClosedClosure(
+            bond=endpoint.bond,
+            first_atom=endpoint.first_atom,
+            second_atom=endpoint.second_atom,
+            label=endpoint.label,
+            first_endpoint_text=endpoint.first_endpoint_text,
+            second_endpoint_text=endpoint.label.text,
+            first_endpoint_bond_text=endpoint.first_endpoint_bond_text,
+            second_endpoint_bond_text="",
+        )
+        transition = _transition(
+            prepared,
+            state,
+            emitted_text=endpoint.label.text,
+            successor=replace(
+                state,
+                ring_state=_ring_state_after_pair_endpoint(state.ring_state, endpoint, closure),
+            ),
+            kind=WriterTransitionKind.PAIR_CLOSURE_ENDPOINT,
+            events=(
+                WriterRingEndpointPaired(
+                    bond=closure.bond,
+                    endpoint_atom=closure.second_atom,
+                    partner_atom=closure.first_atom,
+                    label=closure.label,
+                    endpoint_text=closure.second_endpoint_text,
+                    bond_text=closure.second_endpoint_bond_text,
+                ),
+            ),
+            evidence=WriterTransitionEvidence(
+                bond=closure.bond,
+                parent=closure.first_atom,
+                child=closure.second_atom,
+            ),
+        )
+        if transition is None:
+            continue
+        if _closure_pair_successor_is_supported(prepared, transition.successor, closure):
+            transitions.append(transition)
+    return tuple(transitions)
+
+
+def _attachment_requires_closure_endpoint(
+    attachment: WriterResidualAttachment,
+) -> bool:
+    return attachment.cyclic_rank > 0 or len(attachment.boundary) > 1
+
+
+def _least_available_closure_label(
+    prepared: SouthStarPreparedMol,
+    ring_state: WriterRingState,
+) -> WriterClosureLabel | None:
+    reusable = set(ring_state.label_state.reusable)
+    for label in prepared.policy.ring_labels:
+        candidate = WriterClosureLabel(value=label.value, text=label.text())
+        if candidate in reusable:
+            return candidate
+    allocated = set(ring_state.label_state.allocated)
+    for label in prepared.policy.ring_labels:
+        candidate = WriterClosureLabel(value=label.value, text=label.text())
+        if candidate not in allocated and candidate not in reusable:
+            return candidate
+    return None
+
+
+def _ring_state_after_open_endpoint(
+    ring_state: WriterRingState,
+    endpoint: WriterOpenClosureEndpoint,
+) -> WriterRingState:
+    label = endpoint.label
+    return replace(
+        ring_state,
+        open_endpoints=_sorted_open_endpoints((*ring_state.open_endpoints, endpoint)),
+        label_state=WriterRingLabelState(
+            allocated=_sorted_closure_labels((*ring_state.label_state.allocated, label)),
+            reusable=_sorted_closure_labels(
+                item for item in ring_state.label_state.reusable if item != label
+            ),
+        ),
+    )
+
+
+def _ring_state_after_pair_endpoint(
+    ring_state: WriterRingState,
+    endpoint: WriterOpenClosureEndpoint,
+    closure: WriterClosedClosure,
+) -> WriterRingState:
+    label = endpoint.label
+    return replace(
+        ring_state,
+        open_endpoints=_sorted_open_endpoints(
+            item for item in ring_state.open_endpoints if item != endpoint
+        ),
+        closed_closures=_sorted_closed_closures((*ring_state.closed_closures, closure)),
+        label_state=WriterRingLabelState(
+            allocated=_sorted_closure_labels(
+                item for item in ring_state.label_state.allocated if item != label
+            ),
+            reusable=_sorted_closure_labels((*ring_state.label_state.reusable, label)),
+        ),
+    )
+
+
+def _closure_open_successor_is_supported(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    endpoint: WriterOpenClosureEndpoint,
+) -> bool:
+    try:
+        key = writer_state_key(state)
+        graph = build_writer_graph_obligation_context(prepared, key)
+        if _edge_kind(graph, endpoint.bond) is not WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT:
+            return False
+        if _has_closure_candidate(graph):
+            return False
+        if not _residual_attachments_are_acyclic_single_boundary(graph.residual_summary):
+            return False
+        validate_writer_snapshot_graph_surface(prepared, key, graph)
+    except SouthStarError:
+        return False
+    return True
+
+
+def _closure_pair_successor_is_supported(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    closure: WriterClosedClosure,
+) -> bool:
+    try:
+        key = writer_state_key(state)
+        graph = build_writer_graph_obligation_context(prepared, key)
+        if _edge_kind(graph, closure.bond) is not WriterEdgeObligationKind.CLOSED_CLOSURE:
+            return False
+        if any(endpoint.bond == closure.bond for endpoint in key.ring_state.open_endpoints):
+            return False
+        validate_writer_snapshot_graph_surface(prepared, key, graph)
+    except SouthStarError:
+        return False
+    return True
+
+
+def _edge_kind(
+    graph: WriterGraphObligationContext,
+    bond: BondId,
+) -> WriterEdgeObligationKind | None:
+    for obligation in graph.edge_partition.obligations:
+        if obligation.bond == bond:
+            return obligation.kind
+    return None
+
+
+def _has_closure_candidate(graph: WriterGraphObligationContext) -> bool:
+    return any(
+        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
+        for obligation in graph.edge_partition.obligations
+    )
+
+
+def _residual_attachments_are_acyclic_single_boundary(
+    summary: WriterGraphObligationSummary,
+) -> bool:
+    return all(
+        attachment.cyclic_rank == 0 and len(attachment.boundary) <= 1
+        for attachment in summary.attachments.attachments
+    )
+
+
+def _sorted_closure_labels(labels) -> tuple[WriterClosureLabel, ...]:
+    return tuple(sorted(labels, key=lambda item: (item.value, item.text)))
+
+
+def _sorted_open_endpoints(endpoints) -> tuple[WriterOpenClosureEndpoint, ...]:
+    return tuple(
+        sorted(
+            endpoints,
+            key=lambda item: (
+                int(item.bond),
+                int(item.first_atom),
+                int(item.second_atom),
+                item.label.value,
+                item.label.text,
+            ),
+        )
+    )
+
+
+def _sorted_closed_closures(closures) -> tuple[WriterClosedClosure, ...]:
+    return tuple(
+        sorted(
+            closures,
+            key=lambda item: (
+                int(item.bond),
+                int(item.first_atom),
+                int(item.second_atom),
+                item.label.value,
+                item.label.text,
+            ),
+        )
+    )
 
 
 def writer_state_is_eos(

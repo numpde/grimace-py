@@ -30,13 +30,21 @@
       "rooted_at_atom": 19,
       "support_count": 1248,
       "root_fragment": "Cl"
-    }
-  ],
-  "not_promoted": [
+    },
     {
       "id": "pubchem_17730_nonisomeric_random_root27_counterion",
       "cid": "17730",
-      "reason": "Too large for this runtime fixture lane at the current budget.",
+      "smiles": "C1=CC(=CC=C1N=NC2=C(C=CC3=C2C=CC(=C3)S(=O)(=O)[O-])O)S(=O)(=O)[O-].[Na+].[Na+]",
+      "rooted_at_atom": 27,
+      "support_count": 16920,
+      "root_fragment": "[Na+]"
+    }
+  ],
+  "under_sampled_attempts": [
+    {
+      "id": "pubchem_17730_nonisomeric_random_root27_counterion",
+      "cid": "17730",
+      "reason": "Initial budget was too small; retry at max_draws=1000000 saturated at support_count=16920.",
       "observed_seed_counts": [
         16911,
         16912

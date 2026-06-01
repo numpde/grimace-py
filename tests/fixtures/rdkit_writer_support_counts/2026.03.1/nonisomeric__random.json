@@ -441,6 +441,42 @@
           }
         ]
       }
+    },
+    {
+      "id": "pubchem_17730_nonisomeric_random_root27_counterion",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 17730, rooted in nonfirst counterion fragment)",
+      "smiles": "C1=CC(=CC=C1N=NC2=C(C=CC3=C2C=CC(=C3)S(=O)(=O)[O-])O)S(=O)(=O)[O-].[Na+].[Na+]",
+      "rooted_at_atom": 27,
+      "support_count": 16920,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 844903,
+            "support_count": 16920,
+            "consecutive_draws_without_new_variant": 338400,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 772773,
+            "support_count": 16920,
+            "consecutive_draws_without_new_variant": 338400,
+            "singleton_count": 0,
+            "doubleton_count": 1,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
     }
   ]
 }

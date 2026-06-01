@@ -30,6 +30,10 @@ fallback.
 
 `PrepareMol(mol, *, isomericSmiles=True, kekuleSmiles=False, allBondsExplicit=False, allHsExplicit=False, ignoreAtomMapNumbers=False)`
 
+`PreparedMol.to_bytes(*, compression=None, dictionary_level=3, level=3)`
+
+`PreparedMol.from_bytes(data)`
+
 Prepares an RDKit molecule once under a fixed writer surface and returns an
 opaque `PreparedMol`. See [Prepared molecules](../guides/prepared-mol.md) for
 the workflow.

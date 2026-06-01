@@ -5,7 +5,11 @@ title: RDKit serializer coverage
 This page explains which RDKit SMILES-writer tests Grimace has reviewed and how
 each relevant RDKit behavior is covered in Grimace's checked-in fixtures.
 Here, "upstream" means RDKit's own source tree: the tests and source blocks
-maintained by RDKit, not tests invented inside Grimace.
+maintained by RDKit.
+
+This page covers the RDKit-source-tree audit lane. Grimace also has
+independent fixtures from local probes, dataset-derived cases, and random-writer
+observations; those are summarized in [Testing fixtures](testing-fixtures.html).
 
 Use it to answer two questions:
 

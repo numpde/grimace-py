@@ -38,7 +38,7 @@ GENERATOR = _load_generator_module()
 
 class RdkitWriterSupportCountGeneratorTests(unittest.TestCase):
     def test_surface_name_matches_fixture_naming_contract(self) -> None:
-        flags = {
+        base_flags = {
             "isomericSmiles": False,
             "canonical": False,
             "doRandom": True,
@@ -48,14 +48,37 @@ class RdkitWriterSupportCountGeneratorTests(unittest.TestCase):
             "ignoreAtomMapNumbers": False,
         }
 
-        self.assertEqual("nonisomeric__random", GENERATOR.surface_name(flags))
-
-        flags["isomericSmiles"] = True
-        self.assertEqual("isomeric__random", GENERATOR.surface_name(flags))
-
-        flags["isomericSmiles"] = False
-        flags["kekuleSmiles"] = True
-        self.assertEqual("nonisomeric__random_kekule", GENERATOR.surface_name(flags))
+        cases = (
+            ({}, "nonisomeric__random"),
+            ({"isomericSmiles": True}, "isomeric__random"),
+            ({"kekuleSmiles": True}, "nonisomeric__random_kekule"),
+            (
+                {"allBondsExplicit": True},
+                "nonisomeric__random_all_bonds_explicit",
+            ),
+            ({"allHsExplicit": True}, "nonisomeric__random_all_hs_explicit"),
+            (
+                {"ignoreAtomMapNumbers": True},
+                "nonisomeric__random_ignore_atom_maps",
+            ),
+            (
+                {
+                    "isomericSmiles": True,
+                    "kekuleSmiles": True,
+                    "allBondsExplicit": True,
+                    "allHsExplicit": True,
+                    "ignoreAtomMapNumbers": True,
+                },
+                "isomeric__random_kekule_all_bonds_explicit_"
+                "all_hs_explicit_ignore_atom_maps",
+            ),
+        )
+        for overrides, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(
+                    expected,
+                    GENERATOR.surface_name(dict(base_flags, **overrides)),
+                )
 
     def test_missing_variant_estimate_handles_degenerate_counts(self) -> None:
         self.assertEqual(0.0, GENERATOR.estimated_missing_variants(0, 0))

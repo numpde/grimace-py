@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import csv
 from pathlib import Path
+import re
 import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from scripts import prepared_mol_zstd_dictionary_generate as generator
 
 
 DEFAULT_INPUT = REPO_ROOT / "docs" / "timings-prepared-mol-zstd.tsv"
@@ -31,6 +34,12 @@ MODE_STYLE = {
 def _read_rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle, dialect="excel-tab"))
+
+
+def _artifact_output_dir(output_dir: Path, dictionary_artifact: str) -> Path:
+    if re.fullmatch(generator.ARTIFACT_DIR_PATTERN, dictionary_artifact) is None:
+        raise SystemExit(f"Invalid dictionary_artifact: {dictionary_artifact!r}")
+    return output_dir / dictionary_artifact
 
 
 def _draw_scatter(
@@ -182,13 +191,12 @@ def main(argv: list[str]) -> int:
         f"id: {dictionary_id}; sha256: {dictionary_sha}..."
     )
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    for path in args.output_dir.glob("*.png"):
-        path.unlink()
+    artifact_output_dir = _artifact_output_dir(args.output_dir, dictionary_artifact)
+    artifact_output_dir.mkdir(parents=True, exist_ok=True)
 
-    compression_output = args.output_dir / "compression-ratio-vs-compression-time.png"
+    compression_output = artifact_output_dir / "compression-ratio-vs-compression-time.png"
     decompression_output = (
-        args.output_dir / "compression-ratio-vs-decompression-time.png"
+        artifact_output_dir / "compression-ratio-vs-decompression-time.png"
     )
     _draw_scatter(
         rows,

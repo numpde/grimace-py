@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import io
 import importlib.util
 import json
 from pathlib import Path
@@ -74,6 +76,11 @@ def load_generator_module() -> ModuleType:
 class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
     def test_training_parameters_are_explicit_recipe_values(self) -> None:
         self.assertEqual(
+            r"^[0-9]{8}_[0-9a-f]{8}$",
+            literal_constant("ARTIFACT_DIR_PATTERN"),
+        )
+        self.assertNotIn("DEFAULT_ZSTD_TRAINING_LEVEL", generator_constants())
+        self.assertEqual(
             {
                 "dict_size": 112_640,
                 "dict_id": "derived-from-training-identity-sha256",
@@ -83,11 +90,27 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
                 "split_point": 0.75,
                 "accel": 1,
                 "notifications": 0,
-                "level": 3,
                 "steps": 4,
                 "threads": 0,
             },
             literal_constant("ZSTD_TRAINING_PARAMETERS"),
+        )
+
+    def test_training_level_must_be_supplied_explicitly(self) -> None:
+        generator = load_generator_module()
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                generator.parse_args([])
+
+        args = generator.parse_args(["--training-level", "3"])
+        self.assertEqual(3, args.training_level)
+
+    def test_training_level_is_the_only_tunable_training_parameter(self) -> None:
+        generator = load_generator_module()
+        self.assertEqual(
+            {**literal_constant("ZSTD_TRAINING_PARAMETERS"), "level": 10},
+            generator.zstd_training_parameters(10),
         )
 
     def test_training_environment_is_pinned_beyond_python_package_name(
@@ -232,6 +255,63 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
                 {50_000, 123_456},
                 generator.existing_shipped_dictionary_ids(),
             )
+
+    def test_existing_dictionary_id_for_training_identity_reuses_artifact_id(
+        self,
+    ) -> None:
+        generator = load_generator_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dictionary_root = Path(tmpdir)
+            artifact = dictionary_root / "20000102_abcdef12"
+            artifact.mkdir()
+            (artifact / "default_v1.json").write_text(
+                json.dumps(
+                    {
+                        "training_identity_sha256": "abc",
+                        "zstd_dictionary_id": 123_456,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                123_456,
+                generator.existing_dictionary_id_for_training_identity(
+                    dictionary_root,
+                    "abc",
+                ),
+            )
+            self.assertIsNone(
+                generator.existing_dictionary_id_for_training_identity(
+                    dictionary_root,
+                    "def",
+                ),
+            )
+
+    def test_existing_dictionary_id_for_training_identity_rejects_duplicates(
+        self,
+    ) -> None:
+        generator = load_generator_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dictionary_root = Path(tmpdir)
+            for name, dictionary_id in (("first", 123_456), ("second", 50_000)):
+                artifact = dictionary_root / name
+                artifact.mkdir()
+                (artifact / "default_v1.json").write_text(
+                    json.dumps(
+                        {
+                            "training_identity_sha256": "abc",
+                            "zstd_dictionary_id": dictionary_id,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            with self.assertRaises(RuntimeError):
+                generator.existing_dictionary_id_for_training_identity(
+                    dictionary_root,
+                    "abc",
+                )
 
 
 if __name__ == "__main__":

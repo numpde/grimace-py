@@ -19,6 +19,7 @@ services:
     environment:
       PREPARED_MOL_ZSTD_CREATED_DATE: "${PREPARED_MOL_ZSTD_CREATED_DATE:-}"
       PREPARED_MOL_ZSTD_FORCE: "${PREPARED_MOL_ZSTD_FORCE:-0}"
+      PREPARED_MOL_ZSTD_TRAINING_LEVEL: "${PREPARED_MOL_ZSTD_TRAINING_LEVEL:?Set PREPARED_MOL_ZSTD_TRAINING_LEVEL through Makefile}"
     volumes:
       - type: bind
         source: ../python/grimace/data/prepared_mol_zstd
@@ -33,9 +34,17 @@ services:
           0|1) ;;
           *) printf '%s\n' 'PREPARED_MOL_ZSTD_FORCE must be 0 or 1.' >&2; exit 2 ;;
         esac
+        case "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" in
+          ''|*[!0-9]*) printf '%s\n' 'PREPARED_MOL_ZSTD_TRAINING_LEVEL must be an integer.' >&2; exit 2 ;;
+        esac
+        if [ "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" -lt 1 ] || [ "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" -gt 22 ]; then
+          printf '%s\n' 'PREPARED_MOL_ZSTD_TRAINING_LEVEL must be in zstd range 1..22.' >&2
+          exit 2
+        fi
         python -m unittest tests.checks.test_prepared_mol_zstd_generator_contract -q
         python -m unittest tests.prepared_mol_zstd_dictionary_flight -q
         set -- --output-root /src/python/grimace/data/prepared_mol_zstd
+        set -- "$$@" --training-level "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}"
         if [ -n "$${PREPARED_MOL_ZSTD_CREATED_DATE}" ]; then
           set -- "$$@" --created-date "$${PREPARED_MOL_ZSTD_CREATED_DATE}"
         fi

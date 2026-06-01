@@ -15,12 +15,15 @@ override TIMINGS_ENUM_ARTIFACTS := $(TIMINGS_ENUM_ARTIFACT_FILES) $(TIMINGS_ENUM
 override DOCS_SOURCE_DIR := docs
 override DOCS_OUTPUT_DIR := build/docs-site
 override PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR := python/grimace/data/prepared_mol_zstd
-override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := docs/timings-prepared-mol-zstd.tsv
+TIMINGS_PREPARED_MOL_ZSTD_OUTPUT ?= docs/timings-prepared-mol-zstd.tsv
+override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := $(TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)
 override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS := docs/timings-prepared-mol-zstd-plots
 override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS := $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES) $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS)
 DOCS_PORT ?= 8000
 PREPARED_MOL_ZSTD_CREATED_DATE ?=
 PREPARED_MOL_ZSTD_FORCE ?= 0
+PREPARED_MOL_ZSTD_TRAINING_LEVEL ?=
+TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=
 
 NON_ROOT_GUARD := if [[ ! "$(ACTUAL_UID)" =~ ^[1-9][0-9]*$$ || ! "$(ACTUAL_GID)" =~ ^[1-9][0-9]*$$ ]]; then printf '%s\n' 'Refusing to run Docker lanes as root. Run make as a non-root user with positive numeric UID and GID.' >&2; exit 2; fi
 DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_PORT}" -gt 65535 ]]; then printf '%s\n' 'Refusing to run docs lane with DOCS_PORT outside 1..65535.' >&2; exit 2; fi
@@ -41,6 +44,9 @@ endef
 docs docs-serve: export DOCS_PORT := $(value DOCS_PORT)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_CREATED_DATE := $(value PREPARED_MOL_ZSTD_CREATED_DATE)
 prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_FORCE := $(value PREPARED_MOL_ZSTD_FORCE)
+prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_TRAINING_LEVEL := $(value PREPARED_MOL_ZSTD_TRAINING_LEVEL)
+timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_OUTPUT := $(value TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)
+timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT := $(value TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT)
 
 help:
 	@printf '%s\n' \
@@ -63,6 +69,9 @@ help:
 	  '  Example: make docs-serve DOCS_PORT=8010' \
 	  '  PREPARED_MOL_ZSTD_CREATED_DATE=YYYYMMDD  Optional artifact date override' \
 	  '  PREPARED_MOL_ZSTD_FORCE=1  Replace the computed artifact directory' \
+	  '  PREPARED_MOL_ZSTD_TRAINING_LEVEL=3  Required zstd dictionary training level, 1..22' \
+	  '  TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT=YYYYMMDD_hash  Dictionary timing input' \
+	  '  TIMINGS_PREPARED_MOL_ZSTD_OUTPUT=docs/timings-prepared-mol-zstd.tsv  Dictionary timing TSV' \
 	  '' \
 	  'Docker-backed lanes refuse root execution and use strict Compose posture.'
 
@@ -106,6 +115,10 @@ prepared-mol-zstd-dictionary:
 	  printf '%s\n' 'PREPARED_MOL_ZSTD_CREATED_DATE must be YYYYMMDD when set.' >&2; \
 	  exit 2; \
 	fi; \
+	if [[ ! "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" =~ ^[1-9][0-9]*$$ || "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" -gt 22 ]]; then \
+	  printf '%s\n' 'PREPARED_MOL_ZSTD_TRAINING_LEVEL must be in zstd range 1..22.' >&2; \
+	  exit 2; \
+	fi; \
 	mkdir -p -- "$$output_dir"; \
 	resolved="$$(realpath -e -- "$$output_dir")"; \
 	expected="$(REPO_ROOT)/$(PREPARED_MOL_ZSTD_PACKAGE_DATA_DIR)"; \
@@ -115,12 +128,19 @@ prepared-mol-zstd-dictionary:
 	fi; \
 	PREPARED_MOL_ZSTD_CREATED_DATE="$${PREPARED_MOL_ZSTD_CREATED_DATE}" \
 	PREPARED_MOL_ZSTD_FORCE="$${PREPARED_MOL_ZSTD_FORCE}" \
+	PREPARED_MOL_ZSTD_TRAINING_LEVEL="$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}" \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/prepared-mol-zstd-dictionary.yml run --build --rm prepared-mol-zstd-dictionary
 
 timings-prepared-mol-zstd:
 	@$(NON_ROOT_GUARD); \
+	if [[ -n "$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" && ! "$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" =~ ^[0-9]{8}_[0-9a-f]{8}$$ ]]; then \
+	  printf '%s\n' 'TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT must be YYYYMMDD_hash when set.' >&2; \
+	  exit 2; \
+	fi; \
 	$(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD); \
 	$(TIMING_GIT_METADATA_ENV); \
+	TIMINGS_PREPARED_MOL_ZSTD_OUTPUT="$${TIMINGS_PREPARED_MOL_ZSTD_OUTPUT}" \
+	TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT="$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" \
 	$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f $(COMPOSE_DIR)/timings-prepared-mol-zstd.yml run --build --rm timings-prepared-mol-zstd
 
 docs:

@@ -19,9 +19,10 @@ EXPECTED_PLAIN_ZSTD_SIZE = 685_686
 EXPECTED_DICTIONARY_ZSTD_SIZE = 481_278
 MAX_DICTIONARY_TO_RAW_RATIO = 0.10
 MAX_DICTIONARY_TO_PLAIN_ZSTD_RATIO = 0.75
+LEVEL_3_ARTIFACT = "20260531_40762836"
 
 
-def _artifact_dir() -> Path:
+def _artifact_dirs() -> tuple[Path, ...]:
     manifests = tuple(
         sorted(
             (generator.ROOT / generator.PACKAGE_DICTIONARY_ROOT).glob(
@@ -29,12 +30,9 @@ def _artifact_dir() -> Path:
             ),
         ),
     )
-    if len(manifests) != 1:
-        raise AssertionError(
-            "Expected exactly one shipped default_v1 dictionary manifest, "
-            f"got {len(manifests)}"
-        )
-    return manifests[0].parent
+    if not manifests:
+        raise AssertionError("Expected at least one shipped default_v1 dictionary")
+    return tuple(manifest.parent for manifest in manifests)
 
 
 def _prepared_payloads(limit: int) -> list[bytes]:
@@ -55,62 +53,65 @@ def _prepared_payloads(limit: int) -> list[bytes]:
 
 
 class PreparedMolZstdDictionaryRateTests(unittest.TestCase):
-    def test_shipped_dictionary_improves_zstd_ratio_on_fixture_sample(self) -> None:
-        artifact_dir = _artifact_dir()
-        manifest = json.loads(
-            (artifact_dir / f"{generator.ARTIFACT_STEM}.json").read_text(
-                encoding="utf-8",
-            ),
-        )
-        dictionary = zstd.ZstdCompressionDict(
-            (artifact_dir / manifest["files"]["dictionary"]).read_bytes(),
-        )
-        self.assertEqual(manifest["zstd_dictionary_id"], dictionary.dict_id())
-
+    def test_shipped_dictionaries_improve_zstd_ratio_on_fixture_sample(self) -> None:
         payloads = _prepared_payloads(SAMPLE_COUNT)
-        plain_compressor = zstd.ZstdCompressor(
-            level=3,
-            write_checksum=True,
-            write_content_size=True,
-        )
-        dictionary_compressor = zstd.ZstdCompressor(
-            level=3,
-            dict_data=dictionary,
-            write_checksum=True,
-            write_content_size=True,
-        )
-
         raw_size = sum(len(payload) for payload in payloads)
-        plain_zstd_size = sum(
-            len(plain_compressor.compress(payload)) for payload in payloads
-        )
-        dictionary_zstd_size = sum(
-            len(dictionary_compressor.compress(payload)) for payload in payloads
-        )
         self.assertEqual(EXPECTED_RAW_SIZE, raw_size)
-        self.assertEqual(EXPECTED_PLAIN_ZSTD_SIZE, plain_zstd_size)
-        self.assertEqual(EXPECTED_DICTIONARY_ZSTD_SIZE, dictionary_zstd_size)
 
-        dictionary_to_raw = dictionary_zstd_size / raw_size
-        dictionary_to_plain_zstd = dictionary_zstd_size / plain_zstd_size
+        for artifact_dir in _artifact_dirs():
+            with self.subTest(artifact=artifact_dir.name):
+                manifest = json.loads(
+                    (artifact_dir / f"{generator.ARTIFACT_STEM}.json").read_text(
+                        encoding="utf-8",
+                    ),
+                )
+                dictionary = zstd.ZstdCompressionDict(
+                    (artifact_dir / manifest["files"]["dictionary"]).read_bytes(),
+                )
+                self.assertEqual(manifest["zstd_dictionary_id"], dictionary.dict_id())
+                level = manifest["training_identity"]["training_parameters"]["level"]
 
-        self.assertLessEqual(
-            dictionary_to_raw,
-            MAX_DICTIONARY_TO_RAW_RATIO,
-            (
-                f"dictionary/raw={dictionary_to_raw:.3f}, "
-                f"raw={raw_size}, dictionary_zstd={dictionary_zstd_size}"
-            ),
-        )
-        self.assertLessEqual(
-            dictionary_to_plain_zstd,
-            MAX_DICTIONARY_TO_PLAIN_ZSTD_RATIO,
-            (
-                f"dictionary/plain_zstd={dictionary_to_plain_zstd:.3f}, "
-                f"plain_zstd={plain_zstd_size}, "
-                f"dictionary_zstd={dictionary_zstd_size}"
-            ),
-        )
+                plain_compressor = zstd.ZstdCompressor(
+                    level=level,
+                    write_checksum=True,
+                    write_content_size=True,
+                )
+                dictionary_compressor = zstd.ZstdCompressor(
+                    level=level,
+                    dict_data=dictionary,
+                    write_checksum=True,
+                    write_content_size=True,
+                )
+                plain_zstd_size = sum(
+                    len(plain_compressor.compress(payload)) for payload in payloads
+                )
+                dictionary_zstd_size = sum(
+                    len(dictionary_compressor.compress(payload)) for payload in payloads
+                )
+                if artifact_dir.name == LEVEL_3_ARTIFACT:
+                    self.assertEqual(EXPECTED_PLAIN_ZSTD_SIZE, plain_zstd_size)
+                    self.assertEqual(EXPECTED_DICTIONARY_ZSTD_SIZE, dictionary_zstd_size)
+
+                dictionary_to_raw = dictionary_zstd_size / raw_size
+                dictionary_to_plain_zstd = dictionary_zstd_size / plain_zstd_size
+
+                self.assertLessEqual(
+                    dictionary_to_raw,
+                    MAX_DICTIONARY_TO_RAW_RATIO,
+                    (
+                        f"dictionary/raw={dictionary_to_raw:.3f}, "
+                        f"raw={raw_size}, dictionary_zstd={dictionary_zstd_size}"
+                    ),
+                )
+                self.assertLessEqual(
+                    dictionary_to_plain_zstd,
+                    MAX_DICTIONARY_TO_PLAIN_ZSTD_RATIO,
+                    (
+                        f"dictionary/plain_zstd={dictionary_to_plain_zstd:.3f}, "
+                        f"plain_zstd={plain_zstd_size}, "
+                        f"dictionary_zstd={dictionary_zstd_size}"
+                    ),
+                )
 
 
 if __name__ == "__main__":

@@ -97,6 +97,7 @@ class BuildDependencyPinTests(unittest.TestCase):
                     if relative_path in {
                         "containers/prepared-mol-zstd-dictionary/Dockerfile",
                         "containers/timings-prepared-mol-zstd/Dockerfile",
+                        "containers/test/Dockerfile",
                     }:
                         self.assertRegex(
                             text,
@@ -115,6 +116,10 @@ class BuildDependencyPinTests(unittest.TestCase):
             f"zstandard=={ZSTANDARD_VERSION}",
             pyproject["dependency-groups"]["dev"],
         )
+
+    def test_project_dependencies_include_zstandard_runtime(self) -> None:
+        pyproject = tomllib.loads(read_text("pyproject.toml"))
+        self.assertIn("zstandard>=0.25", pyproject["project"]["dependencies"])
 
     def test_container_constraints_are_exact_and_sorted(self) -> None:
         lines = constraint_lines()

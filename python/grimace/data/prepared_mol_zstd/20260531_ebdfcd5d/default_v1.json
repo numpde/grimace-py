@@ -1,0 +1,89 @@
+{
+  "artifact_dir": "20260531_ebdfcd5d",
+  "created_yyyymmdd": "20260531",
+  "files": {
+    "dictionary": "default_v1.zstdict",
+    "manifest": "default_v1.json"
+  },
+  "manifest_hash_canonicalization": {
+    "excluded_fields": [
+      "artifact_dir",
+      "created_yyyymmdd",
+      "manifest_sha256"
+    ],
+    "json": "utf-8, sort_keys=True, separators=(',', ':')"
+  },
+  "manifest_sha256": "ebdfcd5d0b14a6c2f539b38a1808ffe398260e26177bc2dc3e49bd5d2ecb34b7",
+  "semantic_id": "prepared-mol-default-v1",
+  "training_identity": {
+    "candidate_success_count": 99996,
+    "dictionary_id_derivation_rule": "For each 4-byte little-endian word of training_identity_sha256, clear the top bit and choose the first value in 32768..2147483647 not already assigned to a shipped dictionary. Fail if no such value exists.",
+    "dictionary_size": 112640,
+    "generator": {
+      "python_package": "zstandard",
+      "python_package_backend": "cext",
+      "python_package_version": "0.25.0",
+      "script": "scripts/prepared_mol_zstd_dictionary_generate.py",
+      "version": 2,
+      "zstd_library_version": [
+        1,
+        5,
+        7
+      ]
+    },
+    "parse_failure_count": 4,
+    "preparation_failure_count": 0,
+    "prepared_mol_raw_format": {
+      "magic_hex": "47504d00",
+      "version": 1
+    },
+    "raw_sample_digest": {
+      "algorithm": "sha256",
+      "encoding": "8-byte little-endian length prefix followed by raw payload bytes",
+      "value": "3684f17c9a40bd719f61ea8317c792c91c2d375a94b9bd73597a87358f1f8e7f"
+    },
+    "raw_sample_total_bytes": 557148025,
+    "rdkit_version": "2026.03.1",
+    "sample_count": 99996,
+    "selected_cids_sha256": "97fe8275f791b6e90379e0d5107a12e09b4c2e793abc595aa3129236cb194f5f",
+    "selected_source_rows_sha256": "fc2df7a5b44d84fb314f12b6f4e40e63a16963651ab409a1d3f5224395eb6d74",
+    "selection_rule": {
+      "deduplication": "none",
+      "included_rows": "all fixture rows that RDKit parses and grimace.PrepareMol prepares successfully",
+      "name": "all-parseable-preparable-v1",
+      "sample_order": "source row order"
+    },
+    "semantic_id": "prepared-mol-default-v1",
+    "source_fixture": {
+      "gzip_sha256": "67d1d31c3eb27da5ae5a8b8c1a3369531061113464c0dbfaf46e274493acc1ea",
+      "path": "tests/fixtures/top_100000_CIDs.tsv.gz",
+      "redistribution_terms": "Dictionary training uses the checked-in repository fixture; the generated dictionary ships derived compression statistics, not raw training samples.",
+      "source_name": "PubChem-derived top 100000 CID fixture",
+      "uncompressed_sha256": "605cbbd10e69225ccfb47e05594aa01b338df7238f2ba3da76d7f5060c08f1bf"
+    },
+    "training_parameters": {
+      "accel": 1,
+      "d": 8,
+      "dict_id": "derived-from-training-identity-sha256",
+      "dict_size": 112640,
+      "f": 20,
+      "k": 0,
+      "level": 10,
+      "notifications": 0,
+      "split_point": 0.75,
+      "steps": 4,
+      "threads": 0
+    },
+    "writer_options": {
+      "allBondsExplicit": false,
+      "allHsExplicit": false,
+      "ignoreAtomMapNumbers": false,
+      "isomericSmiles": true,
+      "kekuleSmiles": false
+    }
+  },
+  "training_identity_sha256": "70cec5beb74cda52c2ea89c8175d5a4d802aba446e915890863694fd0c0266c2",
+  "zstd_dictionary_id": 1390038199,
+  "zstd_dictionary_sha256": "c87c9e5066dfc00f18800339ac2db0ad4964b72a009574e92bcc2b5ed642d575",
+  "zstd_dictionary_size_bytes": 112640
+}

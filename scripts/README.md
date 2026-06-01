@@ -40,14 +40,15 @@ bounded correctness checks; heavier profiling runs should be explicit.
   - requires the pinned `zstandard` development dependency
 - `timings_prepared_mol_zstd_measure.py`
   - measures per-molecule `PreparedMol` compression and decompression with and
-    without the shipped dictionary
+    without a selected shipped dictionary
   - uses a deterministic random sample from the checked-in `top_100000`
     fixture and records the sample seed and sample hashes in the TSV
-  - writes `docs/timings-prepared-mol-zstd.tsv`
+  - writes the selected timing TSV, defaulting to
+    `docs/timings-prepared-mol-zstd.tsv`
 - `timings_prepared_mol_zstd_plot.py`
   - renders compression-ratio tradeoff plots from
-    `docs/timings-prepared-mol-zstd.tsv`
-  - writes `docs/timings-prepared-mol-zstd-plots/`
+    a PreparedMol zstd timing TSV
+  - writes `docs/timings-prepared-mol-zstd-plots/<dictionary-artifact>/`
 
 ## `mine_rdkit_regressions.py`
 

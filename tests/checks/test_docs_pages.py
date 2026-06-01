@@ -120,10 +120,11 @@ class DocsPagesTests(unittest.TestCase):
         self.assertNotIn("hostname", timings.lower())
 
     def test_timing_tsv_metadata_is_self_contained(self) -> None:
-        for path in (
+        paths = (
             ROOT / "docs" / "timings-enum.tsv",
-            ROOT / "docs" / "timings-prepared-mol-zstd.tsv",
-        ):
+            *sorted((ROOT / "docs").glob("timings-prepared-mol-zstd*.tsv")),
+        )
+        for path in paths:
             with self.subTest(path=path.name):
                 with path.open("r", encoding="utf-8", newline="") as handle:
                     rows = tuple(csv.DictReader(handle, delimiter="\t"))
@@ -166,6 +167,30 @@ class DocsPagesTests(unittest.TestCase):
 
         for figure in timings.split('<figure class="timing-plot">')[1:]:
             self.assertLess(figure.index("<figcaption>"), figure.index("<img "))
+
+    def test_prepared_mol_zstd_plots_are_under_dictionary_artifact(self) -> None:
+        dictionary_artifacts: set[str] = set()
+        for path in sorted((ROOT / "docs").glob("timings-prepared-mol-zstd*.tsv")):
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                rows = tuple(csv.DictReader(handle, delimiter="\t"))
+            artifacts = {row["dictionary_artifact"] for row in rows}
+            self.assertEqual(1, len(artifacts), path.name)
+            dictionary_artifacts.update(artifacts)
+
+        timings = (ROOT / "docs" / "timings-prepared-mol-zstd.md").read_text(
+            encoding="utf-8",
+        )
+        image_paths = HTML_IMAGE_SRC.findall(timings)
+        self.assertEqual(2 * len(dictionary_artifacts), len(image_paths))
+        for image_path in image_paths:
+            self.assertTrue(
+                any(
+                    f"timings-prepared-mol-zstd-plots/{artifact}/" in image_path
+                    for artifact in dictionary_artifacts
+                ),
+                image_path,
+            )
+            self.assertTrue((ROOT / "docs" / image_path).is_file(), image_path)
 
     def test_pages_use_front_matter_title_without_body_h1(self) -> None:
         offenders: list[str] = []

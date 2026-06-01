@@ -20,11 +20,13 @@ services:
       GRIMACE_PERF_GIT_COMMIT: "${GRIMACE_PERF_GIT_COMMIT:-}"
       GRIMACE_PERF_GIT_CHANGE: "${GRIMACE_PERF_GIT_CHANGE:-}"
       GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"
+      TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT: "${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT:-}"
+      TIMINGS_PREPARED_MOL_ZSTD_OUTPUT: "${TIMINGS_PREPARED_MOL_ZSTD_OUTPUT:?Set TIMINGS_PREPARED_MOL_ZSTD_OUTPUT through Makefile}"
       MPLCONFIGDIR: /tmp/matplotlib
     volumes:
       - type: bind
-        source: ../docs/timings-prepared-mol-zstd.tsv
-        target: /build-src/docs/timings-prepared-mol-zstd.tsv
+        source: ../${TIMINGS_PREPARED_MOL_ZSTD_OUTPUT:?Set TIMINGS_PREPARED_MOL_ZSTD_OUTPUT through Makefile}
+        target: /build-src/docs/timings-prepared-mol-zstd-output.tsv
         bind:
           create_host_path: false
       - type: bind
@@ -36,5 +38,9 @@ services:
       - /bin/sh
       - -euc
       - |
-        python scripts/timings_prepared_mol_zstd_measure.py
-        python scripts/timings_prepared_mol_zstd_plot.py
+        set -- --output /build-src/docs/timings-prepared-mol-zstd-output.tsv
+        if [ -n "$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}" ]; then
+          set -- "$$@" --dictionary-artifact "$${TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT}"
+        fi
+        python scripts/timings_prepared_mol_zstd_measure.py "$$@"
+        python scripts/timings_prepared_mol_zstd_plot.py --input /build-src/docs/timings-prepared-mol-zstd-output.tsv

@@ -162,8 +162,18 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE", compose)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE", compose)
+        self.assertIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL", compose)
+        self.assertIn(
+            'PREPARED_MOL_ZSTD_TRAINING_LEVEL: "${PREPARED_MOL_ZSTD_TRAINING_LEVEL:?Set PREPARED_MOL_ZSTD_TRAINING_LEVEL through Makefile}"',
+            compose,
+        )
+        self.assertNotIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL:-3", compose)
         self.assertNotIn("PREPARED_MOL_ZSTD_OUTPUT_DIR", compose)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE must be 0 or 1.", compose)
+        self.assertIn(
+            "PREPARED_MOL_ZSTD_TRAINING_LEVEL must be in zstd range 1..22.",
+            compose,
+        )
         self.assertIn("source: ../python/grimace/data/prepared_mol_zstd", compose)
         self.assertIn("target: /src/python/grimace/data/prepared_mol_zstd", compose)
         self.assertIn("create_host_path: false", compose)
@@ -181,6 +191,10 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn(
             "set -- --output-root /src/python/grimace/data/prepared_mol_zstd",
+            compose,
+        )
+        self.assertIn(
+            'set -- "$$@" --training-level "$${PREPARED_MOL_ZSTD_TRAINING_LEVEL}"',
             compose,
         )
         self.assertIn(
@@ -224,10 +238,15 @@ class ContainerPostureTests(unittest.TestCase):
             'GRIMACE_PERF_GIT_DIRTY: "${GRIMACE_PERF_GIT_DIRTY:-}"',
             compose,
         )
+        self.assertIn("TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT", compose)
+        self.assertIn("TIMINGS_PREPARED_MOL_ZSTD_OUTPUT", compose)
         self.assertIn("MPLCONFIGDIR: /tmp/matplotlib", compose)
-        self.assertIn("source: ../docs/timings-prepared-mol-zstd.tsv", compose)
         self.assertIn(
-            "target: /build-src/docs/timings-prepared-mol-zstd.tsv",
+            "source: ../${TIMINGS_PREPARED_MOL_ZSTD_OUTPUT:?",
+            compose,
+        )
+        self.assertIn(
+            "target: /build-src/docs/timings-prepared-mol-zstd-output.tsv",
             compose,
         )
         self.assertIn(
@@ -239,10 +258,13 @@ class ContainerPostureTests(unittest.TestCase):
             compose,
         )
         self.assertIn(
-            "python scripts/timings_prepared_mol_zstd_measure.py",
+            'python scripts/timings_prepared_mol_zstd_measure.py "$$@"',
             compose,
         )
-        self.assertIn("python scripts/timings_prepared_mol_zstd_plot.py", compose)
+        self.assertIn(
+            "python scripts/timings_prepared_mol_zstd_plot.py --input /build-src/docs/timings-prepared-mol-zstd-output.tsv",
+            compose,
+        )
         self.assertLess(
             compose.index("python scripts/timings_prepared_mol_zstd_measure.py"),
             compose.index("python scripts/timings_prepared_mol_zstd_plot.py"),
@@ -494,7 +516,11 @@ class ContainerPostureTests(unittest.TestCase):
             makefile,
         )
         self.assertIn(
-            "override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := docs/timings-prepared-mol-zstd.tsv",
+            "TIMINGS_PREPARED_MOL_ZSTD_OUTPUT ?= docs/timings-prepared-mol-zstd.tsv",
+            makefile,
+        )
+        self.assertIn(
+            "override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := $(TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)",
             makefile,
         )
         self.assertIn(
@@ -508,6 +534,9 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("DOCS_PORT ?= 8000", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_CREATED_DATE ?=", makefile)
         self.assertIn("PREPARED_MOL_ZSTD_FORCE ?= 0", makefile)
+        self.assertIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL ?=", makefile)
+        self.assertNotIn("PREPARED_MOL_ZSTD_TRAINING_LEVEL ?= 3", makefile)
+        self.assertIn("TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT ?=", makefile)
         self.assertIn("make docs-serve  Serve the documentation site on DOCS_PORT", makefile)
         self.assertIn(
             "make prepared-mol-zstd-dictionary  Generate the PreparedMol zstd dictionary artifact",
@@ -533,6 +562,18 @@ class ContainerPostureTests(unittest.TestCase):
         )
         self.assertIn(
             "prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_FORCE := $(value PREPARED_MOL_ZSTD_FORCE)",
+            makefile,
+        )
+        self.assertIn(
+            "prepared-mol-zstd-dictionary: export PREPARED_MOL_ZSTD_TRAINING_LEVEL := $(value PREPARED_MOL_ZSTD_TRAINING_LEVEL)",
+            makefile,
+        )
+        self.assertIn(
+            "timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_OUTPUT := $(value TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)",
+            makefile,
+        )
+        self.assertIn(
+            "timings-prepared-mol-zstd: export TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT := $(value TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT)",
             makefile,
         )
         self.assertNotIn("\nexport DOCS_PORT", makefile)

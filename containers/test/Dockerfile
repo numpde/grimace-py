@@ -17,7 +17,7 @@ COPY requirements/container-build-constraints.txt /tmp/container-build-constrain
 RUN python --version \
     && rustc --version \
     && cargo --version \
-    && python -m pip install --constraint /tmp/container-build-constraints.txt maturin==1.13.1 rdkit==2026.3.1
+    && python -m pip install --constraint /tmp/container-build-constraints.txt maturin==1.13.1 rdkit==2026.3.1 zstandard==0.25.0
 
 WORKDIR /src
 COPY . /src

@@ -50,6 +50,11 @@ object. Runtime calls with conflicting writer flags raise `ValueError`.
 core. `PreparedMol.from_bytes(...)` accepts that payload and reconstructs an
 opaque object ready for the runtime.
 
+`PreparedMol.to_bytes(compression="zstd")` writes a zstd frame using the
+default shipped dictionary and compression level. `PreparedMol.from_bytes(...)`
+detects compressed payloads from the zstd frame and selects the matching
+shipped dictionary from the frame dictionary id.
+
 ## MolToSmilesEnum
 
 `MolToSmilesEnum(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`

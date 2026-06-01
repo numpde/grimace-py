@@ -28,6 +28,7 @@ EXPECTED_ZSTANDARD_VERSION = "0.25.0"
 
 SEMANTIC_ID = "prepared-mol-default-v1"
 ARTIFACT_STEM = "default_v1"
+ARTIFACT_DIR_PATTERN = r"^[0-9]{8}_[0-9a-f]{8}$"
 # Bump for any output-affecting generator change. Refactors that preserve the
 # training identity and dictionary bytes do not need a new artifact identity.
 GENERATOR_VERSION = 2
@@ -54,7 +55,6 @@ ZSTD_TRAINING_PARAMETERS = {
     "split_point": 0.75,
     "accel": 1,
     "notifications": 0,
-    "level": 3,
     "steps": 4,
     "threads": 0,
 }
@@ -180,6 +180,10 @@ def digest_text_lines(values: tuple[str, ...]) -> str:
     return digest.hexdigest()
 
 
+def zstd_training_parameters(level: int) -> dict[str, object]:
+    return {**ZSTD_TRAINING_PARAMETERS, "level": level}
+
+
 def prepared_mol_format_version(payload: bytes) -> int:
     if not payload.startswith(RAW_PREPARED_MOL_MAGIC):
         raise ValueError("PreparedMol payload does not start with GPM\\0")
@@ -272,9 +276,10 @@ def zstandard_library_version() -> object:
     return getattr(zstd, "ZSTD_VERSION", None)
 
 
-def existing_shipped_dictionary_ids() -> set[int]:
+def existing_shipped_dictionary_ids(dictionary_root: Path | None = None) -> set[int]:
     dictionary_ids: dict[int, Path] = {}
-    dictionary_root = ROOT / PACKAGE_DICTIONARY_ROOT
+    if dictionary_root is None:
+        dictionary_root = ROOT / PACKAGE_DICTIONARY_ROOT
     if not dictionary_root.exists():
         return set()
 
@@ -296,7 +301,41 @@ def existing_shipped_dictionary_ids() -> set[int]:
     return set(dictionary_ids)
 
 
-def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any]:
+def existing_dictionary_id_for_training_identity(
+    dictionary_root: Path,
+    training_identity_sha256: str,
+) -> int | None:
+    matches: dict[int, Path] = {}
+    if not dictionary_root.exists():
+        return None
+
+    for manifest_path in dictionary_root.glob("*/*.json"):
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("training_identity_sha256") != training_identity_sha256:
+            continue
+        dictionary_id = manifest.get("zstd_dictionary_id")
+        if not isinstance(dictionary_id, int):
+            raise RuntimeError(
+                "Shipped dictionary manifest lacks an integer "
+                f"zstd_dictionary_id: {manifest_path}"
+            )
+        matches[dictionary_id] = manifest_path
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Multiple dictionary IDs exist for one training identity: "
+            f"{sorted(matches)}"
+        )
+    return next(iter(matches))
+
+
+def build_training_identity(
+    corpus: Corpus,
+    fixture_path: Path,
+    *,
+    training_parameters: dict[str, object],
+) -> dict[str, Any]:
     raw_payloads = tuple(candidate.raw_payload for candidate in corpus.selected)
     selected_cids = tuple(candidate.cid for candidate in corpus.selected)
     selected_source_rows = tuple(
@@ -344,7 +383,7 @@ def build_training_identity(corpus: Corpus, fixture_path: Path) -> dict[str, Any
         "raw_sample_total_bytes": sum(len(payload) for payload in raw_payloads),
         "dictionary_size": ZSTD_DICTIONARY_SIZE,
         "dictionary_id_derivation_rule": DICT_ID_DERIVATION_RULE,
-        "training_parameters": ZSTD_TRAINING_PARAMETERS,
+        "training_parameters": training_parameters,
         "generator": {
             "script": str(Path(__file__).resolve().relative_to(ROOT)),
             "version": GENERATOR_VERSION,
@@ -369,21 +408,26 @@ def derive_dictionary_id(
     raise RuntimeError("Could not derive a non-reserved zstd dictionary ID")
 
 
-def train_dictionary(corpus: Corpus, dict_id: int) -> bytes:
+def train_dictionary(
+    corpus: Corpus,
+    dict_id: int,
+    *,
+    training_parameters: dict[str, object],
+) -> bytes:
     samples = [candidate.raw_payload for candidate in corpus.selected]
     dictionary = zstd.train_dictionary(
         ZSTD_DICTIONARY_SIZE,
         samples,
         dict_id=dict_id,
-        k=ZSTD_TRAINING_PARAMETERS["k"],
-        d=ZSTD_TRAINING_PARAMETERS["d"],
-        f=ZSTD_TRAINING_PARAMETERS["f"],
-        split_point=ZSTD_TRAINING_PARAMETERS["split_point"],
-        accel=ZSTD_TRAINING_PARAMETERS["accel"],
-        notifications=ZSTD_TRAINING_PARAMETERS["notifications"],
-        level=ZSTD_TRAINING_PARAMETERS["level"],
-        steps=ZSTD_TRAINING_PARAMETERS["steps"],
-        threads=ZSTD_TRAINING_PARAMETERS["threads"],
+        k=training_parameters["k"],
+        d=training_parameters["d"],
+        f=training_parameters["f"],
+        split_point=training_parameters["split_point"],
+        accel=training_parameters["accel"],
+        notifications=training_parameters["notifications"],
+        level=training_parameters["level"],
+        steps=training_parameters["steps"],
+        threads=training_parameters["threads"],
     )
     actual_dict_id = dictionary.dict_id()
     if actual_dict_id != dict_id:
@@ -628,6 +672,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Replace the computed artifact directory if it already exists.",
     )
+    parser.add_argument(
+        "--training-level",
+        type=int,
+        required=True,
+        help="zstd training level recorded in the dictionary training identity.",
+    )
     return parser.parse_args(argv)
 
 
@@ -640,19 +690,35 @@ def validate_created_date(value: str) -> None:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     validate_created_date(args.created_date)
+    if args.training_level < 1 or args.training_level > 22:
+        raise SystemExit("--training-level must be in zstd range 1..22")
     fixture_path = (ROOT / FIXTURE_RELATIVE_PATH).resolve()
     output_root = args.output_root.expanduser().resolve()
 
     load_runtime_dependencies()
     require_expected_environment(fixture_path)
     corpus = build_candidates(fixture_path)
-    training_identity = build_training_identity(corpus, fixture_path)
-    training_identity_sha = sha256_hex(canonical_json_bytes(training_identity))
-    dict_id = derive_dictionary_id(
-        training_identity_sha,
-        existing_ids=existing_shipped_dictionary_ids(),
+    training_parameters = zstd_training_parameters(args.training_level)
+    training_identity = build_training_identity(
+        corpus,
+        fixture_path,
+        training_parameters=training_parameters,
     )
-    dictionary_bytes = train_dictionary(corpus, dict_id)
+    training_identity_sha = sha256_hex(canonical_json_bytes(training_identity))
+    dict_id = existing_dictionary_id_for_training_identity(
+        output_root,
+        training_identity_sha,
+    )
+    if dict_id is None:
+        dict_id = derive_dictionary_id(
+            training_identity_sha,
+            existing_ids=existing_shipped_dictionary_ids(output_root),
+        )
+    dictionary_bytes = train_dictionary(
+        corpus,
+        dict_id,
+        training_parameters=training_parameters,
+    )
     identity = artifact_identity(
         training_identity=training_identity,
         training_identity_sha256=training_identity_sha,

@@ -20,6 +20,17 @@ payload = prepared.to_bytes()
 restored = grimace.PreparedMol.from_bytes(payload)
 ```
 
+For compact storage, write a zstd-compressed payload:
+
+```python
+payload = prepared.to_bytes(compression="zstd")
+restored = grimace.PreparedMol.from_bytes(payload)
+```
+
+The compressed payload records the shipped dictionary id in the zstd frame.
+`PreparedMol.from_bytes(...)` uses that id to select the right built-in
+dictionary.
+
 `PreparedMol` is accepted anywhere the public runtime accepts a molecule:
 
 - `MolToSmilesEnum(...)`

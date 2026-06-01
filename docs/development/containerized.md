@@ -53,15 +53,24 @@ check on the written artifact before exiting successfully. Optional controls:
 ```bash
 make prepared-mol-zstd-dictionary \
   PREPARED_MOL_ZSTD_CREATED_DATE=20260531 \
-  PREPARED_MOL_ZSTD_FORCE=1
+  PREPARED_MOL_ZSTD_FORCE=1 \
+  PREPARED_MOL_ZSTD_TRAINING_LEVEL=10
 ```
 
-`make timings-prepared-mol-zstd` builds an installed-package image with the
-shipped dictionary, measures per-molecule compression and decompression with and
-without the dictionary, then renders tradeoff plots. It writes only to:
+`make timings-prepared-mol-zstd` builds an installed-package image with a
+selected shipped dictionary, measures per-molecule compression and
+decompression with and without the dictionary, then renders tradeoff plots. It
+writes only to:
 
-- `docs/timings-prepared-mol-zstd.tsv`
+- `TIMINGS_PREPARED_MOL_ZSTD_OUTPUT`, defaulting to
+  `docs/timings-prepared-mol-zstd.tsv`
 - `docs/timings-prepared-mol-zstd-plots/`
+
+```bash
+make timings-prepared-mol-zstd \
+  TIMINGS_PREPARED_MOL_ZSTD_DICTIONARY_ARTIFACT=20260531_ebdfcd5d \
+  TIMINGS_PREPARED_MOL_ZSTD_OUTPUT=docs/timings-prepared-mol-zstd-20260531_ebdfcd5d.tsv
+```
 
 `make docs` reads `docs/` read-only and writes the local Pages build to
 `build/docs-site/`. `build/` is ignored by git, so `git status build` reports

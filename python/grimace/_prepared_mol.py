@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from importlib import resources
+import json
+from typing import Any
+
 from rdkit import Chem
 
 import grimace._core as _core
@@ -9,6 +13,14 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
 )
+
+_RAW_PREPARED_MOL_MAGIC = b"GPM\0"
+_ZSTD_FRAME_MAGIC = b"\x28\xb5\x2f\xfd"
+_ZSTD_DICT_ID_SIZE_BY_FLAG = (0, 1, 2, 4)
+_DEFAULT_ZSTD_LEVEL = 3
+_DEFAULT_ZSTD_DICTIONARY_LEVEL = 3
+_ZSTD_DICTIONARY_BY_ID: dict[int, object] = {}
+_ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL: dict[int, int] = {}
 
 
 class PreparedMol:
@@ -25,14 +37,221 @@ class PreparedMol:
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("PreparedMol is immutable")
 
-    def to_bytes(self) -> bytes:
-        return self._inner.to_bytes()
+    def to_bytes(
+        self,
+        *,
+        compression: str | None = None,
+        dictionary: object | None = None,
+        dictionary_level: int = _DEFAULT_ZSTD_DICTIONARY_LEVEL,
+        level: int = _DEFAULT_ZSTD_LEVEL,
+    ) -> bytes:
+        if dictionary is not None:
+            raise TypeError("PreparedMol.to_bytes does not accept external dictionaries")
+        raw_payload = self._inner.to_bytes()
+        if compression is None:
+            return raw_payload
+        if compression != "zstd":
+            raise ValueError("PreparedMol.to_bytes compression must be None or 'zstd'")
+        _require_int(dictionary_level, "PreparedMol.to_bytes dictionary_level")
+        _require_int(level, "PreparedMol.to_bytes level")
+        if not 1 <= level <= 22:
+            raise ValueError("PreparedMol.to_bytes level must be in zstd range 1..22")
+
+        compression_dictionary = _zstd_dictionary_for_training_level(
+            dictionary_level,
+            reload_dictionary=False,
+        )
+        zstd = _load_zstd()
+        return zstd.ZstdCompressor(
+            level=level,
+            dict_data=compression_dictionary,
+            write_checksum=True,
+            write_content_size=True,
+        ).compress(raw_payload)
 
     @staticmethod
-    def from_bytes(data: bytes) -> "PreparedMol":
+    def from_bytes(
+        data: bytes,
+        *,
+        dictionary: object | None = None,
+        reload_dictionary: bool = False,
+    ) -> "PreparedMol":
         if not isinstance(data, bytes):
             raise TypeError("PreparedMol.from_bytes requires bytes")
-        return _make_prepared_mol(_core.PreparedMol.from_bytes(data))
+        if dictionary is not None:
+            raise TypeError("PreparedMol.from_bytes does not accept external dictionaries")
+        if not isinstance(reload_dictionary, bool):
+            raise TypeError("PreparedMol.from_bytes reload_dictionary must be a bool")
+        if data.startswith(_RAW_PREPARED_MOL_MAGIC):
+            return _make_prepared_mol(_core.PreparedMol.from_bytes(data))
+        if data.startswith(_ZSTD_FRAME_MAGIC):
+            raw_payload = _decompress_prepared_mol_zstd(
+                data,
+                reload_dictionary=reload_dictionary,
+            )
+            return _make_prepared_mol(_core.PreparedMol.from_bytes(raw_payload))
+        raise ValueError("Malformed PreparedMol payload")
+
+
+def _load_zstd() -> Any:
+    try:
+        import zstandard as zstd
+    except ImportError as exc:  # pragma: no cover - environment guard
+        raise RuntimeError(
+            "PreparedMol zstd compression requires the zstandard package"
+        ) from exc
+    return zstd
+
+
+def _require_int(value: object, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer")
+
+
+def _zstd_dictionary_for_training_level(
+    training_level: int,
+    *,
+    reload_dictionary: bool,
+) -> object:
+    _require_int(training_level, "PreparedMol zstd dictionary level")
+    if not reload_dictionary:
+        cached_id = _ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.get(training_level)
+        if cached_id is not None:
+            cached = _ZSTD_DICTIONARY_BY_ID.get(cached_id)
+            if cached is not None:
+                return cached
+
+    manifest = _zstd_dictionary_manifest_for_training_level(training_level)
+    return _zstd_dictionary_from_manifest(manifest, reload_dictionary=reload_dictionary)
+
+
+def _zstd_dictionary_for_id(
+    dictionary_id: int,
+    *,
+    reload_dictionary: bool,
+) -> object:
+    if dictionary_id == 0:
+        raise ValueError("PreparedMol zstd frame does not name a dictionary")
+    if not reload_dictionary:
+        cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
+        if cached is not None:
+            return cached
+    manifest = _zstd_dictionary_manifest_for_id(dictionary_id)
+    return _zstd_dictionary_from_manifest(manifest, reload_dictionary=True)
+
+
+def _zstd_dictionary_from_manifest(
+    manifest: dict[str, Any],
+    *,
+    reload_dictionary: bool,
+) -> object:
+    dictionary_id = manifest["zstd_dictionary_id"]
+    if not isinstance(dictionary_id, int):
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid id")
+    if not reload_dictionary:
+        cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
+        if cached is not None:
+            return cached
+
+    zstd = _load_zstd()
+    root = _zstd_dictionary_root()
+    dictionary_bytes = (
+        root
+        .joinpath(manifest["artifact_dir"])
+        .joinpath(manifest["files"]["dictionary"])
+        .read_bytes()
+    )
+    compression_dictionary = zstd.ZstdCompressionDict(dictionary_bytes)
+    if compression_dictionary.dict_id() != dictionary_id:
+        raise ValueError("PreparedMol zstd dictionary id does not match manifest")
+    training_level = manifest["training_identity"]["training_parameters"]["level"]
+    if isinstance(training_level, int):
+        _ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL[training_level] = dictionary_id
+    _ZSTD_DICTIONARY_BY_ID[dictionary_id] = compression_dictionary
+    return compression_dictionary
+
+
+def _zstd_dictionary_manifest_for_training_level(level: int) -> dict[str, Any]:
+    matches = [
+        manifest
+        for manifest in _zstd_dictionary_manifests()
+        if manifest["training_identity"]["training_parameters"]["level"] == level
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"No unique PreparedMol zstd dictionary for level {level}")
+    return matches[0]
+
+
+def _zstd_dictionary_manifest_for_id(dictionary_id: int) -> dict[str, Any]:
+    matches = [
+        manifest
+        for manifest in _zstd_dictionary_manifests()
+        if manifest["zstd_dictionary_id"] == dictionary_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"No PreparedMol zstd dictionary for frame id {dictionary_id}"
+        )
+    return matches[0]
+
+
+def _zstd_dictionary_manifests() -> tuple[dict[str, Any], ...]:
+    manifests: list[dict[str, Any]] = []
+    for artifact in _zstd_dictionary_root().iterdir():
+        manifest_path = artifact.joinpath("default_v1.json")
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict):
+                raise ValueError("PreparedMol zstd dictionary manifest is invalid")
+            manifests.append(manifest)
+    return tuple(manifests)
+
+
+def _zstd_dictionary_root() -> resources.abc.Traversable:
+    return resources.files("grimace").joinpath("data", "prepared_mol_zstd")
+
+
+def _zstd_frame_dictionary_id(data: bytes) -> int:
+    if not data.startswith(_ZSTD_FRAME_MAGIC):
+        raise ValueError("PreparedMol payload is not a zstd frame")
+    if len(data) < len(_ZSTD_FRAME_MAGIC) + 1:
+        raise ValueError("PreparedMol zstd payload is truncated")
+
+    descriptor = data[len(_ZSTD_FRAME_MAGIC)]
+    dictionary_id_size = _ZSTD_DICT_ID_SIZE_BY_FLAG[descriptor & 0b11]
+    offset = len(_ZSTD_FRAME_MAGIC) + 1
+    if not descriptor & 0b0010_0000:
+        offset += 1
+    if dictionary_id_size == 0:
+        raise ValueError("PreparedMol zstd frame does not name a dictionary")
+    if len(data) < offset + dictionary_id_size:
+        raise ValueError("PreparedMol zstd payload is truncated")
+    return int.from_bytes(data[offset : offset + dictionary_id_size], "little")
+
+
+def _decompress_prepared_mol_zstd(
+    data: bytes,
+    *,
+    reload_dictionary: bool,
+) -> bytes:
+    dictionary_id = _zstd_frame_dictionary_id(data)
+    dictionary = _zstd_dictionary_for_id(
+        dictionary_id,
+        reload_dictionary=reload_dictionary,
+    )
+    zstd = _load_zstd()
+    decompressor = zstd.ZstdDecompressor(dict_data=dictionary)
+    try:
+        raw_payload = decompressor.decompress(data, allow_extra_data=False)
+    except TypeError:
+        raw_payload = decompressor.decompress(data)
+    except Exception as exc:
+        raise ValueError("Malformed PreparedMol zstd payload") from exc
+    if not isinstance(raw_payload, bytes) or not raw_payload.startswith(
+        _RAW_PREPARED_MOL_MAGIC
+    ):
+        raise ValueError("Malformed PreparedMol zstd payload")
+    return raw_payload
 
 
 def _make_prepared_mol(inner: object) -> PreparedMol:

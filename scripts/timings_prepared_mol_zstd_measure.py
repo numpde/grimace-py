@@ -6,6 +6,7 @@ import csv
 import gzip
 import json
 import random
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import statistics
@@ -143,7 +144,7 @@ def load_runtime_dependencies() -> None:
     grimace = loaded_grimace
 
 
-def _artifact_dir() -> Path:
+def _artifact_dir(dictionary_artifact: str | None) -> Path:
     manifests = tuple(
         sorted(
             (generator.ROOT / generator.PACKAGE_DICTIONARY_ROOT).glob(
@@ -151,17 +152,29 @@ def _artifact_dir() -> Path:
             ),
         ),
     )
+    if dictionary_artifact is not None:
+        if re.fullmatch(generator.ARTIFACT_DIR_PATTERN, dictionary_artifact) is None:
+            raise RuntimeError(f"Invalid dictionary artifact: {dictionary_artifact!r}")
+        artifact_dir = (
+            generator.ROOT / generator.PACKAGE_DICTIONARY_ROOT / dictionary_artifact
+        )
+        manifest_path = artifact_dir / f"{generator.ARTIFACT_STEM}.json"
+        if not manifest_path.is_file():
+            raise RuntimeError(
+                f"Dictionary artifact is not shipped: {dictionary_artifact}"
+            )
+        return artifact_dir
     if len(manifests) != 1:
         raise RuntimeError(
             "Expected exactly one shipped default_v1 dictionary manifest, "
-            f"got {len(manifests)}"
+            f"got {len(manifests)}; pass --dictionary-artifact"
         )
     return manifests[0].parent
 
 
-def _dictionary() -> DictionaryArtifact:
+def _dictionary(dictionary_artifact: str | None) -> DictionaryArtifact:
     assert zstd is not None
-    artifact_dir = _artifact_dir()
+    artifact_dir = _artifact_dir(dictionary_artifact)
     manifest = json.loads(
         (artifact_dir / f"{generator.ARTIFACT_STEM}.json").read_text(
             encoding="utf-8",
@@ -354,6 +367,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_LEVELS,
         help="zstd compression levels to measure.",
     )
+    parser.add_argument(
+        "--dictionary-artifact",
+        help="Versioned shipped dictionary artifact directory to benchmark.",
+    )
     return parser.parse_args(argv)
 
 
@@ -374,7 +391,7 @@ def main(argv: list[str]) -> int:
     raw_bytes = sum(len(payload) for payload in payloads)
     sample_source_rows_sha256 = sample.source_rows_sha256
     sample_cids_sha256 = sample.cids_sha256
-    dictionary = _dictionary()
+    dictionary = _dictionary(args.dictionary_artifact)
     environment = _benchmark_environment()
 
     rows: list[TimingRow] = []

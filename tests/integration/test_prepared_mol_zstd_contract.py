@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib.resources as resources
+import json
 import unittest
+from unittest import mock
 
 import grimace
 from tests.helpers.mols import parse_smiles
@@ -21,6 +24,7 @@ RAW_PREPARED_MOL_MAGIC = b"GPM\0"
 ZSTD_FRAME_MAGIC = b"\x28\xb5\x2f\xfd"
 ZSTD_SKIPPABLE_FRAME_MAGIC = b"\x50\x2a\x4d\x18"
 ZSTD_DICT_ID_SIZE_BY_FLAG = (0, 1, 2, 4)
+SHIPPED_DICTIONARY_LEVELS = (3, 10)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +91,44 @@ def _with_zstd_dictionary_id(payload: bytes, dictionary_id: int) -> bytes:
         "little",
     )
     return bytes(mutated)
+
+
+def _dictionary_manifests() -> tuple[dict[str, object], ...]:
+    root = resources.files("grimace").joinpath("data", "prepared_mol_zstd")
+    manifests: list[dict[str, object]] = []
+    for artifact in root.iterdir():
+        manifest_path = artifact.joinpath("default_v1.json")
+        if manifest_path.is_file():
+            manifests.append(json.loads(manifest_path.read_text(encoding="utf-8")))
+    if not manifests:
+        raise AssertionError("No shipped PreparedMol zstd dictionaries found")
+    return tuple(manifests)
+
+
+def _dictionary_id_for_training_level(level: int) -> int:
+    matches = [
+        manifest["zstd_dictionary_id"]
+        for manifest in _dictionary_manifests()
+        if manifest["training_identity"]["training_parameters"]["level"] == level
+    ]
+    if len(matches) != 1:
+        raise AssertionError(
+            f"Expected one shipped dictionary for training level {level}, "
+            f"got {len(matches)}"
+        )
+    dictionary_id = matches[0]
+    if not isinstance(dictionary_id, int):
+        raise AssertionError("Dictionary manifest id is not an integer")
+    return dictionary_id
+
+
+def _shipped_dictionary_ids() -> set[int]:
+    dictionary_ids = {
+        manifest["zstd_dictionary_id"] for manifest in _dictionary_manifests()
+    }
+    if not all(isinstance(dictionary_id, int) for dictionary_id in dictionary_ids):
+        raise AssertionError("Dictionary manifest id is not an integer")
+    return dictionary_ids
 
 
 class PreparedMolZstdContractTests(unittest.TestCase):
@@ -189,18 +231,124 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         zstd_payload = prepared.to_bytes(compression="zstd")
         header = _read_zstd_frame_header(zstd_payload)
 
-        self.assertIsNotNone(header.dictionary_id)
-        self.assertNotEqual(0, header.dictionary_id)
+        self.assertEqual(_dictionary_id_for_training_level(3), header.dictionary_id)
         self.assertTrue(header.has_content_size)
         self.assertTrue(header.has_checksum)
 
+    def test_default_zstd_write_matches_explicit_level3_dictionary_level3(
+        self,
+    ) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+
+        self.assertEqual(
+            prepared.to_bytes(compression="zstd"),
+            prepared.to_bytes(
+                compression="zstd",
+                dictionary_level=3,
+                level=3,
+            ),
+        )
+
+    def test_dictionary_level_selects_matching_builtin_dictionary(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+
+        for dictionary_level in SHIPPED_DICTIONARY_LEVELS:
+            with self.subTest(dictionary_level=dictionary_level):
+                zstd_payload = prepared.to_bytes(
+                    compression="zstd",
+                    dictionary_level=dictionary_level,
+                )
+                header = _read_zstd_frame_header(zstd_payload)
+                restored = grimace.PreparedMol.from_bytes(zstd_payload)
+
+                self.assertEqual(
+                    _dictionary_id_for_training_level(dictionary_level),
+                    header.dictionary_id,
+                )
+                self.assertEqual(prepared.to_bytes(), restored.to_bytes())
+
+    def test_runtime_level_does_not_change_dictionary_selector(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        expected_dictionary_id = _dictionary_id_for_training_level(3)
+
+        for level in (1, 3, 10, 19):
+            with self.subTest(level=level):
+                zstd_payload = prepared.to_bytes(
+                    compression="zstd",
+                    dictionary_level=3,
+                    level=level,
+                )
+                self.assertEqual(
+                    expected_dictionary_id,
+                    _read_zstd_frame_header(zstd_payload).dictionary_id,
+                )
+
     def test_from_bytes_selects_builtin_dictionary_from_frame_id(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
-        zstd_payload = prepared.to_bytes(compression="zstd")
 
-        restored = grimace.PreparedMol.from_bytes(zstd_payload)
+        for dictionary_level in SHIPPED_DICTIONARY_LEVELS:
+            with self.subTest(dictionary_level=dictionary_level):
+                zstd_payload = prepared.to_bytes(
+                    compression="zstd",
+                    dictionary_level=dictionary_level,
+                )
 
-        self.assertEqual(prepared.to_bytes(), restored.to_bytes())
+                restored = grimace.PreparedMol.from_bytes(zstd_payload)
+
+                self.assertEqual(prepared.to_bytes(), restored.to_bytes())
+
+    def test_from_bytes_caches_dictionary_selected_from_frame_id(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
+        raw_payload = prepared.to_bytes()
+        real_files = resources.files
+
+        with mock.patch("importlib.resources.files", wraps=real_files) as files:
+            self.assertEqual(
+                raw_payload,
+                grimace.PreparedMol.from_bytes(
+                    zstd_payload,
+                    reload_dictionary=True,
+                ).to_bytes(),
+            )
+            first_lookup_count = files.call_count
+            self.assertGreater(first_lookup_count, 0)
+
+            self.assertEqual(
+                raw_payload,
+                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
+            )
+            self.assertEqual(first_lookup_count, files.call_count)
+
+            self.assertEqual(
+                raw_payload,
+                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
+            )
+            self.assertEqual(first_lookup_count, files.call_count)
+
+    def test_reload_dictionary_refreshes_cached_frame_dictionary(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
+        raw_payload = prepared.to_bytes()
+        real_files = resources.files
+
+        grimace.PreparedMol.from_bytes(zstd_payload, reload_dictionary=True)
+
+        with mock.patch("importlib.resources.files", wraps=real_files) as files:
+            self.assertEqual(
+                raw_payload,
+                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
+            )
+            self.assertEqual(0, files.call_count)
+
+            self.assertEqual(
+                raw_payload,
+                grimace.PreparedMol.from_bytes(
+                    zstd_payload,
+                    reload_dictionary=True,
+                ).to_bytes(),
+            )
+            self.assertGreater(files.call_count, 0)
 
     def test_zero_dictionary_id_is_rejected(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
@@ -208,6 +356,17 @@ class PreparedMolZstdContractTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             grimace.PreparedMol.from_bytes(_with_zstd_dictionary_id(zstd_payload, 0))
+
+    def test_unknown_dictionary_id_is_rejected(self) -> None:
+        prepared = self._prepare("CCO", isomericSmiles=False)
+        zstd_payload = prepared.to_bytes(compression="zstd")
+        unknown_dictionary_id = 1
+        self.assertNotIn(unknown_dictionary_id, _shipped_dictionary_ids())
+
+        with self.assertRaises(ValueError):
+            grimace.PreparedMol.from_bytes(
+                _with_zstd_dictionary_id(zstd_payload, unknown_dictionary_id),
+            )
 
     def test_zstd_requested_for_tiny_payloads_never_silently_falls_back_to_raw(
         self,
@@ -237,11 +396,28 @@ class PreparedMolZstdContractTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             prepared.to_bytes(compression="zstd", dictionary=object())
 
+        with self.assertRaises(TypeError):
+            prepared.to_bytes(compression="zstd", dictionary_level="3")
+
+        with self.assertRaises(ValueError):
+            prepared.to_bytes(compression="zstd", dictionary_level=4)
+
+        with self.assertRaises(TypeError):
+            prepared.to_bytes(compression="zstd", level="3")
+
+        for level in (0, 23):
+            with self.subTest(level=level):
+                with self.assertRaises(ValueError):
+                    prepared.to_bytes(compression="zstd", level=level)
+
     def test_from_bytes_compression_option_surface_is_strict(self) -> None:
         raw_payload = self._prepare("C", isomericSmiles=False).to_bytes()
 
         with self.assertRaises(TypeError):
             grimace.PreparedMol.from_bytes(raw_payload, dictionary=object())
+
+        with self.assertRaises(TypeError):
+            grimace.PreparedMol.from_bytes(raw_payload, reload_dictionary=object())
 
         with self.assertRaises(TypeError):
             grimace.PreparedMol.from_bytes(bytearray(raw_payload))

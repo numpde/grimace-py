@@ -29,7 +29,11 @@ restored = grimace.PreparedMol.from_bytes(payload)
 
 The compressed payload records the shipped dictionary id in the zstd frame.
 `PreparedMol.from_bytes(...)` uses that id to select the right built-in
-dictionary.
+dictionary. The current default is equivalent to:
+
+```python
+payload = prepared.to_bytes(compression="zstd", dictionary_level=3, level=3)
+```
 
 `PreparedMol` is accepted anywhere the public runtime accepts a molecule:
 

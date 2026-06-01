@@ -57,7 +57,8 @@ opaque object ready for the runtime.
 `PreparedMol.to_bytes(compression="zstd")` writes a zstd frame using the
 default shipped dictionary and compression level. `PreparedMol.from_bytes(...)`
 detects compressed payloads from the zstd frame and selects the matching
-shipped dictionary from the frame dictionary id.
+shipped dictionary from the frame dictionary id. The default is
+`dictionary_level=3, level=3`.
 
 ## MolToSmilesEnum
 

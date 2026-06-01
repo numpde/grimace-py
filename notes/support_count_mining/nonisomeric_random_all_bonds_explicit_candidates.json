@@ -1,0 +1,408 @@
+{
+  "rdkit_version": "2026.03.1",
+  "surface": "nonisomeric__random_all_bonds_explicit",
+  "flags": {
+    "isomericSmiles": false,
+    "canonical": false,
+    "doRandom": true,
+    "kekuleSmiles": false,
+    "allBondsExplicit": true,
+    "allHsExplicit": false,
+    "ignoreAtomMapNumbers": false
+  },
+  "rooted_at_atom": -1,
+  "selection": {
+    "limit": 300,
+    "max_smiles_length": 140,
+    "max_atoms": 35,
+    "molecule_filter": "any",
+    "min_support_count": 100,
+    "max_support_count": 1600,
+    "max_candidates": 15
+  },
+  "summary": {
+    "scanned_count": 300,
+    "parsed_count": 300,
+    "eligible_count": 292,
+    "candidate_count": 122,
+    "selected_count": 15,
+    "skipped_too_small_count": 97,
+    "skipped_too_large_count": 73
+  },
+  "candidates": [
+    {
+      "id": "pubchem_5426_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "5426",
+      "name": "2-(2,6-dioxopiperidin-3-yl)isoindole-1,3-dione",
+      "smiles": "C1CC(=O)NC(=O)C1N2C(=O)C3=CC=CC=C3C2=O",
+      "canonical_smiles": "O=C1CCC(N2C(=O)c3ccccc3C2=O)C(=O)N1",
+      "rooted_at_atom": -1,
+      "atom_count": 19,
+      "support_count": 1560,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_2391_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "2391",
+      "name": "[4-[(4-acetyloxyphenyl)-pyridin-2-ylmethyl]phenyl] acetate",
+      "smiles": "CC(=O)OC1=CC=C(C=C1)C(C2=CC=C(C=C2)OC(=O)C)C3=CC=CC=N3",
+      "canonical_smiles": "CC(=O)Oc1ccc(C(c2ccc(OC(C)=O)cc2)c2ccccn2)cc1",
+      "rooted_at_atom": -1,
+      "atom_count": 27,
+      "support_count": 1536,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_23681059_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "23681059",
+      "name": "sodium;(2S)-2-(6-methoxynaphthalen-2-yl)propanoate",
+      "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)[O-].[Na+]",
+      "canonical_smiles": "COc1ccc2cc([C@H](C)C(=O)[O-])ccc2c1.[Na+]",
+      "rooted_at_atom": -1,
+      "atom_count": 18,
+      "support_count": 1504,
+      "feature_labels": [
+        "support_medium",
+        "disconnected",
+        "atom_stereo",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms",
+        "charged"
+      ]
+    },
+    {
+      "id": "pubchem_156391_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "156391",
+      "name": "(2S)-2-(6-methoxynaphthalen-2-yl)propanoic acid",
+      "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)O",
+      "canonical_smiles": "COc1ccc2cc([C@H](C)C(=O)O)ccc2c1",
+      "rooted_at_atom": -1,
+      "atom_count": 17,
+      "support_count": 1504,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "atom_stereo",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_5578_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "5578",
+      "name": "5-[(3,4,5-trimethoxyphenyl)methyl]pyrimidine-2,4-diamine",
+      "smiles": "COC1=CC(=CC(=C1OC)OC)CC2=CN=C(N=C2N)N",
+      "canonical_smiles": "COc1cc(Cc2cnc(N)nc2N)cc(OC)c1OC",
+      "rooted_at_atom": -1,
+      "atom_count": 21,
+      "support_count": 1456,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_3016_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "3016",
+      "name": "7-chloro-1-methyl-5-phenyl-3H-1,4-benzodiazepin-2-one",
+      "smiles": "CN1C(=O)CN=C(C2=C1C=CC(=C2)Cl)C3=CC=CC=C3",
+      "canonical_smiles": "CN1C(=O)CN=C(c2ccccc2)c2cc(Cl)ccc21",
+      "rooted_at_atom": -1,
+      "atom_count": 20,
+      "support_count": 1416,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms",
+        "halogen"
+      ]
+    },
+    {
+      "id": "pubchem_6604200_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "6604200",
+      "name": "1-[(E)-(5-nitrofuran-2-yl)methylideneamino]imidazolidine-2,4-dione",
+      "smiles": "C1C(=O)NC(=O)N1/N=C/C2=CC=C(O2)[N+](=O)[O-]",
+      "canonical_smiles": "O=C1CN(/N=C/c2ccc([N+](=O)[O-])o2)C(=O)N1",
+      "rooted_at_atom": -1,
+      "atom_count": 17,
+      "support_count": 1376,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "bond_stereo",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms",
+        "charged"
+      ]
+    },
+    {
+      "id": "pubchem_2726_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "2726",
+      "name": "3-(2-chlorophenothiazin-10-yl)-N,N-dimethylpropan-1-amine",
+      "smiles": "CN(C)CCCN1C2=CC=CC=C2SC3=C1C=C(C=C3)Cl",
+      "canonical_smiles": "CN(C)CCCN1c2ccccc2Sc2ccc(Cl)cc21",
+      "rooted_at_atom": -1,
+      "atom_count": 21,
+      "support_count": 1344,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms",
+        "halogen"
+      ]
+    },
+    {
+      "id": "pubchem_2519_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "2519",
+      "name": "1,3,7-trimethylpurine-2,6-dione",
+      "smiles": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+      "canonical_smiles": "Cn1c(=O)c2c(ncn2C)n(C)c1=O",
+      "rooted_at_atom": -1,
+      "atom_count": 14,
+      "support_count": 1336,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_66259_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "66259",
+      "name": "6-tert-butyl-3-(4,5-dihydro-1H-imidazol-2-ylmethyl)-2,4-dimethylphenol;hydrochloride",
+      "smiles": "CC1=CC(=C(C(=C1CC2=NCCN2)C)O)C(C)(C)C.Cl",
+      "canonical_smiles": "Cc1cc(C(C)(C)C)c(O)c(C)c1CC1=NCCN1.Cl",
+      "rooted_at_atom": -1,
+      "atom_count": 20,
+      "support_count": 1248,
+      "feature_labels": [
+        "support_medium",
+        "disconnected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms",
+        "halogen"
+      ]
+    },
+    {
+      "id": "pubchem_5546_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "5546",
+      "name": "6-phenylpteridine-2,4,7-triamine",
+      "smiles": "C1=CC=C(C=C1)C2=NC3=C(N=C(N=C3N=C2N)N)N",
+      "canonical_smiles": "Nc1nc(N)c2nc(-c3ccccc3)c(N)nc2n1",
+      "rooted_at_atom": -1,
+      "atom_count": 19,
+      "support_count": 1244,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_4044_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "4044",
+      "name": "2-(2,3-dimethylanilino)benzoic acid",
+      "smiles": "CC1=C(C(=CC=C1)NC2=CC=CC=C2C(=O)O)C",
+      "canonical_smiles": "Cc1cccc(Nc2ccccc2C(=O)O)c1C",
+      "rooted_at_atom": -1,
+      "atom_count": 18,
+      "support_count": 1224,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_3463_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "3463",
+      "name": "5-(2,5-dimethylphenoxy)-2,2-dimethylpentanoic acid",
+      "smiles": "CC1=CC(=C(C=C1)C)OCCCC(C)(C)C(=O)O",
+      "canonical_smiles": "Cc1ccc(C)c(OCCCC(C)(C)C(=O)O)c1",
+      "rooted_at_atom": -1,
+      "atom_count": 18,
+      "support_count": 1200,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "aromatic",
+        "hetero_atoms"
+      ]
+    },
+    {
+      "id": "pubchem_5959_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "5959",
+      "name": "2,2-dichloro-N-[(1R,2R)-1,3-dihydroxy-1-(4-nitrophenyl)propan-2-yl]acetamide",
+      "smiles": "C1=CC(=CC=C1[C@H]([C@@H](CO)NC(=O)C(Cl)Cl)O)[N+](=O)[O-]",
+      "canonical_smiles": "O=C(N[C@H](CO)[C@H](O)c1ccc([N+](=O)[O-])cc1)C(Cl)Cl",
+      "rooted_at_atom": -1,
+      "atom_count": 20,
+      "support_count": 1152,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "atom_stereo",
+        "ring",
+        "aromatic",
+        "hetero_atoms",
+        "halogen",
+        "charged"
+      ]
+    },
+    {
+      "id": "pubchem_5564_nonisomeric_random_all_bonds_explicit_unrooted",
+      "cid": "5564",
+      "name": "5-chloro-2-(2,4-dichlorophenoxy)phenol",
+      "smiles": "C1=CC(=C(C=C1Cl)O)OC2=C(C=C(C=C2)Cl)Cl",
+      "canonical_smiles": "Oc1cc(Cl)ccc1Oc1ccc(Cl)cc1Cl",
+      "rooted_at_atom": -1,
+      "atom_count": 17,
+      "support_count": 1104,
+      "feature_labels": [
+        "support_medium",
+        "connected",
+        "ring",
+        "multiple_rings",
+        "aromatic",
+        "hetero_atoms",
+        "halogen"
+      ]
+    }
+  ],
+  "generator_input": {
+    "cases": [
+      {
+        "id": "pubchem_5426_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 5426, Grimace exact support pre-screen)",
+        "smiles": "C1CC(=O)NC(=O)C1N2C(=O)C3=CC=CC=C3C2=O",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_2391_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 2391, Grimace exact support pre-screen)",
+        "smiles": "CC(=O)OC1=CC=C(C=C1)C(C2=CC=C(C=C2)OC(=O)C)C3=CC=CC=N3",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_23681059_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 23681059, Grimace exact support pre-screen)",
+        "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)[O-].[Na+]",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_156391_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 156391, Grimace exact support pre-screen)",
+        "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)O",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_5578_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 5578, Grimace exact support pre-screen)",
+        "smiles": "COC1=CC(=CC(=C1OC)OC)CC2=CN=C(N=C2N)N",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_3016_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 3016, Grimace exact support pre-screen)",
+        "smiles": "CN1C(=O)CN=C(C2=C1C=CC(=C2)Cl)C3=CC=CC=C3",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_6604200_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 6604200, Grimace exact support pre-screen)",
+        "smiles": "C1C(=O)NC(=O)N1/N=C/C2=CC=C(O2)[N+](=O)[O-]",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_2726_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 2726, Grimace exact support pre-screen)",
+        "smiles": "CN(C)CCCN1C2=CC=CC=C2SC3=C1C=C(C=C3)Cl",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_2519_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 2519, Grimace exact support pre-screen)",
+        "smiles": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_66259_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 66259, Grimace exact support pre-screen)",
+        "smiles": "CC1=CC(=C(C(=C1CC2=NCCN2)C)O)C(C)(C)C.Cl",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_5546_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 5546, Grimace exact support pre-screen)",
+        "smiles": "C1=CC=C(C=C1)C2=NC3=C(N=C(N=C3N=C2N)N)N",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_4044_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 4044, Grimace exact support pre-screen)",
+        "smiles": "CC1=C(C(=CC=C1)NC2=CC=CC=C2C(=O)O)C",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_3463_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 3463, Grimace exact support pre-screen)",
+        "smiles": "CC1=CC(=C(C=C1)C)OCCCC(C)(C)C(=O)O",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_5959_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 5959, Grimace exact support pre-screen)",
+        "smiles": "C1=CC(=CC=C1[C@H]([C@@H](CO)NC(=O)C(Cl)Cl)O)[N+](=O)[O-]",
+        "rooted_at_atom": -1
+      },
+      {
+        "id": "pubchem_5564_nonisomeric_random_all_bonds_explicit_unrooted",
+        "source": "Dataset-derived PubChem top_100000 candidate (CID 5564, Grimace exact support pre-screen)",
+        "smiles": "C1=CC(=C(C=C1Cl)O)OC2=C(C=C(C=C2)Cl)Cl",
+        "rooted_at_atom": -1
+      }
+    ]
+  }
+}

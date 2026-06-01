@@ -30,7 +30,9 @@ The test suite is organized by intent first, then by feature.
 
 CI runs the exact public invariants and pinned RDKit parity layers as separate
 source-tree jobs, and reuses them inside the installed-artifact correctness
-subset.
+subset. The installed-artifact subset also runs count-only RDKit writer support
+evidence because those fixtures validate release artifacts against checked
+support cardinalities.
 
 ## Rules
 

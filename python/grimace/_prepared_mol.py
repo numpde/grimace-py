@@ -41,12 +41,9 @@ class PreparedMol:
         self,
         *,
         compression: str | None = None,
-        dictionary: object | None = None,
         dictionary_level: int = _DEFAULT_ZSTD_DICTIONARY_LEVEL,
         level: int = _DEFAULT_ZSTD_LEVEL,
     ) -> bytes:
-        if dictionary is not None:
-            raise TypeError("PreparedMol.to_bytes does not accept external dictionaries")
         raw_payload = self._inner.to_bytes()
         if compression is None:
             return raw_payload
@@ -59,7 +56,6 @@ class PreparedMol:
 
         compression_dictionary = _zstd_dictionary_for_training_level(
             dictionary_level,
-            reload_dictionary=False,
         )
         zstd = _load_zstd()
         return zstd.ZstdCompressor(
@@ -72,23 +68,13 @@ class PreparedMol:
     @staticmethod
     def from_bytes(
         data: bytes,
-        *,
-        dictionary: object | None = None,
-        reload_dictionary: bool = False,
     ) -> "PreparedMol":
         if not isinstance(data, bytes):
             raise TypeError("PreparedMol.from_bytes requires bytes")
-        if dictionary is not None:
-            raise TypeError("PreparedMol.from_bytes does not accept external dictionaries")
-        if not isinstance(reload_dictionary, bool):
-            raise TypeError("PreparedMol.from_bytes reload_dictionary must be a bool")
         if data.startswith(_RAW_PREPARED_MOL_MAGIC):
             return _make_prepared_mol(_core.PreparedMol.from_bytes(data))
         if data.startswith(_ZSTD_FRAME_MAGIC):
-            raw_payload = _decompress_prepared_mol_zstd(
-                data,
-                reload_dictionary=reload_dictionary,
-            )
+            raw_payload = _decompress_prepared_mol_zstd(data)
             return _make_prepared_mol(_core.PreparedMol.from_bytes(raw_payload))
         raise ValueError("Malformed PreparedMol payload")
 
@@ -110,48 +96,35 @@ def _require_int(value: object, name: str) -> None:
 
 def _zstd_dictionary_for_training_level(
     training_level: int,
-    *,
-    reload_dictionary: bool,
 ) -> object:
     _require_int(training_level, "PreparedMol zstd dictionary level")
-    if not reload_dictionary:
-        cached_id = _ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.get(training_level)
-        if cached_id is not None:
-            cached = _ZSTD_DICTIONARY_BY_ID.get(cached_id)
-            if cached is not None:
-                return cached
-
-    manifest = _zstd_dictionary_manifest_for_training_level(training_level)
-    return _zstd_dictionary_from_manifest(manifest, reload_dictionary=reload_dictionary)
-
-
-def _zstd_dictionary_for_id(
-    dictionary_id: int,
-    *,
-    reload_dictionary: bool,
-) -> object:
-    if dictionary_id == 0:
-        raise ValueError("PreparedMol zstd frame does not name a dictionary")
-    if not reload_dictionary:
-        cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
+    cached_id = _ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.get(training_level)
+    if cached_id is not None:
+        cached = _ZSTD_DICTIONARY_BY_ID.get(cached_id)
         if cached is not None:
             return cached
+
+    manifest = _zstd_dictionary_manifest_for_training_level(training_level)
+    return _zstd_dictionary_from_manifest(manifest)
+
+
+def _zstd_dictionary_for_id(dictionary_id: int) -> object:
+    if dictionary_id == 0:
+        raise ValueError("PreparedMol zstd frame does not name a dictionary")
+    cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
+    if cached is not None:
+        return cached
     manifest = _zstd_dictionary_manifest_for_id(dictionary_id)
-    return _zstd_dictionary_from_manifest(manifest, reload_dictionary=True)
+    return _zstd_dictionary_from_manifest(manifest)
 
 
-def _zstd_dictionary_from_manifest(
-    manifest: dict[str, Any],
-    *,
-    reload_dictionary: bool,
-) -> object:
+def _zstd_dictionary_from_manifest(manifest: dict[str, Any]) -> object:
     dictionary_id = manifest["zstd_dictionary_id"]
     if not isinstance(dictionary_id, int):
         raise ValueError("PreparedMol zstd dictionary manifest has invalid id")
-    if not reload_dictionary:
-        cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
-        if cached is not None:
-            return cached
+    cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
+    if cached is not None:
+        return cached
 
     zstd = _load_zstd()
     root = _zstd_dictionary_root()
@@ -229,16 +202,9 @@ def _zstd_frame_dictionary_id(data: bytes) -> int:
     return int.from_bytes(data[offset : offset + dictionary_id_size], "little")
 
 
-def _decompress_prepared_mol_zstd(
-    data: bytes,
-    *,
-    reload_dictionary: bool,
-) -> bytes:
+def _decompress_prepared_mol_zstd(data: bytes) -> bytes:
     dictionary_id = _zstd_frame_dictionary_id(data)
-    dictionary = _zstd_dictionary_for_id(
-        dictionary_id,
-        reload_dictionary=reload_dictionary,
-    )
+    dictionary = _zstd_dictionary_for_id(dictionary_id)
     zstd = _load_zstd()
     decompressor = zstd.ZstdDecompressor(dict_data=dictionary)
     try:

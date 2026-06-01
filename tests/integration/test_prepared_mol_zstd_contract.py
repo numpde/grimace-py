@@ -297,42 +297,13 @@ class PreparedMolZstdContractTests(unittest.TestCase):
 
                 self.assertEqual(prepared.to_bytes(), restored.to_bytes())
 
-    def test_from_bytes_caches_dictionary_selected_from_frame_id(self) -> None:
+    def test_from_bytes_reuses_cached_builtin_dictionary(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
         zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
         raw_payload = prepared.to_bytes()
         real_files = resources.files
 
-        with mock.patch("importlib.resources.files", wraps=real_files) as files:
-            self.assertEqual(
-                raw_payload,
-                grimace.PreparedMol.from_bytes(
-                    zstd_payload,
-                    reload_dictionary=True,
-                ).to_bytes(),
-            )
-            first_lookup_count = files.call_count
-            self.assertGreater(first_lookup_count, 0)
-
-            self.assertEqual(
-                raw_payload,
-                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
-            )
-            self.assertEqual(first_lookup_count, files.call_count)
-
-            self.assertEqual(
-                raw_payload,
-                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
-            )
-            self.assertEqual(first_lookup_count, files.call_count)
-
-    def test_reload_dictionary_refreshes_cached_frame_dictionary(self) -> None:
-        prepared = self._prepare("CCO", isomericSmiles=False)
-        zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
-        raw_payload = prepared.to_bytes()
-        real_files = resources.files
-
-        grimace.PreparedMol.from_bytes(zstd_payload, reload_dictionary=True)
+        grimace.PreparedMol.from_bytes(zstd_payload)
 
         with mock.patch("importlib.resources.files", wraps=real_files) as files:
             self.assertEqual(
@@ -343,12 +314,9 @@ class PreparedMolZstdContractTests(unittest.TestCase):
 
             self.assertEqual(
                 raw_payload,
-                grimace.PreparedMol.from_bytes(
-                    zstd_payload,
-                    reload_dictionary=True,
-                ).to_bytes(),
+                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
             )
-            self.assertGreater(files.call_count, 0)
+            self.assertEqual(0, files.call_count)
 
     def test_zero_dictionary_id_is_rejected(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
@@ -421,13 +389,6 @@ class PreparedMolZstdContractTests(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             grimace.PreparedMol.from_bytes(bytearray(raw_payload))
-
-    def test_from_bytes_rejects_invalid_dictionary_for_zstd_payload(self) -> None:
-        prepared = self._prepare("C", isomericSmiles=False)
-        zstd_payload = prepared.to_bytes(compression="zstd")
-
-        with self.assertRaises(TypeError):
-            grimace.PreparedMol.from_bytes(zstd_payload, dictionary=object())
 
     def test_malformed_zstd_like_payloads_are_rejected(self) -> None:
         skippable_empty_frame = ZSTD_SKIPPABLE_FRAME_MAGIC + b"\0\0\0\0"

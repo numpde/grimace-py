@@ -13,12 +13,12 @@ from .ids import AtomId
 from .ids import BondId
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
-from .writer_graph_obligations import WriterGraphObligationSummary
-from .writer_graph_obligations import WriterResidualAttachment
+from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_initial_support_graph_surface
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_graph_obligations import validate_writer_transition_graph_surface
+from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -484,9 +484,14 @@ def _open_closure_endpoint_transitions(
         return ()
     active_atom = state.active.atom
     transitions = []
-    for attachment in context.graph.residual_summary.attachments.attachments:
-        if not _attachment_requires_closure_endpoint(attachment):
+    attachments_by_id = {
+        attachment.attachment_id: attachment
+        for attachment in context.graph.residual_summary.attachments.attachments
+    }
+    for action in context.graph.residual_summary.attachment_actions:
+        if action.kind is not WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
             continue
+        attachment = attachments_by_id[action.attachment_id]
         for incidence in attachment.boundary:
             if incidence.written_atom != active_atom:
                 continue
@@ -586,12 +591,6 @@ def _pair_closure_endpoint_transitions(
     return tuple(transitions)
 
 
-def _attachment_requires_closure_endpoint(
-    attachment: WriterResidualAttachment,
-) -> bool:
-    return attachment.cyclic_rank > 0 or len(attachment.boundary) > 1
-
-
 def _available_closure_labels_for_open(
     prepared: SouthStarPreparedMol,
     ring_state: WriterRingState,
@@ -659,7 +658,7 @@ def _closure_open_successor_is_supported(
             return False
         if _has_closure_candidate(graph):
             return False
-        if not _residual_attachments_are_acyclic_single_boundary(graph.residual_summary):
+        if _has_blocked_attachment_action(graph):
             return False
         validate_writer_snapshot_graph_surface(prepared, key, graph)
     except SouthStarError:
@@ -702,12 +701,10 @@ def _has_closure_candidate(graph: WriterGraphObligationContext) -> bool:
     )
 
 
-def _residual_attachments_are_acyclic_single_boundary(
-    summary: WriterGraphObligationSummary,
-) -> bool:
-    return all(
-        attachment.cyclic_rank == 0 and len(attachment.boundary) <= 1
-        for attachment in summary.attachments.attachments
+def _has_blocked_attachment_action(graph: WriterGraphObligationContext) -> bool:
+    return any(
+        writer_residual_attachment_action_is_blocked(action)
+        for action in graph.residual_summary.attachment_actions
     )
 
 
@@ -764,6 +761,8 @@ def finalize_writer_terminal_state(
     if not state.active.atom_emitted:
         return None
     if _child_obligations_from_context(context, state, state.active.atom):
+        return None
+    if context.graph.residual_summary.attachments.attachments:
         return None
     if state.component_cursor.component_index + 1 < len(
         state.component_cursor.component_roots
@@ -825,13 +824,18 @@ def _child_obligations_from_context(
             "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
         )
     summary = context.graph.residual_summary
-    if summary.has_cyclic_attachment:
-        raise SouthStarError(
-            SouthStarErrorKind.UNSUPPORTED_POLICY,
-            "WRITER_SHAPED cyclic residual attachments are not supported yet",
-        )
+    attachments_by_id = {
+        attachment.attachment_id: attachment
+        for attachment in summary.attachments.attachments
+    }
     children = []
-    for attachment in summary.attachments.attachments:
+    for action in summary.attachment_actions:
+        if action.kind not in (
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        ):
+            continue
+        attachment = attachments_by_id[action.attachment_id]
         boundary = tuple(
             incidence
             for incidence in attachment.boundary

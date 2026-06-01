@@ -583,16 +583,15 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertEqual(labels, ())
 
-    def test_raw_terminal_finalization_rejects_cyclic_prepared(self) -> None:
+    def test_raw_terminal_finalization_allows_cyclic_prepared_but_not_eos(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
-        with self.assertRaises(SouthStarError) as caught:
-            writer_transitions.finalize_writer_terminal_state(
-                prepared,
-                _raw_emitted_root_state(AtomId(0)),
-            )
+        terminal = writer_transitions.finalize_writer_terminal_state(
+            prepared,
+            _raw_emitted_root_state(AtomId(0)),
+        )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertIsNone(terminal)
 
     def test_raw_terminal_finalization_rejects_missing_active_frame(self) -> None:
         prepared = _prepare(chain_facts(("C",)))
@@ -641,16 +640,15 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIsNotNone(terminal)
 
-    def test_raw_eos_query_rejects_cyclic_prepared(self) -> None:
+    def test_raw_eos_query_allows_cyclic_prepared_but_remains_false(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
-        with self.assertRaises(SouthStarError) as caught:
-            writer_transitions.writer_state_is_eos(
-                prepared,
-                _raw_emitted_root_state(AtomId(0)),
-            )
+        eos = writer_transitions.writer_state_is_eos(
+            prepared,
+            _raw_emitted_root_state(AtomId(0)),
+        )
 
-        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+        self.assertFalse(eos)
 
     def test_raw_eos_query_rejects_missing_active_frame(self) -> None:
         prepared = _prepare(chain_facts(("C",)))

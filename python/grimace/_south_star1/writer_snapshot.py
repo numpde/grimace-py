@@ -31,8 +31,10 @@ from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
 from .writer_graph_obligations import WriterGraphObligationContext
 from .writer_graph_obligations import WriterGraphObligationSummary
+from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
+from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
 from .writer_frontier import writer_frontier_choices
@@ -247,8 +249,8 @@ def _validate_edge_partition_supported_for_snapshot(
 def _validate_residual_attachments_supported_for_snapshot(
     context: WriterGraphObligationContext,
 ) -> None:
-    if context.residual_summary.has_cyclic_attachment:
-        _invalid_snapshot("writer snapshot has unsupported cyclic residual attachment")
+    if context.residual_summary.has_unsupported_attachment:
+        _invalid_snapshot("writer snapshot has unsupported residual attachment")
 
 
 def _allowed_component_roots(
@@ -616,10 +618,14 @@ def _validate_live_frontier_ownership(
         for attachment in summary.attachments.attachments
         for incidence in attachment.boundary
     ]
+    blocked_actions = tuple(
+        action
+        for action in summary.attachment_actions
+        if writer_residual_attachment_action_is_blocked(action)
+    )
     if any(
-        not attachment.boundary
-        and not _attachment_is_owned_by_pending_entry(key, attachment.atoms)
-        for attachment in summary.attachments.attachments
+        action.kind is WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
+        for action in blocked_actions
     ):
         _invalid_snapshot("writer residual attachment has no boundary incidence")
     branch_return_atoms = tuple(frame.return_atom.atom for frame in key.branch_stack)
@@ -629,10 +635,22 @@ def _validate_live_frontier_ownership(
         if incidence.owner_kind is WriterBoundaryOwnerKind.BRANCH_RETURN
     }
     if any(
-        incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
-        for incidence in boundary_edges
+        action.kind is WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
+        for action in blocked_actions
     ):
         _invalid_snapshot("writer live frontier does not own unvisited obligation")
+    action_by_id = {
+        action.attachment_id: action for action in summary.attachment_actions
+    }
+    for attachment in summary.attachments.attachments:
+        action = action_by_id[attachment.attachment_id]
+        if action.kind is WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
+            continue
+        if any(
+            incidence.owner_kind is WriterBoundaryOwnerKind.UNOWNED
+            for incidence in attachment.boundary
+        ):
+            _invalid_snapshot("writer live frontier does not own unvisited obligation")
     pending_owned_attachment = any(
         _attachment_is_owned_by_pending_entry(key, attachment.atoms)
         for attachment in summary.attachments.attachments
@@ -656,8 +674,18 @@ def _boundary_children_for_atom(
     summary: WriterGraphObligationSummary,
     atom: AtomId,
 ) -> tuple[tuple[BondId, AtomId], ...]:
+    attachments_by_id = {
+        attachment.attachment_id: attachment
+        for attachment in summary.attachments.attachments
+    }
     children = []
-    for attachment in summary.attachments.attachments:
+    for action in summary.attachment_actions:
+        if action.kind not in (
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        ):
+            continue
+        attachment = attachments_by_id[action.attachment_id]
         boundary = tuple(
             incidence
             for incidence in attachment.boundary

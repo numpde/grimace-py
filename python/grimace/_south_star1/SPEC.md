@@ -315,21 +315,23 @@ closure candidates, and structural block-cut metadata. Static writer graph
 metadata is cached on the prepared molecule, while per-prefix edge partitions
 and residual attachments are built through a single
 `WriterGraphObligationContext`; the derived context is not stored in
-`WriterStateKey`. Branch and inline decisions consume residual attachment
-classes derived from the edge partition for the acyclic surface; they do not
-preselect a spanning tree, cycle basis, ring cut, or render program. Cyclic
-residual attachments and closure-candidate edges can be classified
-structurally. Raw writer transitions can now open and pair closure endpoints
-for internally constructed cyclic states when doing so reduces the residual
-graph to the currently supported acyclic attachment surface, but public initial
-writer support still fails closed for cyclic prepared graphs.
+`WriterStateKey`. Residual attachments carry explicit actionability classes:
+acyclic tree entry, cyclic tree entry, closure-open-ready, or blocked states.
+Branch and inline decisions consume tree-entry attachment classes derived from
+the edge partition; they do not preselect a spanning tree, cycle basis, ring
+cut, or render program. Cyclic residual attachments and closure-candidate edges
+can be classified structurally. Raw writer transitions can now enter
+single-boundary cyclic attachments and can open and pair closure endpoints for
+internally constructed cyclic states when successor graph obligations remain
+actionable, but public initial writer support still fails closed for cyclic
+prepared graphs.
 `WriterRingState` now owns explicit open and closed closure records plus ring
 label state, and the edge partition classifies open and closed closure bonds
 before residual attachments are derived. Initial writer support still requires
 every prepared component to be a connected tree. Snapshot validation has a
 separate graph-surface policy: it may audit internally coherent retained
-closure state, but unaccounted cyclic residual attachments and closure
-candidate edges remain invalid.
+closure state and actionable cyclic residual attachments, but blocked residual
+attachments and closure candidate edges remain invalid.
 Every writer transition emits typed semantic events; those events update a
 writer-owned residual stereo snapshot that is part of the canonical writer
 state key. Support counting, EOS evidence, next emitted-text choices,
@@ -343,10 +345,9 @@ each retained writer state against the prepared graph, runtime root domains,
 residual attachment ownership, closure-state lifecycle records, local-order
 occurrence records, delayed stereo factor records, and residual-store factor
 snapshots before exposing a resumed cursor. Ring endpoint events have concrete
-payloads for future closure transitions and are consumed by writer stereo as
-ring-pair delayed-factor hooks. Cyclic traversal, transition-produced ring
-endpoint emission, supported ring-pair stereo factors, residual suffix storage,
-RDKit parity, and exhaustive traversal fallback still fail closed in
+payloads and are consumed by writer stereo as ring-pair delayed-factor hooks.
+Public cyclic support, supported ring-pair stereo factors, residual suffix
+storage, RDKit parity, and exhaustive traversal fallback still fail closed in
 `writer_shaped`.
 
 `online_decoder.py` provides exact prefix feasibility and determinized token

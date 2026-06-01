@@ -1123,10 +1123,32 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    def test_cursor_audit_rejects_cyclic_residual_attachment_without_closure_candidate(self) -> None:
+    def test_cursor_audit_accepts_closure_open_ready_cyclic_residual(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
         key = _manual_emitted_root_key(AtomId(0))
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_accepts_single_boundary_cyclic_tree_entry(self) -> None:
+        prepared = _prepare(triangle_tail_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _manual_emitted_root_key(AtomId(0))
+
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(key),
+            runtime_options=options,
+        )
+
+    def test_cursor_audit_rejects_unowned_multi_boundary_residual_attachment(self) -> None:
+        prepared = _prepare(triangle_with_frozen_tail_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_with_frozen_tail_key()
 
         with self.assertRaises(SouthStarError):
             validate_writer_cursor_against_prepared(
@@ -2018,6 +2040,53 @@ def _triangle_closure_candidate_key():
     )
 
 
+def _triangle_with_frozen_tail_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(3),
+                parent=AtomId(1),
+                incoming_bond=BondId(3),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(3))),
+            written_bonds=frozenset((BondId(0), BondId(3))),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(3), TetraToken.NONE, None),
+                ),
+                bond_occurrences=(
+                    WriterBondOccurrenceRecord(
+                        BondId(0),
+                        AtomId(0),
+                        AtomId(1),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                    WriterBondOccurrenceRecord(
+                        BondId(3),
+                        AtomId(1),
+                        AtomId(3),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                ),
+            ),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
 def _closure_label() -> WriterClosureLabel:
     return WriterClosureLabel(value=1, text="1")
 
@@ -2334,6 +2403,25 @@ def triangle_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def triangle_with_frozen_tail_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 1, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
             ),
         ),
     )

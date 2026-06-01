@@ -35,6 +35,15 @@ class WriterEdgeObligationKind(Enum):
     CLOSED_CLOSURE = "closed_closure"
 
 
+class WriterResidualAttachmentActionKind(Enum):
+    ACYCLIC_TREE_ENTRY = "acyclic_tree_entry"
+    CYCLIC_TREE_ENTRY = "cyclic_tree_entry"
+    CLOSURE_OPEN_READY = "closure_open_ready"
+    BLOCKED_UNOWNED = "blocked_unowned"
+    BLOCKED_ORPHAN = "blocked_orphan"
+    BLOCKED_UNSUPPORTED = "blocked_unsupported"
+
+
 @dataclass(frozen=True, slots=True)
 class WriterEdgeObligation:
     bond: BondId
@@ -72,11 +81,21 @@ class WriterResidualAttachmentState:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentAction:
+    attachment_id: int
+    kind: WriterResidualAttachmentActionKind
+    owner_atoms: tuple[AtomId, ...]
+    boundary_bonds: tuple[BondId, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WriterGraphObligationSummary:
     attachments: WriterResidualAttachmentState
+    attachment_actions: tuple[WriterResidualAttachmentAction, ...]
     boundary_by_owner_atom: tuple[tuple[AtomId, tuple[int, ...]], ...]
     boundary_by_pending_parent: tuple[tuple[AtomId, tuple[int, ...]], ...]
     has_cyclic_attachment: bool
+    has_unsupported_attachment: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,10 +288,10 @@ def validate_writer_snapshot_graph_surface(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer snapshot has unsupported cyclic edge obligation",
         )
-    if context.residual_summary.has_cyclic_attachment:
+    if context.residual_summary.has_unsupported_attachment:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,
-            "writer snapshot has unsupported cyclic residual attachment",
+            "writer snapshot has unsupported residual attachment",
         )
 
 
@@ -367,18 +386,33 @@ def classify_writer_residual_attachments(
                     attachment.attachment_id
                 )
 
+    attachment_actions = tuple(
+        _residual_attachment_action(
+            attachment,
+            block_cut,
+            key,
+            has_visited=bool(visited),
+        )
+        for attachment in sorted_attachments
+    )
     has_cyclic_attachment = any(
         attachment.cyclic_rank > 0
         or len(attachment.boundary) > 1
         for attachment in sorted_attachments
     ) or has_closure_candidate
+    has_unsupported_attachment = any(
+        writer_residual_attachment_action_is_blocked(action)
+        for action in attachment_actions
+    )
     return WriterGraphObligationSummary(
         attachments=WriterResidualAttachmentState(
             attachments=tuple(sorted_attachments)
         ),
+        attachment_actions=attachment_actions,
         boundary_by_owner_atom=_canonical_boundary_index(boundary_by_owner),
         boundary_by_pending_parent=_canonical_boundary_index(boundary_by_pending),
         has_cyclic_attachment=has_cyclic_attachment,
+        has_unsupported_attachment=has_unsupported_attachment,
     )
 
 
@@ -419,6 +453,94 @@ def classify_writer_edge_obligations(
             )
         )
     return WriterEdgeObligationPartition(obligations=tuple(obligations))
+
+
+def writer_residual_attachment_action_is_blocked(
+    action: WriterResidualAttachmentAction,
+) -> bool:
+    return action.kind in (
+        WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,
+        WriterResidualAttachmentActionKind.BLOCKED_ORPHAN,
+        WriterResidualAttachmentActionKind.BLOCKED_UNSUPPORTED,
+    )
+
+
+def _residual_attachment_action(
+    attachment: WriterResidualAttachment,
+    block_cut: WriterBlockCutMetadata,
+    key: WriterStateKey,
+    *,
+    has_visited: bool,
+) -> WriterResidualAttachmentAction:
+    boundary_count = len(attachment.boundary)
+    owner_atoms = tuple(
+        sorted(
+            {
+                incidence.written_atom
+                for incidence in attachment.boundary
+                if _boundary_owner_is_open(incidence.owner_kind)
+            },
+            key=int,
+        )
+    )
+    boundary_bonds = tuple(
+        sorted({incidence.bond for incidence in attachment.boundary}, key=int)
+    )
+    cyclic_backed = (
+        attachment.cyclic_rank > 0
+        or _attachment_is_cyclic_block_backed(attachment, block_cut)
+    )
+    if boundary_count == 0:
+        pending = key.obligations.pending_entry
+        if pending is not None and pending.child in attachment.atoms:
+            owner_atoms = (pending.parent,)
+            boundary_bonds = (pending.bond,)
+            kind = (
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                if cyclic_backed
+                else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            )
+        elif not has_visited:
+            owner_atoms = (key.active.atom,)
+            kind = (
+                WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+                if cyclic_backed
+                else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+            )
+        else:
+            kind = WriterResidualAttachmentActionKind.BLOCKED_ORPHAN
+    elif boundary_count == 1:
+        kind = (
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY
+            if cyclic_backed
+            else WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY
+        )
+    elif owner_atoms:
+        kind = WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY
+    else:
+        kind = WriterResidualAttachmentActionKind.BLOCKED_UNOWNED
+    return WriterResidualAttachmentAction(
+        attachment_id=attachment.attachment_id,
+        kind=kind,
+        owner_atoms=owner_atoms,
+        boundary_bonds=boundary_bonds,
+    )
+
+
+def _attachment_is_cyclic_block_backed(
+    attachment: WriterResidualAttachment,
+    block_cut: WriterBlockCutMetadata,
+) -> bool:
+    return bool(attachment.block_ids & block_cut.cyclic_blocks)
+
+
+def _boundary_owner_is_open(kind: WriterBoundaryOwnerKind) -> bool:
+    return kind in (
+        WriterBoundaryOwnerKind.ACTIVE_ATOM,
+        WriterBoundaryOwnerKind.BRANCH_RETURN,
+        WriterBoundaryOwnerKind.PENDING_PARENT,
+        WriterBoundaryOwnerKind.OPEN_RING_ENDPOINT,
+    )
 
 
 def validate_writer_edge_obligation_partition(
@@ -963,6 +1085,8 @@ __all__ = (
     "WriterGraphObligationSummary",
     "WriterGraphPreparedMetadata",
     "WriterResidualAttachment",
+    "WriterResidualAttachmentAction",
+    "WriterResidualAttachmentActionKind",
     "WriterResidualAttachmentState",
     "build_writer_graph_obligation_context",
     "build_writer_graph_prepared_metadata",
@@ -978,4 +1102,5 @@ __all__ = (
     "writer_edge_obligation_partition_sort_tuple",
     "writer_edge_obligation_sort_tuple",
     "writer_residual_attachment_sort_tuple",
+    "writer_residual_attachment_action_is_blocked",
 )

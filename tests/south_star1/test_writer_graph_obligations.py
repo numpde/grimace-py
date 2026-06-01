@@ -23,6 +23,7 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
+from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
 from grimace._south_star1.writer_graph_obligations import build_writer_block_cut_metadata
 from grimace._south_star1.writer_graph_obligations import classify_writer_edge_obligations
@@ -112,6 +113,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
         )
         self.assertFalse(context.residual_summary.has_cyclic_attachment)
         self.assertEqual(len(context.residual_summary.attachments.attachments), 1)
+        self.assertEqual(
+            tuple(action.kind for action in context.residual_summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,),
+        )
 
     def test_context_builder_exposes_cyclic_summary_without_closure_candidate(self) -> None:
         prepared = _prepare(triangle_facts())
@@ -124,6 +129,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
             {item.kind for item in context.edge_partition.obligations},
         )
         self.assertTrue(context.residual_summary.has_cyclic_attachment)
+        self.assertEqual(
+            tuple(action.kind for action in context.residual_summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,),
+        )
 
     def test_context_builder_exposes_closure_candidate_partition(self) -> None:
         prepared = _prepare(triangle_facts())
@@ -136,6 +145,7 @@ class WriterGraphObligationsTest(unittest.TestCase):
             {item.kind for item in context.edge_partition.obligations},
         )
         self.assertTrue(context.residual_summary.has_cyclic_attachment)
+        self.assertEqual(context.residual_summary.attachment_actions, ())
 
     def test_supported_graph_surface_accepts_all_acyclic_components(self) -> None:
         validate_writer_initial_support_graph_surface(_prepare(chain_plus_singleton_facts()))
@@ -205,6 +215,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual((incidence.bond, incidence.written_atom, incidence.residual_atom), (BondId(1), AtomId(1), AtomId(2)))
         self.assertIs(incidence.owner_kind, WriterBoundaryOwnerKind.ACTIVE_ATOM)
         self.assertEqual(summary.boundary_by_owner_atom, ((AtomId(1), (0,)),))
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,),
+        )
 
     def test_branch_prefix_classifies_sibling_attachment_as_branch_owned(self) -> None:
         prepared = _prepare(cco_facts())
@@ -218,6 +232,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertEqual((incidence.bond, incidence.written_atom, incidence.residual_atom), (BondId(1), AtomId(1), AtomId(2)))
         self.assertIs(incidence.owner_kind, WriterBoundaryOwnerKind.BRANCH_RETURN)
         self.assertEqual(summary.boundary_by_owner_atom, ((AtomId(1), (0,)),))
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,),
+        )
 
     def test_post_bond_pending_state_partitions_pending_entry(self) -> None:
         prepared = _prepare(carbonyl_facts())
@@ -263,6 +281,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
                 (BondId(5), AtomId(0), AtomId(5), WriterBoundaryOwnerKind.ACTIVE_ATOM),
             ),
         )
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,),
+        )
         transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
 
         self.assertEqual(
@@ -270,6 +292,32 @@ class WriterGraphObligationsTest(unittest.TestCase):
             {writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT},
         )
         self.assertEqual({transition.emitted_text for transition in transitions}, {"1"})
+
+    def test_single_boundary_cyclic_residual_is_cyclic_tree_entry(self) -> None:
+        prepared = _prepare(triangle_tail_facts())
+        key = _emitted_root_key(prepared, root=AtomId(0))
+
+        summary = _summary(prepared, key)
+
+        self.assertEqual(len(summary.attachments.attachments), 1)
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,),
+        )
+        attachment = summary.attachments.attachments[0]
+        self.assertEqual(len(attachment.boundary), 1)
+        self.assertEqual(attachment.boundary[0].bond, BondId(0))
+
+        transitions = legal_writer_transitions(prepared, writer_state_from_key(key))
+
+        self.assertNotIn(
+            writer_transitions.WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+            {transition.kind for transition in transitions},
+        )
+        self.assertEqual(
+            {transition.kind for transition in transitions},
+            {writer_transitions.WriterTransitionKind.ENTER_INLINE_CHILD},
+        )
 
     def test_triangle_partial_state_has_boundary_edges_to_one_attachment(self) -> None:
         prepared = _prepare(triangle_facts())
@@ -290,6 +338,10 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertTrue(summary.has_cyclic_attachment)
         self.assertEqual(len(summary.attachments.attachments), 1)
         self.assertEqual(len(summary.attachments.attachments[0].boundary), 2)
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,),
+        )
 
     def test_triangle_closure_candidate_is_explicit_and_fails_closed(self) -> None:
         prepared = _prepare(triangle_facts())
@@ -502,6 +554,16 @@ class WriterGraphObligationsTest(unittest.TestCase):
             ),
             (0, 2),
         )
+        self.assertEqual(
+            sorted(
+                (action.kind for action in summary.attachment_actions),
+                key=lambda kind: kind.value,
+            ),
+            [
+                WriterResidualAttachmentActionKind.BLOCKED_ORPHAN,
+                WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+            ],
+        )
 
     def test_orphan_residual_bond_is_latent_with_empty_boundary_attachment(self) -> None:
         prepared = _prepare(chain_plus_orphan_chain_same_component_facts())
@@ -527,6 +589,22 @@ class WriterGraphObligationsTest(unittest.TestCase):
                 )
             ),
             (0, 1),
+        )
+        self.assertIn(
+            WriterResidualAttachmentActionKind.BLOCKED_ORPHAN,
+            {action.kind for action in summary.attachment_actions},
+        )
+
+    def test_multi_boundary_residual_without_open_owner_is_blocked_unowned(self) -> None:
+        prepared = _prepare(triangle_with_frozen_tail_facts())
+        key = _triangle_with_frozen_tail_key()
+
+        summary = _summary(prepared, key)
+
+        self.assertEqual(len(summary.attachments.attachments), 1)
+        self.assertEqual(
+            tuple(action.kind for action in summary.attachment_actions),
+            (WriterResidualAttachmentActionKind.BLOCKED_UNOWNED,),
         )
 
     def test_boundary_incidences_to_same_written_atom_remain_distinct(self) -> None:
@@ -675,6 +753,30 @@ def _triangle_all_visited_two_written_key():
     )
 
 
+def _triangle_with_frozen_tail_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(3),
+                parent=AtomId(1),
+                incoming_bond=BondId(3),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(3))),
+            written_bonds=frozenset((BondId(0), BondId(3))),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
 def _closure_label() -> WriterClosureLabel:
     return WriterClosureLabel(value=1, text="1")
 
@@ -765,6 +867,44 @@ def triangle_facts() -> MoleculeFacts:
                 id=ComponentId(0),
                 atoms=(AtomId(0), AtomId(1), AtomId(2)),
                 bonds=(BondId(0), BondId(1), BondId(2)),
+            ),
+        ),
+    )
+
+
+def triangle_tail_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 3),
+            single_bond(3, 3, 1),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
+            ),
+        ),
+    )
+
+
+def triangle_with_frozen_tail_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=tuple(atom(index, "C") for index in range(4)),
+        bonds=(
+            single_bond(0, 0, 1),
+            single_bond(1, 1, 2),
+            single_bond(2, 2, 0),
+            single_bond(3, 1, 3),
+        ),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1), BondId(2), BondId(3)),
             ),
         ),
     )

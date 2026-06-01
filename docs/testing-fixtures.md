@@ -9,7 +9,7 @@ support sets, inventories, writer outputs, known gaps, and source snapshots.
 This page is the full fixture inventory. It includes cases sourced from RDKit's
 own source tree and independent Grimace evidence from local probes,
 dataset-derived molecules, random-writer observations, and known-gap
-diagnostics. The RDKit-source-tree audit lane is traced separately in
+diagnostics. The RDKit-source-tree cases have an additional traceability view in
 [RDKit serializer coverage](rdkit-serializer-coverage.html).
 
 ## Current coverage

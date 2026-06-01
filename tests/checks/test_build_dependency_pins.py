@@ -95,6 +95,7 @@ class BuildDependencyPinTests(unittest.TestCase):
                     if relative_path == "containers/package/Dockerfile":
                         self.assertRegex(text, rf"\btwine=={re.escape(TWINE_VERSION)}\b")
                     if relative_path in {
+                        "containers/package/Dockerfile",
                         "containers/prepared-mol-zstd-dictionary/Dockerfile",
                         "containers/timings-prepared-mol-zstd/Dockerfile",
                         "containers/test/Dockerfile",

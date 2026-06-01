@@ -426,6 +426,9 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertRegex(dockerfile, r"(?m)^FROM rust:.+@sha256:")
         self.assertIn("COPY . /src", dockerfile)
         self.assertIn("cargo fetch --locked", dockerfile)
+        self.assertIn("rdkit==2026.3.1", dockerfile)
+        self.assertIn("twine==6.2.0", dockerfile)
+        self.assertIn("zstandard==0.25.0", dockerfile)
         self.assertNotIn("apt-get", dockerfile)
         self.assertIn("USER 65532:65532", dockerfile)
 

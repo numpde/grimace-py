@@ -153,6 +153,42 @@
           }
         ]
       }
+    },
+    {
+      "id": "pubchem_66259_nonisomeric_random_all_hs_explicit_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 66259)",
+      "smiles": "CC1=CC(=C(C(=C1CC2=NCCN2)C)O)C(C)(C)C.Cl",
+      "rooted_at_atom": -1,
+      "support_count": 1248,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 75946,
+            "support_count": 1248,
+            "consecutive_draws_without_new_variant": 24960,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 45812,
+            "support_count": 1248,
+            "consecutive_draws_without_new_variant": 24960,
+            "singleton_count": 0,
+            "doubleton_count": 1,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
     }
   ]
 }

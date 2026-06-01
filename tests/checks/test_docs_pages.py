@@ -33,6 +33,8 @@ def linked_path(source: Path, raw_target: str) -> Path | None:
     path_text = unquote(parsed.path)
     if not path_text:
         return None
+    if source.is_relative_to(ROOT / "docs") and path_text.endswith(".html"):
+        path_text = f"{path_text[:-5]}.md"
     return (source.parent / path_text).resolve()
 
 
@@ -148,9 +150,9 @@ class DocsPagesTests(unittest.TestCase):
 
     def test_timings_overview_links_benchmark_pages(self) -> None:
         timings = (ROOT / "docs" / "timings.md").read_text(encoding="utf-8")
-        self.assertIn("[Enum/support timings](timings-enum.md)", timings)
+        self.assertIn("[Enum/support timings](timings-enum.html)", timings)
         self.assertIn(
-            "[PreparedMol zstd timings](timings-prepared-mol-zstd.md)",
+            "[PreparedMol zstd timings](timings-prepared-mol-zstd.html)",
             timings,
         )
         self.assertNotIn("## Benchmark environment", timings)

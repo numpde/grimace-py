@@ -2,9 +2,16 @@
 title: RDKit serializer coverage
 ---
 
-The serializer coverage ledger maps upstream RDKit serializer-related source
-blocks to Grimace evidence. It is an audit map, not the parity test itself.
-Passing claims are enforced by the linked fixtures.
+This page explains which RDKit SMILES-writer tests Grimace has reviewed and how
+each relevant RDKit behavior is covered in Grimace's checked-in fixtures.
+
+Use it to answer two questions:
+
+- Did we inspect the upstream RDKit serializer case?
+- Which Grimace fixture proves the matching behavior, or records the known gap?
+
+The ledger is the traceability map. The tests enforce the claims by loading the
+linked fixtures.
 
 Ledger:
 

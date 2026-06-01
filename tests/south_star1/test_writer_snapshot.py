@@ -513,11 +513,64 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_open_closure_label_value_text_mismatch(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        label = WriterClosureLabel(value=1, text="7")
+        endpoint = replace(
+            key.ring_state.open_endpoints[0],
+            label=label,
+            first_endpoint_text="7",
+        )
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=WriterRingLabelState(allocated=(label,)),
+            ),
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(_pending_ring_pair_factor(endpoint),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_open_closure_bond_text_outside_policy(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
         endpoint = replace(key.ring_state.open_endpoints[0], first_endpoint_bond_text="~")
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                open_endpoints=(endpoint,),
+                label_state=key.ring_state.label_state,
+            ),
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(_pending_ring_pair_factor(endpoint),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_directional_open_closure_bond_text(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_root_with_open_closure_key()
+        endpoint = replace(key.ring_state.open_endpoints[0], first_endpoint_bond_text="/")
         tampered_key = replace(
             key,
             ring_state=WriterRingStateKey(
@@ -655,11 +708,65 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_closed_closure_label_value_text_mismatch(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_closed_closure_key()
+        label = WriterClosureLabel(value=1, text="7")
+        closure = replace(
+            key.ring_state.closed_closures[0],
+            label=label,
+            first_endpoint_text="7",
+            second_endpoint_text="7",
+        )
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                closed_closures=(closure,),
+                label_state=WriterRingLabelState(reusable=(label,)),
+            ),
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(_closed_ring_pair_factor(closure),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_closed_closure_bond_text_outside_policy(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
         key = _triangle_closed_closure_key()
         closure = replace(key.ring_state.closed_closures[0], second_endpoint_bond_text="~")
+        tampered_key = replace(
+            key,
+            ring_state=WriterRingStateKey(
+                closed_closures=(closure,),
+                label_state=key.ring_state.label_state,
+            ),
+            stereo_state=replace(
+                key.stereo_state,
+                delayed_factors=(_closed_ring_pair_factor(closure),),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_directional_closed_closure_bond_text(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _triangle_closed_closure_key()
+        closure = replace(key.ring_state.closed_closures[0], first_endpoint_bond_text="\\")
         tampered_key = replace(
             key,
             ring_state=WriterRingStateKey(

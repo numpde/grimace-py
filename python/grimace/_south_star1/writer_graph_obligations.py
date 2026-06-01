@@ -10,6 +10,7 @@ from .errors import SouthStarError
 from .errors import SouthStarErrorKind
 from .ids import AtomId
 from .ids import BondId
+from .policy import RingLabel
 from .writer_state import WriterStateKey
 
 if TYPE_CHECKING:
@@ -611,13 +612,17 @@ def _validate_ring_label_state(key: WriterStateKey) -> None:
     if not set(reusable).issubset(set(closed_labels)):
         _invalid_edge_partition("writer reusable ring label lacks closed closure")
     for label in open_labels:
+        _validate_closure_label_text(label)
         if label not in allocated:
             _invalid_edge_partition("writer open closure label is not allocated")
         if label in reusable:
             _invalid_edge_partition("writer open closure label is reusable")
     for label in closed_labels:
+        _validate_closure_label_text(label)
         if label not in allocated and label not in reusable:
             _invalid_edge_partition("writer closed closure label is not tracked")
+    for label in (*allocated, *reusable):
+        _validate_closure_label_text(label)
 
 
 def _validate_open_endpoint_partner_liveness(
@@ -646,6 +651,7 @@ def _open_writer_atoms(key: WriterStateKey) -> frozenset[AtomId]:
 
 
 def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> None:
+    _validate_closure_label_text(endpoint.label)
     if endpoint.first_endpoint_text != endpoint.label.text:
         _invalid_edge_partition("writer open closure endpoint text does not match label")
     if endpoint.first_endpoint_bond_text not in _closure_bond_texts(
@@ -656,6 +662,7 @@ def _validate_open_endpoint_text(prepared: SouthStarPreparedMol, endpoint) -> No
 
 
 def _validate_closed_closure_text(prepared: SouthStarPreparedMol, closure) -> None:
+    _validate_closure_label_text(closure.label)
     if closure.first_endpoint_text != closure.label.text:
         _invalid_edge_partition("writer closed closure first endpoint text does not match label")
     if closure.second_endpoint_text != closure.label.text:
@@ -682,11 +689,23 @@ def _closure_bond_texts(
             f"writer closure bond lacks ring-endpoint policy domain: {bond!r}",
         ) from exc
     texts = {choice.base_text for choice in choices}
-    if any(choice.permits_direction for choice in choices):
-        texts.update(("/", "\\"))
+    texts.discard("/")
+    texts.discard("\\")
     if not texts:
         _invalid_edge_partition("writer closure bond text policy domain is empty")
     return frozenset(texts)
+
+
+def _validate_closure_label_text(label) -> None:
+    try:
+        expected = RingLabel(label.value).text()
+    except ValueError as exc:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "writer closure label has invalid value",
+        ) from exc
+    if label.text != expected:
+        _invalid_edge_partition("writer closure label text does not match label value")
 
 
 def _validate_closure_obligation(

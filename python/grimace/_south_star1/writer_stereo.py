@@ -15,6 +15,7 @@ from .ids import BondId
 from .ids import OccurrenceId
 from .ids import SiteId
 from .policy import DirectionMark
+from .policy import RingLabel
 from .policy import TetraToken
 from .residual_constraints import DirectionalCarrierResidual
 from .residual_constraints import DirectionalResidualFactor
@@ -392,6 +393,8 @@ def _on_ring_endpoint_emitted(
     event: WriterRingEndpointEmitted,
 ) -> "WriterStereoState | None":
     _reject_supported_ring_pair_stereo(prepared, event.bond)
+    if not _ring_event_text_ok(prepared, event):
+        return None
     from .writer_state import WriterStereoState
 
     return WriterStereoState(
@@ -418,6 +421,8 @@ def _on_ring_endpoint_paired(
     event: WriterRingEndpointPaired,
 ) -> "WriterStereoState | None":
     _reject_supported_ring_pair_stereo(prepared, event.bond)
+    if not _ring_event_text_ok(prepared, event):
+        return None
     from .writer_state import WriterStereoState
 
     pending = next(
@@ -459,6 +464,36 @@ def _on_ring_endpoint_paired(
                 closed=True,
             ),
         ),
+    )
+
+
+def _ring_event_text_ok(prepared: SouthStarPreparedMol, event) -> bool:
+    try:
+        expected_label = RingLabel(event.label.value).text()
+    except ValueError:
+        return False
+    if event.label.text != expected_label:
+        return False
+    if event.endpoint_text != event.label.text:
+        return False
+    return event.bond_text in _ring_endpoint_bond_texts(prepared, event.bond)
+
+
+def _ring_endpoint_bond_texts(
+    prepared: SouthStarPreparedMol,
+    bond: BondId,
+) -> frozenset[str]:
+    try:
+        choices = prepared.policy.bond_text_domain_unchecked(
+            bond,
+            slot_kind="ring_endpoint",
+        )
+    except KeyError:
+        return frozenset()
+    return frozenset(
+        choice.base_text
+        for choice in choices
+        if choice.base_text not in {"/", "\\"}
     )
 
 

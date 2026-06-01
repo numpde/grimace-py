@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
 from pathlib import Path
 import re
 import sys
@@ -16,6 +17,12 @@ TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 WHEEL_NAME_PATTERN = re.compile(
     rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-.+\.whl$"
 )
+PREPARED_MOL_ZSTD_ARTIFACT_PATTERN = re.compile(r"^[0-9]{8}_[0-9a-f]{8}$")
+PREPARED_MOL_ZSTD_FILENAMES = frozenset(
+    {"default_v1.json", "default_v1.zstdict"}
+)
+SDIST_PREPARED_MOL_ZSTD_PREFIX = "python/grimace/data/prepared_mol_zstd/"
+WHEEL_PREPARED_MOL_ZSTD_PREFIX = "grimace/data/prepared_mol_zstd/"
 FORBIDDEN_SDIST_PREFIXES = (
     ".git/",
     ".github/",
@@ -137,10 +144,12 @@ def validate_sdist(sdist_path: Path) -> None:
         raise ValueError(f"source distribution must be a .tar.gz file: {sdist_path}")
 
     root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
+    names: list[str] = []
     try:
         with tarfile.open(sdist_path, "r:gz") as archive:
             for member in archive.getmembers():
                 name = member.name
+                names.append(name)
                 if is_unsafe_archive_path(name):
                     raise ValueError(f"unsafe sdist path: {name!r}")
                 if member.issym() or member.islnk():
@@ -155,6 +164,10 @@ def validate_sdist(sdist_path: Path) -> None:
                     continue
                 if is_forbidden_archive_member(relative):
                     raise ValueError(f"forbidden file in sdist: {relative!r}")
+            validate_prepared_mol_zstd_package_data(
+                (name[len(root) :] for name in names if name.startswith(root)),
+                prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
+            )
     except (OSError, tarfile.TarError) as exc:
         raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
 
@@ -176,6 +189,7 @@ def validate_wheel(wheel_path: Path) -> None:
 
     try:
         with zipfile.ZipFile(wheel_path) as archive:
+            names = archive.namelist()
             for member in archive.infolist():
                 name = member.filename
                 if is_unsafe_archive_path(name):
@@ -190,8 +204,47 @@ def validate_wheel(wheel_path: Path) -> None:
                 root = name.rstrip("/").split("/", 1)[0]
                 if root not in allowed_roots:
                     raise ValueError(f"unexpected top-level wheel member: {name!r}")
+            validate_prepared_mol_zstd_package_data(
+                names,
+                prefix=WHEEL_PREPARED_MOL_ZSTD_PREFIX,
+            )
     except (OSError, zipfile.BadZipFile) as exc:
         raise ValueError(f"could not read wheel {wheel_path}: {exc}") from exc
+
+
+def validate_prepared_mol_zstd_package_data(
+    names: Iterable[str],
+    *,
+    prefix: str,
+) -> None:
+    artifacts: dict[str, set[str]] = {}
+    for name in names:
+        if not name.startswith(prefix) or name.endswith("/"):
+            continue
+        relative = name[len(prefix) :]
+        parts = relative.split("/")
+        if len(parts) != 2:
+            raise ValueError(f"unexpected PreparedMol zstd package data path: {name!r}")
+        artifact, filename = parts
+        if PREPARED_MOL_ZSTD_ARTIFACT_PATTERN.fullmatch(artifact) is None:
+            raise ValueError(
+                f"unexpected PreparedMol zstd artifact directory: {name!r}"
+            )
+        if filename not in PREPARED_MOL_ZSTD_FILENAMES:
+            raise ValueError(f"unexpected PreparedMol zstd package data file: {name!r}")
+        artifacts.setdefault(artifact, set()).add(filename)
+
+    if not artifacts:
+        raise ValueError("missing PreparedMol zstd dictionary package data")
+    incomplete = {
+        artifact: sorted(PREPARED_MOL_ZSTD_FILENAMES - filenames)
+        for artifact, filenames in artifacts.items()
+        if filenames != PREPARED_MOL_ZSTD_FILENAMES
+    }
+    if incomplete:
+        raise ValueError(
+            f"incomplete PreparedMol zstd dictionary package data: {incomplete!r}"
+        )
 
 
 def main(argv: list[str]) -> int:

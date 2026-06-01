@@ -10,6 +10,15 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "validate_release_artifacts.py"
+TEST_DICTIONARY_ARTIFACT = "20000102_1234abcd"
+SDIST_DICTIONARY_NAMES = (
+    f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.json",
+    f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.zstdict",
+)
+WHEEL_DICTIONARY_NAMES = (
+    f"grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.json",
+    f"grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.zstdict",
+)
 
 
 def write_sdist(path: Path, names: tuple[str, ...]) -> None:
@@ -22,7 +31,10 @@ def write_sdist(path: Path, names: tuple[str, ...]) -> None:
                 archive.add(tmp.name, arcname=full_name)
 
 
-def write_wheel(path: Path, names: tuple[str, ...] = ("grimace/__init__.py",)) -> None:
+def write_wheel(
+    path: Path,
+    names: tuple[str, ...] = ("grimace/__init__.py", *WHEEL_DICTIONARY_NAMES),
+) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         for name in names:
             archive.writestr(name, "")
@@ -31,7 +43,10 @@ def write_wheel(path: Path, names: tuple[str, ...] = ("grimace/__init__.py",)) -
 def write_expected_artifacts(validator, dist: Path, version: str) -> None:
     for name in validator.expected_artifact_names(version):
         if name.endswith(".tar.gz"):
-            write_sdist(dist / name, ("pyproject.toml", "Cargo.toml"))
+            write_sdist(
+                dist / name,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+            )
         else:
             write_wheel(dist / name)
 
@@ -216,6 +231,41 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "wheel filename does not match grimace_py"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_wheel_without_prepared_mol_zstd_dictionary_data(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("grimace/__init__.py",))
+            with self.assertRaisesRegex(ValueError, "missing PreparedMol zstd"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_incomplete_wheel_prepared_mol_zstd_dictionary_data(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("grimace/__init__.py", WHEEL_DICTIONARY_NAMES[0]))
+            with self.assertRaisesRegex(ValueError, "incomplete PreparedMol zstd"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_sdist_without_prepared_mol_zstd_dictionary_data(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(sdist, ("pyproject.toml", "Cargo.toml"))
+            with self.assertRaisesRegex(ValueError, "missing PreparedMol zstd"):
+                validator.validate_sdist(sdist)
+
+    def test_rejects_incomplete_sdist_prepared_mol_zstd_dictionary_data(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", SDIST_DICTIONARY_NAMES[0]),
+            )
+            with self.assertRaisesRegex(ValueError, "incomplete PreparedMol zstd"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_tag_that_does_not_match_release_version_shape(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -226,7 +276,10 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
             sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
-            write_sdist(sdist, ("pyproject.toml", "Cargo.toml"))
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+            )
             self.assertEqual(0, validator.main([str(sdist), "--sdist-only"]))
 
     def test_wheel_only_cli_validates_wheel_content_without_release_set(self) -> None:

@@ -11,7 +11,9 @@
   --grimace-muted: #4b5563;
   --grimace-border: #d0d7de;
   --grimace-link: #0b63ce;
+  --grimace-link-hover: #084b9a;
   --grimace-link-visited: #6f42c1;
+  --grimace-link-visited-hover: #5a32a3;
   --grimace-code-bg: #f3f4f6;
   --grimace-code-text: #111827;
   --grimace-code-muted: #6b7280;
@@ -29,7 +31,9 @@
     --grimace-muted: #9aa4b2;
     --grimace-border: #343b45;
     --grimace-link: #7db8ff;
+    --grimace-link-hover: #b4d7ff;
     --grimace-link-visited: #c3a6ff;
+    --grimace-link-visited-hover: #dccdff;
     --grimace-code-bg: #202631;
     --grimace-code-text: #d8dee6;
     --grimace-code-muted: #8b949e;
@@ -52,6 +56,14 @@ a {
 
 a:visited {
   color: var(--grimace-link-visited);
+}
+
+a:hover {
+  color: var(--grimace-link-hover);
+}
+
+a:visited:hover {
+  color: var(--grimace-link-visited-hover);
 }
 
 .site-header,

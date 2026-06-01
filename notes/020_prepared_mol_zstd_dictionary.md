@@ -79,19 +79,15 @@ zstd frame containing the dictionary ID. Do not silently fall back to raw bytes
 when compression is larger than raw; callers who ask for zstd should get a zstd
 frame. Bulk storage layers may choose raw or compressed payloads themselves.
 
-```python
-prepared.to_bytes(compression="zstd", dictionary=dictionary)
-```
-
-compresses with an explicit dictionary.
-
 Keep the public argument surface narrow:
 
 - `to_bytes()` remains raw and argument-free in the common case
 - compression options are keyword-only
 - supported `compression` values are exactly `None`/omitted and `"zstd"`
 - unknown compression names fail before doing work
-- on write, `dictionary=...` is valid only with `compression="zstd"`
+- `dictionary_level` selects one shipped built-in dictionary by training level
+- `level` selects the ordinary zstd compression level
+- custom dictionary objects are not part of the v1 public API
 
 Compression output does not need to be byte-identical across supported zstd
 library versions. The compatibility contract is that Grimace-produced frames
@@ -116,17 +112,6 @@ should:
 4. If the ID matches a shipped built-in dictionary, decompress with it.
 5. Require decompressed bytes to start with `GPM\0`.
 6. Parse with the existing raw `PreparedMol` parser.
-
-For custom dictionaries:
-
-```python
-grimace.PreparedMol.from_bytes(payload, dictionary=dictionary)
-```
-
-uses the explicit dictionary only for zstd payloads. The dictionary argument is
-keyword-only. Passing a dictionary while reading raw `GPM\0` bytes should fail,
-because raw bytes are self-contained and silently ignoring the dictionary would
-hide caller mistakes.
 
 Detection is a prefix check:
 
@@ -158,30 +143,9 @@ large enough for the largest supported raw `PreparedMol`, and document that
 larger payloads are unsupported rather than trying to allocate and hope.
 
 If the frame has no dictionary ID, has dictionary ID zero, or references an
-unknown dictionary, `from_bytes(payload)` must fail with a clear error. An
-explicit dictionary may be supplied for non-built-in payloads.
-
-With an explicit dictionary:
-
-- if the frame carries a nonzero dictionary ID, it must match the explicit
-  dictionary
-- if the frame omits a dictionary ID, the explicit dictionary may be used, but
-  the frame must still satisfy the v1 frame rules other than the built-in
-  dictionary-ID requirement, and the decompressed payload must still be a single
-  valid raw `GPM\0` payload
-- wrong explicit dictionaries must fail before returning a `PreparedMol`
-
-On the write path, do not allow `dictionary=...` without
-`compression="zstd"`.
-
-An explicit dictionary should be a validated dictionary object, not an arbitrary
-bytes blob passed through every call. The object should be constructed from
-dictionary bytes, cache the zstd dictionary ID, reject invalid dictionaries, and
-be immutable/thread-safe. It should expose only the identity needed for
-debugging and storage metadata, not mutable codec internals. If this object
-becomes public, document that custom compressed datasets are not self-contained:
-users must preserve the dictionary bytes or semantic dictionary identity
-alongside the data.
+unknown dictionary, `from_bytes(payload)` must fail with a clear error. v1 only
+reads dictionaries shipped with the package; custom dictionaries can be designed
+later if a real storage workflow needs them.
 
 ## Built-in corpus v1
 
@@ -340,37 +304,27 @@ Removing an older built-in dictionary is a storage-format break.
 The dictionary must be available to `PreparedMol.from_bytes(...)` without RDKit
 and without relying on the current working directory.
 
-There are two implementation shapes:
+The v1 implementation loads dictionary package data from Python using
+`importlib.resources`, then uses `python-zstandard` to compress/decompress
+ordinary zstd frames. The Rust core continues to own the raw `GPM\0` bytes and
+their parser.
 
-1. Embed shipped built-in dictionaries in the Rust extension with
-   `include_bytes!`. This makes implicit lookup purely Rust-owned, but
-   duplicates bytes if the raw artifact is also shipped as package data.
-2. Load dictionary package data from Python using `importlib.resources`, then
-   pass dictionary bytes into Rust. This avoids embedding duplicates, but the
-   Python wrapper becomes responsible for built-in resource lookup.
+Keep this boundary explicit. Python may understand enough of the zstd frame
+header to select a shipped dictionary by frame dictionary ID. It must still
+reject malformed compressed payloads before returning a `PreparedMol`, and the
+decompressed raw bytes must go through the Rust parser.
 
-Do not decide this accidentally during implementation. Pick one boundary before
-adding the public API. In either case, Rust should own frame parsing,
-decompression, and raw `GPM\0` parsing.
-
-If the Python-resource path is chosen, Python may perform only resource lookup:
-for example, ask Rust for a validated frame dictionary ID, load the matching
-resource bytes, then call back into Rust to decompress and parse. Rust must
-still revalidate the frame with the selected dictionary. Python should not grow
-its own partial zstd parser.
-
-The zstd dependency is part of the binary compatibility story. Prefer the Rust
-crate path that vendors or pins the zstd C implementation through `Cargo.lock`
-for release wheels, rather than dynamically depending on whatever system zstd
-is present at build time. If a system zstd path is ever allowed for downstream
-builds, CI should still validate the released wheel path separately.
+The zstd dependency is part of the compatibility story. Release wheels that
+expose compressed `PreparedMol` reads must include the Python zstd dependency.
+If a future Rust implementation replaces the Python codec, CI should validate
+the release wheel path separately.
 
 The release build should make the chosen zstd implementation visible in the
 artifact manifest or build metadata. Otherwise size/timing changes caused by a
 codec upgrade will be hard to diagnose.
 
-Update third-party notices for the Rust zstd crate and bundled zstd C library
-before shipping compressed support.
+Update third-party notices for the zstd package/runtime before shipping
+compressed support.
 
 The wheel and sdist validation allowlists must be updated so the dictionary and
 manifest are intentionally included and no generated training logs or raw sample
@@ -382,7 +336,7 @@ checkout, not an installed wheel.
 
 Built-in decompression should prepare and cache zstd decode dictionaries once,
 then share immutable handles across calls. The cache must be thread-safe and
-must not depend on Python object lifetime when parsing is owned by Rust.
+must not affect raw `GPM\0` parsing.
 
 Do not load or prepare the built-in dictionary at `import grimace` time. Load it
 on first compressed write/read, then cache it. Compression and decompression
@@ -415,9 +369,9 @@ The generator must:
 Rust generation remains viable later through lower-level zstd bindings, but the
 safe high-level Rust training wrapper does not expose explicit dictionary ID
 control. That makes Python the smaller first implementation while still keeping
-runtime reading Rust-owned.
+the raw `PreparedMol` format Rust-owned.
 
-The Rust runtime must read and validate the shipped dictionary regardless of
+The runtime reader must read and validate the shipped dictionary regardless of
 how it was generated.
 
 ## Security and malformed inputs
@@ -442,7 +396,7 @@ errors, not as panics or partial reads.
 Unknown non-raw, non-zstd prefixes should fail as malformed `PreparedMol`
 payloads without invoking the zstd decoder.
 
-If the chosen Rust zstd API cannot write frames with dictionary IDs, content
+If the chosen zstd API cannot write frames with dictionary IDs, content
 size, and checksum, and inspect dictionary ID, content size, checksum flag,
 single-frame consumption, and trailing bytes on read, do not paper over that in
 Python. Use lower-level zstd bindings or revisit a Grimace envelope.
@@ -473,7 +427,7 @@ Add tests before exposing compression as public API:
 - compressed payloads are a single zstd frame with no trailing data
 - built-in `from_bytes(compressed)` loads the matching built-in dictionary
   implicitly
-- unknown, zero, or missing dictionary ID fails without an explicit dictionary
+- unknown, zero, or missing dictionary ID fails
 - missing content size fails
 - missing checksum fails
 - corrupted checksum fails
@@ -481,20 +435,14 @@ Add tests before exposing compression as public API:
 - decompression beyond the output cap fails
 - concatenated frames and trailing compressed bytes fail
 - zstd skippable frames fail
-- explicit dictionary round-trips
-- explicit dictionary object rejects invalid dictionary bytes
-- explicit dictionary ID mismatch fails
-- wrong explicit dictionary fails
 - decompressed bytes must start with `GPM\0`
 - decompressed `GPM\0` bytes must be consumed exactly by the raw parser
 - compressed payloads with known dictionaries but unsupported raw payload
   versions fail at the raw parser layer
 - `to_bytes(compression="zstd")` does not silently return raw bytes even when
   compression expands the payload
-- `to_bytes(dictionary=...)` without zstd compression fails
+- unexpected keyword arguments fail instead of being ignored
 - unknown compression names fail
-- `from_bytes(raw_payload, dictionary=...)` fails instead of ignoring the
-  dictionary
 - non-`bytes` payloads remain rejected unless the public contract is
   deliberately expanded
 - compression and decompression do not force dictionary loading at import time
@@ -516,19 +464,15 @@ Add tests before exposing compression as public API:
 
 ## Implementation order
 
-1. Add a Python `python-zstandard` generator that writes candidate artifacts to
-   `~/tmp`.
-2. Train the all-parseable/preparable dictionary.
-3. Measure raw size, zstd without dictionary, zstd with dictionary, write time,
+1. Generate shipped dictionaries from the pinned all-molecule fixture lane.
+2. Validate each artifact before accepting it: manifest hashes, dictionary ID,
+   source hashes, skipped counts, and a zstd round trip.
+3. Keep compressed readability unconditional in release wheels.
+4. Load built-in dictionaries as Python package resources and cache them by
+   zstd dictionary ID.
+5. Keep v1 custom dictionaries out of the public API.
+6. Keep raw `GPM\0` parsing Rust-owned; handle zstd wrapping in Python until a
+   Rust implementation is clearly needed.
+7. Measure raw size, zstd without dictionary, zstd with dictionary, write time,
    read time, parse time, first-use dictionary load cost, and steady-state
-   cached-read throughput. Include tiny molecules, typical molecules, larger
-   molecules, disconnected molecules, and stereo-heavy examples.
-4. Confirm the selected Rust zstd API can enforce the frame rules above.
-5. Decide whether compressed readability is unconditional in release wheels or
-   feature-gated for nonstandard builds only.
-6. Decide the explicit dictionary object shape.
-7. Decide the built-in resource boundary: Rust `include_bytes!` versus Python
-   package resource loading.
-8. Commit the artifact only after the manifest and validation tests are stable.
-9. Add Rust-owned frame parsing and bounded decompression.
-10. Add the Python API surface.
+   cached-read throughput.

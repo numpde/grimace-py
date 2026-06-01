@@ -119,9 +119,7 @@ def _zstd_dictionary_for_id(dictionary_id: int) -> object:
 
 
 def _zstd_dictionary_from_manifest(manifest: dict[str, Any]) -> object:
-    dictionary_id = manifest["zstd_dictionary_id"]
-    if not isinstance(dictionary_id, int):
-        raise ValueError("PreparedMol zstd dictionary manifest has invalid id")
+    dictionary_id = _zstd_dictionary_manifest_id(manifest)
     cached = _ZSTD_DICTIONARY_BY_ID.get(dictionary_id)
     if cached is not None:
         return cached
@@ -159,7 +157,7 @@ def _zstd_dictionary_manifest_for_id(dictionary_id: int) -> dict[str, Any]:
     matches = [
         manifest
         for manifest in _zstd_dictionary_manifests()
-        if manifest["zstd_dictionary_id"] == dictionary_id
+        if _zstd_dictionary_manifest_id(manifest) == dictionary_id
     ]
     if len(matches) != 1:
         raise ValueError(
@@ -178,6 +176,13 @@ def _zstd_dictionary_manifests() -> tuple[dict[str, Any], ...]:
                 raise ValueError("PreparedMol zstd dictionary manifest is invalid")
             manifests.append(manifest)
     return tuple(manifests)
+
+
+def _zstd_dictionary_manifest_id(manifest: dict[str, Any]) -> int:
+    dictionary_id = manifest["zstd_dictionary_id"]
+    if not isinstance(dictionary_id, int) or isinstance(dictionary_id, bool):
+        raise ValueError("PreparedMol zstd dictionary manifest has invalid id")
+    return dictionary_id
 
 
 def _zstd_dictionary_manifest_training_level(manifest: dict[str, Any]) -> int:

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
 import importlib.resources as resources
 import json
+import subprocess
+import sys
+import textwrap
 import unittest
-from unittest import mock
 
 import grimace
-import grimace._prepared_mol as prepared_mol_module
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
@@ -107,20 +109,25 @@ def _dictionary_manifests() -> tuple[dict[str, object], ...]:
 
 
 def _dictionary_id_for_training_level(level: int) -> int:
-    matches = [
-        manifest["zstd_dictionary_id"]
+    manifest = _dictionary_manifest_for_training_level(level)
+    dictionary_id = manifest["zstd_dictionary_id"]
+    if not isinstance(dictionary_id, int):
+        raise AssertionError("Dictionary manifest id is not an integer")
+    return dictionary_id
+
+
+def _dictionary_manifest_for_training_level(level: int) -> dict[str, object]:
+    matches = tuple(
+        manifest
         for manifest in _dictionary_manifests()
         if manifest["training_identity"]["training_parameters"]["level"] == level
-    ]
+    )
     if len(matches) != 1:
         raise AssertionError(
             f"Expected one shipped dictionary for training level {level}, "
             f"got {len(matches)}"
         )
-    dictionary_id = matches[0]
-    if not isinstance(dictionary_id, int):
-        raise AssertionError("Dictionary manifest id is not an integer")
-    return dictionary_id
+    return matches[0]
 
 
 def _shipped_dictionary_ids() -> set[int]:
@@ -130,6 +137,32 @@ def _shipped_dictionary_ids() -> set[int]:
     if not all(isinstance(dictionary_id, int) for dictionary_id in dictionary_ids):
         raise AssertionError("Dictionary manifest id is not an integer")
     return dictionary_ids
+
+
+def _compress_with_shipped_dictionary(
+    raw_payload: bytes,
+    *,
+    dictionary_level: int,
+) -> bytes:
+    import zstandard as zstd
+
+    manifest = _dictionary_manifest_for_training_level(dictionary_level)
+    artifact_dir = (
+        resources.files("grimace")
+        .joinpath("data", "prepared_mol_zstd")
+        .joinpath(manifest["artifact_dir"])
+    )
+    dictionary = zstd.ZstdCompressionDict(
+        artifact_dir.joinpath(manifest["files"]["dictionary"]).read_bytes(),
+    )
+    if dictionary.dict_id() != manifest["zstd_dictionary_id"]:
+        raise AssertionError("Dictionary manifest id does not match dictionary bytes")
+    return zstd.ZstdCompressor(
+        level=3,
+        dict_data=dictionary,
+        write_checksum=True,
+        write_content_size=True,
+    ).compress(raw_payload)
 
 
 class PreparedMolZstdContractTests(unittest.TestCase):
@@ -300,26 +333,48 @@ class PreparedMolZstdContractTests(unittest.TestCase):
 
     def test_from_bytes_reuses_cached_builtin_dictionary(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)
-        zstd_payload = prepared.to_bytes(compression="zstd", dictionary_level=3)
         raw_payload = prepared.to_bytes()
-        real_files = resources.files
+        zstd_payload = _compress_with_shipped_dictionary(
+            raw_payload,
+            dictionary_level=3,
+        )
+        program = """
+import base64
+import importlib.resources
+import sys
+from unittest import mock
 
-        prepared_mol_module._ZSTD_DICTIONARY_BY_ID.clear()
-        prepared_mol_module._ZSTD_DICTIONARY_ID_BY_TRAINING_LEVEL.clear()
+import grimace
 
-        with mock.patch("importlib.resources.files", wraps=real_files) as files:
-            self.assertEqual(
-                raw_payload,
-                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
-            )
-            first_lookup_count = files.call_count
-            self.assertGreater(first_lookup_count, 0)
+raw_payload = base64.b64decode(sys.argv[1])
+zstd_payload = base64.b64decode(sys.argv[2])
+real_files = importlib.resources.files
 
-            self.assertEqual(
-                raw_payload,
-                grimace.PreparedMol.from_bytes(zstd_payload).to_bytes(),
-            )
-            self.assertEqual(first_lookup_count, files.call_count)
+with mock.patch("importlib.resources.files", wraps=real_files) as files:
+    assert raw_payload == grimace.PreparedMol.from_bytes(zstd_payload).to_bytes()
+    first_lookup_count = files.call_count
+    assert first_lookup_count > 0, first_lookup_count
+    assert raw_payload == grimace.PreparedMol.from_bytes(zstd_payload).to_bytes()
+    assert first_lookup_count == files.call_count, files.call_count
+"""
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                textwrap.dedent(program),
+                base64.b64encode(raw_payload).decode("ascii"),
+                base64.b64encode(zstd_payload).decode("ascii"),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            0,
+            completed.returncode,
+            completed.stderr or completed.stdout,
+        )
 
     def test_zero_dictionary_id_is_rejected(self) -> None:
         prepared = self._prepare("CCO", isomericSmiles=False)

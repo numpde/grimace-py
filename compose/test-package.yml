@@ -2,8 +2,8 @@ services:
   test-package:
     build:
       context: ..
-      dockerfile: containers/package/Dockerfile
-    image: grimace-py-package:local
+      dockerfile: containers/test-package/Dockerfile
+    image: grimace-py-test-package:local
     working_dir: /src
     user: "${LOCAL_UID:?Set LOCAL_UID through Makefile}:${LOCAL_GID:?Set LOCAL_GID through Makefile}"
     network_mode: "none"

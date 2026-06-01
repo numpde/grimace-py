@@ -69,7 +69,7 @@ class BuildDependencyPinTests(unittest.TestCase):
             ".github/workflows/release.yml",
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
             "containers/timings-prepared-mol-zstd/Dockerfile",
-            "containers/package/Dockerfile",
+            "containers/test-package/Dockerfile",
             "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         )
@@ -96,10 +96,10 @@ class BuildDependencyPinTests(unittest.TestCase):
                 else:
                     self.assertRegex(text, rf"\bmaturin=={re.escape(MATURIN_VERSION)}\b")
                     self.assertRegex(text, rf"\brdkit=={re.escape(RDKIT_VERSION)}\b")
-                    if relative_path == "containers/package/Dockerfile":
+                    if relative_path == "containers/test-package/Dockerfile":
                         self.assertRegex(text, rf"\btwine=={re.escape(TWINE_VERSION)}\b")
                     if relative_path in {
-                        "containers/package/Dockerfile",
+                        "containers/test-package/Dockerfile",
                         "containers/prepared-mol-zstd-dictionary/Dockerfile",
                         "containers/timings-prepared-mol-zstd/Dockerfile",
                         "containers/test/Dockerfile",

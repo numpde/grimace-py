@@ -87,7 +87,7 @@ class ContainerPostureTests(unittest.TestCase):
     def test_package_compose_uses_container_local_artifacts(self) -> None:
         compose = read_text("compose/test-package.yml")
         self.assertRegex(compose, r"(?m)^  test-package:$")
-        self.assertIn("dockerfile: containers/package/Dockerfile", compose)
+        self.assertIn("dockerfile: containers/test-package/Dockerfile", compose)
         self.assertIn(REQUIRED_WRITE_USER, compose)
         self.assertRegex(compose, r'(?m)^\s+network_mode:\s+"none"\s*$')
         self.assertRegex(compose, r"(?m)^\s+read_only:\s+true\s*$")
@@ -376,7 +376,7 @@ class ContainerPostureTests(unittest.TestCase):
         for relative_path in (
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
             "containers/timings-prepared-mol-zstd/Dockerfile",
-            "containers/package/Dockerfile",
+            "containers/test-package/Dockerfile",
             "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         ):
@@ -390,7 +390,7 @@ class ContainerPostureTests(unittest.TestCase):
         for relative_path in (
             "containers/prepared-mol-zstd-dictionary/Dockerfile",
             "containers/timings-prepared-mol-zstd/Dockerfile",
-            "containers/package/Dockerfile",
+            "containers/test-package/Dockerfile",
             "containers/timings-enum/Dockerfile",
             "containers/test/Dockerfile",
         ):
@@ -420,7 +420,7 @@ class ContainerPostureTests(unittest.TestCase):
         self.assertIn("USER 65532:65532", dockerfile)
 
     def test_package_dockerfile_builds_release_artifact_image(self) -> None:
-        dockerfile = read_text("containers/package/Dockerfile")
+        dockerfile = read_text("containers/test-package/Dockerfile")
         self.assertRegex(dockerfile, r"(?m)^FROM python:.+@sha256:")
         self.assertRegex(dockerfile, r"(?m)^FROM rust:.+@sha256:")
         self.assertIn("COPY . /src", dockerfile)

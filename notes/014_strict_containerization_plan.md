@@ -26,7 +26,7 @@ compose/
 containers/
   checks/Dockerfile
   test/Dockerfile
-  package/Dockerfile
+  test-package/Dockerfile
   perf/Dockerfile
 tests/checks/
   test_container_posture.py
@@ -77,7 +77,7 @@ until the dependency surface is large enough to justify the extra object.
   - No root execution for Docker Make lanes.
   - No network during check/test runtime unless explicitly named.
   - Read-only repo mounts for source-inspection checks.
-  - Copied build context for build, test, and package lanes.
+  - Copied build context for build, test, and package-test lanes.
   - Read-write repo mounts only for lanes whose purpose is to update checked-in
     artifacts.
   - Controlled write locations only for build artifacts and perf output.
@@ -207,7 +207,7 @@ until the dependency surface is large enough to justify the extra object.
   with `make help`, posture tests, and `make ci`.
 
 - [x] Add the package-test lane.
-  - Create `containers/package/Dockerfile` only if the test image becomes too
+  - Create `containers/test-package/Dockerfile` only if the test image becomes too
     broad.
   - Copy the repository into the image as the build context.
   - Build wheel and sdist.

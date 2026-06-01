@@ -1,9 +1,9 @@
-"""Shared RDKit writer support-count flag surfaces."""
+"""RDKit writer support-count flag surface helpers."""
 
 from __future__ import annotations
 
 
-SURFACE_FLAGS: dict[str, dict[str, bool]] = {
+CANDIDATE_MINING_SURFACE_FLAGS: dict[str, dict[str, bool]] = {
     "nonisomeric__random": {
         "isomericSmiles": False,
         "canonical": False,
@@ -68,6 +68,6 @@ def surface_name(flags: dict[str, bool]) -> str:
 
 def surface_flags(surface: str) -> dict[str, bool]:
     try:
-        return dict(SURFACE_FLAGS[surface])
+        return dict(CANDIDATE_MINING_SURFACE_FLAGS[surface])
     except KeyError as exc:
         raise ValueError(f"unknown surface: {surface!r}") from exc

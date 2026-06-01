@@ -30,6 +30,7 @@ def _load_miner_module():
 
 
 MINER = _load_miner_module()
+SURFACES = sys.modules["rdkit_writer_support_count_surfaces"]
 
 
 class RdkitWriterSupportCountCandidateMinerTests(unittest.TestCase):
@@ -51,6 +52,11 @@ class RdkitWriterSupportCountCandidateMinerTests(unittest.TestCase):
 
         flags["canonical"] = True
         self.assertFalse(MINER.surface_flags("nonisomeric__random")["canonical"])
+
+    def test_candidate_mining_surfaces_roundtrip_to_shard_names(self) -> None:
+        for surface in MINER.CANDIDATE_MINING_SURFACE_FLAGS:
+            with self.subTest(surface=surface):
+                self.assertEqual(surface, SURFACES.surface_name(MINER.surface_flags(surface)))
 
     def test_case_id_is_stable_and_generator_safe(self) -> None:
         self.assertEqual(

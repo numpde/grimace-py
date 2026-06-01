@@ -8,7 +8,10 @@ import json
 from pathlib import Path
 import re
 
-from rdkit_writer_support_count_surfaces import SURFACE_FLAGS, surface_flags
+from rdkit_writer_support_count_surfaces import (
+    CANDIDATE_MINING_SURFACE_FLAGS,
+    surface_flags,
+)
 
 
 @dataclass(frozen=True)
@@ -233,7 +236,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force", action="store_true")
     parser.add_argument(
         "--surface",
-        choices=sorted(SURFACE_FLAGS),
+        choices=sorted(CANDIDATE_MINING_SURFACE_FLAGS),
         default="nonisomeric__random",
     )
     parser.add_argument("--rooted-at-atom", type=int, default=-1)

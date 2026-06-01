@@ -1,0 +1,158 @@
+{
+  "rdkit_version": "2026.03.1",
+  "flags": {
+    "isomericSmiles": true,
+    "canonical": false,
+    "doRandom": true,
+    "kekuleSmiles": false,
+    "allBondsExplicit": false,
+    "allHsExplicit": false,
+    "ignoreAtomMapNumbers": false
+  },
+  "cases": [
+    {
+      "id": "pubchem_5959_isomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 5959)",
+      "smiles": "C1=CC(=CC=C1[C@H]([C@@H](CO)NC(=O)C(Cl)Cl)O)[N+](=O)[O-]",
+      "rooted_at_atom": -1,
+      "support_count": 1152,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 36673,
+            "support_count": 1152,
+            "consecutive_draws_without_new_variant": 23040,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 38596,
+            "support_count": 1152,
+            "consecutive_draws_without_new_variant": 23040,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_445354_isomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 445354)",
+      "smiles": "CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/CO)/C)/C",
+      "rooted_at_atom": -1,
+      "support_count": 960,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 41730,
+            "support_count": 960,
+            "consecutive_draws_without_new_variant": 19200,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 31555,
+            "support_count": 960,
+            "consecutive_draws_without_new_variant": 19200,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_5702160_isomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 5702160)",
+      "smiles": "C1=C(N=C(S1)N=C(N)N)CSCC/C(=N/S(=O)(=O)N)/N",
+      "rooted_at_atom": -1,
+      "support_count": 864,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 25983,
+            "support_count": 864,
+            "consecutive_draws_without_new_variant": 17280,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 28739,
+            "support_count": 864,
+            "consecutive_draws_without_new_variant": 17280,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_5284443_isomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 5284443)",
+      "smiles": "CNC[C@@H](C1=CC(=CC=C1)O)O.Cl",
+      "rooted_at_atom": -1,
+      "support_count": 160,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 20000,
+            "support_count": 160,
+            "consecutive_draws_without_new_variant": 18524,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 20000,
+            "support_count": 160,
+            "consecutive_draws_without_new_variant": 18752,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    }
+  ]
+}

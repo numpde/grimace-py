@@ -32,6 +32,7 @@ from grimace._south_star1.writer_graph_obligations import validate_writer_initia
 from grimace._south_star1.writer_graph_obligations import validate_writer_edge_obligation_partition
 from grimace._south_star1.writer_graph_obligations import writer_boundary_incidence_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_edge_obligation_partition_sort_tuple
+from grimace._south_star1.writer_graph_obligations import writer_graph_completion_status
 from grimace._south_star1.writer_graph_obligations import writer_residual_attachment_sort_tuple
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
@@ -430,6 +431,67 @@ class WriterGraphObligationsTest(unittest.TestCase):
         self.assertFalse(summary.has_cyclic_attachment)
         self.assertEqual(summary.attachments.attachments, ())
 
+    def test_graph_completion_accepts_acyclic_terminal_state(self) -> None:
+        prepared = _prepare(cco_facts())
+        key = _cco_terminal_key()
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        status = writer_graph_completion_status(prepared, key, context)
+
+        self.assertTrue(status.complete)
+        self.assertEqual(status.unresolved_kinds, ())
+        self.assertEqual(status.unresolved_bonds, ())
+
+    def test_graph_completion_reports_boundary_prefix(self) -> None:
+        prepared = _prepare(cco_facts())
+        key = _cco_after_second_atom_key(prepared, _writer_options(rooted_at_atom=0))
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        status = writer_graph_completion_status(prepared, key, context)
+
+        self.assertFalse(status.complete)
+        self.assertEqual(
+            status.unresolved_kinds,
+            (WriterEdgeObligationKind.BOUNDARY_INCIDENCE,),
+        )
+        self.assertEqual(status.unresolved_bonds, (BondId(1),))
+
+    def test_graph_completion_accepts_closed_closure_terminal(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_closed_closure_key()
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        status = writer_graph_completion_status(prepared, key, context)
+
+        self.assertTrue(status.complete)
+
+    def test_graph_completion_reports_open_closure_endpoint(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_root_with_open_closure_key()
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        status = writer_graph_completion_status(prepared, key, context)
+
+        self.assertFalse(status.complete)
+        self.assertIn(
+            WriterEdgeObligationKind.OPEN_CLOSURE_ENDPOINT,
+            status.unresolved_kinds,
+        )
+
+    def test_graph_completion_reports_closure_candidate(self) -> None:
+        prepared = _prepare(triangle_facts())
+        key = _triangle_all_visited_two_written_key()
+        context = build_writer_graph_obligation_context(prepared, key)
+
+        status = writer_graph_completion_status(prepared, key, context)
+
+        self.assertFalse(status.complete)
+        self.assertEqual(
+            status.unresolved_kinds,
+            (WriterEdgeObligationKind.CLOSURE_CANDIDATE,),
+        )
+        self.assertEqual(status.unresolved_bonds, (BondId(2),))
+
     def test_open_closure_bond_cannot_also_be_tree_entry(self) -> None:
         prepared = _prepare(triangle_facts())
         key = replace(
@@ -746,6 +808,30 @@ def _triangle_two_visited_key():
             branch_stack=(),
             visited_atoms=frozenset((AtomId(0), AtomId(1))),
             written_bonds=frozenset((BondId(0),)),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=empty_writer_stereo_state(),
+            policy_state=WriterPolicyState(),
+        )
+    )
+
+
+def _cco_terminal_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(2),
+                parent=AtomId(1),
+                incoming_bond=BondId(1),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1), AtomId(2))),
+            written_bonds=frozenset((BondId(0), BondId(1))),
             obligations=ObligationState(),
             ring_state=WriterRingState(),
             stereo_state=empty_writer_stereo_state(),

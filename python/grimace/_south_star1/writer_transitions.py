@@ -18,6 +18,7 @@ from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_initial_support_graph_surface
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_graph_obligations import validate_writer_transition_graph_surface
+from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
@@ -764,9 +765,10 @@ def finalize_writer_terminal_state(
         return None
     if not state.active.atom_emitted:
         return None
-    if _child_obligations_from_context(context, state, state.active.atom):
+    completion = writer_graph_completion_status(prepared, context.state_key, context.graph)
+    if not completion.complete:
         return None
-    if context.graph.residual_summary.attachments.attachments:
+    if _child_obligations_from_context(context, state, state.active.atom):
         return None
     if state.component_cursor.component_index + 1 < len(
         state.component_cursor.component_roots

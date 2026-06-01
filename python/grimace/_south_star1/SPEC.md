@@ -341,7 +341,11 @@ state key. Support counting, EOS evidence, next emitted-text choices,
 completion counts, cursor snapshots, and support streaming all route through
 the same determinized weighted frontier. EOS is represented by finalized
 terminal cursor evidence, so terminal local-order and residual stereo closure
-are persisted rather than recomputed as a discarded viability check. Writer
+are persisted rather than recomputed as a discarded viability check. Terminal
+writer states must also be graph-complete over the centralized edge-obligation
+context: every current-component bond is either a tree-entry bond or a closed
+closure bond, with no pending, latent, boundary, closure-candidate, open-closure,
+or residual-attachment obligations left live. Writer
 snapshots currently use a strict single-frontier-frame shape and validate a
 structural prepared identity before resume. Snapshot validation also audits
 each retained writer state against the prepared graph, runtime root domains,

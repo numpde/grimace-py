@@ -58,6 +58,13 @@ class WriterEdgeObligationPartition:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterGraphCompletionStatus:
+    complete: bool
+    unresolved_kinds: tuple[WriterEdgeObligationKind, ...]
+    unresolved_bonds: tuple[BondId, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WriterBoundaryIncidence:
     bond: BondId
     written_atom: AtomId
@@ -659,6 +666,28 @@ def validate_writer_edge_obligation_partition(
             _invalid_edge_partition("unknown writer edge obligation kind")
 
 
+def writer_graph_completion_status(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> WriterGraphCompletionStatus:
+    del prepared, key
+    unresolved = tuple(
+        obligation
+        for obligation in context.edge_partition.obligations
+        if obligation.kind
+        not in (
+            WriterEdgeObligationKind.TREE_ENTRY,
+            WriterEdgeObligationKind.CLOSED_CLOSURE,
+        )
+    )
+    return WriterGraphCompletionStatus(
+        complete=not unresolved and not context.residual_summary.attachment_actions,
+        unresolved_kinds=tuple(obligation.kind for obligation in unresolved),
+        unresolved_bonds=tuple(obligation.bond for obligation in unresolved),
+    )
+
+
 def writer_residual_attachment_sort_tuple(
     attachment: WriterResidualAttachment,
 ) -> tuple[object, ...]:
@@ -1089,6 +1118,7 @@ __all__ = (
     "WriterEdgeObligation",
     "WriterEdgeObligationKind",
     "WriterEdgeObligationPartition",
+    "WriterGraphCompletionStatus",
     "WriterGraphObligationContext",
     "WriterGraphObligationSummary",
     "WriterGraphPreparedMetadata",
@@ -1109,6 +1139,7 @@ __all__ = (
     "writer_boundary_incidence_sort_tuple",
     "writer_edge_obligation_partition_sort_tuple",
     "writer_edge_obligation_sort_tuple",
+    "writer_graph_completion_status",
     "writer_residual_attachment_sort_tuple",
     "writer_residual_attachment_action_is_blocked",
 )

@@ -34,6 +34,7 @@ from .writer_graph_obligations import WriterGraphObligationSummary
 from .writer_graph_obligations import WriterResidualAttachmentActionKind
 from .writer_graph_obligations import build_writer_graph_obligation_context
 from .writer_graph_obligations import validate_writer_snapshot_graph_surface
+from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
 from .writer_frontier import WriterFrontierChoices
 from .writer_frontier import WriterFrontierCursor
@@ -193,6 +194,7 @@ def validate_writer_cursor_against_prepared(
             context,
         )
         _validate_live_frontier_ownership(prepared, key, context)
+        _validate_terminal_graph_completion(prepared, key, context)
         _validate_stereo_occurrences_bound_to_graph_state(prepared, key)
         _validate_ring_state(prepared, key, context)
         _validate_policy_state(key, atom_ids, bond_ids)
@@ -670,6 +672,18 @@ def _validate_live_frontier_ownership(
         _invalid_snapshot("writer completed component active frame is not terminal")
 
 
+def _validate_terminal_graph_completion(
+    prepared: SouthStarPreparedMol,
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> None:
+    if not _state_is_terminal_shape(prepared, key, context):
+        return
+    completion = writer_graph_completion_status(prepared, key, context)
+    if not completion.complete:
+        _invalid_snapshot("writer terminal state has unresolved graph obligations")
+
+
 def _boundary_children_for_atom(
     summary: WriterGraphObligationSummary,
     atom: AtomId,
@@ -930,11 +944,26 @@ def _state_is_terminal_shape(
 ) -> bool:
     if key.obligations.pending_entry is not None or key.branch_stack:
         return False
-    if context.residual_summary.attachments.attachments:
+    if _active_owns_live_attachment_action(key, context):
         return False
     if key.component_cursor.component_index + 1 < len(key.component_cursor.component_roots):
         return False
     return _active_is_terminal_leaf(prepared, key)
+
+
+def _active_owns_live_attachment_action(
+    key: WriterStateKey,
+    context: WriterGraphObligationContext,
+) -> bool:
+    live_kinds = (
+        WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+    )
+    return any(
+        action.kind in live_kinds and key.active.atom in action.owner_atoms
+        for action in context.residual_summary.attachment_actions
+    )
 
 
 def _validate_policy_state(

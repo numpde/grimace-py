@@ -759,6 +759,18 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertIsNone(choices.terminal)
 
+    def test_terminal_finalization_rejects_closure_candidate(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        state = replace(
+            _cyclopropane_terminal_closed_closure_state(),
+            ring_state=WriterRingState(),
+        )
+
+        terminal = writer_transitions.finalize_writer_terminal_state(prepared, state)
+
+        self.assertIsNone(terminal)
+        self.assertFalse(writer_transitions.writer_state_is_eos(prepared, state))
+
     def test_closed_closure_terminal_state_can_finalize(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         state = _cyclopropane_terminal_closed_closure_state()

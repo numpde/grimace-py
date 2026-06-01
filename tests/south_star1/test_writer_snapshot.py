@@ -1141,6 +1141,18 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
+    def test_cursor_audit_rejects_terminal_looking_latent_residual_bond(self) -> None:
+        prepared = _prepare(chain_plus_orphan_chain_same_component_facts())
+        options = _writer_options(rooted_at_atom=0)
+        key = _terminal_looking_orphan_chain_key()
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(key),
+                runtime_options=options,
+            )
+
     def test_cursor_audit_rejects_closure_candidate_edge_obligation(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
@@ -2554,6 +2566,59 @@ def chain_plus_isolate_same_component_facts() -> MoleculeFacts:
                 bonds=(BondId(0),),
             ),
         ),
+    )
+
+
+def chain_plus_orphan_chain_same_component_facts() -> MoleculeFacts:
+    return MoleculeFacts(
+        atoms=(atom(0, "C"), atom(1, "C"), atom(2, "O"), atom(3, "F")),
+        bonds=(single_bond(0, 0, 1), single_bond(1, 2, 3)),
+        components=(
+            ComponentFacts(
+                id=ComponentId(0),
+                atoms=(AtomId(0), AtomId(1), AtomId(2), AtomId(3)),
+                bonds=(BondId(0), BondId(1)),
+            ),
+        ),
+    )
+
+
+def _terminal_looking_orphan_chain_key():
+    return writer_state_key(
+        WriterState(
+            component_cursor=ComponentCursor(
+                component_index=0,
+                component_roots=(AtomId(0),),
+            ),
+            active=WriterAtomFrame(
+                atom=AtomId(1),
+                parent=AtomId(0),
+                incoming_bond=BondId(0),
+                atom_emitted=True,
+            ),
+            branch_stack=(),
+            visited_atoms=frozenset((AtomId(0), AtomId(1))),
+            written_bonds=frozenset((BondId(0),)),
+            obligations=ObligationState(),
+            ring_state=WriterRingState(),
+            stereo_state=replace(
+                empty_writer_stereo_state(),
+                atom_occurrences=(
+                    WriterAtomOccurrenceRecord(AtomId(0), TetraToken.NONE, None),
+                    WriterAtomOccurrenceRecord(AtomId(1), TetraToken.NONE, None),
+                ),
+                bond_occurrences=(
+                    WriterBondOccurrenceRecord(
+                        BondId(0),
+                        AtomId(0),
+                        AtomId(1),
+                        DirectionMark.ABSENT,
+                        None,
+                    ),
+                ),
+            ),
+            policy_state=WriterPolicyState(),
+        )
     )
 
 

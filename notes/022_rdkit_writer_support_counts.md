@@ -110,8 +110,8 @@ The runtime test checks:
 len(grimace.MolToSmilesEnum(...)) == support_count
 ```
 
-This lane starts outside the default pinned RDKit parity runner. It can be
-promoted only after the fixture set and runtime cost are stable.
+This fixture family has a dedicated runtime test. Keep it separate from
+full-support fixtures because it asserts a count, not explicit member strings.
 
 ## Dataset Mining Workflow
 

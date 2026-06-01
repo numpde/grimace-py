@@ -571,7 +571,7 @@ class WriterSnapshotTest(unittest.TestCase):
                 runtime_options=options,
             )
 
-    def test_cursor_audit_rejects_non_least_free_open_closure_label(self) -> None:
+    def test_cursor_audit_accepts_policy_domain_open_label_without_allocator_history(self) -> None:
         prepared = _prepare(triangle_facts())
         options = _writer_options(rooted_at_atom=0)
         key = _triangle_root_with_open_closure_key()
@@ -593,12 +593,11 @@ class WriterSnapshotTest(unittest.TestCase):
             ),
         )
 
-        with self.assertRaises(SouthStarError):
-            validate_writer_cursor_against_prepared(
-                prepared,
-                _cursor_with_key(tampered_key),
-                runtime_options=options,
-            )
+        validate_writer_cursor_against_prepared(
+            prepared,
+            _cursor_with_key(tampered_key),
+            runtime_options=options,
+        )
 
     def test_cursor_audit_rejects_open_closure_bond_text_outside_policy(self) -> None:
         prepared = _prepare(triangle_facts())

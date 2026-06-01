@@ -197,7 +197,7 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNone(state)
 
-    def test_ring_endpoint_event_rejects_non_least_free_label(self) -> None:
+    def test_ring_endpoint_event_accepts_policy_domain_nonleast_label(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=2, text="2")
 
@@ -216,7 +216,7 @@ class WriterStereoResidualTest(unittest.TestCase):
             ),
         )
 
-        self.assertIsNone(state)
+        self.assertIsNotNone(state)
 
     def test_ring_endpoint_event_rejects_endpoint_text_mismatch(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
@@ -443,7 +443,7 @@ class WriterStereoResidualTest(unittest.TestCase):
 
         self.assertIsNone(closed)
 
-    def test_ring_endpoint_pair_rejects_non_least_free_label(self) -> None:
+    def test_ring_endpoint_pair_accepts_policy_domain_nonleast_label(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())
         label = WriterClosureLabel(value=2, text="2")
         pending = replace(
@@ -473,7 +473,7 @@ class WriterStereoResidualTest(unittest.TestCase):
             ),
         )
 
-        self.assertIsNone(closed)
+        self.assertIsNotNone(closed)
 
     def test_ring_endpoint_pair_rejects_directional_bond_text(self) -> None:
         prepared = _prepare(triangle_no_stereo_facts())

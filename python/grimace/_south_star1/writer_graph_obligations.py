@@ -611,11 +611,6 @@ def _validate_ring_label_state(prepared: SouthStarPreparedMol, key: WriterStateK
         _invalid_edge_partition("writer allocated ring labels must match open closures")
     if not set(reusable).issubset(set(closed_labels)):
         _invalid_edge_partition("writer reusable ring label lacks closed closure")
-    if prepared.policy.least_free_ring_labels:
-        expected_open = set(_least_policy_label_keys(prepared, count=len(open_labels)))
-        actual_open = {(label.value, label.text) for label in open_labels}
-        if actual_open != expected_open:
-            _invalid_edge_partition("writer open closure labels violate least-free policy")
     for label in open_labels:
         _validate_closure_label(prepared, label)
         if label not in allocated:
@@ -714,17 +709,6 @@ def _validate_closure_label(prepared: SouthStarPreparedMol, label) -> None:
         _invalid_edge_partition("writer closure label is outside policy domain")
     if label.text != expected:
         _invalid_edge_partition("writer closure label text does not match label value")
-
-
-def _least_policy_label_keys(
-    prepared: SouthStarPreparedMol,
-    *,
-    count: int,
-) -> tuple[tuple[int, str], ...]:
-    return tuple(
-        (label.value, label.text())
-        for label in sorted(prepared.policy.ring_labels, key=lambda item: item.value)[:count]
-    )
 
 
 def _validate_closure_obligation(

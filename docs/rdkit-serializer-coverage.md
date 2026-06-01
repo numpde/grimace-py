@@ -4,10 +4,12 @@ title: RDKit serializer coverage
 
 This page explains which RDKit SMILES-writer tests Grimace has reviewed and how
 each relevant RDKit behavior is covered in Grimace's checked-in fixtures.
+Here, "upstream" means RDKit's own source tree: the tests and source blocks
+maintained by RDKit, not tests invented inside Grimace.
 
 Use it to answer two questions:
 
-- Did we inspect the upstream RDKit serializer case?
+- Did we inspect the RDKit source-tree serializer case?
 - Which Grimace fixture proves the matching behavior, or records the known gap?
 
 The ledger is the traceability map. The tests enforce the claims by loading the

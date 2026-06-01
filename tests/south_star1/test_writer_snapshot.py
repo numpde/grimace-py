@@ -25,6 +25,7 @@ from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_snapshot import WriterDecoderBoundary
 from grimace._south_star1.writer_snapshot import WriterFrontierFrame
@@ -91,6 +92,35 @@ class WriterSnapshotTest(unittest.TestCase):
             count_writer_cursor_completions(prepared, snapshot.cursor),
             count_writer_cursor_completions(prepared, cursor),
         )
+
+    def test_internal_cyclic_root_snapshot_round_trips_choices_and_counts(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        after_root = _only_choice(prepared, cursor, "C").successor
+
+        _assert_snapshot_round_trips_cursor(self, prepared, options, after_root)
+
+    def test_internal_cyclic_open_closure_snapshot_round_trips_choices_and_counts(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        after_root = _only_choice(prepared, cursor, "C").successor
+        opened = _only_choice(prepared, after_root, "1").successor
+
+        _assert_snapshot_round_trips_cursor(self, prepared, options, opened)
+
+    def test_internal_cyclic_closed_closure_snapshot_round_trips_choices_and_counts(self) -> None:
+        prepared = _prepare(triangle_facts())
+        options = _writer_options(rooted_at_atom=0)
+        cursor = initial_writer_transition_frontier_cursor(prepared, options)
+        after_root = _only_choice(prepared, cursor, "C").successor
+        opened = _only_choice(prepared, after_root, "1").successor
+        after_first_child = _only_choice(prepared, opened, "C").successor
+        after_second_child = _only_choice(prepared, after_first_child, "C").successor
+        closed = _only_choice(prepared, after_second_child, "1").successor
+
+        _assert_snapshot_round_trips_cursor(self, prepared, options, closed)
 
     def test_stereo_residual_snapshot_round_trips(self) -> None:
         prepared = _prepare(tetrahedral_facts())
@@ -1972,6 +2002,41 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
 
 def _cursor_with_key(key) -> WriterFrontierCursor:
     return WriterFrontierCursor(weighted_states=((key, 1),))
+
+
+def _only_choice(prepared, cursor, emitted_text: str):
+    matches = tuple(
+        choice
+        for choice in writer_frontier_choices(prepared, cursor).choices
+        if choice.emitted_text == emitted_text
+    )
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _assert_snapshot_round_trips_cursor(
+    testcase,
+    prepared,
+    options: SouthStarRuntimeOptions,
+    cursor: WriterFrontierCursor,
+) -> None:
+    snapshot = capture_writer_frontier_snapshot(
+        prepared=prepared,
+        runtime_options=options,
+        cursor=cursor,
+    )
+    testcase.assertEqual(
+        resume_writer_frontier_choices_from_snapshot(snapshot, prepared=prepared),
+        writer_frontier_choices(prepared, cursor),
+    )
+    testcase.assertEqual(
+        count_writer_frontier_support(prepared, snapshot.cursor.support_state),
+        count_writer_frontier_support(prepared, cursor.support_state),
+    )
+    testcase.assertEqual(
+        count_writer_cursor_completions(prepared, snapshot.cursor),
+        count_writer_cursor_completions(prepared, cursor),
+    )
 
 
 def _unchecked_cursor_with_key(key) -> WriterFrontierCursor:

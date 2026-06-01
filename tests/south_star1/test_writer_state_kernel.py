@@ -36,6 +36,7 @@ from grimace._south_star1.writer_frontier import WriterFrontierCursor
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
+from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_state import ComponentCursor
@@ -296,6 +297,35 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_public_initial_frontier_still_rejects_cyclic_prepared(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            initial_writer_frontier_cursor(prepared, _writer_options(rooted_at_atom=0))
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
+    def test_internal_transition_frontier_accepts_cyclic_prepared(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+
+        cursor = initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        self.assertEqual(len(cursor.weighted_states), 1)
+
+    def test_internal_transition_frontier_rejects_malformed_components(self) -> None:
+        prepared = _prepare(cycle_plus_isolate_component_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            initial_writer_transition_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
+
     def test_writer_shaped_cycle_plus_isolate_component_fails_closed(self) -> None:
         prepared = _prepare(cycle_plus_isolate_component_facts())
 
@@ -415,6 +445,60 @@ class WriterStateKernelTest(unittest.TestCase):
                 for factor in closed.stereo_state.delayed_factors
             )
         )
+
+    def test_internal_transition_frontier_steps_cyclic_closure_lifecycle(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        initial = writer_frontier_choices(prepared, cursor)
+        self.assertEqual(tuple(choice.emitted_text for choice in initial.choices), ("C",))
+        after_root = initial.choices[0].successor
+
+        root_choices = writer_frontier_choices(prepared, after_root)
+        self.assertEqual(
+            tuple(choice.emitted_text for choice in root_choices.choices),
+            ("1",),
+        )
+        opened = root_choices.choices[0].successor
+        self.assertTrue(
+            all(
+                key.ring_state.open_endpoints
+                for key, _ in opened.weighted_states
+            )
+        )
+
+        after_first_child = _only_choice(prepared, opened, "C").successor
+        after_second_child = _only_choice(prepared, after_first_child, "C").successor
+        pair_choice = _only_choice(prepared, after_second_child, "1")
+        closed = pair_choice.successor
+
+        self.assertTrue(
+            all(
+                not key.ring_state.open_endpoints
+                and len(key.ring_state.closed_closures) == 1
+                for key, _ in closed.weighted_states
+            )
+        )
+
+    def test_internal_cyclic_frontier_counts_and_streams_finitely(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        support_count = count_writer_frontier_support(prepared, cursor.support_state)
+        completion_count = count_writer_cursor_completions(prepared, cursor)
+        strings = tuple(iter_writer_frontier_support(prepared, cursor))
+
+        self.assertEqual(support_count, len(set(strings)))
+        self.assertEqual(len(strings), len(set(strings)))
+        self.assertGreater(support_count, 0)
+        self.assertGreaterEqual(completion_count, support_count)
+        self.assertTrue(all("1" in string for string in strings))
 
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
         prepared = _prepare_with_policy(
@@ -877,6 +961,16 @@ def _writer_options(*, rooted_at_atom: int = -1) -> SouthStarRuntimeOptions:
         rooted_at_atom=rooted_at_atom,
         serialization_language=SerializationLanguageMode.WRITER_SHAPED,
     )
+
+
+def _only_choice(prepared, cursor, emitted_text: str):
+    matches = tuple(
+        choice
+        for choice in writer_frontier_choices(prepared, cursor).choices
+        if choice.emitted_text == emitted_text
+    )
+    assert len(matches) == 1
+    return matches[0]
 
 
 def _raw_initial_state(root: AtomId) -> WriterState:

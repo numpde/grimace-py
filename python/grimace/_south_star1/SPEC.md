@@ -324,7 +324,10 @@ can be classified structurally. Raw writer transitions can now enter
 single-boundary cyclic attachments and can open and pair closure endpoints for
 internally constructed cyclic states when successor graph obligations remain
 actionable, but public initial writer support still fails closed for cyclic
-prepared graphs.
+prepared graphs. `initial_writer_transition_frontier_cursor(...)` is an
+internal test harness for running those raw transition-surface states through
+the same weighted frontier, count, streaming, and snapshot machinery without
+changing the public support adapter.
 `WriterRingState` now owns explicit open and closed closure records plus ring
 label state, and the edge partition classifies open and closed closure bonds
 before residual attachments are derived. Initial writer support still requires

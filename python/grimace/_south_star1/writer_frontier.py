@@ -25,6 +25,7 @@ from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import legal_writer_transitions
 from .writer_transitions import validate_writer_supported_prepared
+from .writer_transitions import validate_writer_transition_graph_surface
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
@@ -99,12 +100,36 @@ def initial_writer_frontier_cursor(
     prepared: SouthStarPreparedMol,
     runtime_options: SouthStarRuntimeOptions,
 ) -> WriterFrontierCursor:
+    return _initial_writer_frontier_cursor(
+        prepared,
+        runtime_options,
+        validate_prepared=validate_writer_supported_prepared,
+    )
+
+
+def initial_writer_transition_frontier_cursor(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+) -> WriterFrontierCursor:
+    return _initial_writer_frontier_cursor(
+        prepared,
+        runtime_options,
+        validate_prepared=validate_writer_transition_graph_surface,
+    )
+
+
+def _initial_writer_frontier_cursor(
+    prepared: SouthStarPreparedMol,
+    runtime_options: SouthStarRuntimeOptions,
+    *,
+    validate_prepared,
+) -> WriterFrontierCursor:
     from .prepared_runtime import require_writer_shaped_runtime_options
     from .prepared_runtime import runtime_root_atom_for_prepared
 
     require_writer_shaped_runtime_options(runtime_options)
     runtime_root_atom_for_prepared(runtime_options, prepared=prepared)
-    validate_writer_supported_prepared(prepared)
+    validate_prepared(prepared)
     root_domains = _root_domains_for_runtime(prepared, runtime_options)
     weighted_states = []
     for roots in product(*(atoms for _, atoms in root_domains)):
@@ -355,6 +380,7 @@ __all__ = (
     "count_writer_cursor_completions",
     "count_writer_frontier_support",
     "initial_writer_frontier_cursor",
+    "initial_writer_transition_frontier_cursor",
     "iter_writer_frontier_support",
     "writer_frontier_choices",
 )

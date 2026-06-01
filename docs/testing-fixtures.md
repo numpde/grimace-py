@@ -31,7 +31,7 @@ python scripts/report_correctness_coverage.py
 | `rdkit_exact_small_support` | 76 | Exact support and token-inventory equality for small saturable cases. |
 | `rdkit_serializer_regressions` | 130 | Exact support and inventory regressions for serializer edge cases. |
 | `rdkit_writer_membership` | 56 | Deterministic RDKit writer outputs must be in Grimace support. |
-| `rdkit_writer_support_counts` | 2 | Count-only RDKit random-writer support evidence. |
+| `rdkit_writer_support_counts` | 6 | Count-only RDKit random-writer support evidence. |
 | `rdkit_rooted_random` | 1 | Version-pinned rooted random-writer output. |
 | `rdkit_known_stereo_gaps` | 16 | Executable parity debt, outside the passing parity lane. |
 | `rdkit_known_quirks` | 1 | Isolated RDKit behavior observation. |
@@ -43,7 +43,7 @@ By source class:
 | `upstream-rdkit` | 171 | Case came from RDKit's own tests or source blocks. |
 | `random-writer-observation` | 31 | Case was observed from RDKit's random writer. |
 | `local-probe` | 30 | Case was designed in Grimace to probe a specific behavior. |
-| `dataset-derived` | 33 | Case came from a molecule dataset and was promoted after review. |
+| `dataset-derived` | 37 | Case came from a molecule dataset and was promoted after review. |
 | `known-rdkit-gap` | 16 | Case records a known current parity gap. |
 | `rdkit-quirk` | 1 | Case records isolated RDKit behavior worth pinning. |
 

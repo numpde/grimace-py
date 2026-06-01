@@ -81,6 +81,150 @@
           }
         ]
       }
+    },
+    {
+      "id": "pubchem_444795_nonisomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 444795)",
+      "smiles": "CC1=C(C(CCC1)(C)C)/C=C/C(=C/C=C/C(=C/C(=O)O)/C)/C",
+      "rooted_at_atom": -1,
+      "support_count": 2000,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 78047,
+            "support_count": 2000,
+            "consecutive_draws_without_new_variant": 40000,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 79857,
+            "support_count": 2000,
+            "consecutive_draws_without_new_variant": 40000,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_23681059_nonisomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 23681059)",
+      "smiles": "C[C@@H](C1=CC2=C(C=C1)C=C(C=C2)OC)C(=O)[O-].[Na+]",
+      "rooted_at_atom": -1,
+      "support_count": 1504,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 46482,
+            "support_count": 1504,
+            "consecutive_draws_without_new_variant": 30080,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 57121,
+            "support_count": 1504,
+            "consecutive_draws_without_new_variant": 30080,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_9552079_nonisomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 9552079)",
+      "smiles": "C1=CC(=CC=C1N/C(=N/C(=NCCCCCCN=C(/N=C(/NC2=CC=C(C=C2)Cl)\\\\N)N)N)/N)Cl",
+      "rooted_at_atom": -1,
+      "support_count": 1984,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 63312,
+            "support_count": 1984,
+            "consecutive_draws_without_new_variant": 39680,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 62611,
+            "support_count": 1984,
+            "consecutive_draws_without_new_variant": 39680,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "pubchem_6253_nonisomeric_random_unrooted",
+      "source": "Dataset-derived PubChem top_100000 RDKit random adaptive-saturation support-count probe (CID 6253)",
+      "smiles": "C1=CN(C(=O)N=C1N)[C@H]2[C@H]([C@@H]([C@H](O2)CO)O)O",
+      "rooted_at_atom": -1,
+      "support_count": 1920,
+      "evidence": {
+        "method": "rdkit_random_adaptive_saturation",
+        "criterion_version": 1,
+        "min_draws": 20000,
+        "unseen_mass_threshold": 0.0001,
+        "allowed_missing_variants": 1.0,
+        "runs": [
+          {
+            "seed": 12345,
+            "draw_count": 66975,
+            "support_count": 1920,
+            "consecutive_draws_without_new_variant": 38400,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          },
+          {
+            "seed": 54321,
+            "draw_count": 76715,
+            "support_count": 1920,
+            "consecutive_draws_without_new_variant": 38400,
+            "singleton_count": 0,
+            "doubleton_count": 0,
+            "estimated_unseen_mass": 0.0,
+            "estimated_missing_variants": 0.0
+          }
+        ]
+      }
     }
   ]
 }

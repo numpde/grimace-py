@@ -2,15 +2,21 @@
 title: Testing fixtures
 ---
 
-Checked-in fixtures are the executable RDKit evidence behind Grimace's
-correctness tests. They live in JSON when the data itself is part of the claim:
-support sets, inventories, writer outputs, known gaps, and source snapshots.
+Fixtures are checked-in data that Grimace's correctness tests load. They make a
+claim executable when the claim depends on concrete data: exact support sets,
+token inventories, RDKit writer outputs, known gaps, or RDKit source snapshots.
 
-This page is the full fixture inventory. It includes cases sourced from RDKit's
-own source tree and independent Grimace evidence from local probes,
+A fixture case answers two questions:
+
+- What behavior does the test assert? That is the fixture family.
+- Why is this molecule or serializer case in the suite? That is the source
+  class.
+
+Source classes include RDKit's own source tree, Grimace local probes,
 dataset-derived molecules, random-writer observations, and known-gap
-diagnostics. The RDKit-source-tree cases have an additional traceability view in
-[RDKit serializer coverage](rdkit-serializer-coverage.html).
+diagnostics. Cases with source class `upstream-rdkit` are also indexed in
+[RDKit serializer coverage](rdkit-serializer-coverage.html), which points back
+to the reviewed RDKit files and source blocks.
 
 ## Current coverage
 
@@ -20,7 +26,7 @@ Snapshot for RDKit `2026.03.1`, generated from:
 python scripts/report_correctness_coverage.py
 ```
 
-| Fixture family | Cases | Claim |
+| Fixture family | Cases | What the tests check |
 |---|---:|---|
 | `rdkit_exact_small_support` | 76 | Exact support and token-inventory equality for small saturable cases. |
 | `rdkit_serializer_regressions` | 130 | Exact support and inventory regressions for serializer edge cases. |
@@ -29,20 +35,19 @@ python scripts/report_correctness_coverage.py
 | `rdkit_known_stereo_gaps` | 16 | Executable parity debt, outside the passing parity lane. |
 | `rdkit_known_quirks` | 1 | Isolated RDKit behavior observation. |
 
-By provenance:
+By source class:
 
-| Source class | Cases |
-|---|---:|
-| `upstream-rdkit` | 171 |
-| `random-writer-observation` | 31 |
-| `local-probe` | 28 |
-| `dataset-derived` | 33 |
-| `known-rdkit-gap` | 16 |
-| `rdkit-quirk` | 1 |
+| Source class | Cases | Meaning |
+|---|---:|---|
+| `upstream-rdkit` | 171 | Case came from RDKit's own tests or source blocks. |
+| `random-writer-observation` | 31 | Case was observed from RDKit's random writer. |
+| `local-probe` | 28 | Case was designed in Grimace to probe a specific behavior. |
+| `dataset-derived` | 33 | Case came from a molecule dataset and was promoted after review. |
+| `known-rdkit-gap` | 16 | Case records a known current parity gap. |
+| `rdkit-quirk` | 1 | Case records isolated RDKit behavior worth pinning. |
 
-The fixture-family counts describe assertion type. The provenance counts
-describe where the evidence came from. Serializer-ledger coverage is summarized
-in [RDKit serializer coverage](rdkit-serializer-coverage.html).
+The first table says what the tests assert. The second says why cases were
+included. A source class can feed more than one fixture family.
 
 ## How to read a case
 
@@ -52,15 +57,15 @@ Read a fixture case in this order:
    equality or writer-output membership.
 2. RDKit version: pins RDKit-derived claims to one `rdBase.rdkitVersion`.
 3. Case ID: gives a stable test identifier.
-4. `source`: records provenance, such as upstream RDKit tests, local probes,
+4. `source`: records provenance, such as RDKit source-tree tests, local probes,
    dataset mining, random-writer observations, or known gaps.
 5. Expected fields: define the executable claim.
 
 Documentation explains intent; loaders and tests enforce it.
 
-## Fixture families
+## Fixture paths
 
-| Path | Role |
+| Path | Contents |
 |---|---|
 | `tests/fixtures/rdkit_exact_small_support/` | Passing exact support and inventory parity. |
 | `tests/fixtures/rdkit_serializer_regressions/` | Passing serializer edge-case support and inventory parity. |
@@ -71,7 +76,7 @@ Documentation explains intent; loaders and tests enforce it.
 | `tests/fixtures/rdkit_disconnected_sampling/` | Compatibility sampling inputs, not exact-version parity claims. |
 | `tests/fixtures/rdkit_stereo_regressions/` | Reusable stereo members and rejected members. |
 | `tests/fixtures/rdkit_upstream_serializer_sources/` | Local RDKit source snapshots used for serializer audit. |
-| `tests/fixtures/rdkit_upstream_serializer_coverage/` | Reviewed map from upstream serializer blocks to Grimace evidence. |
+| `tests/fixtures/rdkit_upstream_serializer_coverage/` | Reviewed map from RDKit source-tree serializer blocks to Grimace evidence. |
 
 ## Promotion rules
 
@@ -96,5 +101,5 @@ When adding or changing fixtures:
 4. Add typed loader validation for new fields.
 5. Add contract tests for new schema rules.
 6. Add runtime or parity tests for the actual behavior claim.
-7. Link upstream serializer claims through the coverage ledger when a fixture
-   exists to cover an upstream RDKit source block.
+7. Link RDKit source-tree serializer claims through the coverage ledger when a
+   fixture exists to cover the RDKit source block.

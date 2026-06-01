@@ -89,6 +89,10 @@ class BuildDependencyPinTests(unittest.TestCase):
                         f'RDKIT_FIXTURE_PIP_VERSION: "{RDKIT_VERSION}"',
                         text,
                     )
+                    self.assertIn(
+                        f'ZSTANDARD_FIXTURE_PIP_VERSION: "{ZSTANDARD_VERSION}"',
+                        text,
+                    )
                 else:
                     self.assertRegex(text, rf"\bmaturin=={re.escape(MATURIN_VERSION)}\b")
                     self.assertRegex(text, rf"\brdkit=={re.escape(RDKIT_VERSION)}\b")

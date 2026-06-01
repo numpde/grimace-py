@@ -105,6 +105,7 @@ class WorkflowPostureTests(unittest.TestCase):
         workflow = read_text(".github/workflows/release.yml")
         self.assertIn('MATURIN_PIP_VERSION: "1.13.1"', workflow)
         self.assertIn('MATURIN_ACTION_VERSION: "v1.13.1"', workflow)
+        self.assertIn('ZSTANDARD_FIXTURE_PIP_VERSION: "0.25.0"', workflow)
         self.assertIn('PIP_DISABLE_PIP_VERSION_CHECK: "1"', workflow)
         self.assertIn('PIP_NO_CACHE_DIR: "1"', workflow)
         self.assertRegex(
@@ -122,6 +123,7 @@ class WorkflowPostureTests(unittest.TestCase):
             2,
         )
         self.assertIn('"maturin==$MATURIN_PIP_VERSION"', workflow)
+        self.assertEqual(workflow.count('"zstandard==$ZSTANDARD_FIXTURE_PIP_VERSION"'), 2)
         self.assertIn("python -m pip install --no-deps dist/*.whl", workflow)
         self.assertIn("python -m pip install --no-deps --no-build-isolation dist/*.tar.gz", workflow)
         self.assertEqual(

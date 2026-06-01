@@ -104,11 +104,15 @@ def build_writer_transition_expansion_context(
             SouthStarErrorKind.INTERNAL_INVARIANT,
             "writer state requires an active writer frame",
         )
-    validate_writer_transition_graph_surface(prepared)
+    validate_writer_transition_prepared(prepared)
     key = writer_state_key(state)
     graph = build_writer_graph_obligation_context(prepared, key)
-    validate_writer_stereo_supported_prepared(prepared)
     return WriterTransitionExpansionContext(state_key=key, graph=graph)
+
+
+def validate_writer_transition_prepared(prepared: SouthStarPreparedMol) -> None:
+    validate_writer_transition_graph_surface(prepared)
+    validate_writer_stereo_supported_prepared(prepared)
 
 
 def legal_writer_transitions(
@@ -879,5 +883,6 @@ __all__ = (
     "finalize_writer_terminal_state",
     "legal_writer_transitions",
     "validate_writer_supported_prepared",
+    "validate_writer_transition_prepared",
     "writer_state_is_eos",
 )

@@ -17,10 +17,13 @@ from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import BondOrder
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import LigandKind
+from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
 from grimace._south_star1.ids import ComponentId
+from grimace._south_star1.ids import OccurrenceId
 from grimace._south_star1.policy import AnnotationMode
 from grimace._south_star1.policy import AtomTextChoice
 from grimace._south_star1.policy import AtomTextDomain
@@ -326,6 +329,28 @@ class WriterStateKernelTest(unittest.TestCase):
 
         self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_POLICY)
 
+    def test_internal_transition_frontier_rejects_unsupported_stereo_surface(self) -> None:
+        prepared = _prepare(unsupported_directional_implicit_h_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            initial_writer_transition_frontier_cursor(
+                prepared,
+                _writer_options(rooted_at_atom=0),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
+    def test_raw_legal_transitions_reject_same_unsupported_stereo_surface(self) -> None:
+        prepared = _prepare(unsupported_directional_implicit_h_facts())
+
+        with self.assertRaises(SouthStarError) as caught:
+            writer_transitions.legal_writer_transitions(
+                prepared,
+                _raw_initial_state(AtomId(0)),
+            )
+
+        self.assertIs(caught.exception.kind, SouthStarErrorKind.UNSUPPORTED_STEREO)
+
     def test_writer_shaped_cycle_plus_isolate_component_fails_closed(self) -> None:
         prepared = _prepare(cycle_plus_isolate_component_facts())
 
@@ -499,6 +524,24 @@ class WriterStateKernelTest(unittest.TestCase):
         self.assertGreater(support_count, 0)
         self.assertGreaterEqual(completion_count, support_count)
         self.assertTrue(all("1" in string for string in strings))
+
+    def test_internal_cyclic_frontier_terminal_paths_close_closures(self) -> None:
+        prepared = _prepare(cyclopropane_facts())
+        cursor = initial_writer_transition_frontier_cursor(
+            prepared,
+            _writer_options(rooted_at_atom=0),
+        )
+
+        terminal_keys = _terminal_keys(prepared, cursor)
+
+        self.assertTrue(terminal_keys)
+        self.assertTrue(
+            all(
+                not key.ring_state.open_endpoints
+                and key.ring_state.closed_closures
+                for key in terminal_keys
+            )
+        )
 
     def test_raw_closure_label_allocator_uses_least_free_not_reusable_first(self) -> None:
         prepared = _prepare_with_policy(
@@ -973,6 +1016,23 @@ def _only_choice(prepared, cursor, emitted_text: str):
     return matches[0]
 
 
+def _terminal_keys(prepared, cursor: WriterFrontierCursor) -> tuple[WriterStateKey, ...]:
+    terminals: list[WriterStateKey] = []
+
+    def rec(current: WriterFrontierCursor) -> None:
+        choices = writer_frontier_choices(prepared, current)
+        if choices.terminal is not None:
+            terminals.extend(
+                key
+                for key, _ in choices.terminal.finalized_cursor.weighted_states
+            )
+        for choice in choices.choices:
+            rec(choice.successor)
+
+    rec(cursor)
+    return tuple(terminals)
+
+
 def _raw_initial_state(root: AtomId) -> WriterState:
     return WriterState(
         component_cursor=ComponentCursor(
@@ -1166,6 +1226,23 @@ def missing_bond_domain_policy(facts: MoleculeFacts) -> SmilesPolicy:
             for item in facts.atoms
         ),
         bond_text_domains=(),
+    )
+
+
+def unsupported_directional_implicit_h_facts() -> MoleculeFacts:
+    facts = directional_facts()
+    return replace(
+        facts,
+        ligand_occurrences=(
+            LigandOccurrence(
+                id=OccurrenceId(0),
+                site=facts.ligand_occurrences[0].site,
+                kind=LigandKind.IMPLICIT_H,
+                atom=AtomId(0),
+                bond=None,
+            ),
+            facts.ligand_occurrences[1],
+        ),
     )
 
 

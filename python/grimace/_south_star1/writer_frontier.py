@@ -25,7 +25,7 @@ from .writer_stereo import empty_writer_stereo_state
 from .writer_transitions import finalize_writer_terminal_state
 from .writer_transitions import legal_writer_transitions
 from .writer_transitions import validate_writer_supported_prepared
-from .writer_transitions import validate_writer_transition_graph_surface
+from .writer_transitions import validate_writer_transition_prepared
 
 if TYPE_CHECKING:
     from .prepared_runtime import SouthStarPreparedMol
@@ -114,7 +114,7 @@ def initial_writer_transition_frontier_cursor(
     return _initial_writer_frontier_cursor(
         prepared,
         runtime_options,
-        validate_prepared=validate_writer_transition_graph_surface,
+        validate_prepared=validate_writer_transition_prepared,
     )
 
 

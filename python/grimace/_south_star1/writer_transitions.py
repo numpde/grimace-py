@@ -479,8 +479,8 @@ def _open_closure_endpoint_transitions(
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
-    label = _least_available_closure_label(prepared, state.ring_state)
-    if label is None:
+    labels = _available_closure_labels_for_open(prepared, state.ring_state)
+    if not labels:
         return ()
     active_atom = state.active.atom
     transitions = []
@@ -490,46 +490,47 @@ def _open_closure_endpoint_transitions(
         for incidence in attachment.boundary:
             if incidence.written_atom != active_atom:
                 continue
-            endpoint = WriterOpenClosureEndpoint(
-                bond=incidence.bond,
-                first_atom=active_atom,
-                second_atom=incidence.residual_atom,
-                label=label,
-                first_endpoint_text=label.text,
-                first_endpoint_bond_text="",
-            )
-            transition = _transition(
-                prepared,
-                state,
-                emitted_text=label.text,
-                successor=replace(
+            for label in labels:
+                endpoint = WriterOpenClosureEndpoint(
+                    bond=incidence.bond,
+                    first_atom=active_atom,
+                    second_atom=incidence.residual_atom,
+                    label=label,
+                    first_endpoint_text=label.text,
+                    first_endpoint_bond_text="",
+                )
+                transition = _transition(
+                    prepared,
                     state,
-                    ring_state=_ring_state_after_open_endpoint(
-                        state.ring_state,
-                        endpoint,
+                    emitted_text=label.text,
+                    successor=replace(
+                        state,
+                        ring_state=_ring_state_after_open_endpoint(
+                            state.ring_state,
+                            endpoint,
+                        ),
                     ),
-                ),
-                kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
-                events=(
-                    WriterRingEndpointEmitted(
+                    kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+                    events=(
+                        WriterRingEndpointEmitted(
+                            bond=endpoint.bond,
+                            endpoint_atom=endpoint.first_atom,
+                            partner_atom=endpoint.second_atom,
+                            label=endpoint.label,
+                            endpoint_text=endpoint.first_endpoint_text,
+                            bond_text=endpoint.first_endpoint_bond_text,
+                        ),
+                    ),
+                    evidence=WriterTransitionEvidence(
                         bond=endpoint.bond,
-                        endpoint_atom=endpoint.first_atom,
-                        partner_atom=endpoint.second_atom,
-                        label=endpoint.label,
-                        endpoint_text=endpoint.first_endpoint_text,
-                        bond_text=endpoint.first_endpoint_bond_text,
+                        parent=endpoint.first_atom,
+                        child=endpoint.second_atom,
                     ),
-                ),
-                evidence=WriterTransitionEvidence(
-                    bond=endpoint.bond,
-                    parent=endpoint.first_atom,
-                    child=endpoint.second_atom,
-                ),
-            )
-            if transition is None:
-                continue
-            if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
-                transitions.append(transition)
+                )
+                if transition is None:
+                    continue
+                if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
+                    transitions.append(transition)
     return tuple(transitions)
 
 
@@ -591,21 +592,38 @@ def _attachment_requires_closure_endpoint(
     return attachment.cyclic_rank > 0 or len(attachment.boundary) > 1
 
 
-def _least_available_closure_label(
+def _available_closure_labels_for_open(
     prepared: SouthStarPreparedMol,
     ring_state: WriterRingState,
-) -> WriterClosureLabel | None:
-    reusable = set(ring_state.label_state.reusable)
-    for label in prepared.policy.ring_labels:
-        candidate = WriterClosureLabel(value=label.value, text=label.text())
-        if candidate in reusable:
-            return candidate
+) -> tuple[WriterClosureLabel, ...]:
+    reusable = tuple(
+        sorted(
+            ring_state.label_state.reusable,
+            key=lambda item: _policy_label_sort_index(prepared, item),
+        )
+    )
+    if prepared.policy.least_free_ring_labels and reusable:
+        return (reusable[0],)
+
     allocated = set(ring_state.label_state.allocated)
+    unused = []
     for label in prepared.policy.ring_labels:
         candidate = WriterClosureLabel(value=label.value, text=label.text())
         if candidate not in allocated and candidate not in reusable:
-            return candidate
-    return None
+            unused.append(candidate)
+    if prepared.policy.least_free_ring_labels:
+        return tuple(unused[:1])
+    return (*reusable, *unused)
+
+
+def _policy_label_sort_index(
+    prepared: SouthStarPreparedMol,
+    label: WriterClosureLabel,
+) -> tuple[int, int, str]:
+    for index, policy_label in enumerate(prepared.policy.ring_labels):
+        if policy_label.value == label.value:
+            return (index, label.value, label.text)
+    return (len(prepared.policy.ring_labels), label.value, label.text)
 
 
 def _ring_state_after_open_endpoint(

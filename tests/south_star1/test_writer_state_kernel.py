@@ -416,23 +416,23 @@ class WriterStateKernelTest(unittest.TestCase):
             )
         )
 
-    def test_raw_closure_label_allocator_prefers_reusable_labels(self) -> None:
+    def test_raw_closure_label_allocator_prefers_reusable_labels_in_least_free_mode(self) -> None:
         prepared = _prepare(cyclopropane_facts())
         reusable = WriterClosureLabel(value=2, text="2")
 
-        label = writer_transitions._least_available_closure_label(
+        labels = writer_transitions._available_closure_labels_for_open(
             prepared,
             WriterRingState(
                 label_state=WriterRingLabelState(reusable=(reusable,)),
             ),
         )
 
-        self.assertEqual(label, reusable)
+        self.assertEqual(labels, (reusable,))
 
-    def test_raw_closure_label_allocator_uses_least_unused_label(self) -> None:
+    def test_raw_closure_label_allocator_uses_least_unused_label_in_least_free_mode(self) -> None:
         prepared = _prepare(cyclopropane_facts())
 
-        label = writer_transitions._least_available_closure_label(
+        labels = writer_transitions._available_closure_labels_for_open(
             prepared,
             WriterRingState(
                 label_state=WriterRingLabelState(
@@ -441,7 +441,72 @@ class WriterStateKernelTest(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(label, WriterClosureLabel(value=2, text="2"))
+        self.assertEqual(labels, (WriterClosureLabel(value=2, text="2"),))
+
+    def test_raw_closure_label_allocator_enumerates_labels_without_least_free(self) -> None:
+        prepared = _prepare_with_policy(
+            cyclopropane_facts(),
+            least_free_ring_labels=False,
+        )
+
+        labels = writer_transitions._available_closure_labels_for_open(
+            prepared,
+            WriterRingState(),
+        )
+
+        self.assertEqual(
+            labels,
+            (
+                WriterClosureLabel(value=1, text="1"),
+                WriterClosureLabel(value=2, text="2"),
+            ),
+        )
+
+    def test_raw_closure_label_allocator_enumerates_reusable_and_unused_without_least_free(self) -> None:
+        prepared = _prepare_with_policy(
+            cyclopropane_facts(),
+            least_free_ring_labels=False,
+        )
+        reusable = WriterClosureLabel(value=1, text="1")
+
+        labels = writer_transitions._available_closure_labels_for_open(
+            prepared,
+            WriterRingState(
+                label_state=WriterRingLabelState(reusable=(reusable,)),
+            ),
+        )
+
+        self.assertEqual(
+            labels,
+            (
+                WriterClosureLabel(value=1, text="1"),
+                WriterClosureLabel(value=2, text="2"),
+            ),
+        )
+
+    def test_raw_closure_open_transitions_enumerate_labels_without_least_free(self) -> None:
+        prepared = _prepare_with_policy(
+            cyclopropane_facts(),
+            least_free_ring_labels=False,
+        )
+        root = writer_transitions.legal_writer_transitions(
+            prepared,
+            _raw_initial_state(AtomId(0)),
+        )[0].successor
+
+        transitions = writer_transitions.legal_writer_transitions(prepared, root)
+
+        self.assertEqual(
+            {transition.emitted_text for transition in transitions},
+            {"1", "2"},
+        )
+        self.assertEqual(
+            {transition.successor.ring_state.open_endpoints[0].label for transition in transitions},
+            {
+                WriterClosureLabel(value=1, text="1"),
+                WriterClosureLabel(value=2, text="2"),
+            },
+        )
 
     def test_raw_closure_label_allocator_returns_none_when_exhausted(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -450,14 +515,14 @@ class WriterStateKernelTest(unittest.TestCase):
             for label in prepared.policy.ring_labels
         )
 
-        label = writer_transitions._least_available_closure_label(
+        labels = writer_transitions._available_closure_labels_for_open(
             prepared,
             WriterRingState(
                 label_state=WriterRingLabelState(allocated=labels),
             ),
         )
 
-        self.assertIsNone(label)
+        self.assertEqual(labels, ())
 
     def test_raw_terminal_finalization_rejects_cyclic_prepared(self) -> None:
         prepared = _prepare(cyclopropane_facts())
@@ -729,6 +794,23 @@ def _prepare(facts: MoleculeFacts):
     return prepare_south_star_mol_from_facts(
         facts,
         writer_surface=SouthStarWriterSurface(),
+    )
+
+
+def _prepare_with_policy(
+    facts: MoleculeFacts,
+    *,
+    least_free_ring_labels: bool,
+):
+    prepared = _prepare(facts)
+    return prepare_south_star_mol_from_facts(
+        facts,
+        writer_surface=SouthStarWriterSurface(),
+        policy=replace(
+            prepared.policy,
+            ring_labels=(RingLabel(1), RingLabel(2)),
+            least_free_ring_labels=least_free_ring_labels,
+        ),
     )
 
 

@@ -45,4 +45,4 @@ grimace.MolToSmilesDeviation(mol, ("C", "Cl"), **kwargs).accepted_text
 The sequence form is useful when a model or tokenizer already split the
 candidate into external token strings.
 
-For the meaning of Grimace tokens, see [Concepts](../concepts.md).
+For the meaning of Grimace tokens, see [Concepts](../concepts.html).

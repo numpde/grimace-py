@@ -4,6 +4,12 @@ url: https://numpde.github.io
 baseurl: /grimace-py
 theme: minima
 markdown: kramdown
+defaults:
+  - scope:
+      path: ""
+      type: pages
+    values:
+      layout: page
 header_pages:
   - getting-started.md
   - concepts.md

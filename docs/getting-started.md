@@ -41,7 +41,7 @@ assert len(all_smiles) == 304
 ```
 
 Use `rootedAtAtom=-1` for the all-roots support, or pass a nonnegative atom
-index for one explicit root. See [Runtime](runtime.md) for the full rooting
+index for one explicit root. See [Runtime](runtime.html) for the full rooting
 rules.
 
 ## Decode one token at a time
@@ -108,5 +108,5 @@ The determinized decoder merges same-text continuations. Use
 
 ## Continue
 
-Read [Concepts](concepts.md) for the terms used above, [Runtime](runtime.md)
-for flags and roots, and [API](api/python.md) for signatures.
+Read [Concepts](concepts.html) for the terms used above, [Runtime](runtime.html)
+for flags and roots, and [API](api/python.html) for signatures.

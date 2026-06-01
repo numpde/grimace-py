@@ -36,7 +36,7 @@ By provenance:
 
 The fixture-family counts describe assertion type. The provenance counts
 describe where the evidence came from. Serializer-ledger coverage is summarized
-in [RDKit serializer coverage](rdkit-serializer-coverage.md).
+in [RDKit serializer coverage](rdkit-serializer-coverage.html).
 
 ## How to read a case
 

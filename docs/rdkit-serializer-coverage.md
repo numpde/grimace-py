@@ -68,7 +68,7 @@ Most matched serializer terms:
 | `ignoreAtomMapNumbers` | 4 |
 
 For fixture-family and provenance counts, see
-[Testing fixtures](testing-fixtures.md).
+[Testing fixtures](testing-fixtures.html).
 
 ## How to read an entry
 

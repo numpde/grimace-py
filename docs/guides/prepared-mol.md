@@ -64,4 +64,4 @@ all_smiles = tuple(
 `PreparedMol.to_bytes()` returns a versioned binary payload owned by the Rust
 core. Treat the bytes as opaque.
 
-For the supported writer flags, see [Runtime](../runtime.md).
+For the supported writer flags, see [Runtime](../runtime.html).

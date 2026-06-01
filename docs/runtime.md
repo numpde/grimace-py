@@ -36,10 +36,10 @@ The supported writer flags are:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-For current runtime scope and known gaps, see [Limitations](current-limitations.md).
+For current runtime scope and known gaps, see [Limitations](current-limitations.html).
 
 For the difference between writer parity and chemical equivalence, see
-[Correctness contracts](correctness-contracts.md).
+[Correctness contracts](correctness-contracts.html).
 
 ## Rooting
 

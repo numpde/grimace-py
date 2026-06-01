@@ -13,7 +13,7 @@ The supported runtime mode is:
 - `doRandom=True`
 - `rootedAtAtom=-1` for all roots, or `rootedAtAtom >= 0` for one explicit root
 
-Supported writer-surface flags are listed in [Runtime](runtime.md).
+Supported writer-surface flags are listed in [Runtime](runtime.html).
 
 ## RDKit serializer parity
 
@@ -26,7 +26,7 @@ python scripts/report_rdkit_serializer_coverage.py
 
 Known gaps are concentrated in coupled directional double-bond and ring-closure
 stereo cases. They are pinned as executable known-gap fixtures and summarized
-in [RDKit serializer coverage](rdkit-serializer-coverage.md).
+in [RDKit serializer coverage](rdkit-serializer-coverage.html).
 
 ## Install surface
 

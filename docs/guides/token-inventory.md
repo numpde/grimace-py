@@ -65,4 +65,4 @@ The superset inventory answers a coverage question: which SMILES fragments must
 be representable if your tokenizer should cover Grimace's supported writer
 language for the dataset?
 
-For more tokenizer terminology, see [Concepts](../concepts.md).
+For more tokenizer terminology, see [Concepts](../concepts.html).

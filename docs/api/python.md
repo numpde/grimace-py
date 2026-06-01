@@ -7,8 +7,8 @@ title: API
 The only supported public Python import name is `grimace`.
 
 This page is a reference. For the supported flag combinations and root
-semantics, start with [Runtime](../runtime.md). For terminology, see
-[Concepts](../concepts.md).
+semantics, start with [Runtime](../runtime.html). For terminology, see
+[Concepts](../concepts.html).
 
 Current top-level exports:
 
@@ -35,7 +35,7 @@ fallback.
 `PreparedMol.from_bytes(data)`
 
 Prepares an RDKit molecule once under a fixed writer surface and returns an
-opaque `PreparedMol`. See [Prepared molecules](../guides/prepared-mol.md) for
+opaque `PreparedMol`. See [Prepared molecules](../guides/prepared-mol.html) for
 the workflow.
 
 ```python
@@ -68,7 +68,7 @@ This yields the complete exact support of Grimace's supported writer language as
 whole SMILES strings.
 
 Although the signature mirrors RDKit defaults, the current runtime does not
-support those defaults. Use the supported options from [Runtime](../runtime.md).
+support those defaults. Use the supported options from [Runtime](../runtime.html).
 
 When `rootedAtAtom < 0`, the result is the exact union across all valid roots
 for the requested writer flags. `rootedAtAtom=-1` is the preferred public
@@ -179,7 +179,7 @@ Available interface:
 
 The decoder APIs expose the support language as stateful next-token choices.
 For the conceptual model and the difference between branch-preserving and
-determinized choices, see [Concepts](../concepts.md).
+determinized choices, see [Concepts](../concepts.html).
 
 Both decoder classes expose `prefix`, `next_choices`, `is_terminal`, and
 `copy()`.
@@ -190,7 +190,7 @@ Both decoder classes expose `prefix`, `next_choices`, `is_terminal`, and
 
 This diagnoses the first place where a candidate leaves the molecule's
 supported SMILES language under the requested public writer flags. See
-[Deviation diagnostics](../guides/deviation.md) for examples.
+[Deviation diagnostics](../guides/deviation.html) for examples.
 
 It returns `None` when the candidate is accepted. Otherwise it returns a
 `SmilesDeviation` with:
@@ -236,7 +236,7 @@ This returns a sorted conservative token inventory for one molecule under the
 requested public writer flags.
 
 The main use is fast vocabulary-building and coverage checks over molecular
-datasets. See [Token inventories](../guides/token-inventory.md).
+datasets. See [Token inventories](../guides/token-inventory.html).
 
 For the same molecule and flags, the exact inventory is contained in the
 superset inventory.

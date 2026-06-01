@@ -9,7 +9,7 @@ Keep four concepts separate:
 | Support | The complete set of SMILES strings Grimace can emit for one molecule and writer options. | `MolToSmilesEnum(...)` |
 | Root | The atom where a rooted traversal starts, or all roots when `rootedAtAtom=-1`. | `rootedAtAtom` |
 | Decoder token | One string emitted by one decoder transition; not necessarily one character. | `MolToSmilesDecoder(...)`, `MolToSmilesDeterminizedDecoder(...)` |
-| Writer parity | String-level agreement with RDKit's supported writer behavior, not just chemical equivalence. | [Correctness contracts](correctness-contracts.md), [RDKit serializer coverage](rdkit-serializer-coverage.md) |
+| Writer parity | String-level agreement with RDKit's supported writer behavior, not just chemical equivalence. | [Correctness contracts](correctness-contracts.html), [RDKit serializer coverage](rdkit-serializer-coverage.html) |
 
 ## Support
 
@@ -65,9 +65,9 @@ It asks whether a string belongs to the relevant writer language.
 A SMILES string can be chemically valid and parse to the same molecule while
 still being outside that writer language.
 
-Use [Correctness contracts](correctness-contracts.md) for the detailed
+Use [Correctness contracts](correctness-contracts.html) for the detailed
 boundary between chemical semantics and writer parity. Use
-[Limitations](current-limitations.md) for the current supported scope.
+[Limitations](current-limitations.html) for the current supported scope.
 
 ## API choices
 
@@ -75,6 +75,6 @@ boundary between chemical semantics and writer parity. Use
 |---|---|
 | Every supported finished string | `MolToSmilesEnum(...)` |
 | Legal next tokens while building a string | `MolToSmilesDecoder(...)` or `MolToSmilesDeterminizedDecoder(...)` |
-| The first unsupported token or character in a candidate | [Deviation diagnostics](guides/deviation.md) |
-| Dataset vocabulary coverage | [Token inventories](guides/token-inventory.md) |
-| Repeated calls or storage without RDKit on read | [Prepared molecules](guides/prepared-mol.md) |
+| The first unsupported token or character in a candidate | [Deviation diagnostics](guides/deviation.html) |
+| Dataset vocabulary coverage | [Token inventories](guides/token-inventory.html) |
+| Repeated calls or storage without RDKit on read | [Prepared molecules](guides/prepared-mol.html) |

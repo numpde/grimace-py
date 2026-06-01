@@ -19,8 +19,8 @@ structure match the supported writer language.
 ## Current public contract
 
 The current public runtime scope is documented in
-[Runtime](runtime.md), and active limitations are documented in
-[Limitations](current-limitations.md).
+[Runtime](runtime.html), and active limitations are documented in
+[Limitations](current-limitations.html).
 
 RDKit string support remains the oracle for public parity tests. Parsed-object
 equivalence may be added as a separate evidence layer, but it must not replace

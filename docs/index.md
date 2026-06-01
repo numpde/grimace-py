@@ -29,19 +29,54 @@ Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py)
 
 ## Where to start
 
-| Task | Read |
-|---|---|
-| Install and run the first enumeration/decoder examples | [Intro](getting-started.md) |
-| Understand support, roots, decoder tokens, and writer parity | [Concepts](concepts.md) |
-| Choose supported flags and root behavior | [Runtime](runtime.md) |
-| Check current gaps and supported release assets | [Limitations](current-limitations.md) |
-| Use prepared molecules, deviation diagnostics, or token inventories | [Guides](guides.md) |
-| Compare measured benchmark snapshots | [Timings](timings.md) |
-| Look up signatures and return objects | [API](api/python.md) |
-| Inspect checked-in RDKit evidence and counts | [Testing fixtures](testing-fixtures.md) |
-| Trace upstream RDKit serializer coverage | [RDKit serializer coverage](rdkit-serializer-coverage.md) |
-| Work on the codebase in containers | [Containerized development](development/containerized.md) |
-| Change internals | [Rust-first architecture](architecture/rust-first.md) |
+<table>
+  <tbody>
+    <tr>
+      <td>Install and run the first enumeration/decoder examples</td>
+      <td><a href="getting-started.html">Intro</a></td>
+    </tr>
+    <tr>
+      <td>Understand support, roots, decoder tokens, and writer parity</td>
+      <td><a href="concepts.html">Concepts</a></td>
+    </tr>
+    <tr>
+      <td>Choose supported flags and root behavior</td>
+      <td><a href="runtime.html">Runtime</a></td>
+    </tr>
+    <tr>
+      <td>Check current gaps and supported release assets</td>
+      <td><a href="current-limitations.html">Limitations</a></td>
+    </tr>
+    <tr>
+      <td>Use prepared molecules, deviation diagnostics, or token inventories</td>
+      <td><a href="guides.html">Guides</a></td>
+    </tr>
+    <tr>
+      <td>Compare measured benchmark snapshots</td>
+      <td><a href="timings.html">Timings</a></td>
+    </tr>
+    <tr>
+      <td>Look up signatures and return objects</td>
+      <td><a href="api/python.html">API</a></td>
+    </tr>
+    <tr>
+      <td>Inspect checked-in RDKit evidence and counts</td>
+      <td><a href="testing-fixtures.html">Testing fixtures</a></td>
+    </tr>
+    <tr>
+      <td>Trace upstream RDKit serializer coverage</td>
+      <td><a href="rdkit-serializer-coverage.html">RDKit serializer coverage</a></td>
+    </tr>
+    <tr>
+      <td>Work on the codebase in containers</td>
+      <td><a href="development/containerized.html">Containerized development</a></td>
+    </tr>
+    <tr>
+      <td>Change internals</td>
+      <td><a href="architecture/rust-first.html">Rust-first architecture</a></td>
+    </tr>
+  </tbody>
+</table>
 
 ## License
 

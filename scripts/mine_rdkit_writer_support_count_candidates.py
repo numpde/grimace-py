@@ -230,6 +230,7 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--force", action="store_true")
     parser.add_argument(
         "--surface",
         choices=sorted(SURFACE_FLAGS),
@@ -264,6 +265,8 @@ def main() -> int:
         raise SystemExit("--max-support-count must be at least --min-support-count")
     if args.max_candidates <= 0:
         raise SystemExit("--max-candidates must be positive")
+    if args.output.exists() and not args.force:
+        raise SystemExit(f"{args.output} already exists; pass --force to overwrite it")
 
     payload = mine_candidates(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)

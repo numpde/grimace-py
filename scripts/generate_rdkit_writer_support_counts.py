@@ -243,6 +243,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--force", action="store_true")
     parser.add_argument("--seed", type=int, action="append", required=True)
     parser.add_argument("--min-draws", type=int, default=20_000)
     parser.add_argument("--max-draws", type=int, default=200_000)
@@ -268,6 +269,8 @@ def main() -> int:
         raise SystemExit("--unseen-mass-threshold must be in (0, 1]")
     if args.allowed_missing_variants < 0:
         raise SystemExit("--allowed-missing-variants must be nonnegative")
+    if args.output.exists() and not args.force:
+        raise SystemExit(f"{args.output} already exists; pass --force to overwrite it")
 
     payload = generate_fixture(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)

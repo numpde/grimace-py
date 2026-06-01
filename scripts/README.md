@@ -36,11 +36,13 @@ bounded correctness checks; heavier profiling runs should be explicit.
     writer flag surface
   - writes a ranked JSON report with generator-ready case input
   - does not run RDKit random saturation and does not write pinned fixtures
+  - refuses to overwrite an existing output path unless `--force` is passed
 - `generate_rdkit_writer_support_counts.py`
   - consumes selected candidate cases and runs RDKit random-writer adaptive
     saturation
   - writes count-only fixture shards under
     `tests/fixtures/rdkit_writer_support_counts/<rdkit-version>/`
+  - refuses to overwrite an existing output path unless `--force` is passed
 
 ## PreparedMol Storage Tooling
 

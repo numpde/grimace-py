@@ -125,7 +125,7 @@ python scripts/mine_rdkit_writer_support_count_candidates.py \
   --min-support-count 100 \
   --max-support-count 2000 \
   --max-candidates 20 \
-  --output notes/support_count_mining/nonisomeric_random_candidates.json
+  --output notes/support_count_mining/nonisomeric_random_candidates_next.json
 ```
 
 The miner uses Grimace exact enumeration as a pre-screen. Its output is a
@@ -133,12 +133,12 @@ ranked report plus a `generator_input` block. It does not claim anything about
 RDKit random-writer saturation.
 
 Second, copy the selected `generator_input` cases into a candidate input file
-and run the saturation generator:
+and run the saturation generator into a review shard:
 
 ```bash
 python scripts/generate_rdkit_writer_support_counts.py \
   --input notes/support_count_mining/nonisomeric_random_input.json \
-  --output tests/fixtures/rdkit_writer_support_counts/2026.03.1/nonisomeric__random.json \
+  --output notes/support_count_mining/nonisomeric__random_review.json \
   --seed 12345 \
   --seed 54321
 ```
@@ -146,3 +146,6 @@ python scripts/generate_rdkit_writer_support_counts.py \
 Only promote cases whose independent RDKit seed runs satisfy the adaptive
 criterion and agree on the count. The fixture remains curated; mining reports
 are evidence discovery, not evidence acceptance.
+
+Both scripts refuse to overwrite an existing output path unless `--force` is
+passed. Use `--force` only when intentionally replacing a local review artifact.

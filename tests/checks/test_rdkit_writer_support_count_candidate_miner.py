@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -74,6 +76,29 @@ class RdkitWriterSupportCountCandidateMinerTests(unittest.TestCase):
         self.assertEqual("medium", MINER.support_bucket(2_000))
         self.assertEqual("large", MINER.support_bucket(2_001))
         self.assertEqual("too_large", MINER.support_bucket(10_001))
+
+    def test_cli_refuses_to_overwrite_existing_output_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "candidates.json"
+            output_path.write_text("{}\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--output",
+                    str(output_path),
+                    "--limit",
+                    "0",
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, proc.returncode)
+        self.assertIn("already exists", proc.stderr)
 
 
 if __name__ == "__main__":

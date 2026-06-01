@@ -143,6 +143,8 @@ def _compress_with_shipped_dictionary(
     raw_payload: bytes,
     *,
     dictionary_level: int,
+    write_checksum: bool = True,
+    write_content_size: bool = True,
 ) -> bytes:
     import zstandard as zstd
 
@@ -160,8 +162,8 @@ def _compress_with_shipped_dictionary(
     return zstd.ZstdCompressor(
         level=3,
         dict_data=dictionary,
-        write_checksum=True,
-        write_content_size=True,
+        write_checksum=write_checksum,
+        write_content_size=write_content_size,
     ).compress(raw_payload)
 
 
@@ -393,6 +395,30 @@ with mock.patch("importlib.resources.files", wraps=real_files) as files:
             grimace.PreparedMol.from_bytes(
                 _with_zstd_dictionary_id(zstd_payload, unknown_dictionary_id),
             )
+
+    def test_compressed_payload_without_checksum_is_rejected(self) -> None:
+        raw_payload = self._prepare("CCO", isomericSmiles=False).to_bytes()
+        zstd_payload = _compress_with_shipped_dictionary(
+            raw_payload,
+            dictionary_level=3,
+            write_checksum=False,
+        )
+        self.assertFalse(_read_zstd_frame_header(zstd_payload).has_checksum)
+
+        with self.assertRaises(ValueError):
+            grimace.PreparedMol.from_bytes(zstd_payload)
+
+    def test_compressed_payload_without_content_size_is_rejected(self) -> None:
+        raw_payload = self._prepare("CCO", isomericSmiles=False).to_bytes()
+        zstd_payload = _compress_with_shipped_dictionary(
+            raw_payload,
+            dictionary_level=3,
+            write_content_size=False,
+        )
+        self.assertFalse(_read_zstd_frame_header(zstd_payload).has_content_size)
+
+        with self.assertRaises(ValueError):
+            grimace.PreparedMol.from_bytes(zstd_payload)
 
     def test_zstd_requested_for_tiny_payloads_never_silently_falls_back_to_raw(
         self,

@@ -203,9 +203,17 @@ def _zstd_frame_dictionary_id(data: bytes) -> int:
         raise ValueError("PreparedMol zstd payload is truncated")
 
     descriptor = data[len(_ZSTD_FRAME_MAGIC)]
+    checksum_flag = bool(descriptor & 0b100)
+    single_segment_flag = bool(descriptor & 0b0010_0000)
+    content_size_flag = descriptor >> 6
+    if not checksum_flag:
+        raise ValueError("PreparedMol zstd frame does not include checksum")
+    if not (content_size_flag or single_segment_flag):
+        raise ValueError("PreparedMol zstd frame does not include content size")
+
     dictionary_id_size = _ZSTD_DICT_ID_SIZE_BY_FLAG[descriptor & 0b11]
     offset = len(_ZSTD_FRAME_MAGIC) + 1
-    if not descriptor & 0b0010_0000:
+    if not single_segment_flag:
         offset += 1
     if dictionary_id_size == 0:
         raise ValueError("PreparedMol zstd frame does not name a dictionary")

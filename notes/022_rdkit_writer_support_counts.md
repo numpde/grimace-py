@@ -110,3 +110,39 @@ len(grimace.MolToSmilesEnum(...)) == support_count
 
 This lane starts outside the default pinned RDKit parity runner. It can be
 promoted only after the fixture set and runtime cost are stable.
+
+## Dataset Mining Workflow
+
+Mining is two-stage.
+
+First, scan the checked-in molecule fixture for promising candidates:
+
+```bash
+python scripts/mine_rdkit_writer_support_count_candidates.py \
+  --surface nonisomeric__random \
+  --molecule-filter any \
+  --limit 1000 \
+  --min-support-count 100 \
+  --max-support-count 2000 \
+  --max-candidates 20 \
+  --output notes/support_count_mining/nonisomeric_random_candidates.json
+```
+
+The miner uses Grimace exact enumeration as a pre-screen. Its output is a
+ranked report plus a `generator_input` block. It does not claim anything about
+RDKit random-writer saturation.
+
+Second, copy the selected `generator_input` cases into a candidate input file
+and run the saturation generator:
+
+```bash
+python scripts/generate_rdkit_writer_support_counts.py \
+  --input notes/support_count_mining/nonisomeric_random_input.json \
+  --output tests/fixtures/rdkit_writer_support_counts/2026.03.1/nonisomeric__random.json \
+  --seed 12345 \
+  --seed 54321
+```
+
+Only promote cases whose independent RDKit seed runs satisfy the adaptive
+criterion and agree on the count. The fixture remains curated; mining reports
+are evidence discovery, not evidence acceptance.

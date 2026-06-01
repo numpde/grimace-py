@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
 
 
@@ -10,6 +11,14 @@ SCRIPT = ROOT / "scripts" / "generate_rdkit_writer_support_counts.py"
 
 
 def _load_generator_module():
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        return _load_generator_module_from_path()
+    finally:
+        sys.path.remove(str(SCRIPT.parent))
+
+
+def _load_generator_module_from_path():
     spec = importlib.util.spec_from_file_location(
         "generate_rdkit_writer_support_counts",
         SCRIPT,
@@ -17,6 +26,7 @@ def _load_generator_module():
     if spec is None or spec.loader is None:
         raise RuntimeError(f"failed to load {SCRIPT}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 

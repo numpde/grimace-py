@@ -28,6 +28,20 @@ bounded correctness checks; heavier profiling runs should be explicit.
   - checks that tag-triggered release jobs publish exactly the expected wheel
     and sdist filenames
 
+## RDKit Writer Support Count Tooling
+
+- `mine_rdkit_writer_support_count_candidates.py`
+  - scans the checked-in `top_100000` molecule fixture
+  - pre-screens candidates with Grimace exact support counts under one explicit
+    writer flag surface
+  - writes a ranked JSON report with generator-ready case input
+  - does not run RDKit random saturation and does not write pinned fixtures
+- `generate_rdkit_writer_support_counts.py`
+  - consumes selected candidate cases and runs RDKit random-writer adaptive
+    saturation
+  - writes count-only fixture shards under
+    `tests/fixtures/rdkit_writer_support_counts/<rdkit-version>/`
+
 ## PreparedMol Storage Tooling
 
 - `prepared_mol_zstd_dictionary_generate.py`

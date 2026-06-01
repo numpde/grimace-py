@@ -13,22 +13,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from rdkit_writer_support_count_surfaces import surface_name
+
 
 CRITERION_VERSION = 1
-
-
-def surface_name(flags: dict[str, bool]) -> str:
-    surface = "isomeric" if flags["isomericSmiles"] else "nonisomeric"
-    modifiers = ["random"]
-    if flags["kekuleSmiles"]:
-        modifiers.append("kekule")
-    if flags["allBondsExplicit"]:
-        modifiers.append("all_bonds_explicit")
-    if flags["allHsExplicit"]:
-        modifiers.append("all_hs_explicit")
-    if flags["ignoreAtomMapNumbers"]:
-        modifiers.append("ignore_atom_maps")
-    return f"{surface}__{'_'.join(modifiers)}"
 
 
 def writer_flags_from_args(args: argparse.Namespace) -> dict[str, bool]:

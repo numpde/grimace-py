@@ -21,6 +21,8 @@ tests/fixtures/rdkit_writer_support_counts/
     nonisomeric__random.json
     isomeric__random.json
     nonisomeric__random_kekule.json
+    nonisomeric__random_all_bonds_explicit.json
+    nonisomeric__random_all_hs_explicit.json
 ```
 
 Each shard owns one complete flag surface:

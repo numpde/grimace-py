@@ -6,6 +6,12 @@ Checked-in fixtures are the executable RDKit evidence behind Grimace's
 correctness tests. They live in JSON when the data itself is part of the claim:
 support sets, inventories, writer outputs, known gaps, and source snapshots.
 
+This page is the full fixture inventory. It includes cases sourced from RDKit's
+own source tree and independent Grimace evidence from local probes,
+dataset-derived molecules, random-writer observations, and known-gap
+diagnostics. The RDKit-source-tree audit lane is traced separately in
+[RDKit serializer coverage](rdkit-serializer-coverage.html).
+
 ## Current coverage
 
 Snapshot for RDKit `2026.03.1`, generated from:

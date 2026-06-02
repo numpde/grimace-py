@@ -20,9 +20,12 @@ def _reject_rooted_stereo_decoder_construction(*_args: object, **_kwargs: object
     )
 
 
-def _reject_eager_public_choice_construction(*_args: object, **_kwargs: object) -> None:
+def _reject_determinized_successor_enumeration(
+    *_args: object,
+    **_kwargs: object,
+) -> None:
     raise AssertionError(
-        "determinized choices must not eagerly materialize public sibling states"
+        "determinized choices must not eagerly enumerate sibling successor states"
     )
 
 
@@ -62,7 +65,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
                     self.assertEqual("", decoder.prefix)
 
-    def test_determinized_choices_advance_selected_branch_without_eager_public_states(
+    def test_determinized_choices_advance_selected_branch_without_eager_successors(
         self,
     ) -> None:
         mol = parse_smiles(STEREO_SMILES)
@@ -74,8 +77,8 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
         decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **STEREO_KWARGS)
         with patch(
-            "grimace._runtime._public_decoder_choices",
-            side_effect=_reject_eager_public_choice_construction,
+            "grimace._runtime._determinized_choice_successors",
+            side_effect=_reject_determinized_successor_enumeration,
         ):
             choices = decoder.next_choices
             observed_texts = tuple(choice.text for choice in choices)

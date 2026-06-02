@@ -68,6 +68,13 @@ class ResidualStoreValueSnapshot:
     factors: tuple[object, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ResidualConstraintComponentSnapshot:
+    variables: tuple[VarId, ...]
+    factor_indexes: tuple[int, ...]
+    assigned_variables: tuple[VarId, ...]
+
+
 class ResidualStore:
     """Trail-based reversible store for online DFS branches."""
 
@@ -206,6 +213,96 @@ def add_factor_checked(store: ResidualStore, factor: ResidualFactor) -> bool:
     except Exception:
         store.rollback(checkpoint)
         raise
+
+
+def residual_store_constraint_components(
+    snapshot: ResidualStoreValueSnapshot,
+) -> tuple[ResidualConstraintComponentSnapshot, ...]:
+    domain_vars = tuple(var for var, _ in snapshot.domains)
+    known = frozenset(domain_vars)
+    assignment_vars = frozenset(var for var, _ in snapshot.assignments)
+    unknown_assignments = assignment_vars - known
+    if unknown_assignments:
+        raise ValueError(
+            "residual assignment references unknown variable: "
+            f"{tuple(sorted(unknown_assignments, key=_var_sort_key))!r}"
+        )
+
+    parent = {var: var for var in domain_vars}
+
+    def find(var: VarId) -> VarId:
+        while parent[var] != var:
+            parent[var] = parent[parent[var]]
+            var = parent[var]
+        return var
+
+    def union(left: VarId, right: VarId) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    factor_scopes: list[tuple[VarId, ...]] = []
+    zero_scope_factors: list[int] = []
+    for index, factor_snapshot in enumerate(snapshot.factors):
+        scope = tuple(getattr(factor_snapshot, "scope", ()))
+        unknown_scope = frozenset(scope) - known
+        if unknown_scope:
+            raise ValueError(
+                "residual factor references unknown variable: "
+                f"{tuple(sorted(unknown_scope, key=_var_sort_key))!r}"
+            )
+        factor_scopes.append(scope)
+        if not scope:
+            zero_scope_factors.append(index)
+            continue
+        first = scope[0]
+        for var in scope[1:]:
+            union(first, var)
+
+    variables_by_root: dict[VarId, list[VarId]] = {}
+    for var in domain_vars:
+        variables_by_root.setdefault(find(var), []).append(var)
+    factor_indexes_by_root: dict[VarId, list[int]] = {
+        root: [] for root in variables_by_root
+    }
+    for index, scope in enumerate(factor_scopes):
+        if not scope:
+            continue
+        factor_indexes_by_root.setdefault(find(scope[0]), []).append(index)
+
+    components: list[ResidualConstraintComponentSnapshot] = []
+    for root, variables in variables_by_root.items():
+        sorted_variables = tuple(sorted(variables, key=_var_sort_key))
+        assigned = tuple(var for var in sorted_variables if var in assignment_vars)
+        components.append(
+            ResidualConstraintComponentSnapshot(
+                variables=sorted_variables,
+                factor_indexes=tuple(factor_indexes_by_root.get(root, ())),
+                assigned_variables=assigned,
+            )
+        )
+    for index in zero_scope_factors:
+        components.append(
+            ResidualConstraintComponentSnapshot(
+                variables=(),
+                factor_indexes=(index,),
+                assigned_variables=(),
+            )
+        )
+
+    return tuple(
+        sorted(
+            components,
+            key=lambda component: (
+                0 if component.variables else 1,
+                _var_sort_key(component.variables[0])
+                if component.variables
+                else ("", ()),
+                component.factor_indexes,
+            ),
+        )
+    )
 
 
 def _remove_factor(
@@ -454,6 +551,7 @@ __all__ = (
     "DirectionalCarrierResidual",
     "DirectionalResidualFactor",
     "DirectionalResidualFactorValueSnapshot",
+    "ResidualConstraintComponentSnapshot",
     "ResidualFactor",
     "ResidualStore",
     "ResidualStoreValueSnapshot",
@@ -463,5 +561,6 @@ __all__ = (
     "VarId",
     "add_factor_checked",
     "direction_var",
+    "residual_store_constraint_components",
     "tetra_var",
 )

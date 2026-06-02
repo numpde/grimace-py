@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import unittest
 
 from grimace._south_star1.facts import DirectionalValue
@@ -12,11 +13,19 @@ from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
+from grimace._south_star1.residual_constraints import ResidualConstraintComponentSnapshot
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import ResidualStoreValueSnapshot
 from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import direction_var
+from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.residual_constraints import tetra_var
+
+
+@dataclass(frozen=True, slots=True)
+class _DummyFactorSnapshot:
+    scope: tuple[VarId, ...]
 
 
 class ResidualConstraintTest(unittest.TestCase):
@@ -138,6 +147,84 @@ class ResidualConstraintTest(unittest.TestCase):
         self.assertTrue(right.assign(first, "a"))
 
         self.assertEqual(left.value_snapshot(), right.value_snapshot())
+
+    def test_residual_constraint_components_empty_snapshot(self) -> None:
+        snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
+
+        self.assertEqual(residual_store_constraint_components(snapshot), ())
+
+    def test_residual_constraint_components_include_isolated_variables(self) -> None:
+        first = VarId("test", (1,))
+        second = VarId("test", (2,))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((first, ("a",)), (second, ("b",))),
+            assignments=(),
+            factors=(),
+        )
+
+        self.assertEqual(
+            residual_store_constraint_components(snapshot),
+            (
+                ResidualConstraintComponentSnapshot(
+                    variables=(first,),
+                    factor_indexes=(),
+                    assigned_variables=(),
+                ),
+                ResidualConstraintComponentSnapshot(
+                    variables=(second,),
+                    factor_indexes=(),
+                    assigned_variables=(),
+                ),
+            ),
+        )
+
+    def test_residual_constraint_components_merge_factor_scopes(self) -> None:
+        first = VarId("test", (1,))
+        second = VarId("test", (2,))
+        third = VarId("test", (3,))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((first, ("a",)), (second, ("b",)), (third, ("c",))),
+            assignments=((second, "b"),),
+            factors=(
+                _DummyFactorSnapshot(scope=(first, second)),
+                _DummyFactorSnapshot(scope=(third,)),
+            ),
+        )
+
+        self.assertEqual(
+            residual_store_constraint_components(snapshot),
+            (
+                ResidualConstraintComponentSnapshot(
+                    variables=(first, second),
+                    factor_indexes=(0,),
+                    assigned_variables=(second,),
+                ),
+                ResidualConstraintComponentSnapshot(
+                    variables=(third,),
+                    factor_indexes=(1,),
+                    assigned_variables=(),
+                ),
+            ),
+        )
+
+    def test_residual_constraint_components_reject_unknown_variables(self) -> None:
+        known = VarId("test", (1,))
+        unknown = VarId("test", (2,))
+        factor_snapshot = ResidualStoreValueSnapshot(
+            domains=((known, ("a",)),),
+            assignments=(),
+            factors=(_DummyFactorSnapshot(scope=(known, unknown)),),
+        )
+        assignment_snapshot = ResidualStoreValueSnapshot(
+            domains=((known, ("a",)),),
+            assignments=((unknown, "b"),),
+            factors=(),
+        )
+
+        with self.assertRaises(ValueError):
+            residual_store_constraint_components(factor_snapshot)
+        with self.assertRaises(ValueError):
+            residual_store_constraint_components(assignment_snapshot)
 
 
 def _tetra_factor(

@@ -357,6 +357,30 @@ Public cyclic support, supported ring-pair stereo factors, residual suffix
 storage, RDKit parity, and exhaustive traversal fallback still fail closed in
 `writer_shaped`.
 
+### Factored Residual Stereo Support
+
+Stereo support is maintained as factored residual constraints, not as global
+assignment-expanded writer states.
+
+The stereo support object decomposes into independent components of the
+current/prepared stereo factor graph. Each component may be represented by
+rows, bitsets, domains, clauses, or a native propagator, but that
+representation is internal. The semantic invariant is nonzero projected
+support.
+
+Writer events add typed stereo facts. Updating a component must either produce
+a canonical residual component with nonzero support or reject the writer
+action. A token/action whose induced stereo facts leave no support is not part
+of the legal next-token frontier.
+
+Visible stereo tokens branch only when different emitted strings remain
+supported. Latent stereo alternatives remain inside the residual component
+support and must not multiply `WriterStateKey` or frontier states.
+
+Component counts multiply across independent stereo components; they are not
+enumerated as a Cartesian product except where an explicit support/witness
+enumeration API intentionally materializes them.
+
 `online_decoder.py` provides exact prefix feasibility and determinized token
 frontier queries by running the online DFS with prefix-constrained render sinks.
 It does not build a support trie, support image, compiled artifact, or global

@@ -75,8 +75,8 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                     **STEREO_KWARGS,
                 )
                 expected_texts = choice_texts(expected)
-                self.assertTrue(expected_texts)
-                selected_idx = 0
+                self.assertGreater(len(expected_texts), 1)
+                selected_idx = len(expected_texts) - 1
                 expected_next = expected.next_choices[selected_idx].next_state
 
                 decoder = grimace.MolToSmilesDeterminizedDecoder(

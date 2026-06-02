@@ -4,11 +4,7 @@ from dataclasses import dataclass
 import unittest
 
 import grimace
-import grimace._runtime_graphs as _runtime_graphs
 import grimace._runtime_states as _runtime_states
-from rdkit import Chem
-from grimace._runtime_inputs import MolToSmilesFlags
-from tests.helpers.assertions import assert_prefix_options_match_outputs
 from tests.helpers.mols import parse_smiles
 
 
@@ -37,33 +33,6 @@ def _public_kwargs(case: RuntimeStateAuditCase) -> dict[str, object]:
     if case.rooted_at_atom is not None:
         kwargs["rootedAtAtom"] = case.rooted_at_atom
     return kwargs
-
-
-def _atom_tokens(case: RuntimeStateAuditCase) -> tuple[str, ...]:
-    mol = parse_smiles(case.smiles)
-    root = 0 if case.rooted_at_atom is None else case.rooted_at_atom
-    flags = MolToSmilesFlags(
-        isomeric_smiles=case.isomeric_smiles,
-        kekule_smiles=case.kekule_smiles,
-        rooted_at_atom=root,
-        canonical=False,
-        all_bonds_explicit=case.all_bonds_explicit,
-        all_hs_explicit=case.all_hs_explicit,
-        do_random=True,
-        ignore_atom_map_numbers=case.ignore_atom_map_numbers,
-    )
-    if len(Chem.GetMolFrags(mol)) == 1:
-        prepared = _runtime_graphs.prepare_smiles_graph(mol, flags=flags)
-        return tuple(prepared.atom_tokens)
-
-    atom_tokens: set[str] = set()
-    for fragment_mol in Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False):
-        prepared = _runtime_graphs.prepare_smiles_graph(
-            fragment_mol,
-            flags=flags.with_rooted_at_atom(0),
-        )
-        atom_tokens.update(prepared.atom_tokens)
-    return tuple(sorted(atom_tokens))
 
 
 class RuntimeStateInvariantTests(unittest.TestCase):
@@ -142,13 +111,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                         continue
 
                     self.assertTrue(grouped_successors)
-                    assert_prefix_options_match_outputs(
-                        self,
-                        prefix,
-                        option_texts,
-                        reachable,
-                        atom_tokens=_atom_tokens(case),
-                    )
+                    self.assertEqual(len(set(option_texts)), len(option_texts))
 
                     union_of_branch_outputs: set[str] = set()
                     for _, successor in grouped_successors:

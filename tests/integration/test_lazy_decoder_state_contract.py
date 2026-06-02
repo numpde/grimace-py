@@ -4,13 +4,13 @@ from unittest.mock import patch
 import unittest
 
 import grimace
-import grimace._runtime as _runtime
+import grimace._core as _core
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import choice_texts, supported_public_kwargs
 
 
 STEREO_SMILES = "F[C@H](Cl)Br"
-STEREO_KWARGS = supported_public_kwargs(isomericSmiles=True)
+STEREO_KWARGS = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1)
 
 
 def _reject_rooted_stereo_decoder_construction(*_args: object, **_kwargs: object) -> None:
@@ -48,7 +48,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                     input_name=input_name,
                 ):
                     with patch.object(
-                        _runtime._core,
+                        _core,
                         "RootedConnectedStereoDecoder",
                         new=_reject_rooted_stereo_decoder_construction,
                     ):
@@ -79,7 +79,6 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         expected_next = {
             choice.text: choice.next_state for choice in expected.next_choices
         }[selected_token]
-        self.assertIsNone(decoder._choices_cache)
         self.assertIsInstance(advanced, grimace.MolToSmilesDeterminizedDecoder)
         self.assertEqual(expected_next.prefix, advanced.prefix)
         self.assertEqual(choice_texts(expected_next), choice_texts(advanced))

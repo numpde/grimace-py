@@ -49,9 +49,10 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             grimace.MolToSmilesDecoder,
             grimace.MolToSmilesDeterminizedDecoder,
         )
+        inputs = self._stereo_inputs()
 
         for decoder_cls in decoder_classes:
-            for input_name, mol_or_prepared in self._stereo_inputs():
+            for input_name, mol_or_prepared in inputs:
                 with self.subTest(
                     decoder_cls=decoder_cls.__name__,
                     input_name=input_name,

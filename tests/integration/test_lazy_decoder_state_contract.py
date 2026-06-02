@@ -39,7 +39,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         )
         return (
             ("rdkit_mol", mol),
-            ("prepared_mol", prepared),
+            ("prepared_mol_bytes_roundtrip", prepared),
         )
 
     def test_unrooted_stereo_decoder_init_does_not_instantiate_rooted_decoders(

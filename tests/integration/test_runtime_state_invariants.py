@@ -41,6 +41,10 @@ class RuntimeStateInvariantTests(unittest.TestCase):
         require_unique_choice_texts: bool = False,
     ) -> None:
         memo: dict[object, frozenset[str]] = {}
+        self.assertEqual(
+            outputs,
+            _runtime_states._reachable_terminal_prefixes(initial_state, memo=memo),
+        )
         seen_state_keys: set[object] = set()
         stack = [initial_state]
         audited_state_count = 0

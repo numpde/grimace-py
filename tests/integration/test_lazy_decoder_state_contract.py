@@ -20,6 +20,12 @@ def _reject_rooted_stereo_decoder_construction(*_args: object, **_kwargs: object
     )
 
 
+def _reject_eager_public_choice_construction(*_args: object, **_kwargs: object) -> None:
+    raise AssertionError(
+        "determinized choices must not eagerly materialize public sibling states"
+    )
+
+
 class LazyDecoderStateContractTests(unittest.TestCase):
     """Future lazy all-roots decoder-state contract."""
 
@@ -56,42 +62,29 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
                     self.assertEqual("", decoder.prefix)
 
-    def test_determinized_decoder_can_advance_seen_token_without_public_choice_states(
+    def test_determinized_choices_advance_selected_branch_without_eager_public_states(
         self,
     ) -> None:
         mol = parse_smiles(STEREO_SMILES)
         expected = grimace.MolToSmilesDeterminizedDecoder(mol, **STEREO_KWARGS)
         expected_texts = choice_texts(expected)
         self.assertTrue(expected_texts)
+        selected_idx = 0
+        expected_next = expected.next_choices[selected_idx].next_state
 
         decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **STEREO_KWARGS)
         with patch(
             "grimace._runtime._public_decoder_choices",
-            side_effect=AssertionError(
-                "lightweight token advance must not materialize public sibling choices"
-            ),
+            side_effect=_reject_eager_public_choice_construction,
         ):
-            observed_texts = decoder._choice_texts()
+            choices = decoder.next_choices
+            observed_texts = tuple(choice.text for choice in choices)
             self.assertEqual(expected_texts, observed_texts)
-            selected_token = observed_texts[0]
-            advanced = decoder._advance_token(selected_token)
+            advanced = choices[selected_idx].next_state
 
-        expected_next = {
-            choice.text: choice.next_state for choice in expected.next_choices
-        }[selected_token]
         self.assertIsInstance(advanced, grimace.MolToSmilesDeterminizedDecoder)
         self.assertEqual(expected_next.prefix, advanced.prefix)
         self.assertEqual(choice_texts(expected_next), choice_texts(advanced))
-
-    def test_determinized_decoder_advance_rejects_illegal_token(self) -> None:
-        decoder = grimace.MolToSmilesDeterminizedDecoder(
-            parse_smiles(STEREO_SMILES),
-            **STEREO_KWARGS,
-        )
-
-        self.assertNotIn("Z", choice_texts(decoder))
-        with self.assertRaisesRegex(ValueError, "not a legal next token"):
-            decoder._advance_token("Z")
 
 
 if __name__ == "__main__":

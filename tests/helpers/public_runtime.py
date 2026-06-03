@@ -90,12 +90,38 @@ def unique_choice_texts(decoder: object) -> tuple[str, ...]:
     return tuple(sorted(set(choice_texts(decoder))))
 
 
+def reachable_terminal_prefixes(
+    state: object,
+    *,
+    memo: dict[object, frozenset[str]] | None = None,
+) -> frozenset[str]:
+    if memo is None:
+        memo = {}
+
+    key = _runtime_states._state_cache_key(state)
+    cached = memo.get(key)
+    if cached is not None:
+        return cached
+
+    if state.is_terminal():
+        terminal = frozenset({state.prefix()})
+        memo[key] = terminal
+        return terminal
+
+    outputs: set[str] = set()
+    for _, successor in state.choice_successor_states():
+        outputs.update(reachable_terminal_prefixes(successor, memo=memo))
+    resolved = frozenset(outputs)
+    memo[key] = resolved
+    return resolved
+
+
 def reachable_outputs_from_decoder(
     decoder: object,
     *,
     memo: dict[object, frozenset[str]] | None = None,
 ) -> frozenset[str]:
-    return _runtime_states._reachable_terminal_prefixes(decoder._state, memo=memo)
+    return reachable_terminal_prefixes(decoder._state, memo=memo)
 
 
 def exact_token_inventory_via_decoder(mol: object, **kwargs: object) -> tuple[str, ...]:

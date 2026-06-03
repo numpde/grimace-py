@@ -375,30 +375,3 @@ def _state_cache_key(state: _BaseDecoderState) -> DecoderCacheKey:
     if isinstance(key, tuple):
         return cast(DecoderCacheKey, key)
     return ("raw", key)
-
-
-def _reachable_terminal_prefixes(
-    state: _BaseDecoderState,
-    *,
-    memo: dict[DecoderCacheKey, frozenset[str]] | None = None,
-) -> frozenset[str]:
-    """Return every terminal prefix reachable from one internal decoder state."""
-    if memo is None:
-        memo = {}
-
-    key = _state_cache_key(state)
-    cached = memo.get(key)
-    if cached is not None:
-        return cached
-
-    if state.is_terminal():
-        terminal = frozenset({state.prefix()})
-        memo[key] = terminal
-        return terminal
-
-    outputs: set[str] = set()
-    for _, successor in state.choice_successor_states():
-        outputs.update(_reachable_terminal_prefixes(successor, memo=memo))
-    resolved = frozenset(outputs)
-    memo[key] = resolved
-    return resolved

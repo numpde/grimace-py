@@ -7,7 +7,10 @@ import unittest
 import grimace
 import grimace._runtime_states as _runtime_states
 from tests.helpers.mols import parse_smiles
-from tests.helpers.public_runtime import supported_public_kwargs
+from tests.helpers.public_runtime import (
+    reachable_terminal_prefixes,
+    supported_public_kwargs,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +46,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
         memo: dict[object, frozenset[str]] = {}
         self.assertEqual(
             outputs,
-            _runtime_states._reachable_terminal_prefixes(initial_state, memo=memo),
+            reachable_terminal_prefixes(initial_state, memo=memo),
         )
         seen_state_keys: set[object] = set()
         stack = [initial_state]
@@ -57,7 +60,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
             seen_state_keys.add(state_key)
             audited_state_count += 1
 
-            reachable = _runtime_states._reachable_terminal_prefixes(
+            reachable = reachable_terminal_prefixes(
                 state,
                 memo=memo,
             )
@@ -80,7 +83,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
 
             union_of_branch_outputs: set[str] = set()
             for _, successor in successor_states:
-                branch_outputs = _runtime_states._reachable_terminal_prefixes(
+                branch_outputs = reachable_terminal_prefixes(
                     successor,
                     memo=memo,
                 )

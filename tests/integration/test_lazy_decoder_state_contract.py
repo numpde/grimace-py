@@ -114,6 +114,14 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "cache_key"):
             _runtime_states._state_cache_key(State())
 
+    def test_state_cache_key_rejects_unhashable_keys(self) -> None:
+        class State:
+            def cache_key(self) -> tuple[str, list[str]]:
+                return ("bad", [])
+
+        with self.assertRaisesRegex(TypeError, "hashable"):
+            _runtime_states._state_cache_key(State())
+
     def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
         created_refs: list[weakref.ReferenceType[object]] = []
         advanced_decoders: list[tuple[str, int]] = []

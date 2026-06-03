@@ -343,4 +343,8 @@ def _state_cache_key(state: _BaseDecoderState) -> DecoderCacheKey:
     key = state.cache_key()
     if not isinstance(key, tuple):
         raise TypeError("decoder state cache_key() must return a tuple")
+    try:
+        hash(key)
+    except TypeError as exc:
+        raise TypeError("decoder state cache_key() must be hashable") from exc
     return key

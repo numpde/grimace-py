@@ -281,6 +281,27 @@ class PublicDecoderTests(unittest.TestCase):
                 canonical=False,
             )
 
+    def test_choices_method_uses_next_choices_cache(self) -> None:
+        mol = parse_smiles("F[C@H](Cl)Br")
+        decoder_classes = (
+            grimace.MolToSmilesDecoder,
+            grimace.MolToSmilesDeterminizedDecoder,
+        )
+
+        for decoder_cls in decoder_classes:
+            with self.subTest(decoder_cls=decoder_cls.__name__):
+                decoder = decoder_cls(
+                    mol,
+                    rootedAtAtom=-1,
+                    isomericSmiles=True,
+                    canonical=False,
+                    doRandom=True,
+                )
+
+                choices = decoder.choices()
+                self.assertIs(choices, decoder.next_choices)
+                self.assertIs(choices, decoder.choices())
+
     def test_decoder_without_explicit_root_samples_paths_within_public_enum_outputs(self) -> None:
         for smiles, isomeric_smiles in (
             ("CCO", False),

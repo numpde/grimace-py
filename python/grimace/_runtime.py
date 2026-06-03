@@ -311,8 +311,14 @@ class _PublicDecoderBase:
     @property
     def next_choices(self) -> tuple[MolToSmilesChoice, ...]:
         if self._choices_cache is None:
-            self._choices_cache = self.choices()
+            self._choices_cache = self._choices()
         return self._choices_cache
+
+    def choices(self) -> tuple[MolToSmilesChoice, ...]:
+        return self.next_choices
+
+    def _choices(self) -> tuple[MolToSmilesChoice, ...]:
+        raise NotImplementedError
 
 
 def _public_decoder_choice(
@@ -339,7 +345,7 @@ def _public_decoder_choices(
 
 
 class MolToSmilesDecoder(_PublicDecoderBase):
-    def choices(self) -> tuple[MolToSmilesChoice, ...]:
+    def _choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _public_decoder_choices(
             type(self),
             self._state._choice_state_transitions(),
@@ -347,7 +353,7 @@ class MolToSmilesDecoder(_PublicDecoderBase):
 
 
 class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
-    def choices(self) -> tuple[MolToSmilesChoice, ...]:
+    def _choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _public_decoder_choices(
             type(self),
             self._state._grouped_state_transitions(),

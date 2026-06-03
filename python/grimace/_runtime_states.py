@@ -9,8 +9,8 @@ import grimace._core as _core
 
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
-_StateFactory: TypeAlias = Callable[[], "_BaseDecoderState"]
-_StateEntries: TypeAlias = tuple[tuple[str, _StateFactory], ...]
+_StateTransitionFactory: TypeAlias = Callable[[], "_BaseDecoderState"]
+_StateTransitions: TypeAlias = tuple[tuple[str, _StateTransitionFactory], ...]
 
 
 class _BaseDecoderState(Protocol):
@@ -18,8 +18,8 @@ class _BaseDecoderState(Protocol):
     def is_terminal(self) -> bool: ...
     def copy(self) -> "_BaseDecoderState": ...
     def cache_key(self) -> Hashable: ...
-    def _choice_state_entries(self) -> _StateEntries: ...
-    def _grouped_state_entries(self) -> _StateEntries: ...
+    def _choice_state_transitions(self) -> _StateTransitions: ...
+    def _grouped_state_transitions(self) -> _StateTransitions: ...
     def choice_successor_states(
         self,
     ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
@@ -28,9 +28,9 @@ class _BaseDecoderState(Protocol):
     ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
 
 
-def _eager_state_entries(
+def _eager_state_transitions(
     successors: tuple[tuple[str, _BaseDecoderState], ...],
-) -> _StateEntries:
+) -> _StateTransitions:
     return tuple(
         (text, lambda successor=successor: successor)
         for text, successor in successors
@@ -55,8 +55,8 @@ class _CoreStateAdapter:
     def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return self._successor_states(self._decoder.choice_successors())
 
-    def _choice_state_entries(self) -> _StateEntries:
-        return _eager_state_entries(self.choice_successor_states())
+    def _choice_state_transitions(self) -> _StateTransitions:
+        return _eager_state_transitions(self.choice_successor_states())
 
     def prefix(self) -> str:
         return self._decoder.prefix()
@@ -73,8 +73,8 @@ class _CoreStateAdapter:
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return self._successor_states(self._decoder.grouped_successors())
 
-    def _grouped_state_entries(self) -> _StateEntries:
-        return _eager_state_entries(self.grouped_successor_states())
+    def _grouped_state_transitions(self) -> _StateTransitions:
+        return _eager_state_transitions(self.grouped_successor_states())
 
 
 class _LazyAllRootsConnectedStereoState:
@@ -105,13 +105,13 @@ class _LazyAllRootsConnectedStereoState:
         next_decoder.advance_token(chosen_token)
         return _CoreStateAdapter(next_decoder)
 
-    def _choice_state_entries(self) -> _StateEntries:
-        entries: list[tuple[str, _StateFactory]] = []
+    def _choice_state_transitions(self) -> _StateTransitions:
+        transitions: list[tuple[str, _StateTransitionFactory]] = []
         advance_choice_state = self._advance_choice_state
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for chosen_idx, text in enumerate(decoder.next_choice_texts()):
-                entries.append(
+                transitions.append(
                     (
                         text,
                         lambda decoder=decoder, chosen_idx=chosen_idx: (
@@ -119,9 +119,9 @@ class _LazyAllRootsConnectedStereoState:
                         ),
                     )
                 )
-        return tuple(entries)
+        return tuple(transitions)
 
-    def _grouped_state_entries(self) -> _StateEntries:
+    def _grouped_state_transitions(self) -> _StateTransitions:
         buckets: dict[str, list[object]] = {}
         advance_token_state = self._advance_token_state
         for root_idx in range(self._atom_count):
@@ -145,13 +145,13 @@ class _LazyAllRootsConnectedStereoState:
     def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return tuple(
             (text, state_factory())
-            for text, state_factory in self._choice_state_entries()
+            for text, state_factory in self._choice_state_transitions()
         )
 
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return tuple(
             (text, state_factory())
-            for text, state_factory in self._grouped_state_entries()
+            for text, state_factory in self._grouped_state_transitions()
         )
 
     def prefix(self) -> str:
@@ -188,8 +188,8 @@ class _MergedStateAdapter:
             successor_states.extend(state.choice_successor_states())
         return tuple(successor_states)
 
-    def _choice_state_entries(self) -> _StateEntries:
-        return _eager_state_entries(self.choice_successor_states())
+    def _choice_state_transitions(self) -> _StateTransitions:
+        return _eager_state_transitions(self.choice_successor_states())
 
     def prefix(self) -> str:
         prefix = self._states[0].prefix()
@@ -220,8 +220,8 @@ class _MergedStateAdapter:
             for text, successors in grouped.items()
         )
 
-    def _grouped_state_entries(self) -> _StateEntries:
-        return _eager_state_entries(self.grouped_successor_states())
+    def _grouped_state_transitions(self) -> _StateTransitions:
+        return _eager_state_transitions(self.grouped_successor_states())
 
 
 class _DisconnectedStateAdapter:
@@ -288,31 +288,31 @@ class _DisconnectedStateAdapter:
             return self._active_successor_states(active.choice_successor_states())
         return self._fragment_separator_successor(active)
 
-    def _active_successor_entries(
+    def _active_successor_transitions(
         self,
-        entries: _StateEntries,
-    ) -> _StateEntries:
+        transitions: _StateTransitions,
+    ) -> _StateTransitions:
         return tuple(
             (
                 text,
                 lambda factory=factory: self._with_active_state(factory()),
             )
-            for text, factory in entries
+            for text, factory in transitions
         )
 
-    def _fragment_separator_entry(
+    def _fragment_separator_transition(
         self,
         active: _BaseDecoderState,
-    ) -> _StateEntries:
+    ) -> _StateTransitions:
         if self._fragment_idx + 1 == len(self._fragment_states):
             return ()
         return ((".", lambda: self._advance_fragment(active)),)
 
-    def _choice_state_entries(self) -> _StateEntries:
+    def _choice_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
         if not active.is_terminal():
-            return self._active_successor_entries(active._choice_state_entries())
-        return self._fragment_separator_entry(active)
+            return self._active_successor_transitions(active._choice_state_transitions())
+        return self._fragment_separator_transition(active)
 
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         active = self._active_state()
@@ -322,11 +322,11 @@ class _DisconnectedStateAdapter:
             )
         return self._fragment_separator_successor(active)
 
-    def _grouped_state_entries(self) -> _StateEntries:
+    def _grouped_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
         if not active.is_terminal():
-            return self._active_successor_entries(active._grouped_state_entries())
-        return self._fragment_separator_entry(active)
+            return self._active_successor_transitions(active._grouped_state_transitions())
+        return self._fragment_separator_transition(active)
 
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"

@@ -95,11 +95,15 @@ def runtime_state_cache_key(state: object) -> object:
 
 
 def runtime_realized_choice_transitions(state: object) -> tuple[tuple[str, object], ...]:
-    return _runtime_states._realize_choice_transitions(state)
+    return _runtime_states._realize_state_transitions(
+        state._choice_state_transitions()
+    )
 
 
 def runtime_realized_grouped_transitions(state: object) -> tuple[tuple[str, object], ...]:
-    return _runtime_states._realize_grouped_transitions(state)
+    return _runtime_states._realize_state_transitions(
+        state._grouped_state_transitions()
+    )
 
 
 def reachable_terminal_prefixes(

@@ -242,14 +242,18 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             ("C",),
             tuple(
                 text
-                for text, _ in _runtime_states._realize_choice_transitions(merged)
+                for text, _ in _runtime_states._realize_state_transitions(
+                    merged._choice_state_transitions()
+                )
             ),
         )
         self.assertEqual(
             ("C",),
             tuple(
                 text
-                for text, _ in _runtime_states._realize_grouped_transitions(merged)
+                for text, _ in _runtime_states._realize_state_transitions(
+                    merged._grouped_state_transitions()
+                )
             ),
         )
 

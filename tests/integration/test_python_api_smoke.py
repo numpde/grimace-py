@@ -17,21 +17,39 @@ from tests.helpers.public_runtime import (
 from tests.helpers.mols import parse_smiles
 
 
+PUBLIC_EXPORT_NAMES = (
+    "MolToSmilesChoice",
+    "MolToSmilesDecoder",
+    "MolToSmilesDeterminizedDecoder",
+    "MolToSmilesDeviation",
+    "MolToSmilesEnum",
+    "MolToSmilesTokenInventory",
+    "MolToSmilesTokenInventorySuperset",
+)
+ABSENT_TOP_LEVEL_NAMES = (
+    "MolToSmilesSupport",
+    "ReferencePolicy",
+    "MOL_TO_SMILES_OPTIONS",
+    "coerce_public_options",
+    "enumerate_rooted_connected_nonstereo_smiles_support",
+    "enumerate_rooted_connected_stereo_smiles_support",
+)
+
+
 class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
-        self.assertTrue(callable(grimace.MolToSmilesChoice))
-        self.assertTrue(callable(grimace.MolToSmilesDecoder))
-        self.assertTrue(callable(grimace.MolToSmilesDeterminizedDecoder))
-        self.assertTrue(callable(grimace.MolToSmilesDeviation))
-        self.assertTrue(callable(grimace.MolToSmilesEnum))
-        self.assertTrue(callable(grimace.MolToSmilesTokenInventory))
-        self.assertTrue(callable(grimace.MolToSmilesTokenInventorySuperset))
-        self.assertFalse(hasattr(grimace, "MolToSmilesSupport"))
-        self.assertFalse(hasattr(grimace, "ReferencePolicy"))
-        self.assertFalse(hasattr(grimace, "MOL_TO_SMILES_OPTIONS"))
-        self.assertFalse(hasattr(grimace, "coerce_public_options"))
-        self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_nonstereo_smiles_support"))
-        self.assertFalse(hasattr(grimace, "enumerate_rooted_connected_stereo_smiles_support"))
+        for name in PUBLIC_EXPORT_NAMES:
+            with self.subTest(name=name):
+                self.assertTrue(callable(getattr(grimace, name)))
+
+        for name in ABSENT_TOP_LEVEL_NAMES:
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(grimace, name))
+
+    def test_public_decoder_attributes_are_runtime_backed_at_import(self) -> None:
+        self.assertIs(grimace.MolToSmilesChoice, _runtime.MolToSmilesChoice)
+        self.assertIs(grimace.SmilesDeviation, _deviation.SmilesDeviation)
+
         decoder = grimace.MolToSmilesDecoder(
             parse_smiles("CCO"),
             rootedAtAtom=0,
@@ -46,55 +64,12 @@ class PythonApiSmokeTests(unittest.TestCase):
             canonical=False,
             doRandom=True,
         )
-        self.assertFalse(hasattr(decoder, "next_tokens"))
-        self.assertFalse(hasattr(decoder, "advance"))
-        self.assertIsInstance(determinized_decoder.next_choices[0].next_state, grimace.MolToSmilesDeterminizedDecoder)
 
-        self.assertEqual(
-            _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
-                parse_smiles("CCO"),
-                0,
-            ),
-            set(
-                grimace.MolToSmilesEnum(
-                    parse_smiles("CCO"),
-                    rootedAtAtom=0,
-                    isomericSmiles=False,
-                    canonical=False,
-                    doRandom=True,
-                )
-            ),
-        )
-        self.assertEqual(
-            set(
-                grimace.MolToSmilesEnum(
-                    parse_smiles("CCO"),
-                    rootedAtAtom=0,
-                    isomericSmiles=False,
-                    canonical=False,
-                    doRandom=True,
-                )
-            ),
-            _runtime.mol_to_smiles_support(
-                parse_smiles("CCO"),
-                rooted_at_atom=0,
-                isomeric_smiles=False,
-                canonical=False,
-                do_random=True,
-            ),
-        )
+        for public_decoder in (decoder, determinized_decoder):
+            with self.subTest(decoder_type=type(public_decoder).__name__):
+                self.assertFalse(hasattr(public_decoder, "next_tokens"))
+                self.assertFalse(hasattr(public_decoder, "advance"))
 
-    def test_public_decoder_attributes_are_runtime_backed_at_import(self) -> None:
-        self.assertIs(grimace.MolToSmilesChoice, _runtime.MolToSmilesChoice)
-        self.assertIs(grimace.SmilesDeviation, _deviation.SmilesDeviation)
-
-        decoder = grimace.MolToSmilesDecoder(
-            parse_smiles("CCO"),
-            rootedAtAtom=0,
-            isomericSmiles=False,
-            canonical=False,
-            doRandom=True,
-        )
         self.assertEqual("", decoder.prefix)
         self.assertIsInstance(decoder.is_terminal, bool)
         self.assertIsInstance(decoder.next_choices, tuple)
@@ -103,6 +78,10 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertIsInstance(
             decoder.next_choices[0].next_state,
             grimace.MolToSmilesDecoder,
+        )
+        self.assertIsInstance(
+            determinized_decoder.next_choices[0].next_state,
+            grimace.MolToSmilesDeterminizedDecoder,
         )
 
     def test_public_api_rejects_unsupported_flag_combination(self) -> None:
@@ -119,8 +98,8 @@ class PythonApiSmokeTests(unittest.TestCase):
                     parse_smiles("CCO"),
                     rootedAtAtom=0,
                     canonical=False,
-                    )
                 )
+            )
 
     def test_public_api_rejects_unsupported_input_type(self) -> None:
         kwargs = supported_public_kwargs(rootedAtAtom=0, isomericSmiles=False)

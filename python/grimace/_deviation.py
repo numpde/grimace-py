@@ -104,9 +104,10 @@ def _string_deviation(
                     continue
                 next_offset = offset + len(choice.text)
                 next_bucket = active_by_offset.setdefault(next_offset, {})
-                key = _decoder_key(choice.next_state)
+                next_state = choice.next_state
+                key = _decoder_key(next_state)
                 if key not in next_bucket:
-                    next_bucket[key] = choice.next_state
+                    next_bucket[key] = next_state
                     pending_offsets.add(next_offset)
 
     final_decoders = tuple(active_by_offset.get(len(candidate), {}).values())
@@ -166,10 +167,10 @@ def _sequence_deviation(
     )
 
     for token_index, token in enumerate(tokens):
-        choices_by_text: dict[str, list[_runtime.MolToSmilesDeterminizedDecoder]] = {}
+        choices_by_text: dict[str, list[_runtime.MolToSmilesChoice]] = {}
         for decoder in active_decoders:
             for choice in decoder.next_choices:
-                choices_by_text.setdefault(choice.text, []).append(choice.next_state)
+                choices_by_text.setdefault(choice.text, []).append(choice)
 
         token_start = token_starts[token_index]
         if token not in choices_by_text:
@@ -183,7 +184,9 @@ def _sequence_deviation(
                 legal_next_tokens=_sorted_tokens(choices_by_text),
             )
 
-        active_decoders = _dedupe_decoders(choices_by_text[token])
+        active_decoders = _dedupe_decoders(
+            choice.next_state for choice in choices_by_text[token]
+        )
 
     if any(decoder.is_terminal for decoder in active_decoders):
         return None

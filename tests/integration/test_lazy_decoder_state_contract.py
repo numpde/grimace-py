@@ -121,6 +121,46 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                     self.assertEqual(expected_next.prefix, advanced.prefix)
                     self.assertEqual(choice_texts(expected_next), choice_texts(advanced))
 
+    def test_sequence_deviation_advances_only_observed_token(self) -> None:
+        original_advance_token_state = (
+            _runtime_states._LazyAllRootsConnectedStereoState._advance_token_state
+        )
+
+        for input_name, mol_or_prepared in self._connected_stereo_inputs():
+            with self.subTest(input_name=input_name):
+                decoder = grimace.MolToSmilesDeterminizedDecoder(
+                    mol_or_prepared,
+                    **STEREO_KWARGS,
+                )
+                initial_tokens = choice_texts(decoder)
+                self.assertGreater(len(initial_tokens), 1)
+                selected_token = initial_tokens[0]
+
+                def guarded_advance_token_state(
+                    decoder: object,
+                    chosen_token: str,
+                ) -> object:
+                    if chosen_token != selected_token:
+                        raise AssertionError(
+                            "sequence deviation must not advance unobserved tokens"
+                        )
+                    return original_advance_token_state(decoder, chosen_token)
+
+                with patch.object(
+                    _runtime_states._LazyAllRootsConnectedStereoState,
+                    "_advance_token_state",
+                    side_effect=guarded_advance_token_state,
+                ):
+                    deviation = grimace.MolToSmilesDeviation(
+                        mol_or_prepared,
+                        (selected_token,),
+                        **STEREO_KWARGS,
+                    )
+
+                self.assertIsInstance(deviation, grimace.SmilesDeviation)
+                self.assertEqual("incomplete", deviation.reason)
+                self.assertEqual(selected_token, deviation.accepted_text)
+
 
 if __name__ == "__main__":
     unittest.main()

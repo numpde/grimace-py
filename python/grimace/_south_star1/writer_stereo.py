@@ -27,6 +27,7 @@ from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import VarId
 from .residual_constraints import add_factor_checked
 from .residual_constraints import direction_var
+from .residual_constraints import residual_store_assignments_have_support
 from .residual_constraints import tetra_var
 from .stereo_templates import DirectionalTemplate
 from .stereo_templates import TetraTemplate
@@ -111,6 +112,8 @@ def advance_writer_stereo_state(
     events: tuple[WriterEvent, ...],
 ) -> "WriterStereoState | None":
     state = stereo_state
+    if not _writer_stereo_state_has_residual_support(state):
+        return None
     for event in events:
         if isinstance(event, WriterAtomEmitted):
             state = _on_atom_emitted(prepared, state, event)
@@ -126,7 +129,18 @@ def advance_writer_stereo_state(
             continue
         if state is None:
             return None
+        if not _writer_stereo_state_has_residual_support(state):
+            return None
     return state
+
+
+def _writer_stereo_state_has_residual_support(
+    stereo_state: "WriterStereoState",
+) -> bool:
+    return residual_store_assignments_have_support(
+        stereo_state.residual_snapshot,
+        (),
+    )
 
 
 def terminal_writer_stereo_state(

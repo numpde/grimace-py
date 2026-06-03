@@ -8,6 +8,7 @@ import unittest
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.errors import SouthStarErrorKind
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import LigandKind
 from grimace._south_star1.facts import LigandOccurrence
 from grimace._south_star1.facts import MoleculeFacts
@@ -23,9 +24,13 @@ from grimace._south_star1.policy import BondTextChoice
 from grimace._south_star1.policy import BondTextDomain
 from grimace._south_star1.policy import RingLabel
 from grimace._south_star1.policy import SmilesPolicy
+from grimace._south_star1.policy import DirectionMark
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
+from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import add_factor_checked
+from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
 from grimace._south_star1.facts import SiteStatus
 from grimace._south_star1.facts import StereoFacts
@@ -42,6 +47,7 @@ from grimace._south_star1.writer_frontier import writer_frontier_choices
 from grimace._south_star1.writer_events import WriterRingEndpointEmitted
 from grimace._south_star1.writer_events import WriterRingEndpointPaired
 from grimace._south_star1.writer_state import WriterClosureLabel
+from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_stereo import advance_writer_stereo_state
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
 from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
@@ -606,6 +612,42 @@ class WriterStereoResidualTest(unittest.TestCase):
         store.rollback(checkpoint)
 
         self.assertEqual(store.value_snapshot().factors, ())
+
+    def test_empty_event_batch_accepts_supported_residual_state(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        state = empty_writer_stereo_state()
+
+        self.assertEqual(
+            advance_writer_stereo_state(prepared, state, ()),
+            state,
+        )
+
+    def test_empty_event_batch_rejects_unsupported_residual_snapshot(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        store = ResidualStore()
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        factor = DirectionalResidualFactor(
+            scope=(left, right),
+            status=SiteStatus.SPECIFIED,
+            target=DirectionalValue.OPPOSITE,
+            carrier_models={
+                left: DirectionalCarrierResidual(left, "left", 1, 1),
+                right: DirectionalCarrierResidual(right, "right", 1, 1),
+            },
+        )
+        self.assertTrue(add_factor_checked(store, factor))
+        state = WriterStereoState(
+            residual_snapshot=store.value_snapshot(),
+            atom_occurrences=(),
+            bond_occurrences=(),
+            local_orders=(),
+            delayed_factors=(),
+        )
+
+        self.assertIsNone(advance_writer_stereo_state(prepared, state, ()))
 
 
 def _prepare(facts):

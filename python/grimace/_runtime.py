@@ -27,7 +27,7 @@ from grimace._runtime_states import (
     _CoreStateAdapter,
     _DisconnectedStateAdapter,
     _LazyAllRootsConnectedStereoState,
-    _grouped_successor_states,
+    _realize_grouped_transitions,
     _state_cache_key,
 )
 from grimace._reference.prepared_graph import (
@@ -377,7 +377,7 @@ def _exact_token_inventory_from_decoder(
             if state_key in visited_state_keys:
                 continue
             visited_state_keys.add(state_key)
-            grouped_successors = _grouped_successor_states(state)
+            grouped_successors = _realize_grouped_transitions(state)
             inventory.update(text for text, _ in grouped_successors)
             stack.extend(successor for _, successor in grouped_successors)
 

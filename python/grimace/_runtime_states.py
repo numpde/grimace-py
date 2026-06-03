@@ -31,13 +31,13 @@ def _realize_state_transitions(
     )
 
 
-def _choice_successor_states(
+def _realize_choice_transitions(
     state: _BaseDecoderState,
 ) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return _realize_state_transitions(state._choice_state_transitions())
 
 
-def _grouped_successor_states(
+def _realize_grouped_transitions(
     state: _BaseDecoderState,
 ) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return _realize_state_transitions(state._grouped_state_transitions())

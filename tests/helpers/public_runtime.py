@@ -90,6 +90,10 @@ def unique_choice_texts(decoder: object) -> tuple[str, ...]:
     return tuple(sorted(set(choice_texts(decoder))))
 
 
+def runtime_state_cache_key(state: object) -> object:
+    return _runtime_states._state_cache_key(state)
+
+
 def reachable_terminal_prefixes(
     state: object,
     *,
@@ -98,7 +102,7 @@ def reachable_terminal_prefixes(
     if memo is None:
         memo = {}
 
-    key = _runtime_states._state_cache_key(state)
+    key = runtime_state_cache_key(state)
     cached = memo.get(key)
     if cached is not None:
         return cached
@@ -132,7 +136,7 @@ def exact_token_inventory_via_decoder(mol: object, **kwargs: object) -> tuple[st
 
     while stack:
         current = stack.pop()
-        state_key = _runtime_states._state_cache_key(current._state)
+        state_key = runtime_state_cache_key(current._state)
         if state_key in seen_state_keys:
             continue
         seen_state_keys.add(state_key)

@@ -5,10 +5,10 @@ from dataclasses import dataclass
 import unittest
 
 import grimace
-import grimace._runtime_states as _runtime_states
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     reachable_terminal_prefixes,
+    runtime_state_cache_key,
     supported_public_kwargs,
 )
 
@@ -54,7 +54,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
 
         while stack:
             state = stack.pop()
-            state_key = _runtime_states._state_cache_key(state)
+            state_key = runtime_state_cache_key(state)
             if state_key in seen_state_keys:
                 continue
             seen_state_keys.add(state_key)

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable
-from typing import Protocol, TypeAlias, cast
+from collections.abc import Callable
+from typing import Protocol, TypeAlias
 
 import grimace._core as _core
 
@@ -17,7 +17,7 @@ class _BaseDecoderState(Protocol):
     def prefix(self) -> str: ...
     def is_terminal(self) -> bool: ...
     def copy(self) -> "_BaseDecoderState": ...
-    def cache_key(self) -> Hashable: ...
+    def cache_key(self) -> DecoderCacheKey: ...
     def _choice_state_transitions(self) -> _StateTransitions: ...
     def _grouped_state_transitions(self) -> _StateTransitions: ...
 
@@ -329,6 +329,6 @@ def _merge_state_adapters(
 
 def _state_cache_key(state: _BaseDecoderState) -> DecoderCacheKey:
     key = state.cache_key()
-    if isinstance(key, tuple):
-        return cast(DecoderCacheKey, key)
-    return ("raw", key)
+    if not isinstance(key, tuple):
+        raise TypeError("decoder state cache_key() must return a tuple")
+    return key

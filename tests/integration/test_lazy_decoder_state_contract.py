@@ -47,6 +47,14 @@ class LazyDecoderStateContractTests(unittest.TestCase):
     def _connected_stereo_inputs(self) -> tuple[tuple[str, object], ...]:
         return self._inputs_for_smiles(STEREO_SMILES)
 
+    def test_state_cache_key_rejects_non_tuple_keys(self) -> None:
+        class State:
+            def cache_key(self) -> str:
+                return "bad"
+
+        with self.assertRaisesRegex(TypeError, "cache_key"):
+            _runtime_states._state_cache_key(State())
+
     def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
         created_refs: list[weakref.ReferenceType[object]] = []
         advanced_decoders: list[tuple[str, int]] = []

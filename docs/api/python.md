@@ -102,7 +102,7 @@ This is the important semantic point:
 
 This is the incremental next-token API for the same support language as
 `MolToSmilesEnum(...)`. It shows the legal next choices for the current emitted
-prefix, and each choice already carries the next decoder state.
+prefix, and each choice exposes the next decoder state.
 
 ```python
 decoder = grimace.MolToSmilesDecoder(
@@ -186,6 +186,7 @@ determinized choices, see [Concepts](../concepts.html).
 Both decoder classes expose `prefix`, `next_choices`, `choices()`,
 `is_terminal`, and `copy()`.
 `choices()` returns the same cached tuple as `next_choices`.
+`MolToSmilesChoice.next_state` is also cached after first access.
 
 ## MolToSmilesDeviation
 

@@ -20,6 +20,7 @@ from grimace._south_star1.residual_constraints import TetraResidualFactor
 from grimace._south_star1.residual_constraints import VarId
 from grimace._south_star1.residual_constraints import add_factor_checked
 from grimace._south_star1.residual_constraints import direction_var
+from grimace._south_star1.residual_constraints import residual_store_assignments_have_support
 from grimace._south_star1.residual_constraints import residual_store_constraint_components
 from grimace._south_star1.residual_constraints import residual_store_projected_values
 from grimace._south_star1.residual_constraints import tetra_var
@@ -300,6 +301,158 @@ class ResidualConstraintTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             residual_store_projected_values(snapshot, tetra_var(("missing", 0)))
+
+    def test_residual_assignment_support_empty_snapshot(self) -> None:
+        snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
+
+        self.assertTrue(residual_store_assignments_have_support(snapshot, ()))
+
+    def test_residual_assignment_support_rejects_unknown_variable(self) -> None:
+        snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
+
+        with self.assertRaises(ValueError):
+            residual_store_assignments_have_support(
+                snapshot,
+                ((tetra_var(("missing", 0)), TetraToken.AT),),
+            )
+
+    def test_residual_assignment_support_rejects_out_of_domain_value(self) -> None:
+        var = tetra_var(("test", 0))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((var, (TetraToken.AT,)),),
+            assignments=(),
+            factors=(),
+        )
+
+        self.assertFalse(
+            residual_store_assignments_have_support(
+                snapshot,
+                ((var, TetraToken.ATAT),),
+            )
+        )
+
+    def test_residual_assignment_support_handles_duplicate_assignments(self) -> None:
+        var = tetra_var(("test", 0))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
+            assignments=(),
+            factors=(),
+        )
+
+        self.assertTrue(
+            residual_store_assignments_have_support(
+                snapshot,
+                ((var, TetraToken.AT), (var, TetraToken.AT)),
+            )
+        )
+        self.assertFalse(
+            residual_store_assignments_have_support(
+                snapshot,
+                ((var, TetraToken.AT), (var, TetraToken.ATAT)),
+            )
+        )
+
+    def test_residual_assignment_support_rejects_existing_assignment_conflict(self) -> None:
+        var = tetra_var(("test", 0))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
+            assignments=((var, TetraToken.AT),),
+            factors=(),
+        )
+
+        self.assertFalse(
+            residual_store_assignments_have_support(
+                snapshot,
+                ((var, TetraToken.ATAT),),
+            )
+        )
+
+    def test_residual_assignment_support_filters_unary_tetra_factor(self) -> None:
+        store = ResidualStore()
+        var = tetra_var(("test", 0))
+        store.add_var(var, (TetraToken.AT, TetraToken.ATAT))
+        self.assertTrue(
+            add_factor_checked(
+                store,
+                TetraResidualFactor(
+                    scope=(var,),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    reference_order=_occurrences(0, 1, 2, 3),
+                    local_order=_occurrences(0, 1, 2, 3),
+                ),
+            )
+        )
+
+        self.assertTrue(
+            residual_store_assignments_have_support(
+                store.value_snapshot(),
+                ((var, TetraToken.AT),),
+            )
+        )
+        self.assertFalse(
+            residual_store_assignments_have_support(
+                store.value_snapshot(),
+                ((var, TetraToken.ATAT),),
+            )
+        )
+
+    def test_residual_assignment_support_detects_no_coupled_directional_completion(self) -> None:
+        store = ResidualStore()
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        factor = DirectionalResidualFactor(
+            scope=(left, right),
+            status=SiteStatus.SPECIFIED,
+            target=DirectionalValue.OPPOSITE,
+            carrier_models={
+                left: DirectionalCarrierResidual(left, "left", 1, 1),
+                right: DirectionalCarrierResidual(right, "right", 1, 1),
+            },
+        )
+
+        self.assertTrue(add_factor_checked(store, factor))
+        self.assertFalse(
+            residual_store_assignments_have_support(
+                store.value_snapshot(),
+                ((left, DirectionMark.FWD),),
+            )
+        )
+
+    def test_residual_assignment_support_conjoins_independent_components(self) -> None:
+        store = ResidualStore()
+        tetra = tetra_var(("test", 0))
+        direction = direction_var(("direction", 0))
+        store.add_var(tetra, (TetraToken.AT, TetraToken.ATAT))
+        store.add_var(direction, (DirectionMark.FWD, DirectionMark.REV))
+        self.assertTrue(
+            add_factor_checked(
+                store,
+                TetraResidualFactor(
+                    scope=(tetra,),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    reference_order=_occurrences(0, 1, 2, 3),
+                    local_order=_occurrences(0, 1, 2, 3),
+                ),
+            )
+        )
+        snapshot = store.value_snapshot()
+
+        self.assertTrue(
+            residual_store_assignments_have_support(
+                snapshot,
+                ((tetra, TetraToken.AT), (direction, DirectionMark.REV)),
+            )
+        )
+        self.assertFalse(
+            residual_store_assignments_have_support(
+                snapshot,
+                ((tetra, TetraToken.ATAT), (direction, DirectionMark.REV)),
+            )
+        )
 
 
 def _tetra_factor(

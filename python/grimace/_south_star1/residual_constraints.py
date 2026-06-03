@@ -330,6 +330,43 @@ def residual_store_projected_values(
     )
 
 
+def residual_store_assignments_have_support(
+    snapshot: ResidualStoreValueSnapshot,
+    assignments: tuple[tuple[VarId, object], ...],
+) -> bool:
+    domains = dict(snapshot.domains)
+    required: dict[VarId, object] = {}
+    for var, value in assignments:
+        if var not in domains:
+            raise ValueError(f"unknown residual variable: {var!r}")
+        if value not in domains[var]:
+            return False
+        existing = required.get(var, _UNASSIGNED)
+        if existing is not _UNASSIGNED and existing != value:
+            return False
+        required[var] = value
+
+    existing_assignments = dict(snapshot.assignments)
+    for var, value in required.items():
+        existing = existing_assignments.get(var, _UNASSIGNED)
+        if existing is not _UNASSIGNED and existing != value:
+            return False
+
+    for component in residual_store_constraint_components(snapshot):
+        component_required = tuple(
+            (var, value)
+            for var, value in required.items()
+            if var in component.variables
+        )
+        if not _residual_component_has_solution(
+            snapshot,
+            component,
+            component_required,
+        ):
+            return False
+    return True
+
+
 def _residual_component_has_solution(
     snapshot: ResidualStoreValueSnapshot,
     component: ResidualConstraintComponentSnapshot,
@@ -628,6 +665,7 @@ __all__ = (
     "VarId",
     "add_factor_checked",
     "direction_var",
+    "residual_store_assignments_have_support",
     "residual_store_constraint_components",
     "residual_store_projected_values",
     "tetra_var",

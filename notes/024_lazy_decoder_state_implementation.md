@@ -38,13 +38,13 @@ adding new public API or deeper Rust surface.
 - [x] Make public choices support lazy `next_state`.
   - Keep `MolToSmilesChoice.text` and `MolToSmilesChoice.next_state`.
   - Allow `next_state` to be computed once on first access.
-  - Keep the existing eager successor-tuple path for current states.
+  - Build public choices from lazy state transitions, not eager successor tuples.
   - Do not export a new class or public method.
 
 - [x] Add private lazy transition plumbing.
   - Add a minimal private transition shape such as `(text, state_factory)`.
-  - Ask a state for lazy transitions when it can provide them.
-  - Fall back to current eager successor-state methods.
+  - Ask states for lazy transitions when public choices need labels.
+  - Keep eager successor-state methods only for exhaustive traversal paths.
   - Keep exhaustive audit/oracle helpers able to use eager traversal.
 
 - [x] Add a private lazy all-roots connected-stereo state.
@@ -67,8 +67,8 @@ adding new public API or deeper Rust surface.
   - Branch-preserving choices instantiate only the selected root decoder.
   - Determinized choices instantiate only roots whose first token matches the
     selected token.
-  - Do not eagerly enumerate grouped successor states while producing initial
-    determinized lazy choices.
+  - Do not eagerly enumerate sibling successor states while producing public
+    choices.
 
 - [x] Preserve disconnected behavior.
   - Check an active lazy fragment inside `_DisconnectedStateAdapter`.

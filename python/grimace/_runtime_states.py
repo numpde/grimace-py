@@ -107,6 +107,7 @@ class _LazyAllRootsConnectedStereoState:
 
     def _choice_state_entries(self) -> _StateEntries:
         entries: list[tuple[str, _StateFactory]] = []
+        advance_choice_state = self._advance_choice_state
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for chosen_idx, text in enumerate(decoder.next_choice_texts()):
@@ -114,7 +115,7 @@ class _LazyAllRootsConnectedStereoState:
                     (
                         text,
                         lambda decoder=decoder, chosen_idx=chosen_idx: (
-                            self._advance_choice_state(decoder, chosen_idx)
+                            advance_choice_state(decoder, chosen_idx)
                         ),
                     )
                 )
@@ -122,6 +123,7 @@ class _LazyAllRootsConnectedStereoState:
 
     def _grouped_state_entries(self) -> _StateEntries:
         buckets: dict[str, list[object]] = {}
+        advance_token_state = self._advance_token_state
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for text in decoder.next_token_support():
@@ -132,7 +134,7 @@ class _LazyAllRootsConnectedStereoState:
                 text,
                 lambda text=text, decoders=tuple(decoders): _merge_state_adapters(
                     tuple(
-                        self._advance_token_state(decoder, text)
+                        advance_token_state(decoder, text)
                         for decoder in decoders
                     )
                 ),

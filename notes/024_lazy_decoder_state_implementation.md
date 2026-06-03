@@ -1,9 +1,8 @@
 # Lazy decoder state implementation
 
-This note tracks the implementation plan for avoiding eager all-roots decoder
-state construction while preserving the public decoder API.
+This note records the implemented lazy decoder-state boundary.
 
-## Current problem
+## Implemented shape
 
 Unrooted connected non-stereo already has one Rust decoder mode for all roots:
 
@@ -11,11 +10,9 @@ Unrooted connected non-stereo already has one Rust decoder mode for all roots:
 RootedConnectedNonStereoDecoder(graph, root_idx=-1)
 ```
 
-Unrooted connected stereo currently does not use an equivalent lazy public
-runtime path. Python prepares the connected stereo graph once, then eagerly
-constructs one rooted stereo decoder per atom and merges them. That makes
-`MolToSmilesDecoder(..., rootedAtAtom=-1, isomericSmiles=True)` and
-`MolToSmilesDeterminizedDecoder(...)` pay the all-roots cost at init.
+Unrooted connected stereo now has a lazy Python runtime state. Python prepares
+the connected stereo graph once at decoder initialization, stores atom count,
+and delays rooted stereo decoder construction until choices are requested.
 
 Rust already exposes mutable connected decoder operations:
 
@@ -24,8 +21,10 @@ Rust already exposes mutable connected decoder operations:
 - `advance_token(token)`
 - `advance_choice(index)`
 
-The first no-regret implementation should use those private runtime hooks before
-adding new public API or deeper Rust surface.
+The public decoder API still exposes `next_choices` and `choice.next_state`.
+Internally, runtime states expose transition factories. Public choices realize
+only the selected `next_state`; exhaustive tests and inventories explicitly
+realize transitions through the single helper `_realize_state_transitions(...)`.
 
 ## Checklist
 

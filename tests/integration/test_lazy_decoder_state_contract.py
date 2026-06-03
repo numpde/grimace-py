@@ -29,6 +29,15 @@ def _reject_determinized_successor_enumeration(
     )
 
 
+def _reject_branch_successor_enumeration(
+    *_args: object,
+    **_kwargs: object,
+) -> None:
+    raise AssertionError(
+        "branch-preserving choices must not eagerly enumerate sibling successor states"
+    )
+
+
 class LazyDecoderStateContractTests(unittest.TestCase):
     """Future lazy all-roots decoder-state contract."""
 
@@ -65,6 +74,37 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                         decoder = decoder_cls(mol_or_prepared, **STEREO_KWARGS)
 
                     self.assertEqual("", decoder.prefix)
+
+    def test_branch_choices_advance_selected_branch_without_eager_successors(
+        self,
+    ) -> None:
+        for input_name, mol_or_prepared in self._stereo_inputs():
+            with self.subTest(input_name=input_name):
+                expected = grimace.MolToSmilesDecoder(
+                    mol_or_prepared,
+                    **STEREO_KWARGS,
+                )
+                expected_texts = choice_texts(expected)
+                self.assertGreater(len(expected_texts), 1)
+                selected_idx = len(expected_texts) - 1
+                expected_next = expected.next_choices[selected_idx].next_state
+
+                decoder = grimace.MolToSmilesDecoder(
+                    mol_or_prepared,
+                    **STEREO_KWARGS,
+                )
+                with patch(
+                    "grimace._runtime_states._choice_successor_states",
+                    side_effect=_reject_branch_successor_enumeration,
+                ):
+                    choices = decoder.next_choices
+                    observed_texts = tuple(choice.text for choice in choices)
+                    self.assertEqual(expected_texts, observed_texts)
+                    advanced = choices[selected_idx].next_state
+
+                self.assertIsInstance(advanced, grimace.MolToSmilesDecoder)
+                self.assertEqual(expected_next.prefix, advanced.prefix)
+                self.assertEqual(choice_texts(expected_next), choice_texts(advanced))
 
     def test_determinized_choices_advance_selected_branch_without_eager_successors(
         self,

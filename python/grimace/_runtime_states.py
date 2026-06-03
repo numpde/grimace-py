@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from typing import Protocol, TypeAlias, cast
 
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
+_StateFactory: TypeAlias = Callable[[], "_BaseDecoderState"]
+_StateEntries: TypeAlias = tuple[tuple[str, _StateFactory], ...]
 
 
 class _BaseDecoderState(Protocol):
@@ -20,6 +22,16 @@ class _BaseDecoderState(Protocol):
     def grouped_successor_states(
         self,
     ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
+
+
+def _state_factory(state: _BaseDecoderState) -> _StateFactory:
+    return lambda: state
+
+
+def _eager_state_entries(
+    successors: tuple[tuple[str, _BaseDecoderState], ...],
+) -> _StateEntries:
+    return tuple((text, _state_factory(successor)) for text, successor in successors)
 
 
 class _CoreStateAdapter:
@@ -170,6 +182,32 @@ class _DisconnectedStateAdapter:
             return self._active_successor_states(_choice_successor_states(active))
         return self._fragment_separator_successor(active)
 
+    def _active_successor_entries(
+        self,
+        entries: _StateEntries,
+    ) -> _StateEntries:
+        return tuple(
+            (
+                text,
+                lambda factory=factory: self._with_active_state(factory()),
+            )
+            for text, factory in entries
+        )
+
+    def _fragment_separator_entry(
+        self,
+        active: _BaseDecoderState,
+    ) -> _StateEntries:
+        if self._fragment_idx + 1 == len(self._fragment_states):
+            return ()
+        return ((".", lambda: self._advance_fragment(active)),)
+
+    def _choice_state_entries(self) -> _StateEntries:
+        active = self._active_state()
+        if not active.is_terminal():
+            return self._active_successor_entries(_choice_state_entries(active))
+        return self._fragment_separator_entry(active)
+
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         active = self._active_state()
         if not active.is_terminal():
@@ -177,6 +215,12 @@ class _DisconnectedStateAdapter:
                 _grouped_successor_states(active)
             )
         return self._fragment_separator_successor(active)
+
+    def _grouped_state_entries(self) -> _StateEntries:
+        active = self._active_state()
+        if not active.is_terminal():
+            return self._active_successor_entries(_grouped_state_entries(active))
+        return self._fragment_separator_entry(active)
 
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"
@@ -224,10 +268,24 @@ def _choice_successor_states(
     return state.choice_successor_states()
 
 
+def _choice_state_entries(state: _BaseDecoderState) -> _StateEntries:
+    entries = getattr(state, "_choice_state_entries", None)
+    if entries is not None:
+        return entries()
+    return _eager_state_entries(_choice_successor_states(state))
+
+
 def _grouped_successor_states(
     state: _BaseDecoderState,
 ) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return state.grouped_successor_states()
+
+
+def _grouped_state_entries(state: _BaseDecoderState) -> _StateEntries:
+    entries = getattr(state, "_grouped_state_entries", None)
+    if entries is not None:
+        return entries()
+    return _eager_state_entries(_grouped_successor_states(state))
 
 
 def _determinized_choice_successors(

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+import gc
 import unittest
+import weakref
+from unittest.mock import patch
 
 import grimace
 import grimace._core as _core
@@ -46,13 +48,21 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         return self._inputs_for_smiles(STEREO_SMILES)
 
     def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
-        created_decoders: list[object] = []
+        created_refs: list[weakref.ReferenceType[object]] = []
         advanced_decoders: list[tuple[str, int]] = []
+
+        def live_decoders() -> tuple[object, ...]:
+            gc.collect()
+            return tuple(
+                decoder
+                for ref in created_refs
+                if (decoder := ref()) is not None
+            )
 
         class Decoder:
             def __init__(self, _prepared: object, _root_idx: int) -> None:
-                self.ordinal = len(created_decoders)
-                created_decoders.append(self)
+                self.ordinal = len(created_refs)
+                created_refs.append(weakref.ref(self))
 
             def next_choice_texts(self) -> tuple[str, ...]:
                 return ("C",)
@@ -76,7 +86,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
         with patch.object(_core, "RootedConnectedStereoDecoder", new=Decoder):
             choice_transitions = state._choice_state_transitions()
-            created_before_choice_advance = len(created_decoders)
+            self.assertEqual((), live_decoders())
+
+            created_before_choice_advance = len(created_refs)
             self.assertEqual(2, created_before_choice_advance)
 
             choice_transitions[0][1]()
@@ -85,9 +97,11 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                 advanced_decoders,
             )
 
-            created_before_grouped_listing = len(created_decoders)
+            created_before_grouped_listing = len(created_refs)
             grouped_transitions = state._grouped_state_transitions()
-            created_before_grouped_advance = len(created_decoders)
+            self.assertEqual((), live_decoders())
+
+            created_before_grouped_advance = len(created_refs)
             self.assertEqual(
                 2,
                 created_before_grouped_advance - created_before_grouped_listing,

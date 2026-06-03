@@ -18,6 +18,17 @@ def _name_ids(path: Path) -> set[str]:
     return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
 
+def _class_method_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        item.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+        for item in node.body
+        if isinstance(item, ast.FunctionDef)
+    }
+
+
 def _string_constants(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     return {
@@ -226,6 +237,9 @@ class RuntimeBoundaryTests(unittest.TestCase):
         }
 
         self.assertFalse(forbidden_methods & _attribute_names(self.runtime_state_module))
+        self.assertFalse(
+            forbidden_methods & _class_method_names(self.runtime_state_module)
+        )
 
 
 if __name__ == "__main__":

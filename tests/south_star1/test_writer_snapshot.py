@@ -10,6 +10,7 @@ from grimace._south_star1.facts import ComponentFacts
 from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import MoleculeFacts
 from grimace._south_star1.facts import SiteStatus
+from grimace._south_star1.facts import TetraValue
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
@@ -24,6 +25,7 @@ from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_fa
 from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
 from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import TetraResidualFactorValueSnapshot
 from grimace._south_star1.residual_constraints import add_factor_checked
 from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
@@ -1923,6 +1925,43 @@ class WriterSnapshotTest(unittest.TestCase):
             stereo_state=replace(
                 key.stereo_state,
                 residual_snapshot=store.value_snapshot(),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_wraps_invalid_residual_snapshot_round_trip(self) -> None:
+        var = tetra_var(("test", 0))
+        residual_snapshot = ResidualStore().value_snapshot()
+        residual_snapshot = replace(
+            residual_snapshot,
+            domains=((var, (TetraToken.AT, TetraToken.ATAT)),),
+            assignments=(),
+            factors=(
+                TetraResidualFactorValueSnapshot(
+                    scope=(var,),
+                    status=SiteStatus.SPECIFIED,
+                    target=TetraValue.PLUS,
+                    reference_order=(OccurrenceId(0), OccurrenceId(1), OccurrenceId(2), OccurrenceId(3)),
+                    local_order=(OccurrenceId(0), OccurrenceId(1), OccurrenceId(2), OccurrenceId(3)),
+                    assigned=TetraToken.AT,
+                ),
+            ),
+        )
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        key = cursor.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=residual_snapshot,
             ),
         )
 

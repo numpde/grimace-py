@@ -231,7 +231,10 @@ def _validate_frames(
 
 
 def _round_trip_residual_snapshot(snapshot: ResidualStoreValueSnapshot) -> None:
-    round_tripped = ResidualStore.from_value_snapshot(snapshot).value_snapshot()
+    try:
+        round_tripped = ResidualStore.from_value_snapshot(snapshot).value_snapshot()
+    except ValueError as exc:
+        _invalid_snapshot(f"writer residual snapshot is invalid: {exc}")
     if round_tripped != snapshot:
         raise SouthStarError(
             SouthStarErrorKind.INTERNAL_INVARIANT,

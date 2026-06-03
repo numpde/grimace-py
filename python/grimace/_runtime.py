@@ -27,8 +27,6 @@ from grimace._runtime_states import (
     _CoreStateAdapter,
     _DisconnectedStateAdapter,
     _LazyAllRootsConnectedStereoState,
-    _StateTransitionFactory,
-    _StateTransitions,
     _grouped_successor_states,
     _state_cache_key,
 )
@@ -320,7 +318,7 @@ class _PublicDecoderBase:
 def _public_decoder_choice(
     decoder_type: type[_PublicDecoderBase],
     text: str,
-    state_factory: _StateTransitionFactory,
+    state_factory,
 ) -> MolToSmilesChoice:
     return MolToSmilesChoice._from_next_state_factory(
         text,
@@ -330,7 +328,7 @@ def _public_decoder_choice(
 
 def _public_decoder_choices(
     decoder_type: type[_PublicDecoderBase],
-    transitions: _StateTransitions,
+    transitions,
 ) -> tuple[MolToSmilesChoice, ...]:
     if not transitions:
         return ()

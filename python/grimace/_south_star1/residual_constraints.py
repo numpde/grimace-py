@@ -216,11 +216,21 @@ def add_factor_checked(store: ResidualStore, factor: ResidualFactor) -> bool:
         raise
 
 
+def _residual_snapshot_domain_map(
+    snapshot: ResidualStoreValueSnapshot,
+) -> dict[VarId, tuple[object, ...]]:
+    domains = dict(snapshot.domains)
+    if len(domains) != len(snapshot.domains):
+        raise ValueError("duplicate residual snapshot domain")
+    return domains
+
+
 def residual_store_constraint_components(
     snapshot: ResidualStoreValueSnapshot,
 ) -> tuple[ResidualConstraintComponentSnapshot, ...]:
-    domain_vars = tuple(var for var, _ in snapshot.domains)
-    known = frozenset(domain_vars)
+    domains = _residual_snapshot_domain_map(snapshot)
+    domain_vars = tuple(domains)
+    known = frozenset(domains)
     assignment_vars = frozenset(var for var, _ in snapshot.assignments)
     unknown_assignments = assignment_vars - known
     if unknown_assignments:
@@ -310,7 +320,7 @@ def residual_store_projected_values(
     snapshot: ResidualStoreValueSnapshot,
     var: VarId,
 ) -> tuple[object, ...]:
-    domains = dict(snapshot.domains)
+    domains = _residual_snapshot_domain_map(snapshot)
     if var not in domains:
         raise ValueError(f"unknown residual variable: {var!r}")
     component = next(
@@ -335,7 +345,7 @@ def residual_store_assignments_have_support(
     snapshot: ResidualStoreValueSnapshot,
     assignments: tuple[tuple[VarId, object], ...],
 ) -> bool:
-    domains = dict(snapshot.domains)
+    domains = _residual_snapshot_domain_map(snapshot)
     required: dict[VarId, object] = {}
     for var, value in assignments:
         if var not in domains:
@@ -373,7 +383,7 @@ def _residual_component_has_solution(
     component: ResidualConstraintComponentSnapshot,
     required_assignments: tuple[tuple[VarId, object], ...],
 ) -> bool:
-    domains = dict(snapshot.domains)
+    domains = _residual_snapshot_domain_map(snapshot)
     fixed = dict(snapshot.assignments)
     for var, value in required_assignments:
         if var not in domains:
@@ -413,7 +423,7 @@ def _residual_component_has_solution(
 def _validate_residual_snapshot_assignment_consistency(
     snapshot: ResidualStoreValueSnapshot,
 ) -> None:
-    domains = dict(snapshot.domains)
+    domains = _residual_snapshot_domain_map(snapshot)
     assignments = dict(snapshot.assignments)
     if len(assignments) != len(snapshot.assignments):
         raise ValueError("duplicate residual snapshot assignment")

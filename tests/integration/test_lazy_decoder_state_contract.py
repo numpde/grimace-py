@@ -109,6 +109,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                         observed_texts = tuple(choice.text for choice in choices)
                         self.assertEqual(expected_texts, observed_texts)
                         advanced = choices[selected_idx].next_state
+                        self.assertIs(advanced, choices[selected_idx].next_state)
 
                     self.assertIsInstance(advanced, decoder_cls)
                     self.assertEqual(expected_next.prefix, advanced.prefix)

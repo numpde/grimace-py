@@ -75,17 +75,17 @@ class _CoreStateAdapter:
 
 
 class _LazyAllRootsConnectedStereoState:
-    __slots__ = ("_prepared", "_root_indices")
+    __slots__ = ("_prepared", "_atom_count")
 
     def __init__(
         self,
         prepared: object,
-        root_indices: tuple[int, ...],
+        atom_count: int,
     ) -> None:
-        if not root_indices:
+        if atom_count <= 0:
             raise ValueError("Lazy all-roots stereo state requires at least one root")
         self._prepared = prepared
-        self._root_indices = root_indices
+        self._atom_count = atom_count
 
     def _root_decoder(self, root_idx: int) -> object:
         return _core.RootedConnectedStereoDecoder(self._prepared, root_idx)
@@ -104,7 +104,7 @@ class _LazyAllRootsConnectedStereoState:
 
     def _choice_state_entries(self) -> _StateEntries:
         entries: list[tuple[str, _StateFactory]] = []
-        for root_idx in self._root_indices:
+        for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for chosen_idx, text in enumerate(decoder.next_choice_texts()):
                 entries.append(
@@ -119,7 +119,7 @@ class _LazyAllRootsConnectedStereoState:
 
     def _grouped_state_entries(self) -> _StateEntries:
         buckets: dict[str, list[object]] = {}
-        for root_idx in self._root_indices:
+        for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for text in decoder.next_token_support():
                 buckets.setdefault(text, []).append(decoder)
@@ -156,14 +156,14 @@ class _LazyAllRootsConnectedStereoState:
         return False
 
     def copy(self) -> "_LazyAllRootsConnectedStereoState":
-        return type(self)(self._prepared, self._root_indices)
+        return type(self)(self._prepared, self._atom_count)
 
     def cache_key(self) -> DecoderCacheKey:
         return (
             "lazy_all_roots_connected_stereo",
             self._prepared.policy_digest,
             self._prepared.identity_smiles,
-            self._root_indices,
+            self._atom_count,
         )
 
 

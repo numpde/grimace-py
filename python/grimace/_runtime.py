@@ -251,7 +251,7 @@ def _make_fragment_state_adapter(
 
     return _LazyAllRootsConnectedStereoState(
         prepared_fragment,
-        tuple(range(atom_count)),
+        atom_count,
     )
 
 

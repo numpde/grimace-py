@@ -49,7 +49,7 @@ adding new public API or deeper Rust surface.
 
 - [x] Add a private lazy all-roots connected-stereo state.
   - Store the prepared connected stereo graph.
-  - Store root indices.
+  - Store atom count.
   - Derive first-token information only when choices are requested.
   - Do not instantiate rooted stereo decoders at construction time.
   - `prefix()` returns `""`.

@@ -5,6 +5,7 @@ import unittest
 
 import grimace
 import grimace._core as _core
+import grimace._runtime_states as _runtime_states
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import choice_texts, supported_public_kwargs
 
@@ -84,15 +85,15 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         decoder_cases = (
             (
                 grimace.MolToSmilesDecoder,
-                "grimace._runtime_states._choice_successor_states",
+                "choice_successor_states",
             ),
             (
                 grimace.MolToSmilesDeterminizedDecoder,
-                "grimace._runtime_states._grouped_successor_states",
+                "grouped_successor_states",
             ),
         )
 
-        for decoder_cls, patched_name in decoder_cases:
+        for decoder_cls, patched_method in decoder_cases:
             for input_name, mol_or_prepared in self._connected_stereo_inputs():
                 with self.subTest(
                     decoder_cls=decoder_cls.__name__,
@@ -105,8 +106,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                     expected_next = expected.next_choices[selected_idx].next_state
 
                     decoder = decoder_cls(mol_or_prepared, **STEREO_KWARGS)
-                    with patch(
-                        patched_name,
+                    with patch.object(
+                        _runtime_states._LazyAllRootsConnectedStereoState,
+                        patched_method,
                         side_effect=_reject_successor_enumeration,
                     ):
                         choices = decoder.next_choices

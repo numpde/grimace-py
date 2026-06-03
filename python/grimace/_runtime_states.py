@@ -18,6 +18,8 @@ class _BaseDecoderState(Protocol):
     def is_terminal(self) -> bool: ...
     def copy(self) -> "_BaseDecoderState": ...
     def cache_key(self) -> Hashable: ...
+    def _choice_state_entries(self) -> _StateEntries: ...
+    def _grouped_state_entries(self) -> _StateEntries: ...
     def choice_successor_states(
         self,
     ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
@@ -58,6 +60,9 @@ class _CoreStateAdapter:
     def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return self._successor_states(self._decoder.choice_successors())
 
+    def _choice_state_entries(self) -> _StateEntries:
+        return _eager_state_entries(self.choice_successor_states())
+
     def prefix(self) -> str:
         return self._decoder.prefix()
 
@@ -72,6 +77,9 @@ class _CoreStateAdapter:
 
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
         return self._successor_states(self._decoder.grouped_successors())
+
+    def _grouped_state_entries(self) -> _StateEntries:
+        return _eager_state_entries(self.grouped_successor_states())
 
 
 class _LazyAllRootsConnectedStereoState:
@@ -183,6 +191,9 @@ class _MergedStateAdapter:
             successor_states.extend(_choice_successor_states(state))
         return tuple(successor_states)
 
+    def _choice_state_entries(self) -> _StateEntries:
+        return _eager_state_entries(self.choice_successor_states())
+
     def prefix(self) -> str:
         prefix = self._states[0].prefix()
         for state in self._states[1:]:
@@ -211,6 +222,9 @@ class _MergedStateAdapter:
             (text, _merge_state_adapters(tuple(successors)))
             for text, successors in grouped.items()
         )
+
+    def _grouped_state_entries(self) -> _StateEntries:
+        return _eager_state_entries(self.grouped_successor_states())
 
 
 class _DisconnectedStateAdapter:
@@ -300,7 +314,7 @@ class _DisconnectedStateAdapter:
     def _choice_state_entries(self) -> _StateEntries:
         active = self._active_state()
         if not active.is_terminal():
-            return self._active_successor_entries(_choice_state_entries(active))
+            return self._active_successor_entries(active._choice_state_entries())
         return self._fragment_separator_entry(active)
 
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
@@ -314,7 +328,7 @@ class _DisconnectedStateAdapter:
     def _grouped_state_entries(self) -> _StateEntries:
         active = self._active_state()
         if not active.is_terminal():
-            return self._active_successor_entries(_grouped_state_entries(active))
+            return self._active_successor_entries(active._grouped_state_entries())
         return self._fragment_separator_entry(active)
 
     def prefix(self) -> str:
@@ -365,24 +379,10 @@ def _choice_successor_states(
     return state.choice_successor_states()
 
 
-def _choice_state_entries(state: _BaseDecoderState) -> _StateEntries:
-    entries = getattr(state, "_choice_state_entries", None)
-    if entries is not None:
-        return entries()
-    return _eager_state_entries(_choice_successor_states(state))
-
-
 def _grouped_successor_states(
     state: _BaseDecoderState,
 ) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return state.grouped_successor_states()
-
-
-def _grouped_state_entries(state: _BaseDecoderState) -> _StateEntries:
-    entries = getattr(state, "_grouped_state_entries", None)
-    if entries is not None:
-        return entries()
-    return _eager_state_entries(_grouped_successor_states(state))
 
 
 def _state_cache_key(state: _BaseDecoderState) -> DecoderCacheKey:

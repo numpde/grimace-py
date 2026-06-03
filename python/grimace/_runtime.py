@@ -30,9 +30,7 @@ from grimace._runtime_states import (
     _StateEntries,
     _StateFactory,
     _choice_successor_states,
-    _choice_state_entries,
     _grouped_successor_states,
-    _grouped_state_entries,
     _state_cache_key,
 )
 from grimace._reference.prepared_graph import (
@@ -349,7 +347,7 @@ class MolToSmilesDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _public_decoder_choices(
             type(self),
-            _choice_state_entries(self._state),
+            self._state._choice_state_entries(),
         )
 
 
@@ -357,7 +355,7 @@ class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _public_decoder_choices(
             type(self),
-            _grouped_state_entries(self._state),
+            self._state._grouped_state_entries(),
         )
 
 

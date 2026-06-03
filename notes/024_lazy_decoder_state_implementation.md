@@ -82,7 +82,10 @@ realize transitions through the single helper `_realize_state_transitions(...)`.
   - Check an active lazy fragment inside `_DisconnectedStateAdapter`.
   - Add minimal wrapping only if disconnected public choices otherwise force
     eager successors.
-  - Keep `"."` separator behavior unchanged.
+  - Treat `is_terminal()` as "this prefix is accepted", not "this state has no
+    continuations".
+  - If an active fragment is accepted and still has continuations, expose both
+    the continuations and the `"."` separator when another fragment remains.
 
 - [x] Preserve exact correctness.
   - Public decoder outputs must still match `MolToSmilesEnum`.

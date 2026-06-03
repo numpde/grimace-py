@@ -62,10 +62,13 @@ realize transitions through the single helper `_realize_state_transitions(...)`.
   - For connected stereo with `rootedAtAtom=-1`, return the lazy all-roots state.
   - Do not call `_core.RootedConnectedStereoDecoder` during unrooted stereo init.
 
-- [x] Build only selected successors for public choices.
-  - Branch-preserving choices instantiate only the selected root decoder.
-  - Determinized choices instantiate only roots whose first token matches the
-    selected token.
+- [x] Build only selected successor states for public choices.
+  - Choice listing may inspect rooted decoders to obtain token labels.
+  - Cached public choices do not retain those rooted decoders.
+  - Branch-preserving `choice.next_state` instantiates and advances only the
+    selected root/index.
+  - Determinized `choice.next_state` instantiates and advances only roots whose
+    next-token support contains the selected token.
   - Do not eagerly enumerate sibling successor states while producing public
     choices.
 

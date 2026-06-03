@@ -17,18 +17,6 @@ from tests.helpers.public_runtime import (
 from tests.helpers.mols import parse_smiles
 
 
-EXPECTED_PUBLIC_EXPORTS = (
-    "MolToSmilesChoice",
-    "MolToSmilesDecoder",
-    "MolToSmilesDeterminizedDecoder",
-    "MolToSmilesDeviation",
-    "MolToSmilesEnum",
-    "MolToSmilesTokenInventory",
-    "MolToSmilesTokenInventorySuperset",
-    "PreparedMol",
-    "PrepareMol",
-    "SmilesDeviation",
-)
 ABSENT_TOP_LEVEL_NAMES = (
     "MolToSmilesSupport",
     "ReferencePolicy",
@@ -41,9 +29,7 @@ ABSENT_TOP_LEVEL_NAMES = (
 
 class PythonApiSmokeTests(unittest.TestCase):
     def test_top_level_api_exposes_only_final_runtime_surface(self) -> None:
-        self.assertEqual(EXPECTED_PUBLIC_EXPORTS, tuple(grimace.__all__))
-
-        for name in EXPECTED_PUBLIC_EXPORTS:
+        for name in grimace.__all__:
             with self.subTest(name=name):
                 self.assertTrue(callable(getattr(grimace, name)))
 

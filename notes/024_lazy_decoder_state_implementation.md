@@ -44,8 +44,8 @@ adding new public API or deeper Rust surface.
 - [x] Add private lazy transition plumbing.
   - Add a minimal private transition shape such as `(text, state_factory)`.
   - Ask states for lazy transitions when public choices need labels.
-  - Keep eager successor-state methods only for exhaustive traversal paths.
-  - Keep exhaustive audit/oracle helpers able to use eager traversal.
+  - Make transition factories the only decoder-state traversal primitive.
+  - Keep exhaustive audit/oracle helpers able to explicitly realize transitions.
 
 - [x] Add a private lazy all-roots connected-stereo state.
   - Store the prepared connected stereo graph.
@@ -69,6 +69,12 @@ adding new public API or deeper Rust surface.
     selected token.
   - Do not eagerly enumerate sibling successor states while producing public
     choices.
+
+- [x] Remove the eager successor-state adapter surface.
+  - Do not keep `choice_successor_states()` or `grouped_successor_states()` on
+    runtime state adapters.
+  - Route exhaustive traversal through module-level transition realization.
+  - Guard the boundary with a static runtime-state test.
 
 - [x] Preserve disconnected behavior.
   - Check an active lazy fragment inside `_DisconnectedStateAdapter`.

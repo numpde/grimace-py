@@ -94,6 +94,14 @@ def runtime_state_cache_key(state: object) -> object:
     return _runtime_states._state_cache_key(state)
 
 
+def runtime_choice_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+    return _runtime_states._choice_successor_states(state)
+
+
+def runtime_grouped_successor_states(state: object) -> tuple[tuple[str, object], ...]:
+    return _runtime_states._grouped_successor_states(state)
+
+
 def reachable_terminal_prefixes(
     state: object,
     *,
@@ -113,7 +121,7 @@ def reachable_terminal_prefixes(
         return terminal
 
     outputs: set[str] = set()
-    for _, successor in state.choice_successor_states():
+    for _, successor in runtime_choice_successor_states(state):
         outputs.update(reachable_terminal_prefixes(successor, memo=memo))
     resolved = frozenset(outputs)
     memo[key] = resolved

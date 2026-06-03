@@ -217,8 +217,13 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertNotIn("_state_cache_key", _attribute_names(self.deviation_module))
         self.assertNotIn("_state_cache_key", _name_ids(self.deviation_module))
 
-    def test_runtime_states_do_not_use_eager_core_successor_methods(self) -> None:
-        forbidden_methods = {"choice_successors", "grouped_successors"}
+    def test_runtime_states_do_not_use_eager_successor_methods(self) -> None:
+        forbidden_methods = {
+            "choice_successors",
+            "grouped_successors",
+            "choice_successor_states",
+            "grouped_successor_states",
+        }
 
         self.assertFalse(forbidden_methods & _attribute_names(self.runtime_state_module))
 

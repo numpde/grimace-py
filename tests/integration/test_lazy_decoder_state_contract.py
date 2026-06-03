@@ -22,11 +22,11 @@ def _reject_rooted_stereo_decoder_construction(*_args: object, **_kwargs: object
     )
 
 
-def _reject_successor_enumeration(
+def _reject_state_realization(
     *_args: object,
     **_kwargs: object,
 ) -> None:
-    raise AssertionError("choices must not eagerly enumerate sibling successor states")
+    raise AssertionError("choices must not eagerly realize sibling successor states")
 
 
 class LazyDecoderStateContractTests(unittest.TestCase):
@@ -83,17 +83,11 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         self,
     ) -> None:
         decoder_cases = (
-            (
-                grimace.MolToSmilesDecoder,
-                "choice_successor_states",
-            ),
-            (
-                grimace.MolToSmilesDeterminizedDecoder,
-                "grouped_successor_states",
-            ),
+            grimace.MolToSmilesDecoder,
+            grimace.MolToSmilesDeterminizedDecoder,
         )
 
-        for decoder_cls, patched_method in decoder_cases:
+        for decoder_cls in decoder_cases:
             for input_name, mol_or_prepared in self._connected_stereo_inputs():
                 with self.subTest(
                     decoder_cls=decoder_cls.__name__,
@@ -107,9 +101,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
                     decoder = decoder_cls(mol_or_prepared, **STEREO_KWARGS)
                     with patch.object(
-                        _runtime_states._LazyAllRootsConnectedStereoState,
-                        patched_method,
-                        side_effect=_reject_successor_enumeration,
+                        _runtime_states,
+                        "_realize_state_transitions",
+                        side_effect=_reject_state_realization,
                     ):
                         choices = decoder.next_choices
                         observed_texts = tuple(choice.text for choice in choices)
@@ -172,9 +166,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         self.assertEqual("C", merged.prefix)
 
         with patch.object(
-            _runtime_states._MergedStateAdapter,
-            "grouped_successor_states",
-            side_effect=_reject_successor_enumeration,
+            _runtime_states,
+            "_realize_state_transitions",
+            side_effect=_reject_state_realization,
         ):
             choices = merged.next_choices
             self.assertEqual(("C", "("), tuple(choice.text for choice in choices))
@@ -186,17 +180,15 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         decoder_cases = (
             (
                 grimace.MolToSmilesDecoder,
-                "choice_successor_states",
                 "C",
             ),
             (
                 grimace.MolToSmilesDeterminizedDecoder,
-                "grouped_successor_states",
                 "C",
             ),
         )
 
-        for decoder_cls, patched_method, expected_prefix in decoder_cases:
+        for decoder_cls, expected_prefix in decoder_cases:
             with self.subTest(decoder_cls=decoder_cls.__name__):
                 decoder = decoder_cls(
                     parse_smiles("CCO"),
@@ -204,9 +196,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                 )
 
                 with patch.object(
-                    _runtime_states._CoreStateAdapter,
-                    patched_method,
-                    side_effect=_reject_successor_enumeration,
+                    _runtime_states,
+                    "_realize_state_transitions",
+                    side_effect=_reject_state_realization,
                 ):
                     choices = decoder.next_choices
                     self.assertEqual(("C",), tuple(choice.text for choice in choices))

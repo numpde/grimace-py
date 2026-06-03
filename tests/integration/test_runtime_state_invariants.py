@@ -8,6 +8,8 @@ import grimace
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     reachable_terminal_prefixes,
+    runtime_choice_successor_states,
+    runtime_grouped_successor_states,
     runtime_state_cache_key,
     supported_public_kwargs,
 )
@@ -138,7 +140,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 self._assert_state_graph_matches_outputs(
                     initial_state=decoder._state,
                     outputs=outputs,
-                    successor_fn=lambda state: state.grouped_successor_states(),
+                    successor_fn=runtime_grouped_successor_states,
                     require_unique_choice_texts=True,
                 )
 
@@ -184,7 +186,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 self._assert_state_graph_matches_outputs(
                     initial_state=decoder._state,
                     outputs=outputs,
-                    successor_fn=lambda state: state.choice_successor_states(),
+                    successor_fn=runtime_choice_successor_states,
                 )
 
 

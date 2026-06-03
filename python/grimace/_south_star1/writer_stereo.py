@@ -148,7 +148,11 @@ def terminal_writer_stereo_state(
     stereo_state: "WriterStereoState",
     atom: AtomId,
 ) -> "WriterStereoState | None":
-    return _on_local_order_closed(prepared, stereo_state, atom)
+    return advance_writer_stereo_state(
+        prepared,
+        stereo_state,
+        (WriterLocalOrderClosed(atom=atom),),
+    )
 
 
 def writer_atom_text_choices(

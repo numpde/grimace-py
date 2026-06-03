@@ -50,6 +50,7 @@ from grimace._south_star1.writer_state import WriterClosureLabel
 from grimace._south_star1.writer_state import WriterStereoState
 from grimace._south_star1.writer_stereo import advance_writer_stereo_state
 from grimace._south_star1.writer_stereo import empty_writer_stereo_state
+from grimace._south_star1.writer_stereo import terminal_writer_stereo_state
 from grimace._south_star1.writer_stereo import WriterDelayedStereoFactor
 from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import directional_facts
@@ -648,6 +649,46 @@ class WriterStereoResidualTest(unittest.TestCase):
         )
 
         self.assertIsNone(advance_writer_stereo_state(prepared, state, ()))
+
+    def test_terminal_stereo_closure_accepts_supported_residual_state(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+
+        self.assertIsNotNone(
+            terminal_writer_stereo_state(
+                prepared,
+                empty_writer_stereo_state(),
+                AtomId(0),
+            )
+        )
+
+    def test_terminal_stereo_closure_rejects_unsupported_residual_snapshot(self) -> None:
+        prepared = _prepare(triangle_no_stereo_facts())
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        store = ResidualStore()
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        factor = DirectionalResidualFactor(
+            scope=(left, right),
+            status=SiteStatus.SPECIFIED,
+            target=DirectionalValue.OPPOSITE,
+            carrier_models={
+                left: DirectionalCarrierResidual(left, "left", 1, 1),
+                right: DirectionalCarrierResidual(right, "right", 1, 1),
+            },
+        )
+        self.assertTrue(add_factor_checked(store, factor))
+        state = WriterStereoState(
+            residual_snapshot=store.value_snapshot(),
+            atom_occurrences=(),
+            bond_occurrences=(),
+            local_orders=(),
+            delayed_factors=(),
+        )
+
+        self.assertIsNone(
+            terminal_writer_stereo_state(prepared, state, AtomId(0))
+        )
 
 
 def _prepare(facts):

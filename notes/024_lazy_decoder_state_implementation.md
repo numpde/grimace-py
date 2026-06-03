@@ -41,9 +41,9 @@ adding new public API or deeper Rust surface.
   - Keep the existing eager successor-tuple path for current states.
   - Do not export a new class or public method.
 
-- [x] Add private lazy choice-entry plumbing.
-  - Add a minimal private entry shape such as `(text, state_factory)`.
-  - Ask a state for lazy entries when it can provide them.
+- [x] Add private lazy transition plumbing.
+  - Add a minimal private transition shape such as `(text, state_factory)`.
+  - Ask a state for lazy transitions when it can provide them.
   - Fall back to current eager successor-state methods.
   - Keep exhaustive audit/oracle helpers able to use eager traversal.
 

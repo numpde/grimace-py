@@ -37,6 +37,15 @@ def _eager_state_transitions(
     )
 
 
+def _realize_state_transitions(
+    transitions: _StateTransitions,
+) -> tuple[tuple[str, _BaseDecoderState], ...]:
+    return tuple(
+        (text, state_factory())
+        for text, state_factory in transitions
+    )
+
+
 class _CoreStateAdapter:
     __slots__ = ("_decoder",)
 
@@ -143,16 +152,10 @@ class _LazyAllRootsConnectedStereoState:
         )
 
     def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return tuple(
-            (text, state_factory())
-            for text, state_factory in self._choice_state_transitions()
-        )
+        return _realize_state_transitions(self._choice_state_transitions())
 
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return tuple(
-            (text, state_factory())
-            for text, state_factory in self._grouped_state_transitions()
-        )
+        return _realize_state_transitions(self._grouped_state_transitions())
 
     def prefix(self) -> str:
         return ""

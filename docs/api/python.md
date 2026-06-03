@@ -122,6 +122,7 @@ decoder.prefix       # 'CC'
 State interface:
 
 - `next_choices: tuple[MolToSmilesChoice, ...]`
+- `choices() -> tuple[MolToSmilesChoice, ...]`
 - `prefix: str`
 - `is_terminal: bool`
 - `copy() -> MolToSmilesDecoder`
@@ -160,6 +161,7 @@ decoder = decoder.next_choices[0].next_state  # 'c1('
 State interface:
 
 - `next_choices: tuple[MolToSmilesChoice, ...]`
+- `choices() -> tuple[MolToSmilesChoice, ...]`
 - `prefix: str`
 - `is_terminal: bool`
 - `copy() -> MolToSmilesDeterminizedDecoder`
@@ -181,8 +183,9 @@ The decoder APIs expose the support language as stateful next-token choices.
 For the conceptual model and the difference between branch-preserving and
 determinized choices, see [Concepts](../concepts.html).
 
-Both decoder classes expose `prefix`, `next_choices`, `is_terminal`, and
-`copy()`.
+Both decoder classes expose `prefix`, `next_choices`, `choices()`,
+`is_terminal`, and `copy()`.
+`choices()` returns the same cached tuple as `next_choices`.
 
 ## MolToSmilesDeviation
 

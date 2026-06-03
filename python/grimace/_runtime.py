@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from itertools import product
 from typing import cast
 
@@ -102,6 +102,18 @@ class MolToSmilesChoice:
         self.text = text
         self.next_state = next_state
 
+    @classmethod
+    def _from_next_state_factory(
+        cls,
+        text: str,
+        next_state_factory: Callable[[], object],
+    ) -> "MolToSmilesChoice":
+        choice = cls.__new__(cls)
+        choice.text = text
+        choice._next_state = None
+        choice._next_state_factory = next_state_factory
+        return choice
+
     @property
     def next_state(self) -> object:
         factory = self._next_state_factory
@@ -114,43 +126,6 @@ class MolToSmilesChoice:
     def next_state(self, next_state: object) -> None:
         self._next_state = next_state
         self._next_state_factory = None
-
-
-def _make_public_decoder_state(
-    decoder_type: type,
-    state_impl: _BaseDecoderState,
-) -> object:
-    decoder = decoder_type.__new__(decoder_type)
-    decoder._state = state_impl
-    decoder._choices_cache = None
-    return decoder
-
-
-def _public_decoder_choice(
-    decoder_type: type,
-    text: str,
-    state_factory: _StateFactory,
-) -> MolToSmilesChoice:
-    choice = MolToSmilesChoice.__new__(MolToSmilesChoice)
-    choice.text = text
-    choice._next_state = None
-    choice._next_state_factory = lambda: _make_public_decoder_state(
-        decoder_type,
-        state_factory(),
-    )
-    return choice
-
-
-def _public_decoder_choices(
-    decoder_type: type,
-    entries: _StateEntries,
-) -> tuple[MolToSmilesChoice, ...]:
-    if not entries:
-        return ()
-    return tuple(
-        _public_decoder_choice(decoder_type, text, state_factory)
-        for text, state_factory in entries
-    )
 
 
 def _instantiate_core_object(
@@ -339,6 +314,29 @@ class _PublicDecoderBase:
         if self._choices_cache is None:
             self._choices_cache = self.choices()
         return self._choices_cache
+
+
+def _public_decoder_choice(
+    decoder_type: type[_PublicDecoderBase],
+    text: str,
+    state_factory: _StateFactory,
+) -> MolToSmilesChoice:
+    return MolToSmilesChoice._from_next_state_factory(
+        text,
+        lambda: decoder_type._from_parts(state_factory()),
+    )
+
+
+def _public_decoder_choices(
+    decoder_type: type[_PublicDecoderBase],
+    entries: _StateEntries,
+) -> tuple[MolToSmilesChoice, ...]:
+    if not entries:
+        return ()
+    return tuple(
+        _public_decoder_choice(decoder_type, text, state_factory)
+        for text, state_factory in entries
+    )
 
 
 class MolToSmilesDecoder(_PublicDecoderBase):

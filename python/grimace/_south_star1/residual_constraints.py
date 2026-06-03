@@ -177,6 +177,7 @@ class ResidualStore:
         cls,
         snapshot: ResidualStoreValueSnapshot,
     ) -> "ResidualStore":
+        _validate_residual_snapshot_assignment_consistency(snapshot)
         store = cls()
         store._domains = dict(snapshot.domains)
         store._assignments = dict(snapshot.assignments)
@@ -407,6 +408,108 @@ def _residual_component_has_solution(
         return False
 
     return search(0)
+
+
+def _validate_residual_snapshot_assignment_consistency(
+    snapshot: ResidualStoreValueSnapshot,
+) -> None:
+    domains = dict(snapshot.domains)
+    assignments = dict(snapshot.assignments)
+    if len(assignments) != len(snapshot.assignments):
+        raise ValueError("duplicate residual snapshot assignment")
+
+    for var, value in snapshot.assignments:
+        if var not in domains:
+            raise ValueError(
+                f"residual assignment references unknown variable: {var!r}"
+            )
+        if value not in domains[var]:
+            raise ValueError(
+                f"residual assignment value outside domain: {var!r}={value!r}"
+            )
+
+    for factor_snapshot in snapshot.factors:
+        scope = tuple(getattr(factor_snapshot, "scope", ()))
+        for var in scope:
+            if var not in domains:
+                raise ValueError(
+                    f"factor snapshot references unknown variable: {var!r}"
+                )
+
+        if isinstance(factor_snapshot, TetraResidualFactorValueSnapshot):
+            if len(scope) != 1:
+                raise ValueError(
+                    "tetra residual factor snapshot must have unary scope"
+                )
+            var = scope[0]
+            factor_value = factor_snapshot.assigned
+            top_value = assignments.get(var, _UNASSIGNED)
+            if factor_value is _UNASSIGNED:
+                if top_value is not _UNASSIGNED:
+                    raise ValueError(
+                        "tetra factor missing assigned value for assigned "
+                        f"variable: {var!r}"
+                    )
+                continue
+            if factor_value not in domains[var]:
+                raise ValueError(
+                    "tetra factor assigned value outside domain: "
+                    f"{var!r}={factor_value!r}"
+                )
+            if top_value is _UNASSIGNED:
+                raise ValueError(
+                    f"tetra factor assignment missing from residual snapshot: {var!r}"
+                )
+            if top_value != factor_value:
+                raise ValueError(
+                    "tetra factor assignment disagrees with residual "
+                    f"snapshot: {var!r}"
+                )
+            continue
+
+        if isinstance(factor_snapshot, DirectionalResidualFactorValueSnapshot):
+            marks = dict(factor_snapshot.marks)
+            if len(marks) != len(factor_snapshot.marks):
+                raise ValueError("duplicate directional residual factor mark")
+            for var, value in factor_snapshot.marks:
+                if var not in scope:
+                    raise ValueError(
+                        "directional factor mark references out-of-scope "
+                        f"variable: {var!r}"
+                    )
+                if var not in domains:
+                    raise ValueError(
+                        "directional factor mark references unknown "
+                        f"variable: {var!r}"
+                    )
+                if value not in domains[var]:
+                    raise ValueError(
+                        "directional factor mark outside domain: "
+                        f"{var!r}={value!r}"
+                    )
+            for var in scope:
+                top_value = assignments.get(var, _UNASSIGNED)
+                mark_value = marks.get(var, _UNASSIGNED)
+                if top_value is _UNASSIGNED and mark_value is _UNASSIGNED:
+                    continue
+                if top_value is _UNASSIGNED:
+                    raise ValueError(
+                        "directional factor mark missing from residual "
+                        f"snapshot: {var!r}"
+                    )
+                if mark_value is _UNASSIGNED:
+                    raise ValueError(
+                        "directional factor missing mark for assigned "
+                        f"variable: {var!r}"
+                    )
+                if top_value != mark_value:
+                    raise ValueError(
+                        "directional factor mark disagrees with residual "
+                        f"snapshot: {var!r}"
+                    )
+            continue
+
+        raise ValueError(f"unknown residual factor snapshot: {factor_snapshot!r}")
 
 
 def _remove_factor(

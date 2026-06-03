@@ -183,7 +183,7 @@ class _MergedStateAdapter:
         return prefix
 
     def is_terminal(self) -> bool:
-        return all(state.is_terminal() for state in self._states)
+        return any(state.is_terminal() for state in self._states)
 
     def copy(self) -> "_MergedStateAdapter":
         return type(self)(tuple(state.copy() for state in self._states))
@@ -273,17 +273,29 @@ class _DisconnectedStateAdapter:
             return ()
         return ((".", lambda: self._advance_fragment(active)),)
 
+    def _active_state_transitions(
+        self,
+        transitions: _StateTransitions,
+        active: _BaseDecoderState,
+    ) -> _StateTransitions:
+        wrapped = self._wrap_active_transitions(transitions)
+        if active.is_terminal():
+            return wrapped + self._fragment_separator_transition(active)
+        return wrapped
+
     def _choice_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
-        if not active.is_terminal():
-            return self._wrap_active_transitions(active._choice_state_transitions())
-        return self._fragment_separator_transition(active)
+        return self._active_state_transitions(
+            active._choice_state_transitions(),
+            active,
+        )
 
     def _grouped_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
-        if not active.is_terminal():
-            return self._wrap_active_transitions(active._grouped_state_transitions())
-        return self._fragment_separator_transition(active)
+        return self._active_state_transitions(
+            active._grouped_state_transitions(),
+            active,
+        )
 
     def prefix(self) -> str:
         return f"{self._completed_prefix}{self._active_state().prefix()}"

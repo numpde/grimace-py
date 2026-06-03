@@ -119,12 +119,10 @@ def reachable_terminal_prefixes(
     if cached is not None:
         return cached
 
-    if state.is_terminal():
-        terminal = frozenset({state.prefix()})
-        memo[key] = terminal
-        return terminal
-
     outputs: set[str] = set()
+    if state.is_terminal():
+        outputs.add(state.prefix())
+
     for _, successor in runtime_realized_choice_transitions(state):
         outputs.update(reachable_terminal_prefixes(successor, memo=memo))
     resolved = frozenset(outputs)

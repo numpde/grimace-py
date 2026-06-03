@@ -9,7 +9,11 @@ import grimace
 import grimace._core as _core
 import grimace._runtime_states as _runtime_states
 from tests.helpers.mols import parse_smiles
-from tests.helpers.public_runtime import choice_texts, supported_public_kwargs
+from tests.helpers.public_runtime import (
+    choice_texts,
+    reachable_terminal_prefixes,
+    supported_public_kwargs,
+)
 
 
 STEREO_SMILES = "F[C@H](Cl)Br"
@@ -29,6 +33,24 @@ def _reject_state_realization(
     **_kwargs: object,
 ) -> None:
     raise AssertionError("choices must not eagerly realize sibling successor states")
+
+
+def _choice_transition_texts(state: object) -> tuple[str, ...]:
+    return tuple(
+        text
+        for text, _ in _runtime_states._realize_state_transitions(
+            state._choice_state_transitions()
+        )
+    )
+
+
+def _grouped_transition_texts(state: object) -> tuple[str, ...]:
+    return tuple(
+        text
+        for text, _ in _runtime_states._realize_state_transitions(
+            state._grouped_state_transitions()
+        )
+    )
 
 
 class LazyDecoderStateContractTests(unittest.TestCase):
@@ -318,24 +340,100 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             (State(terminal=True), State(terminal=False))
         )
 
-        self.assertEqual(
-            ("C",),
-            tuple(
-                text
-                for text, _ in _runtime_states._realize_state_transitions(
-                    merged._choice_state_transitions()
-                )
-            ),
+        self.assertTrue(merged.is_terminal())
+        self.assertEqual(("C",), _choice_transition_texts(merged))
+        self.assertEqual(("C",), _grouped_transition_texts(merged))
+
+    def test_reachable_outputs_include_accepting_state_continuations(self) -> None:
+        class State:
+            def __init__(
+                self,
+                prefix: str,
+                terminal: bool,
+                next_state: object = None,
+            ) -> None:
+                self._prefix = prefix
+                self._terminal = terminal
+                self._next_state = next_state
+
+            def prefix(self) -> str:
+                return self._prefix
+
+            def is_terminal(self) -> bool:
+                return self._terminal
+
+            def copy(self) -> "State":
+                return self
+
+            def cache_key(self) -> tuple[str, bool]:
+                return (self._prefix, self._terminal)
+
+            def _choice_state_transitions(self) -> tuple[tuple[str, object], ...]:
+                if self._next_state is None:
+                    return ()
+                return (("C", lambda: self._next_state),)
+
+            def _grouped_state_transitions(self) -> tuple[tuple[str, object], ...]:
+                return self._choice_state_transitions()
+
+        terminal_child = State("CC", terminal=True)
+        accepting_with_continuation = State(
+            "C",
+            terminal=True,
+            next_state=terminal_child,
         )
+
         self.assertEqual(
-            ("C",),
-            tuple(
-                text
-                for text, _ in _runtime_states._realize_state_transitions(
-                    merged._grouped_state_transitions()
-                )
-            ),
+            frozenset({"C", "CC"}),
+            reachable_terminal_prefixes(accepting_with_continuation),
         )
+
+    def test_disconnected_accepting_fragment_keeps_continuations_and_separator(
+        self,
+    ) -> None:
+        class State:
+            def __init__(self, prefix: str, terminal: bool) -> None:
+                self._prefix = prefix
+                self._terminal = terminal
+
+            def prefix(self) -> str:
+                return self._prefix
+
+            def is_terminal(self) -> bool:
+                return self._terminal
+
+            def copy(self) -> "State":
+                return self
+
+            def cache_key(self) -> tuple[str, bool]:
+                return (self._prefix, self._terminal)
+
+            def _transitions(self) -> tuple[tuple[str, object], ...]:
+                return (("C", lambda: State(f"{self._prefix}C", terminal=True)),)
+
+            def _choice_state_transitions(self) -> tuple[tuple[str, object], ...]:
+                return self._transitions()
+
+            def _grouped_state_transitions(self) -> tuple[tuple[str, object], ...]:
+                return self._transitions()
+
+        disconnected = _runtime_states._DisconnectedStateAdapter(
+            (
+                State("C", terminal=True),
+                State("O", terminal=True),
+            )
+        )
+
+        self.assertFalse(disconnected.is_terminal())
+        self.assertEqual(("C", "."), _choice_transition_texts(disconnected))
+        self.assertEqual(("C", "."), _grouped_transition_texts(disconnected))
+        last_fragment = _runtime_states._DisconnectedStateAdapter(
+            (State("C", terminal=True),)
+        )
+
+        self.assertTrue(last_fragment.is_terminal())
+        self.assertEqual(("C",), _choice_transition_texts(last_fragment))
+        self.assertEqual(("C",), _grouped_transition_texts(last_fragment))
 
 
 if __name__ == "__main__":

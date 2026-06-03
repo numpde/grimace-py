@@ -74,16 +74,18 @@ class RuntimeStateInvariantTests(unittest.TestCase):
             self.assertTrue(all(output.startswith(prefix) for output in reachable))
 
             if state.is_terminal():
-                self.assertEqual((), successor_states)
+                self.assertIn(prefix, reachable)
+
+            if not successor_states:
+                self.assertTrue(state.is_terminal())
                 self.assertEqual(frozenset({prefix}), reachable)
                 continue
 
-            self.assertTrue(successor_states)
             if require_unique_choice_texts:
                 option_texts = tuple(text for text, _ in successor_states)
                 self.assertEqual(len(set(option_texts)), len(option_texts))
 
-            union_of_branch_outputs: set[str] = set()
+            union_of_branch_outputs: set[str] = {prefix} if state.is_terminal() else set()
             for _, successor in successor_states:
                 branch_outputs = reachable_terminal_prefixes(
                     successor,

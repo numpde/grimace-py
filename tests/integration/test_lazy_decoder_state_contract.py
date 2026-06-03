@@ -161,6 +161,29 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                 self.assertEqual("incomplete", deviation.reason)
                 self.assertEqual(selected_token, deviation.accepted_text)
 
+    def test_merged_determinized_choices_do_not_eagerly_realize_successors(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("CCO"),
+            **supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1),
+        )
+        merged = next(
+            choice.next_state
+            for choice in decoder.next_choices
+            if choice.text == "C"
+        )
+        self.assertEqual("C", merged.prefix)
+
+        with patch.object(
+            _runtime_states._MergedStateAdapter,
+            "grouped_successor_states",
+            side_effect=_reject_successor_enumeration,
+        ):
+            choices = merged.next_choices
+            self.assertEqual(("C", "("), tuple(choice.text for choice in choices))
+            advanced = choices[0].next_state
+
+        self.assertEqual("CC", advanced.prefix)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -192,7 +192,12 @@ class _MergedStateAdapter:
         return tuple(successor_states)
 
     def _choice_state_transitions(self) -> _StateTransitions:
-        return _eager_state_transitions(self.choice_successor_states())
+        transitions: list[tuple[str, _StateTransitionFactory]] = []
+        for state in self._states:
+            if state.is_terminal():
+                continue
+            transitions.extend(state._choice_state_transitions())
+        return tuple(transitions)
 
     def prefix(self) -> str:
         prefix = self._states[0].prefix()
@@ -224,7 +229,19 @@ class _MergedStateAdapter:
         )
 
     def _grouped_state_transitions(self) -> _StateTransitions:
-        return _eager_state_transitions(self.grouped_successor_states())
+        grouped: dict[str, list[_StateTransitionFactory]] = {}
+        for state in self._states:
+            for text, state_factory in state._grouped_state_transitions():
+                grouped.setdefault(text, []).append(state_factory)
+        return tuple(
+            (
+                text,
+                lambda factories=tuple(factories): _merge_state_adapters(
+                    tuple(factory() for factory in factories)
+                ),
+            )
+            for text, factories in grouped.items()
+        )
 
 
 class _DisconnectedStateAdapter:

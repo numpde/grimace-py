@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Hashable, Sequence
 from typing import Protocol, TypeAlias, cast
 
+import grimace._core as _core
+
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
 _StateFactory: TypeAlias = Callable[[], "_BaseDecoderState"]
@@ -72,6 +74,99 @@ class _CoreStateAdapter:
         return self._successor_states(self._decoder.grouped_successors())
 
 
+class _LazyAllRootsConnectedStereoState:
+    __slots__ = ("_prepared", "_root_indices")
+
+    def __init__(
+        self,
+        prepared: object,
+        root_indices: tuple[int, ...],
+    ) -> None:
+        if not root_indices:
+            raise ValueError("Lazy all-roots stereo state requires at least one root")
+        self._prepared = prepared
+        self._root_indices = root_indices
+
+    def _root_decoder(self, root_idx: int) -> object:
+        return _core.RootedConnectedStereoDecoder(self._prepared, root_idx)
+
+    @staticmethod
+    def _advance_choice_state(decoder: object, chosen_idx: int) -> _CoreStateAdapter:
+        next_decoder = decoder.copy()
+        next_decoder.advance_choice(chosen_idx)
+        return _CoreStateAdapter(next_decoder)
+
+    @staticmethod
+    def _advance_token_state(decoder: object, chosen_token: str) -> _CoreStateAdapter:
+        next_decoder = decoder.copy()
+        next_decoder.advance_token(chosen_token)
+        return _CoreStateAdapter(next_decoder)
+
+    def _choice_state_entries(self) -> _StateEntries:
+        entries: list[tuple[str, _StateFactory]] = []
+        for root_idx in self._root_indices:
+            decoder = self._root_decoder(root_idx)
+            for chosen_idx, text in enumerate(decoder.next_choice_texts()):
+                entries.append(
+                    (
+                        text,
+                        lambda decoder=decoder, chosen_idx=chosen_idx: (
+                            self._advance_choice_state(decoder, chosen_idx)
+                        ),
+                    )
+                )
+        return tuple(entries)
+
+    def _grouped_state_entries(self) -> _StateEntries:
+        buckets: dict[str, list[object]] = {}
+        for root_idx in self._root_indices:
+            decoder = self._root_decoder(root_idx)
+            for text in decoder.next_token_support():
+                buckets.setdefault(text, []).append(decoder)
+
+        return tuple(
+            (
+                text,
+                lambda text=text, decoders=tuple(decoders): _merge_state_adapters(
+                    tuple(
+                        self._advance_token_state(decoder, text)
+                        for decoder in decoders
+                    )
+                ),
+            )
+            for text, decoders in buckets.items()
+        )
+
+    def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
+        return tuple(
+            (text, state_factory())
+            for text, state_factory in self._choice_state_entries()
+        )
+
+    def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
+        return tuple(
+            (text, state_factory())
+            for text, state_factory in self._grouped_state_entries()
+        )
+
+    def prefix(self) -> str:
+        return ""
+
+    def is_terminal(self) -> bool:
+        return False
+
+    def copy(self) -> "_LazyAllRootsConnectedStereoState":
+        return type(self)(self._prepared, self._root_indices)
+
+    def cache_key(self) -> DecoderCacheKey:
+        return (
+            "lazy_all_roots_connected_stereo",
+            self._prepared.policy_digest,
+            self._prepared.identity_smiles,
+            self._root_indices,
+        )
+
+
 class _MergedStateAdapter:
     __slots__ = ("_states",)
 
@@ -113,7 +208,7 @@ class _MergedStateAdapter:
             for text, successor in _grouped_successor_states(state):
                 grouped.setdefault(text, []).append(successor)
         return tuple(
-            (text, _merge_choice_successor_states(tuple(successors)))
+            (text, _merge_state_adapters(tuple(successors)))
             for text, successors in grouped.items()
         )
 
@@ -248,9 +343,11 @@ class _DisconnectedStateAdapter:
         )
 
 
-def _merge_choice_successor_states(
+def _merge_state_adapters(
     states: tuple[_BaseDecoderState, ...],
 ) -> _BaseDecoderState:
+    if not states:
+        raise ValueError("Cannot merge an empty decoder state set")
     flattened: list[_BaseDecoderState] = []
     for state in states:
         if isinstance(state, _MergedStateAdapter):

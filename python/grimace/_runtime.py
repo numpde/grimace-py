@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator
 from itertools import product
 from typing import cast
 
@@ -26,7 +26,9 @@ from grimace._runtime_states import (
     DecoderCacheKey,
     _CoreStateAdapter,
     _DisconnectedStateAdapter,
-    _MergedStateAdapter,
+    _LazyAllRootsConnectedStereoState,
+    _StateEntries,
+    _StateFactory,
     _choice_successor_states,
     _choice_state_entries,
     _determinized_choice_successors,
@@ -131,7 +133,7 @@ def _make_public_decoder_state(
 def _public_decoder_choice(
     decoder_type: type,
     text: str,
-    state_factory: Callable[[], _BaseDecoderState],
+    state_factory: _StateFactory,
 ) -> MolToSmilesChoice:
     choice = MolToSmilesChoice.__new__(MolToSmilesChoice)
     choice.text = text
@@ -143,9 +145,9 @@ def _public_decoder_choice(
     return choice
 
 
-def _public_decoder_lazy_choices(
+def _public_decoder_choices(
     decoder_type: type,
-    entries: Sequence[tuple[str, Callable[[], _BaseDecoderState]]],
+    entries: _StateEntries,
 ) -> tuple[MolToSmilesChoice, ...]:
     if not entries:
         return ()
@@ -209,118 +211,6 @@ def _make_connected_state_adapter(
     flags: _MolToSmilesFlags,
 ) -> _CoreStateAdapter:
     return _CoreStateAdapter(_make_decoder(mol_or_prepared, flags))
-
-
-def _merge_state_adapters(
-    states: tuple[_BaseDecoderState, ...],
-) -> _BaseDecoderState:
-    if not states:
-        raise ValueError("Cannot merge an empty decoder state set")
-    if len(states) == 1:
-        return states[0]
-    return _MergedStateAdapter(states)
-
-
-class _LazyAllRootsConnectedStereoState:
-    __slots__ = ("_prepared", "_root_indices")
-
-    def __init__(
-        self,
-        prepared: object,
-        root_indices: tuple[int, ...],
-    ) -> None:
-        if not root_indices:
-            raise ValueError("Lazy all-roots stereo state requires at least one root")
-        self._prepared = prepared
-        self._root_indices = root_indices
-
-    def _root_decoder(self, root_idx: int) -> object:
-        return _core.RootedConnectedStereoDecoder(self._prepared, root_idx)
-
-    @staticmethod
-    def _advance_choice_state(decoder: object, chosen_idx: int) -> _CoreStateAdapter:
-        next_decoder = decoder.copy()
-        next_decoder.advance_choice(chosen_idx)
-        return _CoreStateAdapter(next_decoder)
-
-    @staticmethod
-    def _advance_token_state(decoder: object, chosen_token: str) -> _CoreStateAdapter:
-        next_decoder = decoder.copy()
-        next_decoder.advance_token(chosen_token)
-        return _CoreStateAdapter(next_decoder)
-
-    def _choice_state_entries(
-        self,
-    ) -> tuple[tuple[str, Callable[[], _BaseDecoderState]], ...]:
-        entries: list[tuple[str, Callable[[], _BaseDecoderState]]] = []
-        for root_idx in self._root_indices:
-            decoder = self._root_decoder(root_idx)
-            for chosen_idx, text in enumerate(decoder.next_choice_texts()):
-                entries.append(
-                    (
-                        text,
-                        lambda decoder=decoder, chosen_idx=chosen_idx: (
-                            self._advance_choice_state(decoder, chosen_idx)
-                        ),
-                    )
-                )
-        return tuple(entries)
-
-    def _grouped_state_entries(
-        self,
-    ) -> tuple[tuple[str, Callable[[], _BaseDecoderState]], ...]:
-        buckets: list[tuple[str, list[object]]] = []
-        for root_idx in self._root_indices:
-            decoder = self._root_decoder(root_idx)
-            for text in decoder.next_token_support():
-                for existing_text, decoders in buckets:
-                    if existing_text == text:
-                        decoders.append(decoder)
-                        break
-                else:
-                    buckets.append((text, [decoder]))
-
-        return tuple(
-            (
-                text,
-                lambda text=text, decoders=tuple(decoders): _merge_state_adapters(
-                    tuple(
-                        self._advance_token_state(decoder, text)
-                        for decoder in decoders
-                    )
-                ),
-            )
-            for text, decoders in buckets
-        )
-
-    def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return tuple(
-            (text, state_factory())
-            for text, state_factory in self._choice_state_entries()
-        )
-
-    def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return tuple(
-            (text, state_factory())
-            for text, state_factory in self._grouped_state_entries()
-        )
-
-    def prefix(self) -> str:
-        return ""
-
-    def is_terminal(self) -> bool:
-        return False
-
-    def copy(self) -> "_LazyAllRootsConnectedStereoState":
-        return type(self)(self._prepared, self._root_indices)
-
-    def cache_key(self) -> DecoderCacheKey:
-        return (
-            "lazy_all_roots_connected_stereo",
-            self._prepared.policy_digest,
-            self._prepared.identity_smiles,
-            self._root_indices,
-        )
 
 
 def _make_fragment_state_adapter(
@@ -459,7 +349,7 @@ class _PublicDecoderBase:
 
 class MolToSmilesDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        return _public_decoder_lazy_choices(
+        return _public_decoder_choices(
             type(self),
             _choice_state_entries(self._state),
         )
@@ -467,7 +357,7 @@ class MolToSmilesDecoder(_PublicDecoderBase):
 
 class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
     def choices(self) -> tuple[MolToSmilesChoice, ...]:
-        return _public_decoder_lazy_choices(
+        return _public_decoder_choices(
             type(self),
             _grouped_state_entries(self._state),
         )

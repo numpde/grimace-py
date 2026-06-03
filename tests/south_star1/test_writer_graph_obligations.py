@@ -21,9 +21,14 @@ from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
 from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_graph_obligations import WriterBoundaryIncidence
 from grimace._south_star1.writer_graph_obligations import WriterBoundaryOwnerKind
 from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
+from grimace._south_star1.writer_graph_obligations import WriterGraphObligationSummary
+from grimace._south_star1.writer_graph_obligations import WriterResidualAttachment
+from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentAction
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
+from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentState
 from grimace._south_star1.writer_graph_obligations import build_writer_graph_obligation_context
 from grimace._south_star1.writer_graph_obligations import build_writer_block_cut_metadata
 from grimace._south_star1.writer_graph_obligations import classify_writer_edge_obligations
@@ -33,6 +38,8 @@ from grimace._south_star1.writer_graph_obligations import validate_writer_edge_o
 from grimace._south_star1.writer_graph_obligations import writer_boundary_incidence_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_edge_obligation_partition_sort_tuple
 from grimace._south_star1.writer_graph_obligations import writer_graph_completion_status
+from grimace._south_star1.writer_graph_obligations import writer_residual_attachment_action_incidences
+from grimace._south_star1.writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
 from grimace._south_star1.writer_graph_obligations import writer_residual_attachment_sort_tuple
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
@@ -54,6 +61,21 @@ from tests.south_star1.helpers import atom
 from tests.south_star1.helpers import bond
 from tests.south_star1.helpers import cco_facts
 from tests.south_star1.helpers import single_bond
+
+
+def _synthetic_action_summary(
+    *,
+    attachments: tuple[WriterResidualAttachment, ...],
+    actions: tuple[WriterResidualAttachmentAction, ...],
+) -> WriterGraphObligationSummary:
+    return WriterGraphObligationSummary(
+        attachments=WriterResidualAttachmentState(attachments=attachments),
+        attachment_actions=actions,
+        boundary_by_owner_atom=(),
+        boundary_by_pending_parent=(),
+        has_cyclic_attachment=False,
+        has_unsupported_attachment=False,
+    )
 
 
 class WriterGraphObligationsTest(unittest.TestCase):
@@ -134,6 +156,97 @@ class WriterGraphObligationsTest(unittest.TestCase):
             tuple(action.kind for action in context.residual_summary.attachment_actions),
             (WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,),
         )
+
+    def test_residual_attachment_action_incidences_expand_boundaries(self) -> None:
+        attachment = WriterResidualAttachment(
+            attachment_id=7,
+            atoms=frozenset((AtomId(2), AtomId(3))),
+            latent_bonds=frozenset((BondId(2),)),
+            boundary=(
+                WriterBoundaryIncidence(
+                    bond=BondId(0),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(2),
+                    owner_kind=WriterBoundaryOwnerKind.ACTIVE_ATOM,
+                ),
+                WriterBoundaryIncidence(
+                    bond=BondId(1),
+                    written_atom=AtomId(1),
+                    residual_atom=AtomId(3),
+                    owner_kind=WriterBoundaryOwnerKind.BRANCH_RETURN,
+                ),
+            ),
+            cyclic_rank=1,
+            block_ids=frozenset((4,)),
+        )
+        action = WriterResidualAttachmentAction(
+            attachment_id=7,
+            kind=WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+            owner_atoms=(AtomId(0), AtomId(1)),
+            boundary_bonds=(BondId(0), BondId(1)),
+        )
+        summary = _synthetic_action_summary(
+            attachments=(attachment,),
+            actions=(action,),
+        )
+
+        incidences = writer_residual_attachment_action_incidences(summary)
+
+        self.assertEqual(
+            tuple(item.incidence.bond for item in incidences),
+            (BondId(0), BondId(1)),
+        )
+        self.assertEqual(tuple(item.action for item in incidences), (action, action))
+        self.assertEqual(
+            tuple(item.attachment for item in incidences),
+            (attachment, attachment),
+        )
+        active_only = writer_residual_attachment_action_incidences_for_atom(
+            summary,
+            AtomId(0),
+        )
+        self.assertEqual(len(active_only), 1)
+        self.assertEqual(active_only[0].incidence.bond, BondId(0))
+
+    def test_residual_attachment_action_incidences_reject_unknown_attachment(self) -> None:
+        action = WriterResidualAttachmentAction(
+            attachment_id=99,
+            kind=WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+            owner_atoms=(AtomId(0),),
+            boundary_bonds=(BondId(0),),
+        )
+        summary = _synthetic_action_summary(
+            attachments=(),
+            actions=(action,),
+        )
+
+        with self.assertRaises(ValueError):
+            writer_residual_attachment_action_incidences(summary)
+
+    def test_residual_attachment_action_incidences_reject_duplicate_attachment_ids(self) -> None:
+        first = WriterResidualAttachment(
+            attachment_id=7,
+            atoms=frozenset((AtomId(2),)),
+            latent_bonds=frozenset((BondId(2),)),
+            boundary=(),
+            cyclic_rank=0,
+            block_ids=frozenset(),
+        )
+        second = WriterResidualAttachment(
+            attachment_id=7,
+            atoms=frozenset((AtomId(3),)),
+            latent_bonds=frozenset((BondId(3),)),
+            boundary=(),
+            cyclic_rank=0,
+            block_ids=frozenset(),
+        )
+        summary = _synthetic_action_summary(
+            attachments=(first, second),
+            actions=(),
+        )
+
+        with self.assertRaises(ValueError):
+            writer_residual_attachment_action_incidences(summary)
 
     def test_context_builder_exposes_closure_candidate_partition(self) -> None:
         prepared = _prepare(triangle_facts())

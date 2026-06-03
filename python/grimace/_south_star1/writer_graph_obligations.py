@@ -96,6 +96,13 @@ class WriterResidualAttachmentAction:
 
 
 @dataclass(frozen=True, slots=True)
+class WriterResidualAttachmentActionIncidence:
+    action: WriterResidualAttachmentAction
+    attachment: WriterResidualAttachment
+    incidence: WriterBoundaryIncidence
+
+
+@dataclass(frozen=True, slots=True)
 class WriterGraphObligationSummary:
     attachments: WriterResidualAttachmentState
     attachment_actions: tuple[WriterResidualAttachmentAction, ...]
@@ -420,6 +427,47 @@ def classify_writer_residual_attachments(
         boundary_by_pending_parent=_canonical_boundary_index(boundary_by_pending),
         has_cyclic_attachment=has_cyclic_attachment,
         has_unsupported_attachment=has_unsupported_attachment,
+    )
+
+
+def writer_residual_attachment_action_incidences(
+    summary: WriterGraphObligationSummary,
+) -> tuple[WriterResidualAttachmentActionIncidence, ...]:
+    attachments_by_id: dict[int, WriterResidualAttachment] = {}
+    for attachment in summary.attachments.attachments:
+        if attachment.attachment_id in attachments_by_id:
+            raise ValueError(
+                f"duplicate writer residual attachment id: {attachment.attachment_id!r}"
+            )
+        attachments_by_id[attachment.attachment_id] = attachment
+
+    incidences: list[WriterResidualAttachmentActionIncidence] = []
+    for action in summary.attachment_actions:
+        attachment = attachments_by_id.get(action.attachment_id)
+        if attachment is None:
+            raise ValueError(
+                "writer residual attachment action references unknown "
+                f"attachment: {action.attachment_id!r}"
+            )
+        for incidence in attachment.boundary:
+            incidences.append(
+                WriterResidualAttachmentActionIncidence(
+                    action=action,
+                    attachment=attachment,
+                    incidence=incidence,
+                )
+            )
+    return tuple(incidences)
+
+
+def writer_residual_attachment_action_incidences_for_atom(
+    summary: WriterGraphObligationSummary,
+    atom: AtomId,
+) -> tuple[WriterResidualAttachmentActionIncidence, ...]:
+    return tuple(
+        incidence
+        for incidence in writer_residual_attachment_action_incidences(summary)
+        if incidence.incidence.written_atom == atom
     )
 
 
@@ -1124,6 +1172,7 @@ __all__ = (
     "WriterGraphPreparedMetadata",
     "WriterResidualAttachment",
     "WriterResidualAttachmentAction",
+    "WriterResidualAttachmentActionIncidence",
     "WriterResidualAttachmentActionKind",
     "WriterResidualAttachmentState",
     "build_writer_graph_obligation_context",
@@ -1142,4 +1191,6 @@ __all__ = (
     "writer_graph_completion_status",
     "writer_residual_attachment_sort_tuple",
     "writer_residual_attachment_action_is_blocked",
+    "writer_residual_attachment_action_incidences",
+    "writer_residual_attachment_action_incidences_for_atom",
 )

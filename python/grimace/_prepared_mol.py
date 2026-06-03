@@ -80,12 +80,8 @@ class PreparedMol:
 
 
 def _load_zstd() -> Any:
-    try:
-        import zstandard as zstd
-    except ImportError as exc:  # pragma: no cover - environment guard
-        raise RuntimeError(
-            "PreparedMol zstd compression requires the zstandard package"
-        ) from exc
+    import zstandard as zstd
+
     return zstd
 
 

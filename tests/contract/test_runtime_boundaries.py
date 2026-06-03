@@ -81,6 +81,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
     runtime_input_module = REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py"
     runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
+    runtime_state_module = REPO_ROOT / "python" / "grimace" / "_runtime_states.py"
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
@@ -215,6 +216,11 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertNotIn("_state", _attribute_names(self.deviation_module))
         self.assertNotIn("_state_cache_key", _attribute_names(self.deviation_module))
         self.assertNotIn("_state_cache_key", _name_ids(self.deviation_module))
+
+    def test_runtime_states_do_not_use_eager_core_successor_methods(self) -> None:
+        forbidden_methods = {"choice_successors", "grouped_successors"}
+
+        self.assertFalse(forbidden_methods & _attribute_names(self.runtime_state_module))
 
 
 if __name__ == "__main__":

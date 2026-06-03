@@ -45,6 +45,64 @@ class LazyDecoderStateContractTests(unittest.TestCase):
     def _connected_stereo_inputs(self) -> tuple[tuple[str, object], ...]:
         return self._inputs_for_smiles(STEREO_SMILES)
 
+    def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
+        created_decoders: list[object] = []
+        advanced_decoders: list[tuple[str, int]] = []
+
+        class Decoder:
+            def __init__(self, _prepared: object, _root_idx: int) -> None:
+                self.ordinal = len(created_decoders)
+                created_decoders.append(self)
+
+            def next_choice_texts(self) -> tuple[str, ...]:
+                return ("C",)
+
+            def next_token_support(self) -> tuple[str, ...]:
+                return ("C",)
+
+            def copy(self) -> "Decoder":
+                return self
+
+            def advance_choice(self, _chosen_idx: int) -> None:
+                advanced_decoders.append(("choice", self.ordinal))
+
+            def advance_token(self, _chosen_token: str) -> None:
+                advanced_decoders.append(("token", self.ordinal))
+
+        state = _runtime_states._LazyAllRootsConnectedStereoState(
+            object(),
+            atom_count=2,
+        )
+
+        with patch.object(_core, "RootedConnectedStereoDecoder", new=Decoder):
+            choice_transitions = state._choice_state_transitions()
+            created_before_choice_advance = len(created_decoders)
+            self.assertEqual(2, created_before_choice_advance)
+
+            choice_transitions[0][1]()
+            self.assertEqual(
+                [("choice", created_before_choice_advance)],
+                advanced_decoders,
+            )
+
+            created_before_grouped_listing = len(created_decoders)
+            grouped_transitions = state._grouped_state_transitions()
+            created_before_grouped_advance = len(created_decoders)
+            self.assertEqual(
+                2,
+                created_before_grouped_advance - created_before_grouped_listing,
+            )
+
+            grouped_transitions[0][1]()
+            self.assertEqual(
+                [
+                    ("choice", created_before_choice_advance),
+                    ("token", created_before_grouped_advance),
+                    ("token", created_before_grouped_advance + 1),
+                ],
+                advanced_decoders,
+            )
+
     def test_unrooted_stereo_decoder_init_does_not_instantiate_rooted_decoders(
         self,
     ) -> None:

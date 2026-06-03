@@ -109,31 +109,36 @@ class _LazyAllRootsConnectedStereoState:
                 transitions.append(
                     (
                         text,
-                        lambda decoder=decoder, chosen_idx=chosen_idx: (
-                            _advance_choice_state(decoder, chosen_idx)
+                        lambda root_idx=root_idx, chosen_idx=chosen_idx: (
+                            _advance_choice_state(
+                                self._root_decoder(root_idx),
+                                chosen_idx,
+                            )
                         ),
                     )
                 )
         return tuple(transitions)
 
     def _grouped_state_transitions(self) -> _StateTransitions:
-        buckets: dict[str, list[object]] = {}
+        buckets: dict[str, list[int]] = {}
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for text in decoder.next_token_support():
-                buckets.setdefault(text, []).append(decoder)
+                buckets.setdefault(text, []).append(root_idx)
 
         return tuple(
             (
                 text,
-                lambda text=text, decoders=tuple(decoders): _merge_state_adapters(
-                    tuple(
-                        _advance_token_state(decoder, text)
-                        for decoder in decoders
+                lambda text=text, root_indices=tuple(root_indices): (
+                    _merge_state_adapters(
+                        tuple(
+                            _advance_token_state(self._root_decoder(root_idx), text)
+                            for root_idx in root_indices
+                        )
                     )
                 ),
             )
-            for text, decoders in buckets.items()
+            for text, root_indices in buckets.items()
         )
 
     def prefix(self) -> str:

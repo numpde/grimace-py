@@ -91,6 +91,8 @@ class ResidualStore:
             raise ValueError(f"duplicate residual variable: {var!r}")
         if not domain:
             raise ValueError(f"residual variable has empty domain: {var!r}")
+        if _domain_has_duplicate_value(domain):
+            raise ValueError(f"residual variable has duplicate domain value: {var!r}")
         self._domains[var] = domain
 
     def add_factor(self, factor: ResidualFactor) -> int:
@@ -225,7 +227,17 @@ def _residual_snapshot_domain_map(
     for var, domain in snapshot.domains:
         if not domain:
             raise ValueError(f"empty residual snapshot domain: {var!r}")
+        if _domain_has_duplicate_value(domain):
+            raise ValueError(f"duplicate residual snapshot domain value: {var!r}")
     return domains
+
+
+def _domain_has_duplicate_value(domain: tuple[object, ...]) -> bool:
+    for index, value in enumerate(domain):
+        for other in domain[index + 1 :]:
+            if value == other:
+                return True
+    return False
 
 
 def residual_store_constraint_components(

@@ -154,6 +154,13 @@ class ResidualConstraintTest(unittest.TestCase):
 
         self.assertEqual(left.value_snapshot(), right.value_snapshot())
 
+    def test_residual_store_rejects_duplicate_domain_values(self) -> None:
+        var = tetra_var(("center", 0))
+        store = ResidualStore()
+
+        with self.assertRaises(ValueError):
+            store.add_var(var, (TetraToken.AT, TetraToken.AT))
+
     def test_residual_snapshot_rejects_duplicate_domains(self) -> None:
         var = tetra_var(("center", 0))
         snapshot = ResidualStoreValueSnapshot(
@@ -161,6 +168,23 @@ class ResidualConstraintTest(unittest.TestCase):
                 (var, (TetraToken.AT,)),
                 (var, (TetraToken.ATAT,)),
             ),
+            assignments=(),
+            factors=(),
+        )
+
+        with self.assertRaises(ValueError):
+            ResidualStore.from_value_snapshot(snapshot)
+        with self.assertRaises(ValueError):
+            residual_store_constraint_components(snapshot)
+        with self.assertRaises(ValueError):
+            residual_store_projected_values(snapshot, var)
+        with self.assertRaises(ValueError):
+            residual_store_assignments_have_support(snapshot, ())
+
+    def test_residual_snapshot_rejects_duplicate_domain_values(self) -> None:
+        var = tetra_var(("center", 0))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((var, (TetraToken.AT, TetraToken.AT)),),
             assignments=(),
             factors=(),
         )

@@ -135,7 +135,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 self._assert_state_graph_matches_outputs(
                     initial_state=decoder._state,
                     outputs=outputs,
-                    successor_fn=_runtime_states._grouped_successor_states,
+                    successor_fn=lambda state: state.grouped_successor_states(),
                     require_unique_choice_texts=True,
                 )
 
@@ -181,7 +181,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 self._assert_state_graph_matches_outputs(
                     initial_state=decoder._state,
                     outputs=outputs,
-                    successor_fn=_runtime_states._choice_successor_states,
+                    successor_fn=lambda state: state.choice_successor_states(),
                 )
 
 

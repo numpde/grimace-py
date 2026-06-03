@@ -321,25 +321,17 @@ class _PublicDecoderBase:
         raise NotImplementedError
 
 
-def _public_decoder_choice(
-    decoder_type: type[_PublicDecoderBase],
-    text: str,
-    state_factory,
-) -> MolToSmilesChoice:
-    return MolToSmilesChoice._from_next_state_factory(
-        text,
-        lambda: decoder_type._from_parts(state_factory()),
-    )
-
-
 def _public_decoder_choices(
     decoder_type: type[_PublicDecoderBase],
     transitions,
 ) -> tuple[MolToSmilesChoice, ...]:
-    if not transitions:
-        return ()
     return tuple(
-        _public_decoder_choice(decoder_type, text, state_factory)
+        MolToSmilesChoice._from_next_state_factory(
+            text,
+            lambda state_factory=state_factory: decoder_type._from_parts(
+                state_factory()
+            ),
+        )
         for text, state_factory in transitions
     )
 

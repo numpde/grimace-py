@@ -237,6 +237,15 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertFalse(forbidden_names & _attribute_names(self.runtime_state_module))
         self.assertFalse(forbidden_names & _function_names(self.runtime_state_module))
 
+    def test_runtime_states_have_one_transition_realization_helper(self) -> None:
+        realization_helpers = {
+            name
+            for name in _function_names(self.runtime_state_module)
+            if name.startswith("_realize_") and name.endswith("_transitions")
+        }
+
+        self.assertEqual({"_realize_state_transitions"}, realization_helpers)
+
 
 if __name__ == "__main__":
     unittest.main()

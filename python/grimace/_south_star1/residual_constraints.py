@@ -305,6 +305,73 @@ def residual_store_constraint_components(
     )
 
 
+def residual_store_projected_values(
+    snapshot: ResidualStoreValueSnapshot,
+    var: VarId,
+) -> tuple[object, ...]:
+    domains = dict(snapshot.domains)
+    if var not in domains:
+        raise ValueError(f"unknown residual variable: {var!r}")
+    component = next(
+        component
+        for component in residual_store_constraint_components(snapshot)
+        if var in component.variables
+    )
+    assigned = dict(snapshot.assignments)
+    candidates = (assigned[var],) if var in assigned else domains[var]
+    return tuple(
+        value
+        for value in candidates
+        if _residual_component_has_solution(
+            snapshot,
+            component,
+            ((var, value),),
+        )
+    )
+
+
+def _residual_component_has_solution(
+    snapshot: ResidualStoreValueSnapshot,
+    component: ResidualConstraintComponentSnapshot,
+    required_assignments: tuple[tuple[VarId, object], ...],
+) -> bool:
+    domains = dict(snapshot.domains)
+    fixed = dict(snapshot.assignments)
+    for var, value in required_assignments:
+        if var not in domains:
+            raise ValueError(f"unknown residual variable: {var!r}")
+        if value not in domains[var]:
+            return False
+        existing = fixed.get(var, _UNASSIGNED)
+        if existing is not _UNASSIGNED and existing != value:
+            return False
+        fixed[var] = value
+
+    store = ResidualStore.from_value_snapshot(snapshot)
+    ordered_choices = tuple(
+        (var, (fixed[var],) if var in fixed else domains[var])
+        for var in component.variables
+    )
+
+    def search(index: int) -> bool:
+        if index == len(ordered_choices):
+            return all(
+                store.close_factor(factor_index)
+                for factor_index in component.factor_indexes
+            )
+        current_var, values = ordered_choices[index]
+        for value in values:
+            checkpoint = store.checkpoint()
+            try:
+                if store.assign(current_var, value) and search(index + 1):
+                    return True
+            finally:
+                store.rollback(checkpoint)
+        return False
+
+    return search(0)
+
+
 def _remove_factor(
     store: ResidualStore,
     factor: ResidualFactor,
@@ -562,5 +629,6 @@ __all__ = (
     "add_factor_checked",
     "direction_var",
     "residual_store_constraint_components",
+    "residual_store_projected_values",
     "tetra_var",
 )

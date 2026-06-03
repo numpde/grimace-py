@@ -248,7 +248,7 @@ class _DisconnectedStateAdapter:
             completed_prefix=f"{self._completed_prefix}{active.prefix()}.",
         )
 
-    def _active_successor_transitions(
+    def _wrap_active_transitions(
         self,
         transitions: _StateTransitions,
     ) -> _StateTransitions:
@@ -271,13 +271,13 @@ class _DisconnectedStateAdapter:
     def _choice_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
         if not active.is_terminal():
-            return self._active_successor_transitions(active._choice_state_transitions())
+            return self._wrap_active_transitions(active._choice_state_transitions())
         return self._fragment_separator_transition(active)
 
     def _grouped_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
         if not active.is_terminal():
-            return self._active_successor_transitions(active._grouped_state_transitions())
+            return self._wrap_active_transitions(active._grouped_state_transitions())
         return self._fragment_separator_transition(active)
 
     def prefix(self) -> str:

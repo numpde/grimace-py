@@ -206,6 +206,53 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
                 self.assertEqual(expected_prefix, advanced.prefix)
 
+    def test_merged_state_does_not_query_terminal_child_transitions(self) -> None:
+        class State:
+            def __init__(self, *, terminal: bool) -> None:
+                self._terminal = terminal
+
+            def prefix(self) -> str:
+                return "C"
+
+            def is_terminal(self) -> bool:
+                return self._terminal
+
+            def copy(self) -> "State":
+                return self
+
+            def cache_key(self) -> tuple[bool]:
+                return (self._terminal,)
+
+            def _transitions(self) -> tuple[tuple[str, object], ...]:
+                if self._terminal:
+                    raise AssertionError("terminal child transitions must not be queried")
+                return (("C", lambda: self),)
+
+            def _choice_state_transitions(self) -> tuple[tuple[str, object], ...]:
+                return self._transitions()
+
+            def _grouped_state_transitions(self) -> tuple[tuple[str, object], ...]:
+                return self._transitions()
+
+        merged = _runtime_states._MergedStateAdapter(
+            (State(terminal=True), State(terminal=False))
+        )
+
+        self.assertEqual(
+            ("C",),
+            tuple(
+                text
+                for text, _ in _runtime_states._realize_choice_transitions(merged)
+            ),
+        )
+        self.assertEqual(
+            ("C",),
+            tuple(
+                text
+                for text, _ in _runtime_states._realize_grouped_transitions(merged)
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

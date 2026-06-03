@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Sequence
+from collections.abc import Callable, Hashable
 from typing import Protocol, TypeAlias, cast
 
 import grimace._core as _core
@@ -28,15 +28,6 @@ class _BaseDecoderState(Protocol):
     ) -> tuple[tuple[str, "_BaseDecoderState"], ...]: ...
 
 
-def _eager_state_transitions(
-    successors: tuple[tuple[str, _BaseDecoderState], ...],
-) -> _StateTransitions:
-    return tuple(
-        (text, lambda successor=successor: successor)
-        for text, successor in successors
-    )
-
-
 def _realize_state_transitions(
     transitions: _StateTransitions,
 ) -> tuple[tuple[str, _BaseDecoderState], ...]:
@@ -46,26 +37,39 @@ def _realize_state_transitions(
     )
 
 
+def _advance_choice_state(decoder: object, chosen_idx: int) -> "_CoreStateAdapter":
+    next_decoder = decoder.copy()
+    next_decoder.advance_choice(chosen_idx)
+    return _CoreStateAdapter(next_decoder)
+
+
+def _advance_token_state(decoder: object, chosen_token: str) -> "_CoreStateAdapter":
+    next_decoder = decoder.copy()
+    next_decoder.advance_token(chosen_token)
+    return _CoreStateAdapter(next_decoder)
+
+
 class _CoreStateAdapter:
     __slots__ = ("_decoder",)
 
     def __init__(self, decoder: object) -> None:
         self._decoder = decoder
 
-    @staticmethod
-    def _successor_states(
-        successors: Sequence[tuple[str, object]],
-    ) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return tuple(
-            (text, _CoreStateAdapter(next_decoder))
-            for text, next_decoder in successors
-        )
-
     def choice_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return self._successor_states(self._decoder.choice_successors())
+        return _realize_state_transitions(self._choice_state_transitions())
 
     def _choice_state_transitions(self) -> _StateTransitions:
-        return _eager_state_transitions(self.choice_successor_states())
+        decoder = self._decoder
+        return tuple(
+            (
+                text,
+                lambda chosen_idx=chosen_idx: _advance_choice_state(
+                    decoder,
+                    chosen_idx,
+                ),
+            )
+            for chosen_idx, text in enumerate(decoder.next_choice_texts())
+        )
 
     def prefix(self) -> str:
         return self._decoder.prefix()
@@ -80,10 +84,17 @@ class _CoreStateAdapter:
         return ("core", self._decoder.cache_key())
 
     def grouped_successor_states(self) -> tuple[tuple[str, _BaseDecoderState], ...]:
-        return self._successor_states(self._decoder.grouped_successors())
+        return _realize_state_transitions(self._grouped_state_transitions())
 
     def _grouped_state_transitions(self) -> _StateTransitions:
-        return _eager_state_transitions(self.grouped_successor_states())
+        decoder = self._decoder
+        return tuple(
+            (
+                text,
+                lambda text=text: _advance_token_state(decoder, text),
+            )
+            for text in decoder.next_token_support()
+        )
 
 
 class _LazyAllRootsConnectedStereoState:
@@ -102,21 +113,8 @@ class _LazyAllRootsConnectedStereoState:
     def _root_decoder(self, root_idx: int) -> object:
         return _core.RootedConnectedStereoDecoder(self._prepared, root_idx)
 
-    @staticmethod
-    def _advance_choice_state(decoder: object, chosen_idx: int) -> _CoreStateAdapter:
-        next_decoder = decoder.copy()
-        next_decoder.advance_choice(chosen_idx)
-        return _CoreStateAdapter(next_decoder)
-
-    @staticmethod
-    def _advance_token_state(decoder: object, chosen_token: str) -> _CoreStateAdapter:
-        next_decoder = decoder.copy()
-        next_decoder.advance_token(chosen_token)
-        return _CoreStateAdapter(next_decoder)
-
     def _choice_state_transitions(self) -> _StateTransitions:
         transitions: list[tuple[str, _StateTransitionFactory]] = []
-        advance_choice_state = self._advance_choice_state
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for chosen_idx, text in enumerate(decoder.next_choice_texts()):
@@ -124,7 +122,7 @@ class _LazyAllRootsConnectedStereoState:
                     (
                         text,
                         lambda decoder=decoder, chosen_idx=chosen_idx: (
-                            advance_choice_state(decoder, chosen_idx)
+                            _advance_choice_state(decoder, chosen_idx)
                         ),
                     )
                 )
@@ -132,7 +130,6 @@ class _LazyAllRootsConnectedStereoState:
 
     def _grouped_state_transitions(self) -> _StateTransitions:
         buckets: dict[str, list[object]] = {}
-        advance_token_state = self._advance_token_state
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for text in decoder.next_token_support():
@@ -143,7 +140,7 @@ class _LazyAllRootsConnectedStereoState:
                 text,
                 lambda text=text, decoders=tuple(decoders): _merge_state_adapters(
                     tuple(
-                        advance_token_state(decoder, text)
+                        _advance_token_state(decoder, text)
                         for decoder in decoders
                     )
                 ),

@@ -122,9 +122,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                     self.assertEqual(choice_texts(expected_next), choice_texts(advanced))
 
     def test_sequence_deviation_advances_only_observed_token(self) -> None:
-        original_advance_token_state = (
-            _runtime_states._LazyAllRootsConnectedStereoState._advance_token_state
-        )
+        original_advance_token_state = _runtime_states._advance_token_state
 
         for input_name, mol_or_prepared in self._connected_stereo_inputs():
             with self.subTest(input_name=input_name):
@@ -147,7 +145,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                     return original_advance_token_state(decoder, chosen_token)
 
                 with patch.object(
-                    _runtime_states._LazyAllRootsConnectedStereoState,
+                    _runtime_states,
                     "_advance_token_state",
                     side_effect=guarded_advance_token_state,
                 ):
@@ -183,6 +181,38 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             advanced = choices[0].next_state
 
         self.assertEqual("CC", advanced.prefix)
+
+    def test_core_decoder_choices_do_not_eagerly_realize_successors(self) -> None:
+        decoder_cases = (
+            (
+                grimace.MolToSmilesDecoder,
+                "choice_successor_states",
+                "C",
+            ),
+            (
+                grimace.MolToSmilesDeterminizedDecoder,
+                "grouped_successor_states",
+                "C",
+            ),
+        )
+
+        for decoder_cls, patched_method, expected_prefix in decoder_cases:
+            with self.subTest(decoder_cls=decoder_cls.__name__):
+                decoder = decoder_cls(
+                    parse_smiles("CCO"),
+                    **supported_public_kwargs(isomericSmiles=False, rootedAtAtom=0),
+                )
+
+                with patch.object(
+                    _runtime_states._CoreStateAdapter,
+                    patched_method,
+                    side_effect=_reject_successor_enumeration,
+                ):
+                    choices = decoder.next_choices
+                    self.assertEqual(("C",), tuple(choice.text for choice in choices))
+                    advanced = choices[0].next_state
+
+                self.assertEqual(expected_prefix, advanced.prefix)
 
 
 if __name__ == "__main__":

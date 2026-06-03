@@ -222,6 +222,9 @@ def _residual_snapshot_domain_map(
     domains = dict(snapshot.domains)
     if len(domains) != len(snapshot.domains):
         raise ValueError("duplicate residual snapshot domain")
+    for var, domain in snapshot.domains:
+        if not domain:
+            raise ValueError(f"empty residual snapshot domain: {var!r}")
     return domains
 
 

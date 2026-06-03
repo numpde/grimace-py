@@ -174,6 +174,23 @@ class ResidualConstraintTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             residual_store_assignments_have_support(snapshot, ())
 
+    def test_residual_snapshot_rejects_empty_domain(self) -> None:
+        var = tetra_var(("center", 0))
+        snapshot = ResidualStoreValueSnapshot(
+            domains=((var, ()),),
+            assignments=(),
+            factors=(),
+        )
+
+        with self.assertRaises(ValueError):
+            ResidualStore.from_value_snapshot(snapshot)
+        with self.assertRaises(ValueError):
+            residual_store_constraint_components(snapshot)
+        with self.assertRaises(ValueError):
+            residual_store_projected_values(snapshot, var)
+        with self.assertRaises(ValueError):
+            residual_store_assignments_have_support(snapshot, ())
+
     def test_residual_constraint_components_empty_snapshot(self) -> None:
         snapshot = ResidualStoreValueSnapshot(domains=(), assignments=(), factors=())
 

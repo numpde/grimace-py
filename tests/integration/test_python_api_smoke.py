@@ -277,10 +277,14 @@ class PythonApiSmokeTests(unittest.TestCase):
                 assert_public_entrypoints_raise(
                     self,
                     mol,
-                    kwargs=supported_public_kwargs(rootedAtAtom=0, **{flag_name: invalid_value}),
+                    kwargs=supported_public_kwargs(
+                        rootedAtAtom=0,
+                        **{flag_name: invalid_value},
+                    ),
                     expected_exception=TypeError,
                     expected_regex=(
-                        f"{flag_name} to follow RDKit's Python binding and be a bool, int, or None"
+                        f"{flag_name} to follow RDKit's Python binding "
+                        "and be a bool, int, or None"
                     ),
                 )
 
@@ -327,8 +331,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertEqual(reference_prepared.to_dict(), prepared.to_dict())
 
     def test_top_level_runtime_nonstereo_surface_smoke(self) -> None:
-        import grimace._runtime as _runtime
-
         mol = parse_smiles("CCO")
         expected = _runtime.enumerate_rooted_connected_nonstereo_smiles_support(
             mol,
@@ -356,8 +358,6 @@ class PythonApiSmokeTests(unittest.TestCase):
         self.assertEqual(expected, support)
 
     def test_top_level_runtime_stereo_surface_smoke(self) -> None:
-        import grimace._runtime as _runtime
-
         mol = parse_smiles("F/C=C\\Cl")
         expected = _runtime.enumerate_rooted_connected_stereo_smiles_support(
             mol,

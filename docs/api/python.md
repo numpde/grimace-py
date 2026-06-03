@@ -15,8 +15,8 @@ Current top-level exports:
 - `MolToSmilesChoice`
 - `MolToSmilesDecoder`
 - `MolToSmilesDeterminizedDecoder`
-- `MolToSmilesEnum`
 - `MolToSmilesDeviation`
+- `MolToSmilesEnum`
 - `MolToSmilesTokenInventory`
 - `MolToSmilesTokenInventorySuperset`
 - `PreparedMol`

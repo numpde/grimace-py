@@ -100,7 +100,19 @@ class RuntimeStateInvariantTests(unittest.TestCase):
         cases = (
             _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
             _audit_case("rooted_stereo", "F[C@H](Cl)Br", rootedAtAtom=0, isomericSmiles=True),
+            _audit_case(
+                "unrooted_stereo",
+                "F[C@H](Cl)Br",
+                rootedAtAtom=-1,
+                isomericSmiles=True,
+            ),
             _audit_case("disconnected_rooted", "[Na+].C#N", rootedAtAtom=0, isomericSmiles=False),
+            _audit_case(
+                "disconnected_unrooted_stereo",
+                "F[C@H](Cl)Br.O",
+                rootedAtAtom=-1,
+                isomericSmiles=True,
+            ),
             _audit_case(
                 "duplicate_same_text_connected",
                 "C1CCC2=NN=NN2CC1",
@@ -132,6 +144,12 @@ class RuntimeStateInvariantTests(unittest.TestCase):
             _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
             _audit_case("rooted_stereo", "F[C@H](Cl)Br", rootedAtAtom=0, isomericSmiles=True),
             _audit_case(
+                "unrooted_stereo",
+                "F[C@H](Cl)Br",
+                rootedAtAtom=-1,
+                isomericSmiles=True,
+            ),
+            _audit_case(
                 "nonisomeric_explicit_bond_dirs",
                 "F/C=C\\Cl",
                 rootedAtAtom=0,
@@ -141,6 +159,12 @@ class RuntimeStateInvariantTests(unittest.TestCase):
             _audit_case("unrooted_connected", "CCO", rootedAtAtom=-1, isomericSmiles=False),
             _audit_case("disconnected_rooted", "[Na+].CC", rootedAtAtom=0, isomericSmiles=False),
             _audit_case("disconnected_unrooted", "O.CCO", rootedAtAtom=-1, isomericSmiles=True),
+            _audit_case(
+                "disconnected_unrooted_stereo",
+                "F[C@H](Cl)Br.O",
+                rootedAtAtom=-1,
+                isomericSmiles=True,
+            ),
             _audit_case(
                 "duplicate_same_text_connected",
                 "C1CCC2=NN=NN2CC1",

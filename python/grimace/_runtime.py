@@ -330,9 +330,7 @@ class _PublicDecoderBase:
 
     @property
     def is_terminal(self) -> bool:
-        if self._choices_cache is not None:
-            return not self._choices_cache
-        return not self.next_choices
+        return self._state.is_terminal()
 
     def copy(self) -> "_PublicDecoderBase":
         return type(self)._from_parts(self._state.copy())

@@ -71,8 +71,12 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                         ):
                             decoder = decoder_cls(mol_or_prepared, **STEREO_KWARGS)
                             self.assertFalse(decoder.is_terminal)
+                            copied = decoder.copy()
+                            self.assertIsInstance(copied, decoder_cls)
+                            self.assertFalse(copied.is_terminal)
 
                         self.assertEqual("", decoder.prefix)
+                        self.assertEqual("", copied.prefix)
 
     def test_choices_advance_selected_branch_without_eager_successors(
         self,

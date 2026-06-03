@@ -67,7 +67,7 @@ adding new public API or deeper Rust surface.
   - Branch-preserving choices instantiate only the selected root decoder.
   - Determinized choices instantiate only roots whose first token matches the
     selected token.
-  - Do not call `_determinized_choice_successors` while producing initial
+  - Do not eagerly enumerate grouped successor states while producing initial
     determinized lazy choices.
 
 - [x] Preserve disconnected behavior.

@@ -385,13 +385,6 @@ def _grouped_state_entries(state: _BaseDecoderState) -> _StateEntries:
     return _eager_state_entries(_grouped_successor_states(state))
 
 
-def _determinized_choice_successors(
-    state: _BaseDecoderState,
-) -> tuple[tuple[str, _BaseDecoderState], ...]:
-    """Return one successor per token text by merging same-text branches."""
-    return _grouped_successor_states(state)
-
-
 def _state_cache_key(state: _BaseDecoderState) -> DecoderCacheKey:
     key = state.cache_key()
     if isinstance(key, tuple):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import unittest
 import weakref
+from collections.abc import Callable
 from unittest.mock import patch
 
 import grimace
@@ -19,6 +20,7 @@ from tests.helpers.public_runtime import (
 STEREO_SMILES = "F[C@H](Cl)Br"
 DISCONNECTED_STEREO_SMILES = f"{STEREO_SMILES}.O"
 STEREO_KWARGS = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1)
+_FakeTransitions = tuple[tuple[str, Callable[[], object]], ...]
 
 
 def _reject_rooted_stereo_decoder_construction(*_args: object, **_kwargs: object) -> None:
@@ -51,6 +53,41 @@ def _grouped_transition_texts(state: object) -> tuple[str, ...]:
             state._grouped_state_transitions()
         )
     )
+
+
+class _FakeState:
+    def __init__(
+        self,
+        prefix: str,
+        *,
+        terminal: bool,
+        transitions: _FakeTransitions = (),
+        reject_terminal_transitions: bool = False,
+    ) -> None:
+        self._prefix = prefix
+        self._terminal = terminal
+        self._transitions = transitions
+        self._reject_terminal_transitions = reject_terminal_transitions
+
+    def prefix(self) -> str:
+        return self._prefix
+
+    def is_terminal(self) -> bool:
+        return self._terminal
+
+    def copy(self) -> "_FakeState":
+        return self
+
+    def cache_key(self) -> tuple[str, str, bool]:
+        return ("fake", self._prefix, self._terminal)
+
+    def _choice_state_transitions(self) -> _FakeTransitions:
+        if self._terminal and self._reject_terminal_transitions:
+            raise AssertionError("terminal child transitions must not be queried")
+        return self._transitions
+
+    def _grouped_state_transitions(self) -> _FakeTransitions:
+        return self._choice_state_transitions()
 
 
 class LazyDecoderStateContractTests(unittest.TestCase):
@@ -309,78 +346,51 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                 self.assertEqual(expected_prefix, advanced.prefix)
 
     def test_merged_state_does_not_query_terminal_child_transitions(self) -> None:
-        class State:
-            def __init__(self, *, terminal: bool) -> None:
-                self._terminal = terminal
-
-            def prefix(self) -> str:
-                return "C"
-
-            def is_terminal(self) -> bool:
-                return self._terminal
-
-            def copy(self) -> "State":
-                return self
-
-            def cache_key(self) -> tuple[bool]:
-                return (self._terminal,)
-
-            def _transitions(self) -> tuple[tuple[str, object], ...]:
-                if self._terminal:
-                    raise AssertionError("terminal child transitions must not be queried")
-                return (("C", lambda: self),)
-
-            def _choice_state_transitions(self) -> tuple[tuple[str, object], ...]:
-                return self._transitions()
-
-            def _grouped_state_transitions(self) -> tuple[tuple[str, object], ...]:
-                return self._transitions()
-
+        terminal = _FakeState(
+            "C",
+            terminal=True,
+            reject_terminal_transitions=True,
+        )
+        nonterminal = _FakeState(
+            "C",
+            terminal=False,
+            transitions=(("C", lambda: nonterminal),),
+        )
         merged = _runtime_states._MergedStateAdapter(
-            (State(terminal=True), State(terminal=False))
+            (terminal, nonterminal)
         )
 
         self.assertTrue(merged.is_terminal())
         self.assertEqual(("C",), _choice_transition_texts(merged))
         self.assertEqual(("C",), _grouped_transition_texts(merged))
 
+    def test_merged_state_cache_keys_are_order_insensitive(self) -> None:
+        first = _FakeState("C", terminal=False)
+        second = _FakeState("N", terminal=False)
+
+        self.assertEqual(
+            _runtime_states._state_cache_key(
+                _runtime_states._MergedStateAdapter((first, second))
+            ),
+            _runtime_states._state_cache_key(
+                _runtime_states._MergedStateAdapter((second, first))
+            ),
+        )
+        self.assertNotEqual(
+            _runtime_states._state_cache_key(
+                _runtime_states._MergedStateAdapter((first, second))
+            ),
+            _runtime_states._state_cache_key(
+                _runtime_states._MergedStateAdapter((first, first))
+            ),
+        )
+
     def test_reachable_outputs_include_accepting_state_continuations(self) -> None:
-        class State:
-            def __init__(
-                self,
-                prefix: str,
-                terminal: bool,
-                next_state: object = None,
-            ) -> None:
-                self._prefix = prefix
-                self._terminal = terminal
-                self._next_state = next_state
-
-            def prefix(self) -> str:
-                return self._prefix
-
-            def is_terminal(self) -> bool:
-                return self._terminal
-
-            def copy(self) -> "State":
-                return self
-
-            def cache_key(self) -> tuple[str, bool]:
-                return (self._prefix, self._terminal)
-
-            def _choice_state_transitions(self) -> tuple[tuple[str, object], ...]:
-                if self._next_state is None:
-                    return ()
-                return (("C", lambda: self._next_state),)
-
-            def _grouped_state_transitions(self) -> tuple[tuple[str, object], ...]:
-                return self._choice_state_transitions()
-
-        terminal_child = State("CC", terminal=True)
-        accepting_with_continuation = State(
+        terminal_child = _FakeState("CC", terminal=True)
+        accepting_with_continuation = _FakeState(
             "C",
             terminal=True,
-            next_state=terminal_child,
+            transitions=(("C", lambda: terminal_child),),
         )
 
         self.assertEqual(
@@ -391,36 +401,16 @@ class LazyDecoderStateContractTests(unittest.TestCase):
     def test_disconnected_accepting_fragment_keeps_continuations_and_separator(
         self,
     ) -> None:
-        class State:
-            def __init__(self, prefix: str, terminal: bool) -> None:
-                self._prefix = prefix
-                self._terminal = terminal
-
-            def prefix(self) -> str:
-                return self._prefix
-
-            def is_terminal(self) -> bool:
-                return self._terminal
-
-            def copy(self) -> "State":
-                return self
-
-            def cache_key(self) -> tuple[str, bool]:
-                return (self._prefix, self._terminal)
-
-            def _transitions(self) -> tuple[tuple[str, object], ...]:
-                return (("C", lambda: State(f"{self._prefix}C", terminal=True)),)
-
-            def _choice_state_transitions(self) -> tuple[tuple[str, object], ...]:
-                return self._transitions()
-
-            def _grouped_state_transitions(self) -> tuple[tuple[str, object], ...]:
-                return self._transitions()
+        first_fragment = _FakeState(
+            "C",
+            terminal=True,
+            transitions=(("C", lambda: _FakeState("CC", terminal=True)),),
+        )
 
         disconnected = _runtime_states._DisconnectedStateAdapter(
             (
-                State("C", terminal=True),
-                State("O", terminal=True),
+                first_fragment,
+                _FakeState("O", terminal=True),
             )
         )
 
@@ -428,7 +418,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         self.assertEqual(("C", "."), _choice_transition_texts(disconnected))
         self.assertEqual(("C", "."), _grouped_transition_texts(disconnected))
         last_fragment = _runtime_states._DisconnectedStateAdapter(
-            (State("C", terminal=True),)
+            (first_fragment,)
         )
 
         self.assertTrue(last_fragment.is_terminal())

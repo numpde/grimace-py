@@ -204,6 +204,8 @@ class _MergedStateAdapter:
     def _grouped_state_transitions(self) -> _StateTransitions:
         grouped: dict[str, list[_StateTransitionFactory]] = {}
         for state in self._states:
+            if state.is_terminal():
+                continue
             for text, state_factory in state._grouped_state_transitions():
                 grouped.setdefault(text, []).append(state_factory)
         return tuple(

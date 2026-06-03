@@ -18,14 +18,12 @@ def _name_ids(path: Path) -> set[str]:
     return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
 
 
-def _class_method_names(path: Path) -> set[str]:
+def _function_names(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     return {
-        item.name
+        node.name
         for node in ast.walk(tree)
-        if isinstance(node, ast.ClassDef)
-        for item in node.body
-        if isinstance(item, ast.FunctionDef)
+        if isinstance(node, ast.FunctionDef)
     }
 
 
@@ -228,7 +226,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertNotIn("_state_cache_key", _attribute_names(self.deviation_module))
         self.assertNotIn("_state_cache_key", _name_ids(self.deviation_module))
 
-    def test_runtime_states_do_not_use_eager_successor_methods(self) -> None:
+    def test_runtime_states_do_not_use_eager_successor_names(self) -> None:
         forbidden_methods = {
             "choice_successors",
             "grouped_successors",
@@ -237,9 +235,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         }
 
         self.assertFalse(forbidden_methods & _attribute_names(self.runtime_state_module))
-        self.assertFalse(
-            forbidden_methods & _class_method_names(self.runtime_state_module)
-        )
+        self.assertFalse(forbidden_methods & _function_names(self.runtime_state_module))
 
 
 if __name__ == "__main__":

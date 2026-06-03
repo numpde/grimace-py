@@ -26,6 +26,7 @@ from .residual_constraints import TetraResidualFactor
 from .residual_constraints import TetraResidualFactorValueSnapshot
 from .residual_constraints import VarId
 from .residual_constraints import direction_var
+from .residual_constraints import residual_store_assignments_have_support
 from .residual_constraints import tetra_var
 from .writer_graph_obligations import WriterBoundaryOwnerKind
 from .writer_graph_obligations import WriterEdgeObligationKind
@@ -982,6 +983,15 @@ def _validate_stereo_state(
     stereo_state: WriterStereoStateKey,
 ) -> None:
     _round_trip_residual_snapshot(stereo_state.residual_snapshot)
+    try:
+        has_support = residual_store_assignments_have_support(
+            stereo_state.residual_snapshot,
+            (),
+        )
+    except ValueError as exc:
+        _invalid_snapshot(f"writer stereo residual snapshot is invalid: {exc}")
+    if not has_support:
+        _invalid_snapshot("writer stereo residual snapshot has no support")
     _validate_unique_stereo_records(stereo_state)
     occurrence_by_id = {item.id: item for item in prepared.facts.ligand_occurrences}
     atom_ids = frozenset(prepared.atom_ids)

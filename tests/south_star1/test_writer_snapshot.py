@@ -7,7 +7,9 @@ import unittest
 
 from grimace._south_star1.errors import SouthStarError
 from grimace._south_star1.facts import ComponentFacts
+from grimace._south_star1.facts import DirectionalValue
 from grimace._south_star1.facts import MoleculeFacts
+from grimace._south_star1.facts import SiteStatus
 from grimace._south_star1.ids import ComponentId
 from grimace._south_star1.ids import AtomId
 from grimace._south_star1.ids import BondId
@@ -19,7 +21,11 @@ from grimace._south_star1.policy import TetraToken
 from grimace._south_star1.prepared_runtime import SouthStarRuntimeOptions
 from grimace._south_star1.prepared_runtime import SouthStarWriterSurface
 from grimace._south_star1.prepared_runtime import prepare_south_star_mol_from_facts
+from grimace._south_star1.residual_constraints import DirectionalCarrierResidual
+from grimace._south_star1.residual_constraints import DirectionalResidualFactor
 from grimace._south_star1.residual_constraints import ResidualStore
+from grimace._south_star1.residual_constraints import add_factor_checked
+from grimace._south_star1.residual_constraints import direction_var
 from grimace._south_star1.residual_constraints import tetra_var
 from grimace._south_star1.writer_frontier import count_writer_cursor_completions
 from grimace._south_star1.writer_frontier import count_writer_frontier_support
@@ -1882,6 +1888,41 @@ class WriterSnapshotTest(unittest.TestCase):
             stereo_state=replace(
                 key.stereo_state,
                 residual_snapshot=ResidualStore().value_snapshot(),
+            ),
+        )
+
+        with self.assertRaises(SouthStarError):
+            validate_writer_cursor_against_prepared(
+                prepared,
+                _cursor_with_key(tampered_key),
+                runtime_options=options,
+            )
+
+    def test_cursor_audit_rejects_zero_support_stereo_residual_snapshot(self) -> None:
+        left = direction_var(("left", 0))
+        right = direction_var(("right", 0))
+        store = ResidualStore()
+        store.add_var(left, (DirectionMark.FWD,))
+        store.add_var(right, (DirectionMark.ABSENT,))
+        factor = DirectionalResidualFactor(
+            scope=(left, right),
+            status=SiteStatus.SPECIFIED,
+            target=DirectionalValue.OPPOSITE,
+            carrier_models={
+                left: DirectionalCarrierResidual(left, "left", 1, 1),
+                right: DirectionalCarrierResidual(right, "right", 1, 1),
+            },
+        )
+        self.assertTrue(add_factor_checked(store, factor))
+        prepared = _prepare(cco_facts())
+        options = _writer_options()
+        cursor = initial_writer_frontier_cursor(prepared, options)
+        key = cursor.weighted_states[0][0]
+        tampered_key = replace(
+            key,
+            stereo_state=replace(
+                key.stereo_state,
+                residual_snapshot=store.value_snapshot(),
             ),
         )
 

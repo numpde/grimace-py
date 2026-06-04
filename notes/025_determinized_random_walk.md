@@ -265,6 +265,10 @@ only as needed for the current prefix and chosen token, or the implementation
 may keep using the existing lazy runtime adapter until a Rust equivalent is
 ready.
 
+For connected all-roots stereo, merged branches that share a visible prefix must
+also share terminal status. The current core test pins that prefix-free
+invariant before a Rust-side walk relies on accepting-state stop semantics.
+
 Disconnected molecules are currently composed at the runtime layer. A walk
 should follow the same structure:
 

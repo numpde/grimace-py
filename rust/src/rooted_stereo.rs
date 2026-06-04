@@ -414,13 +414,12 @@ impl StereoDecoderMode {
         graph: &Arc<PreparedSmilesGraphData>,
     ) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_grouped_successor_branches(
-                graph.as_ref(),
-                branches,
-            )?
-            .into_iter()
-            .map(|transition| transition.text)
-            .collect()),
+            Self::Merged { branches } => {
+                Ok(merged_stereo_grouped_transitions(graph.as_ref(), branches)?
+                    .into_iter()
+                    .map(|transition| transition.text)
+                    .collect())
+            }
             Self::Single {
                 runtime,
                 frontier,
@@ -441,8 +440,7 @@ impl StereoDecoderMode {
     ) -> PyResult<()> {
         match self {
             Self::Merged { branches } => {
-                let successors =
-                    merged_stereo_grouped_successor_branches(graph.as_ref(), branches)?;
+                let successors = merged_stereo_grouped_transitions(graph.as_ref(), branches)?;
                 *self = Self::from_branches(take_grouped_transition_successors_or_err(
                     successors,
                     chosen_token,
@@ -464,13 +462,12 @@ impl StereoDecoderMode {
 
     fn next_choice_texts(&mut self, graph: &Arc<PreparedSmilesGraphData>) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_choice_successor_modes(
-                graph.as_ref(),
-                branches,
-            )?
-            .into_iter()
-            .map(|(token, _)| token)
-            .collect()),
+            Self::Merged { branches } => {
+                Ok(merged_stereo_choice_transitions(graph.as_ref(), branches)?
+                    .into_iter()
+                    .map(|(token, _)| token)
+                    .collect())
+            }
             Self::Single {
                 runtime,
                 frontier,
@@ -492,7 +489,7 @@ impl StereoDecoderMode {
         match self {
             Self::Merged { branches } => {
                 let (_, successor_mode) = take_choice_index_or_err(
-                    merged_stereo_choice_successor_modes(graph.as_ref(), branches)?,
+                    merged_stereo_choice_transitions(graph.as_ref(), branches)?,
                     chosen_idx,
                 )?;
                 *self = successor_mode;
@@ -4724,7 +4721,7 @@ fn merged_stereo_is_terminal(
     Ok(true)
 }
 
-fn merged_stereo_choice_successor_modes(
+fn merged_stereo_choice_transitions(
     graph: &PreparedSmilesGraphData,
     branches: &[StereoDecoderBranch],
 ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
@@ -4750,7 +4747,7 @@ fn merged_stereo_choice_successor_modes(
     Ok(out)
 }
 
-fn merged_stereo_grouped_successor_branches(
+fn merged_stereo_grouped_transitions(
     graph: &PreparedSmilesGraphData,
     branches: &[StereoDecoderBranch],
 ) -> PyResult<Vec<GroupedTransition<StereoDecoderBranch>>> {
@@ -4873,9 +4870,9 @@ mod tests {
         advance_stereo_choice_state, advance_stereo_token_state, build_walker_runtime,
         check_supported_stereo_writer_surface, choices_for_stereo_state,
         enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
-        initial_stereo_state_for_root, is_terminal_stereo_state,
-        merged_stereo_grouped_successor_branches, next_token_support_for_stereo_state,
-        validate_root_idx, StereoDecoderBranch,
+        initial_stereo_state_for_root, is_terminal_stereo_state, merged_stereo_grouped_transitions,
+        merged_stereo_is_terminal, merged_stereo_prefix, next_token_support_for_stereo_state,
+        stereo_frontier_is_terminal, validate_root_idx, StereoDecoderBranch,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -4898,6 +4895,58 @@ mod tests {
         let runtime = build_walker_runtime(graph, root_idx).expect("stereo runtime should build");
         let state = initial_stereo_state_for_root(&runtime, graph, root_idx);
         (runtime, state)
+    }
+
+    fn all_root_stereo_branches(graph: &PreparedSmilesGraphData) -> Vec<StereoDecoderBranch> {
+        (0..graph.atom_count())
+            .map(|root_idx| {
+                let runtime =
+                    Arc::new(build_walker_runtime(graph, root_idx).expect("runtime should build"));
+                StereoDecoderBranch {
+                    runtime: runtime.clone(),
+                    frontier: vec![initial_stereo_state_for_root(
+                        runtime.as_ref(),
+                        graph,
+                        root_idx,
+                    )],
+                }
+            })
+            .collect()
+    }
+
+    fn assert_merged_stereo_terminal_status_is_homogeneous(graph: &PreparedSmilesGraphData) {
+        let mut stack = vec![all_root_stereo_branches(graph)];
+        while let Some(branches) = stack.pop() {
+            let first_terminal = stereo_frontier_is_terminal(
+                branches[0].runtime.as_ref(),
+                graph,
+                &branches[0].frontier,
+            )
+            .expect("terminal status should evaluate");
+            for branch in &branches[1..] {
+                assert_eq!(
+                    first_terminal,
+                    stereo_frontier_is_terminal(branch.runtime.as_ref(), graph, &branch.frontier)
+                        .expect("terminal status should evaluate"),
+                    "mixed terminal status at connected prefix {:?}",
+                    merged_stereo_prefix(&branches),
+                );
+            }
+            assert_eq!(
+                first_terminal,
+                merged_stereo_is_terminal(graph, &branches)
+                    .expect("merged terminal status should evaluate"),
+            );
+            if first_terminal {
+                continue;
+            }
+            stack.extend(
+                merged_stereo_grouped_transitions(graph, &branches)
+                    .expect("merged successor branches should build")
+                    .into_iter()
+                    .map(|transition| transition.successors),
+            );
+        }
     }
 
     fn observed_choice_support(
@@ -5249,22 +5298,9 @@ mod tests {
     #[test]
     fn all_roots_stereo_grouped_branches_preserve_token_multiplicity() {
         let graph = sample_stereo_graph();
-        let branches = (0..graph.atom_count())
-            .map(|root_idx| {
-                let runtime =
-                    Arc::new(build_walker_runtime(&graph, root_idx).expect("runtime should build"));
-                StereoDecoderBranch {
-                    runtime: runtime.clone(),
-                    frontier: vec![initial_stereo_state_for_root(
-                        runtime.as_ref(),
-                        &graph,
-                        root_idx,
-                    )],
-                }
-            })
-            .collect::<Vec<_>>();
+        let branches = all_root_stereo_branches(&graph);
 
-        let observed = merged_stereo_grouped_successor_branches(&graph, &branches)
+        let observed = merged_stereo_grouped_transitions(&graph, &branches)
             .expect("merged successor branches should build")
             .into_iter()
             .map(|transition| {
@@ -5284,6 +5320,12 @@ mod tests {
             ],
             observed,
         );
+    }
+
+    #[test]
+    fn all_roots_stereo_merged_states_have_homogeneous_terminal_status() {
+        assert_merged_stereo_terminal_status_is_homogeneous(&sample_stereo_graph());
+        assert_merged_stereo_terminal_status_is_homogeneous(&atom_stereo_graph());
     }
 
     #[test]

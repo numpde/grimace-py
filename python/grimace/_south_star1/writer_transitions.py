@@ -105,19 +105,6 @@ class _WriterChildObligation:
     attachment_action_kind: WriterResidualAttachmentActionKind | None = None
     pending_entry: bool = False
 
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, _WriterChildObligation):
-            return (
-                self.bond == other.bond
-                and self.child == other.child
-                and self.attachment_id == other.attachment_id
-                and self.attachment_action_kind == other.attachment_action_kind
-                and self.pending_entry == other.pending_entry
-            )
-        if isinstance(other, tuple) and len(other) == 2:
-            return (self.bond, self.child) == other
-        return NotImplemented
-
 
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,

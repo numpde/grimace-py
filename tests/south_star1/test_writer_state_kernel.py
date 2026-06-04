@@ -42,6 +42,7 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
 from grimace._south_star1.writer_state import WriterAtomFrame
@@ -910,7 +911,15 @@ class WriterStateKernelTest(unittest.TestCase):
                 AtomId(0),
             )
 
-        self.assertEqual(children, ((BondId(0), AtomId(1)),))
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0].bond, BondId(0))
+        self.assertEqual(children[0].child, AtomId(1))
+        self.assertEqual(children[0].attachment_id, 0)
+        self.assertEqual(
+            children[0].attachment_action_kind,
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        self.assertFalse(children[0].pending_entry)
 
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):

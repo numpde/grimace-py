@@ -822,6 +822,7 @@ def _child_obligations_from_context(
     atom: AtomId,
 ) -> tuple[tuple[BondId, AtomId], ...]:
     partition = context.graph.edge_partition
+
     if any(
         obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
         for obligation in partition.obligations
@@ -830,36 +831,45 @@ def _child_obligations_from_context(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
         )
+
     summary = context.graph.residual_summary
-    attachments_by_id = {
-        attachment.attachment_id: attachment
-        for attachment in summary.attachments.attachments
-    }
+    action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(
+        summary,
+        atom,
+    )
+
     children = []
+
     for action in summary.attachment_actions:
         if action.kind not in (
             WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
             WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
         ):
             continue
-        attachment = attachments_by_id[action.attachment_id]
+
         boundary = tuple(
-            incidence
-            for incidence in attachment.boundary
-            if incidence.written_atom == atom
+            action_incidence.incidence
+            for action_incidence in action_incidences_for_atom
+            if action_incidence.action is action
         )
+
         if not boundary:
             continue
+
         if len(boundary) != 1:
             raise SouthStarError(
                 SouthStarErrorKind.UNSUPPORTED_POLICY,
                 "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
             )
+
         incidence = boundary[0]
         children.append((incidence.bond, incidence.residual_atom))
+
     pending = state.obligations.pending_entry
+
     if pending is not None and pending.parent == atom:
         children.append((pending.bond, pending.child))
+
     return tuple(
         sorted(
             children,

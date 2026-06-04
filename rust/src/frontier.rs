@@ -127,16 +127,22 @@ fn unavailable_token_error(chosen_token: &str, available: Vec<String>) -> PyErr 
     ))
 }
 
-pub(crate) fn take_token_item_or_err<T>(
-    items: Vec<(String, T)>,
+pub(crate) fn take_grouped_transition_successors_or_err<S>(
+    transitions: Vec<GroupedTransition<S>>,
     chosen_token: &str,
-) -> PyResult<T> {
-    let mut available = Vec::with_capacity(items.len());
-    for (token, item) in items {
-        if token == chosen_token {
-            return Ok(item);
+) -> PyResult<Vec<S>> {
+    let mut available = Vec::with_capacity(transitions.len());
+    for transition in transitions {
+        debug_assert!(transition.branch_count > 0);
+        if transition.text == chosen_token {
+            if transition.successors.is_empty() {
+                return Err(PyValueError::new_err(format!(
+                    "Expected at least one successor state for token {chosen_token:?}, got 0"
+                )));
+            }
+            return Ok(transition.successors);
         }
-        available.push(token);
+        available.push(transition.text);
     }
     Err(unavailable_token_error(chosen_token, available))
 }
@@ -148,21 +154,10 @@ pub(crate) fn take_token_support_successors_or_err<S>(
 where
     S: Ord,
 {
-    let mut transitions = group_decoder_choices(choices, dedup_frontier);
-    debug_assert!(transitions
-        .iter()
-        .all(|transition| transition.branch_count > 0));
-    if let Some(index) = transitions
-        .iter()
-        .position(|transition| transition.text == chosen_token && !transition.successors.is_empty())
-    {
-        return Ok(transitions.swap_remove(index).successors);
-    }
-    let available = transitions
-        .into_iter()
-        .map(|transition| transition.text)
-        .collect::<Vec<_>>();
-    Err(unavailable_token_error(chosen_token, available))
+    take_grouped_transition_successors_or_err(
+        group_decoder_choices(choices, dedup_frontier),
+        chosen_token,
+    )
 }
 
 pub(crate) fn take_only_successor_or_err<S>(mut successors: Vec<S>, context: &str) -> PyResult<S> {
@@ -190,8 +185,8 @@ mod tests {
 
     use super::{
         decoder_choices_from_token_successors, group_decoder_choices, take_choice_index_or_err,
-        take_first_successor_or_err, take_only_successor_or_err, take_token_item_or_err,
-        take_token_support_successors_or_err, DecoderChoice,
+        take_first_successor_or_err, take_grouped_transition_successors_or_err,
+        take_only_successor_or_err, take_token_support_successors_or_err, DecoderChoice,
     };
 
     fn choice(text: &str, successors: Vec<i32>) -> DecoderChoice<i32> {
@@ -323,13 +318,22 @@ mod tests {
     }
 
     #[test]
-    fn take_token_item_consumes_the_selected_item_and_rejects_missing_tokens() {
+    fn take_grouped_transition_successors_consumes_the_selected_token_and_rejects_empty_successors()
+    {
+        let transitions = group_decoder_choices(
+            vec![choice("C", vec![1, 2]), choice("O", vec![3])],
+            |successors| successors,
+        );
         assert_eq!(
-            take_token_item_or_err(vec![("C".to_owned(), 1), ("O".to_owned(), 2)], "O",).unwrap(),
-            2
+            take_grouped_transition_successors_or_err(transitions, "C").unwrap(),
+            vec![1, 2]
         );
 
-        assert!(take_token_item_or_err(vec![("C".to_owned(), 1)], "N").is_err());
+        let empty = group_decoder_choices(vec![choice("C", Vec::new())], |successors| successors);
+        assert!(take_grouped_transition_successors_or_err(empty, "C").is_err());
+
+        let missing = group_decoder_choices(vec![choice("C", vec![1])], |successors| successors);
+        assert!(take_grouped_transition_successors_or_err(missing, "N").is_err());
     }
 
     #[test]

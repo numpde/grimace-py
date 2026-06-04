@@ -17,9 +17,9 @@ use crate::frontier::{
     branch_choice_texts, decoder_choices_from_token_successors,
     extend_decoder_choices_from_token_successors, frontier_prefix as shared_frontier_prefix,
     group_decoder_choices, take_branch_choice_successors_or_err, take_choice_index_or_err,
-    take_first_successor_or_err, take_only_successor_or_err, take_token_item_or_err,
-    take_token_successors_or_err, take_token_support_successors_or_err, token_support_from_choices,
-    DecoderChoice,
+    take_first_successor_or_err, take_grouped_transition_successors_or_err,
+    take_only_successor_or_err, take_token_successors_or_err, take_token_support_successors_or_err,
+    token_support_from_choices, DecoderChoice, GroupedTransition,
 };
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -414,12 +414,12 @@ impl StereoDecoderMode {
         graph: &Arc<PreparedSmilesGraphData>,
     ) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => Ok(merged_stereo_grouped_successor_modes(
+            Self::Merged { branches } => Ok(merged_stereo_grouped_successor_branches(
                 graph.as_ref(),
                 branches,
             )?
             .into_iter()
-            .map(|(token, _)| token)
+            .map(|transition| transition.text)
             .collect()),
             Self::Single {
                 runtime,
@@ -441,9 +441,12 @@ impl StereoDecoderMode {
     ) -> PyResult<()> {
         match self {
             Self::Merged { branches } => {
-                let successors = merged_stereo_grouped_successor_modes(graph.as_ref(), branches)?;
-                let successor_mode = take_token_item_or_err(successors, chosen_token)?;
-                *self = successor_mode;
+                let successors =
+                    merged_stereo_grouped_successor_branches(graph.as_ref(), branches)?;
+                *self = Self::from_branches(take_grouped_transition_successors_or_err(
+                    successors,
+                    chosen_token,
+                )?);
                 Ok(())
             }
             Self::Single {
@@ -534,9 +537,13 @@ impl StereoDecoderMode {
         graph: &Arc<PreparedSmilesGraphData>,
     ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
         match self {
-            Self::Merged { branches } => {
-                merged_stereo_grouped_successor_modes(graph.as_ref(), branches)
-            }
+            Self::Merged { branches } => Ok(merged_stereo_grouped_successor_branches(
+                graph.as_ref(),
+                branches,
+            )?
+            .into_iter()
+            .map(|transition| (transition.text, Self::from_branches(transition.successors)))
+            .collect()),
             Self::Single {
                 runtime, frontier, ..
             } => Ok(frontier_transitions_for_stereo_linear(
@@ -4810,10 +4817,10 @@ fn merged_stereo_choice_successor_modes(
     Ok(out)
 }
 
-fn merged_stereo_grouped_successor_modes(
+fn merged_stereo_grouped_successor_branches(
     graph: &PreparedSmilesGraphData,
     branches: &[StereoDecoderBranch],
-) -> PyResult<Vec<(String, StereoDecoderMode)>> {
+) -> PyResult<Vec<GroupedTransition<StereoDecoderBranch>>> {
     let mut choices = Vec::<DecoderChoice<StereoDecoderBranch>>::new();
     for branch in branches {
         for (token, frontier) in frontier_transitions_for_stereo_linear(
@@ -4830,15 +4837,7 @@ fn merged_stereo_grouped_successor_modes(
             ));
         }
     }
-    Ok(group_decoder_choices(choices, |successors| successors)
-        .into_iter()
-        .map(|transition| {
-            (
-                transition.text,
-                StereoDecoderMode::from_branches(transition.successors),
-            )
-        })
-        .collect())
+    Ok(group_decoder_choices(choices, |successors| successors))
 }
 
 #[pymethods]

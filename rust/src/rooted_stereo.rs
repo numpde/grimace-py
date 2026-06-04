@@ -4945,7 +4945,7 @@ impl PyRootedConnectedStereoDecoder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::{collections::BTreeSet, sync::Arc};
 
     use pyo3::types::{PyAnyMethods, PyDictMethods};
     use pyo3::Python;
@@ -4955,7 +4955,8 @@ mod tests {
         check_supported_stereo_writer_surface, choices_for_stereo_state,
         enumerate_rooted_connected_stereo_smiles_support, enumerate_support_from_stereo_state,
         initial_stereo_state_for_root, is_terminal_stereo_state,
-        next_token_support_for_stereo_state, validate_root_idx,
+        merged_stereo_grouped_successor_branches, next_token_support_for_stereo_state,
+        validate_root_idx, StereoDecoderBranch,
     };
     use crate::prepared_graph::{
         PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE, PREPARED_SMILES_GRAPH_SCHEMA_VERSION,
@@ -5323,6 +5324,46 @@ mod tests {
             vec!["F".to_owned()],
             next_token_support_for_stereo_state(&runtime, &graph, &state)
                 .expect("support should be available"),
+        );
+    }
+
+    #[test]
+    fn all_roots_stereo_grouped_branches_preserve_token_multiplicity() {
+        let graph = sample_stereo_graph();
+        let branches = (0..graph.atom_count())
+            .map(|root_idx| {
+                let runtime =
+                    Arc::new(build_walker_runtime(&graph, root_idx).expect("runtime should build"));
+                StereoDecoderBranch {
+                    runtime: runtime.clone(),
+                    frontier: vec![initial_stereo_state_for_root(
+                        runtime.as_ref(),
+                        &graph,
+                        root_idx,
+                    )],
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let observed = merged_stereo_grouped_successor_branches(&graph, &branches)
+            .expect("merged successor branches should build")
+            .into_iter()
+            .map(|transition| {
+                (
+                    transition.text,
+                    transition.branch_count,
+                    transition.successors.len(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            vec![
+                ("Cl".to_owned(), 1, 1),
+                ("F".to_owned(), 1, 1),
+                ("[CH]".to_owned(), 2, 2),
+            ],
+            observed,
         );
     }
 

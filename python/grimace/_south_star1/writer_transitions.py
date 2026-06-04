@@ -233,6 +233,36 @@ def _active_child_transitions_from_obligations(
     return tuple(transitions)
 
 
+def _active_emitted_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+) -> tuple[WriterTransition, ...]:
+    closure_transitions = _closure_endpoint_transitions(
+        prepared,
+        state,
+        context,
+    )
+
+    if closure_transitions:
+        return closure_transitions
+
+    children = _child_obligations_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    return _active_child_transitions_from_obligations(
+        prepared,
+        state,
+        context,
+        active_atom,
+        children,
+    )
+
+
 def legal_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -245,18 +275,11 @@ def legal_writer_transitions(
     if not active.atom_emitted:
         return _root_atom_transitions(prepared, state, active)
 
-    closure_transitions = _closure_endpoint_transitions(prepared, state, context)
-    if closure_transitions:
-        return closure_transitions
-
-    children = _child_obligations_from_context(context, state, active.atom)
-
-    return _active_child_transitions_from_obligations(
+    return _active_emitted_transitions(
         prepared,
         state,
         context,
         active.atom,
-        children,
     )
 
 

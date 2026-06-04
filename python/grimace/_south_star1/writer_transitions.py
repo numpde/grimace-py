@@ -140,6 +140,43 @@ def validate_writer_transition_prepared(prepared: SouthStarPreparedMol) -> None:
     validate_writer_stereo_supported_prepared(prepared)
 
 
+def _open_branch_transition_from_child_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+) -> WriterTransition | None:
+    return _transition(
+        prepared,
+        state,
+        emitted_text="(",
+        successor=replace(
+            state,
+            obligations=ObligationState(
+                pending_entry=PendingWriterEntry(
+                    parent=parent,
+                    child=child_obligation.child,
+                    bond=child_obligation.bond,
+                    branch=True,
+                )
+            ),
+        ),
+        kind=WriterTransitionKind.OPEN_BRANCH,
+        events=(
+            WriterBranchOpened(
+                parent=parent,
+                child=child_obligation.child,
+                bond=child_obligation.bond,
+            ),
+        ),
+        evidence=WriterTransitionEvidence(
+            bond=child_obligation.bond,
+            parent=parent,
+            child=child_obligation.child,
+        ),
+    )
+
+
 def legal_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -176,39 +213,15 @@ def legal_writer_transitions(
 
     transitions = []
     for child_obligation in children:
-        bond = child_obligation.bond
-        child = child_obligation.child
-        transition = _transition(
+        transition = _open_branch_transition_from_child_obligation(
             prepared,
             state,
-            emitted_text="(",
-            successor=replace(
-                state,
-                obligations=ObligationState(
-                    pending_entry=PendingWriterEntry(
-                        parent=active.atom,
-                        child=child,
-                        bond=bond,
-                        branch=True,
-                    )
-                ),
-            ),
-            kind=WriterTransitionKind.OPEN_BRANCH,
-            events=(
-                WriterBranchOpened(
-                    parent=active.atom,
-                    child=child,
-                    bond=bond,
-                ),
-            ),
-            evidence=WriterTransitionEvidence(
-                bond=bond,
-                parent=active.atom,
-                child=child,
-            ),
+            active.atom,
+            child_obligation,
         )
         if transition is not None:
             transitions.append(transition)
+
     return tuple(transitions)
 
 

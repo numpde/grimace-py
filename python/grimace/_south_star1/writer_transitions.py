@@ -198,6 +198,41 @@ def _enter_inline_child_transitions_from_child_obligation(
     )
 
 
+def _active_child_transitions_from_obligations(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    parent: AtomId,
+    children: tuple[_WriterChildObligation, ...],
+) -> tuple[WriterTransition, ...]:
+    if not children:
+        return _finish_active_transitions(prepared, state, context)
+
+    if len(children) == 1:
+        return _enter_inline_child_transitions_from_child_obligation(
+            prepared,
+            state,
+            parent,
+            children[0],
+            context,
+        )
+
+    transitions: list[WriterTransition] = []
+
+    for child_obligation in children:
+        transition = _open_branch_transition_from_child_obligation(
+            prepared,
+            state,
+            parent,
+            child_obligation,
+        )
+
+        if transition is not None:
+            transitions.append(transition)
+
+    return tuple(transitions)
+
+
 def legal_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -215,29 +250,14 @@ def legal_writer_transitions(
         return closure_transitions
 
     children = _child_obligations_from_context(context, state, active.atom)
-    if not children:
-        return _finish_active_transitions(prepared, state, context)
-    if len(children) == 1:
-        return _enter_inline_child_transitions_from_child_obligation(
-            prepared,
-            state,
-            active.atom,
-            children[0],
-            context,
-        )
 
-    transitions = []
-    for child_obligation in children:
-        transition = _open_branch_transition_from_child_obligation(
-            prepared,
-            state,
-            active.atom,
-            child_obligation,
-        )
-        if transition is not None:
-            transitions.append(transition)
-
-    return tuple(transitions)
+    return _active_child_transitions_from_obligations(
+        prepared,
+        state,
+        context,
+        active.atom,
+        children,
+    )
 
 
 def _root_atom_transitions(

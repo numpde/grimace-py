@@ -73,10 +73,15 @@ pub(crate) fn token_support_from_choices<S>(choices: &[DecoderChoice<S>]) -> Vec
 }
 
 pub(crate) fn frontier_prefix<S>(frontier: &[S], prefix_of: impl Fn(&S) -> &str) -> String {
-    frontier
-        .first()
-        .map(|state| prefix_of(state).to_owned())
-        .unwrap_or_default()
+    let Some(first) = frontier.first() else {
+        return String::new();
+    };
+    let prefix = prefix_of(first);
+    debug_assert!(
+        frontier.iter().all(|state| prefix_of(state) == prefix),
+        "decoder frontiers must be prefix-homogeneous"
+    );
+    prefix.to_owned()
 }
 
 pub(crate) fn dedup_frontier<S>(states: Vec<S>) -> Vec<S>
@@ -184,9 +189,10 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        decoder_choices_from_token_successors, group_decoder_choices, take_choice_index_or_err,
-        take_first_successor_or_err, take_grouped_transition_successors_or_err,
-        take_only_successor_or_err, take_token_support_successors_or_err, DecoderChoice,
+        decoder_choices_from_token_successors, frontier_prefix, group_decoder_choices,
+        take_choice_index_or_err, take_first_successor_or_err,
+        take_grouped_transition_successors_or_err, take_only_successor_or_err,
+        take_token_support_successors_or_err, DecoderChoice,
     };
 
     fn choice(text: &str, successors: Vec<i32>) -> DecoderChoice<i32> {
@@ -290,6 +296,18 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![("C", &[1][..]), ("C", &[2][..]), ("O", &[3][..])]
         );
+    }
+
+    #[test]
+    fn frontier_prefix_accepts_empty_or_homogeneous_frontiers() {
+        assert_eq!(frontier_prefix::<&str>(&[], |prefix| prefix), "");
+        assert_eq!(frontier_prefix(&["CC", "CC"], |prefix| prefix), "CC");
+    }
+
+    #[test]
+    #[should_panic(expected = "decoder frontiers must be prefix-homogeneous")]
+    fn frontier_prefix_rejects_mixed_prefix_frontiers_in_debug_builds() {
+        let _ = frontier_prefix(&["C", "O"], |prefix| prefix);
     }
 
     #[test]

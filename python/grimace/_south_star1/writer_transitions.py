@@ -114,6 +114,12 @@ class _WriterClosureOpenObligation:
     attachment_id: int
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterClosurePairObligation:
+    endpoint: WriterOpenClosureEndpoint
+    closure: WriterClosedClosure
+
+
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -589,16 +595,16 @@ def _closure_open_obligations_from_context(
     return tuple(obligations)
 
 
-def _pair_closure_endpoint_transitions(
-    prepared: SouthStarPreparedMol,
+def _closure_pair_obligations_from_state(
     state: WriterState,
-    context: WriterTransitionExpansionContext,
-) -> tuple[WriterTransition, ...]:
-    active_atom = state.active.atom
-    transitions = []
+    atom: AtomId,
+) -> tuple[_WriterClosurePairObligation, ...]:
+    obligations: list[_WriterClosurePairObligation] = []
+
     for endpoint in state.ring_state.open_endpoints:
-        if endpoint.second_atom != active_atom:
+        if endpoint.second_atom != atom:
             continue
+
         closure = WriterClosedClosure(
             bond=endpoint.bond,
             first_atom=endpoint.first_atom,
@@ -609,6 +615,30 @@ def _pair_closure_endpoint_transitions(
             first_endpoint_bond_text=endpoint.first_endpoint_bond_text,
             second_endpoint_bond_text="",
         )
+
+        obligations.append(
+            _WriterClosurePairObligation(
+                endpoint=endpoint,
+                closure=closure,
+            )
+        )
+
+    return tuple(obligations)
+
+
+def _pair_closure_endpoint_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    active_atom = state.active.atom
+    transitions = []
+    for pair_obligation in _closure_pair_obligations_from_state(
+        state,
+        active_atom,
+    ):
+        endpoint = pair_obligation.endpoint
+        closure = pair_obligation.closure
         transition = _transition(
             prepared,
             state,

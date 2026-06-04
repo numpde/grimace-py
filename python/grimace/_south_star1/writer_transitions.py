@@ -20,6 +20,7 @@ from .writer_graph_obligations import validate_writer_snapshot_graph_surface
 from .writer_graph_obligations import validate_writer_transition_graph_surface
 from .writer_graph_obligations import writer_graph_completion_status
 from .writer_graph_obligations import writer_residual_attachment_action_is_blocked
+from .writer_graph_obligations import writer_residual_attachment_action_incidences_for_atom
 from .writer_state import ComponentCursor
 from .writer_state import ObligationState
 from .writer_state import PendingEntryPhase
@@ -492,58 +493,55 @@ def _open_closure_endpoint_transitions(
         return ()
     active_atom = state.active.atom
     transitions = []
-    attachments_by_id = {
-        attachment.attachment_id: attachment
-        for attachment in context.graph.residual_summary.attachments.attachments
-    }
-    for action in context.graph.residual_summary.attachment_actions:
+    for action_incidence in writer_residual_attachment_action_incidences_for_atom(
+        context.graph.residual_summary,
+        active_atom,
+    ):
+        action = action_incidence.action
         if action.kind is not WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
             continue
-        attachment = attachments_by_id[action.attachment_id]
-        for incidence in attachment.boundary:
-            if incidence.written_atom != active_atom:
-                continue
-            for label in labels:
-                endpoint = WriterOpenClosureEndpoint(
-                    bond=incidence.bond,
-                    first_atom=active_atom,
-                    second_atom=incidence.residual_atom,
-                    label=label,
-                    first_endpoint_text=label.text,
-                    first_endpoint_bond_text="",
-                )
-                transition = _transition(
-                    prepared,
+        incidence = action_incidence.incidence
+        for label in labels:
+            endpoint = WriterOpenClosureEndpoint(
+                bond=incidence.bond,
+                first_atom=active_atom,
+                second_atom=incidence.residual_atom,
+                label=label,
+                first_endpoint_text=label.text,
+                first_endpoint_bond_text="",
+            )
+            transition = _transition(
+                prepared,
+                state,
+                emitted_text=label.text,
+                successor=replace(
                     state,
-                    emitted_text=label.text,
-                    successor=replace(
-                        state,
-                        ring_state=_ring_state_after_open_endpoint(
-                            state.ring_state,
-                            endpoint,
-                        ),
+                    ring_state=_ring_state_after_open_endpoint(
+                        state.ring_state,
+                        endpoint,
                     ),
-                    kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
-                    events=(
-                        WriterRingEndpointEmitted(
-                            bond=endpoint.bond,
-                            endpoint_atom=endpoint.first_atom,
-                            partner_atom=endpoint.second_atom,
-                            label=endpoint.label,
-                            endpoint_text=endpoint.first_endpoint_text,
-                            bond_text=endpoint.first_endpoint_bond_text,
-                        ),
-                    ),
-                    evidence=WriterTransitionEvidence(
+                ),
+                kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+                events=(
+                    WriterRingEndpointEmitted(
                         bond=endpoint.bond,
-                        parent=endpoint.first_atom,
-                        child=endpoint.second_atom,
+                        endpoint_atom=endpoint.first_atom,
+                        partner_atom=endpoint.second_atom,
+                        label=endpoint.label,
+                        endpoint_text=endpoint.first_endpoint_text,
+                        bond_text=endpoint.first_endpoint_bond_text,
                     ),
-                )
-                if transition is None:
-                    continue
-                if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
-                    transitions.append(transition)
+                ),
+                evidence=WriterTransitionEvidence(
+                    bond=endpoint.bond,
+                    parent=endpoint.first_atom,
+                    child=endpoint.second_atom,
+                ),
+            )
+            if transition is None:
+                continue
+            if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
+                transitions.append(transition)
     return tuple(transitions)
 
 

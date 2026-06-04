@@ -508,6 +508,64 @@ def _closure_endpoint_transitions(
     )
 
 
+def _open_closure_endpoint_transition_from_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    closure_obligation: _WriterClosureOpenObligation,
+    label: WriterClosureLabel,
+) -> WriterTransition | None:
+    endpoint = WriterOpenClosureEndpoint(
+        bond=closure_obligation.bond,
+        first_atom=closure_obligation.first_atom,
+        second_atom=closure_obligation.second_atom,
+        label=label,
+        first_endpoint_text=label.text,
+        first_endpoint_bond_text="",
+    )
+
+    transition = _transition(
+        prepared,
+        state,
+        emitted_text=label.text,
+        successor=replace(
+            state,
+            ring_state=_ring_state_after_open_endpoint(
+                state.ring_state,
+                endpoint,
+            ),
+        ),
+        kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
+        events=(
+            WriterRingEndpointEmitted(
+                bond=endpoint.bond,
+                endpoint_atom=endpoint.first_atom,
+                partner_atom=endpoint.second_atom,
+                label=endpoint.label,
+                endpoint_text=endpoint.first_endpoint_text,
+                bond_text=endpoint.first_endpoint_bond_text,
+            ),
+        ),
+        evidence=WriterTransitionEvidence(
+            bond=endpoint.bond,
+            parent=endpoint.first_atom,
+            child=endpoint.second_atom,
+        ),
+    )
+
+    if transition is None:
+        return None
+
+    if not _closure_open_successor_is_supported(
+        prepared,
+        transition.successor,
+        endpoint,
+    ):
+        return None
+
+    return transition
+
+
 def _open_closure_endpoint_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -523,45 +581,14 @@ def _open_closure_endpoint_transitions(
         active_atom,
     ):
         for label in labels:
-            endpoint = WriterOpenClosureEndpoint(
-                bond=closure_obligation.bond,
-                first_atom=closure_obligation.first_atom,
-                second_atom=closure_obligation.second_atom,
-                label=label,
-                first_endpoint_text=label.text,
-                first_endpoint_bond_text="",
-            )
-            transition = _transition(
+            transition = _open_closure_endpoint_transition_from_obligation(
                 prepared,
                 state,
-                emitted_text=label.text,
-                successor=replace(
-                    state,
-                    ring_state=_ring_state_after_open_endpoint(
-                        state.ring_state,
-                        endpoint,
-                    ),
-                ),
-                kind=WriterTransitionKind.OPEN_CLOSURE_ENDPOINT,
-                events=(
-                    WriterRingEndpointEmitted(
-                        bond=endpoint.bond,
-                        endpoint_atom=endpoint.first_atom,
-                        partner_atom=endpoint.second_atom,
-                        label=endpoint.label,
-                        endpoint_text=endpoint.first_endpoint_text,
-                        bond_text=endpoint.first_endpoint_bond_text,
-                    ),
-                ),
-                evidence=WriterTransitionEvidence(
-                    bond=endpoint.bond,
-                    parent=endpoint.first_atom,
-                    child=endpoint.second_atom,
-                ),
+                context,
+                closure_obligation,
+                label,
             )
-            if transition is None:
-                continue
-            if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
+            if transition is not None:
                 transitions.append(transition)
     return tuple(transitions)
 

@@ -124,6 +124,7 @@ class _WriterScheduledActionKind(Enum):
     FINISH_ACTIVE = "finish_active"
     ENTER_INLINE_CHILD = "enter_inline_child"
     OPEN_BRANCH = "open_branch"
+    PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +132,7 @@ class _WriterScheduledAction:
     kind: _WriterScheduledActionKind
     parent: AtomId
     child_obligation: _WriterChildObligation | None = None
+    closure_pair_obligation: _WriterClosurePairObligation | None = None
 
 
 def build_writer_transition_expansion_context(
@@ -814,6 +816,23 @@ def _closure_pair_obligations_from_state(
     return tuple(obligations)
 
 
+def _closure_pair_scheduled_actions(
+    state: WriterState,
+    active_atom: AtomId,
+) -> tuple[_WriterScheduledAction, ...]:
+    return tuple(
+        _WriterScheduledAction(
+            kind=_WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+            parent=active_atom,
+            closure_pair_obligation=pair_obligation,
+        )
+        for pair_obligation in _closure_pair_obligations_from_state(
+            state,
+            active_atom,
+        )
+    )
+
+
 def _pair_closure_endpoint_transition_from_obligation(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -866,25 +885,57 @@ def _pair_closure_endpoint_transition_from_obligation(
     return transition
 
 
+def _closure_pair_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported closure-pair scheduled action: {action.kind!r}",
+        )
+
+    pair_obligation = action.closure_pair_obligation
+
+    if pair_obligation is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled closure-pair action requires a pair obligation",
+        )
+
+    transition = _pair_closure_endpoint_transition_from_obligation(
+        prepared,
+        state,
+        context,
+        pair_obligation,
+    )
+
+    if transition is None:
+        return ()
+
+    return (transition,)
+
+
 def _pair_closure_endpoint_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
     active_atom = state.active.atom
-    transitions = []
-    for pair_obligation in _closure_pair_obligations_from_state(
-        state,
-        active_atom,
-    ):
-        transition = _pair_closure_endpoint_transition_from_obligation(
-            prepared,
-            state,
-            context,
-            pair_obligation,
+    transitions: list[WriterTransition] = []
+
+    for action in _closure_pair_scheduled_actions(state, active_atom):
+        transitions.extend(
+            _closure_pair_transitions_from_scheduled_action(
+                prepared,
+                state,
+                context,
+                action,
+            )
         )
-        if transition is not None:
-            transitions.append(transition)
+
     return tuple(transitions)
 
 

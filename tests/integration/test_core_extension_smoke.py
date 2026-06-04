@@ -118,6 +118,32 @@ class CoreExtensionSmokeTests(unittest.TestCase):
         self.assertEqual(["F"], nonstereo_decoder.next_token_support())
         self.assertEqual(["F"], stereo_decoder.next_token_support())
 
+    def test_core_decoders_do_not_expose_eager_successor_methods(self) -> None:
+        _runtime, _, MolToSmilesFlags = _runtime_modules()
+
+        mol = parse_smiles("F/C=C\\Cl")
+        nonstereo_flags = MolToSmilesFlags(
+            isomeric_smiles=False,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+        stereo_flags = MolToSmilesFlags(
+            isomeric_smiles=True,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+
+        decoders = (
+            _runtime._make_decoder(mol, nonstereo_flags),
+            _runtime._make_decoder(mol, stereo_flags),
+        )
+        for decoder in decoders:
+            with self.subTest(decoder_type=type(decoder).__name__):
+                self.assertFalse(hasattr(decoder, "choice_successors"))
+                self.assertFalse(hasattr(decoder, "grouped_successors"))
+
     def test_nonstereo_core_decoder_supports_all_roots_frontier(self) -> None:
         _, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
 

@@ -511,52 +511,6 @@ impl StereoDecoderMode {
         }
     }
 
-    fn choice_successor_modes(
-        &self,
-        graph: &Arc<PreparedSmilesGraphData>,
-    ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
-        match self {
-            Self::Merged { branches } => {
-                merged_stereo_choice_successor_modes(graph.as_ref(), branches)
-            }
-            Self::Single {
-                runtime, frontier, ..
-            } => Ok(frontier_choice_successors_for_stereo(
-                runtime.as_ref(),
-                graph.as_ref(),
-                frontier,
-            )?
-            .into_iter()
-            .map(|(token, successor)| (token, Self::single(runtime.clone(), vec![successor])))
-            .collect()),
-        }
-    }
-
-    fn grouped_successor_modes(
-        &self,
-        graph: &Arc<PreparedSmilesGraphData>,
-    ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
-        match self {
-            Self::Merged { branches } => Ok(merged_stereo_grouped_successor_branches(
-                graph.as_ref(),
-                branches,
-            )?
-            .into_iter()
-            .map(|transition| (transition.text, Self::from_branches(transition.successors)))
-            .collect()),
-            Self::Single {
-                runtime, frontier, ..
-            } => Ok(frontier_transitions_for_stereo_linear(
-                runtime.as_ref(),
-                graph.as_ref(),
-                frontier,
-            )?
-            .into_iter()
-            .map(|(token, frontier)| (token, Self::single(runtime.clone(), frontier)))
-            .collect()),
-        }
-    }
-
     fn prefix(&self) -> String {
         match self {
             Self::Merged { branches } => merged_stereo_prefix(branches),
@@ -4735,16 +4689,6 @@ impl PyRootedConnectedStereoDecoder {
         Self { graph, mode }
     }
 
-    fn from_modes(
-        graph: Arc<PreparedSmilesGraphData>,
-        modes: Vec<(String, StereoDecoderMode)>,
-    ) -> Vec<(String, Self)> {
-        modes
-            .into_iter()
-            .map(|(token, mode)| (token, Self::from_mode(graph.clone(), mode)))
-            .collect()
-    }
-
     fn from_single(
         graph: Arc<PreparedSmilesGraphData>,
         runtime: Arc<StereoWalkerRuntimeData>,
@@ -4901,20 +4845,6 @@ impl PyRootedConnectedStereoDecoder {
 
     fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
         self.mode.advance_choice(&self.graph, chosen_idx)
-    }
-
-    fn choice_successors(&self) -> PyResult<Vec<(String, Self)>> {
-        Ok(Self::from_modes(
-            self.graph.clone(),
-            self.mode.choice_successor_modes(&self.graph)?,
-        ))
-    }
-
-    fn grouped_successors(&self) -> PyResult<Vec<(String, Self)>> {
-        Ok(Self::from_modes(
-            self.graph.clone(),
-            self.mode.grouped_successor_modes(&self.graph)?,
-        ))
     }
 
     fn prefix(&self) -> String {

@@ -219,7 +219,6 @@ Existing decoder methods can then remain projections:
 
 ```text
 next_token_support      -> text
-grouped_successors      -> text + successors
 determinized_walk       -> choose text using text + branch_count,
                            then advance to that text's successor frontier
 ```

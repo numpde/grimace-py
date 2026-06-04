@@ -263,15 +263,16 @@ def _active_emitted_transitions(
     )
 
 
-def legal_writer_transitions(
+def _scheduled_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
+    context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
-    context = build_writer_transition_expansion_context(prepared, state)
     if state.obligations.pending_entry is not None:
         return _pending_entry_transitions(prepared, state, context)
 
     active = state.active
+
     if not active.atom_emitted:
         return _root_atom_transitions(prepared, state, active)
 
@@ -280,6 +281,19 @@ def legal_writer_transitions(
         state,
         context,
         active.atom,
+    )
+
+
+def legal_writer_transitions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+) -> tuple[WriterTransition, ...]:
+    context = build_writer_transition_expansion_context(prepared, state)
+
+    return _scheduled_writer_transitions(
+        prepared,
+        state,
+        context,
     )
 
 

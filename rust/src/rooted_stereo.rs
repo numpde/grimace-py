@@ -4453,22 +4453,6 @@ fn frontier_choices_for_stereo(
     Ok(choices)
 }
 
-fn frontier_choice_successors_for_stereo(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    frontier: &[RootedConnectedStereoWalkerStateData],
-) -> PyResult<Vec<(String, RootedConnectedStereoWalkerStateData)>> {
-    let choices = frontier_choices_for_stereo(runtime, graph, frontier)?;
-    let mut out = Vec::with_capacity(choices.len());
-    for choice in choices {
-        out.push((
-            choice.text,
-            take_only_successor_or_err(choice.successors, "stereo choice successor")?,
-        ));
-    }
-    Ok(out)
-}
-
 fn stereo_frontier_prefix(frontier: &[RootedConnectedStereoWalkerStateData]) -> String {
     shared_frontier_prefix(frontier, |state| state.prefix.as_ref())
 }
@@ -4749,12 +4733,17 @@ fn merged_stereo_choice_successor_modes(
         if stereo_frontier_is_terminal(branch.runtime.as_ref(), graph, &branch.frontier)? {
             continue;
         }
-        for (token, successor) in
-            frontier_choice_successors_for_stereo(branch.runtime.as_ref(), graph, &branch.frontier)?
+        for choice in frontier_choices_for_stereo(branch.runtime.as_ref(), graph, &branch.frontier)?
         {
             out.push((
-                token,
-                StereoDecoderMode::single(branch.runtime.clone(), vec![successor]),
+                choice.text,
+                StereoDecoderMode::single(
+                    branch.runtime.clone(),
+                    vec![take_only_successor_or_err(
+                        choice.successors,
+                        "stereo choice successor",
+                    )?],
+                ),
             ));
         }
     }

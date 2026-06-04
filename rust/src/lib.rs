@@ -2,6 +2,9 @@ mod bond_stereo_constraints;
 mod frontier;
 mod prepared_graph;
 mod prepared_mol;
+// Promote to an unconditional module when the runtime walk consumes it.
+#[cfg(test)]
+mod rng;
 mod rooted_nonstereo;
 mod rooted_stereo;
 mod smiles_shared;

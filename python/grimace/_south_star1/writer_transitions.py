@@ -97,6 +97,28 @@ class WriterTransitionExpansionContext:
     graph: WriterGraphObligationContext
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterChildObligation:
+    bond: BondId
+    child: AtomId
+    attachment_id: int | None = None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None = None
+    pending_entry: bool = False
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _WriterChildObligation):
+            return (
+                self.bond == other.bond
+                and self.child == other.child
+                and self.attachment_id == other.attachment_id
+                and self.attachment_action_kind == other.attachment_action_kind
+                and self.pending_entry == other.pending_entry
+            )
+        if isinstance(other, tuple) and len(other) == 2:
+            return (self.bond, self.child) == other
+        return NotImplemented
+
+
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -137,14 +159,14 @@ def legal_writer_transitions(
     if not children:
         return _finish_active_transitions(prepared, state, context)
     if len(children) == 1:
-        bond, child = children[0]
+        child_obligation = children[0]
         return _enter_child_transitions(
             prepared,
             state,
             PendingWriterEntry(
                 parent=active.atom,
-                child=child,
-                bond=bond,
+                child=child_obligation.child,
+                bond=child_obligation.bond,
                 branch=False,
             ),
             kind=WriterTransitionKind.ENTER_INLINE_CHILD,
@@ -152,7 +174,9 @@ def legal_writer_transitions(
         )
 
     transitions = []
-    for bond, child in children:
+    for child_obligation in children:
+        bond = child_obligation.bond
+        child = child_obligation.child
         transition = _transition(
             prepared,
             state,
@@ -820,7 +844,7 @@ def _child_obligations_from_context(
     context: WriterTransitionExpansionContext,
     state: WriterState,
     atom: AtomId,
-) -> tuple[tuple[BondId, AtomId], ...]:
+) -> tuple[_WriterChildObligation, ...]:
     partition = context.graph.edge_partition
 
     if any(
@@ -838,7 +862,7 @@ def _child_obligations_from_context(
         atom,
     )
 
-    children = []
+    children: list[_WriterChildObligation] = []
 
     for action in summary.attachment_actions:
         if action.kind not in (
@@ -863,17 +887,30 @@ def _child_obligations_from_context(
             )
 
         incidence = boundary[0]
-        children.append((incidence.bond, incidence.residual_atom))
+        children.append(
+            _WriterChildObligation(
+                bond=incidence.bond,
+                child=incidence.residual_atom,
+                attachment_id=action.attachment_id,
+                attachment_action_kind=action.kind,
+            )
+        )
 
     pending = state.obligations.pending_entry
 
     if pending is not None and pending.parent == atom:
-        children.append((pending.bond, pending.child))
+        children.append(
+            _WriterChildObligation(
+                bond=pending.bond,
+                child=pending.child,
+                pending_entry=True,
+            )
+        )
 
     return tuple(
         sorted(
             children,
-            key=lambda item: (int(item[0]), int(atom), int(item[1])),
+            key=lambda item: (int(item.bond), int(atom), int(item.child)),
         )
     )
 
@@ -884,7 +921,11 @@ def _is_final_child_for_parent(
     pending: PendingWriterEntry,
 ) -> bool:
     children = _child_obligations_from_context(context, state, pending.parent)
-    return children == ((pending.bond, pending.child),)
+    return (
+        len(children) == 1
+        and children[0].bond == pending.bond
+        and children[0].child == pending.child
+    )
 
 
 __all__ = (

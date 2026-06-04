@@ -177,6 +177,27 @@ def _open_branch_transition_from_child_obligation(
     )
 
 
+def _enter_inline_child_transitions_from_child_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+    context: WriterTransitionExpansionContext,
+) -> tuple[WriterTransition, ...]:
+    return _enter_child_transitions(
+        prepared,
+        state,
+        PendingWriterEntry(
+            parent=parent,
+            child=child_obligation.child,
+            bond=child_obligation.bond,
+            branch=False,
+        ),
+        kind=WriterTransitionKind.ENTER_INLINE_CHILD,
+        context=context,
+    )
+
+
 def legal_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -197,18 +218,12 @@ def legal_writer_transitions(
     if not children:
         return _finish_active_transitions(prepared, state, context)
     if len(children) == 1:
-        child_obligation = children[0]
-        return _enter_child_transitions(
+        return _enter_inline_child_transitions_from_child_obligation(
             prepared,
             state,
-            PendingWriterEntry(
-                parent=active.atom,
-                child=child_obligation.child,
-                bond=child_obligation.bond,
-                branch=False,
-            ),
-            kind=WriterTransitionKind.ENTER_INLINE_CHILD,
-            context=context,
+            active.atom,
+            children[0],
+            context,
         )
 
     transitions = []

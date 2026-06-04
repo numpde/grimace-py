@@ -55,6 +55,11 @@ moving one of them into Grimace removes real duplication.
 There is no terminal/EOS row in this shape. If a downstream training target
 needs one, it can append it after interpreting the Grimace token path.
 
+Without an EOS row, the internal walk should stop as soon as it reaches an
+accepting decoder state. Continuing through accepting states would be a
+different sampling policy because it would choose between "stop here" and
+"extend" without an explicit choice in the recorded surface.
+
 This is not a public API commitment. It is the smallest useful internal shape
 for implementation and tests. A later public surface can wrap the same data in
 a more ergonomic object, expose only part of it, or use a different view after
@@ -230,7 +235,7 @@ state is the merged successor frontier for that token, exactly as
 
 ## Runtime normalization
 
-Any temporary wrapper or eventual public entrypoint should reuse the existing
+Any internal wrapper or eventual public entrypoint should reuse the existing
 runtime normalization:
 
 ```text
@@ -261,8 +266,8 @@ only as needed for the current prefix and chosen token, or the implementation
 may keep using the existing lazy runtime adapter until a Rust equivalent is
 ready.
 
-Disconnected molecules are currently composed at the runtime layer. A walk can
-probably follow the same structure:
+Disconnected molecules are currently composed at the runtime layer. A walk
+should follow the same structure:
 
 ```text
 walk active fragment

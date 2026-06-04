@@ -14,8 +14,12 @@ use crate::bond_stereo_constraints::{
     StereoSideInfo, StereoSideInfoBuild, CIS_STEREO_BOND_KINDS, TRANS_STEREO_BOND_KINDS,
 };
 use crate::frontier::{
-    choice_texts, frontier_prefix as shared_frontier_prefix, grouped_choice_texts,
-    take_choice_or_err, take_grouped_choices_or_err, take_transition_or_err, DecoderChoice,
+    branch_choice_texts, decoder_choices_from_token_successors,
+    extend_decoder_choices_from_token_successors, frontier_prefix as shared_frontier_prefix,
+    group_decoder_choices, take_branch_choice_successors_or_err, take_choice_index_or_err,
+    take_first_successor_or_err, take_only_successor_or_err, take_token_item_or_err,
+    take_token_successors_or_err, take_token_support_successors_or_err, token_support_from_choices,
+    DecoderChoice,
 };
 use crate::prepared_graph::{PreparedSmilesGraphData, CONNECTED_STEREO_SURFACE};
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -360,7 +364,7 @@ fn cached_single_stereo_choices<'a>(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedStereoWalkerStateData],
     cached_choices: &'a mut Option<StereoChoiceCache>,
-) -> PyResult<&'a StereoChoiceCache> {
+) -> PyResult<&'a [DecoderChoice<RootedConnectedStereoWalkerStateData>]> {
     if cached_choices.is_none() {
         *cached_choices = Some(frontier_choices_for_stereo(
             runtime.as_ref(),
@@ -369,12 +373,31 @@ fn cached_single_stereo_choices<'a>(
         )?);
     }
     match cached_choices.as_ref() {
-        Some(choices) => Ok(choices),
+        Some(choices) => Ok(choices.as_slice()),
         None => unreachable!("single decoder choice cache should be populated"),
     }
 }
 
+fn take_single_stereo_choices(
+    runtime: &Arc<StereoWalkerRuntimeData>,
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedStereoWalkerStateData],
+    cached_choices: &mut Option<StereoChoiceCache>,
+) -> PyResult<StereoChoiceCache> {
+    match cached_choices.take() {
+        Some(choices) => Ok(choices),
+        None => frontier_choices_for_stereo(runtime.as_ref(), graph, frontier),
+    }
+}
+
 impl StereoDecoderMode {
+    fn from_branches(branches: Vec<StereoDecoderBranch>) -> Self {
+        if let [branch] = branches.as_slice() {
+            return Self::single(branch.runtime.clone(), branch.frontier.clone());
+        }
+        Self::Merged { branches }
+    }
+
     fn single(
         runtime: Arc<StereoWalkerRuntimeData>,
         frontier: Vec<RootedConnectedStereoWalkerStateData>,
@@ -386,26 +409,23 @@ impl StereoDecoderMode {
         }
     }
 
-    fn merged(branches: Vec<StereoDecoderBranch>) -> Self {
-        Self::Merged { branches }
-    }
-
     fn next_token_support(
         &mut self,
         graph: &Arc<PreparedSmilesGraphData>,
     ) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => {
-                Ok(merged_stereo_grouped_successors(graph.clone(), branches)?
-                    .into_iter()
-                    .map(|(token, _)| token)
-                    .collect())
-            }
+            Self::Merged { branches } => Ok(merged_stereo_grouped_successor_modes(
+                graph.as_ref(),
+                branches,
+            )?
+            .into_iter()
+            .map(|(token, _)| token)
+            .collect()),
             Self::Single {
                 runtime,
                 frontier,
                 cached_choices,
-            } => Ok(grouped_choice_texts(cached_single_stereo_choices(
+            } => Ok(token_support_from_choices(cached_single_stereo_choices(
                 runtime,
                 graph.as_ref(),
                 frontier,
@@ -421,14 +441,9 @@ impl StereoDecoderMode {
     ) -> PyResult<()> {
         match self {
             Self::Merged { branches } => {
-                let successors = merged_stereo_grouped_successors(graph.clone(), branches)?;
-                let (_, successor) = successors
-                    .into_iter()
-                    .find(|(token, _)| token == chosen_token)
-                    .ok_or_else(|| {
-                        PyKeyError::new_err(format!("Token {chosen_token:?} is not available"))
-                    })?;
-                *self = successor.mode;
+                let successors = merged_stereo_grouped_successor_modes(graph.as_ref(), branches)?;
+                let successor_mode = take_token_item_or_err(successors, chosen_token)?;
+                *self = successor_mode;
                 Ok(())
             }
             Self::Single {
@@ -436,13 +451,9 @@ impl StereoDecoderMode {
                 frontier,
                 cached_choices,
             } => {
-                let choices = match cached_choices.take() {
-                    Some(choices) => choices,
-                    None => {
-                        frontier_choices_for_stereo(runtime.as_ref(), graph.as_ref(), frontier)?
-                    }
-                };
-                *frontier = take_grouped_choices_or_err(choices, chosen_token)?;
+                let choices =
+                    take_single_stereo_choices(runtime, graph.as_ref(), frontier, cached_choices)?;
+                *frontier = take_token_support_successors_or_err(choices, chosen_token)?;
                 Ok(())
             }
         }
@@ -450,17 +461,18 @@ impl StereoDecoderMode {
 
     fn next_choice_texts(&mut self, graph: &Arc<PreparedSmilesGraphData>) -> PyResult<Vec<String>> {
         match self {
-            Self::Merged { branches } => {
-                Ok(merged_stereo_choice_successors(graph.clone(), branches)?
-                    .into_iter()
-                    .map(|(token, _)| token)
-                    .collect())
-            }
+            Self::Merged { branches } => Ok(merged_stereo_choice_successor_modes(
+                graph.as_ref(),
+                branches,
+            )?
+            .into_iter()
+            .map(|(token, _)| token)
+            .collect()),
             Self::Single {
                 runtime,
                 frontier,
                 cached_choices,
-            } => Ok(choice_texts(cached_single_stereo_choices(
+            } => Ok(branch_choice_texts(cached_single_stereo_choices(
                 runtime,
                 graph.as_ref(),
                 frontier,
@@ -476,14 +488,11 @@ impl StereoDecoderMode {
     ) -> PyResult<()> {
         match self {
             Self::Merged { branches } => {
-                let mut successors = merged_stereo_choice_successors(graph.clone(), branches)?;
-                if chosen_idx >= successors.len() {
-                    return Err(PyKeyError::new_err(format!(
-                        "Choice index {chosen_idx} is not available; choice_count={}",
-                        successors.len()
-                    )));
-                }
-                *self = successors.swap_remove(chosen_idx).1.mode;
+                let (_, successor_mode) = take_choice_index_or_err(
+                    merged_stereo_choice_successor_modes(graph.as_ref(), branches)?,
+                    chosen_idx,
+                )?;
+                *self = successor_mode;
                 Ok(())
             }
             Self::Single {
@@ -491,13 +500,9 @@ impl StereoDecoderMode {
                 frontier,
                 cached_choices,
             } => {
-                let mut choices = match cached_choices.take() {
-                    Some(choices) => choices,
-                    None => {
-                        frontier_choices_for_stereo(runtime.as_ref(), graph.as_ref(), frontier)?
-                    }
-                };
-                *frontier = take_choice_or_err(&mut choices, chosen_idx)?;
+                let choices =
+                    take_single_stereo_choices(runtime, graph.as_ref(), frontier, cached_choices)?;
+                *frontier = take_branch_choice_successors_or_err(choices, chosen_idx)?;
                 Ok(())
             }
         }
@@ -509,10 +514,7 @@ impl StereoDecoderMode {
     ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
         match self {
             Self::Merged { branches } => {
-                Ok(merged_stereo_choice_successors(graph.clone(), branches)?
-                    .into_iter()
-                    .map(|(token, successor)| (token, successor.mode))
-                    .collect())
+                merged_stereo_choice_successor_modes(graph.as_ref(), branches)
             }
             Self::Single {
                 runtime, frontier, ..
@@ -533,10 +535,7 @@ impl StereoDecoderMode {
     ) -> PyResult<Vec<(String, StereoDecoderMode)>> {
         match self {
             Self::Merged { branches } => {
-                Ok(merged_stereo_grouped_successors(graph.clone(), branches)?
-                    .into_iter()
-                    .map(|(token, successor)| (token, successor.mode))
-                    .collect())
+                merged_stereo_grouped_successor_modes(graph.as_ref(), branches)
             }
             Self::Single {
                 runtime, frontier, ..
@@ -909,13 +908,9 @@ fn extend_linear_structural_transitions(
 fn finalize_linear_structural_transitions(
     transitions: Vec<(String, Vec<RootedConnectedStereoWalkerStateData>)>,
 ) -> BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>> {
-    let mut out = BTreeMap::new();
-    for (token, mut states) in transitions {
-        states.sort_by(cmp_stereo_state_structure);
-        states.dedup_by(|left, right| cmp_stereo_state_structure(left, right) == Ordering::Equal);
-        out.insert(token, states);
-    }
-    out
+    finalize_linear_structural_transitions_vec(transitions)
+        .into_iter()
+        .collect()
 }
 
 fn finalize_linear_structural_transitions_vec(
@@ -4424,14 +4419,9 @@ fn advance_stereo_token_state(
     state: &RootedConnectedStereoWalkerStateData,
     chosen_token: &str,
 ) -> PyResult<RootedConnectedStereoWalkerStateData> {
-    let mut successors = successors_by_token_stereo(runtime, graph, state)?;
-    let candidates = successors.remove(chosen_token).ok_or_else(|| {
-        let available = successors.keys().cloned().collect::<Vec<_>>();
-        PyKeyError::new_err(format!(
-            "Token {chosen_token:?} is not available; choices={available:?}"
-        ))
-    })?;
-    take_first_stereo_successor_state(candidates, "token advance")
+    let successors = successors_by_token_stereo(runtime, graph, state)?;
+    let candidates = take_token_successors_or_err(successors, chosen_token)?;
+    take_first_successor_or_err(candidates, "token advance")
 }
 
 #[cfg(test)]
@@ -4440,16 +4430,9 @@ fn choices_for_stereo_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedStereoWalkerStateData,
 ) -> PyResult<Vec<DecoderChoice<RootedConnectedStereoWalkerStateData>>> {
-    let mut choices = Vec::new();
-    for (token, successors) in successors_by_token_stereo(runtime, graph, state)? {
-        for successor in successors {
-            choices.push(DecoderChoice {
-                text: token.clone(),
-                next_frontier: vec![successor],
-            });
-        }
-    }
-    Ok(choices)
+    Ok(decoder_choices_from_token_successors(
+        successors_by_token_stereo(runtime, graph, state)?,
+    ))
 }
 
 #[cfg(test)]
@@ -4459,41 +4442,11 @@ fn advance_stereo_choice_state(
     state: &RootedConnectedStereoWalkerStateData,
     chosen_idx: usize,
 ) -> PyResult<RootedConnectedStereoWalkerStateData> {
-    let mut choices = choices_for_stereo_state(runtime, graph, state)?;
-    take_only_stereo_successor_state(
-        take_choice_or_err(&mut choices, chosen_idx)?,
+    let choices = choices_for_stereo_state(runtime, graph, state)?;
+    take_only_successor_or_err(
+        take_branch_choice_successors_or_err(choices, chosen_idx)?,
         "choice advance",
     )
-}
-
-fn take_only_stereo_successor_state(
-    mut successors: Vec<RootedConnectedStereoWalkerStateData>,
-    context: &str,
-) -> PyResult<RootedConnectedStereoWalkerStateData> {
-    if successors.len() != 1 {
-        return Err(PyValueError::new_err(format!(
-            "Expected exactly one stereo successor state for {context}, got {}",
-            successors.len()
-        )));
-    }
-    match successors.pop() {
-        Some(successor) => Ok(successor),
-        None => Err(PyValueError::new_err(format!(
-            "Expected exactly one stereo successor state for {context}, got 0"
-        ))),
-    }
-}
-
-fn take_first_stereo_successor_state(
-    mut successors: Vec<RootedConnectedStereoWalkerStateData>,
-    context: &str,
-) -> PyResult<RootedConnectedStereoWalkerStateData> {
-    match successors.drain(..).next() {
-        Some(successor) => Ok(successor),
-        None => Err(PyValueError::new_err(format!(
-            "Expected at least one stereo successor state for {context}, got 0"
-        ))),
-    }
 }
 
 fn frontier_next_token_support_for_stereo(
@@ -4501,24 +4454,12 @@ fn frontier_next_token_support_for_stereo(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedStereoWalkerStateData],
 ) -> PyResult<Vec<String>> {
-    Ok(frontier_transitions_for_stereo(runtime, graph, frontier)?
-        .into_keys()
-        .collect())
-}
-
-fn frontier_transitions_for_stereo(
-    runtime: &StereoWalkerRuntimeData,
-    graph: &PreparedSmilesGraphData,
-    frontier: &[RootedConnectedStereoWalkerStateData],
-) -> PyResult<BTreeMap<String, Vec<RootedConnectedStereoWalkerStateData>>> {
-    let mut transitions = Vec::<(String, Vec<RootedConnectedStereoWalkerStateData>)>::new();
-    for state in frontier {
-        extend_linear_structural_transitions(
-            &mut transitions,
-            successors_by_token_stereo(runtime, graph, state)?,
-        );
-    }
-    Ok(finalize_linear_structural_transitions(transitions))
+    Ok(
+        frontier_transitions_for_stereo_linear(runtime, graph, frontier)?
+            .into_iter()
+            .map(|(token, _)| token)
+            .collect(),
+    )
 }
 
 fn frontier_transitions_for_stereo_linear(
@@ -4543,14 +4484,10 @@ fn frontier_choices_for_stereo(
 ) -> PyResult<Vec<DecoderChoice<RootedConnectedStereoWalkerStateData>>> {
     let mut choices = Vec::new();
     for state in frontier {
-        for (token, successors) in successors_by_token_stereo(runtime, graph, state)? {
-            for successor in successors {
-                choices.push(DecoderChoice {
-                    text: token.clone(),
-                    next_frontier: vec![successor],
-                });
-            }
-        }
+        extend_decoder_choices_from_token_successors(
+            &mut choices,
+            successors_by_token_stereo(runtime, graph, state)?,
+        );
     }
     Ok(choices)
 }
@@ -4560,15 +4497,15 @@ fn frontier_choice_successors_for_stereo(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedStereoWalkerStateData],
 ) -> PyResult<Vec<(String, RootedConnectedStereoWalkerStateData)>> {
-    let mut choices = Vec::new();
-    for state in frontier {
-        for (token, successors) in successors_by_token_stereo(runtime, graph, state)? {
-            for successor in successors {
-                choices.push((token.clone(), successor));
-            }
-        }
+    let choices = frontier_choices_for_stereo(runtime, graph, frontier)?;
+    let mut out = Vec::with_capacity(choices.len());
+    for choice in choices {
+        out.push((
+            choice.text,
+            take_only_successor_or_err(choice.successors, "stereo choice successor")?,
+        ));
     }
-    Ok(choices)
+    Ok(out)
 }
 
 fn stereo_frontier_prefix(frontier: &[RootedConnectedStereoWalkerStateData]) -> String {
@@ -4714,18 +4651,12 @@ impl PyRootedConnectedStereoWalker {
         state: &PyRootedConnectedStereoWalkerState,
     ) -> PyResult<Vec<String>> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
-        let mut choices = Vec::new();
-        for (token, successors) in
-            successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
-        {
-            for successor in successors {
-                choices.push(DecoderChoice {
-                    text: token.clone(),
-                    next_frontier: vec![successor],
-                });
-            }
-        }
-        Ok(choice_texts(&choices))
+        let choices = decoder_choices_from_token_successors(successors_by_token_stereo(
+            &self.runtime,
+            &self.graph,
+            &state.data,
+        )?);
+        Ok(branch_choice_texts(&choices))
     }
 
     fn advance_token(
@@ -4734,9 +4665,9 @@ impl PyRootedConnectedStereoWalker {
         chosen_token: &str,
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
-        let mut choices = successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?;
-        let successors = take_first_stereo_successor_state(
-            take_transition_or_err(&mut choices, chosen_token)?,
+        let choices = successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?;
+        let successors = take_first_successor_or_err(
+            take_token_successors_or_err(choices, chosen_token)?,
             "walker token advance",
         )?;
         Ok(PyRootedConnectedStereoWalkerState { data: successors })
@@ -4748,20 +4679,14 @@ impl PyRootedConnectedStereoWalker {
         chosen_idx: usize,
     ) -> PyResult<PyRootedConnectedStereoWalkerState> {
         validate_stereo_state_shape(&self.runtime, &self.graph, &state.data)?;
-        let mut choices = Vec::new();
-        for (token, successors) in
-            successors_by_token_stereo(&self.runtime, &self.graph, &state.data)?
-        {
-            for successor in successors {
-                choices.push(DecoderChoice {
-                    text: token.clone(),
-                    next_frontier: vec![successor],
-                });
-            }
-        }
+        let choices = decoder_choices_from_token_successors(successors_by_token_stereo(
+            &self.runtime,
+            &self.graph,
+            &state.data,
+        )?);
         Ok(PyRootedConnectedStereoWalkerState {
-            data: take_only_stereo_successor_state(
-                take_choice_or_err(&mut choices, chosen_idx)?,
+            data: take_only_successor_or_err(
+                take_branch_choice_successors_or_err(choices, chosen_idx)?,
                 "walker choice advance",
             )?,
         })
@@ -4803,6 +4728,16 @@ impl PyRootedConnectedStereoDecoder {
         Self { graph, mode }
     }
 
+    fn from_modes(
+        graph: Arc<PreparedSmilesGraphData>,
+        modes: Vec<(String, StereoDecoderMode)>,
+    ) -> Vec<(String, Self)> {
+        modes
+            .into_iter()
+            .map(|(token, mode)| (token, Self::from_mode(graph.clone(), mode)))
+            .collect()
+    }
+
     fn from_single(
         graph: Arc<PreparedSmilesGraphData>,
         runtime: Arc<StereoWalkerRuntimeData>,
@@ -4815,10 +4750,10 @@ impl PyRootedConnectedStereoDecoder {
         graph: Arc<PreparedSmilesGraphData>,
         branches: Vec<StereoDecoderBranch>,
     ) -> Self {
-        if let [branch] = branches.as_slice() {
-            return Self::from_single(graph, branch.runtime.clone(), branch.frontier.clone());
+        Self {
+            graph,
+            mode: StereoDecoderMode::from_branches(branches),
         }
-        Self::from_mode(graph, StereoDecoderMode::merged(branches))
     }
 }
 
@@ -4854,62 +4789,53 @@ fn merged_stereo_is_terminal(
     Ok(true)
 }
 
-fn merged_stereo_choice_successors(
-    graph: Arc<PreparedSmilesGraphData>,
+fn merged_stereo_choice_successor_modes(
+    graph: &PreparedSmilesGraphData,
     branches: &[StereoDecoderBranch],
-) -> PyResult<Vec<(String, PyRootedConnectedStereoDecoder)>> {
+) -> PyResult<Vec<(String, StereoDecoderMode)>> {
     let mut out = Vec::new();
     for branch in branches {
-        if stereo_frontier_is_terminal(branch.runtime.as_ref(), graph.as_ref(), &branch.frontier)? {
+        if stereo_frontier_is_terminal(branch.runtime.as_ref(), graph, &branch.frontier)? {
             continue;
         }
-        for (token, successor) in frontier_choice_successors_for_stereo(
-            branch.runtime.as_ref(),
-            graph.as_ref(),
-            &branch.frontier,
-        )? {
+        for (token, successor) in
+            frontier_choice_successors_for_stereo(branch.runtime.as_ref(), graph, &branch.frontier)?
+        {
             out.push((
                 token,
-                PyRootedConnectedStereoDecoder::from_single(
-                    graph.clone(),
-                    branch.runtime.clone(),
-                    vec![successor],
-                ),
+                StereoDecoderMode::single(branch.runtime.clone(), vec![successor]),
             ));
         }
     }
     Ok(out)
 }
 
-fn merged_stereo_grouped_successors(
-    graph: Arc<PreparedSmilesGraphData>,
+fn merged_stereo_grouped_successor_modes(
+    graph: &PreparedSmilesGraphData,
     branches: &[StereoDecoderBranch],
-) -> PyResult<Vec<(String, PyRootedConnectedStereoDecoder)>> {
-    let mut buckets = Vec::<(String, Vec<StereoDecoderBranch>)>::new();
+) -> PyResult<Vec<(String, StereoDecoderMode)>> {
+    let mut choices = Vec::<DecoderChoice<StereoDecoderBranch>>::new();
     for branch in branches {
         for (token, frontier) in frontier_transitions_for_stereo_linear(
             branch.runtime.as_ref(),
-            graph.as_ref(),
+            graph,
             &branch.frontier,
         )? {
-            let successor_branch = StereoDecoderBranch {
-                runtime: branch.runtime.clone(),
-                frontier,
-            };
-            if let Some((_, grouped)) = buckets.iter_mut().find(|(existing, _)| *existing == token)
-            {
-                grouped.push(successor_branch);
-            } else {
-                buckets.push((token, vec![successor_branch]));
-            }
+            choices.push(DecoderChoice::single(
+                token,
+                StereoDecoderBranch {
+                    runtime: branch.runtime.clone(),
+                    frontier,
+                },
+            ));
         }
     }
-    Ok(buckets
+    Ok(group_decoder_choices(choices, |successors| successors)
         .into_iter()
-        .map(|(token, grouped)| {
+        .map(|transition| {
             (
-                token,
-                PyRootedConnectedStereoDecoder::from_merged(graph.clone(), grouped),
+                transition.text,
+                StereoDecoderMode::from_branches(transition.successors),
             )
         })
         .collect())
@@ -4979,21 +4905,17 @@ impl PyRootedConnectedStereoDecoder {
     }
 
     fn choice_successors(&self) -> PyResult<Vec<(String, Self)>> {
-        Ok(self
-            .mode
-            .choice_successor_modes(&self.graph)?
-            .into_iter()
-            .map(|(token, mode)| (token, Self::from_mode(self.graph.clone(), mode)))
-            .collect())
+        Ok(Self::from_modes(
+            self.graph.clone(),
+            self.mode.choice_successor_modes(&self.graph)?,
+        ))
     }
 
     fn grouped_successors(&self) -> PyResult<Vec<(String, Self)>> {
-        Ok(self
-            .mode
-            .grouped_successor_modes(&self.graph)?
-            .into_iter()
-            .map(|(token, mode)| (token, Self::from_mode(self.graph.clone(), mode)))
-            .collect())
+        Ok(Self::from_modes(
+            self.graph.clone(),
+            self.mode.grouped_successor_modes(&self.graph)?,
+        ))
     }
 
     fn prefix(&self) -> String {
@@ -5074,7 +4996,7 @@ mod tests {
             let mut choices = choices_for_stereo_state(&runtime, graph, &state)
                 .expect("stereo choices should enumerate");
             while let Some(choice) = choices.pop() {
-                stack.extend(choice.next_frontier);
+                stack.extend(choice.successors);
             }
         }
         observed

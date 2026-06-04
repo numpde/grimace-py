@@ -200,13 +200,13 @@ advance by chosen token
 terminal/prefix state
 ```
 
-The likely internal refactor is a grouped choice object:
+The internal refactor is a grouped transition object:
 
 ```text
-GroupedChoice {
+GroupedTransition {
     text,
     branch_count,
-    successor
+    successors
 }
 ```
 
@@ -214,13 +214,19 @@ Existing decoder methods can then remain projections:
 
 ```text
 next_token_support      -> text
-grouped_successors      -> text + successor
-determinized_walk       -> text + branch_count + sampled successor
+grouped_successors      -> text + successors
+determinized_walk       -> choose text using text + branch_count,
+                           then advance to that text's successor frontier
 ```
 
 This lets the new walk record multiplicity without changing the current public
 decoder API. If exposing multiplicity on the public decoder later becomes
-useful, it can use the same grouped-choice source of truth.
+useful, it can use the same grouped-transition source of truth.
+
+A determinized walk samples one exposed token at each prefix. It does not sample
+one branch-preserving successor. After a token is selected, the next decoder
+state is the merged successor frontier for that token, exactly as
+`advance_token(...)` would produce.
 
 ## Runtime normalization
 

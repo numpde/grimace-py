@@ -106,6 +106,14 @@ class _WriterChildObligation:
     pending_entry: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class _WriterClosureOpenObligation:
+    bond: BondId
+    first_atom: AtomId
+    second_atom: AtomId
+    attachment_id: int
+
+
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -504,19 +512,15 @@ def _open_closure_endpoint_transitions(
         return ()
     active_atom = state.active.atom
     transitions = []
-    for action_incidence in writer_residual_attachment_action_incidences_for_atom(
-        context.graph.residual_summary,
+    for closure_obligation in _closure_open_obligations_from_context(
+        context,
         active_atom,
     ):
-        action = action_incidence.action
-        if action.kind is not WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
-            continue
-        incidence = action_incidence.incidence
         for label in labels:
             endpoint = WriterOpenClosureEndpoint(
-                bond=incidence.bond,
-                first_atom=active_atom,
-                second_atom=incidence.residual_atom,
+                bond=closure_obligation.bond,
+                first_atom=closure_obligation.first_atom,
+                second_atom=closure_obligation.second_atom,
                 label=label,
                 first_endpoint_text=label.text,
                 first_endpoint_bond_text="",
@@ -554,6 +558,35 @@ def _open_closure_endpoint_transitions(
             if _closure_open_successor_is_supported(prepared, transition.successor, endpoint):
                 transitions.append(transition)
     return tuple(transitions)
+
+
+def _closure_open_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    atom: AtomId,
+) -> tuple[_WriterClosureOpenObligation, ...]:
+    obligations: list[_WriterClosureOpenObligation] = []
+
+    for action_incidence in writer_residual_attachment_action_incidences_for_atom(
+        context.graph.residual_summary,
+        atom,
+    ):
+        action = action_incidence.action
+
+        if action.kind is not WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY:
+            continue
+
+        incidence = action_incidence.incidence
+
+        obligations.append(
+            _WriterClosureOpenObligation(
+                bond=incidence.bond,
+                first_atom=atom,
+                second_atom=incidence.residual_atom,
+                attachment_id=action.attachment_id,
+            )
+        )
+
+    return tuple(obligations)
 
 
 def _pair_closure_endpoint_transitions(

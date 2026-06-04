@@ -120,6 +120,19 @@ class _WriterClosurePairObligation:
     closure: WriterClosedClosure
 
 
+class _WriterScheduledActionKind(Enum):
+    FINISH_ACTIVE = "finish_active"
+    ENTER_INLINE_CHILD = "enter_inline_child"
+    OPEN_BRANCH = "open_branch"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterScheduledAction:
+    kind: _WriterScheduledActionKind
+    parent: AtomId
+    child_obligation: _WriterChildObligation | None = None
+
+
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -198,6 +211,82 @@ def _enter_inline_child_transitions_from_child_obligation(
     )
 
 
+def _active_child_scheduled_actions(
+    parent: AtomId,
+    children: tuple[_WriterChildObligation, ...],
+) -> tuple[_WriterScheduledAction, ...]:
+    if not children:
+        return (
+            _WriterScheduledAction(
+                kind=_WriterScheduledActionKind.FINISH_ACTIVE,
+                parent=parent,
+            ),
+        )
+
+    if len(children) == 1:
+        return (
+            _WriterScheduledAction(
+                kind=_WriterScheduledActionKind.ENTER_INLINE_CHILD,
+                parent=parent,
+                child_obligation=children[0],
+            ),
+        )
+
+    return tuple(
+        _WriterScheduledAction(
+            kind=_WriterScheduledActionKind.OPEN_BRANCH,
+            parent=parent,
+            child_obligation=child_obligation,
+        )
+        for child_obligation in children
+    )
+
+
+def _active_child_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        return _finish_active_transitions(prepared, state, context)
+
+    child_obligation = action.child_obligation
+
+    if child_obligation is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled child action requires a child obligation",
+        )
+
+    if action.kind is _WriterScheduledActionKind.ENTER_INLINE_CHILD:
+        return _enter_inline_child_transitions_from_child_obligation(
+            prepared,
+            state,
+            action.parent,
+            child_obligation,
+            context,
+        )
+
+    if action.kind is _WriterScheduledActionKind.OPEN_BRANCH:
+        transition = _open_branch_transition_from_child_obligation(
+            prepared,
+            state,
+            action.parent,
+            child_obligation,
+        )
+
+        if transition is None:
+            return ()
+
+        return (transition,)
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported scheduled child action: {action.kind!r}",
+    )
+
+
 def _active_child_transitions_from_obligations(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -205,30 +294,17 @@ def _active_child_transitions_from_obligations(
     parent: AtomId,
     children: tuple[_WriterChildObligation, ...],
 ) -> tuple[WriterTransition, ...]:
-    if not children:
-        return _finish_active_transitions(prepared, state, context)
-
-    if len(children) == 1:
-        return _enter_inline_child_transitions_from_child_obligation(
-            prepared,
-            state,
-            parent,
-            children[0],
-            context,
-        )
-
     transitions: list[WriterTransition] = []
 
-    for child_obligation in children:
-        transition = _open_branch_transition_from_child_obligation(
-            prepared,
-            state,
-            parent,
-            child_obligation,
+    for action in _active_child_scheduled_actions(parent, children):
+        transitions.extend(
+            _active_child_transitions_from_scheduled_action(
+                prepared,
+                state,
+                context,
+                action,
+            )
         )
-
-        if transition is not None:
-            transitions.append(transition)
 
     return tuple(transitions)
 

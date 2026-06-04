@@ -626,6 +626,58 @@ def _closure_pair_obligations_from_state(
     return tuple(obligations)
 
 
+def _pair_closure_endpoint_transition_from_obligation(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    pair_obligation: _WriterClosurePairObligation,
+) -> WriterTransition | None:
+    endpoint = pair_obligation.endpoint
+    closure = pair_obligation.closure
+
+    transition = _transition(
+        prepared,
+        state,
+        emitted_text=endpoint.label.text,
+        successor=replace(
+            state,
+            ring_state=_ring_state_after_pair_endpoint(
+                state.ring_state,
+                endpoint,
+                closure,
+            ),
+        ),
+        kind=WriterTransitionKind.PAIR_CLOSURE_ENDPOINT,
+        events=(
+            WriterRingEndpointPaired(
+                bond=closure.bond,
+                endpoint_atom=closure.second_atom,
+                partner_atom=closure.first_atom,
+                label=closure.label,
+                endpoint_text=closure.second_endpoint_text,
+                bond_text=closure.second_endpoint_bond_text,
+            ),
+        ),
+        evidence=WriterTransitionEvidence(
+            bond=closure.bond,
+            parent=closure.first_atom,
+            child=closure.second_atom,
+        ),
+    )
+
+    if transition is None:
+        return None
+
+    if not _closure_pair_successor_is_supported(
+        prepared,
+        transition.successor,
+        closure,
+    ):
+        return None
+
+    return transition
+
+
 def _pair_closure_endpoint_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -637,36 +689,13 @@ def _pair_closure_endpoint_transitions(
         state,
         active_atom,
     ):
-        endpoint = pair_obligation.endpoint
-        closure = pair_obligation.closure
-        transition = _transition(
+        transition = _pair_closure_endpoint_transition_from_obligation(
             prepared,
             state,
-            emitted_text=endpoint.label.text,
-            successor=replace(
-                state,
-                ring_state=_ring_state_after_pair_endpoint(state.ring_state, endpoint, closure),
-            ),
-            kind=WriterTransitionKind.PAIR_CLOSURE_ENDPOINT,
-            events=(
-                WriterRingEndpointPaired(
-                    bond=closure.bond,
-                    endpoint_atom=closure.second_atom,
-                    partner_atom=closure.first_atom,
-                    label=closure.label,
-                    endpoint_text=closure.second_endpoint_text,
-                    bond_text=closure.second_endpoint_bond_text,
-                ),
-            ),
-            evidence=WriterTransitionEvidence(
-                bond=closure.bond,
-                parent=closure.first_atom,
-                child=closure.second_atom,
-            ),
+            context,
+            pair_obligation,
         )
-        if transition is None:
-            continue
-        if _closure_pair_successor_is_supported(prepared, transition.successor, closure):
+        if transition is not None:
             transitions.append(transition)
     return tuple(transitions)
 

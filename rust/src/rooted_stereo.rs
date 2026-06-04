@@ -365,16 +365,15 @@ fn cached_single_stereo_choices<'a>(
     frontier: &[RootedConnectedStereoWalkerStateData],
     cached_choices: &'a mut Option<StereoChoiceCache>,
 ) -> PyResult<&'a [DecoderChoice<RootedConnectedStereoWalkerStateData>]> {
-    if cached_choices.is_none() {
-        *cached_choices = Some(frontier_choices_for_stereo(
-            runtime.as_ref(),
-            graph,
-            frontier,
-        )?);
-    }
-    match cached_choices.as_ref() {
+    match cached_choices {
         Some(choices) => Ok(choices.as_slice()),
-        None => unreachable!("single decoder choice cache should be populated"),
+        None => Ok(cached_choices
+            .insert(frontier_choices_for_stereo(
+                runtime.as_ref(),
+                graph,
+                frontier,
+            )?)
+            .as_slice()),
     }
 }
 

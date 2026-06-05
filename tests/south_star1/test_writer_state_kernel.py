@@ -1014,6 +1014,133 @@ class WriterStateKernelTest(unittest.TestCase):
             (prepared, state, context, (child_action,)),
         )
 
+    def test_scheduled_action_rejects_finish_payload(self) -> None:
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(0),
+            child=AtomId(1),
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterScheduledAction(
+                kind=writer_transitions._WriterScheduledActionKind.FINISH_ACTIVE,
+                parent=AtomId(0),
+                child_obligation=child,
+            )
+
+    def test_scheduled_action_requires_child_payload_for_child_action(self) -> None:
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterScheduledAction(
+                kind=writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
+                parent=AtomId(0),
+            )
+
+    def test_scheduled_action_rejects_wrong_payload_family(self) -> None:
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(0),
+            first_atom=AtomId(0),
+            second_atom=AtomId(1),
+            label=WriterClosureLabel(value=1, text="1"),
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(0),
+            first_atom=AtomId(0),
+            second_atom=AtomId(1),
+            label=endpoint.label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterScheduledAction(
+                kind=writer_transitions._WriterScheduledActionKind.OPEN_BRANCH,
+                parent=AtomId(0),
+                closure_pair_obligation=pair,
+            )
+
+    def test_scheduled_action_requires_closure_open_label(self) -> None:
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(0),
+            first_atom=AtomId(0),
+            second_atom=AtomId(1),
+            attachment_id=7,
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterScheduledAction(
+                kind=writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+                parent=AtomId(0),
+                closure_open_obligation=open_obligation,
+            )
+
+    def test_scheduled_action_accepts_valid_payloads(self) -> None:
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(0),
+            child=AtomId(1),
+        )
+        open_obligation = writer_transitions._WriterClosureOpenObligation(
+            bond=BondId(1),
+            first_atom=AtomId(0),
+            second_atom=AtomId(2),
+            attachment_id=7,
+        )
+        label = WriterClosureLabel(value=1, text="1")
+        endpoint = WriterOpenClosureEndpoint(
+            bond=BondId(2),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            label=label,
+            first_endpoint_text="1",
+            first_endpoint_bond_text="",
+        )
+        closure = WriterClosedClosure(
+            bond=BondId(2),
+            first_atom=AtomId(0),
+            second_atom=AtomId(3),
+            label=label,
+            first_endpoint_text="1",
+            second_endpoint_text="1",
+            first_endpoint_bond_text="",
+            second_endpoint_bond_text="",
+        )
+        pair = writer_transitions._WriterClosurePairObligation(
+            endpoint=endpoint,
+            closure=closure,
+        )
+
+        writer_transitions._WriterScheduledAction(
+            kind=writer_transitions._WriterScheduledActionKind.FINISH_ACTIVE,
+            parent=AtomId(0),
+        )
+        writer_transitions._WriterScheduledAction(
+            kind=writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
+            parent=AtomId(0),
+            child_obligation=child,
+        )
+        writer_transitions._WriterScheduledAction(
+            kind=writer_transitions._WriterScheduledActionKind.OPEN_BRANCH,
+            parent=AtomId(0),
+            child_obligation=child,
+        )
+        writer_transitions._WriterScheduledAction(
+            kind=writer_transitions._WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+            parent=AtomId(0),
+            closure_open_obligation=open_obligation,
+            closure_open_label=label,
+        )
+        writer_transitions._WriterScheduledAction(
+            kind=writer_transitions._WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+            parent=AtomId(0),
+            closure_pair_obligation=pair,
+        )
+
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):

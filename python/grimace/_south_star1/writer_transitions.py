@@ -137,6 +137,52 @@ class _WriterScheduledAction:
     closure_open_label: WriterClosureLabel | None = None
     closure_pair_obligation: _WriterClosurePairObligation | None = None
 
+    def __post_init__(self) -> None:
+        has_child = self.child_obligation is not None
+        has_open_obligation = self.closure_open_obligation is not None
+        has_open_label = self.closure_open_label is not None
+        has_pair = self.closure_pair_obligation is not None
+
+        if self.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+            valid = (
+                not has_child
+                and not has_open_obligation
+                and not has_open_label
+                and not has_pair
+            )
+        elif self.kind in (
+            _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+            _WriterScheduledActionKind.OPEN_BRANCH,
+        ):
+            valid = (
+                has_child
+                and not has_open_obligation
+                and not has_open_label
+                and not has_pair
+            )
+        elif self.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+            valid = (
+                not has_child
+                and has_open_obligation
+                and has_open_label
+                and not has_pair
+            )
+        elif self.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+            valid = (
+                not has_child
+                and not has_open_obligation
+                and not has_open_label
+                and has_pair
+            )
+        else:
+            valid = False
+
+        if not valid:
+            raise SouthStarError(
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                f"invalid scheduled action payload: {self.kind!r}",
+            )
+
 
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,

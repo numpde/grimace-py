@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from collections import Counter
 from dataclasses import dataclass
 import unittest
 
@@ -159,6 +160,51 @@ class RuntimeStateInvariantTests(unittest.TestCase):
             ((".", 1),),
             runtime_token_transition_counts(oxygen_state._state),
         )
+
+    def test_token_branch_counts_match_branch_transition_text_counts(self) -> None:
+        cases = (
+            _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
+            _audit_case("all_roots_nonstereo", "CCO", rootedAtAtom=-1, isomericSmiles=False),
+            _audit_case("rooted_stereo", "F[C@H](Cl)Br", rootedAtAtom=0, isomericSmiles=True),
+            _audit_case("all_roots_stereo", "F[C@H](Cl)Br", rootedAtAtom=-1, isomericSmiles=True),
+            _audit_case(
+                "disconnected",
+                "F[C@H](Cl)Br.O",
+                rootedAtAtom=-1,
+                isomericSmiles=True,
+            ),
+        )
+
+        for case in cases:
+            with self.subTest(case=case.name):
+                decoder = grimace.MolToSmilesDeterminizedDecoder(
+                    parse_smiles(case.smiles),
+                    **case.kwargs,
+                )
+                seen_state_keys: set[object] = set()
+                stack = [decoder._state]
+
+                while stack:
+                    state = stack.pop()
+                    state_key = runtime_state_cache_key(state)
+                    if state_key in seen_state_keys:
+                        continue
+                    seen_state_keys.add(state_key)
+
+                    branch_counts = Counter(
+                        text for text, _ in runtime_realized_branch_transitions(state)
+                    )
+                    token_counts = dict(runtime_token_transition_counts(state))
+                    self.assertEqual(dict(branch_counts), token_counts)
+
+                    stack.extend(
+                        successor
+                        for _, successor in runtime_realized_branch_transitions(state)
+                    )
+                    stack.extend(
+                        successor
+                        for _, successor in runtime_realized_token_transitions(state)
+                    )
 
     def test_determinized_decoder_state_audit_covers_all_reachable_states(self) -> None:
         cases = (

@@ -193,6 +193,16 @@ class PublicSamplingTests(unittest.TestCase):
                         **kwargs,
                     )
 
+    def test_sampling_rejects_invalid_seed_before_preparing_input(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsigned 64-bit"):
+            grimace.MolToSmilesSample(
+                object(),
+                seed=-1,
+                decoder_view="determinized",
+                sampling_mode="uniform_token",
+                **supported_public_kwargs(isomericSmiles=False, rootedAtAtom=0),
+            )
+
     def test_sampling_requires_explicit_seed(self) -> None:
         with self.assertRaises(TypeError):
             grimace.MolToSmilesSample(

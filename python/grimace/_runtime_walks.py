@@ -58,9 +58,13 @@ def _seeded_branch_preserving_chooser(seed: int) -> _TransitionChooser:
 
 
 def _splitmix64_sampler(seed: int) -> _core._SplitMix64Sampler:
+    return _core._SplitMix64Sampler(_validate_walk_seed(seed))
+
+
+def _validate_walk_seed(seed: int) -> int:
     if type(seed) is not int or not 0 <= seed <= _U64_MAX:
         raise ValueError("walk seed must be an unsigned 64-bit integer")
-    return _core._SplitMix64Sampler(seed)
+    return seed
 
 
 def _selected_transition_index(

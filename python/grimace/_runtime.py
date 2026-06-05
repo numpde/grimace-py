@@ -276,6 +276,25 @@ def _make_decoder_state_impl(
     return _make_connected_state_adapter(mol_or_prepared, flags)
 
 
+def _make_decoder_state(
+    mol_or_prepared: object,
+    *,
+    isomeric_smiles: bool = True,
+    kekule_smiles: bool = False,
+    rooted_at_atom: int = -1,
+    canonical: bool = True,
+    all_bonds_explicit: bool = False,
+    all_hs_explicit: bool = False,
+    do_random: bool = False,
+    ignore_atom_map_numbers: bool = False,
+) -> _BaseDecoderState:
+    flags = _make_flags_from_internal_options(locals())
+    return _make_decoder_state_impl(
+        _prepare_runtime_input(mol_or_prepared, flags=flags),
+        flags=flags,
+    )
+
+
 class _PublicDecoderBase:
     __slots__ = ("_state", "_choices_cache")
 
@@ -292,10 +311,9 @@ class _PublicDecoderBase:
         do_random: bool = False,
         ignore_atom_map_numbers: bool = False,
     ) -> None:
-        flags = _make_flags_from_internal_options(locals())
-        self._state = _make_decoder_state_impl(
-            _prepare_runtime_input(mol_or_prepared, flags=flags),
-            flags=flags,
+        self._state = _make_decoder_state(
+            mol_or_prepared,
+            **_internal_option_kwargs(locals()),
         )
         self._choices_cache = None
 

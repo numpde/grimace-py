@@ -12,10 +12,13 @@ from collections.abc import Iterator, Mapping, Sequence
 import grimace._deviation as _deviation
 import grimace._mol_to_smiles_options as _options
 import grimace._runtime as _runtime
+import grimace._sampling as _sampling
 from grimace._prepared_mol import PreparedMol, PrepareMol
 
 MolToSmilesChoice = _runtime.MolToSmilesChoice
 SmilesDeviation = _deviation.SmilesDeviation
+SmilesSample = _sampling.SmilesSample
+SmilesSampleStep = _sampling.SmilesSampleStep
 
 
 def _runtime_kwargs(option_values: Mapping[str, object]) -> dict[str, object]:
@@ -127,6 +130,32 @@ def MolToSmilesDeviation(
     )
 
 
+def MolToSmilesSample(
+    mol: object,
+    *,
+    seed: int,
+    decoder_view: str = "determinized",
+    sampling_mode: str = "uniform_token",
+    isomericSmiles: bool = True,
+    kekuleSmiles: bool = False,
+    rootedAtAtom: int = -1,
+    canonical: bool = True,
+    allBondsExplicit: bool = False,
+    allHsExplicit: bool = False,
+    doRandom: bool = False,
+    ignoreAtomMapNumbers: bool = False,
+) -> SmilesSample:
+    """Draw one supported SMILES path and retain per-step token choices."""
+
+    return _sampling.mol_to_smiles_sample(
+        mol,
+        seed=seed,
+        decoder_view=decoder_view,
+        sampling_mode=sampling_mode,
+        **_runtime_kwargs(locals()),
+    )
+
+
 class _PublicDecoderBase(_runtime._PublicDecoderBase):
     __slots__ = ()
 
@@ -176,9 +205,12 @@ __all__ = [
     "MolToSmilesDeterminizedDecoder",
     "MolToSmilesDeviation",
     "MolToSmilesEnum",
+    "MolToSmilesSample",
     "MolToSmilesTokenInventory",
     "MolToSmilesTokenInventorySuperset",
     "PreparedMol",
     "PrepareMol",
     "SmilesDeviation",
+    "SmilesSample",
+    "SmilesSampleStep",
 ]

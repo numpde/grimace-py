@@ -121,6 +121,12 @@ def coerce_public_options(
     *,
     context: str,
 ) -> dict[str, object]:
+    public_names = {spec.public_name for spec in specs}
+    unknown_names = sorted(repr(name) for name in set(values) - public_names)
+    if unknown_names:
+        raise TypeError(
+            f"{context} got unknown option(s): {', '.join(unknown_names)}"
+        )
     return {
         spec.internal_name: coerce_option(
             spec,

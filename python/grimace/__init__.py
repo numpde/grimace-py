@@ -24,7 +24,11 @@ SmilesSampleStep = _sampling.SmilesSampleStep
 def _runtime_kwargs(option_values: Mapping[str, object]) -> dict[str, object]:
     return _options.coerce_public_options(
         _options.MOL_TO_SMILES_OPTIONS,
-        option_values,
+        {
+            spec.public_name: option_values[spec.public_name]
+            for spec in _options.MOL_TO_SMILES_OPTIONS
+            if spec.public_name in option_values
+        },
         context="MolToSmiles",
     )
 

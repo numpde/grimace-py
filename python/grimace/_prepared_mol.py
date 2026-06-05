@@ -319,9 +319,13 @@ def PrepareMol(
     if not isinstance(mol, Chem.Mol):
         raise TypeError("PrepareMol requires an RDKit Chem.Mol")
 
+    option_values = locals()
     writer_options = coerce_public_options(
         MOL_TO_SMILES_PREPARED_OPTIONS,
-        locals(),
+        {
+            spec.public_name: option_values[spec.public_name]
+            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
+        },
         context="PrepareMol",
     )
 

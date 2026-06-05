@@ -133,6 +133,14 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                         context="TestContext",
                     )
 
+    def test_public_option_parser_rejects_unknown_names(self) -> None:
+        with self.assertRaisesRegex(TypeError, "unknown option"):
+            coerce_public_options(
+                MOL_TO_SMILES_OPTIONS,
+                {"seed": 0},
+                context="TestContext",
+            )
+
     def test_public_option_parser_maps_to_internal_names(self) -> None:
         self.assertEqual(
             {

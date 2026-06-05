@@ -97,6 +97,14 @@ class RuntimeWalkTests(unittest.TestCase):
             ({"choice_branch_counts": (True,)}, "branch counts"),
             ({"choice_branch_counts": (0,)}, "branch counts"),
             ({"choice_counts": (2,)}, "choice counts do not span"),
+            (
+                {
+                    "choice_counts": (2,),
+                    "choice_tokens": ("C", "C"),
+                    "choice_branch_counts": (1, 1),
+                },
+                "unique",
+            ),
             ({"tokens": ("N",)}, "selected tokens"),
         )
 

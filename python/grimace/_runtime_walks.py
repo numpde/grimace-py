@@ -76,6 +76,9 @@ class _TokenWalkResult:
                 raise ValueError("walk result selected indices must be ints in range")
             if offset + choice_count > len(self.choice_tokens):
                 raise ValueError("walk choice counts do not span choice payload")
+            choice_tokens = self.choice_tokens[offset : offset + choice_count]
+            if len(set(choice_tokens)) != choice_count:
+                raise ValueError("walk choice tokens must be unique per step")
             if token != self.choice_tokens[offset + selected_index]:
                 raise ValueError("walk selected tokens do not match choice payload")
             starts.append(offset)

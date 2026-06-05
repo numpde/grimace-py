@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import grimace._core as _core
 from grimace._runtime_states import _BaseDecoderState, _StateTransitions
 
 
+_U64_MAX = (1 << 64) - 1
 _TransitionChooser = Callable[[_StateTransitions], int]
 _IndexSampler = Callable[[int], int]
 _WeightedIndexSampler = Callable[[tuple[int, ...]], int]
@@ -37,6 +39,22 @@ def _branch_multiplicity_chooser(
         )
 
     return choose
+
+
+def _seeded_uniform_token_chooser(seed: int) -> _TransitionChooser:
+    sampler = _splitmix64_sampler(seed)
+    return _uniform_token_chooser(sampler.uniform_index)
+
+
+def _seeded_branch_multiplicity_chooser(seed: int) -> _TransitionChooser:
+    sampler = _splitmix64_sampler(seed)
+    return _branch_multiplicity_chooser(sampler.weighted_index)
+
+
+def _splitmix64_sampler(seed: int) -> object:
+    if type(seed) is not int or not 0 <= seed <= _U64_MAX:
+        raise ValueError("walk seed must be an unsigned 64-bit integer")
+    return _core._SplitMix64Sampler(seed)
 
 
 def _walk_token_transitions(

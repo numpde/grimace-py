@@ -1,10 +1,27 @@
 use std::num::NonZeroU64;
 
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RngError {
     EmptyChoices,
     NoPositiveWeights,
     SampleSpaceOverflow,
+}
+
+impl RngError {
+    fn message(self) -> &'static str {
+        match self {
+            Self::EmptyChoices => "cannot sample from an empty choice set",
+            Self::NoPositiveWeights => "cannot sample from weights with no positive total",
+            Self::SampleSpaceOverflow => "sample space exceeds u64",
+        }
+    }
+}
+
+fn rng_error_to_py_err(error: RngError) -> PyErr {
+    PyValueError::new_err(error.message())
 }
 
 trait RandomSource {
@@ -24,6 +41,7 @@ impl Rng<SplitMix64> {
 }
 
 impl<S: RandomSource> Rng<S> {
+    #[cfg(test)]
     fn from_source(source: S) -> Self {
         Self { source }
     }
@@ -95,6 +113,31 @@ impl RandomSource for SplitMix64 {
         value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
         value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
         value ^ (value >> 31)
+    }
+}
+
+#[pyclass(name = "_SplitMix64Sampler", module = "grimace._core")]
+pub(crate) struct PySplitMix64Sampler {
+    rng: Rng<SplitMix64>,
+}
+
+#[pymethods]
+impl PySplitMix64Sampler {
+    #[new]
+    fn new(seed: u64) -> Self {
+        Self {
+            rng: Rng::from_seed_u64(seed),
+        }
+    }
+
+    fn uniform_index(&mut self, len: usize) -> PyResult<usize> {
+        self.rng.uniform_index(len).map_err(rng_error_to_py_err)
+    }
+
+    fn weighted_index(&mut self, weights: Vec<usize>) -> PyResult<usize> {
+        self.rng
+            .weighted_index(&weights)
+            .map_err(rng_error_to_py_err)
     }
 }
 

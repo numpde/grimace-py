@@ -569,7 +569,7 @@ Future walker slice:
 - [x] Keep stop policy separate from transition listing because accepted states
       can still have outgoing transitions in composed runtimes.
 - [x] Test joined token paths against MolToSmilesEnum support.
-- [ ] Test seeded reproducibility within the same Grimace version.
+- [x] Test seeded reproducibility within the same Grimace version.
 - [x] Test uniform_token samples by exposed token index.
 - [x] Test branch_multiplicity samples by branch_count.
 

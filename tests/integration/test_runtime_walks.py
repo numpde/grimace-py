@@ -6,6 +6,8 @@ import grimace
 from grimace._runtime_states import _StateTransition
 from grimace._runtime_walks import (
     _branch_multiplicity_chooser,
+    _seeded_branch_multiplicity_chooser,
+    _seeded_uniform_token_chooser,
     _uniform_token_chooser,
     _walk_token_transitions,
 )
@@ -120,6 +122,44 @@ class RuntimeWalkTests(unittest.TestCase):
         self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
         self.assertEqual((2, 1), sampled_weights[0])
         self.assertEqual("C", result.tokens[0])
+
+    def test_seeded_uniform_token_walk_is_reproducible(self) -> None:
+        kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
+        mol = parse_smiles("CCO")
+
+        first = _walk_token_transitions(
+            grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)._state,
+            _seeded_uniform_token_chooser(123),
+        )
+        second = _walk_token_transitions(
+            grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)._state,
+            _seeded_uniform_token_chooser(123),
+        )
+
+        self.assertEqual(first, second)
+        self.assertIn("".join(first.tokens), public_enum_support(mol, **kwargs))
+
+    def test_seeded_branch_multiplicity_walk_is_reproducible(self) -> None:
+        kwargs = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1)
+        mol = parse_smiles("F[C@H](Cl)Br")
+
+        first = _walk_token_transitions(
+            grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)._state,
+            _seeded_branch_multiplicity_chooser(456),
+        )
+        second = _walk_token_transitions(
+            grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)._state,
+            _seeded_branch_multiplicity_chooser(456),
+        )
+
+        self.assertEqual(first, second)
+        self.assertIn("".join(first.tokens), public_enum_support(mol, **kwargs))
+
+    def test_seeded_walk_rejects_invalid_seed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsigned 64-bit"):
+            _seeded_uniform_token_chooser(-1)
+        with self.assertRaisesRegex(ValueError, "unsigned 64-bit"):
+            _seeded_branch_multiplicity_chooser(True)
 
     def test_token_walk_stops_at_initial_accepted_state(self) -> None:
         terminal_successor = _FakeState("CC", terminal=True)

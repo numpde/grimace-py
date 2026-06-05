@@ -17,13 +17,7 @@ from grimace._mol_to_smiles_options import (
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from grimace._runtime_inputs import MolToSmilesFlags, make_flags
-
-
-SAMPLING_MODE_PAIRS = (
-    ("branch_preserving", "branch_preserving"),
-    ("determinized", "branch_multiplicity"),
-    ("determinized", "uniform_token"),
-)
+from tests.helpers.sampling import SAMPLING_MODE_PAIRS
 
 
 def supported_public_kwargs(**kwargs: object) -> dict[str, object]:

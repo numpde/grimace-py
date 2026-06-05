@@ -542,15 +542,15 @@ Coverage cases for those tests:
 
 Future public branch_count slice:
 
-- [ ] Add branch_count to MolToSmilesChoice.__slots__.
-- [ ] Add branch_count to MolToSmilesChoice construction.
-- [ ] Project branch_count directly from _StateTransition.branch_count.
-- [ ] Assert MolToSmilesDecoder choices have branch_count = 1.
-- [ ] Assert MolToSmilesDeterminizedDecoder choices expose grouped counts.
-- [ ] Assert disconnected "." exposes branch_count = 1.
-- [ ] Assert branch_count remains stable after lazy next_state realization.
-- [ ] Add API docs only after the attribute exists.
-- [ ] Mention explicitly that branch_count is local prefix multiplicity, not
+- [x] Add branch_count to MolToSmilesChoice.__slots__.
+- [x] Add branch_count to MolToSmilesChoice construction.
+- [x] Project branch_count directly from _StateTransition.branch_count.
+- [x] Assert MolToSmilesDecoder choices have branch_count = 1.
+- [x] Assert MolToSmilesDeterminizedDecoder choices expose grouped counts.
+- [x] Assert disconnected "." exposes branch_count = 1.
+- [x] Assert branch_count remains stable after lazy next_state realization.
+- [x] Add API docs only after the attribute exists.
+- [x] Mention explicitly that branch_count is local prefix multiplicity, not
       probability or completion count.
 
 Future walker slice:

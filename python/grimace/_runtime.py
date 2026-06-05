@@ -96,20 +96,28 @@ def _fragmented_prepared_support(
 
 
 class MolToSmilesChoice:
-    __slots__ = ("text", "_next_state", "_next_state_factory")
+    __slots__ = ("text", "branch_count", "_next_state", "_next_state_factory")
 
-    def __init__(self, text: str, next_state: object) -> None:
+    def __init__(
+        self,
+        text: str,
+        next_state: object,
+        branch_count: int = 1,
+    ) -> None:
         self.text = text
+        self.branch_count = _validate_choice_branch_count(branch_count)
         self.next_state = next_state
 
     @classmethod
     def _from_next_state_factory(
         cls,
         text: str,
+        branch_count: int,
         next_state_factory: Callable[[], object],
     ) -> "MolToSmilesChoice":
         choice = cls.__new__(cls)
         choice.text = text
+        choice.branch_count = _validate_choice_branch_count(branch_count)
         choice._next_state = None
         choice._next_state_factory = next_state_factory
         return choice
@@ -126,6 +134,12 @@ class MolToSmilesChoice:
     def next_state(self, next_state: object) -> None:
         self._next_state = next_state
         self._next_state_factory = None
+
+
+def _validate_choice_branch_count(branch_count: int) -> int:
+    if type(branch_count) is not int or branch_count <= 0:
+        raise ValueError("MolToSmilesChoice branch_count must be a positive int")
+    return branch_count
 
 
 def _instantiate_core_object(
@@ -329,6 +343,7 @@ def _public_decoder_choices(
     return tuple(
         MolToSmilesChoice._from_next_state_factory(
             transition.text,
+            transition.branch_count,
             lambda state_factory=transition.state_factory: (
                 decoder_type._from_parts(state_factory())
             ),

@@ -302,6 +302,70 @@ class PublicDecoderTests(unittest.TestCase):
                 self.assertIs(choices, decoder.next_choices)
                 self.assertIs(choices, decoder.choices())
 
+    def test_choice_constructor_defaults_to_one_branch(self) -> None:
+        next_state = object()
+        choice = grimace.MolToSmilesChoice("C", next_state)
+
+        self.assertEqual("C", choice.text)
+        self.assertEqual(1, choice.branch_count)
+        self.assertIs(next_state, choice.next_state)
+
+    def test_choice_constructor_rejects_invalid_branch_count(self) -> None:
+        with self.assertRaisesRegex(ValueError, "branch_count"):
+            grimace.MolToSmilesChoice("C", object(), branch_count=0)
+
+    def test_decoder_choices_expose_branch_count(self) -> None:
+        decoder = grimace.MolToSmilesDecoder(
+            parse_smiles("CCO"),
+            rootedAtAtom=-1,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        self.assertEqual(
+            (("C", 1), ("C", 1), ("O", 1)),
+            tuple(
+                (choice.text, choice.branch_count)
+                for choice in decoder.next_choices
+            ),
+        )
+
+    def test_determinized_choices_expose_grouped_branch_count(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("CCO"),
+            rootedAtAtom=-1,
+            isomericSmiles=False,
+            canonical=False,
+            doRandom=True,
+        )
+
+        self.assertEqual(
+            (("C", 2), ("O", 1)),
+            tuple(
+                (choice.text, choice.branch_count)
+                for choice in decoder.next_choices
+            ),
+        )
+
+    def test_choice_branch_count_survives_lazy_next_state_realization(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("F[C@H](Cl)Br"),
+            rootedAtAtom=-1,
+            isomericSmiles=True,
+            canonical=False,
+            doRandom=True,
+        )
+        choice = next(
+            choice
+            for choice in decoder.next_choices
+            if choice.text == "[C@@H]"
+        )
+
+        self.assertEqual(3, choice.branch_count)
+        self.assertEqual("[C@@H]", choice.next_state.prefix)
+        self.assertEqual(3, choice.branch_count)
+
     def test_decoder_without_explicit_root_samples_paths_within_public_enum_outputs(self) -> None:
         for smiles, isomeric_smiles in (
             ("CCO", False),
@@ -414,6 +478,7 @@ class PublicDecoderTests(unittest.TestCase):
             decoder = choices[0].next_state
 
         self.assertEqual(("2",), choice_texts(decoder))
+        self.assertEqual(2, decoder.next_choices[0].branch_count)
         merged_outputs = reachable_outputs_from_decoder(decoder.next_choices[0].next_state)
         self.assertEqual(
             frozenset({"C1CCCCn2c1nnn2", "C1CCCCn2nnnc12", "C1CCCCn2nnnc21"}),
@@ -453,6 +518,7 @@ class PublicDecoderTests(unittest.TestCase):
         decoder = decoder.next_choices[0].next_state
         self.assertEqual("[Na+]", decoder.prefix)
         self.assertEqual((".",), choice_texts(decoder))
+        self.assertEqual(1, decoder.next_choices[0].branch_count)
         decoder = decoder.next_choices[0].next_state
         self.assertEqual("[Na+].", decoder.prefix)
         self.assertEqual(("C", "N"), choice_texts(decoder))

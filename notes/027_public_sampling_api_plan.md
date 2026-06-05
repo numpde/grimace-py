@@ -48,7 +48,7 @@ step.selected_token
 
 Records should be immutable, small, and minimal. Frozen slotted dataclasses are
 the likely Python shape. The public runtime value for `decoder_view` and
-`sampling_mode` should be `str`; type annotations can use `Literal[...]`.
+`sampling_mode` should be `str`; runtime validation owns the accepted values.
 
 `seed` should be a required keyword-only unsigned 64-bit integer. Do not add a
 silent random default in the first public API.

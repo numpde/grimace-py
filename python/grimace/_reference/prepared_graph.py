@@ -10,6 +10,7 @@ from rdkit import Chem, rdBase
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
+    internal_option_values,
     public_options_from_internal_options,
 )
 from grimace._reference.policy import ReferencePolicy
@@ -856,14 +857,14 @@ def prepare_smiles_graph_from_mol_to_smiles_kwargs(
     option_values = locals()
     sampling = public_options_from_internal_options(
         MOL_TO_SMILES_PREPARED_OPTIONS,
-        option_values,
+        internal_option_values(MOL_TO_SMILES_PREPARED_OPTIONS, option_values),
         context="MolToSmiles runtime policy",
     )
     identity = {
         "parse_with_rdkit": True,
         **public_options_from_internal_options(
             MOL_TO_SMILES_OPTIONS,
-            option_values,
+            internal_option_values(MOL_TO_SMILES_OPTIONS, option_values),
             context="MolToSmiles identity policy",
         ),
     }

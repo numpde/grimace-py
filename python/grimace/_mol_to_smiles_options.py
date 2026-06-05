@@ -88,6 +88,41 @@ MOL_TO_SMILES_PUBLIC_OPTION_NAMES = frozenset(
 )
 
 
+def _reject_unknown_options(
+    values: Mapping[str, object],
+    *,
+    allowed_names: set[str],
+    context: str,
+) -> None:
+    unknown_names = sorted(repr(name) for name in set(values) - allowed_names)
+    if unknown_names:
+        raise TypeError(
+            f"{context} got unknown option(s): {', '.join(unknown_names)}"
+        )
+
+
+def public_option_values(
+    specs: tuple[_OptionSpec, ...],
+    values: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        spec.public_name: values[spec.public_name]
+        for spec in specs
+        if spec.public_name in values
+    }
+
+
+def internal_option_values(
+    specs: tuple[_OptionSpec, ...],
+    values: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        spec.internal_name: values[spec.internal_name]
+        for spec in specs
+        if spec.internal_name in values
+    }
+
+
 def coerce_option(
     spec: _OptionSpec,
     value: object,
@@ -121,12 +156,11 @@ def coerce_public_options(
     *,
     context: str,
 ) -> dict[str, object]:
-    public_names = {spec.public_name for spec in specs}
-    unknown_names = sorted(repr(name) for name in set(values) - public_names)
-    if unknown_names:
-        raise TypeError(
-            f"{context} got unknown option(s): {', '.join(unknown_names)}"
-        )
+    _reject_unknown_options(
+        values,
+        allowed_names={spec.public_name for spec in specs},
+        context=context,
+    )
     return {
         spec.internal_name: coerce_option(
             spec,
@@ -161,6 +195,11 @@ def coerce_internal_options(
     *,
     context: str,
 ) -> dict[str, object]:
+    _reject_unknown_options(
+        values,
+        allowed_names={spec.internal_name for spec in specs},
+        context=context,
+    )
     return {
         spec.internal_name: coerce_option(
             spec,
@@ -177,6 +216,11 @@ def public_options_from_internal_options(
     *,
     context: str,
 ) -> dict[str, object]:
+    _reject_unknown_options(
+        values,
+        allowed_names={spec.internal_name for spec in specs},
+        context=context,
+    )
     return {
         spec.public_name: coerce_option(
             spec,

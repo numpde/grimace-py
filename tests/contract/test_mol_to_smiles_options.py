@@ -9,9 +9,12 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
+    coerce_internal_options,
     coerce_public_options,
     coerce_required_public_options,
+    internal_option_values,
     public_options_from_internal_options,
+    public_option_values,
 )
 from grimace._runtime_inputs import MolToSmilesFlags
 from tests.helpers.mols import parse_smiles
@@ -55,6 +58,22 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
         ):
             with self.subTest(callable_object=callable_object):
                 self.assertEqual(expected, _keyword_only_signature_defaults(callable_object))
+
+    def test_option_value_projection_keeps_only_inventory_names(self) -> None:
+        values = {
+            "isomericSmiles": None,
+            "isomeric_smiles": None,
+            "seed": 0,
+        }
+
+        self.assertEqual(
+            {"isomericSmiles": None},
+            public_option_values(MOL_TO_SMILES_OPTIONS, values),
+        )
+        self.assertEqual(
+            {"isomeric_smiles": None},
+            internal_option_values(MOL_TO_SMILES_OPTIONS, values),
+        )
 
     def test_public_sample_signature_uses_option_inventory_suffix(self) -> None:
         sample_defaults = _keyword_only_signature_defaults(grimace.MolToSmilesSample)
@@ -133,13 +152,21 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                         context="TestContext",
                     )
 
-    def test_public_option_parser_rejects_unknown_names(self) -> None:
-        with self.assertRaisesRegex(TypeError, "unknown option"):
-            coerce_public_options(
-                MOL_TO_SMILES_OPTIONS,
-                {"seed": 0},
-                context="TestContext",
-            )
+    def test_optional_option_parsers_reject_unknown_names(self) -> None:
+        cases = (
+            (coerce_public_options, {"seed": 0}),
+            (coerce_internal_options, {"seed": 0}),
+            (public_options_from_internal_options, {"seed": 0}),
+        )
+
+        for parser, values in cases:
+            with self.subTest(parser=parser.__name__):
+                with self.assertRaisesRegex(TypeError, "unknown option"):
+                    parser(
+                        MOL_TO_SMILES_OPTIONS,
+                        values,
+                        context="TestContext",
+                    )
 
     def test_public_option_parser_maps_to_internal_names(self) -> None:
         self.assertEqual(

@@ -12,6 +12,7 @@ import grimace._core as _core
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
+    public_option_values,
 )
 
 _RAW_PREPARED_MOL_MAGIC = b"GPM\0"
@@ -322,10 +323,7 @@ def PrepareMol(
     option_values = locals()
     writer_options = coerce_public_options(
         MOL_TO_SMILES_PREPARED_OPTIONS,
-        {
-            spec.public_name: option_values[spec.public_name]
-            for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-        },
+        public_option_values(MOL_TO_SMILES_PREPARED_OPTIONS, option_values),
         context="PrepareMol",
     )
 

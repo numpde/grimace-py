@@ -11,6 +11,7 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_internal_options,
     coerce_option,
+    internal_option_values,
 )
 
 
@@ -46,7 +47,7 @@ def make_flags(
 def _internal_option_kwargs(values: Mapping[str, object]) -> dict[str, object]:
     return coerce_internal_options(
         MOL_TO_SMILES_OPTIONS,
-        values,
+        internal_option_values(MOL_TO_SMILES_OPTIONS, values),
         context="MolToSmiles runtime",
     )
 

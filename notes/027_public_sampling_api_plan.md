@@ -18,20 +18,20 @@ transition surface.
 
 ## Public shape
 
-Working public function name:
+Public function name:
 
 ```python
 grimace.MolToSmilesSample(..., seed=...)
 ```
 
-Working public result record names:
+Public result record names:
 
 ```python
 grimace.SmilesSample
 grimace.SmilesSampleStep
 ```
 
-Working public record fields:
+Public record fields:
 
 ```python
 sample.tokens
@@ -46,12 +46,12 @@ step.selected_index
 step.selected_token
 ```
 
-Records should be immutable, small, and minimal. Frozen slotted dataclasses are
-the likely Python shape. The public runtime value for `decoder_view` and
-`sampling_mode` should be `str`; runtime validation owns the accepted values.
+Records are immutable, small, and minimal frozen slotted dataclasses. The
+public runtime value for `decoder_view` and `sampling_mode` is `str`; runtime
+validation owns the accepted values.
 
-`seed` should be a required keyword-only unsigned 64-bit integer. Do not add a
-silent random default in the first public API.
+`seed` is a required keyword-only unsigned 64-bit integer. Do not add a silent
+random default.
 
 Every public step reports the same token-level view:
 
@@ -74,7 +74,7 @@ does not change the public step layout; steps remain token-level reports.
 
 `decoder_view` and `sampling_mode` are a validated pair, not independent knobs.
 
-Initial accepted pairs:
+Accepted pairs:
 
 ```text
 decoder_view="determinized", sampling_mode="uniform_token"
@@ -175,8 +175,8 @@ It must return the same semantic payload rather than becoming a second decoder.
 
 Preflight:
 
-- [ ] Confirm `main` is clean enough for a public API branch.
-- [ ] Decide whether to continue on current branch or open a new one.
+- [x] Confirm `main` is clean enough for a public API branch.
+- [x] Open and use `feature/public-smiles-sampling`.
 - [x] Re-read `notes/025_determinized_random_walk.md` and
       `notes/026_transition_surface_plan.txt` before editing.
 - [x] Confirm existing private walker tests pass before adding public tests.
@@ -188,6 +188,8 @@ Public API tests first:
       `grimace.SmilesSampleStep` are exported.
 - [x] Add red tests for `MolToSmilesSample` result fields.
 - [x] Add red tests for sample-step fields.
+- [x] Keep private sampling wrapper defaults out of `_sampling.py`; public
+      defaults belong to `grimace.__init__` and the option inventory.
 - [x] Assert `sample.smiles == "".join(sample.tokens)`.
 - [x] Assert every step has unique `choice_tokens`.
 - [x] Assert every `choice_branch_counts` entry is a positive int.
@@ -269,8 +271,8 @@ Public implementation:
       chooser.
 - [x] Return public records from the internal flat walker result.
 - [x] Export only the public function and public record classes.
-- [x] Leave `python/grimace/_core.pyi` unchanged because the public path does
-      not require it.
+- [x] Keep `_SplitMix64Sampler` private to `_core` and typed only for the
+      private Python bridge.
 
 Boundary and SSoT checks:
 

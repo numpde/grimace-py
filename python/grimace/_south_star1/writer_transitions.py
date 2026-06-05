@@ -303,7 +303,7 @@ def _active_child_transitions_from_obligations(
 
     for action in _active_child_scheduled_actions(parent, children):
         transitions.extend(
-            _active_child_transitions_from_scheduled_action(
+            _transitions_from_scheduled_action(
                 prepared,
                 state,
                 context,
@@ -723,6 +723,41 @@ def _closure_endpoint_transitions_from_scheduled_action(
     )
 
 
+def _transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind in (
+        _WriterScheduledActionKind.FINISH_ACTIVE,
+        _WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        _WriterScheduledActionKind.OPEN_BRANCH,
+    ):
+        return _active_child_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind in (
+        _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+        _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+    ):
+        return _closure_endpoint_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported scheduled action: {action.kind!r}",
+    )
+
+
 def _closure_endpoint_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -736,7 +771,7 @@ def _closure_endpoint_transitions(
         context,
     ):
         transitions.extend(
-            _closure_endpoint_transitions_from_scheduled_action(
+            _transitions_from_scheduled_action(
                 prepared,
                 state,
                 context,

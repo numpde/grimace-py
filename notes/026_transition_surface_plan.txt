@@ -556,19 +556,19 @@ Future public branch_count slice:
 
 Future walker slice:
 
-- [ ] Add a private/internal branch-preserving walker only if there is a caller
-      that needs branch-level trajectories.
-- [ ] Add a private/internal determinized token walker as the sparse
+- [x] Leave the private/internal branch-preserving walker unimplemented until a
+      caller needs branch-level trajectories.
+- [x] Add a private/internal determinized token walker as the sparse
       supervision path.
 - [ ] Make branch-preserving walkers consume branch transitions.
-- [ ] Make determinized/token walkers consume token transitions.
-- [ ] Do not call public next_choices from an internal walker.
-- [ ] Do not implement a separate graph traversal.
-- [ ] Record per-step token choices and branch counts from the same transition
+- [x] Make determinized/token walkers consume token transitions.
+- [x] Do not call public next_choices from an internal walker.
+- [x] Do not implement a separate graph traversal.
+- [x] Record per-step token choices and branch counts from the same transition
       tuple used for advancement.
-- [ ] Keep stop policy separate from transition listing because accepted states
+- [x] Keep stop policy separate from transition listing because accepted states
       can still have outgoing transitions in composed runtimes.
-- [ ] Test joined token paths against MolToSmilesEnum support.
+- [x] Test joined token paths against MolToSmilesEnum support.
 - [ ] Test seeded reproducibility within the same Grimace version.
 - [ ] Test uniform_token samples by exposed token index.
 - [ ] Test branch_multiplicity samples by branch_count.

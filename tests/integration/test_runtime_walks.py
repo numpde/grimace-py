@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import grimace
+import grimace._runtime_walks as _runtime_walks
 from grimace._runtime_states import _StateTransition
 from grimace._runtime_walks import (
     _TokenWalkResult,
@@ -10,7 +12,7 @@ from grimace._runtime_walks import (
     _seeded_branch_preserving_chooser,
     _seeded_branch_multiplicity_chooser,
     _seeded_uniform_token_chooser,
-    _uniform_token_chooser,
+    _uniform_transition_chooser,
     _walk_branch_transitions,
     _walk_token_transitions,
 )
@@ -123,7 +125,7 @@ class RuntimeWalkTests(unittest.TestCase):
             result.choice_branch_counts[choice_start:choice_start + 1],
         )
 
-    def test_uniform_token_chooser_samples_by_exposed_choice_count(self) -> None:
+    def test_uniform_transition_chooser_samples_by_exposed_choice_count(self) -> None:
         sampled_counts: list[int] = []
 
         def sample_index(choice_count: int) -> int:
@@ -136,7 +138,7 @@ class RuntimeWalkTests(unittest.TestCase):
 
         result = _walk_token_transitions(
             decoder._state,
-            _uniform_token_chooser(sample_index),
+            _uniform_transition_chooser(sample_index),
         )
 
         _assert_token_walk_result_invariants(self, result)
@@ -204,6 +206,11 @@ class RuntimeWalkTests(unittest.TestCase):
             _seeded_uniform_token_chooser(-1)
         with self.assertRaisesRegex(ValueError, "unsigned 64-bit"):
             _seeded_branch_multiplicity_chooser(True)
+
+    def test_seeded_walk_validates_invalid_seed_before_core_sampler_lookup(self) -> None:
+        with mock.patch.object(_runtime_walks, "_core", object()):
+            with self.assertRaisesRegex(ValueError, "unsigned 64-bit"):
+                _seeded_uniform_token_chooser(-1)
 
     def test_token_walk_stops_at_initial_accepted_state(self) -> None:
         terminal_successor = _FakeState(terminal=True)

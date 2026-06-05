@@ -90,15 +90,17 @@ class RuntimeBoundaryTests(unittest.TestCase):
     preparation_module = REPO_ROOT / "python" / "grimace" / "_prepared_mol.py"
     runtime_input_module = REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py"
     runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
+    sampling_module = REPO_ROOT / "python" / "grimace" / "_sampling.py"
     runtime_state_module = REPO_ROOT / "python" / "grimace" / "_runtime_states.py"
     runtime_walk_module = REPO_ROOT / "python" / "grimace" / "_runtime_walks.py"
     runtime_modules = (
-        REPO_ROOT / "python" / "grimace" / "_runtime.py",
+        runtime_module,
         REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
-        REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py",
-        REPO_ROOT / "python" / "grimace" / "_runtime_states.py",
-        REPO_ROOT / "python" / "grimace" / "_runtime_walks.py",
-        REPO_ROOT / "python" / "grimace" / "_deviation.py",
+        runtime_input_module,
+        sampling_module,
+        runtime_state_module,
+        runtime_walk_module,
+        deviation_module,
     )
     reference_rooted_modules = (
         REPO_ROOT / "python" / "grimace" / "_reference" / "rooted" / "connected_nonstereo.py",
@@ -215,6 +217,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         imported_names = _imported_module_names(self.public_package_module)
         self.assertIn("grimace._runtime", imported_names)
         self.assertIn("grimace._deviation", imported_names)
+        self.assertIn("grimace._sampling", imported_names)
         self.assertNotIn("importlib", imported_names)
 
         forbidden_names = {

@@ -56,6 +56,22 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
             with self.subTest(callable_object=callable_object):
                 self.assertEqual(expected, _keyword_only_signature_defaults(callable_object))
 
+    def test_public_sample_signature_uses_option_inventory_suffix(self) -> None:
+        sample_defaults = _keyword_only_signature_defaults(grimace.MolToSmilesSample)
+
+        self.assertEqual(
+            (
+                ("seed", inspect.Parameter.empty),
+                ("decoder_view", "determinized"),
+                ("sampling_mode", "uniform_token"),
+            ),
+            sample_defaults[:3],
+        )
+        self.assertEqual(
+            _public_option_defaults(MOL_TO_SMILES_OPTIONS),
+            sample_defaults[3:],
+        )
+
     def test_prepare_mol_signature_matches_prepared_option_inventory(self) -> None:
         self.assertEqual(
             _public_option_defaults(MOL_TO_SMILES_PREPARED_OPTIONS),

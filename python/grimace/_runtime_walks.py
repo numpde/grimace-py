@@ -57,7 +57,7 @@ class _TokenWalkBuilder:
         )
 
 
-def _uniform_token_chooser(sample_index: _IndexSampler) -> _TransitionChooser:
+def _uniform_transition_chooser(sample_index: _IndexSampler) -> _TransitionChooser:
     def choose(transitions: _StateTransitions) -> int:
         return sample_index(len(transitions))
 
@@ -77,7 +77,7 @@ def _branch_multiplicity_chooser(
 
 def _seeded_uniform_token_chooser(seed: int) -> _TransitionChooser:
     sampler = _splitmix64_sampler(seed)
-    return _uniform_token_chooser(sampler.uniform_index)
+    return _uniform_transition_chooser(sampler.uniform_index)
 
 
 def _seeded_branch_multiplicity_chooser(seed: int) -> _TransitionChooser:
@@ -87,11 +87,12 @@ def _seeded_branch_multiplicity_chooser(seed: int) -> _TransitionChooser:
 
 def _seeded_branch_preserving_chooser(seed: int) -> _TransitionChooser:
     sampler = _splitmix64_sampler(seed)
-    return _uniform_token_chooser(sampler.uniform_index)
+    return _uniform_transition_chooser(sampler.uniform_index)
 
 
 def _splitmix64_sampler(seed: int) -> _core._SplitMix64Sampler:
-    return _core._SplitMix64Sampler(_validate_walk_seed(seed))
+    validated_seed = _validate_walk_seed(seed)
+    return _core._SplitMix64Sampler(validated_seed)
 
 
 def _validate_walk_seed(seed: int) -> int:

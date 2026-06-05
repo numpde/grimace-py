@@ -48,6 +48,8 @@ For the difference between writer parity and chemical equivalence, see
   unioned across all root atoms.
 - `rootedAtAtom=-1` for the decoder classes starts from one merged all-roots
   decoder state.
+- `rootedAtAtom=-1` for `MolToSmilesSample(...)` starts from the requested
+  decoder view's all-roots state.
 - `rootedAtAtom=-1` for `MolToSmilesTokenInventory(...)` and
   `MolToSmilesTokenInventorySuperset(...)` returns the token inventory unioned
   across all root atoms.

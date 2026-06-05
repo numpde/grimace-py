@@ -17,11 +17,14 @@ Current top-level exports:
 - `MolToSmilesDeterminizedDecoder`
 - `MolToSmilesDeviation`
 - `MolToSmilesEnum`
+- `MolToSmilesSample`
 - `MolToSmilesTokenInventory`
 - `MolToSmilesTokenInventorySuperset`
 - `PreparedMol`
 - `PrepareMol`
 - `SmilesDeviation`
+- `SmilesSample`
+- `SmilesSampleStep`
 
 The compiled extension `grimace._core` is required. There is no public runtime
 fallback.
@@ -194,6 +197,46 @@ Both decoder classes expose `prefix`, `next_choices`, `choices()`,
 `is_terminal`, and `copy()`.
 `choices()` returns the same cached tuple as `next_choices`.
 `MolToSmilesChoice.next_state` is also cached after first access.
+
+## MolToSmilesSample
+
+`MolToSmilesSample(mol, *, seed, decoder_view="determinized", sampling_mode="uniform_token", isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
+
+This draws one complete Grimace-supported token path and records the visible
+token choices at each step. It is useful when you need a legal sampled SMILES
+string together with the next-token context seen along that path.
+
+`seed` is required and must be an unsigned 64-bit integer. The seed is a
+Grimace sampler seed; it does not reproduce RDKit random-writer ordering.
+
+Accepted `decoder_view`/`sampling_mode` pairs are:
+
+- `"determinized"` / `"uniform_token"`: sample uniformly from unique visible
+  next-token choices
+- `"determinized"` / `"branch_multiplicity"`: sample visible next-token choices
+  weighted by their hidden branch count
+- `"branch_preserving"` / `"branch_preserving"`: sample uniformly from
+  branch-preserving choices, then report the selected visible token bucket
+
+The result is a `SmilesSample`:
+
+- `tokens: tuple[str, ...]`
+- `smiles: str`
+- `decoder_view: str`
+- `sampling_mode: str`
+- `steps: tuple[SmilesSampleStep, ...]`
+
+Each `SmilesSampleStep` has:
+
+- `choice_tokens: tuple[str, ...]`
+- `choice_branch_counts: tuple[int, ...]`
+- `selected_index: int`
+- `selected_token: str`
+
+`choice_tokens` are unique visible token texts for the current prefix.
+`choice_branch_counts` are the hidden branch counts behind those visible
+tokens. `selected_index` points into `choice_tokens`, and
+`selected_token == choice_tokens[selected_index]`.
 
 ## MolToSmilesDeviation
 

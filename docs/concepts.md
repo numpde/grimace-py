@@ -2,13 +2,14 @@
 title: Concepts
 ---
 
-Keep four concepts separate:
+Keep these concepts separate:
 
 | Concept | Meaning | Where to look |
 |---|---|---|
 | Support | The complete set of SMILES strings Grimace can emit for one molecule and writer options. | `MolToSmilesEnum(...)` |
 | Root | The atom where a rooted traversal starts, or all roots when `rootedAtAtom=-1`. | `rootedAtAtom` |
 | Decoder token | One string emitted by one decoder transition; not necessarily one character. | `MolToSmilesDecoder(...)`, `MolToSmilesDeterminizedDecoder(...)` |
+| Sample | One seeded walk through Grimace's supported decoder language, with the visible choices recorded at each prefix. | `MolToSmilesSample(...)` |
 | Writer parity | String-level agreement with RDKit's supported writer behavior, not just chemical equivalence. | [Correctness contracts](correctness-contracts.html), [RDKit serializer coverage](rdkit-serializer-coverage.html) |
 
 ## Support
@@ -57,6 +58,16 @@ Examples include:
 token text if they represent different underlying writer branches.
 `MolToSmilesDeterminizedDecoder(...)` merges same-text choices.
 
+## Sample
+
+`MolToSmilesSample(...)` draws one complete supported token path from the
+decoder language and returns both the finished string and the per-prefix
+visible token choices seen along the way.
+
+This is a Grimace sampler, not RDKit random-writer sequence reproduction. The
+sample is controlled by a required Grimace seed and by an explicit
+`decoder_view`/`sampling_mode` pair.
+
 ## Writer parity
 
 Writer parity is a string-level claim, not just a chemical-equivalence claim.
@@ -75,6 +86,7 @@ boundary between chemical semantics and writer parity. Use
 |---|---|
 | Every supported finished string | `MolToSmilesEnum(...)` |
 | Legal next tokens while building a string | `MolToSmilesDecoder(...)` or `MolToSmilesDeterminizedDecoder(...)` |
+| One seeded legal string plus per-step token choices | `MolToSmilesSample(...)` |
 | The first unsupported token or character in a candidate | [Deviation diagnostics](guides/deviation.html) |
 | Dataset vocabulary coverage | [Token inventories](guides/token-inventory.html) |
 | Repeated calls or storage without RDKit on read | [Prepared molecules](guides/prepared-mol.html) |

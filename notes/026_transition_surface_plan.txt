@@ -315,7 +315,7 @@ Public branch_count path
 ------------------------
 
 The clean public path is not a separate walk-only result field. The same local
-transition attribute should eventually appear on public choices.
+transition attribute appears on public choices.
 
 Natural public shape:
 
@@ -580,10 +580,8 @@ Public branch_count slice:
 
 Walker slice:
 
-- [x] Leave the private/internal branch-preserving walker unimplemented during
-      the transition-surface cleanup.
-- [x] Add a private/internal determinized token walker as the sparse
-      supervision path.
+- [x] Add private/internal token and branch-preserving walkers as sparse
+      supervision paths.
 - [x] Make public branch-preserving sampling consume branch transitions
       internally, then project the public record back to unique token choices.
 - [x] Make determinized/token walkers consume token transitions.
@@ -602,7 +600,7 @@ Walker slice:
 - [x] Test branch-preserving sampling advances by the selected hidden branch,
       not by the merged token transition.
 - [x] Test invalid decoder_view/sampling_mode combinations reject at the public
-      boundary if a public sampler is added.
+      sampling boundary.
 
 Future Rust optimization slice:
 

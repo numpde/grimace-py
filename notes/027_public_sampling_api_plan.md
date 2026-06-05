@@ -155,21 +155,21 @@ correctness tests. Serialization can be added later if there is a real need.
 
 ### Determinized-only first vs all validated pairs first
 
-Implementing only determinized sampling would be smaller, because the current
-private walker already consumes token transitions and records token choices and
-branch counts.
+Implementing only determinized sampling would have been smaller, because the
+private token walker already consumes token transitions and records token
+choices and branch counts.
 
-Implementing all validated pairs in the first public slice is now preferable.
-The public result shape is already shared, and branch-preserving sampling is a
+Implementing all validated pairs in the first public slice was the cleaner
+choice. The public result shape is shared, and branch-preserving sampling is a
 different selection/advancement space over the same private transition
-contract. Adding it now avoids publishing a matrix where one named pair is
-reserved but unusable.
+contract. Adding it before release avoided publishing a mode matrix with a
+reserved but unusable pair.
 
 ### Python adapter first vs Rust sampler first
 
-The first public API should be a thin Python adapter over the tested private
-runtime transition surface. A Rust connected sampler is a later optimization.
-It must return the same semantic payload rather than becoming a second decoder.
+The first public API is a thin Python adapter over the tested private runtime
+transition surface. A Rust connected sampler remains an optimization path. It
+must return the same semantic payload rather than becoming a second decoder.
 
 ## Implementation checklist
 

@@ -1,8 +1,8 @@
-# Determinized random walk
+# SMILES sampling walk
 
 ## Goal
 
-Add an internal walkthrough of the determinized SMILES decoder:
+Document the internal walkthroughs used by public SMILES sampling:
 
 ```text
 Prepared graph + seed + sampler policy -> one legal Grimace token path
@@ -11,7 +11,9 @@ Prepared graph + seed + sampler policy -> one legal Grimace token path
 The walk is for sparse next-token supervision. It is not RDKit random-writer
 sequence parity and not uniform sampling over final SMILES strings.
 
-No public Python API is committed yet.
+The public Python API is `grimace.MolToSmilesSample(...)`; the public record
+shape and accepted mode matrix are owned by
+`notes/027_public_sampling_api_plan.md`.
 
 Current implementation status:
 
@@ -29,6 +31,7 @@ Use a compact flat payload internally:
 
 ```text
 tokens: tuple[str, ...]
+selected_indices: tuple[int, ...]
 choice_counts: tuple[int, ...]
 choice_tokens: tuple[str, ...]
 choice_branch_counts: tuple[int, ...]
@@ -41,16 +44,20 @@ start = sum(choice_counts[:i])
 stop = start + choice_counts[i]
 choices = choice_tokens[start:stop]
 branch_counts = choice_branch_counts[start:stop]
+selected_index = selected_indices[i]
+token = tokens[i]
 ```
 
 Required invariants:
 
 ```text
+len(tokens) == len(selected_indices)
 len(tokens) == len(choice_counts)
 sum(choice_counts) == len(choice_tokens)
 len(choice_tokens) == len(choice_branch_counts)
 choice_counts[i] > 0
-tokens[i] in choices
+0 <= selected_indices[i] < choice_counts[i]
+tokens[i] == choices[selected_indices[i]]
 len(set(choices)) == choice_counts[i]
 choice_branch_counts[j] >= 1
 "".join(tokens) is accepted by the decoder
@@ -84,10 +91,9 @@ branch_multiplicity
 with weight `choice_branch_counts`. Neither policy samples final SMILES strings
 uniformly.
 
-Branch-preserving sampling should be implemented as a separate internal walker
-that samples one hidden branch-preserving transition, then reports the selected
-visible token bucket. It is part of the public sampling API plan, but not part
-of the current token-transition walker.
+Branch-preserving sampling is implemented as a separate internal walker that
+samples one hidden branch-preserving transition, then reports the selected
+visible token bucket.
 
 ## RNG boundary
 
@@ -119,8 +125,8 @@ same prepared graph + same call flags + same seed + same Grimace version
 ```
 
 Do not claim Python `random` parity, RDKit random-writer parity, cryptographic
-security, or cross-version identity. Validate Python seed shape at the
-Python/Rust boundary if a public API is added.
+security, or cross-version identity. The public API validates Python seed shape
+before constructing the Rust sampler.
 
 ## Decoder source of truth
 
@@ -201,7 +207,7 @@ tests/parity/nonstereo/test_kernel_walker.py
 tests/parity/stereo/test_kernel_walker.py
 ```
 
-New walk tests should cover:
+Walk tests cover, and should continue to cover:
 
 ```text
 flat result invariants
@@ -223,11 +229,7 @@ merge, kekule output, explicit bonds, explicit hydrogens, and atom-map handling.
 ## Open decisions
 
 ```text
-public API names, records, and accepted mode pairs are owned by
-notes/027_public_sampling_api_plan.md
 whether SplitMix64 remains the long-term source
-seed argument type and validation
-whether disconnected separators are ordinary tokens
 whether all-roots stereo walking eventually moves Rust-side or stays
 runtime-composed
 ```

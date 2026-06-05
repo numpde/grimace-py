@@ -162,8 +162,7 @@ choices and branch counts.
 Implementing all validated pairs in the first public slice was the cleaner
 choice. The public result shape is shared, and branch-preserving sampling is a
 different selection/advancement space over the same private transition
-contract. Adding it before release avoided publishing a mode matrix with a
-reserved but unusable pair.
+contract. All documented mode pairs therefore shipped with working behavior.
 
 ### Python adapter first vs Rust sampler first
 

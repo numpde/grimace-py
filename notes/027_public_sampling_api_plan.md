@@ -301,9 +301,9 @@ Verification:
 - [x] Run private runtime walk tests.
 - [x] Run public decoder tests affected by `branch_count`.
 - [x] Run `make test`.
-- [ ] Run `cargo test` if Rust or stubs change.
+- [x] Run `cargo test` if Rust or stubs change.
 - [x] Run `make docs` after docs changes.
-- [ ] Run `make test-package` before merge/release.
+- [x] Run `make test-package` before merge/release.
 - [x] Confirm installed-package correctness includes the new public sampling
       tests or a registered public API smoke target.
 
@@ -311,6 +311,6 @@ Release readiness:
 
 - [ ] Decide whether the new API warrants a release note.
 - [ ] Add release-note entry only after final behavior is settled.
-- [ ] Re-check README for scope creep or duplicate claims.
+- [x] Re-check README for scope creep or duplicate claims.
 - [ ] Confirm branch history is coherent before merge.
 - [ ] Merge only after the full confidence pass is green.

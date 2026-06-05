@@ -208,6 +208,7 @@ string together with the next-token context seen along that path.
 
 `seed` is required and must be an unsigned 64-bit integer. The seed is a
 Grimace sampler seed; it does not reproduce RDKit random-writer ordering.
+No uniformity over finished SMILES strings is implied.
 
 Accepted `decoder_view`/`sampling_mode` pairs are:
 
@@ -237,6 +238,19 @@ Each `SmilesSampleStep` has:
 `choice_branch_counts` are the hidden branch counts behind those visible
 tokens. `selected_index` points into `choice_tokens`, and
 `selected_token == choice_tokens[selected_index]`.
+
+```python
+sample = grimace.MolToSmilesSample(
+    mol,
+    seed=17,
+    rootedAtAtom=-1,
+    canonical=False,
+    doRandom=True,
+)
+
+for step in sample.steps:
+    print(step.choice_tokens, step.selected_token)
+```
 
 ## MolToSmilesDeviation
 

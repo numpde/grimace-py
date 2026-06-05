@@ -177,133 +177,134 @@ Preflight:
 
 - [ ] Confirm `main` is clean enough for a public API branch.
 - [ ] Decide whether to continue on current branch or open a new one.
-- [ ] Re-read `notes/025_determinized_random_walk.md` and
+- [x] Re-read `notes/025_determinized_random_walk.md` and
       `notes/026_transition_surface_plan.txt` before editing.
-- [ ] Confirm existing private walker tests pass before adding public tests.
+- [x] Confirm existing private walker tests pass before adding public tests.
 
 Public API tests first:
 
-- [ ] Add red tests that `grimace.MolToSmilesSample` is exported.
-- [ ] Add red tests that `grimace.SmilesSample` and
+- [x] Add red tests that `grimace.MolToSmilesSample` is exported.
+- [x] Add red tests that `grimace.SmilesSample` and
       `grimace.SmilesSampleStep` are exported.
-- [ ] Add red tests for `MolToSmilesSample` result fields.
-- [ ] Add red tests for sample-step fields.
-- [ ] Assert `sample.smiles == "".join(sample.tokens)`.
-- [ ] Assert every step has unique `choice_tokens`.
-- [ ] Assert every `choice_branch_counts` entry is a positive int.
-- [ ] Assert `selected_index` is in range.
-- [ ] Assert `selected_token == choice_tokens[selected_index]`.
-- [ ] Assert sampled `sample.smiles` belongs to `MolToSmilesEnum` support on
+- [x] Add red tests for `MolToSmilesSample` result fields.
+- [x] Add red tests for sample-step fields.
+- [x] Assert `sample.smiles == "".join(sample.tokens)`.
+- [x] Assert every step has unique `choice_tokens`.
+- [x] Assert every `choice_branch_counts` entry is a positive int.
+- [x] Assert `selected_index` is in range.
+- [x] Assert `selected_token == choice_tokens[selected_index]`.
+- [x] Assert sampled `sample.smiles` belongs to `MolToSmilesEnum` support on
       small exhaustive cases.
-- [ ] Assert same molecule, flags, seed, `decoder_view`, and `sampling_mode`
+- [x] Assert same molecule, flags, seed, `decoder_view`, and `sampling_mode`
       reproduce the same sample within the same Grimace version.
-- [ ] Assert all accepted pairs are allowed:
+- [x] Assert all accepted pairs are allowed:
       `determinized/uniform_token`,
       `determinized/branch_multiplicity`, and
       `branch_preserving/branch_preserving`.
-- [ ] Assert invalid `decoder_view` values reject.
-- [ ] Assert invalid `sampling_mode` values reject.
-- [ ] Assert invalid `decoder_view`/`sampling_mode` pairs reject.
-- [ ] Assert `branch_preserving/branch_preserving` reports the same token-level
+- [x] Assert invalid `decoder_view` values reject.
+- [x] Assert invalid `sampling_mode` values reject.
+- [x] Assert invalid `decoder_view`/`sampling_mode` pairs reject.
+- [x] Assert `branch_preserving/branch_preserving` reports the same token-level
       step shape as the determinized modes.
-- [ ] Assert invalid seeds reject at the public boundary.
-- [ ] Assert bool seeds reject even though `bool` is an `int` subclass.
-- [ ] Assert omitting required `seed` rejects.
-- [ ] Cover RDKit `Mol` and byte-round-tripped `PreparedMol`.
-- [ ] Cover rooted and all-roots non-stereo.
-- [ ] Cover rooted and all-roots stereo.
-- [ ] Cover disconnected molecules and forced `"."` separator reporting.
-- [ ] Cover explicit public writer flags through the same supported-runtime
+- [x] Assert invalid seeds reject at the public boundary.
+- [x] Assert bool seeds reject even though `bool` is an `int` subclass.
+- [x] Assert omitting required `seed` rejects.
+- [x] Cover RDKit `Mol` and byte-round-tripped `PreparedMol`.
+- [x] Cover rooted and all-roots non-stereo.
+- [x] Cover rooted and all-roots stereo.
+- [x] Cover disconnected molecules and forced `"."` separator reporting.
+- [x] Cover explicit public writer flags through the same supported-runtime
       helper used by other public tests.
 
 Private walker extension:
 
-- [ ] Extend `_TokenWalkResult` with `selected_indices`.
-- [ ] Record selected indices at the same time choices are recorded.
-- [ ] Update private walker invariants to check selected indices directly.
-- [ ] Do not infer selected index from selected token after walking.
-- [ ] For branch-preserving sampling, record `selected_indices` as public
+- [x] Extend `_TokenWalkResult` with `selected_indices`.
+- [x] Record selected indices at the same time choices are recorded.
+- [x] Update private walker invariants to check selected indices directly.
+- [x] Do not infer selected index from selected token after walking.
+- [x] For branch-preserving sampling, record `selected_indices` as public
       token-bucket indices, not raw branch-transition indices.
-- [ ] Add private transition-surface tests that token-transition
+- [x] Add private transition-surface tests that token-transition
       `branch_count`s equal branch-transition text counts for representative
       core, lazy all-roots, merged, and disconnected states.
-- [ ] Factor step recording so token-level reporting is shared by token and
+- [x] Factor step recording so token-level reporting is shared by token and
       branch-preserving walkers.
-- [ ] Keep token-transition walkers advancing by selected token transition.
-- [ ] Add a branch-preserving walker that samples `_branch_state_transitions()`
+- [x] Keep token-transition walkers advancing by selected token transition.
+- [x] Add a branch-preserving walker that samples `_branch_state_transitions()`
       but records `_token_state_transitions()`.
-- [ ] Add a private walker fixture where branch-preserving and determinized
+- [x] Add a private walker fixture where branch-preserving and determinized
       sampling select the same visible token but advance to different future
       choice sets.
-- [ ] Map the selected branch transition text to exactly one token-transition
+- [x] Map the selected branch transition text to exactly one token-transition
       bucket.
-- [ ] Treat a missing selected branch text in token transitions as an internal
+- [x] Treat a missing selected branch text in token transitions as an internal
       invariant failure.
-- [ ] Treat duplicate token-transition texts as an internal invariant failure.
-- [ ] Keep `_runtime_walks.py` private.
-- [ ] Keep chooser functions private.
-- [ ] Do not expose branch identities in the public sample record.
+- [x] Treat duplicate token-transition texts as an internal invariant failure.
+- [x] Keep `_runtime_walks.py` private.
+- [x] Keep chooser functions private.
+- [x] Do not expose branch identities in the public sample record.
 
 Public implementation:
 
-- [ ] Add private validation for the mode matrix.
-- [ ] Add private validation for unsigned 64-bit seeds at the public boundary.
-- [ ] Keep `seed` required; do not silently use process randomness.
-- [ ] Add `python/grimace/_sampling.py` as the single owner of public sample
+- [x] Add private validation for the mode matrix.
+- [x] Add private validation for unsigned 64-bit seeds at the public boundary.
+- [x] Keep `seed` required; do not silently use process randomness.
+- [x] Add `python/grimace/_sampling.py` as the single owner of public sample
       records, mode validation, and the public sampling wrapper.
-- [ ] Add `SmilesSampleStep`.
-- [ ] Add `SmilesSample`.
-- [ ] Add `MolToSmilesSample(...)` function in `grimace.__init__`.
-- [ ] Reuse `_runtime_kwargs(locals())` for writer options.
-- [ ] Keep `doRandom` in the writer-option path; do not overload it as the
+- [x] Add `SmilesSampleStep`.
+- [x] Add `SmilesSample`.
+- [x] Add `MolToSmilesSample(...)` function in `grimace.__init__`.
+- [x] Reuse `_runtime_kwargs(locals())` for writer options.
+- [x] Keep `doRandom` in the writer-option path; do not overload it as the
       sampler mode.
-- [ ] Reuse existing runtime normalization through a private helper that returns
+- [x] Reuse existing runtime normalization through a private helper that returns
       the initial decoder state; do not instantiate public decoder classes just
       to reach private `_state`.
-- [ ] Map `sampling_mode="uniform_token"` to the seeded uniform-token chooser.
-- [ ] Map `sampling_mode="branch_multiplicity"` to the seeded branch-count
+- [x] Map `sampling_mode="uniform_token"` to the seeded uniform-token chooser.
+- [x] Map `sampling_mode="branch_multiplicity"` to the seeded branch-count
       chooser.
-- [ ] Map `decoder_view="branch_preserving",
+- [x] Map `decoder_view="branch_preserving",
       sampling_mode="branch_preserving"` to the seeded uniform branch-transition
       chooser.
-- [ ] Return public records from the internal flat walker result.
-- [ ] Export only the public function and public record classes.
-- [ ] Update `python/grimace/_core.pyi` only if the public path requires it.
+- [x] Return public records from the internal flat walker result.
+- [x] Export only the public function and public record classes.
+- [x] Leave `python/grimace/_core.pyi` unchanged because the public path does
+      not require it.
 
 Boundary and SSoT checks:
 
-- [ ] Confirm no tests import new public objects from private modules.
-- [ ] Confirm the public function delegates through one intended private
+- [x] Confirm no tests import new public objects from private modules.
+- [x] Confirm the public function delegates through one intended private
       wrapper instead of scattering `_runtime_walks.py` imports.
-- [ ] Confirm option names are not duplicated outside the existing option SSoT.
-- [ ] Confirm mode validation is owned by one module.
-- [ ] Let tests spell public literal strings as public behavior; do not import
+- [x] Confirm option names are not duplicated outside the existing option SSoT.
+- [x] Confirm mode validation is owned by one module.
+- [x] Let tests spell public literal strings as public behavior; do not import
       private constants just to avoid spelling them.
-- [ ] Confirm package import exposes all expected public attributes.
-- [ ] Confirm unsupported canonical/default runtime behavior rejects through
+- [x] Confirm package import exposes all expected public attributes.
+- [x] Confirm unsupported canonical/default runtime behavior rejects through
       the existing public option machinery.
 
 Docs:
 
-- [ ] Update API docs only after tests pass.
-- [ ] Describe this as one sampled Grimace-supported SMILES path.
-- [ ] Document that it is not RDKit random-writer parity.
-- [ ] Document that it is not uniform over final SMILES strings.
-- [ ] Document the validated mode matrix.
-- [ ] Document `branch_count` as local prefix multiplicity.
-- [ ] Add a compact example that consumes `sample.steps`.
-- [ ] Avoid adding broad claims outside current limitations.
+- [x] Update API docs only after tests pass.
+- [x] Describe this as one sampled Grimace-supported SMILES path.
+- [x] Document that it is not RDKit random-writer parity.
+- [x] Document that it is not uniform over final SMILES strings.
+- [x] Document the validated mode matrix.
+- [x] Document `branch_count` as local prefix multiplicity.
+- [x] Add a compact example that consumes `sample.steps`.
+- [x] Avoid adding broad claims outside current limitations.
 
 Verification:
 
-- [ ] Run focused public sampling tests.
-- [ ] Run private runtime walk tests.
-- [ ] Run public decoder tests affected by `branch_count`.
-- [ ] Run `make test`.
+- [x] Run focused public sampling tests.
+- [x] Run private runtime walk tests.
+- [x] Run public decoder tests affected by `branch_count`.
+- [x] Run `make test`.
 - [ ] Run `cargo test` if Rust or stubs change.
-- [ ] Run `make docs` after docs changes.
+- [x] Run `make docs` after docs changes.
 - [ ] Run `make test-package` before merge/release.
-- [ ] Confirm installed-package correctness includes the new public sampling
+- [x] Confirm installed-package correctness includes the new public sampling
       tests or a registered public API smoke target.
 
 Release readiness:

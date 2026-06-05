@@ -5,6 +5,7 @@ import unittest
 import grimace
 from grimace._runtime_states import _StateTransition
 from grimace._runtime_walks import (
+    _TokenWalkResult,
     _branch_multiplicity_chooser,
     _seeded_branch_multiplicity_chooser,
     _seeded_uniform_token_chooser,
@@ -13,6 +14,28 @@ from grimace._runtime_walks import (
 )
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
+
+
+def _assert_token_walk_result_invariants(
+    test_case: unittest.TestCase,
+    result: _TokenWalkResult,
+) -> None:
+    test_case.assertEqual(len(result.tokens), len(result.choice_counts))
+    test_case.assertEqual(sum(result.choice_counts), len(result.choice_tokens))
+    test_case.assertEqual(
+        len(result.choice_tokens),
+        len(result.choice_branch_counts),
+    )
+
+    offset = 0
+    for token, choice_count in zip(result.tokens, result.choice_counts):
+        test_case.assertGreater(choice_count, 0)
+        choices = result.choice_tokens[offset:offset + choice_count]
+        branch_counts = result.choice_branch_counts[offset:offset + choice_count]
+        test_case.assertIn(token, choices)
+        test_case.assertEqual(choice_count, len(set(choices)))
+        test_case.assertTrue(all(count > 0 for count in branch_counts))
+        offset += choice_count
 
 
 class _FakeState:
@@ -49,6 +72,7 @@ class RuntimeWalkTests(unittest.TestCase):
 
         result = _walk_token_transitions(decoder._state, lambda _transitions: 0)
 
+        _assert_token_walk_result_invariants(self, result)
         self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
         self.assertEqual(("C", "(", "C", ")", "O"), result.tokens)
         self.assertEqual((2, 2, 2, 1, 1), result.choice_counts)
@@ -65,6 +89,7 @@ class RuntimeWalkTests(unittest.TestCase):
 
         result = _walk_token_transitions(decoder._state, lambda _transitions: 0)
 
+        _assert_token_walk_result_invariants(self, result)
         self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
         self.assertIn(".", result.tokens)
         separator_idx = result.tokens.index(".")
@@ -94,6 +119,7 @@ class RuntimeWalkTests(unittest.TestCase):
             _uniform_token_chooser(sample_index),
         )
 
+        _assert_token_walk_result_invariants(self, result)
         self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
         self.assertEqual((2, 1), tuple(sampled_counts[:2]))
         self.assertEqual("O", result.tokens[0])
@@ -114,6 +140,7 @@ class RuntimeWalkTests(unittest.TestCase):
             _branch_multiplicity_chooser(sample_weighted_index),
         )
 
+        _assert_token_walk_result_invariants(self, result)
         self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
         self.assertEqual((2, 1), sampled_weights[0])
         self.assertEqual("C", result.tokens[0])
@@ -132,6 +159,7 @@ class RuntimeWalkTests(unittest.TestCase):
         )
 
         self.assertEqual(first, second)
+        _assert_token_walk_result_invariants(self, first)
         self.assertIn("".join(first.tokens), public_enum_support(mol, **kwargs))
 
     def test_seeded_branch_multiplicity_walk_is_reproducible(self) -> None:
@@ -148,6 +176,7 @@ class RuntimeWalkTests(unittest.TestCase):
         )
 
         self.assertEqual(first, second)
+        _assert_token_walk_result_invariants(self, first)
         self.assertIn("".join(first.tokens), public_enum_support(mol, **kwargs))
 
     def test_seeded_walk_rejects_invalid_seed(self) -> None:
@@ -170,6 +199,7 @@ class RuntimeWalkTests(unittest.TestCase):
             lambda _transitions: 0,
         )
 
+        _assert_token_walk_result_invariants(self, result)
         self.assertEqual((), result.tokens)
         self.assertEqual((), result.choice_counts)
         self.assertEqual((), result.choice_tokens)

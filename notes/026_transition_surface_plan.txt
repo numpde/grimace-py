@@ -492,9 +492,9 @@ Exact token inventory and validators:
 
 Test helper updates:
 
-- [x] Update runtime_realized_choice_transitions helper to use branch
+- [x] Update realized branch-transition helpers to use branch
       transitions.
-- [x] Update runtime_realized_grouped_transitions helper to use token
+- [x] Update realized token-transition helpers to use token
       transitions.
 - [x] Rename test helpers to branch/token terminology where touched.
 - [x] Do not introduce new tests using choice/grouped terminology for private

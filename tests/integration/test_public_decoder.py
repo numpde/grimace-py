@@ -331,7 +331,7 @@ class PublicDecoderTests(unittest.TestCase):
             ),
         )
 
-    def test_determinized_choices_expose_grouped_branch_count(self) -> None:
+    def test_determinized_choices_expose_token_branch_count(self) -> None:
         decoder = grimace.MolToSmilesDeterminizedDecoder(
             parse_smiles("CCO"),
             rootedAtAtom=-1,

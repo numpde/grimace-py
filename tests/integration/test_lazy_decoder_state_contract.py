@@ -234,22 +234,22 @@ class LazyDecoderStateContractTests(unittest.TestCase):
                 advanced_decoders,
             )
 
-            created_before_grouped_listing = len(created_refs)
-            grouped_transitions = state._token_state_transitions()
+            created_before_token_listing = len(created_refs)
+            token_transitions = state._token_state_transitions()
             self.assertEqual((), live_decoders())
 
-            created_before_grouped_advance = len(created_refs)
+            created_before_token_advance = len(created_refs)
             self.assertEqual(
                 2,
-                created_before_grouped_advance - created_before_grouped_listing,
+                created_before_token_advance - created_before_token_listing,
             )
 
-            grouped_transitions[0].state_factory()
+            token_transitions[0].state_factory()
             self.assertEqual(
                 [
                     ("choice", created_before_choice_advance),
-                    ("token", created_before_grouped_advance),
-                    ("token", created_before_grouped_advance + 1),
+                    ("token", created_before_token_advance),
+                    ("token", created_before_token_advance + 1),
                 ],
                 advanced_decoders,
             )

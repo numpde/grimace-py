@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 
 import grimace
+import grimace._sampling as _sampling
 import grimace._runtime_graphs as _runtime_graphs
 import grimace._runtime_states as _runtime_states
 from grimace._mol_to_smiles_options import (
@@ -17,6 +18,9 @@ from grimace._mol_to_smiles_options import (
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from grimace._runtime_inputs import MolToSmilesFlags, make_flags
+
+
+SAMPLING_MODE_PAIRS = tuple(sorted(_sampling._SAMPLING_WALKERS))
 
 
 def supported_public_kwargs(**kwargs: object) -> dict[str, object]:
@@ -53,8 +57,17 @@ def public_token_inventory_superset(mol: object, **kwargs: object) -> tuple[str,
     return grimace.MolToSmilesTokenInventorySuperset(mol, **kwargs)
 
 
-def public_sample(mol: object, **kwargs: object) -> grimace.SmilesSample:
-    return grimace.MolToSmilesSample(mol, seed=0, **kwargs)
+def public_samples(mol: object, **kwargs: object) -> tuple[grimace.SmilesSample, ...]:
+    return tuple(
+        grimace.MolToSmilesSample(
+            mol,
+            seed=0,
+            decoder_view=decoder_view,
+            sampling_mode=sampling_mode,
+            **kwargs,
+        )
+        for decoder_view, sampling_mode in SAMPLING_MODE_PAIRS
+    )
 
 
 def make_decoder(mol: object, **kwargs: object) -> grimace.MolToSmilesDecoder:
@@ -74,14 +87,29 @@ def public_entrypoint_calls(
 ) -> tuple[tuple[str, object], ...]:
     # Candidate-taking APIs, such as MolToSmilesDeviation, are covered by their
     # own candidate-specific tests plus the shared public-signature contract.
-    return (
+    base_calls = (
         ("enum", lambda: tuple(grimace.MolToSmilesEnum(mol, **kwargs))),
         ("decoder", lambda: make_decoder(mol, **kwargs)),
         ("determinized_decoder", lambda: make_determinized_decoder(mol, **kwargs)),
         ("inventory", lambda: public_token_inventory(mol, **kwargs)),
         ("inventory_superset", lambda: public_token_inventory_superset(mol, **kwargs)),
-        ("sample", lambda: public_sample(mol, **kwargs)),
     )
+    sample_calls = tuple(
+        (
+            f"sample:{decoder_view}/{sampling_mode}",
+            lambda decoder_view=decoder_view, sampling_mode=sampling_mode: (
+                grimace.MolToSmilesSample(
+                    mol,
+                    seed=0,
+                    decoder_view=decoder_view,
+                    sampling_mode=sampling_mode,
+                    **kwargs,
+                )
+            ),
+        )
+        for decoder_view, sampling_mode in SAMPLING_MODE_PAIRS
+    )
+    return base_calls + sample_calls
 
 
 def choice_texts(decoder: object) -> tuple[str, ...]:
@@ -258,8 +286,8 @@ def assert_public_entrypoints_equivalent(
         public_token_inventory_superset(mol, **expected_kwargs),
     )
     test_case.assertEqual(
-        public_sample(mol, **provided_kwargs),
-        public_sample(mol, **expected_kwargs),
+        public_samples(mol, **provided_kwargs),
+        public_samples(mol, **expected_kwargs),
     )
 
     decoder = make_decoder(mol, **provided_kwargs)
@@ -295,7 +323,8 @@ def assert_public_entrypoints_raise(
 ) -> None:
     allowed = None if included_entrypoints is None else set(included_entrypoints)
     for entrypoint_name, call in public_entrypoint_calls(mol, **kwargs):
-        if allowed is not None and entrypoint_name not in allowed:
+        base_entrypoint_name = entrypoint_name.split(":", 1)[0]
+        if allowed is not None and base_entrypoint_name not in allowed:
             continue
         with test_case.subTest(entrypoint=entrypoint_name):
             with test_case.assertRaisesRegex(expected_exception, expected_regex):

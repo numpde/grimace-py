@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 import unittest
 from unittest import mock
 
@@ -143,6 +144,53 @@ class PublicSamplingTests(unittest.TestCase):
     def test_sample_step_rejects_nonstring_choice_tokens_first(self) -> None:
         with self.assertRaisesRegex(TypeError, "choice tokens must be strings"):
             grimace.SmilesSampleStep(([],), (1,), 0, "C")
+
+    def test_sample_records_reject_invalid_scalars(self) -> None:
+        step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
+        sample = grimace.SmilesSample(
+            ("C",),
+            "C",
+            "determinized",
+            "uniform_token",
+            (step,),
+        )
+        cases = (
+            (
+                lambda: replace(step, choice_branch_counts=(True,)),
+                ValueError,
+                "branch counts",
+            ),
+            (
+                lambda: replace(step, selected_index=True),
+                TypeError,
+                "selected_index",
+            ),
+            (
+                lambda: replace(step, selected_token=[]),
+                TypeError,
+                "selected_token",
+            ),
+            (
+                lambda: replace(sample, tokens=([],)),
+                TypeError,
+                "sample tokens",
+            ),
+            (
+                lambda: replace(sample, smiles=[]),
+                TypeError,
+                "sample smiles",
+            ),
+            (
+                lambda: replace(sample, steps=(object(),)),
+                TypeError,
+                "SmilesSampleStep",
+            ),
+        )
+
+        for make_record, exception_type, expected_regex in cases:
+            with self.subTest(expected_regex=expected_regex):
+                with self.assertRaisesRegex(exception_type, expected_regex):
+                    make_record()
 
     def test_sampling_modes_return_legal_smiles_with_step_context(self) -> None:
         mol = parse_smiles("CCO")

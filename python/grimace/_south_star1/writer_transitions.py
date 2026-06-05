@@ -663,15 +663,88 @@ def _finish_active_transitions(
     return (() if transition is None else (transition,))
 
 
+def _closure_endpoint_scheduled_actions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+) -> tuple[_WriterScheduledAction, ...]:
+    active_atom = state.active.atom
+    actions: list[_WriterScheduledAction] = []
+
+    actions.extend(
+        _closure_pair_scheduled_actions(
+            state,
+            active_atom,
+        )
+    )
+
+    labels = _available_closure_labels_for_open(
+        prepared,
+        state.ring_state,
+    )
+
+    if labels:
+        actions.extend(
+            _closure_open_scheduled_actions(
+                context,
+                active_atom,
+                labels,
+            )
+        )
+
+    return tuple(actions)
+
+
+def _closure_endpoint_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is _WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT:
+        return _closure_pair_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind is _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        return _closure_open_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    raise SouthStarError(
+        SouthStarErrorKind.INTERNAL_INVARIANT,
+        f"unsupported closure-endpoint scheduled action: {action.kind!r}",
+    )
+
+
 def _closure_endpoint_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
-    return (
-        *_pair_closure_endpoint_transitions(prepared, state, context),
-        *_open_closure_endpoint_transitions(prepared, state, context),
-    )
+    transitions: list[WriterTransition] = []
+
+    for action in _closure_endpoint_scheduled_actions(
+        prepared,
+        state,
+        context,
+    ):
+        transitions.extend(
+            _closure_endpoint_transitions_from_scheduled_action(
+                prepared,
+                state,
+                context,
+                action,
+            )
+        )
+
+    return tuple(transitions)
 
 
 def _open_closure_endpoint_transition_from_obligation(

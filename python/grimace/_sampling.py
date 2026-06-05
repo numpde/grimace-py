@@ -40,7 +40,6 @@ _SAMPLING_WALKERS = {
         _seeded_branch_preserving_chooser,
     ),
 }
-_VALID_MODE_PAIRS = frozenset(_SAMPLING_WALKERS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,13 +151,13 @@ def mol_to_smiles_sample(
 def _validate_mode_pair(
     decoder_view: object,
     sampling_mode: object,
-) -> tuple[DecoderView, SamplingMode]:
+) -> _SamplingPair:
     if not isinstance(decoder_view, str):
         raise ValueError("invalid decoder_view/sampling_mode pair")
     if not isinstance(sampling_mode, str):
         raise ValueError("invalid decoder_view/sampling_mode pair")
     pair = (decoder_view, sampling_mode)
-    if pair not in _VALID_MODE_PAIRS:
+    if pair not in _SAMPLING_WALKERS:
         raise ValueError(
             f"invalid decoder_view/sampling_mode pair: {pair!r}"
         )

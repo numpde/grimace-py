@@ -23,6 +23,8 @@ ABSENT_TOP_LEVEL_NAMES = (
     "ReferencePolicy",
     "MOL_TO_SMILES_OPTIONS",
     "coerce_public_options",
+    "internal_option_values",
+    "public_option_values",
     "enumerate_rooted_connected_nonstereo_smiles_support",
     "enumerate_rooted_connected_stereo_smiles_support",
 )

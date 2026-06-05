@@ -113,6 +113,17 @@ class RuntimeWalkTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, expected_regex):
                     tuple(_token_walk_result(**overrides).step_payloads())
 
+    def test_token_walk_result_step_payloads_reject_nonstring_tokens(self) -> None:
+        cases = (
+            ({"tokens": ([],)}, "tokens must be strings"),
+            ({"choice_tokens": ([],)}, "choice tokens must be strings"),
+        )
+
+        for overrides, expected_regex in cases:
+            with self.subTest(overrides=overrides):
+                with self.assertRaisesRegex(TypeError, expected_regex):
+                    tuple(_token_walk_result(**overrides).step_payloads())
+
     def test_token_walk_records_flat_choice_payload(self) -> None:
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
         mol = parse_smiles("CCO")

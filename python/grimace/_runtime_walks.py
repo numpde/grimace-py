@@ -49,6 +49,10 @@ class _TokenWalkResult:
             raise ValueError("walk token count does not match choice-count count")
         if len(self.choice_tokens) != len(self.choice_branch_counts):
             raise ValueError("walk choice token and branch-count lengths differ")
+        if not all(isinstance(token, str) for token in self.tokens):
+            raise TypeError("walk result tokens must be strings")
+        if not all(isinstance(token, str) for token in self.choice_tokens):
+            raise TypeError("walk result choice tokens must be strings")
         if not all(
             type(branch_count) is int and branch_count > 0
             for branch_count in self.choice_branch_counts

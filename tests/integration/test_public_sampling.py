@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 import grimace
+import grimace._sampling as _sampling
 import grimace._runtime_walks as _runtime_walks
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
@@ -14,16 +15,6 @@ from tests.helpers.public_runtime import (
     public_enum_support,
     supported_public_kwargs,
 )
-
-
-PUBLIC_SAMPLE_PAIRS = frozenset(
-    (
-        ("determinized", "uniform_token"),
-        ("determinized", "branch_multiplicity"),
-        ("branch_preserving", "branch_preserving"),
-    )
-)
-SAMPLE_PAIRS = frozenset(SAMPLING_MODE_PAIRS)
 
 
 def _step_choice_pairs(step: object) -> tuple[tuple[str, int], ...]:
@@ -128,7 +119,10 @@ class PublicSamplingTests(unittest.TestCase):
         self.assertTrue(callable(grimace.SmilesSampleStep))
 
     def test_sampling_mode_pairs_match_public_contract(self) -> None:
-        self.assertEqual(PUBLIC_SAMPLE_PAIRS, SAMPLE_PAIRS)
+        self.assertEqual(
+            frozenset(SAMPLING_MODE_PAIRS),
+            frozenset(_sampling._SAMPLING_WALKERS),
+        )
 
     def test_sample_records_reject_mutable_payload_containers(self) -> None:
         step = _valid_sample_step()
@@ -338,6 +332,8 @@ class PublicSamplingTests(unittest.TestCase):
     def test_sampling_rejects_invalid_mode_pairs(self) -> None:
         mol = parse_smiles("CCO")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=0)
+        valid_views = sorted({view for view, _mode in SAMPLING_MODE_PAIRS})
+        valid_modes = sorted({mode for _view, mode in SAMPLING_MODE_PAIRS})
 
         invalid_cases = (
             (None, "uniform_token"),
@@ -346,9 +342,9 @@ class PublicSamplingTests(unittest.TestCase):
             ("determinized", "missing"),
             *(
                 (decoder_view, sampling_mode)
-                for decoder_view in sorted({view for view, _mode in SAMPLE_PAIRS})
-                for sampling_mode in sorted({mode for _view, mode in SAMPLE_PAIRS})
-                if (decoder_view, sampling_mode) not in SAMPLE_PAIRS
+                for decoder_view in valid_views
+                for sampling_mode in valid_modes
+                if (decoder_view, sampling_mode) not in SAMPLING_MODE_PAIRS
             ),
         )
 

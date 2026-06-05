@@ -91,11 +91,13 @@ class RuntimeBoundaryTests(unittest.TestCase):
     runtime_input_module = REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py"
     runtime_module = REPO_ROOT / "python" / "grimace" / "_runtime.py"
     runtime_state_module = REPO_ROOT / "python" / "grimace" / "_runtime_states.py"
+    runtime_walk_module = REPO_ROOT / "python" / "grimace" / "_runtime_walks.py"
     runtime_modules = (
         REPO_ROOT / "python" / "grimace" / "_runtime.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_inputs.py",
         REPO_ROOT / "python" / "grimace" / "_runtime_states.py",
+        REPO_ROOT / "python" / "grimace" / "_runtime_walks.py",
         REPO_ROOT / "python" / "grimace" / "_deviation.py",
     )
     reference_rooted_modules = (
@@ -151,6 +153,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
             self.preparation_module,
             self.runtime_module,
             REPO_ROOT / "python" / "grimace" / "_runtime_graphs.py",
+            self.runtime_walk_module,
         )
 
         for path in core_dependent_modules:

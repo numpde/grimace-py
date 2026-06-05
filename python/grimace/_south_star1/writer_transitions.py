@@ -292,28 +292,6 @@ def _active_child_transitions_from_scheduled_action(
     )
 
 
-def _active_child_transitions_from_obligations(
-    prepared: SouthStarPreparedMol,
-    state: WriterState,
-    context: WriterTransitionExpansionContext,
-    parent: AtomId,
-    children: tuple[_WriterChildObligation, ...],
-) -> tuple[WriterTransition, ...]:
-    transitions: list[WriterTransition] = []
-
-    for action in _active_child_scheduled_actions(parent, children):
-        transitions.extend(
-            _transitions_from_scheduled_action(
-                prepared,
-                state,
-                context,
-                action,
-            )
-        )
-
-    return tuple(transitions)
-
-
 def _active_emitted_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -776,30 +754,6 @@ def _transitions_from_scheduled_actions(
     transitions: list[WriterTransition] = []
 
     for action in actions:
-        transitions.extend(
-            _transitions_from_scheduled_action(
-                prepared,
-                state,
-                context,
-                action,
-            )
-        )
-
-    return tuple(transitions)
-
-
-def _closure_endpoint_transitions(
-    prepared: SouthStarPreparedMol,
-    state: WriterState,
-    context: WriterTransitionExpansionContext,
-) -> tuple[WriterTransition, ...]:
-    transitions: list[WriterTransition] = []
-
-    for action in _closure_endpoint_scheduled_actions(
-        prepared,
-        state,
-        context,
-    ):
         transitions.extend(
             _transitions_from_scheduled_action(
                 prepared,

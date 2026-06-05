@@ -3,7 +3,6 @@ from __future__ import annotations
 import gc
 import unittest
 import weakref
-from collections.abc import Callable
 from unittest.mock import patch
 
 import grimace
@@ -13,6 +12,7 @@ from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
     reachable_terminal_prefixes,
+    runtime_token_transition_counts,
     supported_public_kwargs,
 )
 
@@ -20,7 +20,7 @@ from tests.helpers.public_runtime import (
 STEREO_SMILES = "F[C@H](Cl)Br"
 DISCONNECTED_STEREO_SMILES = f"{STEREO_SMILES}.O"
 STEREO_KWARGS = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1)
-_FakeTransitions = tuple[tuple[str, Callable[[], object]], ...]
+_FakeTransitions = tuple[_runtime_states._StateTransition, ...]
 
 
 def _reject_rooted_stereo_decoder_construction(*_args: object, **_kwargs: object) -> None:
@@ -37,20 +37,29 @@ def _reject_state_realization(
     raise AssertionError("choices must not eagerly realize sibling successor states")
 
 
-def _choice_transition_texts(state: object) -> tuple[str, ...]:
+def _fake_transition(
+    text: str,
+    next_state_factory: _runtime_states._StateTransitionFactory,
+    *,
+    branch_count: int = 1,
+) -> _runtime_states._StateTransition:
+    return _runtime_states._StateTransition(text, branch_count, next_state_factory)
+
+
+def _branch_transition_texts(state: object) -> tuple[str, ...]:
     return tuple(
         text
         for text, _ in _runtime_states._realize_state_transitions(
-            state._choice_state_transitions()
+            state._branch_state_transitions()
         )
     )
 
 
-def _grouped_transition_texts(state: object) -> tuple[str, ...]:
+def _token_transition_texts(state: object) -> tuple[str, ...]:
     return tuple(
         text
         for text, _ in _runtime_states._realize_state_transitions(
-            state._grouped_state_transitions()
+            state._token_state_transitions()
         )
     )
 
@@ -62,11 +71,17 @@ class _FakeState:
         *,
         terminal: bool,
         transitions: _FakeTransitions = (),
+        token_transitions: _FakeTransitions | None = None,
         reject_terminal_transitions: bool = False,
     ) -> None:
         self._prefix = prefix
         self._terminal = terminal
         self._transitions = transitions
+        self._token_transitions = (
+            transitions
+            if token_transitions is None
+            else token_transitions
+        )
         self._reject_terminal_transitions = reject_terminal_transitions
 
     def prefix(self) -> str:
@@ -78,16 +93,36 @@ class _FakeState:
     def copy(self) -> "_FakeState":
         return self
 
-    def cache_key(self) -> tuple[str, str, bool]:
-        return ("fake", self._prefix, self._terminal)
+    def cache_key(self) -> tuple[object, ...]:
+        # Fake states with the same visible prefix can intentionally expose
+        # different transitions; reachability memoization must not conflate them.
+        return (
+            "fake",
+            self._prefix,
+            self._terminal,
+            self._reject_terminal_transitions,
+            _transition_summary(self._transitions),
+            _transition_summary(self._token_transitions),
+        )
 
-    def _choice_state_transitions(self) -> _FakeTransitions:
+    def _branch_state_transitions(self) -> _FakeTransitions:
         if self._terminal and self._reject_terminal_transitions:
             raise AssertionError("terminal child transitions must not be queried")
         return self._transitions
 
-    def _grouped_state_transitions(self) -> _FakeTransitions:
-        return self._choice_state_transitions()
+    def _token_state_transitions(self) -> _FakeTransitions:
+        if self._terminal and self._reject_terminal_transitions:
+            raise AssertionError("terminal child transitions must not be queried")
+        return self._token_transitions
+
+
+def _transition_summary(
+    transitions: _FakeTransitions,
+) -> tuple[tuple[str, int, object], ...]:
+    return tuple(
+        (transition.text, transition.branch_count, transition.state_factory)
+        for transition in transitions
+    )
 
 
 class LazyDecoderStateContractTests(unittest.TestCase):
@@ -121,6 +156,33 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "hashable"):
             _runtime_states._state_cache_key(State())
+
+    def test_fake_state_cache_key_includes_transition_surface(self) -> None:
+        left = _FakeState(
+            "C",
+            terminal=False,
+            transitions=(
+                _fake_transition(
+                    "C",
+                    lambda: _FakeState("CC", terminal=True),
+                ),
+            ),
+        )
+        right = _FakeState(
+            "C",
+            terminal=False,
+            transitions=(
+                _fake_transition(
+                    "C",
+                    lambda: _FakeState("CN", terminal=True),
+                ),
+            ),
+        )
+
+        self.assertNotEqual(
+            _runtime_states._state_cache_key(left),
+            _runtime_states._state_cache_key(right),
+        )
 
     def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
         created_refs: list[weakref.ReferenceType[object]] = []
@@ -160,34 +222,34 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         )
 
         with patch.object(_core, "RootedConnectedStereoDecoder", new=Decoder):
-            choice_transitions = state._choice_state_transitions()
+            choice_transitions = state._branch_state_transitions()
             self.assertEqual((), live_decoders())
 
             created_before_choice_advance = len(created_refs)
             self.assertEqual(2, created_before_choice_advance)
 
-            choice_transitions[0][1]()
+            choice_transitions[0].state_factory()
             self.assertEqual(
                 [("choice", created_before_choice_advance)],
                 advanced_decoders,
             )
 
-            created_before_grouped_listing = len(created_refs)
-            grouped_transitions = state._grouped_state_transitions()
+            created_before_token_listing = len(created_refs)
+            token_transitions = state._token_state_transitions()
             self.assertEqual((), live_decoders())
 
-            created_before_grouped_advance = len(created_refs)
+            created_before_token_advance = len(created_refs)
             self.assertEqual(
                 2,
-                created_before_grouped_advance - created_before_grouped_listing,
+                created_before_token_advance - created_before_token_listing,
             )
 
-            grouped_transitions[0][1]()
+            token_transitions[0].state_factory()
             self.assertEqual(
                 [
                     ("choice", created_before_choice_advance),
-                    ("token", created_before_grouped_advance),
-                    ("token", created_before_grouped_advance + 1),
+                    ("token", created_before_token_advance),
+                    ("token", created_before_token_advance + 1),
                 ],
                 advanced_decoders,
             )
@@ -362,15 +424,51 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         nonterminal = _FakeState(
             "C",
             terminal=False,
-            transitions=(("C", lambda: nonterminal),),
+            transitions=(_fake_transition("C", lambda: nonterminal),),
         )
         merged = _runtime_states._MergedStateAdapter(
             (terminal, nonterminal)
         )
 
         self.assertTrue(merged.is_terminal())
-        self.assertEqual(("C",), _choice_transition_texts(merged))
-        self.assertEqual(("C",), _grouped_transition_texts(merged))
+        self.assertEqual(("C",), _branch_transition_texts(merged))
+        self.assertEqual(("C",), _token_transition_texts(merged))
+
+    def test_merged_state_sums_token_transition_branch_counts(self) -> None:
+        first = _FakeState(
+            "C",
+            terminal=False,
+            token_transitions=(
+                _fake_transition(
+                    "C",
+                    lambda: _FakeState("CC", terminal=True),
+                    branch_count=2,
+                ),
+                _fake_transition(
+                    "O",
+                    lambda: _FakeState("CO", terminal=True),
+                    branch_count=1,
+                ),
+            ),
+        )
+        second = _FakeState(
+            "C",
+            terminal=False,
+            token_transitions=(
+                _fake_transition(
+                    "C",
+                    lambda: _FakeState("CC", terminal=True),
+                    branch_count=3,
+                ),
+            ),
+        )
+
+        merged = _runtime_states._MergedStateAdapter((first, second))
+
+        self.assertEqual(
+            (("C", 5), ("O", 1)),
+            runtime_token_transition_counts(merged),
+        )
 
     def test_merged_state_cache_keys_are_order_insensitive(self) -> None:
         first = _FakeState("C", terminal=False)
@@ -398,7 +496,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         accepting_with_continuation = _FakeState(
             "C",
             terminal=True,
-            transitions=(("C", lambda: terminal_child),),
+            transitions=(_fake_transition("C", lambda: terminal_child),),
         )
 
         self.assertEqual(
@@ -412,7 +510,9 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         first_fragment = _FakeState(
             "C",
             terminal=True,
-            transitions=(("C", lambda: _FakeState("CC", terminal=True)),),
+            transitions=(
+                _fake_transition("C", lambda: _FakeState("CC", terminal=True)),
+            ),
         )
 
         disconnected = _runtime_states._DisconnectedStateAdapter(
@@ -423,15 +523,19 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         )
 
         self.assertFalse(disconnected.is_terminal())
-        self.assertEqual(("C", "."), _choice_transition_texts(disconnected))
-        self.assertEqual(("C", "."), _grouped_transition_texts(disconnected))
+        self.assertEqual(("C", "."), _branch_transition_texts(disconnected))
+        self.assertEqual(("C", "."), _token_transition_texts(disconnected))
+        self.assertEqual(
+            (("C", 1), (".", 1)),
+            runtime_token_transition_counts(disconnected),
+        )
         last_fragment = _runtime_states._DisconnectedStateAdapter(
             (first_fragment,)
         )
 
         self.assertTrue(last_fragment.is_terminal())
-        self.assertEqual(("C",), _choice_transition_texts(last_fragment))
-        self.assertEqual(("C",), _grouped_transition_texts(last_fragment))
+        self.assertEqual(("C",), _branch_transition_texts(last_fragment))
+        self.assertEqual(("C",), _token_transition_texts(last_fragment))
 
 
 if __name__ == "__main__":

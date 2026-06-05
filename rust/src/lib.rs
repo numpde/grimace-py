@@ -2,6 +2,7 @@ mod bond_stereo_constraints;
 mod frontier;
 mod prepared_graph;
 mod prepared_mol;
+mod rng;
 mod rooted_nonstereo;
 mod rooted_stereo;
 mod smiles_shared;
@@ -13,6 +14,7 @@ use crate::prepared_graph::{
     mol_to_smiles_support, prepared_smiles_graph_schema_version, PyPreparedSmilesGraph,
 };
 use crate::prepared_mol::PyPreparedMol;
+use crate::rng::PySplitMix64Sampler;
 use crate::rooted_nonstereo::{
     PyRootedConnectedNonStereoDecoder, PyRootedConnectedNonStereoWalker,
     PyRootedConnectedNonStereoWalkerState,
@@ -26,6 +28,7 @@ use crate::rooted_stereo::{
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPreparedSmilesGraph>()?;
     m.add_class::<PyPreparedMol>()?;
+    m.add_class::<PySplitMix64Sampler>()?;
     m.add_class::<PyRootedConnectedNonStereoDecoder>()?;
     m.add_class::<PyRootedConnectedNonStereoWalker>()?;
     m.add_class::<PyRootedConnectedNonStereoWalkerState>()?;

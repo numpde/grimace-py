@@ -1,0 +1,633 @@
+Transition surface plan
+=======================
+
+Purpose
+-------
+
+The random SMILES generator should not become a separate traversal beside:
+
+- public branch-preserving decoding
+- public determinized decoding
+- exact token-inventory traversal
+- candidate validation/deviation traversal
+- future random or guided walkers
+
+Those consumers all move through the same prefix state graph. The durable plan
+is to make that state graph's transition surface explicit, private, and tested.
+Decoders, inventories, validators, and walkers should then project from that
+surface instead of each defining their own notion of "next choices".
+
+
+Terminology
+-----------
+
+State:
+  A prefix plus the hidden runtime data needed to continue writing SMILES.
+
+Accepted state:
+  A state whose prefix is already a valid complete serialization.
+
+Outgoing transition:
+  A legal way to extend the current prefix. Acceptance and outgoing transitions
+  are separate facts. Some composed states can be accepted and still expose
+  outgoing transitions.
+
+Token text:
+  The visible string emitted by one transition. It may be multi-character.
+
+Branch transition:
+  One branch-preserving writer choice at the current prefix. Duplicate token
+  text is allowed.
+
+Token transition:
+  A grouped transition keyed by visible token text. Token text is unique within
+  one state's token-transition view.
+
+branch_count:
+  The number of branch-preserving transitions represented by an exposed
+  transition at this prefix.
+
+  For a branch transition, branch_count is 1.
+  For a token transition, branch_count is the sum of grouped branch counts.
+
+  It is local to the current prefix. It is not final support size, probability
+  mass, RDKit random-writer draw frequency, or a chemistry statement.
+
+state_factory:
+  A zero-argument lazy factory that realizes the successor state only when the
+  selected transition is advanced.
+
+
+Core invariant
+--------------
+
+Every reachable private decoder state exposes two transition views:
+
+1. Branch transitions
+
+   Shape:
+
+     text: str
+     branch_count: 1
+     state_factory: Callable[[], _BaseDecoderState]
+
+   Properties:
+
+   - Preserve writer branches.
+   - Duplicate text is allowed.
+   - Order matches the branch-preserving decoder surface.
+   - Public MolToSmilesDecoder is a projection of this view.
+
+2. Token transitions
+
+   Shape:
+
+     text: str
+     branch_count: int
+     state_factory: Callable[[], _BaseDecoderState]
+
+   Properties:
+
+   - Group branch transitions by visible token text.
+   - Text is unique within the transition tuple.
+   - branch_count is the number of hidden branch transitions in that token
+     bucket.
+   - Public MolToSmilesDeterminizedDecoder is a projection of this view.
+   - Exact token inventory, token validators, and determinized/token walkers
+     consume this view.
+
+Public decoder choices project branch_count from this same transition surface.
+Callers may ignore it, but the private transition layer must not discard it.
+
+
+All-walker scope
+----------------
+
+This is not only for determinized random walks.
+
+- Branch-preserving walkers consume branch transitions.
+- Determinized/token walkers consume token transitions.
+- Validators that advance by a supplied token consume token transitions.
+- Exact inventory traversal consumes token transitions.
+- Disconnected walkers preserve fragment-local counts and add forced separator
+  transitions through the same surface.
+- Merged/all-roots walkers sum counts across hidden surviving branches.
+
+These are different consumers of one transition contract, not separate graph
+walking definitions.
+
+
+Initial boundary problem
+------------------------
+
+Rust already has the low-level concepts:
+
+- DecoderChoice<S>: branch-preserving choice
+- GroupedTransition<S>: grouped token transition with branch_count
+
+Before this work, Python weakened the contract:
+
+- _runtime_states exposes transitions as (text, state_factory)
+- branch multiplicity is lost at the Python runtime-composition boundary
+- public decoders and token inventory are projections of that weakened surface
+- lazy all-roots stereo and disconnected composition remain correct, but they
+  cannot report the multiplicity facts Rust already knows
+
+The first cleanup was therefore not "add a walker". It was "make Python's
+private transition surface carry the same facts as the decoder semantics".
+
+
+Serious alternatives
+--------------------
+
+1. Python walk over public next_choices
+
+   Pros:
+
+   - minimal implementation
+   - works with current disconnected and lazy all-roots composition
+
+   Cons:
+
+   - slow
+   - public MolToSmilesChoice is the wrong internal primitive
+   - branch_count was unavailable before the public branch_count slice
+   - even with branch_count, public choices are a heavier object API than an
+     internal transition primitive
+   - easy to diverge from exact token-inventory traversal
+
+   Verdict:
+
+   Useful only as a prototype. Not the no-regret implementation.
+
+2. Rust-only connected determinized walk
+
+   Pros:
+
+   - fastest for connected kernels
+   - consumes GroupedTransition directly
+
+   Cons:
+
+   - does not cover disconnected composition without more work
+   - does not solve lazy all-roots stereo at the public runtime boundary
+   - risks creating a walker-specific traversal beside decoder traversal
+
+   Verdict:
+
+   A good later optimization. Not the first principled slice.
+
+3. Structured private Python transition surface
+
+   Pros:
+
+   - preserves multiplicity through runtime composition
+   - kept public API unchanged for the initial contract-shrinking slice
+   - makes public decoders, inventory, validators, and future walkers consume
+     one private state-transition contract
+   - covers rooted, all-roots, stereo, non-stereo, disconnected, RDKit Mol, and
+     PreparedMol inputs
+
+   Cons:
+
+   - still pays Python state-factory and composition overhead
+   - connected Rust paths may need private grouped-transition bindings later
+
+   Verdict:
+
+   Best immediate slice.
+
+4. Full Rust PreparedMol walker and fragment composer
+
+   Pros:
+
+   - best long-term speed
+   - avoids Python state-factory overhead
+   - naturally operates after preparation, without RDKit
+
+   Cons:
+
+   - much larger runtime rewrite
+   - would need careful parity with Python's current fragment/root composition
+   - premature before the transition contract is clean
+
+   Verdict:
+
+   Best long-term direction after the transition surface is explicit and tested.
+
+5. Public branch_count on MolToSmilesChoice
+
+   Pros:
+
+   - useful to callers
+   - aligns public determinized choices with hidden branch counts
+   - gives sampling/training code the same local facts the internal walker uses
+
+   Cons:
+
+   - public API change
+   - terminology must be exact because branch_count is not probability mass,
+     completion count, or RDKit draw frequency
+
+   Verdict:
+
+   Added after the private transition contract was pinned and tested. It
+   projects directly from that contract.
+
+6. Precomputed support trie or automaton
+
+   Pros:
+
+   - very fast repeated sampling for small support
+   - simple token-choice lookups after construction
+
+   Cons:
+
+   - requires exhaustive support construction
+   - unsuitable for large molecules
+   - solves a different workload
+
+   Verdict:
+
+   Not the general decoder/walker design.
+
+
+Chosen path
+-----------
+
+Make transitions the private SSoT.
+
+Immediate private shape:
+
+  _StateTransition
+    text: str
+    branch_count: int
+    state_factory: Callable[[], _BaseDecoderState]
+
+Private state protocol:
+
+  _branch_state_transitions() -> tuple[_StateTransition, ...]
+  _token_state_transitions() -> tuple[_StateTransition, ...]
+
+Public projections:
+
+  MolToSmilesDecoder
+    uses branch transitions
+
+  MolToSmilesDeterminizedDecoder
+    uses token transitions
+
+  MolToSmilesTokenInventory
+    traverses token transitions
+
+  Future branch-preserving walker
+    consumes branch transitions
+
+  Determinized/token walker
+    consumes token transitions
+
+  Public MolToSmilesChoice.branch_count
+    projects _StateTransition.branch_count
+
+
+Public branch_count path
+------------------------
+
+The clean public path is not a separate walk-only result field. The same local
+transition attribute should eventually appear on public choices.
+
+Natural public shape:
+
+  MolToSmilesChoice.text
+  MolToSmilesChoice.branch_count
+  MolToSmilesChoice.next_state
+
+The public name should be branch_count, not just multiplicity. It says what is
+counted: hidden branch-preserving decoder choices at the current prefix.
+
+Semantics:
+
+- For MolToSmilesDecoder, branch_count is always 1.
+- For MolToSmilesDeterminizedDecoder, branch_count is the number of
+  branch-preserving transitions hidden behind that exposed token at the current
+  prefix.
+- For a disconnected forced "." transition, branch_count is 1.
+- For merged/all-roots token transitions, branch_count sums across hidden
+  branches represented by that token.
+- branch_count is local to the current prefix. It is not final support size,
+  probability mass, or RDKit random-writer frequency.
+
+Implementation path:
+
+1. Preserve branch_count internally on _StateTransition.
+2. Test branch_count through private transition-surface tests.
+3. Add branch_count to MolToSmilesChoice construction as a direct projection of
+   _StateTransition.branch_count.
+4. Add public API tests for both decoder classes.
+5. Document the attribute in the API page only after it exists.
+
+This was added as a direct projection of the private transition surface. That
+keeps branch_count semantics shared between public decoder choices and internal
+walkers.
+
+
+Composition rules
+-----------------
+
+Core connected adapter:
+
+- Branch transitions come from next_choice_texts and advance_choice.
+- Token transitions come from next_token_support and advance_token.
+- Token branch_count is counted from branch transition texts at the same state.
+- A private Rust grouped-transition binding can later avoid double inspection,
+  but it must be an optimization of the same contract.
+- Listing transitions must not realize sibling successor states.
+
+Lazy all-roots connected stereo:
+
+- Branch transitions enumerate root-local branch choices lazily.
+- Token transitions bucket root-local branch choices by visible token.
+- branch_count is the number of hidden branch transitions represented by the
+  token bucket.
+- The token-transition factory should advance each contributing root by token,
+  not by one branch choice.
+- If one root contributes multiple branch choices with the same token, it
+  contributes multiple counts but only one token-advanced successor state.
+
+Merged state:
+
+- Branch transitions concatenate live branch transitions.
+- Token transitions group live token transitions by text and sum branch_count.
+- Terminal branches do not contribute outgoing transitions.
+- is_terminal remains an acceptance predicate, not a "no outgoing transitions"
+  predicate.
+
+Disconnected state:
+
+- Active-fragment transitions are wrapped without changing branch_count.
+- If the active fragment is accepted and more fragments remain, add "." as a
+  forced transition with branch_count = 1.
+- If the active fragment is both accepted and still has continuations, expose
+  both the continuations and the "." separator.
+- The "." factory advances to the next fragment; it does not inspect sibling
+  fragment transitions.
+
+
+Meticulous checklist
+--------------------
+
+Preflight and guardrails:
+
+- [x] Confirm the branch is correct and the worktree is understood.
+- [x] Run the focused runtime-state tests before changes.
+- [x] Run the focused public-decoder tests before changes.
+- [x] Locate all direct uses of _choice_state_transitions.
+- [x] Locate all direct uses of _grouped_state_transitions.
+- [x] Locate all direct uses of _StateTransitions.
+- [x] Locate all direct uses of _realize_state_transitions.
+- [x] Confirm no public API change is needed for the first slice.
+- [x] Confirm the initial slice will not add a random-walk API.
+- [x] Keep the refactor private to python/grimace/_runtime_states.py,
+      python/grimace/_runtime.py, and test helpers unless inspection proves
+      another file is an owning boundary.
+
+Define the private transition shape:
+
+- [x] Add a private _StateTransition shape with text, branch_count, and
+      state_factory.
+- [x] Keep the shape minimal: no public export, no extra behavior, no public
+      docs.
+- [x] Ensure branch_count must be a positive int.
+- [x] Ensure text must remain the visible token string.
+- [x] Ensure state_factory remains lazy and zero-argument.
+- [x] Ensure _StateTransitions is tuple[_StateTransition, ...].
+- [x] Ensure the transition shape is stable enough for tests to inspect without
+      depending on implementation-only helper names beyond _runtime_states.
+- [x] Do not add probability, weight, completion count, or sampler fields.
+
+Rename the private protocol:
+
+- [x] Replace _choice_state_transitions with _branch_state_transitions.
+- [x] Replace _grouped_state_transitions with _token_state_transitions.
+- [x] Keep method names tied to transition semantics, not public decoder class
+      names.
+- [x] Update _BaseDecoderState to require both methods.
+- [x] Update _realize_state_transitions to accept _StateTransition objects.
+- [x] Make realized transition helpers return transition text and realized
+      state for existing traversal tests.
+- [x] Do not keep compatibility wrappers for the old private method names
+      unless a concrete caller proves they are necessary.
+- [x] Confirm no old private transition method names remain after the slice.
+
+Core connected adapter:
+
+- [x] Build branch transitions from next_choice_texts.
+- [x] Give every branch transition branch_count = 1.
+- [x] Keep branch transition factories advancing by choice index.
+- [x] Build token transition texts from next_token_support.
+- [x] Count token branch_count from branch transition texts at the same state.
+- [x] Keep token transition factories advancing by token text.
+- [x] Do not realize successor states while listing transitions.
+- [x] Preserve lazy public next_state realization.
+- [x] If branch-text counting appears in more than one adapter, add one small
+      local helper for that exact operation.
+- [x] Do not add a broader grouping abstraction unless it removes real
+      duplication across adapters.
+
+Lazy all-roots connected stereo:
+
+- [x] Build branch transitions by inspecting root-local branch choices only when
+      transitions are requested.
+- [x] Give each root-local branch transition branch_count = 1.
+- [x] Bucket token transitions by visible token text.
+- [x] Count every root-local branch choice in the token bucket.
+- [x] For a root with multiple branch choices of the same token, count all
+      branches but create one token-advanced root successor.
+- [x] Keep token factories lazy.
+- [x] Do not instantiate rooted stereo decoders at public decoder
+      initialization.
+- [x] Preserve the existing cache_key behavior or intentionally update tests if
+      the private state key changes.
+
+Merged state:
+
+- [x] Branch transitions concatenate non-terminal branch transitions.
+- [x] Token transitions group non-terminal token transitions by text.
+- [x] Sum branch_count across grouped token transitions.
+- [x] Factories for grouped token transitions realize only the selected token's
+      contributing successor states.
+- [x] Terminal branches contribute acceptance but no outgoing transitions.
+- [x] Preserve prefix homogeneity checks.
+- [x] Preserve cache-key behavior or update tests deliberately.
+
+Disconnected state:
+
+- [x] Wrap active branch transitions without changing text or branch_count.
+- [x] Wrap active token transitions without changing text or branch_count.
+- [x] Add "." only when active state is accepted and another fragment remains.
+- [x] Give "." branch_count = 1.
+- [x] Keep "." available alongside active continuations when both are legal.
+- [x] Keep disconnected prefix construction unchanged.
+- [x] Keep fragment advancement lazy.
+
+Public decoder projection:
+
+- [x] Update _public_decoder_choices to consume _StateTransition.
+- [x] Project transition.text to MolToSmilesChoice.text.
+- [x] Project transition.state_factory to lazy next_state.
+- [x] Do not expose transition.branch_count in the initial private
+      transition-surface commit.
+- [x] Preserve next_choices caching.
+- [x] Preserve choices() as an alias for next_choices.
+- [x] Preserve copy() behavior.
+
+Exact token inventory and validators:
+
+- [x] Update exact token inventory traversal to consume token transitions.
+- [x] Ignore branch_count in inventory output.
+- [x] Preserve visited-state deduplication.
+- [x] Confirm deviation/validation paths still use public determinized choices
+      unless they are intentionally moved to private token transitions later.
+- [x] Do not add a separate traversal for inventory or validation.
+
+Test helper updates:
+
+- [x] Update realized branch-transition helpers to use branch
+      transitions.
+- [x] Update realized token-transition helpers to use token
+      transitions.
+- [x] Rename test helpers to branch/token terminology where touched.
+- [x] Do not introduce new tests using choice/grouped terminology for private
+      runtime transitions.
+- [x] Keep existing tests readable by returning (text, state) where counts are
+      irrelevant.
+- [x] Add a helper that exposes (text, branch_count) without realizing states.
+- [ ] Add a helper that realizes transitions while preserving branch_count if a
+      count-sensitive traversal test needs it.
+
+Transition-surface tests:
+
+- [x] Branch transition texts match MolToSmilesDecoder.next_choices texts.
+- [x] Token transition texts match MolToSmilesDeterminizedDecoder.next_choices
+      texts.
+- [x] Token transition texts are unique within one state.
+- [x] Branch transition branch_count is always 1.
+- [x] Token transition branch_count is always positive.
+- [x] Duplicate branch texts are summed in token transitions.
+- [x] Merged-state token transitions sum counts across hidden branches.
+- [x] Lazy all-roots stereo token transitions count duplicate same-token root
+      branches correctly.
+- [x] Disconnected "." transition has branch_count = 1.
+- [x] An accepted active disconnected fragment can expose both continuations and
+      "." when both are legal.
+- [x] Realized branch-transition graph still reaches exactly MolToSmilesEnum
+      support.
+- [x] Realized token-transition graph still reaches exactly MolToSmilesEnum
+      support.
+- [x] Listing transitions does not realize sibling next states.
+
+Coverage cases for those tests:
+
+- [x] Rooted connected non-stereo.
+- [x] All-roots connected non-stereo.
+- [x] Rooted connected stereo.
+- [x] All-roots connected stereo.
+- [x] Disconnected non-stereo.
+- [x] Disconnected stereo.
+- [x] Duplicate same-token merge.
+- [x] Visible divergence after a merge.
+- [x] Explicit bonds.
+- [x] Explicit hydrogens.
+- [x] Kekule output.
+- [x] Atom-map handling.
+- [x] Byte-round-tripped PreparedMol.
+- [x] Writer-flag mismatch rejection remains covered.
+- [x] Unsupported canonical/doRandom option rejection remains covered.
+
+Public branch_count slice:
+
+- [x] Add branch_count to MolToSmilesChoice.__slots__.
+- [x] Add branch_count to MolToSmilesChoice construction.
+- [x] Project branch_count directly from _StateTransition.branch_count.
+- [x] Assert MolToSmilesDecoder choices have branch_count = 1.
+- [x] Assert MolToSmilesDeterminizedDecoder choices expose grouped counts.
+- [x] Assert disconnected "." exposes branch_count = 1.
+- [x] Assert branch_count remains stable after lazy next_state realization.
+- [x] Add API docs only after the attribute exists.
+- [x] Mention explicitly that branch_count is local prefix multiplicity, not
+      probability or completion count.
+
+Walker slice:
+
+- [x] Leave the private/internal branch-preserving walker unimplemented until a
+      caller needs branch-level trajectories.
+- [x] Add a private/internal determinized token walker as the sparse
+      supervision path.
+- [ ] Make branch-preserving walkers consume branch transitions.
+- [x] Make determinized/token walkers consume token transitions.
+- [x] Do not call public next_choices from an internal walker.
+- [x] Do not implement a separate graph traversal.
+- [x] Record per-step token choices and branch counts from the same transition
+      tuple used for advancement.
+- [x] Keep stop policy separate from transition listing because accepted states
+      can still have outgoing transitions in composed runtimes.
+- [x] Test joined token paths against MolToSmilesEnum support.
+- [x] Test seeded reproducibility within the same Grimace version.
+- [x] Test uniform_token samples by exposed token index.
+- [x] Test branch_multiplicity samples by branch_count.
+
+Future Rust optimization slice:
+
+- [ ] Add private Rust grouped-transition access only after the Python contract
+      is tested.
+- [ ] Keep Rust accessors private; do not expand public _core API casually.
+- [ ] Make Rust connected walkers return the same text and branch_count data as
+      Python token transitions.
+- [ ] Preserve PreparedMol/RDKit normalization in Python unless deliberately
+      moving the whole runtime boundary.
+- [ ] Treat Rust-side connected walking as an optimization of the transition
+      contract, not a second semantic source.
+- [ ] Re-run transition-surface tests against both Python-composed and
+      Rust-optimized paths if both exist.
+
+Completion criteria for the transition-surface slice:
+
+- [x] No old weak tuple transition alias remains.
+- [x] No old _choice_state_transitions or _grouped_state_transitions references
+      remain.
+- [x] Public decoder text sequences are unchanged.
+- [x] Exact token inventory output is unchanged.
+- [x] PreparedMol and RDKit Mol inputs remain equivalent.
+- [x] Branch_count is preserved internally through core, lazy all-roots, merged,
+      and disconnected composition.
+- [x] Focused runtime-state tests pass.
+- [x] Focused public-decoder tests pass.
+- [x] PreparedMol runtime tests pass if touched paths affect prepared input.
+- [x] Full make test passes before merge/release.
+
+
+Non-goals for the initial transition-surface slice
+--------------------------------------------------
+
+These were boundaries for the first contract-shrinking slice; later checked
+slices intentionally added public branch_count and private walker machinery.
+
+- No new public API.
+- No random-walk API.
+- No Python random parity claim.
+- No RDKit random-writer parity claim.
+- No uniform-over-final-SMILES claim.
+- No exhaustive support trie as the general path.
+- No Rust-only fast path until the shared transition contract is tested.
+
+
+Decision
+--------
+
+The next no-regret step is the private structured transition surface.
+
+That shrinks the semantic surface instead of expanding it: public decoding,
+determinized decoding, inventory traversal, validators, and future walkers all
+consume one internal transition contract. Public branch_count and fast Rust
+walkers can then be added as direct projections or optimizations of that
+contract, not as competing implementations.

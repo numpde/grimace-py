@@ -130,6 +130,7 @@ State interface:
 Each `MolToSmilesChoice` has:
 
 - `text: str`
+- `branch_count: int`
 - `next_state`: the same decoder class as the parent choice came from
 
 Two different choices may therefore share the same `text` while leading to
@@ -174,8 +175,14 @@ State interface:
 Available interface:
 
 - `text: str`
+- `branch_count: int`
 - `next_state`: `MolToSmilesDecoder` or `MolToSmilesDeterminizedDecoder`,
   matching the parent decoder class
+
+`branch_count` is local to the current prefix. For `MolToSmilesDecoder`, it is
+`1`. For `MolToSmilesDeterminizedDecoder`, it is the number of
+branch-preserving choices hidden behind that exposed token. It is not final
+support size, probability mass, or RDKit random-writer frequency.
 
 ## Decoder model
 

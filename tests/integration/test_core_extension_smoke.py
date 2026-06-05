@@ -15,6 +15,16 @@ def _runtime_modules():
 
 
 class CoreExtensionSmokeTests(unittest.TestCase):
+    def test_core_exposes_private_seeded_sampler_bridge(self) -> None:
+        sampler = _core._SplitMix64Sampler(0)
+
+        self.assertEqual(0, sampler.uniform_index(1))
+        self.assertEqual(1, sampler.weighted_index((0, 1)))
+        with self.assertRaisesRegex(ValueError, "empty choice set"):
+            sampler.uniform_index(0)
+        with self.assertRaisesRegex(ValueError, "no positive total"):
+            sampler.weighted_index((0, 0))
+
     def test_core_objects_construct_and_advance(self) -> None:
         _runtime, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
 
@@ -117,6 +127,38 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertEqual(["F"], nonstereo_decoder.next_token_support())
         self.assertEqual(["F"], stereo_decoder.next_token_support())
+
+    def test_core_decoders_do_not_expose_eager_successor_methods(self) -> None:
+        _runtime, _, MolToSmilesFlags = _runtime_modules()
+
+        mol = parse_smiles("F/C=C\\Cl")
+        nonstereo_flags = MolToSmilesFlags(
+            isomeric_smiles=False,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+        stereo_flags = MolToSmilesFlags(
+            isomeric_smiles=True,
+            rooted_at_atom=0,
+            canonical=False,
+            do_random=True,
+        )
+
+        decoders = (
+            _runtime._make_decoder(mol, nonstereo_flags),
+            _runtime._make_decoder(mol, stereo_flags),
+        )
+        forbidden_names = (
+            "choice_successors",
+            "grouped_successors",
+            "choice_successor_states",
+            "grouped_successor_states",
+        )
+        for decoder in decoders:
+            with self.subTest(decoder_type=type(decoder).__name__):
+                for name in forbidden_names:
+                    self.assertFalse(hasattr(decoder, name), name)
 
     def test_nonstereo_core_decoder_supports_all_roots_frontier(self) -> None:
         _, _runtime_graphs, MolToSmilesFlags = _runtime_modules()

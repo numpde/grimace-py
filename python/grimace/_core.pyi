@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 
@@ -73,6 +74,12 @@ class PreparedMol:
         rooted_at_atom: int | None,
         /,
     ) -> list[tuple[PreparedSmilesGraph, int | None]]: ...
+
+
+class _SplitMix64Sampler:
+    def __init__(self, seed: int, /) -> None: ...
+    def uniform_index(self, len: int, /) -> int: ...
+    def weighted_index(self, weights: Sequence[int], /) -> int: ...
 
 
 class RootedConnectedNonStereoWalkerState:

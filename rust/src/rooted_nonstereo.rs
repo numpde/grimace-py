@@ -2,15 +2,17 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use pyo3::exceptions::{PyIndexError, PyKeyError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use rustc_hash::FxHashSet;
 
 use crate::frontier::{
-    choice_texts, extend_transitions, finalize_transitions,
-    frontier_prefix as shared_frontier_prefix, grouped_choice_texts, take_choice_or_err,
-    take_grouped_choices_or_err, DecoderChoice,
+    branch_choice_texts, decoder_choices_from_token_successors, dedup_frontier,
+    extend_decoder_choices_from_token_successors, frontier_prefix as shared_frontier_prefix,
+    group_decoder_choices, take_branch_choice_successors_or_err, take_first_successor_or_err,
+    take_only_successor_or_err, take_token_successors_or_err, take_token_support_successors_or_err,
+    token_support_from_choices, DecoderChoice, GroupedTransition,
 };
 use crate::prepared_graph::PreparedSmilesGraphData;
 use crate::smiles_shared::{add_pending, ring_label_text, take_pending_for_atom};
@@ -1138,37 +1140,23 @@ fn advance_token_state(
     state: &RootedConnectedNonStereoWalkerStateData,
     chosen_token: &str,
 ) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
-    let mut successors = successors_by_token(graph, state);
-    let candidates = successors.remove(chosen_token).ok_or_else(|| {
-        let available = successors.keys().cloned().collect::<Vec<_>>();
-        PyKeyError::new_err(format!(
-            "Token {chosen_token:?} is not available; choices={available:?}"
-        ))
-    })?;
-    take_first_successor_state(candidates, "token advance")
+    let successors = successors_by_token(graph, state);
+    let candidates = take_token_successors_or_err(successors, chosen_token)?;
+    take_first_successor_or_err(candidates, "token advance")
 }
 
 fn choices_for_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
 ) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
-    let mut choices = Vec::new();
-    for (token, successors) in successors_by_token(graph, state) {
-        for successor in successors {
-            choices.push(DecoderChoice {
-                text: token.clone(),
-                next_frontier: vec![successor],
-            });
-        }
-    }
-    choices
+    decoder_choices_from_token_successors(successors_by_token(graph, state))
 }
 
 fn next_choice_texts_for_state(
     graph: &PreparedSmilesGraphData,
     state: &RootedConnectedNonStereoWalkerStateData,
 ) -> Vec<String> {
-    choice_texts(&choices_for_state(graph, state))
+    branch_choice_texts(&choices_for_state(graph, state))
 }
 
 fn advance_choice_state(
@@ -1176,60 +1164,21 @@ fn advance_choice_state(
     state: &RootedConnectedNonStereoWalkerStateData,
     chosen_idx: usize,
 ) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
-    let mut choices = choices_for_state(graph, state);
-    take_only_successor_state(
-        take_choice_or_err(&mut choices, chosen_idx)?,
+    let choices = choices_for_state(graph, state);
+    take_only_successor_or_err(
+        take_branch_choice_successors_or_err(choices, chosen_idx)?,
         "choice advance",
     )
-}
-
-fn take_only_successor_state(
-    mut successors: Vec<RootedConnectedNonStereoWalkerStateData>,
-    context: &str,
-) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
-    if successors.len() != 1 {
-        return Err(PyValueError::new_err(format!(
-            "Expected exactly one successor state for {context}, got {}",
-            successors.len()
-        )));
-    }
-    match successors.pop() {
-        Some(successor) => Ok(successor),
-        None => Err(PyValueError::new_err(format!(
-            "Expected exactly one successor state for {context}, got 0"
-        ))),
-    }
-}
-
-fn take_first_successor_state(
-    mut successors: Vec<RootedConnectedNonStereoWalkerStateData>,
-    context: &str,
-) -> PyResult<RootedConnectedNonStereoWalkerStateData> {
-    match successors.drain(..).next() {
-        Some(successor) => Ok(successor),
-        None => Err(PyValueError::new_err(format!(
-            "Expected at least one successor state for {context}, got 0"
-        ))),
-    }
 }
 
 fn frontier_next_token_support(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
 ) -> Vec<String> {
-    frontier_transitions(graph, frontier).into_keys().collect()
-}
-
-fn frontier_transitions(
-    graph: &PreparedSmilesGraphData,
-    frontier: &[RootedConnectedNonStereoWalkerStateData],
-) -> BTreeMap<String, Vec<RootedConnectedNonStereoWalkerStateData>> {
-    let mut transitions =
-        BTreeMap::<String, BTreeSet<RootedConnectedNonStereoWalkerStateData>>::new();
-    for state in frontier {
-        extend_transitions(&mut transitions, successors_by_token(graph, state));
-    }
-    finalize_transitions(transitions)
+    frontier_grouped_transitions(graph, frontier)
+        .into_iter()
+        .map(|transition| transition.text)
+        .collect()
 }
 
 fn frontier_choices(
@@ -1238,16 +1187,19 @@ fn frontier_choices(
 ) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
     let mut choices = Vec::new();
     for state in frontier {
-        for (token, successors) in successors_by_token(graph, state) {
-            for successor in successors {
-                choices.push(DecoderChoice {
-                    text: token.clone(),
-                    next_frontier: vec![successor],
-                });
-            }
-        }
+        extend_decoder_choices_from_token_successors(
+            &mut choices,
+            successors_by_token(graph, state),
+        );
     }
     choices
+}
+
+fn frontier_grouped_transitions(
+    graph: &PreparedSmilesGraphData,
+    frontier: &[RootedConnectedNonStereoWalkerStateData],
+) -> Vec<GroupedTransition<RootedConnectedNonStereoWalkerStateData>> {
+    group_decoder_choices(frontier_choices(graph, frontier), dedup_frontier)
 }
 
 fn frontier_prefix(frontier: &[RootedConnectedNonStereoWalkerStateData]) -> String {
@@ -1288,6 +1240,21 @@ fn exact_state_same_structure(
         && left.action_stack == right.action_stack
 }
 
+fn dedup_exact_frontier(
+    mut states: Vec<RootedConnectedNonStereoWalkerStateData>,
+) -> Vec<RootedConnectedNonStereoWalkerStateData> {
+    debug_assert!(
+        states
+            .first()
+            .map(|first| states.iter().all(|state| state.prefix == first.prefix))
+            .unwrap_or(true),
+        "exact frontier token buckets must stay prefix-homogeneous"
+    );
+    states.sort_unstable_by(exact_state_structural_cmp);
+    states.dedup_by(|left, right| exact_state_same_structure(left, right));
+    states
+}
+
 fn frontier_is_terminal(
     graph: &PreparedSmilesGraphData,
     frontier: &[RootedConnectedNonStereoWalkerStateData],
@@ -1298,35 +1265,14 @@ fn frontier_is_terminal(
 fn exact_frontier_successors(
     graph: &PreparedSmilesGraphData,
     frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
-) -> Vec<(String, Vec<RootedConnectedNonStereoWalkerStateData>)> {
-    let mut transitions = Vec::<(String, Vec<RootedConnectedNonStereoWalkerStateData>)>::new();
+) -> Vec<GroupedTransition<RootedConnectedNonStereoWalkerStateData>> {
+    let mut choices = Vec::new();
     for state in frontier {
         for_each_exact_successor_by_token_owned(graph, state, |token, successor| {
-            if let Some((_, states)) = transitions
-                .iter_mut()
-                .find(|(existing_token, _)| *existing_token == token)
-            {
-                states.push(successor);
-            } else {
-                transitions.push((token, vec![successor]));
-            }
+            choices.push(DecoderChoice::single(token, successor));
         });
     }
-    transitions
-        .into_iter()
-        .map(|(token, mut states)| {
-            debug_assert!(
-                states
-                    .first()
-                    .map(|first| states.iter().all(|state| state.prefix == first.prefix))
-                    .unwrap_or(true),
-                "exact frontier token buckets must stay prefix-homogeneous"
-            );
-            states.sort_unstable_by(exact_state_structural_cmp);
-            states.dedup_by(|left, right| exact_state_same_structure(left, right));
-            (token, states)
-        })
-        .collect()
+    group_decoder_choices(choices, dedup_exact_frontier)
 }
 
 fn enumerate_support_from_frontier(
@@ -1341,8 +1287,8 @@ fn enumerate_support_from_frontier(
         return;
     }
 
-    for (_token, next_frontier) in transitions {
-        enumerate_support_from_frontier(graph, next_frontier, out);
+    for transition in transitions {
+        enumerate_support_from_frontier(graph, transition.successors, out);
     }
 }
 
@@ -1516,80 +1462,62 @@ pub struct PyRootedConnectedNonStereoDecoder {
     cached_choices: Option<Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>>>,
 }
 
+impl PyRootedConnectedNonStereoDecoder {
+    fn from_frontier(
+        graph: Arc<PreparedSmilesGraphData>,
+        frontier: Vec<RootedConnectedNonStereoWalkerStateData>,
+    ) -> Self {
+        Self {
+            graph,
+            frontier,
+            cached_choices: None,
+        }
+    }
+
+    fn cached_frontier_choices(
+        &mut self,
+    ) -> &[DecoderChoice<RootedConnectedNonStereoWalkerStateData>] {
+        self.cached_choices
+            .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier))
+            .as_slice()
+    }
+
+    fn take_frontier_choices(
+        &mut self,
+    ) -> Vec<DecoderChoice<RootedConnectedNonStereoWalkerStateData>> {
+        self.cached_choices
+            .take()
+            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier))
+    }
+}
+
 #[pymethods]
 impl PyRootedConnectedNonStereoDecoder {
     #[new]
     fn new(graph: &Bound<'_, PyAny>, root_idx: isize) -> PyResult<Self> {
         let graph = Arc::new(PreparedSmilesGraphData::from_any(graph)?);
-        Ok(Self {
-            frontier: initial_frontier_for_root_spec(graph.as_ref(), root_idx)?,
-            graph,
-            cached_choices: None,
-        })
+        let frontier = initial_frontier_for_root_spec(graph.as_ref(), root_idx)?;
+        Ok(Self::from_frontier(graph, frontier))
     }
 
     fn next_token_support(&mut self) -> Vec<String> {
-        grouped_choice_texts(
-            self.cached_choices
-                .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier)),
-        )
+        token_support_from_choices(self.cached_frontier_choices())
     }
 
     fn advance_token(&mut self, chosen_token: &str) -> PyResult<()> {
-        let choices = self
-            .cached_choices
-            .take()
-            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier));
-        self.frontier = take_grouped_choices_or_err(choices, chosen_token)?;
+        let choices = self.take_frontier_choices();
+        self.frontier = take_token_support_successors_or_err(choices, chosen_token)?;
         Ok(())
     }
 
     fn next_choice_texts(&mut self) -> Vec<String> {
-        choice_texts(
-            self.cached_choices
-                .get_or_insert_with(|| frontier_choices(self.graph.as_ref(), &self.frontier)),
-        )
+        branch_choice_texts(self.cached_frontier_choices())
     }
 
     fn advance_choice(&mut self, chosen_idx: usize) -> PyResult<()> {
-        let mut choices = self
-            .cached_choices
-            .take()
-            .unwrap_or_else(|| frontier_choices(self.graph.as_ref(), &self.frontier));
-        self.frontier = take_choice_or_err(&mut choices, chosen_idx)?;
+        let choices = self.take_frontier_choices();
+        self.frontier = take_branch_choice_successors_or_err(choices, chosen_idx)?;
         Ok(())
-    }
-
-    fn choice_successors(&self) -> Vec<(String, Self)> {
-        frontier_choices(self.graph.as_ref(), &self.frontier)
-            .into_iter()
-            .map(|choice| {
-                (
-                    choice.text,
-                    Self {
-                        graph: self.graph.clone(),
-                        frontier: choice.next_frontier,
-                        cached_choices: None,
-                    },
-                )
-            })
-            .collect()
-    }
-
-    fn grouped_successors(&self) -> Vec<(String, Self)> {
-        frontier_transitions(self.graph.as_ref(), &self.frontier)
-            .into_iter()
-            .map(|(token, frontier)| {
-                (
-                    token,
-                    Self {
-                        graph: self.graph.clone(),
-                        frontier,
-                        cached_choices: None,
-                    },
-                )
-            })
-            .collect()
     }
 
     fn prefix(&self) -> String {

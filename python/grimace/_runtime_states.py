@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Protocol, TypeAlias
 
 import grimace._core as _core
@@ -10,7 +11,22 @@ import grimace._core as _core
 
 DecoderCacheKey: TypeAlias = tuple[object, ...]
 _StateTransitionFactory: TypeAlias = Callable[[], "_BaseDecoderState"]
-_StateTransitions: TypeAlias = tuple[tuple[str, _StateTransitionFactory], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _StateTransition:
+    text: str
+    branch_count: int
+    state_factory: _StateTransitionFactory
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.text, str):
+            raise TypeError("decoder state transition text must be a string")
+        if type(self.branch_count) is not int or self.branch_count <= 0:
+            raise ValueError("decoder state transition branch_count must be positive")
+
+
+_StateTransitions: TypeAlias = tuple[_StateTransition, ...]
 
 
 class _BaseDecoderState(Protocol):
@@ -18,17 +34,31 @@ class _BaseDecoderState(Protocol):
     def is_terminal(self) -> bool: ...
     def copy(self) -> "_BaseDecoderState": ...
     def cache_key(self) -> DecoderCacheKey: ...
-    def _choice_state_transitions(self) -> _StateTransitions: ...
-    def _grouped_state_transitions(self) -> _StateTransitions: ...
+    def _branch_state_transitions(self) -> _StateTransitions: ...
+    def _token_state_transitions(self) -> _StateTransitions: ...
 
 
 def _realize_state_transitions(
     transitions: _StateTransitions,
 ) -> tuple[tuple[str, _BaseDecoderState], ...]:
     return tuple(
-        (text, state_factory())
-        for text, state_factory in transitions
+        (transition.text, transition.state_factory())
+        for transition in transitions
     )
+
+
+def _branch_transition(
+    text: str,
+    state_factory: _StateTransitionFactory,
+) -> _StateTransition:
+    return _StateTransition(text, 1, state_factory)
+
+
+def _counts_by_text(texts: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for text in texts:
+        counts[text] = counts.get(text, 0) + 1
+    return counts
 
 
 def _advance_choice_state(decoder: object, chosen_idx: int) -> "_CoreStateAdapter":
@@ -49,10 +79,10 @@ class _CoreStateAdapter:
     def __init__(self, decoder: object) -> None:
         self._decoder = decoder
 
-    def _choice_state_transitions(self) -> _StateTransitions:
+    def _branch_state_transitions(self) -> _StateTransitions:
         decoder = self._decoder
         return tuple(
-            (
+            _branch_transition(
                 text,
                 lambda chosen_idx=chosen_idx: _advance_choice_state(
                     decoder,
@@ -74,11 +104,13 @@ class _CoreStateAdapter:
     def cache_key(self) -> DecoderCacheKey:
         return ("core", self._decoder.cache_key())
 
-    def _grouped_state_transitions(self) -> _StateTransitions:
+    def _token_state_transitions(self) -> _StateTransitions:
         decoder = self._decoder
+        branch_counts = _counts_by_text(decoder.next_choice_texts())
         return tuple(
-            (
+            _StateTransition(
                 text,
+                branch_counts[text],
                 lambda text=text: _advance_token_state(decoder, text),
             )
             for text in decoder.next_token_support()
@@ -101,13 +133,13 @@ class _LazyAllRootsConnectedStereoState:
     def _root_decoder(self, root_idx: int) -> object:
         return _core.RootedConnectedStereoDecoder(self._prepared, root_idx)
 
-    def _choice_state_transitions(self) -> _StateTransitions:
-        transitions: list[tuple[str, _StateTransitionFactory]] = []
+    def _branch_state_transitions(self) -> _StateTransitions:
+        transitions: list[_StateTransition] = []
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
             for chosen_idx, text in enumerate(decoder.next_choice_texts()):
                 transitions.append(
-                    (
+                    _branch_transition(
                         text,
                         lambda root_idx=root_idx, chosen_idx=chosen_idx: (
                             _advance_choice_state(
@@ -119,16 +151,20 @@ class _LazyAllRootsConnectedStereoState:
                 )
         return tuple(transitions)
 
-    def _grouped_state_transitions(self) -> _StateTransitions:
-        buckets: dict[str, list[int]] = {}
+    def _token_state_transitions(self) -> _StateTransitions:
+        counts: dict[str, int] = {}
+        root_indices_by_text: dict[str, list[int]] = {}
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
+            branch_counts = _counts_by_text(decoder.next_choice_texts())
             for text in decoder.next_token_support():
-                buckets.setdefault(text, []).append(root_idx)
+                counts[text] = counts.get(text, 0) + branch_counts[text]
+                root_indices_by_text.setdefault(text, []).append(root_idx)
 
         return tuple(
-            (
+            _StateTransition(
                 text,
+                counts[text],
                 lambda text=text, root_indices=tuple(root_indices): (
                     _merge_state_adapters(
                         tuple(
@@ -138,7 +174,7 @@ class _LazyAllRootsConnectedStereoState:
                     )
                 ),
             )
-            for text, root_indices in buckets.items()
+            for text, root_indices in root_indices_by_text.items()
         )
 
     def prefix(self) -> str:
@@ -167,12 +203,12 @@ class _MergedStateAdapter:
             raise ValueError("Merged decoder state requires at least one branch")
         self._states = states
 
-    def _choice_state_transitions(self) -> _StateTransitions:
-        transitions: list[tuple[str, _StateTransitionFactory]] = []
+    def _branch_state_transitions(self) -> _StateTransitions:
+        transitions: list[_StateTransition] = []
         for state in self._states:
             if state.is_terminal():
                 continue
-            transitions.extend(state._choice_state_transitions())
+            transitions.extend(state._branch_state_transitions())
         return tuple(transitions)
 
     def prefix(self) -> str:
@@ -194,21 +230,28 @@ class _MergedStateAdapter:
             tuple(sorted((_state_cache_key(state) for state in self._states), key=repr)),
         )
 
-    def _grouped_state_transitions(self) -> _StateTransitions:
-        grouped: dict[str, list[_StateTransitionFactory]] = {}
+    def _token_state_transitions(self) -> _StateTransitions:
+        counts: dict[str, int] = {}
+        factories_by_text: dict[str, list[_StateTransitionFactory]] = {}
         for state in self._states:
             if state.is_terminal():
                 continue
-            for text, state_factory in state._grouped_state_transitions():
-                grouped.setdefault(text, []).append(state_factory)
+            for transition in state._token_state_transitions():
+                counts[transition.text] = (
+                    counts.get(transition.text, 0) + transition.branch_count
+                )
+                factories_by_text.setdefault(transition.text, []).append(
+                    transition.state_factory
+                )
         return tuple(
-            (
+            _StateTransition(
                 text,
+                counts[text],
                 lambda factories=tuple(factories): _merge_state_adapters(
                     tuple(factory() for factory in factories)
                 ),
             )
-            for text, factories in grouped.items()
+            for text, factories in factories_by_text.items()
         )
 
 
@@ -258,11 +301,14 @@ class _DisconnectedStateAdapter:
         transitions: _StateTransitions,
     ) -> _StateTransitions:
         return tuple(
-            (
-                text,
-                lambda factory=factory: self._with_active_state(factory()),
+            _StateTransition(
+                transition.text,
+                transition.branch_count,
+                lambda factory=transition.state_factory: self._with_active_state(
+                    factory()
+                ),
             )
-            for text, factory in transitions
+            for transition in transitions
         )
 
     def _fragment_separator_transition(
@@ -271,7 +317,7 @@ class _DisconnectedStateAdapter:
     ) -> _StateTransitions:
         if self._fragment_idx + 1 == len(self._fragment_states):
             return ()
-        return ((".", lambda: self._advance_fragment(active)),)
+        return (_branch_transition(".", lambda: self._advance_fragment(active)),)
 
     def _active_state_transitions(
         self,
@@ -283,17 +329,17 @@ class _DisconnectedStateAdapter:
             return wrapped + self._fragment_separator_transition(active)
         return wrapped
 
-    def _choice_state_transitions(self) -> _StateTransitions:
+    def _branch_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
         return self._active_state_transitions(
-            active._choice_state_transitions(),
+            active._branch_state_transitions(),
             active,
         )
 
-    def _grouped_state_transitions(self) -> _StateTransitions:
+    def _token_state_transitions(self) -> _StateTransitions:
         active = self._active_state()
         return self._active_state_transitions(
-            active._grouped_state_transitions(),
+            active._token_state_transitions(),
             active,
         )
 

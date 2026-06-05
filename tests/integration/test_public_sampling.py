@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import unittest
 from unittest import mock
 
@@ -25,6 +26,35 @@ def _step_choice_pairs(step: object) -> tuple[tuple[str, int], ...]:
 
 
 class PublicSamplingTests(unittest.TestCase):
+    def _assert_all_modes_return_legal_sample(
+        self,
+        mol: object,
+        *,
+        kwargs: Mapping[str, object],
+        seed: int,
+    ) -> None:
+        support = public_enum_support(mol, **kwargs)
+
+        for decoder_view, sampling_mode in SAMPLE_PAIRS:
+            with self.subTest(
+                decoder_view=decoder_view,
+                sampling_mode=sampling_mode,
+            ):
+                sample = grimace.MolToSmilesSample(
+                    mol,
+                    seed=seed,
+                    decoder_view=decoder_view,
+                    sampling_mode=sampling_mode,
+                    **kwargs,
+                )
+
+                self._assert_sample_invariants(
+                    sample,
+                    decoder_view=decoder_view,
+                    sampling_mode=sampling_mode,
+                )
+                self.assertIn(sample.smiles, support)
+
     def _assert_sample_invariants(
         self,
         sample: object,
@@ -109,27 +139,8 @@ class PublicSamplingTests(unittest.TestCase):
     def test_sampling_modes_return_legal_smiles_with_step_context(self) -> None:
         mol = parse_smiles("CCO")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
-        support = public_enum_support(mol, **kwargs)
 
-        for decoder_view, sampling_mode in SAMPLE_PAIRS:
-            with self.subTest(
-                decoder_view=decoder_view,
-                sampling_mode=sampling_mode,
-            ):
-                sample = grimace.MolToSmilesSample(
-                    mol,
-                    seed=17,
-                    decoder_view=decoder_view,
-                    sampling_mode=sampling_mode,
-                    **kwargs,
-                )
-
-                self._assert_sample_invariants(
-                    sample,
-                    decoder_view=decoder_view,
-                    sampling_mode=sampling_mode,
-                )
-                self.assertIn(sample.smiles, support)
+        self._assert_all_modes_return_legal_sample(mol, kwargs=kwargs, seed=17)
 
     def test_sampling_accepts_rooted_writer_surface_flags(self) -> None:
         mol = parse_smiles("C1CC1O")
@@ -140,27 +151,8 @@ class PublicSamplingTests(unittest.TestCase):
             allBondsExplicit=True,
             allHsExplicit=True,
         )
-        support = public_enum_support(mol, **kwargs)
 
-        for decoder_view, sampling_mode in SAMPLE_PAIRS:
-            with self.subTest(
-                decoder_view=decoder_view,
-                sampling_mode=sampling_mode,
-            ):
-                sample = grimace.MolToSmilesSample(
-                    mol,
-                    seed=5,
-                    decoder_view=decoder_view,
-                    sampling_mode=sampling_mode,
-                    **kwargs,
-                )
-
-                self._assert_sample_invariants(
-                    sample,
-                    decoder_view=decoder_view,
-                    sampling_mode=sampling_mode,
-                )
-                self.assertIn(sample.smiles, support)
+        self._assert_all_modes_return_legal_sample(mol, kwargs=kwargs, seed=5)
 
     def test_sampling_is_reproducible_for_same_seed_and_mode(self) -> None:
         mol = parse_smiles("F[C@H](Cl)Br")
@@ -191,27 +183,8 @@ class PublicSamplingTests(unittest.TestCase):
     def test_sampling_accepts_rooted_stereo(self) -> None:
         mol = parse_smiles("F[C@H](Cl)Br")
         kwargs = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=1)
-        support = public_enum_support(mol, **kwargs)
 
-        for decoder_view, sampling_mode in SAMPLE_PAIRS:
-            with self.subTest(
-                decoder_view=decoder_view,
-                sampling_mode=sampling_mode,
-            ):
-                sample = grimace.MolToSmilesSample(
-                    mol,
-                    seed=31,
-                    decoder_view=decoder_view,
-                    sampling_mode=sampling_mode,
-                    **kwargs,
-                )
-
-                self._assert_sample_invariants(
-                    sample,
-                    decoder_view=decoder_view,
-                    sampling_mode=sampling_mode,
-                )
-                self.assertIn(sample.smiles, support)
+        self._assert_all_modes_return_legal_sample(mol, kwargs=kwargs, seed=31)
 
     def test_sampling_accepts_prepared_mol_bytes_round_trip(self) -> None:
         mol = parse_smiles("CCO.N")

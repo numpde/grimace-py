@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 import grimace._runtime as _runtime
 from grimace._runtime_walks import (
@@ -14,15 +13,6 @@ from grimace._runtime_walks import (
     _walk_branch_transitions,
     _walk_token_transitions,
 )
-
-
-DecoderView = Literal["determinized", "branch_preserving"]
-SamplingMode = Literal[
-    "uniform_token",
-    "branch_multiplicity",
-    "branch_preserving",
-]
-_SamplingPair = tuple[DecoderView, SamplingMode]
 
 
 _SAMPLING_WALKERS = {
@@ -127,6 +117,7 @@ def mol_to_smiles_sample(
     walk, seeded_chooser = _SAMPLING_WALKERS[(decoder_view, sampling_mode)]
     seed = _validate_walk_seed(seed)
 
+    # Keep extension-backed RNG construction after runtime option validation.
     initial_state = _runtime._make_decoder_state(
         mol_or_prepared,
         isomeric_smiles=isomeric_smiles,
@@ -151,7 +142,7 @@ def mol_to_smiles_sample(
 def _validate_mode_pair(
     decoder_view: object,
     sampling_mode: object,
-) -> _SamplingPair:
+) -> tuple[str, str]:
     if not isinstance(decoder_view, str):
         raise ValueError("invalid decoder_view/sampling_mode pair")
     if not isinstance(sampling_mode, str):

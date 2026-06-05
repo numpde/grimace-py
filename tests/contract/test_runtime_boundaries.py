@@ -164,6 +164,12 @@ class RuntimeBoundaryTests(unittest.TestCase):
                 self.assertIn("grimace._core", imported_names)
                 self.assertNotIn("importlib", imported_names)
 
+    def test_sampling_module_does_not_import_core_directly(self) -> None:
+        self.assertNotIn(
+            "grimace._core",
+            _imported_module_names(self.sampling_module),
+        )
+
     def test_runtime_modules_do_not_inspect_prepared_mol_fragment_storage(self) -> None:
         forbidden_methods = {"fragment_atom_indices", "fragment_prepared_graph"}
 

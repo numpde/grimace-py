@@ -64,6 +64,8 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
             "isomericSmiles": None,
             "isomeric_smiles": None,
             "seed": 0,
+            "decoder_view": "determinized",
+            "sampling_mode": "uniform_token",
         }
 
         self.assertEqual(

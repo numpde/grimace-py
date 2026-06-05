@@ -129,14 +129,16 @@ class RuntimeWalkTests(unittest.TestCase):
         self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
         self.assertIn(".", result.tokens)
         separator_idx = result.tokens.index(".")
-        choice_start = sum(result.choice_counts[:separator_idx])
+        _, _, separator_choices, separator_branch_counts = tuple(
+            result.step_payloads()
+        )[separator_idx]
         self.assertEqual(
             (".",),
-            result.choice_tokens[choice_start:choice_start + 1],
+            separator_choices,
         )
         self.assertEqual(
             (1,),
-            result.choice_branch_counts[choice_start:choice_start + 1],
+            separator_branch_counts,
         )
 
     def test_uniform_transition_chooser_samples_by_exposed_choice_count(self) -> None:

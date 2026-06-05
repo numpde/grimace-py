@@ -192,6 +192,67 @@ class PublicSamplingTests(unittest.TestCase):
                 with self.assertRaisesRegex(exception_type, expected_regex):
                     make_record()
 
+    def test_sample_records_reject_invalid_relationships(self) -> None:
+        step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
+        sample = grimace.SmilesSample(
+            ("C",),
+            "C",
+            "determinized",
+            "uniform_token",
+            (step,),
+        )
+        cases = (
+            (
+                lambda: replace(step, choice_branch_counts=(1, 1)),
+                "lengths differ",
+            ),
+            (
+                lambda: replace(step, choice_tokens=(), choice_branch_counts=()),
+                "at least one choice",
+            ),
+            (
+                lambda: replace(
+                    step,
+                    choice_tokens=("C", "C"),
+                    choice_branch_counts=(1, 1),
+                ),
+                "must be unique",
+            ),
+            (
+                lambda: replace(step, selected_index=1),
+                "out of range",
+            ),
+            (
+                lambda: replace(step, selected_token="N"),
+                "does not match selected_index",
+            ),
+            (
+                lambda: replace(sample, smiles="N"),
+                "must equal joined tokens",
+            ),
+            (
+                lambda: replace(sample, steps=()),
+                "step count",
+            ),
+            (
+                lambda: replace(sample, tokens=("N",), smiles="N"),
+                "does not match selected step token",
+            ),
+            (
+                lambda: replace(
+                    sample,
+                    decoder_view="branch_preserving",
+                    sampling_mode="uniform_token",
+                ),
+                "decoder_view/sampling_mode",
+            ),
+        )
+
+        for make_record, expected_regex in cases:
+            with self.subTest(expected_regex=expected_regex):
+                with self.assertRaisesRegex(ValueError, expected_regex):
+                    make_record()
+
     def test_sampling_modes_return_legal_smiles_with_step_context(self) -> None:
         mol = parse_smiles("CCO")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)

@@ -397,6 +397,19 @@ class RuntimeWalkTests(unittest.TestCase):
         with self.assertRaisesRegex(IndexError, "outside"):
             _walk_branch_transitions(initial, lambda _transitions: 1)
 
+    def test_branch_preserving_walk_rejects_missing_branch_transitions(self) -> None:
+        terminal = _FakeState(terminal=True)
+        initial = _FakeState(
+            terminal=False,
+            token_transitions=(
+                _fake_transition("C", terminal),
+            ),
+            branch_transitions=(),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "no branch transitions"):
+            _walk_branch_transitions(initial, lambda _transitions: 0)
+
     def test_branch_preserving_walk_rejects_duplicate_token_buckets(self) -> None:
         terminal = _FakeState(terminal=True)
         initial = _FakeState(

@@ -42,6 +42,10 @@ class SmilesSampleStep:
     selected_token: str
 
     def __post_init__(self) -> None:
+        if type(self.choice_tokens) is not tuple:
+            raise TypeError("sample step choice_tokens must be a tuple")
+        if type(self.choice_branch_counts) is not tuple:
+            raise TypeError("sample step choice_branch_counts must be a tuple")
         if len(self.choice_tokens) != len(self.choice_branch_counts):
             raise ValueError("choice token and branch-count lengths differ")
         if not self.choice_tokens:
@@ -59,6 +63,8 @@ class SmilesSampleStep:
             raise TypeError("sample step selected_index must be an int")
         if not 0 <= self.selected_index < len(self.choice_tokens):
             raise ValueError("sample step selected_index is out of range")
+        if not isinstance(self.selected_token, str):
+            raise TypeError("sample step selected_token must be a string")
         if self.selected_token != self.choice_tokens[self.selected_index]:
             raise ValueError("sample step selected_token does not match selected_index")
 
@@ -72,11 +78,19 @@ class SmilesSample:
     steps: tuple[SmilesSampleStep, ...]
 
     def __post_init__(self) -> None:
+        if type(self.tokens) is not tuple:
+            raise TypeError("sample tokens must be a tuple")
         if not all(isinstance(token, str) for token in self.tokens):
             raise TypeError("sample tokens must be strings")
+        if not isinstance(self.smiles, str):
+            raise TypeError("sample smiles must be a string")
         if self.smiles != "".join(self.tokens):
             raise ValueError("sample smiles must equal joined tokens")
         _validate_mode_pair(self.decoder_view, self.sampling_mode)
+        if type(self.steps) is not tuple:
+            raise TypeError("sample steps must be a tuple")
+        if not all(isinstance(step, SmilesSampleStep) for step in self.steps):
+            raise TypeError("sample steps must be SmilesSampleStep instances")
         if len(self.steps) != len(self.tokens):
             raise ValueError("sample step count must match token count")
         for token, step in zip(self.tokens, self.steps):

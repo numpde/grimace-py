@@ -76,6 +76,30 @@ class PublicSamplingTests(unittest.TestCase):
         self.assertTrue(callable(grimace.SmilesSample))
         self.assertTrue(callable(grimace.SmilesSampleStep))
 
+    def test_sample_records_reject_mutable_payload_containers(self) -> None:
+        step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
+
+        with self.assertRaisesRegex(TypeError, "choice_tokens must be a tuple"):
+            grimace.SmilesSampleStep(["C"], (1,), 0, "C")
+        with self.assertRaisesRegex(TypeError, "choice_branch_counts must be a tuple"):
+            grimace.SmilesSampleStep(("C",), [1], 0, "C")
+        with self.assertRaisesRegex(TypeError, "sample tokens must be a tuple"):
+            grimace.SmilesSample(
+                ["C"],
+                "C",
+                "determinized",
+                "uniform_token",
+                (step,),
+            )
+        with self.assertRaisesRegex(TypeError, "sample steps must be a tuple"):
+            grimace.SmilesSample(
+                ("C",),
+                "C",
+                "determinized",
+                "uniform_token",
+                [step],
+            )
+
     def test_sampling_modes_return_legal_smiles_with_step_context(self) -> None:
         mol = parse_smiles("CCO")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)

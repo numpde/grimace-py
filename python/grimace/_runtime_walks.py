@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import grimace._core as _core
 from grimace._runtime_states import _BaseDecoderState, _StateTransitions
@@ -22,6 +22,39 @@ class _TokenWalkResult:
     choice_counts: tuple[int, ...]
     choice_tokens: tuple[str, ...]
     choice_branch_counts: tuple[int, ...]
+
+
+@dataclass(slots=True)
+class _TokenWalkBuilder:
+    tokens: list[str] = field(default_factory=list)
+    selected_indices: list[int] = field(default_factory=list)
+    choice_counts: list[int] = field(default_factory=list)
+    choice_tokens: list[str] = field(default_factory=list)
+    choice_branch_counts: list[int] = field(default_factory=list)
+
+    def record(
+        self,
+        *,
+        token_transitions: _StateTransitions,
+        selected_token_index: int,
+    ) -> None:
+        selected_token = token_transitions[selected_token_index].text
+        self.choice_counts.append(len(token_transitions))
+        self.choice_tokens.extend(transition.text for transition in token_transitions)
+        self.choice_branch_counts.extend(
+            transition.branch_count for transition in token_transitions
+        )
+        self.tokens.append(selected_token)
+        self.selected_indices.append(selected_token_index)
+
+    def result(self) -> _TokenWalkResult:
+        return _TokenWalkResult(
+            tokens=tuple(self.tokens),
+            selected_indices=tuple(self.selected_indices),
+            choice_counts=tuple(self.choice_counts),
+            choice_tokens=tuple(self.choice_tokens),
+            choice_branch_counts=tuple(self.choice_branch_counts),
+        )
 
 
 def _uniform_token_chooser(sample_index: _IndexSampler) -> _TransitionChooser:
@@ -95,36 +128,11 @@ def _token_index_by_text(transitions: _StateTransitions) -> dict[str, int]:
     return indices
 
 
-def _record_token_step(
-    *,
-    token_transitions: _StateTransitions,
-    selected_token_index: int,
-    tokens: list[str],
-    selected_indices: list[int],
-    choice_counts: list[int],
-    choice_tokens: list[str],
-    choice_branch_counts: list[int],
-) -> None:
-    selected_token = token_transitions[selected_token_index].text
-    choice_counts.append(len(token_transitions))
-    choice_tokens.extend(transition.text for transition in token_transitions)
-    choice_branch_counts.extend(
-        transition.branch_count for transition in token_transitions
-    )
-    tokens.append(selected_token)
-    selected_indices.append(selected_token_index)
-
-
 def _walk_token_transitions(
     initial_state: _BaseDecoderState,
     choose_index: _TransitionChooser,
 ) -> _TokenWalkResult:
-    tokens: list[str] = []
-    selected_indices: list[int] = []
-    choice_counts: list[int] = []
-    choice_tokens: list[str] = []
-    choice_branch_counts: list[int] = []
-
+    builder = _TokenWalkBuilder()
     state = initial_state
     while not state.is_terminal():
         # Accepted states may still have outgoing transitions in composed
@@ -135,38 +143,22 @@ def _walk_token_transitions(
             choose_index,
             label="token",
         )
-        _record_token_step(
+        builder.record(
             token_transitions=transitions,
             selected_token_index=selected_idx,
-            tokens=tokens,
-            selected_indices=selected_indices,
-            choice_counts=choice_counts,
-            choice_tokens=choice_tokens,
-            choice_branch_counts=choice_branch_counts,
         )
 
         selected = transitions[selected_idx]
         state = selected.state_factory()
 
-    return _TokenWalkResult(
-        tokens=tuple(tokens),
-        selected_indices=tuple(selected_indices),
-        choice_counts=tuple(choice_counts),
-        choice_tokens=tuple(choice_tokens),
-        choice_branch_counts=tuple(choice_branch_counts),
-    )
+    return builder.result()
 
 
 def _walk_branch_transitions(
     initial_state: _BaseDecoderState,
     choose_index: _TransitionChooser,
 ) -> _TokenWalkResult:
-    tokens: list[str] = []
-    selected_indices: list[int] = []
-    choice_counts: list[int] = []
-    choice_tokens: list[str] = []
-    choice_branch_counts: list[int] = []
-
+    builder = _TokenWalkBuilder()
     state = initial_state
     while not state.is_terminal():
         # Branch-preserving sampling chooses from branch transitions but
@@ -192,21 +184,10 @@ def _walk_branch_transitions(
                 "selected branch transition is missing from token transitions"
             ) from exc
 
-        _record_token_step(
+        builder.record(
             token_transitions=token_transitions,
             selected_token_index=selected_token_index,
-            tokens=tokens,
-            selected_indices=selected_indices,
-            choice_counts=choice_counts,
-            choice_tokens=choice_tokens,
-            choice_branch_counts=choice_branch_counts,
         )
         state = selected_branch.state_factory()
 
-    return _TokenWalkResult(
-        tokens=tuple(tokens),
-        selected_indices=tuple(selected_indices),
-        choice_counts=tuple(choice_counts),
-        choice_tokens=tuple(choice_tokens),
-        choice_branch_counts=tuple(choice_branch_counts),
-    )
+    return builder.result()

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add an internal Rust-side walkthrough of the determinized SMILES decoder:
+Add an internal walkthrough of the determinized SMILES decoder:
 
 ```text
 Prepared graph + seed + sampler policy -> one legal Grimace token path
@@ -12,6 +12,16 @@ The walk is for sparse next-token supervision. It is not RDKit random-writer
 sequence parity and not uniform sampling over final SMILES strings.
 
 No public Python API is committed yet.
+
+Current implementation status:
+
+```text
+Python runtime state transitions + Rust seeded sampler -> one legal token path
+```
+
+That deliberately keeps the semantic source of truth in the already-tested
+transition surface. A later Rust-side connected walker should be an
+optimization of the same transition contract, not a second decoder.
 
 ## Result shape
 
@@ -104,8 +114,8 @@ Python/Rust boundary if a public API is added.
 
 ## Decoder source of truth
 
-Do not add another graph traversal. The walk must consume the existing connected
-decoder transition primitive:
+Do not add another graph traversal. The walk must consume the existing decoder
+transition primitive:
 
 ```text
 GroupedTransition {
@@ -115,7 +125,7 @@ GroupedTransition {
 }
 ```
 
-Existing decoder methods are projections:
+Existing Rust connected-decoder methods are projections:
 
 ```text
 next_token_support -> text
@@ -123,9 +133,11 @@ advance_token      -> selected transition successors
 walk step          -> text + branch_count + selected transition successors
 ```
 
-A walk samples one exposed token per prefix, then advances to that token's
-merged successor frontier. It does not sample one hidden branch-preserving
-successor.
+The current Python-composed walk consumes `_token_state_transitions()`, which
+is the Python runtime projection of the same idea across connected,
+all-roots, merged, and disconnected states. A walk samples one exposed token
+per prefix, then advances to that token's merged successor frontier. It does
+not sample one hidden branch-preserving successor.
 
 ## Runtime boundary
 
@@ -204,6 +216,7 @@ whether the flat payload is returned directly or wrapped
 whether SplitMix64 remains the long-term source
 seed argument type and validation
 whether disconnected separators are ordinary tokens
-whether all-roots stereo walking is fully Rust-side or runtime-composed
-whether branch multiplicity is stable enough to expose beyond the walk result
+whether all-roots stereo walking eventually moves Rust-side or stays
+runtime-composed
+whether branch_multiplicity is stable enough as a named sampling policy
 ```

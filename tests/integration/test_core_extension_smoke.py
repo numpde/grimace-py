@@ -15,6 +15,12 @@ def _runtime_modules():
 
 
 class CoreExtensionSmokeTests(unittest.TestCase):
+    def test_core_exposes_private_seeded_sampler_bridge(self) -> None:
+        sampler = _core._SplitMix64Sampler(0)
+
+        self.assertEqual(0, sampler.uniform_index(1))
+        self.assertEqual(1, sampler.weighted_index((0, 1)))
+
     def test_core_objects_construct_and_advance(self) -> None:
         _runtime, _runtime_graphs, MolToSmilesFlags = _runtime_modules()
 
@@ -139,10 +145,16 @@ class CoreExtensionSmokeTests(unittest.TestCase):
             _runtime._make_decoder(mol, nonstereo_flags),
             _runtime._make_decoder(mol, stereo_flags),
         )
+        forbidden_names = (
+            "choice_successors",
+            "grouped_successors",
+            "choice_successor_states",
+            "grouped_successor_states",
+        )
         for decoder in decoders:
             with self.subTest(decoder_type=type(decoder).__name__):
-                self.assertFalse(hasattr(decoder, "choice_successors"))
-                self.assertFalse(hasattr(decoder, "grouped_successors"))
+                for name in forbidden_names:
+                    self.assertFalse(hasattr(decoder, name), name)
 
     def test_nonstereo_core_decoder_supports_all_roots_frontier(self) -> None:
         _, _runtime_graphs, MolToSmilesFlags = _runtime_modules()

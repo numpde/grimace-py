@@ -117,15 +117,15 @@ These are different consumers of one transition contract, not separate graph
 walking definitions.
 
 
-Current boundary
-----------------
+Initial boundary problem
+------------------------
 
 Rust already has the low-level concepts:
 
 - DecoderChoice<S>: branch-preserving choice
 - GroupedTransition<S>: grouped token transition with branch_count
 
-Python currently weakens the contract:
+Before this work, Python weakened the contract:
 
 - _runtime_states exposes transitions as (text, state_factory)
 - branch multiplicity is lost at the Python runtime-composition boundary
@@ -133,8 +133,8 @@ Python currently weakens the contract:
 - lazy all-roots stereo and disconnected composition remain correct, but they
   cannot report the multiplicity facts Rust already knows
 
-The first cleanup is therefore not "add a walker". It is "make Python's private
-transition surface carry the same facts as the decoder semantics".
+The first cleanup was therefore not "add a walker". It was "make Python's
+private transition surface carry the same facts as the decoder semantics".
 
 
 Serious alternatives
@@ -151,7 +151,9 @@ Serious alternatives
 
    - slow
    - public MolToSmilesChoice is the wrong internal primitive
-   - branch_count is unavailable
+   - branch_count was unavailable before the public branch_count slice
+   - even with branch_count, public choices are a heavier object API than an
+     internal transition primitive
    - easy to diverge from exact token-inventory traversal
 
    Verdict:
@@ -180,7 +182,7 @@ Serious alternatives
    Pros:
 
    - preserves multiplicity through runtime composition
-   - keeps public API unchanged
+   - kept public API unchanged for the initial contract-shrinking slice
    - makes public decoders, inventory, validators, and future walkers consume
      one private state-transition contract
    - covers rooted, all-roots, stereo, non-stereo, disconnected, RDKit Mol, and
@@ -229,8 +231,8 @@ Serious alternatives
 
    Verdict:
 
-   A clean future public surface. It should project directly from the private
-   transition contract after that contract is pinned and tested.
+   Added after the private transition contract was pinned and tested. It
+   projects directly from that contract.
 
 6. Precomputed support trie or automaton
 

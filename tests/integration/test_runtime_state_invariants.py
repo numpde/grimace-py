@@ -37,6 +37,51 @@ def _audit_case(
     )
 
 
+_SHARED_STATE_AUDIT_CASES = (
+    _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
+    _audit_case("rooted_stereo", "F[C@H](Cl)Br", rootedAtAtom=0, isomericSmiles=True),
+    _audit_case(
+        "unrooted_stereo",
+        "F[C@H](Cl)Br",
+        rootedAtAtom=-1,
+        isomericSmiles=True,
+    ),
+    _audit_case(
+        "disconnected_unrooted_stereo",
+        "F[C@H](Cl)Br.O",
+        rootedAtAtom=-1,
+        isomericSmiles=True,
+    ),
+    _audit_case(
+        "duplicate_same_text_connected",
+        "C1CCC2=NN=NN2CC1",
+        rootedAtAtom=2,
+        isomericSmiles=False,
+    ),
+    _audit_case(
+        "explicit_hydrogens",
+        "CO",
+        rootedAtAtom=0,
+        isomericSmiles=False,
+        allHsExplicit=True,
+    ),
+    _audit_case(
+        "kekule",
+        "c1ccccc1",
+        rootedAtAtom=0,
+        isomericSmiles=False,
+        kekuleSmiles=True,
+    ),
+    _audit_case(
+        "atom_maps",
+        "[CH3:7][OH:8]",
+        rootedAtAtom=0,
+        isomericSmiles=False,
+        ignoreAtomMapNumbers=False,
+    ),
+)
+
+
 class RuntimeStateInvariantTests(unittest.TestCase):
     """Internal runtime-state invariants for the current decoder adapter model."""
 
@@ -208,54 +253,14 @@ class RuntimeStateInvariantTests(unittest.TestCase):
 
     def test_determinized_decoder_state_audit_covers_all_reachable_states(self) -> None:
         cases = (
-            _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
-            _audit_case("rooted_stereo", "F[C@H](Cl)Br", rootedAtAtom=0, isomericSmiles=True),
-            _audit_case(
-                "unrooted_stereo",
-                "F[C@H](Cl)Br",
-                rootedAtAtom=-1,
-                isomericSmiles=True,
-            ),
             _audit_case("disconnected_rooted", "[Na+].C#N", rootedAtAtom=0, isomericSmiles=False),
-            _audit_case(
-                "disconnected_unrooted_stereo",
-                "F[C@H](Cl)Br.O",
-                rootedAtAtom=-1,
-                isomericSmiles=True,
-            ),
-            _audit_case(
-                "duplicate_same_text_connected",
-                "C1CCC2=NN=NN2CC1",
-                rootedAtAtom=2,
-                isomericSmiles=False,
-            ),
             _audit_case(
                 "merged_then_visible_divergence",
                 "CC(=O)Oc1ccccc1C(=O)O",
                 rootedAtAtom=9,
                 isomericSmiles=False,
             ),
-            _audit_case(
-                "explicit_hydrogens",
-                "CO",
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                allHsExplicit=True,
-            ),
-            _audit_case(
-                "kekule",
-                "c1ccccc1",
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                kekuleSmiles=True,
-            ),
-            _audit_case(
-                "atom_maps",
-                "[CH3:7][OH:8]",
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                ignoreAtomMapNumbers=False,
-            ),
+            *_SHARED_STATE_AUDIT_CASES,
         )
 
         for case in cases:
@@ -272,14 +277,6 @@ class RuntimeStateInvariantTests(unittest.TestCase):
 
     def test_decoder_state_audit_covers_all_reachable_states(self) -> None:
         cases = (
-            _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
-            _audit_case("rooted_stereo", "F[C@H](Cl)Br", rootedAtAtom=0, isomericSmiles=True),
-            _audit_case(
-                "unrooted_stereo",
-                "F[C@H](Cl)Br",
-                rootedAtAtom=-1,
-                isomericSmiles=True,
-            ),
             _audit_case(
                 "nonisomeric_explicit_bond_dirs",
                 "F/C=C\\Cl",
@@ -290,39 +287,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
             _audit_case("unrooted_connected", "CCO", rootedAtAtom=-1, isomericSmiles=False),
             _audit_case("disconnected_rooted", "[Na+].CC", rootedAtAtom=0, isomericSmiles=False),
             _audit_case("disconnected_unrooted", "O.CCO", rootedAtAtom=-1, isomericSmiles=True),
-            _audit_case(
-                "disconnected_unrooted_stereo",
-                "F[C@H](Cl)Br.O",
-                rootedAtAtom=-1,
-                isomericSmiles=True,
-            ),
-            _audit_case(
-                "duplicate_same_text_connected",
-                "C1CCC2=NN=NN2CC1",
-                rootedAtAtom=2,
-                isomericSmiles=False,
-            ),
-            _audit_case(
-                "explicit_hydrogens",
-                "CO",
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                allHsExplicit=True,
-            ),
-            _audit_case(
-                "kekule",
-                "c1ccccc1",
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                kekuleSmiles=True,
-            ),
-            _audit_case(
-                "atom_maps",
-                "[CH3:7][OH:8]",
-                rootedAtAtom=0,
-                isomericSmiles=False,
-                ignoreAtomMapNumbers=False,
-            ),
+            *_SHARED_STATE_AUDIT_CASES,
         )
 
         for case in cases:

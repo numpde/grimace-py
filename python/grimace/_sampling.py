@@ -9,9 +9,7 @@ import grimace._runtime as _runtime
 from grimace._runtime_walks import (
     _TokenWalkResult,
     _seeded_branch_multiplicity_chooser,
-    _seeded_branch_preserving_chooser,
-    _seeded_uniform_token_chooser,
-    _validate_walk_seed,
+    _seeded_uniform_transition_chooser,
     _walk_branch_transitions,
     _walk_token_transitions,
 )
@@ -29,7 +27,7 @@ _SamplingPair = tuple[DecoderView, SamplingMode]
 _SAMPLING_WALKERS = {
     ("determinized", "uniform_token"): (
         _walk_token_transitions,
-        _seeded_uniform_token_chooser,
+        _seeded_uniform_transition_chooser,
     ),
     ("determinized", "branch_multiplicity"): (
         _walk_token_transitions,
@@ -37,7 +35,7 @@ _SAMPLING_WALKERS = {
     ),
     ("branch_preserving", "branch_preserving"): (
         _walk_branch_transitions,
-        _seeded_branch_preserving_chooser,
+        _seeded_uniform_transition_chooser,
     ),
 }
 
@@ -58,10 +56,10 @@ class SmilesSampleStep:
             raise ValueError("choice token and branch-count lengths differ")
         if not self.choice_tokens:
             raise ValueError("sample step requires at least one choice")
-        if len(set(self.choice_tokens)) != len(self.choice_tokens):
-            raise ValueError("sample step choice tokens must be unique")
         if not all(isinstance(token, str) for token in self.choice_tokens):
             raise TypeError("sample step choice tokens must be strings")
+        if len(set(self.choice_tokens)) != len(self.choice_tokens):
+            raise ValueError("sample step choice tokens must be unique")
         if not all(
             type(branch_count) is int and branch_count > 0
             for branch_count in self.choice_branch_counts
@@ -125,7 +123,9 @@ def mol_to_smiles_sample(
         decoder_view,
         sampling_mode,
     )
-    _validate_walk_seed(seed)
+    walk, seeded_chooser = _SAMPLING_WALKERS[(decoder_view, sampling_mode)]
+    choose_index = seeded_chooser(seed)
+
     initial_state = _runtime._make_decoder_state(
         mol_or_prepared,
         isomeric_smiles=isomeric_smiles,
@@ -137,9 +137,7 @@ def mol_to_smiles_sample(
         do_random=do_random,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
-
-    walk, seeded_chooser = _SAMPLING_WALKERS[(decoder_view, sampling_mode)]
-    result = walk(initial_state, seeded_chooser(seed))
+    result = walk(initial_state, choose_index)
 
     return _public_sample_from_walk_result(
         result,

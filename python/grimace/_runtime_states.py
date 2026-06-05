@@ -61,6 +61,17 @@ def _counts_by_text(texts: Iterable[str]) -> dict[str, int]:
     return counts
 
 
+def _token_branch_counts(decoder: object) -> tuple[tuple[str, int], ...]:
+    branch_counts = _counts_by_text(decoder.next_choice_texts())
+    token_texts = tuple(decoder.next_token_support())
+    token_text_set = set(token_texts)
+    if len(token_text_set) != len(token_texts):
+        raise RuntimeError("decoder token support must contain unique texts")
+    if token_text_set != set(branch_counts):
+        raise RuntimeError("decoder token support and branch choices disagree")
+    return tuple((text, branch_counts[text]) for text in token_texts)
+
+
 def _advance_choice_state(decoder: object, chosen_idx: int) -> "_CoreStateAdapter":
     next_decoder = decoder.copy()
     next_decoder.advance_choice(chosen_idx)
@@ -106,14 +117,13 @@ class _CoreStateAdapter:
 
     def _token_state_transitions(self) -> _StateTransitions:
         decoder = self._decoder
-        branch_counts = _counts_by_text(decoder.next_choice_texts())
         return tuple(
             _StateTransition(
                 text,
-                branch_counts[text],
+                branch_count,
                 lambda text=text: _advance_token_state(decoder, text),
             )
-            for text in decoder.next_token_support()
+            for text, branch_count in _token_branch_counts(decoder)
         )
 
 
@@ -156,9 +166,8 @@ class _LazyAllRootsConnectedStereoState:
         root_indices_by_text: dict[str, list[int]] = {}
         for root_idx in range(self._atom_count):
             decoder = self._root_decoder(root_idx)
-            branch_counts = _counts_by_text(decoder.next_choice_texts())
-            for text in decoder.next_token_support():
-                counts[text] = counts.get(text, 0) + branch_counts[text]
+            for text, branch_count in _token_branch_counts(decoder):
+                counts[text] = counts.get(text, 0) + branch_count
                 root_indices_by_text.setdefault(text, []).append(root_idx)
 
         return tuple(

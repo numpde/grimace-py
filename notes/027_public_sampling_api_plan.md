@@ -260,7 +260,8 @@ Public implementation:
 - [x] Reuse existing runtime normalization through a private helper that returns
       the initial decoder state; do not instantiate public decoder classes just
       to reach private `_state`.
-- [x] Map `sampling_mode="uniform_token"` to the seeded uniform-token chooser.
+- [x] Map `sampling_mode="uniform_token"` to the seeded uniform transition
+      chooser.
 - [x] Map `sampling_mode="branch_multiplicity"` to the seeded branch-count
       chooser.
 - [x] Map `decoder_view="branch_preserving",

@@ -75,7 +75,7 @@ def _branch_multiplicity_chooser(
     return choose
 
 
-def _seeded_uniform_token_chooser(seed: int) -> _TransitionChooser:
+def _seeded_uniform_transition_chooser(seed: int) -> _TransitionChooser:
     sampler = _splitmix64_sampler(seed)
     return _uniform_transition_chooser(sampler.uniform_index)
 
@@ -83,11 +83,6 @@ def _seeded_uniform_token_chooser(seed: int) -> _TransitionChooser:
 def _seeded_branch_multiplicity_chooser(seed: int) -> _TransitionChooser:
     sampler = _splitmix64_sampler(seed)
     return _branch_multiplicity_chooser(sampler.weighted_index)
-
-
-def _seeded_branch_preserving_chooser(seed: int) -> _TransitionChooser:
-    sampler = _splitmix64_sampler(seed)
-    return _uniform_transition_chooser(sampler.uniform_index)
 
 
 def _splitmix64_sampler(seed: int) -> _core._SplitMix64Sampler:

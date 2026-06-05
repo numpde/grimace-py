@@ -100,6 +100,10 @@ class PublicSamplingTests(unittest.TestCase):
                 [step],
             )
 
+    def test_sample_step_rejects_nonstring_choice_tokens_first(self) -> None:
+        with self.assertRaisesRegex(TypeError, "choice tokens must be strings"):
+            grimace.SmilesSampleStep(([],), (1,), 0, "C")
+
     def test_sampling_modes_return_legal_smiles_with_step_context(self) -> None:
         mol = parse_smiles("CCO")
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
@@ -247,8 +251,16 @@ class PublicSamplingTests(unittest.TestCase):
             ("missing", "uniform_token"),
             ("determinized", None),
             ("determinized", "missing"),
-            ("branch_preserving", "uniform_token"),
-            ("determinized", "branch_preserving"),
+            *(
+                (decoder_view, sampling_mode)
+                for decoder_view in ("determinized", "branch_preserving")
+                for sampling_mode in (
+                    "uniform_token",
+                    "branch_multiplicity",
+                    "branch_preserving",
+                )
+                if (decoder_view, sampling_mode) not in SAMPLE_PAIRS
+            ),
         )
 
         for decoder_view, sampling_mode in invalid_cases:

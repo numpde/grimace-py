@@ -4,10 +4,11 @@ title: grimace-py
 ---
 
 `grimace-py` is a Rust-first RDKit add-on for exact rooted SMILES support
-enumeration and online next-token decoding.
+enumeration, online next-token decoding, and seeded sampling.
 
 Use it when you need Grimace's supported random-writer language for a molecule,
-or when you need exact legal next tokens while constructing a SMILES string.
+exact legal next tokens while constructing a SMILES string, or one seeded legal
+path with its per-step choices.
 
 GRIMACE stands for "graph representation integrating multiple alternate
 chemical equivalents", motivated by research on NMR spectroscopy with

@@ -152,11 +152,20 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
                         context="TestContext",
                     )
 
-    def test_optional_option_parsers_reject_unknown_names(self) -> None:
+    def test_option_parsers_reject_unknown_names(self) -> None:
+        public_values = {
+            spec.public_name: spec.default
+            for spec in MOL_TO_SMILES_OPTIONS
+        }
+        internal_values = {
+            spec.internal_name: spec.default
+            for spec in MOL_TO_SMILES_OPTIONS
+        }
         cases = (
-            (coerce_public_options, {"seed": 0}),
-            (coerce_internal_options, {"seed": 0}),
-            (public_options_from_internal_options, {"seed": 0}),
+            (coerce_public_options, {**public_values, "seed": 0}),
+            (coerce_required_public_options, {**public_values, "seed": 0}),
+            (coerce_internal_options, {**internal_values, "seed": 0}),
+            (public_options_from_internal_options, {**internal_values, "seed": 0}),
         )
 
         for parser, values in cases:

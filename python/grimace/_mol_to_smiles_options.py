@@ -177,6 +177,11 @@ def coerce_required_public_options(
     *,
     context: str,
 ) -> dict[str, object]:
+    _reject_unknown_options(
+        values,
+        allowed_names={spec.public_name for spec in specs},
+        context=context,
+    )
     coerced: dict[str, object] = {}
     for spec in specs:
         if spec.public_name not in values:

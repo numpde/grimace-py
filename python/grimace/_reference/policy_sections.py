@@ -7,6 +7,7 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PUBLIC_OPTION_NAMES,
     coerce_required_public_options,
+    public_option_values,
 )
 from grimace._reference.policy import ReferencePolicy
 
@@ -63,7 +64,7 @@ def sampling_section(policy: ReferencePolicy) -> dict[str, object]:
         "draw_budget": _json_integer_field(sampling, "draw_budget"),
         **coerce_required_public_options(
             MOL_TO_SMILES_OPTIONS,
-            sampling,
+            public_option_values(MOL_TO_SMILES_OPTIONS, sampling),
             context="sampling policy",
         ),
     }
@@ -79,7 +80,7 @@ def identity_section(policy: ReferencePolicy) -> dict[str, object]:
         "parse_with_rdkit": _json_boolean_field(identity, "parse_with_rdkit"),
         **coerce_required_public_options(
             MOL_TO_SMILES_OPTIONS,
-            identity,
+            public_option_values(MOL_TO_SMILES_OPTIONS, identity),
             context="identity_check policy",
         ),
     }

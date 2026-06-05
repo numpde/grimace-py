@@ -320,10 +320,17 @@ def _active_emitted_transitions(
     context: WriterTransitionExpansionContext,
     active_atom: AtomId,
 ) -> tuple[WriterTransition, ...]:
-    closure_transitions = _closure_endpoint_transitions(
+    closure_actions = _closure_endpoint_scheduled_actions(
         prepared,
         state,
         context,
+    )
+
+    closure_transitions = _transitions_from_scheduled_actions(
+        prepared,
+        state,
+        context,
+        closure_actions,
     )
 
     if closure_transitions:
@@ -335,12 +342,14 @@ def _active_emitted_transitions(
         active_atom,
     )
 
-    return _active_child_transitions_from_obligations(
+    return _transitions_from_scheduled_actions(
         prepared,
         state,
         context,
-        active_atom,
-        children,
+        _active_child_scheduled_actions(
+            active_atom,
+            children,
+        ),
     )
 
 
@@ -756,6 +765,27 @@ def _transitions_from_scheduled_action(
         SouthStarErrorKind.INTERNAL_INVARIANT,
         f"unsupported scheduled action: {action.kind!r}",
     )
+
+
+def _transitions_from_scheduled_actions(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    actions: tuple[_WriterScheduledAction, ...],
+) -> tuple[WriterTransition, ...]:
+    transitions: list[WriterTransition] = []
+
+    for action in actions:
+        transitions.extend(
+            _transitions_from_scheduled_action(
+                prepared,
+                state,
+                context,
+                action,
+            )
+        )
+
+    return tuple(transitions)
 
 
 def _closure_endpoint_transitions(

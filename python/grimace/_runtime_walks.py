@@ -26,23 +26,12 @@ class _TokenWalkResult:
     def step_payloads(
         self,
     ) -> Iterator[tuple[str, int, tuple[str, ...], tuple[int, ...]]]:
-        if len(self.tokens) != len(self.selected_indices):
-            raise ValueError("walk token count does not match selected-index count")
-        if len(self.tokens) != len(self.choice_counts):
-            raise ValueError("walk token count does not match choice-count count")
-        if len(self.choice_tokens) != len(self.choice_branch_counts):
-            raise ValueError("walk choice token and branch-count lengths differ")
-        for choice_count in self.choice_counts:
-            if type(choice_count) is not int or choice_count <= 0:
-                raise ValueError("walk result choice counts must be positive ints")
-        if sum(self.choice_counts) != len(self.choice_tokens):
-            raise ValueError("walk choice counts do not span choice payload")
-
-        offset = 0
-        for token, selected_index, choice_count in zip(
+        starts = self._validated_choice_starts()
+        for token, selected_index, choice_count, offset in zip(
             self.tokens,
             self.selected_indices,
             self.choice_counts,
+            starts,
             strict=True,
         ):
             stop = offset + choice_count
@@ -52,7 +41,49 @@ class _TokenWalkResult:
                 self.choice_tokens[offset:stop],
                 self.choice_branch_counts[offset:stop],
             )
-            offset = stop
+
+    def _validated_choice_starts(self) -> tuple[int, ...]:
+        if len(self.tokens) != len(self.selected_indices):
+            raise ValueError("walk token count does not match selected-index count")
+        if len(self.tokens) != len(self.choice_counts):
+            raise ValueError("walk token count does not match choice-count count")
+        if len(self.choice_tokens) != len(self.choice_branch_counts):
+            raise ValueError("walk choice token and branch-count lengths differ")
+        if not all(
+            type(branch_count) is int and branch_count > 0
+            for branch_count in self.choice_branch_counts
+        ):
+            raise ValueError(
+                "walk result choice branch counts must be positive ints"
+            )
+        if not all(
+            type(choice_count) is int and choice_count > 0
+            for choice_count in self.choice_counts
+        ):
+            raise ValueError("walk result choice counts must be positive ints")
+        starts: list[int] = []
+        offset = 0
+        for token, selected_index, choice_count in zip(
+            self.tokens,
+            self.selected_indices,
+            self.choice_counts,
+            strict=True,
+        ):
+            if (
+                type(selected_index) is not int
+                or not 0 <= selected_index < choice_count
+            ):
+                raise ValueError("walk result selected indices must be ints in range")
+            if offset + choice_count > len(self.choice_tokens):
+                raise ValueError("walk choice counts do not span choice payload")
+            if token != self.choice_tokens[offset + selected_index]:
+                raise ValueError("walk selected tokens do not match choice payload")
+            starts.append(offset)
+            offset += choice_count
+        if offset != len(self.choice_tokens):
+            raise ValueError("walk choice counts do not span choice payload")
+
+        return tuple(starts)
 
 
 @dataclass(slots=True)

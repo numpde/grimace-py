@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 import grimace
+import grimace._sampling as _sampling
 import grimace._runtime_walks as _runtime_walks
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
@@ -14,11 +15,12 @@ from tests.helpers.public_runtime import (
 )
 
 
-SAMPLE_PAIRS = (
+PUBLIC_SAMPLE_PAIRS = (
     ("determinized", "uniform_token"),
     ("determinized", "branch_multiplicity"),
     ("branch_preserving", "branch_preserving"),
 )
+SAMPLE_PAIRS = tuple(_sampling._SAMPLING_WALKERS)
 
 
 def _step_choice_pairs(step: object) -> tuple[tuple[str, int], ...]:
@@ -107,6 +109,9 @@ class PublicSamplingTests(unittest.TestCase):
         self.assertTrue(callable(grimace.MolToSmilesSample))
         self.assertTrue(callable(grimace.SmilesSample))
         self.assertTrue(callable(grimace.SmilesSampleStep))
+
+    def test_sampling_mode_pairs_match_public_contract(self) -> None:
+        self.assertEqual(PUBLIC_SAMPLE_PAIRS, SAMPLE_PAIRS)
 
     def test_sample_records_reject_mutable_payload_containers(self) -> None:
         step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
@@ -228,12 +233,8 @@ class PublicSamplingTests(unittest.TestCase):
             ("determinized", "missing"),
             *(
                 (decoder_view, sampling_mode)
-                for decoder_view in ("determinized", "branch_preserving")
-                for sampling_mode in (
-                    "uniform_token",
-                    "branch_multiplicity",
-                    "branch_preserving",
-                )
+                for decoder_view in sorted({view for view, _mode in SAMPLE_PAIRS})
+                for sampling_mode in sorted({mode for _view, mode in SAMPLE_PAIRS})
                 if (decoder_view, sampling_mode) not in SAMPLE_PAIRS
             ),
         )

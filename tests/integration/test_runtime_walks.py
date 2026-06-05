@@ -88,16 +88,21 @@ def _token_walk_result(
 class RuntimeWalkTests(unittest.TestCase):
     def test_token_walk_result_step_payloads_reject_invalid_flat_shape(self) -> None:
         cases = (
-            ({"selected_indices": ()}, ValueError, "selected-index count"),
-            ({"choice_counts": ()}, ValueError, "choice-count count"),
-            ({"choice_branch_counts": ()}, ValueError, "branch-count lengths"),
-            ({"choice_counts": (0,)}, ValueError, "choice counts must be positive"),
-            ({"choice_counts": (2,)}, ValueError, "choice counts do not span"),
+            ({"selected_indices": ()}, "selected-index count"),
+            ({"choice_counts": ()}, "choice-count count"),
+            ({"choice_branch_counts": ()}, "branch-count lengths"),
+            ({"choice_counts": (0,)}, "choice counts must be positive"),
+            ({"selected_indices": (True,)}, "selected indices"),
+            ({"selected_indices": (1,)}, "selected indices"),
+            ({"choice_branch_counts": (True,)}, "branch counts"),
+            ({"choice_branch_counts": (0,)}, "branch counts"),
+            ({"choice_counts": (2,)}, "choice counts do not span"),
+            ({"tokens": ("N",)}, "selected tokens"),
         )
 
-        for overrides, expected_exception, expected_regex in cases:
+        for overrides, expected_regex in cases:
             with self.subTest(overrides=overrides):
-                with self.assertRaisesRegex(expected_exception, expected_regex):
+                with self.assertRaisesRegex(ValueError, expected_regex):
                     tuple(_token_walk_result(**overrides).step_payloads())
 
     def test_token_walk_records_flat_choice_payload(self) -> None:

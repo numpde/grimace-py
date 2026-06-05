@@ -279,8 +279,10 @@ Boundary and SSoT checks:
       wrapper instead of scattering `_runtime_walks.py` imports.
 - [x] Confirm option names are not duplicated outside the existing option SSoT.
 - [x] Confirm mode validation is owned by one module.
-- [x] Let tests spell public literal strings as public behavior; do not import
-      private constants just to avoid spelling them.
+- [x] Let tests spell the public mode strings when pinning the public
+      contract.
+- [x] Let implementation-coverage tests derive the accepted mode matrix from
+      the owning module so newly accepted pairs cannot escape coverage.
 - [x] Confirm package import exposes all expected public attributes.
 - [x] Confirm unsupported canonical/default runtime behavior rejects through
       the existing public option machinery.

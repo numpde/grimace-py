@@ -189,6 +189,27 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 rootedAtAtom=9,
                 isomericSmiles=False,
             ),
+            _audit_case(
+                "explicit_hydrogens",
+                "CO",
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                allHsExplicit=True,
+            ),
+            _audit_case(
+                "kekule",
+                "c1ccccc1",
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                kekuleSmiles=True,
+            ),
+            _audit_case(
+                "atom_maps",
+                "[CH3:7][OH:8]",
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                ignoreAtomMapNumbers=False,
+            ),
         )
 
         for case in cases:
@@ -234,6 +255,27 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 "C1CCC2=NN=NN2CC1",
                 rootedAtAtom=2,
                 isomericSmiles=False,
+            ),
+            _audit_case(
+                "explicit_hydrogens",
+                "CO",
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                allHsExplicit=True,
+            ),
+            _audit_case(
+                "kekule",
+                "c1ccccc1",
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                kekuleSmiles=True,
+            ),
+            _audit_case(
+                "atom_maps",
+                "[CH3:7][OH:8]",
+                rootedAtAtom=0,
+                isomericSmiles=False,
+                ignoreAtomMapNumbers=False,
             ),
         )
 

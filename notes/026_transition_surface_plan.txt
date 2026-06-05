@@ -533,9 +533,9 @@ Coverage cases for those tests:
 - [x] Duplicate same-token merge.
 - [x] Visible divergence after a merge.
 - [x] Explicit bonds.
-- [ ] Explicit hydrogens.
-- [ ] Kekule output.
-- [ ] Atom-map handling.
+- [x] Explicit hydrogens.
+- [x] Kekule output.
+- [x] Atom-map handling.
 - [x] Byte-round-tripped PreparedMol.
 - [x] Writer-flag mismatch rejection remains covered.
 - [x] Unsupported canonical/doRandom option rejection remains covered.

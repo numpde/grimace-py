@@ -5,6 +5,7 @@ import unittest
 import grimace
 import grimace._deviation as _deviation
 import grimace._runtime as _runtime
+import grimace._sampling as _sampling
 from grimace._reference.prepared_graph import (
     CONNECTED_NONSTEREO_SURFACE,
     prepare_smiles_graph_from_mol_to_smiles_kwargs,
@@ -37,9 +38,11 @@ class PythonApiSmokeTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(hasattr(grimace, name))
 
-    def test_public_decoder_attributes_are_runtime_backed_at_import(self) -> None:
+    def test_public_runtime_attributes_are_backed_at_import(self) -> None:
         self.assertIs(grimace.MolToSmilesChoice, _runtime.MolToSmilesChoice)
         self.assertIs(grimace.SmilesDeviation, _deviation.SmilesDeviation)
+        self.assertIs(grimace.SmilesSample, _sampling.SmilesSample)
+        self.assertIs(grimace.SmilesSampleStep, _sampling.SmilesSampleStep)
 
         decoder = grimace.MolToSmilesDecoder(
             parse_smiles("CCO"),

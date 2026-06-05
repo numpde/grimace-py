@@ -243,7 +243,9 @@ class PublicSamplingTests(unittest.TestCase):
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=0)
 
         invalid_cases = (
+            (None, "uniform_token"),
             ("missing", "uniform_token"),
+            ("determinized", None),
             ("determinized", "missing"),
             ("branch_preserving", "uniform_token"),
             ("determinized", "branch_preserving"),

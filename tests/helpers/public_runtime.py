@@ -13,6 +13,7 @@ from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
     coerce_public_options,
+    public_option_values,
 )
 from grimace._reference.prepared_graph import prepare_smiles_graph_from_mol_to_smiles_kwargs
 from grimace._runtime_inputs import MolToSmilesFlags, make_flags
@@ -37,11 +38,7 @@ def runtime_flags_from_public_kwargs(**kwargs: object) -> MolToSmilesFlags:
 
 
 def prepared_writer_kwargs(kwargs: Mapping[str, object]) -> dict[str, object]:
-    return {
-        spec.public_name: kwargs[spec.public_name]
-        for spec in MOL_TO_SMILES_PREPARED_OPTIONS
-        if spec.public_name in kwargs
-    }
+    return public_option_values(MOL_TO_SMILES_PREPARED_OPTIONS, kwargs)
 
 
 def public_enum_support(mol: object, **kwargs: object) -> frozenset[str]:

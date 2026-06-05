@@ -124,6 +124,7 @@ class _WriterScheduledActionKind(Enum):
     FINISH_ACTIVE = "finish_active"
     ENTER_INLINE_CHILD = "enter_inline_child"
     OPEN_BRANCH = "open_branch"
+    OPEN_CLOSURE_ENDPOINT = "open_closure_endpoint"
     PAIR_CLOSURE_ENDPOINT = "pair_closure_endpoint"
 
 
@@ -132,6 +133,8 @@ class _WriterScheduledAction:
     kind: _WriterScheduledActionKind
     parent: AtomId
     child_obligation: _WriterChildObligation | None = None
+    closure_open_obligation: _WriterClosureOpenObligation | None = None
+    closure_open_label: WriterClosureLabel | None = None
     closure_pair_obligation: _WriterClosurePairObligation | None = None
 
 
@@ -729,6 +732,48 @@ def _open_closure_endpoint_transition_from_obligation(
     return transition
 
 
+def _closure_open_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported closure-open scheduled action: {action.kind!r}",
+        )
+
+    closure_obligation = action.closure_open_obligation
+
+    if closure_obligation is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled closure-open action requires an open obligation",
+        )
+
+    label = action.closure_open_label
+
+    if label is None:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled closure-open action requires a closure label",
+        )
+
+    transition = _open_closure_endpoint_transition_from_obligation(
+        prepared,
+        state,
+        context,
+        closure_obligation,
+        label,
+    )
+
+    if transition is None:
+        return ()
+
+    return (transition,)
+
+
 def _open_closure_endpoint_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -739,20 +784,19 @@ def _open_closure_endpoint_transitions(
         return ()
     active_atom = state.active.atom
     transitions = []
-    for closure_obligation in _closure_open_obligations_from_context(
+    for action in _closure_open_scheduled_actions(
         context,
         active_atom,
+        labels,
     ):
-        for label in labels:
-            transition = _open_closure_endpoint_transition_from_obligation(
+        transitions.extend(
+            _closure_open_transitions_from_scheduled_action(
                 prepared,
                 state,
                 context,
-                closure_obligation,
-                label,
+                action,
             )
-            if transition is not None:
-                transitions.append(transition)
+        )
     return tuple(transitions)
 
 
@@ -783,6 +827,30 @@ def _closure_open_obligations_from_context(
         )
 
     return tuple(obligations)
+
+
+def _closure_open_scheduled_actions(
+    context: WriterTransitionExpansionContext,
+    active_atom: AtomId,
+    labels: tuple[WriterClosureLabel, ...],
+) -> tuple[_WriterScheduledAction, ...]:
+    actions: list[_WriterScheduledAction] = []
+
+    for closure_obligation in _closure_open_obligations_from_context(
+        context,
+        active_atom,
+    ):
+        for label in labels:
+            actions.append(
+                _WriterScheduledAction(
+                    kind=_WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+                    parent=active_atom,
+                    closure_open_obligation=closure_obligation,
+                    closure_open_label=label,
+                )
+            )
+
+    return tuple(actions)
 
 
 def _closure_pair_obligations_from_state(

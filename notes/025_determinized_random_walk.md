@@ -55,6 +55,7 @@ len(tokens) == len(selected_indices)
 len(tokens) == len(choice_counts)
 sum(choice_counts) == len(choice_tokens)
 len(choice_tokens) == len(choice_branch_counts)
+every token and choice token is str
 choice_counts[i] > 0
 0 <= selected_indices[i] < choice_counts[i]
 tokens[i] == choices[selected_indices[i]]

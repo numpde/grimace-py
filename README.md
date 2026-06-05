@@ -60,6 +60,8 @@ assert len(all_smiles) == 304
 - Enumerate every supported string with `MolToSmilesEnum(...)`.
 - Step through legal next tokens with `MolToSmilesDecoder(...)` or
   `MolToSmilesDeterminizedDecoder(...)`.
+- Draw one seeded legal string with per-step token choices using
+  `MolToSmilesSample(...)`.
 - Diagnose rejected candidates with `MolToSmilesDeviation(...)`.
 - Build dataset token coverage with `MolToSmilesTokenInventorySuperset(...)`.
 - Reuse prepared molecules with `PrepareMol(...)` and `PreparedMol`.

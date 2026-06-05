@@ -40,6 +40,7 @@ payload = prepared.to_bytes(compression="zstd", dictionary_level=3, level=3)
 - `MolToSmilesEnum(...)`
 - `MolToSmilesDecoder(...)`
 - `MolToSmilesDeterminizedDecoder(...)`
+- `MolToSmilesSample(...)`
 - `MolToSmilesDeviation(...)`
 - `MolToSmilesTokenInventory(...)`
 - `MolToSmilesTokenInventorySuperset(...)`

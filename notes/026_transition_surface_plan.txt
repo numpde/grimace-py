@@ -584,7 +584,7 @@ Walker slice:
       the transition-surface cleanup.
 - [x] Add a private/internal determinized token walker as the sparse
       supervision path.
-- [ ] Make public branch-preserving sampling consume branch transitions
+- [x] Make public branch-preserving sampling consume branch transitions
       internally, then project the public record back to unique token choices.
 - [x] Make determinized/token walkers consume token transitions.
 - [x] Do not call public next_choices from an internal walker.
@@ -597,11 +597,11 @@ Walker slice:
 - [x] Test seeded reproducibility within the same Grimace version.
 - [x] Test uniform_token samples by exposed token index.
 - [x] Test branch_multiplicity samples by branch_count.
-- [ ] Test branch-preserving sampling reports the same token-level step shape
+- [x] Test branch-preserving sampling reports the same token-level step shape
       as determinized sampling.
-- [ ] Test branch-preserving sampling advances by the selected hidden branch,
+- [x] Test branch-preserving sampling advances by the selected hidden branch,
       not by the merged token transition.
-- [ ] Test invalid decoder_view/sampling_mode combinations reject at the public
+- [x] Test invalid decoder_view/sampling_mode combinations reject at the public
       boundary if a public sampler is added.
 
 Future Rust optimization slice:

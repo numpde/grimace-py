@@ -8,9 +8,11 @@ import grimace
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     reachable_terminal_prefixes,
-    runtime_realized_choice_transitions,
-    runtime_realized_grouped_transitions,
+    runtime_branch_transition_counts,
+    runtime_realized_branch_transitions,
+    runtime_realized_token_transitions,
     runtime_state_cache_key,
+    runtime_token_transition_counts,
     supported_public_kwargs,
 )
 
@@ -103,6 +105,61 @@ class RuntimeStateInvariantTests(unittest.TestCase):
 
         self.assertGreater(audited_state_count, 0)
 
+    def test_branch_transitions_count_each_exposed_branch_once(self) -> None:
+        decoder = grimace.MolToSmilesDecoder(
+            parse_smiles("CCO"),
+            **supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1),
+        )
+
+        self.assertEqual(
+            (("C", 1), ("C", 1), ("O", 1)),
+            runtime_branch_transition_counts(decoder._state),
+        )
+
+    def test_token_transitions_sum_hidden_branch_counts(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("CCO"),
+            **supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1),
+        )
+
+        self.assertEqual(
+            (("C", 2), ("O", 1)),
+            runtime_token_transition_counts(decoder._state),
+        )
+
+    def test_lazy_all_roots_stereo_token_transitions_sum_hidden_branches(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("F[C@H](Cl)Br"),
+            **supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1),
+        )
+
+        self.assertEqual(
+            (
+                ("F", 1),
+                ("[C@@H]", 3),
+                ("[C@H]", 3),
+                ("Cl", 1),
+                ("Br", 1),
+            ),
+            runtime_token_transition_counts(decoder._state),
+        )
+
+    def test_disconnected_separator_transition_has_one_branch(self) -> None:
+        decoder = grimace.MolToSmilesDeterminizedDecoder(
+            parse_smiles("O.CCO"),
+            **supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1),
+        )
+        oxygen_state = next(
+            choice.next_state
+            for choice in decoder.next_choices
+            if choice.text == "O"
+        )
+
+        self.assertEqual(
+            ((".", 1),),
+            runtime_token_transition_counts(oxygen_state._state),
+        )
+
     def test_determinized_decoder_state_audit_covers_all_reachable_states(self) -> None:
         cases = (
             _audit_case("rooted_nonstereo", "CCO", rootedAtAtom=0, isomericSmiles=False),
@@ -142,7 +199,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 self._assert_state_graph_matches_outputs(
                     initial_state=decoder._state,
                     outputs=outputs,
-                    successor_fn=runtime_realized_grouped_transitions,
+                    successor_fn=runtime_realized_token_transitions,
                     require_unique_choice_texts=True,
                 )
 
@@ -188,7 +245,7 @@ class RuntimeStateInvariantTests(unittest.TestCase):
                 self._assert_state_graph_matches_outputs(
                     initial_state=decoder._state,
                     outputs=outputs,
-                    successor_fn=runtime_realized_choice_transitions,
+                    successor_fn=runtime_realized_branch_transitions,
                 )
 
 

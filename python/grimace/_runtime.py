@@ -328,12 +328,12 @@ def _public_decoder_choices(
 ) -> tuple[MolToSmilesChoice, ...]:
     return tuple(
         MolToSmilesChoice._from_next_state_factory(
-            text,
-            lambda state_factory=state_factory: decoder_type._from_parts(
-                state_factory()
+            transition.text,
+            lambda state_factory=transition.state_factory: (
+                decoder_type._from_parts(state_factory())
             ),
         )
-        for text, state_factory in transitions
+        for transition in transitions
     )
 
 
@@ -341,7 +341,7 @@ class MolToSmilesDecoder(_PublicDecoderBase):
     def _choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _public_decoder_choices(
             type(self),
-            self._state._choice_state_transitions(),
+            self._state._branch_state_transitions(),
         )
 
 
@@ -349,7 +349,7 @@ class MolToSmilesDeterminizedDecoder(_PublicDecoderBase):
     def _choices(self) -> tuple[MolToSmilesChoice, ...]:
         return _public_decoder_choices(
             type(self),
-            self._state._grouped_state_transitions(),
+            self._state._token_state_transitions(),
         )
 
 
@@ -377,7 +377,7 @@ def _exact_token_inventory_from_decoder(
                 continue
             visited_state_keys.add(state_key)
             grouped_successors = _realize_state_transitions(
-                state._grouped_state_transitions()
+                state._token_state_transitions()
             )
             inventory.update(text for text, _ in grouped_successors)
             stack.extend(successor for _, successor in grouped_successors)

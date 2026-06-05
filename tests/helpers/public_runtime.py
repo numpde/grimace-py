@@ -94,16 +94,33 @@ def runtime_state_cache_key(state: object) -> object:
     return _runtime_states._state_cache_key(state)
 
 
-def runtime_realized_choice_transitions(state: object) -> tuple[tuple[str, object], ...]:
+def runtime_realized_branch_transitions(state: object) -> tuple[tuple[str, object], ...]:
     return _runtime_states._realize_state_transitions(
-        state._choice_state_transitions()
+        state._branch_state_transitions()
     )
 
 
-def runtime_realized_grouped_transitions(state: object) -> tuple[tuple[str, object], ...]:
+def runtime_realized_token_transitions(state: object) -> tuple[tuple[str, object], ...]:
     return _runtime_states._realize_state_transitions(
-        state._grouped_state_transitions()
+        state._token_state_transitions()
     )
+
+
+def _runtime_transition_counts(
+    transitions: _runtime_states._StateTransitions,
+) -> tuple[tuple[str, int], ...]:
+    return tuple(
+        (transition.text, transition.branch_count)
+        for transition in transitions
+    )
+
+
+def runtime_branch_transition_counts(state: object) -> tuple[tuple[str, int], ...]:
+    return _runtime_transition_counts(state._branch_state_transitions())
+
+
+def runtime_token_transition_counts(state: object) -> tuple[tuple[str, int], ...]:
+    return _runtime_transition_counts(state._token_state_transitions())
 
 
 def reachable_terminal_prefixes(
@@ -123,7 +140,7 @@ def reachable_terminal_prefixes(
     if state.is_terminal():
         outputs.add(state.prefix())
 
-    for _, successor in runtime_realized_choice_transitions(state):
+    for _, successor in runtime_realized_branch_transitions(state):
         outputs.update(reachable_terminal_prefixes(successor, memo=memo))
     resolved = frozenset(outputs)
     memo[key] = resolved

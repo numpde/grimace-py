@@ -847,32 +847,6 @@ def _closure_open_transitions_from_scheduled_action(
     return (transition,)
 
 
-def _open_closure_endpoint_transitions(
-    prepared: SouthStarPreparedMol,
-    state: WriterState,
-    context: WriterTransitionExpansionContext,
-) -> tuple[WriterTransition, ...]:
-    labels = _available_closure_labels_for_open(prepared, state.ring_state)
-    if not labels:
-        return ()
-    active_atom = state.active.atom
-    transitions = []
-    for action in _closure_open_scheduled_actions(
-        context,
-        active_atom,
-        labels,
-    ):
-        transitions.extend(
-            _closure_open_transitions_from_scheduled_action(
-                prepared,
-                state,
-                context,
-                action,
-            )
-        )
-    return tuple(transitions)
-
-
 def _closure_open_obligations_from_context(
     context: WriterTransitionExpansionContext,
     atom: AtomId,
@@ -1057,27 +1031,6 @@ def _closure_pair_transitions_from_scheduled_action(
         return ()
 
     return (transition,)
-
-
-def _pair_closure_endpoint_transitions(
-    prepared: SouthStarPreparedMol,
-    state: WriterState,
-    context: WriterTransitionExpansionContext,
-) -> tuple[WriterTransition, ...]:
-    active_atom = state.active.atom
-    transitions: list[WriterTransition] = []
-
-    for action in _closure_pair_scheduled_actions(state, active_atom):
-        transitions.extend(
-            _closure_pair_transitions_from_scheduled_action(
-                prepared,
-                state,
-                context,
-                action,
-            )
-        )
-
-    return tuple(transitions)
 
 
 def _available_closure_labels_for_open(

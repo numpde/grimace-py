@@ -116,6 +116,8 @@ impl RandomSource for SplitMix64 {
     }
 }
 
+// Private Python bridge for seeded walk policies. Keeping sampling in Rust
+// avoids a second RNG implementation while the walker itself is still Python.
 #[pyclass(name = "_SplitMix64Sampler", module = "grimace._core")]
 pub(crate) struct PySplitMix64Sampler {
     rng: Rng<SplitMix64>,

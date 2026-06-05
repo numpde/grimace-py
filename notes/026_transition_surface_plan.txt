@@ -281,10 +281,10 @@ Public projections:
   Future branch-preserving walker
     consumes branch transitions
 
-  Future determinized/token walker
+  Determinized/token walker
     consumes token transitions
 
-  Future public MolToSmilesChoice.branch_count
+  Public MolToSmilesChoice.branch_count
     projects _StateTransition.branch_count
 
 
@@ -324,8 +324,9 @@ Implementation path:
 4. Add public API tests for both decoder classes.
 5. Document the attribute in the API page only after it exists.
 
-This can be a later work package. The current work must make that later public
-projection boring and mechanical.
+This was added as a direct projection of the private transition surface. That
+keeps branch_count semantics shared between public decoder choices and internal
+walkers.
 
 
 Composition rules
@@ -541,7 +542,7 @@ Coverage cases for those tests:
 - [x] Writer-flag mismatch rejection remains covered.
 - [x] Unsupported canonical/doRandom option rejection remains covered.
 
-Future public branch_count slice:
+Public branch_count slice:
 
 - [x] Add branch_count to MolToSmilesChoice.__slots__.
 - [x] Add branch_count to MolToSmilesChoice construction.
@@ -554,7 +555,7 @@ Future public branch_count slice:
 - [x] Mention explicitly that branch_count is local prefix multiplicity, not
       probability or completion count.
 
-Future walker slice:
+Walker slice:
 
 - [x] Leave the private/internal branch-preserving walker unimplemented until a
       caller needs branch-level trajectories.
@@ -603,8 +604,11 @@ Completion criteria for the transition-surface slice:
 - [x] Full make test passes before merge/release.
 
 
-Non-goals for the transition-surface slice
-------------------------------------------
+Non-goals for the initial transition-surface slice
+--------------------------------------------------
+
+These were boundaries for the first contract-shrinking slice; later checked
+slices intentionally added public branch_count and private walker machinery.
 
 - No new public API.
 - No random-walk API.

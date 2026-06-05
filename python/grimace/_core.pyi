@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Any
 
 
@@ -78,7 +79,7 @@ class PreparedMol:
 class _SplitMix64Sampler:
     def __init__(self, seed: int, /) -> None: ...
     def uniform_index(self, len: int, /) -> int: ...
-    def weighted_index(self, weights: list[int], /) -> int: ...
+    def weighted_index(self, weights: Sequence[int], /) -> int: ...
 
 
 class RootedConnectedNonStereoWalkerState:

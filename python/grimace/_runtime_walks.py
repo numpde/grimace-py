@@ -51,7 +51,7 @@ def _seeded_branch_multiplicity_chooser(seed: int) -> _TransitionChooser:
     return _branch_multiplicity_chooser(sampler.weighted_index)
 
 
-def _splitmix64_sampler(seed: int) -> object:
+def _splitmix64_sampler(seed: int) -> _core._SplitMix64Sampler:
     if type(seed) is not int or not 0 <= seed <= _U64_MAX:
         raise ValueError("walk seed must be an unsigned 64-bit integer")
     return _core._SplitMix64Sampler(seed)
@@ -68,6 +68,8 @@ def _walk_token_transitions(
 
     state = initial_state
     while not state.is_terminal():
+        # Accepted states may still have outgoing transitions in composed
+        # runtimes; walking stops on acceptance, not on absence of choices.
         transitions = state._token_state_transitions()
         if not transitions:
             raise RuntimeError(

@@ -921,6 +921,99 @@ class WriterStateKernelTest(unittest.TestCase):
         )
         self.assertFalse(children[0].pending_entry)
 
+    def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        closure_action = object()
+        closure_transition = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
+            return_value=(closure_action,),
+        ) as closure_actions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            return_value=(closure_transition,),
+        ) as emit_actions, patch(
+            "grimace._south_star1.writer_transitions._child_obligations_from_context",
+            side_effect=AssertionError("child obligations were computed too early"),
+        ):
+            result = writer_transitions._active_emitted_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertEqual(result, (closure_transition,))
+        closure_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+        )
+        emit_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (closure_action,),
+        )
+
+    def test_active_emitted_scheduler_computes_children_after_empty_closure_transitions(self) -> None:
+        prepared = object()
+        state = object()
+        context = object()
+        active_atom = AtomId(7)
+        closure_action = object()
+        child_obligation = object()
+        child_action = object()
+        child_transition = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
+            return_value=(closure_action,),
+        ) as closure_actions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            side_effect=((), (child_transition,)),
+        ) as emit_actions, patch(
+            "grimace._south_star1.writer_transitions._child_obligations_from_context",
+            return_value=(child_obligation,),
+        ) as child_obligations, patch(
+            "grimace._south_star1.writer_transitions._active_child_scheduled_actions",
+            return_value=(child_action,),
+        ) as child_actions:
+            result = writer_transitions._active_emitted_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+                active_atom,
+            )
+
+        self.assertEqual(result, (child_transition,))
+        closure_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+        )
+        child_obligations.assert_called_once_with(
+            context,
+            state,
+            active_atom,
+        )
+        child_actions.assert_called_once_with(
+            active_atom,
+            (child_obligation,),
+        )
+        self.assertEqual(emit_actions.call_count, 2)
+        self.assertEqual(
+            emit_actions.call_args_list[0].args,
+            (prepared, state, context, (closure_action,)),
+        )
+        self.assertEqual(
+            emit_actions.call_args_list[1].args,
+            (prepared, state, context, (child_action,)),
+        )
+
     def test_writer_shaped_acyclic_stereo_uses_writer_frontier(self) -> None:
         for facts in (tetrahedral_facts(), directional_facts()):
             with self.subTest(facts=facts):

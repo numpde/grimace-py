@@ -1,6 +1,18 @@
 Random subset enumeration
 =========================
 
+Status
+------
+
+Superseded for the public one-walk API by
+`notes/027_public_sampling_api_plan.md` and
+`notes/025_determinized_random_walk.md`.
+
+This note remains useful only as design context for future APIs that return
+many samples or attempt uniform sampling over finished SMILES strings. In
+particular, the `limit` and `maxAttempts` sketches below are not part of
+`MolToSmilesSample(...)`.
+
 Context
 -------
 

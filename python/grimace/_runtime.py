@@ -391,11 +391,11 @@ def _exact_token_inventory_from_decoder(
             if state_key in visited_state_keys:
                 continue
             visited_state_keys.add(state_key)
-            grouped_successors = _realize_state_transitions(
+            token_successors = _realize_state_transitions(
                 state._token_state_transitions()
             )
-            inventory.update(text for text, _ in grouped_successors)
-            stack.extend(successor for _, successor in grouped_successors)
+            inventory.update(text for text, _ in token_successors)
+            stack.extend(successor for _, successor in token_successors)
 
     return tuple(sorted(inventory))
 

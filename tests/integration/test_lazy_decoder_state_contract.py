@@ -12,6 +12,7 @@ from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     choice_texts,
     reachable_terminal_prefixes,
+    runtime_token_transition_counts,
     supported_public_kwargs,
 )
 
@@ -63,13 +64,6 @@ def _token_transition_texts(state: object) -> tuple[str, ...]:
     )
 
 
-def _token_transition_counts(state: object) -> tuple[tuple[str, int], ...]:
-    return tuple(
-        (transition.text, transition.branch_count)
-        for transition in state._token_state_transitions()
-    )
-
-
 class _FakeState:
     def __init__(
         self,
@@ -99,8 +93,17 @@ class _FakeState:
     def copy(self) -> "_FakeState":
         return self
 
-    def cache_key(self) -> tuple[str, str, bool]:
-        return ("fake", self._prefix, self._terminal)
+    def cache_key(self) -> tuple[object, ...]:
+        # Fake states with the same visible prefix can intentionally expose
+        # different transitions; reachability memoization must not conflate them.
+        return (
+            "fake",
+            self._prefix,
+            self._terminal,
+            self._reject_terminal_transitions,
+            _transition_summary(self._transitions),
+            _transition_summary(self._token_transitions),
+        )
 
     def _branch_state_transitions(self) -> _FakeTransitions:
         if self._terminal and self._reject_terminal_transitions:
@@ -111,6 +114,15 @@ class _FakeState:
         if self._terminal and self._reject_terminal_transitions:
             raise AssertionError("terminal child transitions must not be queried")
         return self._token_transitions
+
+
+def _transition_summary(
+    transitions: _FakeTransitions,
+) -> tuple[tuple[str, int, object], ...]:
+    return tuple(
+        (transition.text, transition.branch_count, transition.state_factory)
+        for transition in transitions
+    )
 
 
 class LazyDecoderStateContractTests(unittest.TestCase):
@@ -144,6 +156,33 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, "hashable"):
             _runtime_states._state_cache_key(State())
+
+    def test_fake_state_cache_key_includes_transition_surface(self) -> None:
+        left = _FakeState(
+            "C",
+            terminal=False,
+            transitions=(
+                _fake_transition(
+                    "C",
+                    lambda: _FakeState("CC", terminal=True),
+                ),
+            ),
+        )
+        right = _FakeState(
+            "C",
+            terminal=False,
+            transitions=(
+                _fake_transition(
+                    "C",
+                    lambda: _FakeState("CN", terminal=True),
+                ),
+            ),
+        )
+
+        self.assertNotEqual(
+            _runtime_states._state_cache_key(left),
+            _runtime_states._state_cache_key(right),
+        )
 
     def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
         created_refs: list[weakref.ReferenceType[object]] = []
@@ -428,7 +467,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
 
         self.assertEqual(
             (("C", 5), ("O", 1)),
-            _token_transition_counts(merged),
+            runtime_token_transition_counts(merged),
         )
 
     def test_merged_state_cache_keys_are_order_insensitive(self) -> None:
@@ -488,7 +527,7 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         self.assertEqual(("C", "."), _token_transition_texts(disconnected))
         self.assertEqual(
             (("C", 1), (".", 1)),
-            _token_transition_counts(disconnected),
+            runtime_token_transition_counts(disconnected),
         )
         last_fragment = _runtime_states._DisconnectedStateAdapter(
             (first_fragment,)

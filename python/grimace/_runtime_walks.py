@@ -9,6 +9,8 @@ from grimace._runtime_states import _BaseDecoderState, _StateTransitions
 
 
 _TransitionChooser = Callable[[_StateTransitions], int]
+_IndexSampler = Callable[[int], int]
+_WeightedIndexSampler = Callable[[tuple[int, ...]], int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +19,24 @@ class _TokenWalkResult:
     choice_counts: tuple[int, ...]
     choice_tokens: tuple[str, ...]
     choice_branch_counts: tuple[int, ...]
+
+
+def _uniform_token_chooser(sample_index: _IndexSampler) -> _TransitionChooser:
+    def choose(transitions: _StateTransitions) -> int:
+        return sample_index(len(transitions))
+
+    return choose
+
+
+def _branch_multiplicity_chooser(
+    sample_weighted_index: _WeightedIndexSampler,
+) -> _TransitionChooser:
+    def choose(transitions: _StateTransitions) -> int:
+        return sample_weighted_index(
+            tuple(transition.branch_count for transition in transitions)
+        )
+
+    return choose
 
 
 def _walk_token_transitions(

@@ -4,7 +4,11 @@ import unittest
 
 import grimace
 from grimace._runtime_states import _StateTransition
-from grimace._runtime_walks import _walk_token_transitions
+from grimace._runtime_walks import (
+    _branch_multiplicity_chooser,
+    _uniform_token_chooser,
+    _walk_token_transitions,
+)
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import public_enum_support, supported_public_kwargs
 
@@ -76,6 +80,46 @@ class RuntimeWalkTests(unittest.TestCase):
             (1,),
             result.choice_branch_counts[choice_start:choice_start + 1],
         )
+
+    def test_uniform_token_chooser_samples_by_exposed_choice_count(self) -> None:
+        sampled_counts: list[int] = []
+
+        def sample_index(choice_count: int) -> int:
+            sampled_counts.append(choice_count)
+            return 1 if choice_count > 1 else 0
+
+        kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
+        mol = parse_smiles("CCO")
+        decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)
+
+        result = _walk_token_transitions(
+            decoder._state,
+            _uniform_token_chooser(sample_index),
+        )
+
+        self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
+        self.assertEqual((2, 1), tuple(sampled_counts[:2]))
+        self.assertEqual("O", result.tokens[0])
+
+    def test_branch_multiplicity_chooser_samples_by_branch_counts(self) -> None:
+        sampled_weights: list[tuple[int, ...]] = []
+
+        def sample_weighted_index(weights: tuple[int, ...]) -> int:
+            sampled_weights.append(weights)
+            return max(range(len(weights)), key=weights.__getitem__)
+
+        kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
+        mol = parse_smiles("CCO")
+        decoder = grimace.MolToSmilesDeterminizedDecoder(mol, **kwargs)
+
+        result = _walk_token_transitions(
+            decoder._state,
+            _branch_multiplicity_chooser(sample_weighted_index),
+        )
+
+        self.assertIn("".join(result.tokens), public_enum_support(mol, **kwargs))
+        self.assertEqual((2, 1), sampled_weights[0])
+        self.assertEqual("C", result.tokens[0])
 
     def test_token_walk_stops_at_initial_accepted_state(self) -> None:
         terminal_successor = _FakeState("CC", terminal=True)

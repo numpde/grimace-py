@@ -570,8 +570,8 @@ Future walker slice:
       can still have outgoing transitions in composed runtimes.
 - [x] Test joined token paths against MolToSmilesEnum support.
 - [ ] Test seeded reproducibility within the same Grimace version.
-- [ ] Test uniform_token samples by exposed token index.
-- [ ] Test branch_multiplicity samples by branch_count.
+- [x] Test uniform_token samples by exposed token index.
+- [x] Test branch_multiplicity samples by branch_count.
 
 Future Rust optimization slice:
 

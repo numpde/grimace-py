@@ -292,7 +292,13 @@ class PythonApiSmokeTests(unittest.TestCase):
             kwargs=supported_public_kwargs(rootedAtAtom=99),
             expected_exception=IndexError,
             expected_regex="root_idx out of range",
-            included_entrypoints=("enum", "decoder", "inventory", "inventory_superset"),
+            included_entrypoints=(
+                "enum",
+                "decoder",
+                "inventory",
+                "inventory_superset",
+                "sample",
+            ),
         )
 
     def test_internal_runtime_bridge_accepts_reference_prepared_graph(self) -> None:

@@ -56,6 +56,10 @@ def public_token_inventory_superset(mol: object, **kwargs: object) -> tuple[str,
     return grimace.MolToSmilesTokenInventorySuperset(mol, **kwargs)
 
 
+def public_sample(mol: object, **kwargs: object) -> grimace.SmilesSample:
+    return grimace.MolToSmilesSample(mol, seed=0, **kwargs)
+
+
 def make_decoder(mol: object, **kwargs: object) -> grimace.MolToSmilesDecoder:
     return grimace.MolToSmilesDecoder(mol, **kwargs)
 
@@ -79,6 +83,7 @@ def public_entrypoint_calls(
         ("determinized_decoder", lambda: make_determinized_decoder(mol, **kwargs)),
         ("inventory", lambda: public_token_inventory(mol, **kwargs)),
         ("inventory_superset", lambda: public_token_inventory_superset(mol, **kwargs)),
+        ("sample", lambda: public_sample(mol, **kwargs)),
     )
 
 
@@ -254,6 +259,10 @@ def assert_public_entrypoints_equivalent(
     test_case.assertEqual(
         public_token_inventory_superset(mol, **provided_kwargs),
         public_token_inventory_superset(mol, **expected_kwargs),
+    )
+    test_case.assertEqual(
+        public_sample(mol, **provided_kwargs),
+        public_sample(mol, **expected_kwargs),
     )
 
     decoder = make_decoder(mol, **provided_kwargs)

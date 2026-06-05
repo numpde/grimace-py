@@ -1,0 +1,315 @@
+# Public SMILES sampling API plan
+
+## Goal
+
+Add a public API for drawing one complete Grimace-supported SMILES path while
+retaining the legal next-token context observed along the path.
+
+The operation is sampling, not just decoding:
+
+```text
+molecule + writer flags + seed + validated sampling pair
+-> one complete legal SMILES token path + per-prefix token choices
+```
+
+It is not RDKit `MolToSmiles(..., doRandom=True)` parity, not uniform sampling
+over final SMILES strings, and not a new traversal beside the existing decoder
+transition surface.
+
+## Public shape
+
+Working public function name:
+
+```python
+grimace.MolToSmilesSample(..., seed=...)
+```
+
+Working public result record names:
+
+```python
+grimace.SmilesSample
+grimace.SmilesSampleStep
+```
+
+Working public record fields:
+
+```python
+sample.tokens
+sample.smiles
+sample.decoder_view
+sample.sampling_mode
+sample.steps
+
+step.choice_tokens
+step.choice_branch_counts
+step.selected_index
+step.selected_token
+```
+
+Records should be immutable, small, and minimal. Frozen slotted dataclasses are
+the likely Python shape. The public runtime value for `decoder_view` and
+`sampling_mode` should be `str`; type annotations can use `Literal[...]`.
+
+`seed` should be a required keyword-only unsigned 64-bit integer. Do not add a
+silent random default in the first public API.
+
+Every public step reports the same token-level view:
+
+```text
+choice_tokens are unique visible token texts
+len(choice_tokens) == len(choice_branch_counts)
+choice_branch_counts are positive ints
+0 <= selected_index < len(choice_tokens)
+selected_token == choice_tokens[selected_index]
+```
+
+Branch-preserving sampling chooses among duplicate hidden branch transitions
+internally, but the public report still maps the selected hidden branch back to
+its visible token bucket.
+
+`decoder_view` records the state space used to produce and advance the draw. It
+does not change the public step layout; steps remain token-level reports.
+
+## Validated mode matrix
+
+`decoder_view` and `sampling_mode` are a validated pair, not independent knobs.
+
+Initial accepted pairs:
+
+```text
+decoder_view="determinized", sampling_mode="uniform_token"
+decoder_view="determinized", sampling_mode="branch_multiplicity"
+decoder_view="branch_preserving", sampling_mode="branch_preserving"
+```
+
+Do not infer behavior from arbitrary string combinations.
+
+`doRandom` remains part of the existing RDKit-like writer-surface option set.
+It is not the sampling policy for this API. The sampling policy is the
+validated `decoder_view`/`sampling_mode` pair.
+
+## Selection spaces
+
+All public samples report token-level steps. The selection and advancement
+space depends on the validated pair.
+
+`determinized/uniform_token`:
+
+```text
+report choices: token transitions
+sample from:    token transitions, uniformly
+advance by:     selected token transition
+```
+
+`determinized/branch_multiplicity`:
+
+```text
+report choices: token transitions
+sample from:    token transitions, weighted by branch_count
+advance by:     selected token transition
+```
+
+`branch_preserving/branch_preserving`:
+
+```text
+report choices: token transitions
+sample from:    branch transitions, uniformly
+advance by:     selected branch transition
+report selected_index: index of the selected branch text's token bucket
+```
+
+At a given prefix, `branch_preserving/branch_preserving` and
+`determinized/branch_multiplicity` can have the same visible token
+probabilities. They are not equivalent: the former advances one concrete hidden
+branch, while the latter advances the merged token state.
+
+## Serious alternatives
+
+### Public function vs decoder method
+
+`MolToSmilesSample(mol, ...)` is preferable to `decoder.sample(...)`.
+
+The sample operation starts from a molecule, public writer flags, and a seed.
+It returns a full path. A decoder method would raise awkward questions about
+whether sampling starts from the current prefix, consumes the decoder, or
+returns a partial draw. That may become useful later, but it is not the first
+public API.
+
+### Rich sample object vs tokens only
+
+A tokens-only API is too small:
+
+```python
+("C", "C", "(", "=", "O", ")", "O")
+```
+
+The intended training/debug consumer needs the legal alternatives and branch
+counts at every sampled prefix. Returning only tokens would force a second API
+or another decoder pass.
+
+### Frozen records vs dict payloads
+
+Dicts are flexible but weak. A tiny immutable record gives discoverability,
+stable attribute names, better type stubs, and simpler installed-package
+correctness tests. Serialization can be added later if there is a real need.
+
+### Determinized-only first vs all validated pairs first
+
+Implementing only determinized sampling would be smaller, because the current
+private walker already consumes token transitions and records token choices and
+branch counts.
+
+Implementing all validated pairs in the first public slice is now preferable.
+The public result shape is already shared, and branch-preserving sampling is a
+different selection/advancement space over the same private transition
+contract. Adding it now avoids publishing a matrix where one named pair is
+reserved but unusable.
+
+### Python adapter first vs Rust sampler first
+
+The first public API should be a thin Python adapter over the tested private
+runtime transition surface. A Rust connected sampler is a later optimization.
+It must return the same semantic payload rather than becoming a second decoder.
+
+## Implementation checklist
+
+Preflight:
+
+- [ ] Confirm `main` is clean enough for a public API branch.
+- [ ] Decide whether to continue on current branch or open a new one.
+- [ ] Re-read `notes/025_determinized_random_walk.md` and
+      `notes/026_transition_surface_plan.txt` before editing.
+- [ ] Confirm existing private walker tests pass before adding public tests.
+
+Public API tests first:
+
+- [ ] Add red tests that `grimace.MolToSmilesSample` is exported.
+- [ ] Add red tests that `grimace.SmilesSample` and
+      `grimace.SmilesSampleStep` are exported.
+- [ ] Add red tests for `MolToSmilesSample` result fields.
+- [ ] Add red tests for sample-step fields.
+- [ ] Assert `sample.smiles == "".join(sample.tokens)`.
+- [ ] Assert every step has unique `choice_tokens`.
+- [ ] Assert every `choice_branch_counts` entry is a positive int.
+- [ ] Assert `selected_index` is in range.
+- [ ] Assert `selected_token == choice_tokens[selected_index]`.
+- [ ] Assert sampled `sample.smiles` belongs to `MolToSmilesEnum` support on
+      small exhaustive cases.
+- [ ] Assert same molecule, flags, seed, `decoder_view`, and `sampling_mode`
+      reproduce the same sample within the same Grimace version.
+- [ ] Assert all accepted pairs are allowed:
+      `determinized/uniform_token`,
+      `determinized/branch_multiplicity`, and
+      `branch_preserving/branch_preserving`.
+- [ ] Assert invalid `decoder_view` values reject.
+- [ ] Assert invalid `sampling_mode` values reject.
+- [ ] Assert invalid `decoder_view`/`sampling_mode` pairs reject.
+- [ ] Assert `branch_preserving/branch_preserving` reports the same token-level
+      step shape as the determinized modes.
+- [ ] Assert invalid seeds reject at the public boundary.
+- [ ] Assert bool seeds reject even though `bool` is an `int` subclass.
+- [ ] Assert omitting required `seed` rejects.
+- [ ] Cover RDKit `Mol` and byte-round-tripped `PreparedMol`.
+- [ ] Cover rooted and all-roots non-stereo.
+- [ ] Cover rooted and all-roots stereo.
+- [ ] Cover disconnected molecules and forced `"."` separator reporting.
+- [ ] Cover explicit public writer flags through the same supported-runtime
+      helper used by other public tests.
+
+Private walker extension:
+
+- [ ] Extend `_TokenWalkResult` with `selected_indices`.
+- [ ] Record selected indices at the same time choices are recorded.
+- [ ] Update private walker invariants to check selected indices directly.
+- [ ] Do not infer selected index from selected token after walking.
+- [ ] For branch-preserving sampling, record `selected_indices` as public
+      token-bucket indices, not raw branch-transition indices.
+- [ ] Add private transition-surface tests that token-transition
+      `branch_count`s equal branch-transition text counts for representative
+      core, lazy all-roots, merged, and disconnected states.
+- [ ] Factor step recording so token-level reporting is shared by token and
+      branch-preserving walkers.
+- [ ] Keep token-transition walkers advancing by selected token transition.
+- [ ] Add a branch-preserving walker that samples `_branch_state_transitions()`
+      but records `_token_state_transitions()`.
+- [ ] Add a private walker fixture where branch-preserving and determinized
+      sampling select the same visible token but advance to different future
+      choice sets.
+- [ ] Map the selected branch transition text to exactly one token-transition
+      bucket.
+- [ ] Treat a missing selected branch text in token transitions as an internal
+      invariant failure.
+- [ ] Treat duplicate token-transition texts as an internal invariant failure.
+- [ ] Keep `_runtime_walks.py` private.
+- [ ] Keep chooser functions private.
+- [ ] Do not expose branch identities in the public sample record.
+
+Public implementation:
+
+- [ ] Add private validation for the mode matrix.
+- [ ] Add private validation for unsigned 64-bit seeds at the public boundary.
+- [ ] Keep `seed` required; do not silently use process randomness.
+- [ ] Add `python/grimace/_sampling.py` as the single owner of public sample
+      records, mode validation, and the public sampling wrapper.
+- [ ] Add `SmilesSampleStep`.
+- [ ] Add `SmilesSample`.
+- [ ] Add `MolToSmilesSample(...)` function in `grimace.__init__`.
+- [ ] Reuse `_runtime_kwargs(locals())` for writer options.
+- [ ] Keep `doRandom` in the writer-option path; do not overload it as the
+      sampler mode.
+- [ ] Reuse existing runtime normalization through a private helper that returns
+      the initial decoder state; do not instantiate public decoder classes just
+      to reach private `_state`.
+- [ ] Map `sampling_mode="uniform_token"` to the seeded uniform-token chooser.
+- [ ] Map `sampling_mode="branch_multiplicity"` to the seeded branch-count
+      chooser.
+- [ ] Map `decoder_view="branch_preserving",
+      sampling_mode="branch_preserving"` to the seeded uniform branch-transition
+      chooser.
+- [ ] Return public records from the internal flat walker result.
+- [ ] Export only the public function and public record classes.
+- [ ] Update `python/grimace/_core.pyi` only if the public path requires it.
+
+Boundary and SSoT checks:
+
+- [ ] Confirm no tests import new public objects from private modules.
+- [ ] Confirm the public function delegates through one intended private
+      wrapper instead of scattering `_runtime_walks.py` imports.
+- [ ] Confirm option names are not duplicated outside the existing option SSoT.
+- [ ] Confirm mode validation is owned by one module.
+- [ ] Let tests spell public literal strings as public behavior; do not import
+      private constants just to avoid spelling them.
+- [ ] Confirm package import exposes all expected public attributes.
+- [ ] Confirm unsupported canonical/default runtime behavior rejects through
+      the existing public option machinery.
+
+Docs:
+
+- [ ] Update API docs only after tests pass.
+- [ ] Describe this as one sampled Grimace-supported SMILES path.
+- [ ] Document that it is not RDKit random-writer parity.
+- [ ] Document that it is not uniform over final SMILES strings.
+- [ ] Document the validated mode matrix.
+- [ ] Document `branch_count` as local prefix multiplicity.
+- [ ] Add a compact example that consumes `sample.steps`.
+- [ ] Avoid adding broad claims outside current limitations.
+
+Verification:
+
+- [ ] Run focused public sampling tests.
+- [ ] Run private runtime walk tests.
+- [ ] Run public decoder tests affected by `branch_count`.
+- [ ] Run `make test`.
+- [ ] Run `cargo test` if Rust or stubs change.
+- [ ] Run `make docs` after docs changes.
+- [ ] Run `make test-package` before merge/release.
+- [ ] Confirm installed-package correctness includes the new public sampling
+      tests or a registered public API smoke target.
+
+Release readiness:
+
+- [ ] Decide whether the new API warrants a release note.
+- [ ] Add release-note entry only after final behavior is settled.
+- [ ] Re-check README for scope creep or duplicate claims.
+- [ ] Confirm branch history is coherent before merge.
+- [ ] Merge only after the full confidence pass is green.

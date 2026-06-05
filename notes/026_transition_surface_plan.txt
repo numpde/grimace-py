@@ -116,6 +116,13 @@ This is not only for determinized random walks.
 These are different consumers of one transition contract, not separate graph
 walking definitions.
 
+Public sampled-SMILES results should expose one token-level shape across
+sampling policies. A branch-preserving policy may sample from duplicate hidden
+branch transitions internally, but its public step should still be projected
+back to unique visible token choices plus branch_count values. Public callers
+should not see duplicate same-text choices just because the internal sampler
+used branch-preserving transitions.
+
 
 Initial boundary problem
 ------------------------
@@ -280,11 +287,25 @@ Public projections:
   MolToSmilesTokenInventory
     traverses token transitions
 
-  Future branch-preserving walker
+  Branch-preserving sampler/walker
     consumes branch transitions
 
   Determinized/token walker
     consumes token transitions
+
+  Public sampled-SMILES draw
+    reports decoder view, sampling mode, token transitions, selected token
+    index, and branch_count values regardless of whether the sampler chooses
+    uniformly by token, by branch_count, or by hidden branch transition
+
+    decoder_view and sampling_mode are a validated pair, not independent knobs:
+
+      decoder_view="determinized"
+        sampling_mode="uniform_token"
+        sampling_mode="branch_multiplicity"
+
+      decoder_view="branch_preserving"
+        sampling_mode="branch_preserving"
 
   Public MolToSmilesChoice.branch_count
     projects _StateTransition.branch_count
@@ -559,11 +580,12 @@ Public branch_count slice:
 
 Walker slice:
 
-- [x] Leave the private/internal branch-preserving walker unimplemented until a
-      caller needs branch-level trajectories.
+- [x] Leave the private/internal branch-preserving walker unimplemented during
+      the transition-surface cleanup.
 - [x] Add a private/internal determinized token walker as the sparse
       supervision path.
-- [ ] Make branch-preserving walkers consume branch transitions.
+- [ ] Make public branch-preserving sampling consume branch transitions
+      internally, then project the public record back to unique token choices.
 - [x] Make determinized/token walkers consume token transitions.
 - [x] Do not call public next_choices from an internal walker.
 - [x] Do not implement a separate graph traversal.
@@ -575,6 +597,12 @@ Walker slice:
 - [x] Test seeded reproducibility within the same Grimace version.
 - [x] Test uniform_token samples by exposed token index.
 - [x] Test branch_multiplicity samples by branch_count.
+- [ ] Test branch-preserving sampling reports the same token-level step shape
+      as determinized sampling.
+- [ ] Test branch-preserving sampling advances by the selected hidden branch,
+      not by the merged token transition.
+- [ ] Test invalid decoder_view/sampling_mode combinations reject at the public
+      boundary if a public sampler is added.
 
 Future Rust optimization slice:
 

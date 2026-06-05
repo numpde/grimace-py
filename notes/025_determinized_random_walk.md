@@ -59,6 +59,11 @@ choice_branch_counts[j] >= 1
 No EOS row is recorded. Stop at the first accepting decoder state; continuing
 past an accepting prefix would require an explicit stop-vs-extend policy.
 
+Public API planning for this payload lives in
+`notes/027_public_sampling_api_plan.md`. The internal requirement here is only
+that the flat payload contains enough information to build the public
+token-level step report without re-walking the decoder.
+
 ## Multiplicity
 
 The determinized decoder exposes unique next-token texts. A text can hide
@@ -68,7 +73,7 @@ multiple branch-preserving choices.
 behind that exposed token at that prefix. It is not probability mass, final
 completion count, or chemically meaningful by itself.
 
-Supported sampling policies:
+Implemented token-level sampling policies:
 
 ```text
 uniform_token
@@ -78,6 +83,11 @@ branch_multiplicity
 `uniform_token` samples exposed tokens uniformly. `branch_multiplicity` samples
 with weight `choice_branch_counts`. Neither policy samples final SMILES strings
 uniformly.
+
+Branch-preserving sampling should be implemented as a separate internal walker
+that samples one hidden branch-preserving transition, then reports the selected
+visible token bucket. It is part of the public sampling API plan, but not part
+of the current token-transition walker.
 
 ## RNG boundary
 
@@ -135,9 +145,11 @@ walk step          -> text + branch_count + selected transition successors
 
 The current Python-composed walk consumes `_token_state_transitions()`, which
 is the Python runtime projection of the same idea across connected,
-all-roots, merged, and disconnected states. A walk samples one exposed token
-per prefix, then advances to that token's merged successor frontier. It does
-not sample one hidden branch-preserving successor.
+all-roots, merged, and disconnected states. A token-level walk samples one
+exposed token per prefix, then advances to that token's merged successor
+frontier. A branch-preserving policy can sample hidden branch transitions, but
+the public result should still be projected back to the same token-level step
+shape.
 
 ## Runtime boundary
 
@@ -211,12 +223,11 @@ merge, kekule output, explicit bonds, explicit hydrogens, and atom-map handling.
 ## Open decisions
 
 ```text
-public API shape, if any
-whether the flat payload is returned directly or wrapped
+public API names, records, and accepted mode pairs are owned by
+notes/027_public_sampling_api_plan.md
 whether SplitMix64 remains the long-term source
 seed argument type and validation
 whether disconnected separators are ordinary tokens
 whether all-roots stereo walking eventually moves Rust-side or stays
 runtime-composed
-whether branch_multiplicity is stable enough as a named sampling policy
 ```

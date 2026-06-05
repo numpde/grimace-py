@@ -96,8 +96,8 @@ Every reachable private decoder state exposes two transition views:
    - Exact token inventory, token validators, and determinized/token walkers
      consume this view.
 
-The public decoders may ignore branch_count until the public API is extended.
-The private transition layer must not discard it.
+Public decoder choices project branch_count from this same transition surface.
+Callers may ignore it, but the private transition layer must not discard it.
 
 
 All-walker scope
@@ -472,7 +472,8 @@ Public decoder projection:
 - [x] Update _public_decoder_choices to consume _StateTransition.
 - [x] Project transition.text to MolToSmilesChoice.text.
 - [x] Project transition.state_factory to lazy next_state.
-- [x] Do not expose transition.branch_count yet in this slice.
+- [x] Do not expose transition.branch_count in the initial private
+      transition-surface commit.
 - [x] Preserve next_choices caching.
 - [x] Preserve choices() as an alias for next_choices.
 - [x] Preserve copy() behavior.
@@ -606,7 +607,6 @@ Non-goals for the transition-surface slice
 ------------------------------------------
 
 - No new public API.
-- No public MolToSmilesChoice.branch_count yet.
 - No random-walk API.
 - No Python random parity claim.
 - No RDKit random-writer parity claim.

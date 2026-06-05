@@ -76,7 +76,7 @@ class PublicSamplingTests(unittest.TestCase):
         self.assertIsInstance(sample.steps, tuple)
         self.assertEqual(len(sample.tokens), len(sample.steps))
 
-        for selected_token, step in zip(sample.tokens, sample.steps):
+        for selected_token, step in zip(sample.tokens, sample.steps, strict=True):
             with self.subTest(prefix_token=selected_token):
                 self.assertIsInstance(step, grimace.SmilesSampleStep)
                 self.assertIsInstance(step.choice_tokens, tuple)
@@ -96,7 +96,7 @@ class PublicSamplingTests(unittest.TestCase):
                         for branch_count in step.choice_branch_counts
                     )
                 )
-                self.assertIsInstance(step.selected_index, int)
+                self.assertIs(type(step.selected_index), int)
                 self.assertGreaterEqual(step.selected_index, 0)
                 self.assertLess(step.selected_index, len(step.choice_tokens))
                 self.assertEqual(

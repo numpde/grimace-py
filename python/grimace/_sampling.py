@@ -90,7 +90,7 @@ class SmilesSample:
             raise TypeError("sample steps must be SmilesSampleStep instances")
         if len(self.steps) != len(self.tokens):
             raise ValueError("sample step count must match token count")
-        for token, step in zip(self.tokens, self.steps):
+        for token, step in zip(self.tokens, self.steps, strict=True):
             if token != step.selected_token:
                 raise ValueError("sample token does not match selected step token")
 

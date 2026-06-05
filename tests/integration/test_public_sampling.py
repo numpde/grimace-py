@@ -213,25 +213,30 @@ class PublicSamplingTests(unittest.TestCase):
         prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         restored = grimace.PreparedMol.from_bytes(prepared.to_bytes())
 
-        mol_sample = grimace.MolToSmilesSample(
-            mol,
-            seed=9,
-            decoder_view="determinized",
-            sampling_mode="uniform_token",
-            **kwargs,
-        )
-        prepared_sample = grimace.MolToSmilesSample(
-            restored,
-            seed=9,
-            decoder_view="determinized",
-            sampling_mode="uniform_token",
-            **kwargs,
-        )
+        for decoder_view, sampling_mode in SAMPLE_PAIRS:
+            with self.subTest(
+                decoder_view=decoder_view,
+                sampling_mode=sampling_mode,
+            ):
+                mol_sample = grimace.MolToSmilesSample(
+                    mol,
+                    seed=9,
+                    decoder_view=decoder_view,
+                    sampling_mode=sampling_mode,
+                    **kwargs,
+                )
+                prepared_sample = grimace.MolToSmilesSample(
+                    restored,
+                    seed=9,
+                    decoder_view=decoder_view,
+                    sampling_mode=sampling_mode,
+                    **kwargs,
+                )
 
-        self.assertEqual(mol_sample, prepared_sample)
-        self.assertIn(".", mol_sample.tokens)
-        separator_step = mol_sample.steps[mol_sample.tokens.index(".")]
-        self.assertEqual(((".", 1),), _step_choice_pairs(separator_step))
+                self.assertEqual(mol_sample, prepared_sample)
+                self.assertIn(".", mol_sample.tokens)
+                separator_step = mol_sample.steps[mol_sample.tokens.index(".")]
+                self.assertEqual(((".", 1),), _step_choice_pairs(separator_step))
 
     def test_sampling_rejects_invalid_mode_pairs(self) -> None:
         mol = parse_smiles("CCO")

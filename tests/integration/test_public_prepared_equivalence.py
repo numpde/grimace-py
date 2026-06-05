@@ -10,6 +10,7 @@ from tests.helpers.public_runtime import (
     make_determinized_decoder,
     prepared_input_variants,
     public_enum_support,
+    public_sample,
     public_token_inventory,
     public_token_inventory_superset,
     reachable_outputs_from_decoder,
@@ -131,6 +132,21 @@ class PublicPreparedEquivalenceTests(unittest.TestCase):
                     self.assertEqual(
                         expected,
                         public_token_inventory_superset(variant, **runtime_kwargs),
+                        msg=f"variant={variant_name}",
+                    )
+
+    def test_sample_matches_across_mol_and_prepared_inputs(self) -> None:
+        for case in self.CASES:
+            mol = parse_smiles(case.smiles)
+            runtime_kwargs = case.runtime_kwargs()
+            variants = prepared_input_variants(mol, **runtime_kwargs)
+            expected = public_sample(variants[0][1], **runtime_kwargs)
+
+            with self.subTest(case=case.name, smiles=case.smiles):
+                for variant_name, variant in variants[1:]:
+                    self.assertEqual(
+                        expected,
+                        public_sample(variant, **runtime_kwargs),
                         msg=f"variant={variant_name}",
                     )
 

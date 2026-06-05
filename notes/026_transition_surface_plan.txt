@@ -599,7 +599,7 @@ Completion criteria for the transition-surface slice:
 - [x] Focused runtime-state tests pass.
 - [x] Focused public-decoder tests pass.
 - [x] PreparedMol runtime tests pass if touched paths affect prepared input.
-- [ ] Full make test passes before merge/release.
+- [x] Full make test passes before merge/release.
 
 
 Non-goals for the transition-surface slice

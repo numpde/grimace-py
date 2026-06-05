@@ -20,6 +20,10 @@ class CoreExtensionSmokeTests(unittest.TestCase):
 
         self.assertEqual(0, sampler.uniform_index(1))
         self.assertEqual(1, sampler.weighted_index((0, 1)))
+        with self.assertRaisesRegex(ValueError, "empty choice set"):
+            sampler.uniform_index(0)
+        with self.assertRaisesRegex(ValueError, "no positive total"):
+            sampler.weighted_index((0, 0))
 
     def test_core_objects_construct_and_advance(self) -> None:
         _runtime, _runtime_graphs, MolToSmilesFlags = _runtime_modules()

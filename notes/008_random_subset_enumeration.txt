@@ -80,16 +80,16 @@ Recommended API split
 
 Do not overload `MolToSmilesEnum(...)` with vague random behavior.
 
-Add a separate API whose name and arguments expose the semantics, for example:
+Add separate APIs whose names and arguments expose their semantics. The
+one-walk API has since shipped as `MolToSmilesSample(...)`; any future
+multi-sample or finished-string-uniform API should remain distinct from it.
 
 - `MolToSmilesSample(...)`
-  - returns sampled writer trajectories
+  - returns one sampled writer trajectory
   - biased unless otherwise stated
-  - requires `limit`
-  - supports `seed`
-  - supports `max_attempts`
+  - requires an explicit `seed`
 
-- later: `MolToSmilesUniformSample(...)`
+- possible future count-weighted support sampler
   - count-weighted support sampling
   - requires subtree counts
   - can document whether sampling is with or without replacement

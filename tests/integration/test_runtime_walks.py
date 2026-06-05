@@ -23,30 +23,17 @@ def _assert_token_walk_result_invariants(
     test_case: unittest.TestCase,
     result: _TokenWalkResult,
 ) -> None:
-    test_case.assertEqual(len(result.tokens), len(result.choice_counts))
-    test_case.assertEqual(len(result.tokens), len(result.selected_indices))
-    test_case.assertEqual(sum(result.choice_counts), len(result.choice_tokens))
-    test_case.assertEqual(
-        len(result.choice_tokens),
-        len(result.choice_branch_counts),
-    )
+    step_payloads = tuple(result.step_payloads())
+    test_case.assertEqual(len(result.tokens), len(step_payloads))
 
-    offset = 0
-    for token, selected_idx, choice_count in zip(
-        result.tokens,
-        result.selected_indices,
-        result.choice_counts,
-    ):
-        test_case.assertGreater(choice_count, 0)
+    for token, selected_idx, choices, branch_counts in step_payloads:
+        test_case.assertEqual(len(choices), len(branch_counts))
         test_case.assertGreaterEqual(selected_idx, 0)
-        test_case.assertLess(selected_idx, choice_count)
-        choices = result.choice_tokens[offset:offset + choice_count]
-        branch_counts = result.choice_branch_counts[offset:offset + choice_count]
+        test_case.assertLess(selected_idx, len(choices))
         test_case.assertIn(token, choices)
         test_case.assertEqual(token, choices[selected_idx])
-        test_case.assertEqual(choice_count, len(set(choices)))
+        test_case.assertEqual(len(choices), len(set(choices)))
         test_case.assertTrue(all(count > 0 for count in branch_counts))
-        offset += choice_count
 
 
 class _FakeState:
@@ -84,7 +71,35 @@ def _fake_transition(
     return _StateTransition(text, branch_count, lambda: next_state)
 
 
+def _token_walk_result(
+    **overrides: object,
+) -> _TokenWalkResult:
+    values = {
+        "tokens": ("C",),
+        "selected_indices": (0,),
+        "choice_counts": (1,),
+        "choice_tokens": ("C",),
+        "choice_branch_counts": (1,),
+    }
+    values.update(overrides)
+    return _TokenWalkResult(**values)
+
+
 class RuntimeWalkTests(unittest.TestCase):
+    def test_token_walk_result_step_payloads_reject_invalid_flat_shape(self) -> None:
+        cases = (
+            ({"selected_indices": ()}, ValueError, "selected-index count"),
+            ({"choice_counts": ()}, ValueError, "choice-count count"),
+            ({"choice_branch_counts": ()}, ValueError, "branch-count lengths"),
+            ({"choice_counts": (0,)}, ValueError, "choice counts must be positive"),
+            ({"choice_counts": (2,)}, ValueError, "choice counts do not span"),
+        )
+
+        for overrides, expected_exception, expected_regex in cases:
+            with self.subTest(overrides=overrides):
+                with self.assertRaisesRegex(expected_exception, expected_regex):
+                    tuple(_token_walk_result(**overrides).step_payloads())
+
     def test_token_walk_records_flat_choice_payload(self) -> None:
         kwargs = supported_public_kwargs(isomericSmiles=False, rootedAtAtom=-1)
         mol = parse_smiles("CCO")
@@ -355,6 +370,34 @@ class RuntimeWalkTests(unittest.TestCase):
 
         with self.assertRaisesRegex(IndexError, "outside"):
             _walk_branch_transitions(initial, lambda _transitions: 1)
+
+    def test_branch_preserving_walk_rejects_duplicate_token_buckets(self) -> None:
+        terminal = _FakeState(terminal=True)
+        initial = _FakeState(
+            terminal=False,
+            token_transitions=(
+                _fake_transition("C", terminal),
+                _fake_transition("C", terminal),
+            ),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "unique text"):
+            _walk_branch_transitions(initial, lambda _transitions: 0)
+
+    def test_branch_preserving_walk_rejects_branch_outside_token_view(self) -> None:
+        terminal = _FakeState(terminal=True)
+        initial = _FakeState(
+            terminal=False,
+            token_transitions=(
+                _fake_transition("C", terminal),
+            ),
+            branch_transitions=(
+                _fake_transition("N", terminal),
+            ),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "missing from token transitions"):
+            _walk_branch_transitions(initial, lambda _transitions: 0)
 
 
 if __name__ == "__main__":

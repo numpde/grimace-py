@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import grimace
+import grimace._runtime_walks as _runtime_walks
 from tests.helpers.mols import parse_smiles
 from tests.helpers.public_runtime import (
     prepared_writer_kwargs,
@@ -294,6 +296,21 @@ class PublicSamplingTests(unittest.TestCase):
                 isomericSmiles=False,
                 canonical=False,
             )
+
+    def test_sampling_rejects_unsupported_options_before_core_sampler_lookup(
+        self,
+    ) -> None:
+        mol = parse_smiles("CCO")
+        # Unsupported writer options are cheap public-input errors; they must
+        # not depend on constructing the extension-backed RNG first.
+        with mock.patch.object(_runtime_walks, "_core", object()):
+            with self.assertRaisesRegex(NotImplementedError, "canonical=False"):
+                grimace.MolToSmilesSample(
+                    mol,
+                    seed=0,
+                    rootedAtAtom=0,
+                    isomericSmiles=False,
+                )
 
     def test_sampling_rejects_invalid_seed_values(self) -> None:
         mol = parse_smiles("CCO")

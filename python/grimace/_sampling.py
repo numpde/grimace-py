@@ -10,6 +10,7 @@ from grimace._runtime_walks import (
     _TokenWalkResult,
     _seeded_branch_multiplicity_chooser,
     _seeded_uniform_transition_chooser,
+    _validate_walk_seed,
     _walk_branch_transitions,
     _walk_token_transitions,
 )
@@ -124,7 +125,7 @@ def mol_to_smiles_sample(
         sampling_mode,
     )
     walk, seeded_chooser = _SAMPLING_WALKERS[(decoder_view, sampling_mode)]
-    choose_index = seeded_chooser(seed)
+    seed = _validate_walk_seed(seed)
 
     initial_state = _runtime._make_decoder_state(
         mol_or_prepared,
@@ -137,6 +138,7 @@ def mol_to_smiles_sample(
         do_random=do_random,
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
+    choose_index = seeded_chooser(seed)
     result = walk(initial_state, choose_index)
 
     return _public_sample_from_walk_result(
@@ -168,38 +170,25 @@ def _public_sample_from_walk_result(
     decoder_view: str,
     sampling_mode: str,
 ) -> SmilesSample:
-    if len(result.tokens) != len(result.selected_indices):
-        raise ValueError("walk token count does not match selected-index count")
-    if len(result.tokens) != len(result.choice_counts):
-        raise ValueError("walk token count does not match choice-count count")
-    if len(result.choice_tokens) != len(result.choice_branch_counts):
-        raise ValueError("walk choice token and branch-count lengths differ")
-
-    steps: list[SmilesSampleStep] = []
-    offset = 0
-    for token, selected_index, choice_count in zip(
-        result.tokens,
-        result.selected_indices,
-        result.choice_counts,
-        strict=True,
-    ):
-        stop = offset + choice_count
-        steps.append(
-            SmilesSampleStep(
-                choice_tokens=result.choice_tokens[offset:stop],
-                choice_branch_counts=result.choice_branch_counts[offset:stop],
-                selected_index=selected_index,
-                selected_token=token,
-            )
+    steps = tuple(
+        SmilesSampleStep(
+            choice_tokens=choice_tokens,
+            choice_branch_counts=choice_branch_counts,
+            selected_index=selected_index,
+            selected_token=token,
         )
-        offset = stop
-    if offset != len(result.choice_tokens):
-        raise ValueError("walk choice counts do not span choice payload")
+        for (
+            token,
+            selected_index,
+            choice_tokens,
+            choice_branch_counts,
+        ) in result.step_payloads()
+    )
 
     return SmilesSample(
         tokens=result.tokens,
         smiles="".join(result.tokens),
         decoder_view=decoder_view,
         sampling_mode=sampling_mode,
-        steps=tuple(steps),
+        steps=steps,
     )

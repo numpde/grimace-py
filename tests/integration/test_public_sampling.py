@@ -15,12 +15,15 @@ from tests.helpers.public_runtime import (
 )
 
 
-PUBLIC_SAMPLE_PAIRS = (
-    ("determinized", "uniform_token"),
-    ("determinized", "branch_multiplicity"),
-    ("branch_preserving", "branch_preserving"),
+PUBLIC_SAMPLE_PAIRS = frozenset(
+    (
+        ("determinized", "uniform_token"),
+        ("determinized", "branch_multiplicity"),
+        ("branch_preserving", "branch_preserving"),
+    )
 )
-SAMPLE_PAIRS = tuple(_sampling._SAMPLING_WALKERS)
+SAMPLE_PAIRS = frozenset(_sampling._SAMPLING_WALKERS)
+ORDERED_SAMPLE_PAIRS = tuple(sorted(SAMPLE_PAIRS))
 
 
 def _step_choice_pairs(step: object) -> tuple[tuple[str, int], ...]:
@@ -37,7 +40,7 @@ class PublicSamplingTests(unittest.TestCase):
     ) -> None:
         support = public_enum_support(mol, **kwargs)
 
-        for decoder_view, sampling_mode in SAMPLE_PAIRS:
+        for decoder_view, sampling_mode in ORDERED_SAMPLE_PAIRS:
             with self.subTest(
                 decoder_view=decoder_view,
                 sampling_mode=sampling_mode,
@@ -163,7 +166,7 @@ class PublicSamplingTests(unittest.TestCase):
         mol = parse_smiles("F[C@H](Cl)Br")
         kwargs = supported_public_kwargs(isomericSmiles=True, rootedAtAtom=-1)
 
-        for decoder_view, sampling_mode in SAMPLE_PAIRS:
+        for decoder_view, sampling_mode in ORDERED_SAMPLE_PAIRS:
             with self.subTest(
                 decoder_view=decoder_view,
                 sampling_mode=sampling_mode,
@@ -197,7 +200,7 @@ class PublicSamplingTests(unittest.TestCase):
         prepared = grimace.PrepareMol(mol, **prepared_writer_kwargs(kwargs))
         restored = grimace.PreparedMol.from_bytes(prepared.to_bytes())
 
-        for decoder_view, sampling_mode in SAMPLE_PAIRS:
+        for decoder_view, sampling_mode in ORDERED_SAMPLE_PAIRS:
             with self.subTest(
                 decoder_view=decoder_view,
                 sampling_mode=sampling_mode,

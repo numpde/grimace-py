@@ -31,6 +31,20 @@ def _step_choice_pairs(step: object) -> tuple[tuple[str, int], ...]:
     return tuple(zip(step.choice_tokens, step.choice_branch_counts, strict=True))
 
 
+def _valid_sample_step() -> grimace.SmilesSampleStep:
+    return grimace.SmilesSampleStep(("C",), (1,), 0, "C")
+
+
+def _valid_sample() -> grimace.SmilesSample:
+    return grimace.SmilesSample(
+        ("C",),
+        "C",
+        "determinized",
+        "uniform_token",
+        (_valid_sample_step(),),
+    )
+
+
 class PublicSamplingTests(unittest.TestCase):
     def _assert_all_modes_return_legal_sample(
         self,
@@ -118,7 +132,7 @@ class PublicSamplingTests(unittest.TestCase):
         self.assertEqual(PUBLIC_SAMPLE_PAIRS, SAMPLE_PAIRS)
 
     def test_sample_records_reject_mutable_payload_containers(self) -> None:
-        step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
+        step = _valid_sample_step()
 
         with self.assertRaisesRegex(TypeError, "choice_tokens must be a tuple"):
             grimace.SmilesSampleStep(["C"], (1,), 0, "C")
@@ -146,14 +160,8 @@ class PublicSamplingTests(unittest.TestCase):
             grimace.SmilesSampleStep(([],), (1,), 0, "C")
 
     def test_sample_records_reject_invalid_scalars(self) -> None:
-        step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
-        sample = grimace.SmilesSample(
-            ("C",),
-            "C",
-            "determinized",
-            "uniform_token",
-            (step,),
-        )
+        step = _valid_sample_step()
+        sample = _valid_sample()
         cases = (
             (
                 lambda: replace(step, choice_branch_counts=(True,)),
@@ -193,14 +201,8 @@ class PublicSamplingTests(unittest.TestCase):
                     make_record()
 
     def test_sample_records_reject_invalid_relationships(self) -> None:
-        step = grimace.SmilesSampleStep(("C",), (1,), 0, "C")
-        sample = grimace.SmilesSample(
-            ("C",),
-            "C",
-            "determinized",
-            "uniform_token",
-            (step,),
-        )
+        step = _valid_sample_step()
+        sample = _valid_sample()
         cases = (
             (
                 lambda: replace(step, choice_branch_counts=(1, 1)),

@@ -184,38 +184,50 @@ class LazyDecoderStateContractTests(unittest.TestCase):
             _runtime_states._state_cache_key(right),
         )
 
-    def test_core_state_adapter_rejects_divergent_token_support(self) -> None:
+    def test_core_state_adapter_rejects_invalid_token_support(self) -> None:
         class Decoder:
             def __init__(
                 self,
                 *,
-                choice_texts: tuple[str, ...],
-                token_support: tuple[str, ...],
+                choice_texts: tuple[object, ...],
+                token_support: tuple[object, ...],
             ) -> None:
                 self._choice_texts = choice_texts
                 self._token_support = token_support
 
-            def next_choice_texts(self) -> tuple[str, ...]:
+            def next_choice_texts(self) -> tuple[object, ...]:
                 return self._choice_texts
 
-            def next_token_support(self) -> tuple[str, ...]:
+            def next_token_support(self) -> tuple[object, ...]:
                 return self._token_support
 
         cases = (
             (
+                Decoder(choice_texts=([],), token_support=("C",)),
+                TypeError,
+                "transition text must be a string",
+            ),
+            (
+                Decoder(choice_texts=("C",), token_support=([],)),
+                TypeError,
+                "token support must contain strings",
+            ),
+            (
                 Decoder(choice_texts=("C",), token_support=("O",)),
+                RuntimeError,
                 "branch choices disagree",
             ),
             (
                 Decoder(choice_texts=("C",), token_support=("C", "C")),
+                RuntimeError,
                 "unique texts",
             ),
         )
 
-        for decoder, expected_regex in cases:
+        for decoder, expected_exception, expected_regex in cases:
             with self.subTest(expected_regex=expected_regex):
                 state = _runtime_states._CoreStateAdapter(decoder)
-                with self.assertRaisesRegex(RuntimeError, expected_regex):
+                with self.assertRaisesRegex(expected_exception, expected_regex):
                     state._token_state_transitions()
 
     def test_lazy_all_roots_transitions_do_not_retain_root_decoders(self) -> None:
@@ -570,6 +582,32 @@ class LazyDecoderStateContractTests(unittest.TestCase):
         self.assertTrue(last_fragment.is_terminal())
         self.assertEqual(("C",), _branch_transition_texts(last_fragment))
         self.assertEqual(("C",), _token_transition_texts(last_fragment))
+
+    def test_disconnected_state_rejects_invalid_constructor_state(self) -> None:
+        fragment = _FakeState("C", terminal=True)
+
+        cases = (
+            (
+                {"fragment_idx": True},
+                TypeError,
+                "fragment_idx must be an int",
+            ),
+            (
+                {"fragment_idx": 1},
+                ValueError,
+                "fragment_idx is out of range",
+            ),
+            (
+                {"completed_prefix": b""},
+                TypeError,
+                "completed_prefix must be a string",
+            ),
+        )
+
+        for kwargs, expected_exception, expected_regex in cases:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(expected_exception, expected_regex):
+                    _runtime_states._DisconnectedStateAdapter((fragment,), **kwargs)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,8 @@ def _branch_transition(
 def _counts_by_text(texts: Iterable[str]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for text in texts:
+        if not isinstance(text, str):
+            raise TypeError("decoder transition text must be a string")
         counts[text] = counts.get(text, 0) + 1
     return counts
 
@@ -64,6 +66,8 @@ def _counts_by_text(texts: Iterable[str]) -> dict[str, int]:
 def _token_branch_counts(decoder: object) -> tuple[tuple[str, int], ...]:
     branch_counts = _counts_by_text(decoder.next_choice_texts())
     token_texts = tuple(decoder.next_token_support())
+    if not all(isinstance(text, str) for text in token_texts):
+        raise TypeError("decoder token support must contain strings")
     token_text_set = set(token_texts)
     if len(token_text_set) != len(token_texts):
         raise RuntimeError("decoder token support must contain unique texts")
@@ -276,6 +280,12 @@ class _DisconnectedStateAdapter:
     ) -> None:
         if not fragment_states:
             raise ValueError("Disconnected decoder requires at least one fragment state")
+        if type(fragment_idx) is not int:
+            raise TypeError("Disconnected decoder fragment_idx must be an int")
+        if not 0 <= fragment_idx < len(fragment_states):
+            raise ValueError("Disconnected decoder fragment_idx is out of range")
+        if not isinstance(completed_prefix, str):
+            raise TypeError("Disconnected decoder completed_prefix must be a string")
         self._fragment_states = fragment_states
         self._fragment_idx = fragment_idx
         self._completed_prefix = completed_prefix

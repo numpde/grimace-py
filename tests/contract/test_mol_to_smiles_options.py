@@ -5,6 +5,7 @@ import inspect
 import unittest
 
 import grimace
+import grimace._sampling as _sampling
 from grimace._mol_to_smiles_options import (
     MOL_TO_SMILES_OPTIONS,
     MOL_TO_SMILES_PREPARED_OPTIONS,
@@ -91,6 +92,22 @@ class MolToSmilesOptionInventoryTests(unittest.TestCase):
         self.assertEqual(
             _public_option_defaults(MOL_TO_SMILES_OPTIONS),
             sample_defaults[3:],
+        )
+
+    def test_private_sample_wrapper_does_not_own_public_defaults(self) -> None:
+        expected = (
+            ("seed", inspect.Parameter.empty),
+            ("decoder_view", inspect.Parameter.empty),
+            ("sampling_mode", inspect.Parameter.empty),
+            *(
+                (spec.internal_name, inspect.Parameter.empty)
+                for spec in MOL_TO_SMILES_OPTIONS
+            ),
+        )
+
+        self.assertEqual(
+            expected,
+            _keyword_only_signature_defaults(_sampling.mol_to_smiles_sample),
         )
 
     def test_prepare_mol_signature_matches_prepared_option_inventory(self) -> None:

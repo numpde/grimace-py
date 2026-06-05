@@ -23,15 +23,24 @@ SamplingMode = Literal[
     "branch_multiplicity",
     "branch_preserving",
 ]
+_SamplingPair = tuple[DecoderView, SamplingMode]
 
 
-_VALID_MODE_PAIRS = frozenset(
-    {
-        ("determinized", "uniform_token"),
-        ("determinized", "branch_multiplicity"),
-        ("branch_preserving", "branch_preserving"),
-    }
-)
+_SAMPLING_WALKERS = {
+    ("determinized", "uniform_token"): (
+        _walk_token_transitions,
+        _seeded_uniform_token_chooser,
+    ),
+    ("determinized", "branch_multiplicity"): (
+        _walk_token_transitions,
+        _seeded_branch_multiplicity_chooser,
+    ),
+    ("branch_preserving", "branch_preserving"): (
+        _walk_branch_transitions,
+        _seeded_branch_preserving_chooser,
+    ),
+}
+_VALID_MODE_PAIRS = frozenset(_SAMPLING_WALKERS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,21 +139,8 @@ def mol_to_smiles_sample(
         ignore_atom_map_numbers=ignore_atom_map_numbers,
     )
 
-    if decoder_view == "branch_preserving":
-        result = _walk_branch_transitions(
-            initial_state,
-            _seeded_branch_preserving_chooser(seed),
-        )
-    elif sampling_mode == "branch_multiplicity":
-        result = _walk_token_transitions(
-            initial_state,
-            _seeded_branch_multiplicity_chooser(seed),
-        )
-    else:
-        result = _walk_token_transitions(
-            initial_state,
-            _seeded_uniform_token_chooser(seed),
-        )
+    walk, seeded_chooser = _SAMPLING_WALKERS[(decoder_view, sampling_mode)]
+    result = walk(initial_state, seeded_chooser(seed))
 
     return _public_sample_from_walk_result(
         result,

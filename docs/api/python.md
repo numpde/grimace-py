@@ -5,12 +5,12 @@ title: API
 ## Contents
 
 - [Public surface](#public-surface)
-- [PreparedMol](#preparedmol)
+- [PrepareMol and PreparedMol](#preparemol-and-preparedmol)
 - [MolToSmilesEnum](#moltosmilesenum)
+- [Decoder model](#decoder-model)
 - [MolToSmilesDecoder](#moltosmilesdecoder)
 - [MolToSmilesDeterminizedDecoder](#moltosmilesdeterminizeddecoder)
 - [MolToSmilesChoice](#moltosmileschoice)
-- [Decoder model](#decoder-model)
 - [MolToSmilesSample](#moltosmilessample)
 - [MolToSmilesDeviation](#moltosmilesdeviation)
 - [MolToSmilesTokenInventory](#moltosmilestokeninventory)
@@ -18,32 +18,14 @@ title: API
 
 ## Public surface
 
-The only supported public Python import name is `grimace`.
+Import the package as `grimace` and use the names documented on this page.
+Underscore-prefixed modules are internal. The compiled extension
+`grimace._core` is required; there is no Python fallback runtime.
 
-This page is a reference. For the supported flag combinations and root
-semantics, start with [Runtime](../runtime.html). For terminology, see
-[Concepts](../concepts.html).
+For supported flag combinations and root semantics, start with
+[Runtime](../runtime.html). For terminology, see [Concepts](../concepts.html).
 
-Current top-level exports:
-
-- `MolToSmilesChoice`
-- `MolToSmilesDecoder`
-- `MolToSmilesDeterminizedDecoder`
-- `MolToSmilesDeviation`
-- `MolToSmilesEnum`
-- `MolToSmilesSample`
-- `MolToSmilesTokenInventory`
-- `MolToSmilesTokenInventorySuperset`
-- `PreparedMol`
-- `PrepareMol`
-- `SmilesDeviation`
-- `SmilesSample`
-- `SmilesSampleStep`
-
-The compiled extension `grimace._core` is required. There is no public runtime
-fallback.
-
-## PreparedMol
+## PrepareMol and PreparedMol
 
 `PrepareMol(mol, *, isomericSmiles=True, kekuleSmiles=False, allBondsExplicit=False, allHsExplicit=False, ignoreAtomMapNumbers=False)`
 
@@ -113,6 +95,27 @@ This is the important semantic point:
 - here, `MolToSmilesEnum(...)` yields the full exact support of Grimace's supported
   language for that writer mode
 
+## Decoder model
+
+The decoder APIs expose the same support language as stateful next-token
+choices.
+
+Both decoder classes expose:
+
+- `next_choices: tuple[MolToSmilesChoice, ...]`
+- `choices() -> tuple[MolToSmilesChoice, ...]`
+- `prefix: str`
+- `is_terminal: bool`
+- `copy()`
+
+`choices()` returns the same cached tuple as `next_choices`.
+`MolToSmilesChoice.next_state` is cached after first access.
+
+Use `MolToSmilesDecoder(...)` when each branch-preserving writer choice matters.
+Use `MolToSmilesDeterminizedDecoder(...)` when you want at most one visible
+choice per token text. See [Concepts](../concepts.html) for the branch-preserving
+and determinized model.
+
 ## MolToSmilesDecoder
 
 `MolToSmilesDecoder(mol, *, isomericSmiles=True, kekuleSmiles=False, rootedAtAtom=-1, canonical=True, allBondsExplicit=False, allHsExplicit=False, doRandom=False, ignoreAtomMapNumbers=False)`
@@ -135,20 +138,6 @@ while decoder.prefix != "CC":
 decoder.prefix       # 'CC'
 [choice.text for choice in decoder.next_choices]  # ['(', '(']
 ```
-
-State interface:
-
-- `next_choices: tuple[MolToSmilesChoice, ...]`
-- `choices() -> tuple[MolToSmilesChoice, ...]`
-- `prefix: str`
-- `is_terminal: bool`
-- `copy() -> MolToSmilesDecoder`
-
-Each `MolToSmilesChoice` has:
-
-- `text: str`
-- `branch_count: int`
-- `next_state`: the same decoder class as the parent choice came from
 
 Two different choices may therefore share the same `text` while leading to
 different successor states.
@@ -176,20 +165,12 @@ decoder = decoder.next_choices[0].next_state  # 'c1('
 [choice.text for choice in decoder.next_choices]  # ['C', 'c']
 ```
 
-State interface:
-
-- `next_choices: tuple[MolToSmilesChoice, ...]`
-- `choices() -> tuple[MolToSmilesChoice, ...]`
-- `prefix: str`
-- `is_terminal: bool`
-- `copy() -> MolToSmilesDeterminizedDecoder`
-
 ## MolToSmilesChoice
 
 `MolToSmilesChoice` is the public helper object returned from
 `decoder.next_choices`.
 
-Available interface:
+Choice attributes:
 
 - `text: str`
 - `branch_count: int`
@@ -200,17 +181,6 @@ Available interface:
 `1`. For `MolToSmilesDeterminizedDecoder`, it is the number of
 branch-preserving choices hidden behind that exposed token. It is not final
 support size, probability mass, or RDKit random-writer frequency.
-
-## Decoder model
-
-The decoder APIs expose the support language as stateful next-token choices.
-For the conceptual model and the difference between branch-preserving and
-determinized choices, see [Concepts](../concepts.html).
-
-Both decoder classes expose `prefix`, `next_choices`, `choices()`,
-`is_terminal`, and `copy()`.
-`choices()` returns the same cached tuple as `next_choices`.
-`MolToSmilesChoice.next_state` is also cached after first access.
 
 ## MolToSmilesSample
 

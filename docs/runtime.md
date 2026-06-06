@@ -2,19 +2,25 @@
 title: Runtime
 ---
 
-Grimace mirrors RDKit flag names, but the supported public runtime is the
-random-writer support mode, not RDKit's default canonical writer call.
+This page is the public contract for flags, roots, and install targets. Grimace
+mirrors RDKit option names, but its runtime operates on the random-writer
+support language, not RDKit's default canonical writer call.
 
-Start with:
+For runtime operations that mirror RDKit's `MolToSmiles(...)` options, start
+with:
 
 ```python
 FLAGS = dict(canonical=False, doRandom=True)
 ```
 
-| Option | Starting value | Meaning |
+and either omit `rootedAtAtom` or pass `rootedAtAtom=-1` for all roots.
+
+## Required runtime mode
+
+| Option | Supported value | Meaning |
 |---|---|---|
 | `canonical` | `False` | Use the non-canonical writer surface. |
-| `doRandom` | `True` | Use RDKit's random-writer mode as the support language to enumerate or decode. |
+| `doRandom` | `True` | Use RDKit's random-writer mode as the language to enumerate, decode, or sample. |
 | `rootedAtAtom` | omit or `-1` | Use all valid roots. |
 | `rootedAtAtom` | nonnegative atom index | Use one explicit root. |
 
@@ -22,13 +28,15 @@ Other negative integer `rootedAtAtom` values are accepted for RDKit
 compatibility and behave like `-1`, but `-1` is the preferred public spelling.
 `rootedAtAtom=None` is not supported.
 
-Unsupported flag combinations fail fast with `NotImplementedError`. Other
-invalid public inputs can still raise more specific exceptions such as
-`IndexError` or `ValueError`.
+Although public signatures mirror RDKit defaults, those defaults are not the
+supported Grimace runtime mode. Unsupported flag combinations fail fast with
+`NotImplementedError`. Other invalid public inputs can still raise more
+specific exceptions such as `IndexError` or `ValueError`.
 
 ## Writer flags
 
-The supported writer flags are:
+Writer flags change how valid strings are rendered. They are part of the writer
+surface and are supported in any combination:
 
 - `isomericSmiles`
 - `kekuleSmiles`
@@ -36,23 +44,35 @@ The supported writer flags are:
 - `allHsExplicit`
 - `ignoreAtomMapNumbers`
 
-For current runtime scope and known gaps, see [Limitations](current-limitations.html).
+If you use `PrepareMol(...)`, these flags are baked into the prepared molecule.
+Later runtime calls must use matching writer flags. `canonical`, `doRandom`,
+and `rootedAtAtom` remain runtime options.
 
 For the difference between writer parity and chemical equivalence, see
 [Correctness contracts](correctness-contracts.html).
 
-## Rooting
+For current runtime scope and known gaps, see
+[Limitations](current-limitations.html).
 
-- `rootedAtAtom=<idx>` uses one explicit starting atom for connected molecules.
-- `rootedAtAtom=-1` for `MolToSmilesEnum(...)` returns the exact support
-  unioned across all root atoms.
-- `rootedAtAtom=-1` for the decoder classes starts from one merged all-roots
-  decoder state.
-- `rootedAtAtom=-1` for `MolToSmilesSample(...)` starts from the requested
-  decoder view's all-roots state.
-- `rootedAtAtom=-1` for `MolToSmilesTokenInventory(...)` and
-  `MolToSmilesTokenInventorySuperset(...)` returns the token inventory unioned
-  across all root atoms.
+## All-roots behavior
+
+`rootedAtAtom=-1` means all valid roots, but each public API exposes that
+all-roots state in the shape natural for the operation:
+
+| API | All-roots behavior |
+|---|---|
+| `MolToSmilesEnum(...)` | Yields the exact union of complete strings across all root atoms. |
+| `MolToSmilesDecoder(...)` | Starts from one branch-preserving all-roots decoder state. |
+| `MolToSmilesDeterminizedDecoder(...)` | Starts from one all-roots decoder state with same-text choices merged. |
+| `MolToSmilesSample(...)` | Draws one seeded walk from the requested all-roots decoder view. |
+| `MolToSmilesDeviation(...)` | Checks the candidate against the all-roots supported language. |
+| `MolToSmilesTokenInventory(...)` | Returns the exact union of reachable decoder tokens across all roots. |
+| `MolToSmilesTokenInventorySuperset(...)` | Returns a conservative token inventory unioned across all roots. |
+
+Use a nonnegative `rootedAtAtom` only when you need one explicit traversal
+start.
+
+## Disconnected molecules
 
 For disconnected molecules, fragment order is preserved. A nonnegative
 `rootedAtAtom` selects the rooted fragment and its local root atom within that

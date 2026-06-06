@@ -11,6 +11,10 @@ Use these plots to choose a compression level for bulk storage. Lower
 compression ratio is smaller output; lower time is faster. The benchmark is
 indicative for this sample and machine, not a universal storage study.
 
+The current API default for `prepared.to_bytes(compression="zstd")` is
+`dictionary_level=3, level=3`. The plots below show the tradeoff space around
+that default.
+
 <style>
 figure.timing-plot {
   margin: 1.5rem 0;

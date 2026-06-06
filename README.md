@@ -8,7 +8,7 @@ molecules. It provides:
 - exact token inventories implied by that support
 - legal next-token choices from a current SMILES prefix
 - seeded legal samples with per-step token choices
-- prepared molecule bytes for reuse outside RDKit
+- prepared molecule bytes for reuse without RDKit at read time
 
 GRIMACE stands for "graph representation integrating multiple alternate
 chemical equivalents", motivated by research on NMR spectroscopy with
@@ -35,6 +35,7 @@ use is not permitted under the current license.
 ## Quick example
 
 This example uses the currently supported runtime mode. See
+[Runtime](docs/runtime.md) for flags and roots, and
 [Limitations](docs/current-limitations.md) for scope and known gaps.
 
 ```python

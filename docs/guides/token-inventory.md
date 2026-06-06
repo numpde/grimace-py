@@ -5,6 +5,8 @@ title: Token inventories
 `MolToSmilesTokenInventory(...)` returns the exact sorted tuple of reachable
 decoder tokens for one molecule under the public writer flags.
 
+## Exact inventory
+
 Use exact inventory when you need the tokens that can really occur during
 runtime decoding for one molecule and one flag set.
 
@@ -19,6 +21,8 @@ inventory = grimace.MolToSmilesTokenInventory(
 ```
 
 Use the result as exact per-molecule coverage for Grimace decoder tokens.
+
+## Conservative inventory
 
 For dataset vocabulary coverage, use the conservative inventory. It is designed
 to be fast to union across many molecules:

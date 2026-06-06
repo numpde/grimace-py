@@ -9,6 +9,8 @@ Use it when the same molecule will be decoded, enumerated, inventoried, or
 checked more than once. It is also the storage path when you want to load a
 prepared molecule later without touching RDKit again.
 
+## Prepare once
+
 ```python
 from rdkit import Chem
 import grimace
@@ -19,6 +21,8 @@ prepared = grimace.PrepareMol(mol, isomericSmiles=False)
 payload = prepared.to_bytes()
 restored = grimace.PreparedMol.from_bytes(payload)
 ```
+
+## Compress for storage
 
 For compact storage, write a zstd-compressed payload:
 
@@ -34,6 +38,11 @@ dictionary. The current default is equivalent to:
 ```python
 payload = prepared.to_bytes(compression="zstd", dictionary_level=3, level=3)
 ```
+
+`dictionary_level` chooses the shipped dictionary training level. `level` is
+the ordinary zstd compression level used when writing this payload.
+
+## Use everywhere
 
 `PreparedMol` is accepted anywhere the public runtime accepts a molecule:
 

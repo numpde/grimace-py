@@ -124,8 +124,8 @@ Both decoder classes expose:
 
 Use `MolToSmilesDecoder(...)` when each branch-preserving writer choice matters.
 Use `MolToSmilesDeterminizedDecoder(...)` when you want at most one visible
-choice per token text. See [Concepts](../concepts.html) for the branch-preserving
-and determinized model.
+choice per token text. See [Concepts](../concepts.html) for the
+branch-preserving and determinized model.
 
 ## MolToSmilesDecoder
 
@@ -199,7 +199,9 @@ string together with the next-token context seen along that path.
 Grimace sampler seed; it does not reproduce RDKit random-writer ordering.
 No uniformity over finished SMILES strings is implied.
 
-Accepted `decoder_view`/`sampling_mode` pairs are:
+`decoder_view` selects which next-token view is exposed at each prefix.
+`sampling_mode` selects how the next step is chosen inside that view. The two
+options are validated together; accepted pairs are:
 
 - `"determinized"` / `"uniform_token"`: sample uniformly from unique visible
   next-token choices
@@ -207,6 +209,8 @@ Accepted `decoder_view`/`sampling_mode` pairs are:
   weighted by their hidden branch count
 - `"branch_preserving"` / `"branch_preserving"`: sample uniformly from
   branch-preserving choices, then report the selected visible token bucket
+
+All modes return the same result shape.
 
 The result is a `SmilesSample`:
 
@@ -224,8 +228,8 @@ Each `SmilesSampleStep` has:
 - `selected_token: str`
 
 `choice_tokens` are unique visible token texts for the current prefix.
-`choice_branch_counts` are the hidden branch counts behind those visible
-tokens. `selected_index` points into `choice_tokens`, and
+`choice_branch_counts` are the branch-preserving choice counts behind those
+visible tokens. `selected_index` points into `choice_tokens`, and
 `selected_token == choice_tokens[selected_index]`.
 
 ```python

@@ -4,12 +4,13 @@ title: RDKit serializer coverage
 
 This page explains which RDKit SMILES-writer tests Grimace has reviewed and how
 each relevant RDKit behavior is covered in Grimace's checked-in fixtures.
-Here, "upstream" means RDKit's own source tree: the tests and source blocks
-maintained by RDKit.
+Here, "RDKit source tree" means RDKit's own tests and source blocks, not tests
+invented inside Grimace.
 
-This page covers the RDKit-source-tree audit lane. Grimace also has
-independent fixtures from local probes, dataset-derived cases, and random-writer
-observations; those are summarized in [Testing fixtures](testing-fixtures.html).
+This page is the traceability view for RDKit source-tree cases. Grimace also
+has independent fixtures from local probes, dataset-derived cases, and
+random-writer observations; all fixture families and source classes are
+summarized in [Testing fixtures](testing-fixtures.html).
 
 Use it to answer two questions:
 
@@ -37,17 +38,17 @@ python scripts/report_rdkit_serializer_coverage.py
 
 | Status | Entries | Meaning |
 |---|---:|---|
-| `covered` | 54 | Relevant upstream claim has executable Grimace evidence. |
-| `known-gap` | 6 | Relevant upstream claim has executable failing diagnostics. |
-| `out-of-scope` | 209 | Reviewed upstream block does not map to the current Grimace public surface. |
+| `covered` | 54 | Relevant RDKit source-tree claim has executable Grimace evidence. |
+| `known-gap` | 6 | Relevant RDKit source-tree claim has executable failing diagnostics. |
+| `out-of-scope` | 209 | Reviewed RDKit source block does not map to the current Grimace public surface. |
 | `needs-fixture` | 0 | No unfinished relevant entries are left without fixture mapping. |
 | `unreviewed` | 0 | No regenerated entries are waiting for triage. |
 
 Covered entries currently link to 76 Grimace fixture references.
 
-By upstream file:
+By RDKit source file:
 
-| Upstream file | Entries |
+| RDKit source file | Entries |
 |---|---:|
 | `Code/GraphMol/SmilesParse/catch_tests.cpp` | 151 |
 | `Code/GraphMol/Wrap/rough_test.py` | 68 |
@@ -87,7 +88,7 @@ For fixture-family and provenance counts, see
 
 Each ledger entry has three parts:
 
-1. Parser-owned fields: upstream file, line range, language, kind, matched
+1. Parser-owned fields: RDKit file, line range, language, kind, matched
    serializer terms, and snippet hash.
 2. Reviewed fields: status, claim label, notes, and `grimace_links`.
 3. Linked fixtures: concrete fixture files and case IDs that enforce covered
@@ -98,16 +99,16 @@ when a claim can be represented by a fixture case.
 
 ## Status meanings
 
-`covered` means a relevant upstream serializer claim has corresponding Grimace
+`covered` means a relevant RDKit serializer claim has corresponding Grimace
 evidence: exact support equality, token-inventory equality, deterministic
 writer-output membership, or bounded decoder-path membership when full support
 materialization is too large.
 
-`known-gap` means the upstream claim is relevant and has executable pinned
+`known-gap` means the RDKit claim is relevant and has executable pinned
 fixture coverage, but at least one parity assertion intentionally fails against
 the current implementation.
 
-`out-of-scope` means the upstream test does not map to Grimace's current public
+`out-of-scope` means the RDKit test does not map to Grimace's current public
 surface. Common examples are CXSMILES extension serialization, wrapper API
 smoke tests, canonical-ranking behavior outside the supported
 `canonical=False, doRandom=True` regime, and internal RDKit helper APIs that

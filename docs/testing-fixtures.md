@@ -14,9 +14,10 @@ A fixture case answers two questions:
 
 Source classes include RDKit's own source tree, Grimace local probes,
 dataset-derived molecules, random-writer observations, and known-gap
-diagnostics. Cases with source class `upstream-rdkit` are also indexed in
-[RDKit serializer coverage](rdkit-serializer-coverage.html), which points back
-to the reviewed RDKit files and source blocks.
+diagnostics. Cases with source class `upstream-rdkit` came from RDKit's own
+tests or source blocks. They are also indexed in
+[RDKit serializer coverage](rdkit-serializer-coverage.html), which records the
+RDKit file and line range that motivated each fixture link.
 
 ## Current coverage
 
@@ -93,12 +94,12 @@ Prefer exact support and inventory equality for small cases. Use deterministic
 writer membership when exact support is too large. Keep `rdkit_only` cases as
 known gaps while they fail. Do not promote `uncertain` mined cases.
 
-Use writer support-count fixtures only when storing every support string is not
-worth the noise. These fixtures retain the count plus the RDKit sampling
+Prefer exact-support fixtures whenever the full support set is small enough to
+keep. Use writer support-count fixtures only when storing every support string
+is not worth the noise. Count fixtures retain the count plus RDKit sampling
 evidence: per-seed draw counts, no-new-variant streaks, singleton/doubleton
 counts, and unseen-mass estimates. They are saturation-backed evidence, not a
-mathematical exhaustive proof. Prefer `rdkit_exact_small_support` whenever the
-full support set is small enough to keep.
+mathematical exhaustive proof.
 
 Some count cases need a larger draw budget before independent RDKit seeds agree.
 For example, `pubchem_17730_nonisomeric_random_root27_counterion` first stopped

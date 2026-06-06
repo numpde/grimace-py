@@ -58,6 +58,9 @@ Examples include:
 token text if they represent different underlying writer branches.
 `MolToSmilesDeterminizedDecoder(...)` merges same-text choices.
 
+The public choice object reports `branch_count`, the number of branch-preserving
+choices represented by the visible token at the current prefix.
+
 ## Sample
 
 `MolToSmilesSample(...)` draws one complete supported token path from the

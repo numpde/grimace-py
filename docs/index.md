@@ -4,11 +4,13 @@ title: grimace-py
 ---
 
 `grimace-py` is a Rust-first RDKit add-on for exact rooted SMILES support
-enumeration, online next-token decoding, and seeded sampling.
+enumeration, online next-token decoding, seeded sampling, and reusable prepared
+molecules.
 
 Use it when you need Grimace's supported random-writer language for a molecule,
 exact legal next tokens while constructing a SMILES string, or one seeded legal
-path with its per-step choices.
+path with its per-step choices. Use `PrepareMol(...)` when you want to prepare
+with RDKit once and later run Grimace without touching RDKit again.
 
 GRIMACE stands for "graph representation integrating multiple alternate
 chemical equivalents", motivated by research on NMR spectroscopy with
@@ -65,7 +67,7 @@ Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py)
       <td><a href="testing-fixtures.html">Testing fixtures</a></td>
     </tr>
     <tr>
-      <td>Trace upstream RDKit serializer coverage</td>
+      <td>Trace RDKit source-tree serializer coverage</td>
       <td><a href="rdkit-serializer-coverage.html">RDKit serializer coverage</a></td>
     </tr>
     <tr>
@@ -73,7 +75,7 @@ Repository: [github.com/numpde/grimace-py](https://github.com/numpde/grimace-py)
       <td><a href="development/containerized.html">Containerized development</a></td>
     </tr>
     <tr>
-      <td>Change internals</td>
+      <td>Understand the Rust/Python implementation boundary</td>
       <td><a href="architecture/rust-first.html">Rust-first architecture</a></td>
     </tr>
   </tbody>

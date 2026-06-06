@@ -11,6 +11,8 @@ explaining where a candidate leaves Grimace's supported writer language.
 It returns `None` for an accepted candidate. Otherwise it returns a
 `SmilesDeviation`.
 
+## String candidates
+
 ```python
 from rdkit import Chem
 import grimace
@@ -30,6 +32,8 @@ assert deviation.accepted_text == "CC"
 assert deviation.rejected_text == "N"
 assert deviation.legal_next_tokens == ("O",)
 ```
+
+## Token sequence candidates
 
 String candidates are matched as text. Sequence candidates are atomic external
 tokens, so boundaries matter:

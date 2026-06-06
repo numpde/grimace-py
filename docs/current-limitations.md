@@ -2,8 +2,9 @@
 title: Limitations
 ---
 
-Grimace's current public runtime is exact for its supported writer language,
-not for every string RDKit can serialize.
+Grimace's current public runtime is exact inside its supported writer language.
+That is narrower than “every valid SMILES string for the molecule” and narrower
+than full RDKit serializer parity.
 
 ## Runtime options
 
@@ -13,7 +14,9 @@ The supported runtime mode is:
 - `doRandom=True`
 - `rootedAtAtom=-1` for all roots, or `rootedAtAtom >= 0` for one explicit root
 
-Supported writer-surface flags are listed in [Runtime](runtime.html).
+Supported writer-surface flags are listed in [Runtime](runtime.html). The
+writer-parity contract is explained in
+[Correctness contracts](correctness-contracts.html).
 
 ## RDKit serializer parity
 

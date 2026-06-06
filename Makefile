@@ -19,6 +19,7 @@ TIMINGS_PREPARED_MOL_ZSTD_OUTPUT ?= docs/timings-prepared-mol-zstd.tsv
 override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES := $(TIMINGS_PREPARED_MOL_ZSTD_OUTPUT)
 override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS := docs/timings-prepared-mol-zstd-plots
 override TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS := $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES) $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS)
+override TIMING_METADATA_IGNORE_ARGS := --ignore docs/timings-enum.tsv --ignore docs/timings-enum.md --ignore notes/004_perf_history.jsonl --ignore docs/timings-enum-plots --ignore 'docs/timings-prepared-mol-zstd*.tsv' --ignore docs/timings-prepared-mol-zstd.md --ignore docs/timings-prepared-mol-zstd-plots
 DOCS_PORT ?= 8000
 PREPARED_MOL_ZSTD_CREATED_DATE ?=
 PREPARED_MOL_ZSTD_FORCE ?= 0
@@ -30,7 +31,7 @@ DOCS_PORT_GUARD := if [[ ! "$${DOCS_PORT}" =~ ^[1-9][0-9]{0,4}$$ || "$${DOCS_POR
 TIMINGS_ENUM_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(TIMINGS_ENUM_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind enum timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(TIMINGS_ENUM_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind enum timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 TIMINGS_PREPARED_MOL_ZSTD_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_FILES); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -f "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done; for path in $(TIMINGS_PREPARED_MOL_ZSTD_ARTIFACT_DIRS); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind PreparedMol zstd timing artifact directory %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
 DOCS_ARTIFACTS_GUARD := repo_root="$(REPO_ROOT)"; for path in $(DOCS_SOURCE_DIR) $(DOCS_OUTPUT_DIR); do resolved="$$(realpath -e -- "$$path" 2>/dev/null || true)"; expected="$$repo_root/$$path"; if [[ ! -d "$$path" || "$$resolved" != "$$expected" ]]; then printf 'Refusing to bind docs path %s because it is missing, a symlink, or outside the repository.\n' "$$path" >&2; exit 2; fi; done
-TIMING_GIT_METADATA_ENV := GRIMACE_PERF_GIT_COMMIT="$$(git rev-parse --short=12 HEAD)"; GRIMACE_PERF_GIT_CHANGE="$$(git log -1 --format=%s HEAD)"; if [[ -n "$$(git status --short)" ]]; then GRIMACE_PERF_GIT_DIRTY=1; else GRIMACE_PERF_GIT_DIRTY=0; fi; export GRIMACE_PERF_GIT_COMMIT GRIMACE_PERF_GIT_CHANGE GRIMACE_PERF_GIT_DIRTY
+TIMING_GIT_METADATA_ENV := eval "$$(python scripts/timing_git_metadata.py $(TIMING_METADATA_IGNORE_ARGS))"
 COMPOSE_ENV := LOCAL_UID=$(LOCAL_UID) LOCAL_GID=$(LOCAL_GID)
 
 define compose_run

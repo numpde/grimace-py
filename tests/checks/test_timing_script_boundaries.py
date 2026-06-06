@@ -11,6 +11,7 @@ class TimingScriptBoundaryTests(unittest.TestCase):
             ROOT / "scripts" / "timings_enum_measure.py",
             ROOT / "scripts" / "timings_prepared_mol_zstd_measure.py",
             ROOT / "scripts" / "timings_prepared_mol_zstd_plot.py",
+            ROOT / "scripts" / "timing_git_metadata.py",
             ROOT / "scripts" / "record_perf_hotspots.py",
         )
         offenders: list[str] = []

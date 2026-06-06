@@ -106,6 +106,16 @@ class _WriterChildObligation:
     pending_entry: bool = False
 
 
+class _WriterChildObligationBlockerKind(Enum):
+    CLOSURE_CANDIDATE = "closure_candidate"
+
+
+@dataclass(frozen=True, slots=True)
+class _WriterChildObligationBlocker:
+    kind: _WriterChildObligationBlockerKind
+    bond: BondId | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class _WriterClosureOpenObligation:
     bond: BondId
@@ -1350,21 +1360,44 @@ def validate_writer_supported_prepared(prepared: SouthStarPreparedMol) -> None:
     validate_writer_stereo_supported_prepared(prepared)
 
 
-def _child_obligations_from_context(
+def _child_obligation_blockers_from_context(
     context: WriterTransitionExpansionContext,
-    state: WriterState,
-    atom: AtomId,
-) -> tuple[_WriterChildObligation, ...]:
-    partition = context.graph.edge_partition
+) -> tuple[_WriterChildObligationBlocker, ...]:
+    blockers: list[_WriterChildObligationBlocker] = []
 
+    for obligation in context.graph.edge_partition.obligations:
+        if obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE:
+            blockers.append(
+                _WriterChildObligationBlocker(
+                    kind=_WriterChildObligationBlockerKind.CLOSURE_CANDIDATE,
+                    bond=obligation.bond,
+                )
+            )
+
+    return tuple(blockers)
+
+
+def _raise_for_child_obligation_blockers(
+    blockers: tuple[_WriterChildObligationBlocker, ...],
+) -> None:
     if any(
-        obligation.kind is WriterEdgeObligationKind.CLOSURE_CANDIDATE
-        for obligation in partition.obligations
+        blocker.kind is _WriterChildObligationBlockerKind.CLOSURE_CANDIDATE
+        for blocker in blockers
     ):
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
         )
+
+
+def _child_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    atom: AtomId,
+) -> tuple[_WriterChildObligation, ...]:
+    _raise_for_child_obligation_blockers(
+        _child_obligation_blockers_from_context(context)
+    )
 
     summary = context.graph.residual_summary
     action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(

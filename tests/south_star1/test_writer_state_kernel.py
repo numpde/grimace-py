@@ -8,6 +8,7 @@ import inspect
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import grimace._south_star1.writer_frontier as writer_frontier_module
@@ -42,6 +43,7 @@ from grimace._south_star1.writer_frontier import initial_writer_frontier_cursor
 from grimace._south_star1.writer_frontier import initial_writer_transition_frontier_cursor
 from grimace._south_star1.writer_frontier import iter_writer_frontier_support
 from grimace._south_star1.writer_frontier import writer_frontier_choices
+from grimace._south_star1.writer_graph_obligations import WriterEdgeObligationKind
 from grimace._south_star1.writer_graph_obligations import WriterResidualAttachmentActionKind
 from grimace._south_star1.writer_state import ComponentCursor
 from grimace._south_star1.writer_state import ObligationState
@@ -920,6 +922,73 @@ class WriterStateKernelTest(unittest.TestCase):
             WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
         )
         self.assertFalse(children[0].pending_entry)
+
+    def test_child_obligation_blockers_collect_closure_candidate_edges(self) -> None:
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                edge_partition=SimpleNamespace(
+                    obligations=(
+                        SimpleNamespace(
+                            kind=WriterEdgeObligationKind.CLOSURE_CANDIDATE,
+                            bond=BondId(7),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        blockers = writer_transitions._child_obligation_blockers_from_context(
+            context,  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(len(blockers), 1)
+        self.assertIs(
+            blockers[0].kind,
+            writer_transitions._WriterChildObligationBlockerKind.CLOSURE_CANDIDATE,
+        )
+        self.assertEqual(blockers[0].bond, BondId(7))
+
+    def test_child_obligation_blockers_ignore_non_closure_candidate_edges(self) -> None:
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                edge_partition=SimpleNamespace(
+                    obligations=(
+                        SimpleNamespace(
+                            kind=WriterEdgeObligationKind.TREE_ENTRY,
+                            bond=BondId(1),
+                        ),
+                        SimpleNamespace(
+                            kind=WriterEdgeObligationKind.CLOSED_CLOSURE,
+                            bond=BondId(2),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        blockers = writer_transitions._child_obligation_blockers_from_context(
+            context,  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(blockers, ())
+
+    def test_child_obligation_blockers_raise_existing_unsupported_policy_error(self) -> None:
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=writer_transitions._WriterChildObligationBlockerKind.CLOSURE_CANDIDATE,
+            bond=BondId(7),
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._raise_for_child_obligation_blockers((blocker,))
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn(
+            "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
+            str(raised.exception),
+        )
 
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()

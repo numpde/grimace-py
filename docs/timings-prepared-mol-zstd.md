@@ -30,7 +30,7 @@ figure.timing-plot figcaption {
 
 | Field | Value |
 | --- | --- |
-| Recorded | 2026-05-31 UTC |
+| Recorded | 2026-06-06 UTC |
 | Runtime | Python 3.12.13, RDKit 2026.03.1, zstandard 0.25.0, zstd 1.5.7 |
 | Platform | Linux-6.17.0-23-generic-x86_64-with-glibc2.36 |
 | CPU | AMD Ryzen 5 7640U w/ Radeon 760M Graphics; 12 logical CPUs visible |

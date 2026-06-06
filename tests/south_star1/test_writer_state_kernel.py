@@ -1005,7 +1005,10 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
             return_value=(closure_transition,),
         ) as emit_actions, patch(
-            "grimace._south_star1.writer_transitions._child_obligations_from_context",
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_from_context",
+            side_effect=AssertionError("child blockers were computed too early"),
+        ), patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
             side_effect=AssertionError("child obligations were computed too early"),
         ):
             result = writer_transitions._active_emitted_transitions(
@@ -1045,7 +1048,10 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
             side_effect=((), (child_transition,)),
         ) as emit_actions, patch(
-            "grimace._south_star1.writer_transitions._child_obligations_from_context",
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_from_context",
+            return_value=(),
+        ) as child_blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
             return_value=(child_obligation,),
         ) as child_obligations, patch(
             "grimace._south_star1.writer_transitions._active_child_scheduled_actions",
@@ -1064,6 +1070,7 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
+        child_blockers.assert_called_once_with(context)
         child_obligations.assert_called_once_with(
             context,
             state,

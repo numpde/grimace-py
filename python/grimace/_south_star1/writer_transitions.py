@@ -408,7 +408,11 @@ def _active_emitted_transitions(
     if closure_transitions:
         return closure_transitions
 
-    children = _child_obligations_from_context(
+    _raise_for_child_obligation_blockers(
+        _child_obligation_blockers_from_context(context)
+    )
+
+    children = _unblocked_child_obligations_from_context(
         context,
         state,
         active_atom,
@@ -1390,15 +1394,11 @@ def _raise_for_child_obligation_blockers(
         )
 
 
-def _child_obligations_from_context(
+def _unblocked_child_obligations_from_context(
     context: WriterTransitionExpansionContext,
     state: WriterState,
     atom: AtomId,
 ) -> tuple[_WriterChildObligation, ...]:
-    _raise_for_child_obligation_blockers(
-        _child_obligation_blockers_from_context(context)
-    )
-
     summary = context.graph.residual_summary
     action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(
         summary,
@@ -1455,6 +1455,22 @@ def _child_obligations_from_context(
             children,
             key=lambda item: (int(item.bond), int(atom), int(item.child)),
         )
+    )
+
+
+def _child_obligations_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    atom: AtomId,
+) -> tuple[_WriterChildObligation, ...]:
+    _raise_for_child_obligation_blockers(
+        _child_obligation_blockers_from_context(context)
+    )
+
+    return _unblocked_child_obligations_from_context(
+        context,
+        state,
+        atom,
     )
 
 

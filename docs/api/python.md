@@ -2,6 +2,20 @@
 title: API
 ---
 
+## Contents
+
+- [Public surface](#public-surface)
+- [PreparedMol](#preparedmol)
+- [MolToSmilesEnum](#moltosmilesenum)
+- [MolToSmilesDecoder](#moltosmilesdecoder)
+- [MolToSmilesDeterminizedDecoder](#moltosmilesdeterminizeddecoder)
+- [MolToSmilesChoice](#moltosmileschoice)
+- [Decoder model](#decoder-model)
+- [MolToSmilesSample](#moltosmilessample)
+- [MolToSmilesDeviation](#moltosmilesdeviation)
+- [MolToSmilesTokenInventory](#moltosmilestokeninventory)
+- [MolToSmilesTokenInventorySuperset](#moltosmilestokeninventorysuperset)
+
 ## Public surface
 
 The only supported public Python import name is `grimace`.

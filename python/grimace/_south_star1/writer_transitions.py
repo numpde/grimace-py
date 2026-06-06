@@ -341,6 +341,27 @@ def _active_child_scheduled_actions(
     )
 
 
+def _active_child_scheduled_actions_from_context(
+    context: WriterTransitionExpansionContext,
+    state: WriterState,
+    active_atom: AtomId,
+) -> tuple[_WriterScheduledAction, ...]:
+    _raise_for_child_obligation_blockers(
+        _child_obligation_blockers_from_context(context)
+    )
+
+    children = _unblocked_child_obligations_from_context(
+        context,
+        state,
+        active_atom,
+    )
+
+    return _active_child_scheduled_actions(
+        active_atom,
+        children,
+    )
+
+
 def _active_child_transitions_from_scheduled_action(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -408,23 +429,14 @@ def _active_emitted_transitions(
     if closure_transitions:
         return closure_transitions
 
-    _raise_for_child_obligation_blockers(
-        _child_obligation_blockers_from_context(context)
-    )
-
-    children = _unblocked_child_obligations_from_context(
-        context,
-        state,
-        active_atom,
-    )
-
     return _transitions_from_scheduled_actions(
         prepared,
         state,
         context,
-        _active_child_scheduled_actions(
+        _active_child_scheduled_actions_from_context(
+            context,
+            state,
             active_atom,
-            children,
         ),
     )
 

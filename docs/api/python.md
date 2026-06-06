@@ -25,6 +25,15 @@ Underscore-prefixed modules are internal. The compiled extension
 For supported flag combinations and root semantics, start with
 [Runtime](../runtime.html). For terminology, see [Concepts](../concepts.html).
 
+Examples below use:
+
+```python
+from rdkit import Chem
+import grimace
+
+mol = Chem.MolFromSmiles("CCO")
+```
+
 ## PrepareMol and PreparedMol
 
 `PrepareMol(mol, *, isomericSmiles=True, kekuleSmiles=False, allBondsExplicit=False, allHsExplicit=False, ignoreAtomMapNumbers=False)`
@@ -79,14 +88,16 @@ support, but callers should not rely on the yielded iteration order as a
 stable public ordering guarantee.
 
 ```python
-outputs = list(
+outputs = sorted(
     grimace.MolToSmilesEnum(
         mol,
-        rootedAtAtom=0,
+        rootedAtAtom=-1,
+        isomericSmiles=False,
         canonical=False,
         doRandom=True,
     )
 )
+outputs  # ['C(C)O', 'C(O)C', 'CCO', 'OCC']
 ```
 
 This is the important semantic point:
@@ -127,16 +138,13 @@ prefix, and each choice exposes the next decoder state.
 ```python
 decoder = grimace.MolToSmilesDecoder(
     mol,
-    rootedAtAtom=0,
+    rootedAtAtom=-1,
     isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
-while decoder.prefix != "CC":
-    decoder = decoder.next_choices[0].next_state
-
-decoder.prefix       # 'CC'
-[choice.text for choice in decoder.next_choices]  # ['(', '(']
+[(choice.text, choice.branch_count) for choice in decoder.next_choices]
+# [('C', 1), ('C', 1), ('O', 1)]
 ```
 
 Two different choices may therefore share the same `text` while leading to
@@ -153,16 +161,13 @@ successor state.
 ```python
 decoder = grimace.MolToSmilesDeterminizedDecoder(
     mol,
-    rootedAtAtom=9,
+    rootedAtAtom=-1,
     isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
-decoder = decoder.next_choices[0].next_state  # 'c'
-decoder = decoder.next_choices[0].next_state  # 'c1'
-decoder = decoder.next_choices[0].next_state  # 'c1('
-
-[choice.text for choice in decoder.next_choices]  # ['C', 'c']
+[(choice.text, choice.branch_count) for choice in decoder.next_choices]
+# [('C', 2), ('O', 1)]
 ```
 
 ## MolToSmilesChoice
@@ -228,12 +233,16 @@ sample = grimace.MolToSmilesSample(
     mol,
     seed=17,
     rootedAtAtom=-1,
+    isomericSmiles=False,
     canonical=False,
     doRandom=True,
 )
 
-for step in sample.steps:
-    print(step.choice_tokens, step.selected_token)
+sample.smiles  # 'OCC'
+sample.tokens  # ('O', 'C', 'C')
+sample.steps[0].choice_tokens  # ('C', 'O')
+sample.steps[0].choice_branch_counts  # (2, 1)
+sample.steps[0].selected_token  # 'O'
 ```
 
 ## MolToSmilesDeviation

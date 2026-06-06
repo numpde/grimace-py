@@ -108,12 +108,16 @@ class _WriterChildObligation:
 
 class _WriterChildObligationBlockerKind(Enum):
     CLOSURE_CANDIDATE = "closure_candidate"
+    MULTI_INCIDENCE_RESIDUAL_ATTACHMENT = "multi_incidence_residual_attachment"
 
 
 @dataclass(frozen=True, slots=True)
 class _WriterChildObligationBlocker:
     kind: _WriterChildObligationBlockerKind
     bond: BondId | None = None
+    atom: AtomId | None = None
+    attachment_id: int | None = None
+    attachment_action_kind: WriterResidualAttachmentActionKind | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1393,6 +1397,47 @@ def _child_obligation_blockers_from_context(
     return tuple(blockers)
 
 
+def _child_obligation_blockers_for_atom(
+    context: WriterTransitionExpansionContext,
+    atom: AtomId,
+) -> tuple[_WriterChildObligationBlocker, ...]:
+    blockers = list(_child_obligation_blockers_from_context(context))
+
+    summary = context.graph.residual_summary
+    action_incidences_for_atom = writer_residual_attachment_action_incidences_for_atom(
+        summary,
+        atom,
+    )
+
+    for action in summary.attachment_actions:
+        if action.kind not in (
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+            WriterResidualAttachmentActionKind.CYCLIC_TREE_ENTRY,
+        ):
+            continue
+
+        boundary = tuple(
+            action_incidence.incidence
+            for action_incidence in action_incidences_for_atom
+            if action_incidence.action is action
+        )
+
+        if len(boundary) > 1:
+            blockers.append(
+                _WriterChildObligationBlocker(
+                    kind=(
+                        _WriterChildObligationBlockerKind
+                        .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+                    ),
+                    atom=atom,
+                    attachment_id=action.attachment_id,
+                    attachment_action_kind=action.kind,
+                )
+            )
+
+    return tuple(blockers)
+
+
 def _raise_for_child_obligation_blockers(
     blockers: tuple[_WriterChildObligationBlocker, ...],
 ) -> None:
@@ -1403,6 +1448,16 @@ def _raise_for_child_obligation_blockers(
         raise SouthStarError(
             SouthStarErrorKind.UNSUPPORTED_POLICY,
             "WRITER_SHAPED closure-candidate edge obligations are not supported yet",
+        )
+
+    if any(
+        blocker.kind
+        is _WriterChildObligationBlockerKind.MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+        for blocker in blockers
+    ):
+        raise SouthStarError(
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+            "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
         )
 
 

@@ -990,6 +990,118 @@ class WriterStateKernelTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_child_obligation_blockers_for_atom_collect_multi_incidence_tree_entries(self) -> None:
+        action = SimpleNamespace(
+            attachment_id=7,
+            kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        attachment = SimpleNamespace(
+            attachment_id=7,
+            boundary=(
+                SimpleNamespace(
+                    bond=BondId(1),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(2),
+                ),
+                SimpleNamespace(
+                    bond=BondId(2),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(3),
+                ),
+            ),
+        )
+        summary = SimpleNamespace(
+            attachments=SimpleNamespace(attachments=(attachment,)),
+            attachment_actions=(action,),
+        )
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                edge_partition=SimpleNamespace(obligations=()),
+                residual_summary=summary,
+            ),
+        )
+
+        blockers = writer_transitions._child_obligation_blockers_for_atom(
+            context,  # type: ignore[arg-type]
+            AtomId(0),
+        )
+
+        self.assertEqual(len(blockers), 1)
+        self.assertIs(
+            blockers[0].kind,
+            (
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+        )
+        self.assertEqual(blockers[0].atom, AtomId(0))
+        self.assertEqual(blockers[0].attachment_id, 7)
+        self.assertIs(
+            blockers[0].attachment_action_kind,
+            WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+
+    def test_child_obligation_blockers_for_atom_ignore_multi_incidence_closure_open_actions(self) -> None:
+        action = SimpleNamespace(
+            attachment_id=7,
+            kind=WriterResidualAttachmentActionKind.CLOSURE_OPEN_READY,
+        )
+        attachment = SimpleNamespace(
+            attachment_id=7,
+            boundary=(
+                SimpleNamespace(
+                    bond=BondId(1),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(2),
+                ),
+                SimpleNamespace(
+                    bond=BondId(2),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(3),
+                ),
+            ),
+        )
+        summary = SimpleNamespace(
+            attachments=SimpleNamespace(attachments=(attachment,)),
+            attachment_actions=(action,),
+        )
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                edge_partition=SimpleNamespace(obligations=()),
+                residual_summary=summary,
+            ),
+        )
+
+        blockers = writer_transitions._child_obligation_blockers_for_atom(
+            context,  # type: ignore[arg-type]
+            AtomId(0),
+        )
+
+        self.assertEqual(blockers, ())
+
+    def test_child_obligation_blockers_raise_multi_incidence_unsupported_policy_error(self) -> None:
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=AtomId(0),
+            attachment_id=7,
+            attachment_action_kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._raise_for_child_obligation_blockers((blocker,))
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn(
+            "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+            str(raised.exception),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

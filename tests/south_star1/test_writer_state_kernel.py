@@ -1102,6 +1102,47 @@ class WriterStateKernelTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_active_child_scheduler_uses_atom_scoped_blockers(self) -> None:
+        context = object()
+        state = object()
+        active_atom = AtomId(0)
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=active_atom,
+            attachment_id=7,
+            attachment_action_kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(blocker,),
+        ) as child_blockers, patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            side_effect=AssertionError("unblocked child obligations were computed"),
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._active_child_scheduled_actions_from_context(
+                    context,  # type: ignore[arg-type]
+                    state,  # type: ignore[arg-type]
+                    active_atom,
+                )
+
+        child_blockers.assert_called_once_with(
+            context,
+            active_atom,
+        )
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn(
+            "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+            str(raised.exception),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()
@@ -1117,7 +1158,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
             return_value=(closure_transition,),
         ) as emit_actions, patch(
-            "grimace._south_star1.writer_transitions._child_obligation_blockers_from_context",
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
             side_effect=AssertionError("child blockers were computed too early"),
         ), patch(
             "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
@@ -1160,7 +1201,7 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
             side_effect=((), (child_transition,)),
         ) as emit_actions, patch(
-            "grimace._south_star1.writer_transitions._child_obligation_blockers_from_context",
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
             return_value=(),
         ) as child_blockers, patch(
             "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
@@ -1182,7 +1223,10 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
-        child_blockers.assert_called_once_with(context)
+        child_blockers.assert_called_once_with(
+            context,
+            active_atom,
+        )
         child_obligations.assert_called_once_with(
             context,
             state,

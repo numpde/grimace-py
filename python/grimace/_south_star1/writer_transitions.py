@@ -351,7 +351,10 @@ def _active_child_scheduled_actions_from_context(
     active_atom: AtomId,
 ) -> tuple[_WriterScheduledAction, ...]:
     _raise_for_child_obligation_blockers(
-        _child_obligation_blockers_from_context(context)
+        _child_obligation_blockers_for_atom(
+            context,
+            active_atom,
+        )
     )
 
     children = _unblocked_child_obligations_from_context(

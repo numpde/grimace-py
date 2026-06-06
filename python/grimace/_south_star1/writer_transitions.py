@@ -184,6 +184,59 @@ class _WriterScheduledAction:
             )
 
 
+def _finish_active_action(parent: AtomId) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.FINISH_ACTIVE,
+        parent=parent,
+    )
+
+
+def _enter_inline_child_action(
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.ENTER_INLINE_CHILD,
+        parent=parent,
+        child_obligation=child_obligation,
+    )
+
+
+def _open_branch_action(
+    parent: AtomId,
+    child_obligation: _WriterChildObligation,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.OPEN_BRANCH,
+        parent=parent,
+        child_obligation=child_obligation,
+    )
+
+
+def _open_closure_endpoint_action(
+    parent: AtomId,
+    closure_obligation: _WriterClosureOpenObligation,
+    label: WriterClosureLabel,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
+        parent=parent,
+        closure_open_obligation=closure_obligation,
+        closure_open_label=label,
+    )
+
+
+def _pair_closure_endpoint_action(
+    parent: AtomId,
+    pair_obligation: _WriterClosurePairObligation,
+) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
+        parent=parent,
+        closure_pair_obligation=pair_obligation,
+    )
+
+
 def build_writer_transition_expansion_context(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -267,28 +320,13 @@ def _active_child_scheduled_actions(
     children: tuple[_WriterChildObligation, ...],
 ) -> tuple[_WriterScheduledAction, ...]:
     if not children:
-        return (
-            _WriterScheduledAction(
-                kind=_WriterScheduledActionKind.FINISH_ACTIVE,
-                parent=parent,
-            ),
-        )
+        return (_finish_active_action(parent),)
 
     if len(children) == 1:
-        return (
-            _WriterScheduledAction(
-                kind=_WriterScheduledActionKind.ENTER_INLINE_CHILD,
-                parent=parent,
-                child_obligation=children[0],
-            ),
-        )
+        return (_enter_inline_child_action(parent, children[0]),)
 
     return tuple(
-        _WriterScheduledAction(
-            kind=_WriterScheduledActionKind.OPEN_BRANCH,
-            parent=parent,
-            child_obligation=child_obligation,
-        )
+        _open_branch_action(parent, child_obligation)
         for child_obligation in children
     )
 
@@ -954,11 +992,10 @@ def _closure_open_scheduled_actions(
     ):
         for label in labels:
             actions.append(
-                _WriterScheduledAction(
-                    kind=_WriterScheduledActionKind.OPEN_CLOSURE_ENDPOINT,
-                    parent=active_atom,
-                    closure_open_obligation=closure_obligation,
-                    closure_open_label=label,
+                _open_closure_endpoint_action(
+                    active_atom,
+                    closure_obligation,
+                    label,
                 )
             )
 
@@ -1001,11 +1038,7 @@ def _closure_pair_scheduled_actions(
     active_atom: AtomId,
 ) -> tuple[_WriterScheduledAction, ...]:
     return tuple(
-        _WriterScheduledAction(
-            kind=_WriterScheduledActionKind.PAIR_CLOSURE_ENDPOINT,
-            parent=active_atom,
-            closure_pair_obligation=pair_obligation,
-        )
+        _pair_closure_endpoint_action(active_atom, pair_obligation)
         for pair_obligation in _closure_pair_obligations_from_state(
             state,
             active_atom,

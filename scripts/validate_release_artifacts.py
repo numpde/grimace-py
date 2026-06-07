@@ -751,9 +751,9 @@ def prepared_mol_zstd_manifest_metadata(
             "PreparedMol zstd manifest dictionary size is not an integer: "
             f"{member_name!r}"
         )
-    if dictionary_size_bytes < 0:
+    if dictionary_size_bytes <= 0:
         raise ValueError(
-            f"PreparedMol zstd manifest dictionary size is negative: {member_name!r}"
+            f"PreparedMol zstd manifest dictionary size is not positive: {member_name!r}"
         )
     if is_unsafe_archive_path(script):
         raise ValueError(

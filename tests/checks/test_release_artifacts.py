@@ -19,7 +19,8 @@ TEST_DICTIONARY_ARTIFACT = "20000102_1234abcd"
 TEST_SECOND_DICTIONARY_ARTIFACT = "20000103_5678abcd"
 TEST_GENERATOR_SCRIPT = "scripts/generate_prepared_mol_zstd_dictionary.py"
 TEST_SECOND_GENERATOR_SCRIPT = "scripts/prepared_mol_zstd_dictionary_generate.py"
-EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+TEST_DICTIONARY_PAYLOAD = b"test prepared-mol zstd dictionary"
+TEST_DICTIONARY_SHA256 = hashlib.sha256(TEST_DICTIONARY_PAYLOAD).hexdigest()
 SDIST_DICTIONARY_NAMES = (
     f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.json",
     f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.zstdict",
@@ -53,8 +54,8 @@ def dictionary_manifest(
     *,
     artifact: str = TEST_DICTIONARY_ARTIFACT,
     dictionary_id: object = 123_456,
-    dictionary_sha256: str = EMPTY_SHA256,
-    dictionary_size_bytes: int = 0,
+    dictionary_sha256: str = TEST_DICTIONARY_SHA256,
+    dictionary_size_bytes: int = len(TEST_DICTIONARY_PAYLOAD),
     dictionary_file: str = "default_v1.zstdict",
     training_level: object = 3,
 ) -> str:
@@ -201,6 +202,8 @@ def archive_payload(
     if name.endswith("/default_v1.json"):
         artifact = name.rsplit("/", 2)[-2]
         return dictionary_manifest(manifest_script, artifact=artifact).encode("utf-8")
+    if name.endswith("/default_v1.zstdict"):
+        return TEST_DICTIONARY_PAYLOAD
     if name.endswith(".dist-info/METADATA"):
         version = name.split("-", 1)[1].split(".dist-info/", 1)[0]
         return wheel_metadata(version=version).encode("utf-8")
@@ -729,6 +732,22 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                     WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest(
                         dictionary_size_bytes=1,
                     ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "dictionary size"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_zero_size_prepared_mol_zstd_dictionary(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    WHEEL_DICTIONARY_NAMES[0]: dictionary_manifest_for_payload(
+                        b"",
+                    ).encode("utf-8"),
+                    WHEEL_DICTIONARY_NAMES[1]: b"",
                 },
             )
             with self.assertRaisesRegex(ValueError, "dictionary size"):

@@ -552,6 +552,8 @@ def validate_native_extension(
         raise ValueError("wheel native extension must be a Linux .so file")
     if not candidates[0].startswith(expected_prefix):
         raise ValueError("wheel native extension tag does not match filename")
+    if not candidates[0].endswith("-x86_64-linux-gnu.so"):
+        raise ValueError("wheel native extension platform does not match filename")
 
 
 def single_metadata_header(message: Message, header: str) -> str:

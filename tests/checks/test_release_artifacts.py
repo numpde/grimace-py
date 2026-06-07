@@ -722,6 +722,21 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "native extension tag"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_wheel_native_extension_that_does_not_match_platform_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                (
+                    "grimace/__init__.py",
+                    "grimace/_core.cpython-312-aarch64-linux-gnu.so",
+                    *WHEEL_DICTIONARY_NAMES,
+                ),
+            )
+            with self.assertRaisesRegex(ValueError, "native extension platform"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_with_extra_native_extension_artifact(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

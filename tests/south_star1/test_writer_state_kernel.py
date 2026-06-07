@@ -1306,6 +1306,51 @@ class WriterStateKernelTest(unittest.TestCase):
             str(raised.exception),
         )
 
+    def test_scheduled_writer_transitions_dispatches_pending_entry_actions(self) -> None:
+        prepared = object()
+        context = object()
+        pending = PendingWriterEntry(
+            parent=AtomId(0),
+            child=AtomId(1),
+            bond=BondId(0),
+            branch=False,
+        )
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=pending,
+            ),
+        )
+        action = object()
+        transition = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions._pending_entry_scheduled_actions",
+            return_value=(action,),
+        ) as pending_actions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            return_value=(transition,),
+        ) as emit_actions, patch(
+            "grimace._south_star1.writer_transitions._root_atom_transitions",
+            side_effect=AssertionError("root atom path should not run"),
+        ), patch(
+            "grimace._south_star1.writer_transitions._active_emitted_transitions",
+            side_effect=AssertionError("active-emitted path should not run"),
+        ):
+            result = writer_transitions._scheduled_writer_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(result, (transition,))
+        pending_actions.assert_called_once_with(state)
+        emit_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (action,),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

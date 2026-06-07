@@ -1,9 +1,11 @@
 from pathlib import Path
+import importlib.util
 import re
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+RELEASE_VALIDATOR = ROOT / "scripts" / "validate_release_artifacts.py"
 PINNED_ACTION_REF = re.compile(
     r"(?m)^\s*-\s+uses:\s+[^@\s]+@[0-9a-f]{40}(?:\s+#\s+\S+)?\s*$"
 )
@@ -19,6 +21,18 @@ def job_section(workflow: str, job_name: str) -> str:
     if match is None:
         raise AssertionError(f"missing job {job_name!r}")
     return match.group("body")
+
+
+def load_release_validator():
+    spec = importlib.util.spec_from_file_location(
+        "validate_release_artifacts",
+        RELEASE_VALIDATOR,
+    )
+    if spec is None or spec.loader is None:
+        raise AssertionError("could not load release artifact validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class WorkflowPostureTests(unittest.TestCase):
@@ -144,6 +158,48 @@ class WorkflowPostureTests(unittest.TestCase):
         self.assertEqual(
             workflow.count("python scripts/validate_release_artifacts.py dist --tag"),
             2,
+        )
+
+    def test_release_workflow_wheel_matrix_matches_artifact_validator(self) -> None:
+        workflow = read_text(".github/workflows/release.yml")
+        wheel = job_section(workflow, "wheel")
+        validator = load_release_validator()
+
+        matrix_entries = re.findall(
+            r"(?ms)^\s{10}- name:.*?(?=^\s{10}- name:|^    steps:)",
+            wheel,
+        )
+        self.assertTrue(matrix_entries)
+        python_tags: list[str] = []
+        platforms: set[str] = set()
+        for entry in matrix_entries:
+            target = re.search(r"(?m)^\s+target: (\S+)$", entry)
+            manylinux = re.search(r'(?m)^\s+manylinux: "([0-9]+_[0-9]+)"$', entry)
+            python_version = re.search(
+                r'(?m)^\s+python-version: "([0-9]+\.[0-9]+)"$',
+                entry,
+            )
+            self.assertIsNotNone(target)
+            self.assertIsNotNone(manylinux)
+            self.assertIsNotNone(python_version)
+            python_tags.append(f"cp{python_version.group(1).replace('.', '')}")
+            platforms.add(f"manylinux_{manylinux.group(1)}_{target.group(1)}")
+
+        self.assertEqual(validator.PYTHON_TAGS, tuple(python_tags))
+        self.assertEqual((validator.PLATFORM_TAG,), tuple(sorted(set(platforms))))
+        self.assertEqual(
+            validator.expected_artifact_names("0.0.0"),
+            tuple(
+                sorted(
+                    (
+                        *(
+                            f"grimace_py-0.0.0-{tag}-{tag}-{validator.PLATFORM_TAG}.whl"
+                            for tag in python_tags
+                        ),
+                        "grimace_py-0.0.0.tar.gz",
+                    )
+                )
+            ),
         )
 
 

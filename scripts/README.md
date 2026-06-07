@@ -55,8 +55,9 @@ bounded correctness checks; heavier profiling runs should be explicit.
     round trip before returning success
   - requires the pinned `zstandard` development dependency
 - `generate_prepared_mol_zstd_dictionary.py`
-  - compatibility entry point for shipped manifests that record the historical
-    generator path; delegates to `prepared_mol_zstd_dictionary_generate.py`
+  - compatibility source/sdist entry point for shipped manifests that record
+    the historical generator path; delegates to
+    `prepared_mol_zstd_dictionary_generate.py`
 - `timings_prepared_mol_zstd_measure.py`
   - measures per-molecule `PreparedMol` compression and decompression with and
     without a selected shipped dictionary

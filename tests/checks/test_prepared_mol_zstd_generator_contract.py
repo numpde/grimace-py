@@ -158,7 +158,7 @@ class PreparedMolZstdGeneratorContractTests(unittest.TestCase):
             literal_constant("SELECTION_RULE"),
         )
 
-    def test_shipped_manifest_generator_paths_are_resolvable(self) -> None:
+    def test_shipped_manifest_generator_source_paths_resolve_in_checkout(self) -> None:
         manifests = tuple(sorted(DICTIONARY_ROOT.glob("*/default_v1.json")))
         self.assertTrue(manifests)
         for manifest_path in manifests:

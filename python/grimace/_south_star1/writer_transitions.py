@@ -136,6 +136,7 @@ class _WriterClosurePairObligation:
 
 class _WriterScheduledActionKind(Enum):
     CONSUME_PENDING_ENTRY = "consume_pending_entry"
+    EMIT_ROOT_ATOM = "emit_root_atom"
     FINISH_ACTIVE = "finish_active"
     ENTER_INLINE_CHILD = "enter_inline_child"
     OPEN_BRANCH = "open_branch"
@@ -160,7 +161,10 @@ class _WriterScheduledAction:
         has_open_label = self.closure_open_label is not None
         has_pair = self.closure_pair_obligation is not None
 
-        if self.kind is _WriterScheduledActionKind.FINISH_ACTIVE:
+        if self.kind in (
+            _WriterScheduledActionKind.EMIT_ROOT_ATOM,
+            _WriterScheduledActionKind.FINISH_ACTIVE,
+        ):
             valid = (
                 not has_pending
                 and not has_child
@@ -220,6 +224,13 @@ def _consume_pending_entry_action(
         kind=_WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
         parent=pending_entry.parent,
         pending_entry=pending_entry,
+    )
+
+
+def _emit_root_atom_action(atom: AtomId) -> _WriterScheduledAction:
+    return _WriterScheduledAction(
+        kind=_WriterScheduledActionKind.EMIT_ROOT_ATOM,
+        parent=atom,
     )
 
 
@@ -484,6 +495,17 @@ def _pending_entry_scheduled_actions(
     return (_consume_pending_entry_action(pending),)
 
 
+def _root_atom_scheduled_actions(
+    state: WriterState,
+) -> tuple[_WriterScheduledAction, ...]:
+    active = state.active
+
+    if active.atom_emitted:
+        return ()
+
+    return (_emit_root_atom_action(active.atom),)
+
+
 def _scheduled_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
@@ -500,7 +522,12 @@ def _scheduled_writer_transitions(
     active = state.active
 
     if not active.atom_emitted:
-        return _root_atom_transitions(prepared, state, active)
+        return _transitions_from_scheduled_actions(
+            prepared,
+            state,
+            context,
+            _root_atom_scheduled_actions(state),
+        )
 
     return _active_emitted_transitions(
         prepared,
@@ -552,6 +579,31 @@ def _root_atom_transitions(
         if transition is not None:
             transitions.append(transition)
     return tuple(transitions)
+
+
+def _root_atom_transitions_from_scheduled_action(
+    prepared: SouthStarPreparedMol,
+    state: WriterState,
+    context: WriterTransitionExpansionContext,
+    action: _WriterScheduledAction,
+) -> tuple[WriterTransition, ...]:
+    if action.kind is not _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            f"unsupported root-atom scheduled action: {action.kind!r}",
+        )
+
+    if action.parent != state.active.atom:
+        raise SouthStarError(
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+            "scheduled root-atom action does not match active atom",
+        )
+
+    return _root_atom_transitions(
+        prepared,
+        state,
+        state.active,
+    )
 
 
 def _pending_entry_transitions(
@@ -901,6 +953,14 @@ def _transitions_from_scheduled_action(
 ) -> tuple[WriterTransition, ...]:
     if action.kind is _WriterScheduledActionKind.CONSUME_PENDING_ENTRY:
         return _pending_entry_transitions_from_scheduled_action(
+            prepared,
+            state,
+            context,
+            action,
+        )
+
+    if action.kind is _WriterScheduledActionKind.EMIT_ROOT_ATOM:
+        return _root_atom_transitions_from_scheduled_action(
             prepared,
             state,
             context,

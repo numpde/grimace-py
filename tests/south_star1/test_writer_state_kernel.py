@@ -1351,6 +1351,46 @@ class WriterStateKernelTest(unittest.TestCase):
             (action,),
         )
 
+    def test_scheduled_writer_transitions_dispatches_root_atom_actions(self) -> None:
+        prepared = object()
+        context = object()
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=None,
+            ),
+            active=SimpleNamespace(
+                atom=AtomId(0),
+                atom_emitted=False,
+            ),
+        )
+        action = object()
+        transition = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions._root_atom_scheduled_actions",
+            return_value=(action,),
+        ) as root_actions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            return_value=(transition,),
+        ) as emit_actions, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_transitions",
+            side_effect=AssertionError("active-emitted path should not run"),
+        ):
+            result = writer_transitions._scheduled_writer_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(result, (transition,))
+        root_actions.assert_called_once_with(state)
+        emit_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (action,),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()
@@ -1473,6 +1513,28 @@ class WriterStateKernelTest(unittest.TestCase):
                 kind=writer_transitions._WriterScheduledActionKind.ENTER_INLINE_CHILD,
                 parent=AtomId(0),
             )
+
+    def test_scheduled_action_rejects_root_atom_payload(self) -> None:
+        child = writer_transitions._WriterChildObligation(
+            bond=BondId(0),
+            child=AtomId(1),
+        )
+
+        with self.assertRaises(SouthStarError):
+            writer_transitions._WriterScheduledAction(
+                kind=writer_transitions._WriterScheduledActionKind.EMIT_ROOT_ATOM,
+                parent=AtomId(0),
+                child_obligation=child,
+            )
+
+    def test_scheduled_action_accepts_root_atom_action(self) -> None:
+        action = writer_transitions._emit_root_atom_action(AtomId(0))
+
+        self.assertIs(
+            action.kind,
+            writer_transitions._WriterScheduledActionKind.EMIT_ROOT_ATOM,
+        )
+        self.assertEqual(action.parent, AtomId(0))
 
     def test_scheduled_action_rejects_wrong_payload_family(self) -> None:
         endpoint = WriterOpenClosureEndpoint(

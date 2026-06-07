@@ -468,11 +468,15 @@ def _active_emitted_transitions(
         context,
     )
 
-    closure_transitions = _transitions_from_scheduled_actions(
+    closure_emissions = _scheduled_action_emissions(
         prepared,
         state,
         context,
         closure_actions,
+    )
+
+    closure_transitions = _transitions_from_scheduled_action_emissions(
+        closure_emissions
     )
 
     if closure_transitions:
@@ -1031,23 +1035,31 @@ def _scheduled_action_emissions(
     return tuple(emissions)
 
 
+def _transitions_from_scheduled_action_emissions(
+    emissions: tuple[_WriterScheduledActionEmission, ...],
+) -> tuple[WriterTransition, ...]:
+    transitions: list[WriterTransition] = []
+
+    for emission in emissions:
+        transitions.extend(emission.transitions)
+
+    return tuple(transitions)
+
+
 def _transitions_from_scheduled_actions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
     actions: tuple[_WriterScheduledAction, ...],
 ) -> tuple[WriterTransition, ...]:
-    transitions: list[WriterTransition] = []
-
-    for emission in _scheduled_action_emissions(
-        prepared,
-        state,
-        context,
-        actions,
-    ):
-        transitions.extend(emission.transitions)
-
-    return tuple(transitions)
+    return _transitions_from_scheduled_action_emissions(
+        _scheduled_action_emissions(
+            prepared,
+            state,
+            context,
+            actions,
+        )
+    )
 
 
 def _open_closure_endpoint_transition_from_obligation(

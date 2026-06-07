@@ -1566,21 +1566,53 @@ class WriterStateKernelTest(unittest.TestCase):
             (first_action, second_action),
         )
 
+    def test_transitions_from_scheduled_action_emissions_flattens_transition_tuples(self) -> None:
+        first_action = writer_transitions._finish_active_action(AtomId(0))
+        second_action = writer_transitions._emit_root_atom_action(AtomId(1))
+        first_transition = object()
+        second_transition = object()
+        third_transition = object()
+        emissions = (
+            writer_transitions._WriterScheduledActionEmission(
+                action=first_action,
+                transitions=(first_transition, second_transition),
+            ),
+            writer_transitions._WriterScheduledActionEmission(
+                action=second_action,
+                transitions=(),
+            ),
+            writer_transitions._WriterScheduledActionEmission(
+                action=second_action,
+                transitions=(third_transition,),
+            ),
+        )
+
+        self.assertEqual(
+            writer_transitions._transitions_from_scheduled_action_emissions(
+                emissions,  # type: ignore[arg-type]
+            ),
+            (first_transition, second_transition, third_transition),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()
         context = object()
         active_atom = AtomId(7)
         closure_action = object()
+        closure_emission = object()
         closure_transition = object()
 
         with patch(
             "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
             return_value=(closure_action,),
         ) as closure_actions, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            "grimace._south_star1.writer_transitions._scheduled_action_emissions",
+            return_value=(closure_emission,),
+        ) as scheduled_emissions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
             return_value=(closure_transition,),
-        ) as emit_actions, patch(
+        ) as flatten_emissions, patch(
             "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
             side_effect=AssertionError("child blockers were computed too early"),
         ), patch(
@@ -1600,12 +1632,13 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
-        emit_actions.assert_called_once_with(
+        scheduled_emissions.assert_called_once_with(
             prepared,
             state,
             context,
             (closure_action,),
         )
+        flatten_emissions.assert_called_once_with((closure_emission,))
 
     def test_active_emitted_scheduler_computes_children_after_empty_closure_transitions(self) -> None:
         prepared = object()
@@ -1613,6 +1646,7 @@ class WriterStateKernelTest(unittest.TestCase):
         context = object()
         active_atom = AtomId(7)
         closure_action = object()
+        closure_emission = object()
         child_obligation = object()
         child_action = object()
         child_transition = object()
@@ -1621,9 +1655,12 @@ class WriterStateKernelTest(unittest.TestCase):
             "grimace._south_star1.writer_transitions._closure_endpoint_scheduled_actions",
             return_value=(closure_action,),
         ) as closure_actions, patch(
-            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
-            side_effect=((), (child_transition,)),
-        ) as emit_actions, patch(
+            "grimace._south_star1.writer_transitions._scheduled_action_emissions",
+            return_value=(closure_emission,),
+        ) as scheduled_emissions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_action_emissions",
+            return_value=(),
+        ) as flatten_emissions, patch(
             "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
             return_value=(),
         ) as child_blockers, patch(
@@ -1632,7 +1669,10 @@ class WriterStateKernelTest(unittest.TestCase):
         ) as child_obligations, patch(
             "grimace._south_star1.writer_transitions._active_child_scheduled_actions",
             return_value=(child_action,),
-        ) as child_actions:
+        ) as child_actions, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            return_value=(child_transition,),
+        ) as emit_child_actions:
             result = writer_transitions._active_emitted_transitions(
                 prepared,  # type: ignore[arg-type]
                 state,  # type: ignore[arg-type]
@@ -1646,6 +1686,13 @@ class WriterStateKernelTest(unittest.TestCase):
             state,
             context,
         )
+        scheduled_emissions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (closure_action,),
+        )
+        flatten_emissions.assert_called_once_with((closure_emission,))
         child_blockers.assert_called_once_with(
             context,
             active_atom,
@@ -1659,14 +1706,11 @@ class WriterStateKernelTest(unittest.TestCase):
             active_atom,
             (child_obligation,),
         )
-        self.assertEqual(emit_actions.call_count, 2)
-        self.assertEqual(
-            emit_actions.call_args_list[0].args,
-            (prepared, state, context, (closure_action,)),
-        )
-        self.assertEqual(
-            emit_actions.call_args_list[1].args,
-            (prepared, state, context, (child_action,)),
+        emit_child_actions.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            (child_action,),
         )
 
     def test_scheduled_action_rejects_finish_payload(self) -> None:

@@ -1495,8 +1495,8 @@ def _unblocked_child_obligations_from_context(
 
         if len(boundary) != 1:
             raise SouthStarError(
-                SouthStarErrorKind.UNSUPPORTED_POLICY,
-                "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+                SouthStarErrorKind.INTERNAL_INVARIANT,
+                "unblocked child obligation builder received non-singleton boundary",
             )
 
         incidence = boundary[0]

@@ -1217,6 +1217,94 @@ class WriterStateKernelTest(unittest.TestCase):
             atom,
         )
 
+    def test_checked_child_obligations_preserve_multi_incidence_policy_error(self) -> None:
+        context = object()
+        state = object()
+        atom = AtomId(0)
+        blocker = writer_transitions._WriterChildObligationBlocker(
+            kind=(
+                writer_transitions._WriterChildObligationBlockerKind
+                .MULTI_INCIDENCE_RESIDUAL_ATTACHMENT
+            ),
+            atom=atom,
+            attachment_id=7,
+            attachment_action_kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+
+        with patch(
+            "grimace._south_star1.writer_transitions._child_obligation_blockers_for_atom",
+            return_value=(blocker,),
+        ), patch(
+            "grimace._south_star1.writer_transitions._unblocked_child_obligations_from_context",
+            side_effect=AssertionError("unblocked builder should not run"),
+        ):
+            with self.assertRaises(SouthStarError) as raised:
+                writer_transitions._child_obligations_from_context(
+                    context,  # type: ignore[arg-type]
+                    state,  # type: ignore[arg-type]
+                    atom,
+                )
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.UNSUPPORTED_POLICY,
+        )
+        self.assertIn(
+            "WRITER_SHAPED multi-incidence residual attachments are not supported yet",
+            str(raised.exception),
+        )
+
+    def test_unblocked_child_obligations_reject_multi_incidence_as_internal_invariant(self) -> None:
+        action = SimpleNamespace(
+            attachment_id=7,
+            kind=WriterResidualAttachmentActionKind.ACYCLIC_TREE_ENTRY,
+        )
+        attachment = SimpleNamespace(
+            attachment_id=7,
+            boundary=(
+                SimpleNamespace(
+                    bond=BondId(1),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(2),
+                ),
+                SimpleNamespace(
+                    bond=BondId(2),
+                    written_atom=AtomId(0),
+                    residual_atom=AtomId(3),
+                ),
+            ),
+        )
+        summary = SimpleNamespace(
+            attachments=SimpleNamespace(attachments=(attachment,)),
+            attachment_actions=(action,),
+        )
+        context = SimpleNamespace(
+            graph=SimpleNamespace(
+                residual_summary=summary,
+            ),
+        )
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=None,
+            ),
+        )
+
+        with self.assertRaises(SouthStarError) as raised:
+            writer_transitions._unblocked_child_obligations_from_context(
+                context,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                AtomId(0),
+            )
+
+        self.assertIs(
+            raised.exception.kind,
+            SouthStarErrorKind.INTERNAL_INVARIANT,
+        )
+        self.assertIn(
+            "unblocked child obligation builder received non-singleton boundary",
+            str(raised.exception),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

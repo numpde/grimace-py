@@ -1391,6 +1391,109 @@ class WriterStateKernelTest(unittest.TestCase):
             (action,),
         )
 
+    def test_top_level_scheduled_actions_prefer_pending_entry_over_root(self) -> None:
+        pending = PendingWriterEntry(
+            parent=AtomId(0),
+            child=AtomId(1),
+            bond=BondId(0),
+            branch=False,
+        )
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=pending,
+            ),
+            active=SimpleNamespace(
+                atom=AtomId(9),
+                atom_emitted=False,
+            ),
+        )
+
+        actions = writer_transitions._top_level_scheduled_actions(
+            state,  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(len(actions), 1)
+        self.assertIs(
+            actions[0].kind,
+            writer_transitions._WriterScheduledActionKind.CONSUME_PENDING_ENTRY,
+        )
+        self.assertEqual(actions[0].pending_entry, pending)
+
+    def test_top_level_scheduled_actions_return_root_when_no_pending(self) -> None:
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=None,
+            ),
+            active=SimpleNamespace(
+                atom=AtomId(3),
+                atom_emitted=False,
+            ),
+        )
+
+        actions = writer_transitions._top_level_scheduled_actions(
+            state,  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(len(actions), 1)
+        self.assertIs(
+            actions[0].kind,
+            writer_transitions._WriterScheduledActionKind.EMIT_ROOT_ATOM,
+        )
+        self.assertEqual(actions[0].parent, AtomId(3))
+
+    def test_top_level_scheduled_actions_empty_for_active_emitted_state(self) -> None:
+        state = SimpleNamespace(
+            obligations=SimpleNamespace(
+                pending_entry=None,
+            ),
+            active=SimpleNamespace(
+                atom=AtomId(3),
+                atom_emitted=True,
+            ),
+        )
+
+        self.assertEqual(
+            writer_transitions._top_level_scheduled_actions(
+                state,  # type: ignore[arg-type]
+            ),
+            (),
+        )
+
+    def test_scheduled_writer_transitions_falls_through_after_empty_top_level_actions(self) -> None:
+        prepared = object()
+        context = object()
+        state = SimpleNamespace(
+            active=SimpleNamespace(
+                atom=AtomId(4),
+            ),
+        )
+        transition = object()
+
+        with patch(
+            "grimace._south_star1.writer_transitions._top_level_scheduled_actions",
+            return_value=(),
+        ) as top_level_actions, patch(
+            "grimace._south_star1.writer_transitions._active_emitted_transitions",
+            return_value=(transition,),
+        ) as active_emitted, patch(
+            "grimace._south_star1.writer_transitions._transitions_from_scheduled_actions",
+            side_effect=AssertionError("top-level actions should not emit"),
+        ):
+            result = writer_transitions._scheduled_writer_transitions(
+                prepared,  # type: ignore[arg-type]
+                state,  # type: ignore[arg-type]
+                context,  # type: ignore[arg-type]
+            )
+
+        self.assertEqual(result, (transition,))
+        top_level_actions.assert_called_once_with(state)
+        active_emitted.assert_called_once_with(
+            prepared,
+            state,
+            context,
+            AtomId(4),
+        )
+
     def test_active_emitted_scheduler_does_not_compute_children_when_closure_transition_survives(self) -> None:
         prepared = object()
         state = object()

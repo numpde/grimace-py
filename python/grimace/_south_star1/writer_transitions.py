@@ -506,28 +506,33 @@ def _root_atom_scheduled_actions(
     return (_emit_root_atom_action(active.atom),)
 
 
+def _top_level_scheduled_actions(
+    state: WriterState,
+) -> tuple[_WriterScheduledAction, ...]:
+    pending_actions = _pending_entry_scheduled_actions(state)
+
+    if pending_actions:
+        return pending_actions
+
+    return _root_atom_scheduled_actions(state)
+
+
 def _scheduled_writer_transitions(
     prepared: SouthStarPreparedMol,
     state: WriterState,
     context: WriterTransitionExpansionContext,
 ) -> tuple[WriterTransition, ...]:
-    if state.obligations.pending_entry is not None:
+    top_level_actions = _top_level_scheduled_actions(state)
+
+    if top_level_actions:
         return _transitions_from_scheduled_actions(
             prepared,
             state,
             context,
-            _pending_entry_scheduled_actions(state),
+            top_level_actions,
         )
 
     active = state.active
-
-    if not active.atom_emitted:
-        return _transitions_from_scheduled_actions(
-            prepared,
-            state,
-            context,
-            _root_atom_scheduled_actions(state),
-        )
 
     return _active_emitted_transitions(
         prepared,

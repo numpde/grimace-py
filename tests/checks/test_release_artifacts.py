@@ -516,6 +516,19 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate archive member"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_duplicate_sdist_member_after_directory_marker_normalization(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                include_root_directory=True,
+                include_root_directory_marker=True,
+            )
+            with self.assertRaisesRegex(ValueError, "duplicate archive member"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_unsafe_wheel_path(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -610,6 +623,14 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                     include_dist_info_metadata=False,
                 )
             with self.assertRaisesRegex(ValueError, "duplicate archive member"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_duplicate_wheel_member_after_directory_marker_normalization(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(wheel, ("grimace/data", "grimace/data/"))
+            with self.assertRaisesRegex(ValueError, "path normalization"):
                 validator.validate_wheel(wheel)
 
     def test_rejects_secret_shaped_wheel_content(self) -> None:

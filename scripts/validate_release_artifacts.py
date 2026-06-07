@@ -223,10 +223,33 @@ def is_unsafe_archive_path(
     )
 
 
-def reject_duplicate_archive_member(name: str, seen_names: set[str]) -> None:
+def canonical_archive_member_name(
+    name: str,
+    *,
+    allow_directory_marker: bool,
+) -> str:
+    if allow_directory_marker and name.endswith("/"):
+        return name[:-1]
+    return name
+
+
+def reject_duplicate_archive_member(
+    name: str,
+    seen_names: set[str],
+    seen_canonical_names: set[str],
+    *,
+    allow_directory_marker: bool,
+) -> None:
     if name in seen_names:
         raise ValueError(f"duplicate archive member: {name!r}")
     seen_names.add(name)
+    canonical = canonical_archive_member_name(
+        name,
+        allow_directory_marker=allow_directory_marker,
+    )
+    if canonical in seen_canonical_names:
+        raise ValueError(f"duplicate archive member after path normalization: {name!r}")
+    seen_canonical_names.add(canonical)
 
 
 def decode_archive_text(payload: bytes, member_name: str) -> str:
@@ -300,11 +323,17 @@ def validate_sdist(sdist_path: Path) -> SdistInfo:
     prepared_mol_zstd_file_size: dict[str, int] = {}
     pyproject_text: str | None = None
     seen_names: set[str] = set()
+    seen_canonical_names: set[str] = set()
     try:
         with tarfile.open(sdist_path, "r:gz") as archive:
             for member in archive.getmembers():
                 name = member.name
-                reject_duplicate_archive_member(name, seen_names)
+                reject_duplicate_archive_member(
+                    name,
+                    seen_names,
+                    seen_canonical_names,
+                    allow_directory_marker=member.isdir(),
+                )
                 names.append(name)
                 if is_unsafe_archive_path(
                     name,
@@ -399,9 +428,15 @@ def validate_wheel(wheel_path: Path) -> WheelInfo:
         with zipfile.ZipFile(wheel_path) as archive:
             names = archive.namelist()
             seen_names: set[str] = set()
+            seen_canonical_names: set[str] = set()
             for member in archive.infolist():
                 name = member.filename
-                reject_duplicate_archive_member(name, seen_names)
+                reject_duplicate_archive_member(
+                    name,
+                    seen_names,
+                    seen_canonical_names,
+                    allow_directory_marker=member.is_dir(),
+                )
                 if is_unsafe_archive_path(
                     name,
                     allow_directory_marker=member.is_dir(),

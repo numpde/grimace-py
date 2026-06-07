@@ -6,6 +6,7 @@ import importlib.util
 import json
 import tarfile
 import tempfile
+import tomllib
 import unittest
 import warnings
 import zipfile
@@ -14,7 +15,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "validate_release_artifacts.py"
 TEST_DICTIONARY_ARTIFACT = "20000102_1234abcd"
+TEST_SECOND_DICTIONARY_ARTIFACT = "20000103_5678abcd"
 TEST_GENERATOR_SCRIPT = "scripts/generate_prepared_mol_zstd_dictionary.py"
+TEST_SECOND_GENERATOR_SCRIPT = "scripts/prepared_mol_zstd_dictionary_generate.py"
 SDIST_DICTIONARY_NAMES = (
     f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.json",
     f"python/grimace/data/prepared_mol_zstd/{TEST_DICTIONARY_ARTIFACT}/default_v1.zstdict",
@@ -25,9 +28,32 @@ WHEEL_DICTIONARY_NAMES = (
 )
 
 
-def dictionary_manifest(script: str = TEST_GENERATOR_SCRIPT) -> str:
+def sdist_dictionary_names(artifact: str) -> tuple[str, str]:
+    return (
+        f"python/grimace/data/prepared_mol_zstd/{artifact}/default_v1.json",
+        f"python/grimace/data/prepared_mol_zstd/{artifact}/default_v1.zstdict",
+    )
+
+
+def wheel_dictionary_names(artifact: str) -> tuple[str, str]:
+    return (
+        f"grimace/data/prepared_mol_zstd/{artifact}/default_v1.json",
+        f"grimace/data/prepared_mol_zstd/{artifact}/default_v1.zstdict",
+    )
+
+
+def project_metadata() -> dict:
+    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+
+def dictionary_manifest(
+    script: str = TEST_GENERATOR_SCRIPT,
+    *,
+    artifact: str = TEST_DICTIONARY_ARTIFACT,
+) -> str:
     return json.dumps(
         {
+            "artifact_dir": artifact,
             "training_identity": {
                 "generator": {
                     "script": script,
@@ -37,13 +63,19 @@ def dictionary_manifest(script: str = TEST_GENERATOR_SCRIPT) -> str:
     )
 
 
-def wheel_metadata() -> str:
+def wheel_metadata(
+    *,
+    version: str = "0.1.12",
+    name: str | None = None,
+    source_url: str | None = None,
+) -> str:
+    metadata = project_metadata()
     return "\n".join(
         (
             "Metadata-Version: 2.4",
-            "Name: grimace-py",
-            "Version: 0.1.12",
-            "Project-URL: Source, https://github.com/numpde/grimace-py",
+            f"Name: {name or metadata['name']}",
+            f"Version: {version}",
+            f"Project-URL: Source, {source_url or metadata['urls']['Source']}",
             "",
         )
     )
@@ -54,11 +86,40 @@ def wheel_metadata_name(path: Path) -> str:
     return f"grimace_py-{version}.dist-info/METADATA"
 
 
-def archive_payload(name: str, *, manifest_script: str = TEST_GENERATOR_SCRIPT) -> bytes:
+def pyproject_toml(
+    *,
+    version: str = "0.1.12",
+    name: str | None = None,
+    source_url: str | None = None,
+) -> str:
+    metadata = project_metadata()
+    return "\n".join(
+        (
+            "[project]",
+            f"name = {json.dumps(name or metadata['name'])}",
+            f"version = {json.dumps(version)}",
+            "",
+            "[project.urls]",
+            f"Source = {json.dumps(source_url or metadata['urls']['Source'])}",
+            "",
+        )
+    )
+
+
+def archive_payload(
+    name: str,
+    *,
+    manifest_script: str = TEST_GENERATOR_SCRIPT,
+    version: str = "0.1.12",
+) -> bytes:
     if name.endswith("/default_v1.json"):
-        return dictionary_manifest(manifest_script).encode("utf-8")
+        artifact = name.rsplit("/", 2)[-2]
+        return dictionary_manifest(manifest_script, artifact=artifact).encode("utf-8")
     if name.endswith(".dist-info/METADATA"):
-        return wheel_metadata().encode("utf-8")
+        version = name.split("-", 1)[1].split(".dist-info/", 1)[0]
+        return wheel_metadata(version=version).encode("utf-8")
+    if name == "pyproject.toml":
+        return pyproject_toml(version=version).encode("utf-8")
     return b""
 
 
@@ -72,6 +133,7 @@ def write_sdist(
     payload_overrides: dict[str, bytes] | None = None,
 ) -> None:
     root = path.name.removesuffix(".tar.gz")
+    version = path.name.removesuffix(".tar.gz").split("-", 1)[1]
     if (
         include_generator_script
         and any(name.endswith("/default_v1.json") for name in names)
@@ -90,7 +152,11 @@ def write_sdist(
             info = tarfile.TarInfo(full_name)
             payload = payload_overrides.get(
                 name,
-                archive_payload(name, manifest_script=manifest_script),
+                archive_payload(
+                    name,
+                    manifest_script=manifest_script,
+                    version=version,
+                ),
             )
             info.size = len(payload)
             archive.addfile(info, BytesIO(payload))
@@ -380,6 +446,22 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "incomplete PreparedMol zstd"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_manifest_artifact_dir_that_does_not_match_archive_path(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    SDIST_DICTIONARY_NAMES[0]: dictionary_manifest(
+                        artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+                    ).encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "artifact_dir does not match"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_sdist_manifest_without_recorded_generator_script(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -430,6 +512,20 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "not valid UTF-8"):
                 validator.validate_sdist(sdist)
 
+    def test_rejects_sdist_pyproject_version_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdist = Path(tmp) / "grimace_py-0.1.12.tar.gz"
+            write_sdist(
+                sdist,
+                ("pyproject.toml", "Cargo.toml", *SDIST_DICTIONARY_NAMES),
+                payload_overrides={
+                    "pyproject.toml": pyproject_toml(version="0.1.99").encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "project version"):
+                validator.validate_sdist(sdist)
+
     def test_rejects_invalid_utf8_wheel_manifest(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -462,6 +558,32 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "METADATA"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_wheel_metadata_name_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata(name="other-project").encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "project name"):
+                validator.validate_wheel(wheel)
+
+    def test_rejects_wheel_metadata_version_mismatch(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_metadata_name(wheel): wheel_metadata(version="0.1.99").encode("utf-8"),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "METADATA version"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_without_canonical_metadata_member(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:
@@ -488,7 +610,79 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
                 manifest_script="scripts/missing_generator.py",
             )
 
-            with self.assertRaisesRegex(ValueError, "companion sdist"):
+            with self.assertRaisesRegex(ValueError, "companion source distribution"):
+                validator.validate_artifacts(dist, "v0.1.12")
+
+    def test_rejects_release_when_wheel_artifact_generator_differs_from_sdist(self) -> None:
+        validator = load_validator()
+        sdist_names = (
+            "pyproject.toml",
+            "Cargo.toml",
+            *sdist_dictionary_names(TEST_DICTIONARY_ARTIFACT),
+            *sdist_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT),
+            TEST_GENERATOR_SCRIPT,
+            TEST_SECOND_GENERATOR_SCRIPT,
+        )
+        wheel_names = (
+            "grimace/__init__.py",
+            *wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT),
+            *wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT),
+        )
+        sdist_payloads = {
+            sdist_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                TEST_GENERATOR_SCRIPT,
+                artifact=TEST_DICTIONARY_ARTIFACT,
+            ).encode("utf-8"),
+            sdist_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                TEST_SECOND_GENERATOR_SCRIPT,
+                artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+            ).encode("utf-8"),
+        }
+        wheel_payloads = {
+            wheel_dictionary_names(TEST_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                TEST_SECOND_GENERATOR_SCRIPT,
+                artifact=TEST_DICTIONARY_ARTIFACT,
+            ).encode("utf-8"),
+            wheel_dictionary_names(TEST_SECOND_DICTIONARY_ARTIFACT)[0]: dictionary_manifest(
+                TEST_SECOND_GENERATOR_SCRIPT,
+                artifact=TEST_SECOND_DICTIONARY_ARTIFACT,
+            ).encode("utf-8"),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            for name in validator.expected_artifact_names("0.1.12"):
+                if name.endswith(".tar.gz"):
+                    write_sdist(
+                        dist / name,
+                        sdist_names,
+                        include_generator_script=False,
+                        payload_overrides=sdist_payloads,
+                    )
+                else:
+                    write_wheel(
+                        dist / name,
+                        wheel_names,
+                        include_source_metadata=True,
+                        payload_overrides=wheel_payloads,
+                    )
+            with self.assertRaisesRegex(ValueError, "generator provenance"):
+                validator.validate_artifacts(dist, "v0.1.12")
+
+    def test_rejects_release_when_wheel_source_url_differs_from_sdist(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            dist = Path(tmp)
+            write_expected_artifacts(validator, dist, "0.1.12")
+            for wheel in dist.glob("*.whl"):
+                write_wheel(
+                    wheel,
+                    payload_overrides={
+                        wheel_metadata_name(wheel): wheel_metadata(
+                            source_url="https://example.invalid/source",
+                        ).encode("utf-8"),
+                    },
+                )
+            with self.assertRaisesRegex(ValueError, "source repository URL"):
                 validator.validate_artifacts(dist, "v0.1.12")
 
     def test_rejects_tag_that_does_not_match_release_version_shape(self) -> None:

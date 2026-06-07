@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable
+from email.parser import Parser
 import json
 from pathlib import Path
 import re
@@ -14,11 +15,15 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_STEM = "grimace_py"
+PROJECT_NAME = "grimace-py"
 PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 WHEEL_NAME_PATTERN = re.compile(
     rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-.+\.whl$"
+)
+SDIST_NAME_PATTERN = re.compile(
+    rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz$"
 )
 PREPARED_MOL_ZSTD_ARTIFACT_PATTERN = re.compile(r"^[0-9]{8}_[0-9a-f]{8}$")
 PREPARED_MOL_ZSTD_FILENAMES = frozenset(
@@ -75,15 +80,34 @@ FORBIDDEN_SDIST_PATH_FRAGMENTS = (
 )
 
 
-def project_source_url() -> str:
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    try:
-        source_url = pyproject["project"]["urls"]["Source"]
-    except KeyError as exc:
-        raise ValueError("pyproject.toml lacks project.urls.Source") from exc
-    if not isinstance(source_url, str) or not source_url:
-        raise ValueError("pyproject.toml project.urls.Source must be a non-empty string")
-    return source_url
+class WheelInfo:
+    __slots__ = ("version", "source_url", "prepared_mol_zstd_scripts")
+
+    def __init__(
+        self,
+        *,
+        version: str,
+        source_url: str,
+        prepared_mol_zstd_scripts: dict[str, str],
+    ) -> None:
+        self.version = version
+        self.source_url = source_url
+        self.prepared_mol_zstd_scripts = prepared_mol_zstd_scripts
+
+
+class SdistInfo:
+    __slots__ = ("version", "source_url", "prepared_mol_zstd_scripts")
+
+    def __init__(
+        self,
+        *,
+        version: str,
+        source_url: str,
+        prepared_mol_zstd_scripts: dict[str, str],
+    ) -> None:
+        self.version = version
+        self.source_url = source_url
+        self.prepared_mol_zstd_scripts = prepared_mol_zstd_scripts
 
 
 def expected_artifact_names(version: str) -> tuple[str, ...]:
@@ -116,19 +140,32 @@ def validate_artifacts(dist_dir: Path, tag: str) -> None:
             f"actual:   {list(actual)!r}"
         )
 
-    wheel_generator_scripts: list[frozenset[str]] = []
+    wheel_infos: list[WheelInfo] = []
     for path in paths:
         if path.name.endswith(".whl"):
-            wheel_generator_scripts.append(validate_wheel(path))
-    sdist_generator_scripts = validate_sdist(
+            wheel_infos.append(validate_wheel(path))
+    sdist_info = validate_sdist(
         dist_dir / f"{PACKAGE_STEM}-{tag_match.group('version')}.tar.gz"
     )
-    for scripts in wheel_generator_scripts:
-        missing = scripts - sdist_generator_scripts
-        if missing:
+    if sdist_info.version != tag_match.group("version"):
+        raise ValueError(
+            "source distribution version does not match release tag: "
+            f"{sdist_info.version!r}"
+        )
+    for wheel_info in wheel_infos:
+        if wheel_info.version != tag_match.group("version"):
             raise ValueError(
-                "wheel PreparedMol zstd generator provenance is absent from "
-                f"the companion sdist: {sorted(missing)!r}"
+                "wheel version does not match release tag: "
+                f"{wheel_info.version!r}"
+            )
+        if wheel_info.source_url != sdist_info.source_url:
+            raise ValueError(
+                "wheel source repository URL does not match source distribution"
+            )
+        if wheel_info.prepared_mol_zstd_scripts != sdist_info.prepared_mol_zstd_scripts:
+            raise ValueError(
+                "wheel PreparedMol zstd generator provenance does not match "
+                "the companion source distribution"
             )
 
 
@@ -174,16 +211,51 @@ def decode_archive_text(payload: bytes, member_name: str) -> str:
         raise ValueError(f"archive member is not valid UTF-8: {member_name!r}") from exc
 
 
-def validate_sdist(sdist_path: Path) -> frozenset[str]:
+def canonical_project_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def sdist_project_source_url(
+    pyproject_text: str | None,
+    *,
+    expected_version: str,
+) -> str:
+    if pyproject_text is None:
+        raise ValueError("source distribution lacks pyproject.toml")
+    try:
+        pyproject = tomllib.loads(pyproject_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError("source distribution pyproject.toml is invalid") from exc
+    try:
+        project = pyproject["project"]
+        name = project["name"]
+        version = project["version"]
+        source_url = project["urls"]["Source"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("source distribution pyproject.toml lacks project metadata") from exc
+    if not isinstance(name, str) or canonical_project_name(name) != PROJECT_NAME:
+        raise ValueError("source distribution project name does not match grimace-py")
+    if version != expected_version:
+        raise ValueError("source distribution project version does not match filename")
+    if not isinstance(source_url, str) or not source_url:
+        raise ValueError("source distribution project.urls.Source must be non-empty")
+    return source_url
+
+
+def validate_sdist(sdist_path: Path) -> SdistInfo:
     if sdist_path.is_symlink() or not sdist_path.is_file():
         raise ValueError(f"source distribution does not exist or is not a file: {sdist_path}")
-    if not sdist_path.name.endswith(".tar.gz"):
-        raise ValueError(f"source distribution must be a .tar.gz file: {sdist_path}")
+    sdist_match = SDIST_NAME_PATTERN.fullmatch(sdist_path.name)
+    if sdist_match is None:
+        raise ValueError(
+            f"source distribution filename does not match {PACKAGE_STEM}: {sdist_path.name!r}"
+        )
 
     root = f"{sdist_path.name.removesuffix('.tar.gz')}/"
     names: list[str] = []
     file_names: list[str] = []
     manifest_texts: dict[str, str] = {}
+    pyproject_text: str | None = None
     seen_names: set[str] = set()
     try:
         with tarfile.open(sdist_path, "r:gz") as archive:
@@ -207,6 +279,11 @@ def validate_sdist(sdist_path: Path) -> frozenset[str]:
                     raise ValueError(f"forbidden file in sdist: {relative!r}")
                 if member.isfile():
                     file_names.append(relative)
+                if relative == "pyproject.toml" and member.isfile():
+                    payload = archive.extractfile(member)
+                    if payload is None:
+                        raise ValueError(f"could not read sdist member: {name!r}")
+                    pyproject_text = decode_archive_text(payload.read(), relative)
                 if (
                     relative.startswith(SDIST_PREPARED_MOL_ZSTD_PREFIX)
                     and relative.endswith("/default_v1.json")
@@ -220,17 +297,29 @@ def validate_sdist(sdist_path: Path) -> frozenset[str]:
                         relative,
                     )
             relative_names = tuple(name[len(root) :] for name in names if name.startswith(root))
-            return validate_prepared_mol_zstd_package_data(
+            prepared_mol_zstd_scripts = validate_prepared_mol_zstd_package_data(
                 relative_names,
                 prefix=SDIST_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
+            )
+            validate_prepared_mol_zstd_sdist_provenance(
+                prepared_mol_zstd_scripts,
                 source_file_names=frozenset(file_names),
+            )
+            source_url = sdist_project_source_url(
+                pyproject_text,
+                expected_version=sdist_match.group("version"),
+            )
+            return SdistInfo(
+                version=sdist_match.group("version"),
+                source_url=source_url,
+                prepared_mol_zstd_scripts=prepared_mol_zstd_scripts,
             )
     except (OSError, tarfile.TarError) as exc:
         raise ValueError(f"could not read source distribution {sdist_path}: {exc}") from exc
 
 
-def validate_wheel(wheel_path: Path) -> frozenset[str]:
+def validate_wheel(wheel_path: Path) -> WheelInfo:
     if wheel_path.is_symlink() or not wheel_path.is_file():
         raise ValueError(f"wheel does not exist or is not a file: {wheel_path}")
     if not wheel_path.name.endswith(".whl"):
@@ -265,10 +354,11 @@ def validate_wheel(wheel_path: Path) -> frozenset[str]:
                 root = name.rstrip("/").split("/", 1)[0]
                 if root not in allowed_roots:
                     raise ValueError(f"unexpected top-level wheel member: {name!r}")
-            validate_wheel_source_metadata(
+            source_url = validate_wheel_source_metadata(
                 archive,
                 names,
                 dist_info_root=dist_info_root,
+                expected_version=wheel_match.group("version"),
             )
             manifest_texts = {
                 name: decode_archive_text(archive.read(name), name)
@@ -276,10 +366,15 @@ def validate_wheel(wheel_path: Path) -> frozenset[str]:
                 if name.startswith(WHEEL_PREPARED_MOL_ZSTD_PREFIX)
                 and name.endswith("/default_v1.json")
             }
-            return validate_prepared_mol_zstd_package_data(
+            prepared_mol_zstd_scripts = validate_prepared_mol_zstd_package_data(
                 names,
                 prefix=WHEEL_PREPARED_MOL_ZSTD_PREFIX,
                 manifest_texts=manifest_texts,
+            )
+            return WheelInfo(
+                version=wheel_match.group("version"),
+                source_url=source_url,
+                prepared_mol_zstd_scripts=prepared_mol_zstd_scripts,
             )
     except (OSError, zipfile.BadZipFile) as exc:
         raise ValueError(f"could not read wheel {wheel_path}: {exc}") from exc
@@ -290,14 +385,26 @@ def validate_wheel_source_metadata(
     names: Iterable[str],
     *,
     dist_info_root: str,
-) -> None:
+    expected_version: str,
+) -> str:
     metadata_name = f"{dist_info_root}/METADATA"
     if metadata_name not in names:
         raise ValueError(f"wheel lacks canonical METADATA file: {metadata_name!r}")
     metadata = decode_archive_text(archive.read(metadata_name), metadata_name)
-    expected_source_line = f"Project-URL: Source, {project_source_url()}"
-    if expected_source_line not in metadata.splitlines():
+    message = Parser().parsestr(metadata)
+    name = message.get("Name")
+    if name is None or canonical_project_name(name) != PROJECT_NAME:
+        raise ValueError("wheel METADATA project name does not match grimace-py")
+    if message.get("Version") != expected_version:
+        raise ValueError("wheel METADATA version does not match filename")
+    source_urls = tuple(
+        value.removeprefix("Source,").strip()
+        for value in message.get_all("Project-URL", ())
+        if value.startswith("Source,")
+    )
+    if len(source_urls) != 1 or not source_urls[0]:
         raise ValueError("wheel METADATA lacks the source repository Project-URL")
+    return source_urls[0]
 
 
 def validate_prepared_mol_zstd_package_data(
@@ -305,10 +412,9 @@ def validate_prepared_mol_zstd_package_data(
     *,
     prefix: str,
     manifest_texts: dict[str, str],
-    source_file_names: frozenset[str] | None = None,
-) -> frozenset[str]:
+) -> dict[str, str]:
     artifacts: dict[str, set[str]] = {}
-    generator_scripts: set[str] = set()
+    generator_scripts: dict[str, str] = {}
     for name in names:
         if not name.startswith(prefix) or name.endswith("/"):
             continue
@@ -326,17 +432,20 @@ def validate_prepared_mol_zstd_package_data(
         artifacts.setdefault(artifact, set()).add(filename)
         if filename == "default_v1.json":
             try:
-                script = prepared_mol_zstd_generator_script(manifest_texts[name], name)
+                manifest_artifact, script = prepared_mol_zstd_manifest_provenance(
+                    manifest_texts[name],
+                    name,
+                )
             except KeyError as exc:
                 raise ValueError(
                     f"missing PreparedMol zstd manifest payload: {name!r}"
                 ) from exc
-            if source_file_names is not None and script not in source_file_names:
+            if manifest_artifact != artifact:
                 raise ValueError(
-                    "PreparedMol zstd generator script is absent from source "
-                    f"distribution: {script!r}"
+                    "PreparedMol zstd manifest artifact_dir does not match "
+                    f"archive path: {name!r}"
                 )
-            generator_scripts.add(script)
+            generator_scripts[artifact] = script
 
     if not artifacts:
         raise ValueError("missing PreparedMol zstd dictionary package data")
@@ -349,17 +458,38 @@ def validate_prepared_mol_zstd_package_data(
         raise ValueError(
             f"incomplete PreparedMol zstd dictionary package data: {incomplete!r}"
         )
-    return frozenset(generator_scripts)
+    return generator_scripts
 
 
-def prepared_mol_zstd_generator_script(manifest_text: str, member_name: str) -> str:
+def validate_prepared_mol_zstd_sdist_provenance(
+    artifact_scripts: dict[str, str],
+    *,
+    source_file_names: frozenset[str],
+) -> None:
+    for script in artifact_scripts.values():
+        if script not in source_file_names:
+            raise ValueError(
+                "PreparedMol zstd generator script is absent from source "
+                f"distribution: {script!r}"
+            )
+
+
+def prepared_mol_zstd_manifest_provenance(
+    manifest_text: str,
+    member_name: str,
+) -> tuple[str, str]:
     try:
         manifest = json.loads(manifest_text)
+        artifact = manifest["artifact_dir"]
         script = manifest["training_identity"]["generator"]["script"]
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError(
             f"PreparedMol zstd manifest lacks generator provenance: {member_name!r}"
         ) from exc
+    if not isinstance(artifact, str):
+        raise ValueError(
+            f"PreparedMol zstd manifest artifact_dir is not a string: {member_name!r}"
+        )
     if not isinstance(script, str):
         raise ValueError(
             f"PreparedMol zstd manifest generator script is not a string: {member_name!r}"
@@ -373,7 +503,7 @@ def prepared_mol_zstd_generator_script(manifest_text: str, member_name: str) -> 
             "PreparedMol zstd generator script must be a scripts/*.py source "
             f"path: {script!r}"
         )
-    return script
+    return artifact, script
 
 
 def main(argv: list[str]) -> int:

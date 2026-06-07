@@ -527,6 +527,21 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "wheel filename does not match grimace_py"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_malformed_wheel_filename(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-notawheel.whl"
+            write_wheel(wheel)
+            with self.assertRaisesRegex(ValueError, "wheel filename does not match grimace_py"):
+                validator.validate_wheel(wheel)
+
+    def test_accepts_wheel_filename_with_build_tag(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-1local-cp312-cp312-linux_x86_64.whl"
+            write_wheel(wheel)
+            validator.validate_wheel(wheel)
+
     def test_rejects_wheel_without_prepared_mol_zstd_dictionary_data(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

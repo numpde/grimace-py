@@ -23,7 +23,13 @@ PYTHON_TAGS = ("cp312", "cp313")
 PLATFORM_TAG = "manylinux_2_28_x86_64"
 TAG_PATTERN = re.compile(r"^v(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$")
 WHEEL_NAME_PATTERN = re.compile(
-    rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-.+\.whl$"
+    rf"^{re.escape(PACKAGE_STEM)}-"
+    rf"(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
+    rf"(?:-[0-9][A-Za-z0-9_.]*)?"
+    rf"-[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
+    rf"-[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
+    rf"-[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*"
+    rf"\.whl$"
 )
 SDIST_NAME_PATTERN = re.compile(
     rf"^{re.escape(PACKAGE_STEM)}-(?P<version>[0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz$"

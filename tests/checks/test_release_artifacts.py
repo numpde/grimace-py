@@ -1254,6 +1254,25 @@ class ReleaseArtifactValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Root-Is-Purelib is invalid"):
                 validator.validate_wheel(wheel)
 
+    def test_rejects_purelib_wheel_archive_metadata(self) -> None:
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as tmp:
+            wheel = Path(tmp) / "grimace_py-0.1.12-cp312-cp312-manylinux_2_28_x86_64.whl"
+            write_wheel(
+                wheel,
+                payload_overrides={
+                    wheel_archive_metadata_name(wheel): (
+                        wheel_archive_metadata_with_headers(
+                            "Wheel-Version: 1.0",
+                            "Root-Is-Purelib: true",
+                            "Tag: cp312-cp312-manylinux_2_28_x86_64",
+                        ).encode("utf-8")
+                    ),
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "must be false"):
+                validator.validate_wheel(wheel)
+
     def test_rejects_wheel_archive_metadata_tag_mismatch(self) -> None:
         validator = load_validator()
         with tempfile.TemporaryDirectory() as tmp:

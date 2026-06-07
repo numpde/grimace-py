@@ -515,11 +515,13 @@ def validate_wheel_archive_metadata(
     message = Parser().parsestr(wheel_metadata)
     if single_wheel_header(message, "Wheel-Version") != "1.0":
         raise ValueError("wheel WHEEL metadata version is not supported")
-    if single_wheel_header(message, "Root-Is-Purelib").casefold() not in {
-        "true",
-        "false",
-    }:
+    root_is_purelib = single_wheel_header(message, "Root-Is-Purelib").casefold()
+    if root_is_purelib not in {"true", "false"}:
         raise ValueError("wheel WHEEL metadata Root-Is-Purelib is invalid")
+    if root_is_purelib != "false":
+        raise ValueError(
+            "wheel WHEEL metadata Root-Is-Purelib must be false for grimace-py"
+        )
     tags = tuple(message.get_all("Tag", ()))
     if not tags or any(not tag for tag in tags):
         raise ValueError("wheel WHEEL metadata lacks compatibility tags")
